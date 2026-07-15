@@ -851,7 +851,7 @@ export default function AdminMenusPage() {
                   </Form.Item>
                   <Form.Item style={{ marginBottom: 0 }}>
                     <Button
-                      htmlType="button"
+                    htmlType="button"
                       icon={<SearchOutlined />}
                       onClick={() => void menusQuery.refetch()}
                       className="admin-search-btn"
@@ -864,7 +864,7 @@ export default function AdminMenusPage() {
             ) : (
               <div className="admin-filter-bar">
                 <Form layout="inline">
-                  <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label="关键词" className="admin-filter-keyword-item">
                     <Input
                       allowClear
                       value={keywordInput}
@@ -874,7 +874,7 @@ export default function AdminMenusPage() {
                     />
                   </Form.Item>
 
-                  <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label="状态" className="admin-filter-keyword-item">
                     <Select<"enabled" | "disabled">
                       value={statusFilter}
                       allowClear
@@ -894,9 +894,9 @@ export default function AdminMenusPage() {
                     />
                   </Form.Item>
 
-                  <Form.Item style={ marginBottom: 0 }>
+                  <Form.Item>
                     <Button
-                      htmlType="button"
+                    htmlType="button"
                       icon={<SearchOutlined />}
                       onClick={() => void menusQuery.refetch()}
                       className="admin-search-btn"

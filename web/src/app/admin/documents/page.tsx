@@ -789,6 +789,7 @@ export default function AdminDocumentsPage() {
                   </Form.Item>
                   <Form.Item style={{ marginBottom: 0 }}>
                     <Button
+                      htmlType="button"
                       icon={<SearchOutlined />}
                       onClick={() => {
                         setSearchKeyword(keywordInput);
@@ -841,6 +842,7 @@ export default function AdminDocumentsPage() {
 
                   <Form.Item style={ marginBottom: 0 }>
                     <Button
+                      htmlType="button"
                       icon={<SearchOutlined />}
                       onClick={() => {
                         setSearchKeyword(keywordInput);

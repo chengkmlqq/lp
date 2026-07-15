@@ -497,6 +497,7 @@ export default function AdminScheduledTasksPage() {
 
             <Form.Item style={ marginBottom: 0 }>
               <Button
+                htmlType="button"
                 icon={<SearchOutlined />}
                 onClick={() => void refreshList()}
                 className="admin-search-btn"

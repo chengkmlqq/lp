@@ -413,6 +413,7 @@ export default function AdminSyslogPage() {
               </Form.Item>
               <Form.Item style={{ marginBottom: 0 }}>
                 <Button
+                  htmlType="button"
                   icon={<SearchOutlined />}
                   onClick={handleSearch}
                   className="admin-search-btn"
@@ -445,6 +446,7 @@ export default function AdminSyslogPage() {
               </Form.Item>
               <Form.Item style={ marginBottom: 0 }>
                 <Button
+                  htmlType="button"
                   icon={<SearchOutlined />}
                   onClick={handleSearch}
                   className="admin-search-btn"

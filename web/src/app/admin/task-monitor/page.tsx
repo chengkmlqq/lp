@@ -811,6 +811,7 @@ export default function AdminTaskMonitorPage() {
 
               <Form.Item style={{ marginBottom: 0 }}>
                 <Button
+                  htmlType="button"
                   icon={<SearchOutlined />}
                   onClick={handleSearch}
                   className="admin-search-btn"
@@ -853,6 +854,7 @@ export default function AdminTaskMonitorPage() {
 
               <Form.Item style={ marginBottom: 0 }>
                 <Button
+                  htmlType="button"
                   icon={<SearchOutlined />}
                   onClick={handleSearch}
                   className="admin-search-btn"

@@ -678,41 +678,41 @@ export default function AdminLightningCurrentsPage() {
         {viewMode === "card" ? (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按文件名搜索"
-                  value={keywordInput}
-                  onChange={(event) => handleKeywordChange(event.target.value)}
-                  onPressEnter={() => {
-                    setSearchKeyword(keywordInput);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedEvents([]);
-                  }}
-                />
-              </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={() => {
-                    setSearchKeyword(keywordInput);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedEvents([]);
-                  }}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
+            <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Input
+                allowClear
+                placeholder="按文件名搜索"
+                value={keywordInput}
+                onChange={(event) => handleKeywordChange(event.target.value)}
+                onPressEnter={() => {
+                  setSearchKeyword(keywordInput);
+                  setPagination((prev) => ({ ...prev, current: 1 }));
+                  setCardViewPage(1);
+                  setAllLoadedEvents([]);
+                }}
+              />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button
+                htmlType="button"
+                icon={<SearchOutlined />}
+                onClick={() => {
+                  setSearchKeyword(keywordInput);
+                  setPagination((prev) => ({ ...prev, current: 1 }));
+                  setCardViewPage(1);
+                  setAllLoadedEvents([]);
+                }}
+                className="admin-search-btn"
+              >
+                查询
+              </Button>
+            </Form.Item>
+          </Form>
           </div>
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Form.Item label="关键词" className="admin-filter-keyword-item">
                 <Input
                   allowClear
                   placeholder="按文件名搜索"
@@ -726,7 +726,7 @@ export default function AdminLightningCurrentsPage() {
                   }}
                 />
               </Form.Item>
-              <Form.Item style={ marginBottom: 0 }>
+              <Form.Item>
                 <Button
                   htmlType="button"
                   icon={<SearchOutlined />}

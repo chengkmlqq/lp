@@ -167,8 +167,6 @@ export default function AdminWorkersPage() {
 
   const [workerKeyword, setWorkerKeyword] = useState("");
   const [queueKeyword, setQueueKeyword] = useState("");
-  const [workerKeywordInput, setWorkerKeywordInput] = useState("");
-  const [queueKeywordInput, setQueueKeywordInput] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
   const [selectedWorker, setSelectedWorker] = useState<string | null>(null);
   const [tableScrollY, setTableScrollY] = useState(WORKERS_TABLE_MIN_SCROLL_Y);
@@ -628,12 +626,8 @@ export default function AdminWorkersPage() {
                 <Input
                   allowClear
                   placeholder="按节点名称筛选"
-                  value={workerKeywordInput}
-                  onChange={(event) => setWorkerKeywordInput(event.target.value)}
-                  onPressEnter={() => {
-                    setWorkerKeyword(workerKeywordInput);
-                    setQueueKeyword(queueKeywordInput);
-                  }}
+                  value={workerKeyword}
+                  onChange={(event) => setWorkerKeyword(event.target.value)}
                 />
               </Form.Item>
 
@@ -641,12 +635,8 @@ export default function AdminWorkersPage() {
                 <Input
                   allowClear
                   placeholder="按队列名称筛选"
-                  value={queueKeywordInput}
-                  onChange={(event) => setQueueKeywordInput(event.target.value)}
-                  onPressEnter={() => {
-                    setWorkerKeyword(workerKeywordInput);
-                    setQueueKeyword(queueKeywordInput);
-                  }}
+                  value={queueKeyword}
+                  onChange={(event) => setQueueKeyword(event.target.value)}
                 />
               </Form.Item>
 
@@ -665,14 +655,7 @@ export default function AdminWorkersPage() {
               <Form.Item style={{ marginBottom: 0 }}>
                 <Button
                   htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={() => {
-                    setWorkerKeyword(workerKeywordInput);
-                    setQueueKeyword(queueKeywordInput);
-                    void overviewQuery.refetch();
-                  }}
-                  className="admin-search-btn"
-                >
+                  icon={<SearchOutlined />} onClick={() => void overviewQuery.refetch()} className="admin-search-btn">
                   查询
                 </Button>
               </Form.Item>
@@ -681,35 +664,27 @@ export default function AdminWorkersPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="执行节点" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Form.Item label="执行节点" className="admin-filter-keyword-item">
                 <Input
                   allowClear
                   placeholder="按节点名称筛选"
-                  value={workerKeywordInput}
-                  onChange={(event) => setWorkerKeywordInput(event.target.value)}
-                  onPressEnter={() => {
-                    setWorkerKeyword(workerKeywordInput);
-                    setQueueKeyword(queueKeywordInput);
-                    void overviewQuery.refetch();
-                  }}
+                  value={workerKeyword}
+                  onChange={(event) => setWorkerKeyword(event.target.value)}
+                  onPressEnter={() => void overviewQuery.refetch()}
                 />
               </Form.Item>
 
-              <Form.Item label="队列" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Form.Item label="队列" className="admin-filter-keyword-item">
                 <Input
                   allowClear
                   placeholder="按队列名称筛选"
-                  value={queueKeywordInput}
-                  onChange={(event) => setQueueKeywordInput(event.target.value)}
-                  onPressEnter={() => {
-                    setWorkerKeyword(workerKeywordInput);
-                    setQueueKeyword(queueKeywordInput);
-                    void overviewQuery.refetch();
-                  }}
+                  value={queueKeyword}
+                  onChange={(event) => setQueueKeyword(event.target.value)}
+                  onPressEnter={() => void overviewQuery.refetch()}
                 />
               </Form.Item>
 
-              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Form.Item label="状态" className="admin-filter-keyword-item">
                 <Select
                   value={statusFilter}
                   onChange={(value) => setStatusFilter(parseStatusFilter(value))}
@@ -721,17 +696,10 @@ export default function AdminWorkersPage() {
                 />
               </Form.Item>
 
-              <Form.Item style={ marginBottom: 0 }>
+              <Form.Item>
                 <Button
                   htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={() => {
-                    setWorkerKeyword(workerKeywordInput);
-                    setQueueKeyword(queueKeywordInput);
-                    void overviewQuery.refetch();
-                  }}
-                  className="admin-search-btn"
-                >
+                  icon={<SearchOutlined />} onClick={() => void overviewQuery.refetch()} className="admin-search-btn">
                   查询
                 </Button>
               </Form.Item>

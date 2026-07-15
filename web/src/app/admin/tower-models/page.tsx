@@ -816,6 +816,7 @@ export default function AdminTowerModelsPage() {
               </Form.Item>
               <Form.Item style={{ marginBottom: 0 }}>
                 <Button
+                  htmlType="button"
                   icon={<SearchOutlined />}
                   onClick={() => {
                     setSearchKeyword(keywordInput);
@@ -866,6 +867,7 @@ export default function AdminTowerModelsPage() {
               </Form.Item>
               <Form.Item style={{ marginBottom: 0 }}>
                 <Button
+                  htmlType="button"
                   icon={<SearchOutlined />}
                   onClick={() => {
                     setSearchKeyword(keywordInput);
