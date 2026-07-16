@@ -1315,6 +1315,8 @@ body {
 }
 
 .admin-filter-keyword-item .ant-input {
+  overflow: hidden;
+  width: 100%;
   text-overflow: ellipsis;
 }
 
