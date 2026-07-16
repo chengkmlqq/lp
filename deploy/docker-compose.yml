@@ -1,0 +1,169 @@
+services:
+  api:
+    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/fquiz-api:latest
+    container_name: lp-api
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: lp
+      DB_USERNAME: lp
+      DB_PASSWORD: replace_strong_password
+      DB_SCHEMA: public
+      DATABASE_URL: postgresql+psycopg://lp:replace_strong_password@db:5432/lp
+      USER_USERNAME_COLUMN: username
+      USER_PASSWORD_COLUMN: password_hash
+      USER_STATUS_COLUMN: status
+      MINIO_ENABLED: "true"
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: replace_strong_access_key
+      MINIO_SECRET_KEY: replace_strong_secret_key
+      MINIO_BUCKET: lp-files
+      MINIO_REGION: us-east-1
+      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
+      CELERY_TIMEZONE: Asia/Shanghai
+      FLOWER_BASIC_AUTH: admin:admin
+      FLOWER_API_BASE_URL: http://flower:5555
+      FLOWER_API_TIMEOUT_SECONDS: 10
+      JWT_SECRET_KEY: replace_strong_jwt_secret
+      ACCESS_TOKEN_EXPIRE_MINUTES: 480
+      REFRESH_TOKEN_EXPIRE_DAYS: 30
+      REFRESH_COOKIE_SECURE: "false"
+      REFRESH_COOKIE_SAMESITE: lax
+      API_CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002,http://localhost:3003,http://127.0.0.1:3003
+      WORKER_REGISTRY_TTL_SECONDS: 90
+      WINE_BINARY_PATH: wine
+      WINE_ALLOWED_ROOT: /app/data/wine
+      WINE_DEFAULT_TIMEOUT_SECONDS: 300
+      WINE_MAX_TIMEOUT_SECONDS: 1800
+      FILE_VFS_ROOT: /app/data/vfs
+      INITIAL_ADMIN_EMAIL: admin@example.com
+      INITIAL_ADMIN_USERNAME: admin
+      INITIAL_ADMIN_PASSWORD: change-me-strong-password
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/app:/app/data
+    restart: unless-stopped
+    networks:
+      - deploy_default
+
+  celery-worker:
+    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/fquiz-api:latest
+    container_name: lp-celery-worker
+    entrypoint: [""]
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=2
+      - --queues=default,celery
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: lp
+      DB_USERNAME: lp
+      DB_PASSWORD: replace_strong_password
+      DB_SCHEMA: public
+      DATABASE_URL: postgresql+psycopg://lp:replace_strong_password@db:5432/lp
+      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
+      CELERY_TIMEZONE: Asia/Shanghai
+      MINIO_ENABLED: "true"
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: replace_strong_access_key
+      MINIO_SECRET_KEY: replace_strong_secret_key
+      MINIO_BUCKET: lp-files
+      MINIO_REGION: us-east-1
+      WINE_BINARY_PATH: wine
+      WINE_ALLOWED_ROOT: /app/data/wine
+      WINE_DEFAULT_TIMEOUT_SECONDS: 300
+      WINE_MAX_TIMEOUT_SECONDS: 1800
+      FILE_VFS_ROOT: /app/data/vfs
+    volumes:
+      - ./data/app:/app/data
+    restart: unless-stopped
+    networks:
+      - deploy_default
+
+  celery-beat:
+    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/fquiz-api:latest
+    container_name: lp-celery-beat
+    entrypoint: [""]
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - beat
+      - --loglevel=INFO
+      - --schedule=/app/data/celery/beat-schedule
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: lp
+      DB_USERNAME: lp
+      DB_PASSWORD: replace_strong_password
+      DATABASE_URL: postgresql+psycopg://lp:replace_strong_password@db:5432/lp
+      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
+      CELERY_TIMEZONE: Asia/Shanghai
+    volumes:
+      - ./data/app:/app/data
+    restart: unless-stopped
+    networks:
+      - deploy_default
+
+  flower:
+    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/fquiz-api:latest
+    container_name: lp-flower
+    entrypoint: [""]
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - flower
+      - --address=0.0.0.0
+      - --port=5555
+      - --persistent=False
+      - --basic-auth=admin:admin
+    environment:
+      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
+      CELERY_TIMEZONE: Asia/Shanghai
+      FLOWER_BASIC_AUTH: admin:admin
+    ports:
+      - "5555:5555"
+    restart: unless-stopped
+    networks:
+      - deploy_default
+
+  web:
+    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/fquiz-web:latest
+    container_name: lp-web
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:3001
+      NEXT_PUBLIC_APP_BASE_PATH: ""
+      NODE_ENV: production
+    restart: unless-stopped
+    networks:
+      - deploy_default
+
+  proxy:
+    image: docker.m.daocloud.io/library/nginx:1.27-alpine
+    container_name: lp-proxy
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./data/app:/data/app
+    restart: unless-stopped
+    networks:
+      - deploy_default
+
+networks:
+  deploy_default:
+    external: true

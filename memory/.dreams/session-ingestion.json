@@ -1,0 +1,202 @@
+{
+  "version": 3,
+  "files": {
+    "fquiz:sessions/102091bc-3e08-4f3c-946d-aff2bb8dea65.jsonl": {
+      "mtimeMs": 1776087741416,
+      "size": 645751,
+      "contentHash": "75e74a38017190d549f3f6204ade646258255a7607679d15d9fab8fa7575c9d6",
+      "lineCount": 3,
+      "lastContentLine": 3
+    },
+    "fquiz:sessions/102091bc-3e08-4f3c-946d-aff2bb8dea65.jsonl.deleted.2026-04-13T13-34-33.753Z": {
+      "mtimeMs": 1776087239662,
+      "size": 536087,
+      "contentHash": "222b18223bbfd6271bd3ebb4e099d0b9c6baeee748a1e55eb931590eacf4b1dd",
+      "lineCount": 1,
+      "lastContentLine": 1
+    },
+    "fquiz:sessions/36c1cc07-5798-4e7e-a3b9-b4390892abdd.jsonl.deleted.2026-04-13T05-51-42.545Z": {
+      "mtimeMs": 1776059454919,
+      "size": 262409,
+      "contentHash": "1b2f6f823d44e870504c58ece1884419eb8cc937b6f0568aaf192efaab0efd87",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/3912d0f2-8d76-4dc8-9846-efcebccbf973.jsonl.deleted.2026-04-13T04-31-06.964Z": {
+      "mtimeMs": 1776054590039,
+      "size": 163480,
+      "contentHash": "5e569b933c57cfdbfdb5134192ff79356991f9818a45d8231f3bd3f40570f2c2",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/3c8c0671-5878-4bb5-8d37-06661b99b1a3.jsonl.deleted.2026-04-13T05-52-08.008Z": {
+      "mtimeMs": 1776059483056,
+      "size": 251954,
+      "contentHash": "ea0a262476fc4a17a4648e725e71662bc841454ed5e2da6bc115d8dbd3d87693",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/6e27a570-fb8f-43e8-b6ef-4d0c9d63a078.jsonl.deleted.2026-04-13T04-30-50.137Z": {
+      "mtimeMs": 1776054509710,
+      "size": 220736,
+      "contentHash": "e94ea93d7cfb89020412351e0ddf37da05795fed928543a80d7d42ab39697240",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/7488d4d2-95fb-49f9-8649-018853904704.checkpoint.e7b1dcc6-2b1e-41c1-829b-ba357bb46a0e.jsonl": {
+      "mtimeMs": 1776068755126,
+      "size": 572660,
+      "contentHash": "82b7c7e1e500d7635400161839d2e8478a03bf943fd22530b4cf8352684b3576",
+      "lineCount": 1,
+      "lastContentLine": 1
+    },
+    "fquiz:sessions/7488d4d2-95fb-49f9-8649-018853904704.jsonl.deleted.2026-04-13T08-35-28.349Z": {
+      "mtimeMs": 1776069328269,
+      "size": 824959,
+      "contentHash": "e087c28362715f2a60ce01863fb53e40419a2b8d2a69826208a1fc9d8f2409cf",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/944d7e53-dea6-4df1-a2eb-31b98ab2b967.jsonl.deleted.2026-04-13T06-20-16.363Z": {
+      "mtimeMs": 1776061172302,
+      "size": 64281,
+      "contentHash": "8da25b7f3d776b26458e6ee7abfdd71c52cc7a58e543a3cacd2bd8dfa3ee63c7",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/98a13ae5-690b-4804-aced-9eeb18287478.jsonl.deleted.2026-04-13T05-24-06.718Z": {
+      "mtimeMs": 1776057831292,
+      "size": 177613,
+      "contentHash": "8d6505729e60cda34e0b9daaeb52d0c63c2371dd75d1f89a73a05eda91548bfa",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/a1867410-2928-4908-aacb-fc68f12fda94.jsonl.deleted.2026-04-13T04-30-54.227Z": {
+      "mtimeMs": 1776054544737,
+      "size": 164027,
+      "contentHash": "e5550c1d18485aa0cbd72500afbe4ab35c64b113274833fe28d3cbf6f1ff0c36",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/affe4404-6a8f-4f08-a344-dd1067cb28aa.jsonl.deleted.2026-04-13T05-23-48.194Z": {
+      "mtimeMs": 1776057815970,
+      "size": 205884,
+      "contentHash": "db8f54fb2ad93d2a744520e1b57cc5b19d37899f729b20e114e56d3a9b5e8a2b",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/b504212e-ef4e-4a2b-a040-264b204e0bc7.jsonl.deleted.2026-04-13T04-36-49.717Z": {
+      "mtimeMs": 1776054987910,
+      "size": 342828,
+      "contentHash": "4609400ac497a80a2f1088328edff50faa8daef56e8d481338630a599c913a7f",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/c21f091d-9910-4d00-808a-541bc1227c2e.jsonl.deleted.2026-04-13T05-37-24.535Z": {
+      "mtimeMs": 1776058576202,
+      "size": 33714,
+      "contentHash": "a4749fe83209094100eb3ee4dbf84cfbdacffee849d161bcdf5dc35b3f5f5e34",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/cd5b7bc1-b610-4540-a5d7-71e5f1023805.jsonl.deleted.2026-04-13T04-31-23.885Z": {
+      "mtimeMs": 1776054615127,
+      "size": 299989,
+      "contentHash": "01971cab4e5039d753dda9ba59b7e7a313958d5cffdb097fd37ef0b9d086170b",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/cf551901-462d-407d-945d-9f3cb25f774e.jsonl.deleted.2026-04-13T04-27-48.070Z": {
+      "mtimeMs": 1776054379379,
+      "size": 344314,
+      "contentHash": "e84859552efce4c281ffb56ce4428691e9c8bf669a47bff9c51ba1953cdefff2",
+      "lineCount": 2,
+      "lastContentLine": 2
+    },
+    "fquiz:sessions/dd80543a-074a-427d-bc7c-d118afb17f22.checkpoint.d4e44e6c-be53-4338-ab44-58c6c2787705.jsonl": {
+      "mtimeMs": 1776056184672,
+      "size": 810713,
+      "contentHash": "e5db1535a9949cc4adb4cf5207fc411b58d80aa29b61783377b26474db44a40e",
+      "lineCount": 1,
+      "lastContentLine": 1
+    },
+    "fquiz:sessions/dd80543a-074a-427d-bc7c-d118afb17f22.jsonl": {
+      "mtimeMs": 1776056288805,
+      "size": 840399,
+      "contentHash": "46c5048c7018f7d4e2165a53dde1668ecdd817cdae5ab7ab276d332b000859b8",
+      "lineCount": 3,
+      "lastContentLine": 3
+    }
+  },
+  "seenMessages": {
+    "fquiz:102091bc-3e08-4f3c-946d-aff2bb8dea65": [
+      "ca394dd347c8b7f2d9cd250cfa84b2b72c084855",
+      "272d2a638082f1c08eb26b79f89408a38dcf4cc3",
+      "0cff4e5fac766b00dac4ede4bf3d9d75909d2975",
+      "ffca58e7540a54ad0d0f8da889b2ecc6fda84639"
+    ],
+    "fquiz:36c1cc07-5798-4e7e-a3b9-b4390892abdd": [
+      "6bf48f027ce8cef9227284aba01ffe68542080f8",
+      "a740c3b790647db58e53259469d949151b4a54ee"
+    ],
+    "fquiz:3912d0f2-8d76-4dc8-9846-efcebccbf973": [
+      "75787b643642e34c1543345df70f9201c619e4ec",
+      "7ae2e718854eda476766201d6dca555d817b5154"
+    ],
+    "fquiz:3c8c0671-5878-4bb5-8d37-06661b99b1a3": [
+      "31bf5137f3b350416a5690bd7409a3052e41217a",
+      "5fdc49c31dcaa79d6f50dfb5f155d236f31501ef"
+    ],
+    "fquiz:6e27a570-fb8f-43e8-b6ef-4d0c9d63a078": [
+      "417764d2a83eeee3fea0f7b7aa4b596a2dcdfadf",
+      "c17c75f7466fee7ca2c6a8e4764c6d190f9b3ae3"
+    ],
+    "fquiz:7488d4d2-95fb-49f9-8649-018853904704.checkpoint.e7b1dcc6-2b1e-41c1-829b-ba357bb46a0e": [
+      "148d3b01c069e1c7e0100741c982779d2b188de6"
+    ],
+    "fquiz:7488d4d2-95fb-49f9-8649-018853904704": [
+      "2ecd1a384836e1401af796e1af5f42a99e63e25a",
+      "c8894096a950ea6d49d8efcb9e0f5bed52d759d3"
+    ],
+    "fquiz:944d7e53-dea6-4df1-a2eb-31b98ab2b967": [
+      "8a1c88afc7dfb6abe290b124d43ae332c2f2b162",
+      "f34575f9f6e65119db56b97309449b5ea2c969d8"
+    ],
+    "fquiz:98a13ae5-690b-4804-aced-9eeb18287478": [
+      "19387452c96c88357a7be77930d851688b49d166",
+      "c40b7af11a5e6f755048da57f3fcd4f9a578a3ef"
+    ],
+    "fquiz:a1867410-2928-4908-aacb-fc68f12fda94": [
+      "3fa060c11d87b188ebbc4ae3bdee2aff442df6e4",
+      "29a0b6fb0249b28f691cec0a45553e093d8db589"
+    ],
+    "fquiz:affe4404-6a8f-4f08-a344-dd1067cb28aa": [
+      "95d9ddf6a11dc81790e22b38a02040d157cd4cdf",
+      "0c2433ad7dc226967d9a7d4b1b862e34debd0eea"
+    ],
+    "fquiz:b504212e-ef4e-4a2b-a040-264b204e0bc7": [
+      "75c3a330bc4007be8f9790966afc57b8c1b0481a",
+      "cc7bdc9047d59a425048f715f25b13fdac8373ad"
+    ],
+    "fquiz:c21f091d-9910-4d00-808a-541bc1227c2e": [
+      "74d3af5571241a561c4c3e276b296ce317e76707",
+      "6e525b946674df0e0145d4e24ae85e0584af84a1"
+    ],
+    "fquiz:cd5b7bc1-b610-4540-a5d7-71e5f1023805": [
+      "dbfee2ee02141a0055899c6df29cad8fee691b5f",
+      "b843f450b964f497f105226d4e451f6ca059aa88"
+    ],
+    "fquiz:cf551901-462d-407d-945d-9f3cb25f774e": [
+      "fec70c02b68792e5c291958a8b863a7171994dd2",
+      "a02acafa160871495967503be96e637799136116"
+    ],
+    "fquiz:dd80543a-074a-427d-bc7c-d118afb17f22.checkpoint.d4e44e6c-be53-4338-ab44-58c6c2787705": [
+      "e83d103d2a23c04ee64c9caaccfca1304e1a6f7f"
+    ],
+    "fquiz:dd80543a-074a-427d-bc7c-d118afb17f22": [
+      "de8bfaab5966d10d6390ca36747395b9ee16cfe2",
+      "86f5f9ccb5fe2f9518cbe3db2aa5ae73c0755a51",
+      "7925ffb6585a4e017536998736d9d623872b330f"
+    ]
+  }
+}

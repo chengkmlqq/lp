@@ -1,0 +1,9 @@
+volumes:
+  lp_db_data:
+    external: true
+    name: lp_lp_db_data
+
+services:
+  db:
+    volumes:
+      - lp_db_data:/var/lib/postgresql/data

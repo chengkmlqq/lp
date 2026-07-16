@@ -1,0 +1,268 @@
+name: fquiz 镜像构建与部署
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: fquiz-build-and-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ${{ vars.REGISTRY || 'crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com' }}
+  REGISTRY_NAMESPACE: ${{ vars.REGISTRY_NAMESPACE || 'ck-registry' }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      api_image: ${{ steps.vars.outputs.api_image }}
+      web_image: ${{ steps.vars.outputs.web_image }}
+      image_tag: ${{ steps.vars.outputs.image_tag }}
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v6
+
+      - name: 生成镜像变量
+        id: vars
+        shell: bash
+        run: |
+          NS="${{ env.REGISTRY_NAMESPACE }}"
+          echo "api_image=${{ env.REGISTRY }}/${NS}/fquiz-api" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ env.REGISTRY }}/${NS}/fquiz-web" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: 安装 Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: |
+            image=docker.m.daocloud.io/moby/buildkit:buildx-stable-1
+
+      - name: 登录镜像仓库
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 构建并推送 API 镜像
+        uses: docker/build-push-action@v7
+        with:
+          context: ./api
+          file: ./api/Dockerfile
+          pull: true
+          push: true
+          build-args: |
+            PIP_INDEX_URL=${{ secrets.PIP_INDEX_URL || vars.PIP_INDEX_URL || 'https://pypi.org/simple' }}
+            PIP_DEFAULT_TIMEOUT=${{ vars.PIP_DEFAULT_TIMEOUT || '120' }}
+          tags: |
+            ${{ steps.vars.outputs.api_image }}:${{ steps.vars.outputs.image_tag }}
+            ${{ steps.vars.outputs.api_image }}:latest
+          cache-from: type=gha,scope=fquiz-api
+          cache-to: type=gha,mode=max,scope=fquiz-api
+
+      - name: 构建并推送 Web 镜像
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./web/Dockerfile
+          pull: true
+          push: true
+          build-args: |
+            NPM_REGISTRY=${{ vars.NPM_REGISTRY || 'https://registry.npmjs.org' }}
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000' }}
+            NEXT_PUBLIC_APP_BASE_PATH=${{ vars.NEXT_PUBLIC_APP_BASE_PATH || '' }}
+          tags: |
+            ${{ steps.vars.outputs.web_image }}:${{ steps.vars.outputs.image_tag }}
+            ${{ steps.vars.outputs.web_image }}:latest
+          cache-from: type=gha,scope=fquiz-web
+          cache-to: type=gha,mode=max,scope=fquiz-web
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/dev'
+
+    steps:
+      - name: 校验部署参数
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "${SERVER_HOST}" ] || { echo "::error::缺少 SERVER_HOST（请在 Secrets 或 Variables 中配置）"; exit 1; }
+          [ -n "${SERVER_USER}" ] || { echo "::error::缺少 SERVER_USER（请在 Secrets 或 Variables 中配置）"; exit 1; }
+          if [ -z "${SERVER_SSH_KEY}" ] && [ -z "${SERVER_PASSWORD}" ]; then
+            echo "::error::缺少登录凭据：请至少配置 SERVER_SSH_KEY 或 SERVER_PASSWORD"
+            exit 1
+          fi
+          [ -n "${REGISTRY_USERNAME}" ] || { echo "::error::缺少 REGISTRY_USERNAME"; exit 1; }
+          [ -n "${REGISTRY_PASSWORD}" ] || { echo "::error::缺少 REGISTRY_PASSWORD"; exit 1; }
+
+      - name: 拉取代码
+        uses: actions/checkout@v6
+
+      - name: 准备远端部署目录
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
+          timeout: 120s
+          command_timeout: 10m
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          envs: DEPLOY_PATH
+          script: |
+            set -euo pipefail
+            DEPLOY_DIR="${DEPLOY_PATH:-/opt/lp}"
+            mkdir -p "${DEPLOY_DIR}"
+            # 备份真实的生产环境变量（SCP 会从仓库覆盖它）
+            if [ -f "${DEPLOY_DIR}/deploy/pro-deploy/.env.prod" ]; then
+              cp "${DEPLOY_DIR}/deploy/pro-deploy/.env.prod" "/tmp/lp_env_prod_backup"
+              echo "已备份 .env.prod"
+            fi
+
+      - name: 同步 deploy/pro-deploy 配置到服务器
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          timeout: 120s
+          command_timeout: 10m
+          source: "deploy/pro-deploy"
+          target: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH || '/opt/lp' }}
+          overwrite: true
+
+      - name: 通过 SSH 拉取并更新容器
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
+          API_IMAGE: ${{ needs.build-and-push.outputs.api_image }}
+          WEB_IMAGE: ${{ needs.build-and-push.outputs.web_image }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000' }}
+          FLOWER_BASIC_AUTH: ${{ secrets.FLOWER_BASIC_AUTH || vars.FLOWER_BASIC_AUTH || 'admin:admin' }}
+          REGISTRY: ${{ env.REGISTRY }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        with:
+          host: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
+          timeout: 120s
+          command_timeout: 45m
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          envs: DEPLOY_PATH,API_IMAGE,WEB_IMAGE,IMAGE_TAG,NEXT_PUBLIC_API_BASE_URL,FLOWER_BASIC_AUTH,REGISTRY,REGISTRY_USERNAME,REGISTRY_PASSWORD
+          script: |
+            set -euo pipefail
+            export DOCKER_CLIENT_TIMEOUT="${DOCKER_CLIENT_TIMEOUT:-600}"
+            export COMPOSE_HTTP_TIMEOUT="${COMPOSE_HTTP_TIMEOUT:-600}"
+
+            DEPLOY_DIR="${DEPLOY_PATH:-/opt/lp}"
+            cd "${DEPLOY_DIR}"
+
+            # 恢复真实的生产环境变量
+            if [ -f "/tmp/lp_env_prod_backup" ]; then
+              cp "/tmp/lp_env_prod_backup" deploy/pro-deploy/.env.prod
+              echo "已恢复 .env.prod 备份"
+            fi
+
+            [ -f deploy/pro-deploy/compose.yml ] || { echo "[error] deploy/pro-deploy/compose.yml 不存在"; exit 1; }
+            [ -f deploy/pro-deploy/.env ] || { echo "[error] deploy/pro-deploy/.env 不存在"; exit 1; }
+            [ -f deploy/pro-deploy/.env.prod ] || { echo "[error] deploy/pro-deploy/.env.prod 不存在"; exit 1; }
+
+            mkdir -p \
+              deploy/pro-deploy/data/postgres \
+              deploy/pro-deploy/data/redis \
+              deploy/pro-deploy/data/minio \
+              deploy/pro-deploy/data/app/celery
+
+            {
+              echo "API_IMAGE=${API_IMAGE}:${IMAGE_TAG}"
+              echo "WEB_IMAGE=${WEB_IMAGE}:${IMAGE_TAG}"
+              echo "NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}"
+              echo "NEXT_PUBLIC_APP_BASE_PATH="
+              echo "FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH}"
+            } > .images.env
+
+            echo "${REGISTRY_PASSWORD}" | docker login "${REGISTRY}" -u "${REGISTRY_USERNAME}" --password-stdin
+
+            COMPOSE_CMD="docker compose"
+            if ! docker compose version >/dev/null 2>&1; then
+              COMPOSE_CMD="docker-compose"
+            fi
+
+            COMPOSE_PROJECT_NAME="$(awk -F= '/^COMPOSE_PROJECT_NAME=/{print $2; exit}' deploy/pro-deploy/.env | tr -d '[:space:]')"
+            COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-fquiz}"
+
+            compose_run() {
+              ${COMPOSE_CMD} -p "${COMPOSE_PROJECT_NAME}" --env-file deploy/pro-deploy/.env --env-file deploy/pro-deploy/.env.prod --env-file .images.env -f deploy/pro-deploy/compose.yml "$@"
+            }
+
+            pull_with_retry() {
+              local max_retries=3
+              local attempt=1
+              while true; do
+                if compose_run pull; then
+                  break
+                fi
+                if [ "${attempt}" -ge "${max_retries}" ]; then
+                  echo "[error] docker compose pull failed after ${max_retries} attempts."
+                  return 1
+                fi
+                local sleep_seconds=$((attempt * 20))
+                echo "[warn] docker compose pull failed (attempt ${attempt}/${max_retries}), retrying in ${sleep_seconds}s..."
+                sleep "${sleep_seconds}"
+                attempt=$((attempt + 1))
+              done
+            }
+
+            pull_with_retry
+
+            if ! compose_run up -d --remove-orphans; then
+              echo "[error] docker compose up failed, collecting container diagnostics..."
+              compose_run ps || true
+              compose_run logs --no-color --tail 300 api || true
+              compose_run logs --no-color --tail 200 db || true
+              compose_run logs --no-color --tail 200 redis || true
+              compose_run logs --no-color --tail 200 celery-beat || true
+              compose_run logs --no-color --tail 200 flower || true
+              exit 1
+            fi
+
+            compose_run ps
+
+      - name: 重启 nginx 清 DNS 缓存
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
+          timeout: 60s
+          command_timeout: 30s
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          envs: DEPLOY_PATH
+          script: |
+            DEPLOY_DIR="${DEPLOY_PATH:-/opt/lp}"
+            cd "${DEPLOY_DIR}"
+            docker compose -p "$(awk -F= '/^COMPOSE_PROJECT_NAME=/{print $2; exit}' deploy/pro-deploy/.env | tr -d '[:space:]')" -f deploy/pro-deploy/compose.yml restart proxy

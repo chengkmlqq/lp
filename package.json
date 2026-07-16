@@ -1,0 +1,33 @@
+{
+  "name": "lp",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "web"
+  ],
+  "scripts": {
+    "dev": "bash ./scripts/dev.sh",
+    "dev:web": "npm --workspace web run dev",
+    "build:web": "npm --workspace web run build",
+    "lint:web": "npm --workspace web run lint",
+    "dev:api": "python3 -m uvicorn api.app.main:app --reload --host 0.0.0.0 --port 8000",
+    "docker:up": "docker compose --env-file deploy/dev-deploy/.env -f deploy/dev-deploy/compose.yml up --build -d",
+    "docker:down": "docker compose --env-file deploy/dev-deploy/.env -f deploy/dev-deploy/compose.yml down",
+    "docker:logs": "docker compose --env-file deploy/dev-deploy/.env -f deploy/dev-deploy/compose.yml logs -f"
+  },
+  "dependencies": {
+    "react-markdown": "^10.1.0"
+  },
+  "description": "基于 Next.js + Python（FastAPI）的全栈 Monorepo，内置用户管理与登录认证。",
+  "main": "verify-comprehensive.js",
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "ssh://git@223.109.142.84:8022/Admin/lp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

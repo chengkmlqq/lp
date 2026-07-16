@@ -1,0 +1,15 @@
+.git/
+.gitignore
+web/.next/
+deploy/*/data/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.log
+.venv*
+venv/
+env/
+.DS_Store
+Thumbs.db

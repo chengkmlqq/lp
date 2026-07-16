@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "mode": "auto-query",
+  "runStatus": "aborted",
+  "createdAt": "2026-04-18T23:25:46+08:00",
+  "updatedAt": "2026-04-18T23:25:46+08:00",
+  "config": {
+    "action": "full",
+    "projectName": "fquiz",
+    "statuses": [
+      "OPEN"
+    ],
+    "pageSize": 50,
+    "maxItems": 1,
+    "milestones": [
+      30,
+      60,
+      90
+    ],
+    "startProgress": 0,
+    "baseUrl": "https://www.quizck.cn",
+    "userId": "openclaw",
+    "buildTimeout": 600,
+    "skipBuildGate": true,
+    "allowDirtyWorktree": false,
+    "allowBroadChangeDetection": false
+  },
+  "queryTrace": [
+    {
+      "status": "OPEN",
+      "pageNum": 1,
+      "returned": 42,
+      "totalElements": 42,
+      "totalPages": 1
+    }
+  ],
+  "plan": {
+    "allIds": [
+      "304415118593098150"
+    ],
+    "total": 1,
+    "processingOrderRule": "priority(HIGH>MEDIUM>LOW) then createDate then id"
+  },
+  "cursor": {
+    "nextIndex": 0,
+    "completedIds": []
+  },
+  "results": [],
+  "lastCheckpoint": null,
+  "lastError": {
+    "timestamp": "2026-04-18T23:25:46+08:00",
+    "currentId": "304415118593098150",
+    "message": "执行中断（SystemExit）",
+    "exitCode": 1
+  }
+}

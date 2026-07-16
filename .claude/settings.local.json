@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep -l \"故障\\\\|fault\")",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(pnpm build *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

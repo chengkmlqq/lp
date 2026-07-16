@@ -1,0 +1,189 @@
+  RFUNL1  connects diagnostic file.  IPRSUP = -1  in  STARTUP  suppresses such output (see Jan, 96, newsletter).
+  RFUNL1  connects  DEBUG.LIS  file.  IPRSUP = -1  in  STARTUP  suppresses such output (see Jan, 96, newsletter).
+  GNU RFUNL1 defines SLOT1 =
+ both D:\ATP\110\ganzi\fanji\noM\work.atp s -r                                                                                                                                                           
+                     KPARAM = 1
+  RSTART,  old and new LIMCRD = 0 30000
+  RFUNL1 sets final  LINUSE = -1
+  Exit  LOWCAS  with  TEXT(1:K2) =.lis  
+  Exit  LOWCAS  with  TEXT(1:K2) =.pch  
+  Exit  LOWCAS  with  TEXT(1:K2) =.pl4  
+  Begin LFLUSH by setting L6HAND = -99.
+  over1 defines  DENABL =$ENABLE 
+  Top of CIMAG4.  KPARAM = 1
+  Top of CIMAG4.  SLOT1 =
+ both D:\ATP\110\ganzi\fanji\noM\work.atp s -r                                                                                                                                                           
+  CIMAG4 checks for  FILE.  J = 0
+  CIMAG4 loads param.  KPARAM, J = 1 4
+  CIMAG4 loads param  CIM132 =
+ both                                                                                                                                
+  CIMKEY  uses  LINUSE, N = -1 0
+  CIMKEY  right-most nonblank  N32 = 4
+  Bottom of  CIMKEY.   N36, N32, CIM132(1:N32) = 0 4both
+  over1 finds column  KWCOMM, KILL = 57 0
+  Top of CIMAG4.  KPARAM = 6
+  Top of CIMAG4.  SLOT1 =
+ both D:\ATP\110\ganzi\fanji\noM\work.atp s -r                                                                                                                                                           
+  CIMAG4 loads param.  KPARAM, J = 6 40
+  CIMAG4 loads param  CIM132 =
+ D:\ATP\110\ganzi\fanji\noM\work.atp                                                                                                 
+  CIMKEY  uses  LINUSE, N = -1 0
+  CIMKEY  right-most nonblank  N32 = 35
+  Bottom of  CIMKEY.   N36, N32, CIM132(1:N32) = 0 35
+ D:\ATP\110\ganzi\fanji\noM\work.atp
+  over1 finds column  KWCOMM, KILL = 0 0
+  Input data file  JUNIT6(1:N8) =D:\ATP\110\GANZI\FANJI\NOM\WORK.ATP
+  Input arg?   k, L, INCDAT, KCARD1 = 132 0 0 1
+  allocated array2 in writ10,limitcards,nextblock= 30000 20000
+  allocated array3 in writ10,limitcards,nextblock= 60000 30000
+  Begin new  DIMENS.   NCHARG, LISBEG = -55222 -22666
+  Initialize.   LUNDAT, LUNIT6, NUMDCD, LISBEG = 3 6 0 -22666
+  DIMENS builds  BUFF77 =
+ listsize.dat                                                                    
+         length  LENPTH = 0
+  DIMEN1 builds  BUFF77 =
+ listsize.dat                                                                    
+         length  LENPTH = 0
+  Exit new  DIMENS.   LISBEG = 0
+  Begin new  DIMENS.   NCHARG, LISBEG = 20 0
+  Done 20.   LSIZE(1:8) = 0 340000 29 3 23 192000 1 6002
+  Exit new  DIMENS.   LISBEG = 0
+  OVER1 checks  LSTAT(14) = 0
+  Begin copy loop to store at bottom with reverse
+  indexing.  When done, there will be message.
+  Before  DO 1816.  LIMCRD = 30000
+  FNDFIL incoming arg =
+ D:\ATP\110\ganzi\fanji\noM\short.lib                                                                                                
+  Continuation next  N67, N16, keybrd, INCDAT, L = 333 3 1 0 72
+  Continue comment.   J, N67 = 333 334
+  Begin arg continuation  ABUFF =
+ C   , XX0126, XX0141, X0142A, X0142B, X0142C, XX0139, XX0143                    
+  Enter  DO 4273.  n18, limcrd = 335 30000
+  FNDFIL incoming arg =
+ D:\ATP\110\ganzi\fanji\noM\dahao.lib                                                                                                
+  Continuation next  N67, N16, keybrd, INCDAT, L = 29952 3 1 0 72
+  Continue comment.   J, N67 = 453 29953
+  Begin arg continuation  ABUFF =
+ C   , XX0115, XX0116, X0140A, X0140B, X0140C, XX0126, XX0141                    
+  Enter  DO 4273.  n18, limcrd = 455 30000
+  FNDFIL incoming arg =
+ D:\ATP\110\ganzi\fanji\noM\long.lib                                                                                                 
+  Continuation next  N67, N16, keybrd, INCDAT, L = 29954 3 1 0 71
+  Continue comment.   J, N67 = 571 29955
+  Begin arg continuation  ABUFF =
+ C   , XX0155, XX0157, XXSS2A, XXSS2B, XXSS2C, XX0146, XX0151                    
+  Enter  DO 4273.  n18, limcrd = 573 30000
+  FNDFIL incoming arg =
+ D:\ATP\110\ganzi\fanji\noM\short.lib                                                                                                
+  Continuation next  N67, N16, keybrd, INCDAT, L = 29956 3 1 0 72
+  Continue comment.   J, N67 = 713 29957
+  Begin arg continuation  ABUFF =
+ C   , XX0148, XX0147, X0130A, X0130B, X0130C, XX0129, XX0118                    
+  Enter  DO 4273.  n18, limcrd = 715 30000
+  FNDFIL incoming arg =
+ D:\ATP\110\ganzi\fanji\noM\long.lib                                                                                                 
+  Continuation next  N67, N16, keybrd, INCDAT, L = 29958 3 1 0 71
+  Continue comment.   J, N67 = 833 29959
+  Begin arg continuation  ABUFF =
+ C   , XX0150, XX0185, X0160A, X0160B, X0160C, XX0159, XX0158                    
+  Enter  DO 4273.  n18, limcrd = 835 30000
+  FNDFIL incoming arg =
+ D:\ATP\110\ganzi\fanji\noM\short.lib                                                                                                
+  Continuation next  N67, N16, keybrd, INCDAT, L = 29960 3 1 0 72
+  Continue comment.   J, N67 = 975 29961
+  Begin arg continuation  ABUFF =
+ C   , XX0139, XX0143, X0156A, X0156B, X0156C, XX0155, XX0157                    
+  Enter  DO 4273.  n18, limcrd = 977 30000
+  FNDFIL incoming arg =
+ D:\ATP\110\ganzi\fanji\noM\short.lib                                                                                                
+  Continuation next  N67, N16, keybrd, INCDAT, L = 29962 3 1 0 72
+  Continue comment.   J, N67 = 1095 29963
+  Begin arg continuation  ABUFF =
+ C   , XX0159, XX0158, X0149A, X0149B, X0149C, XX0148, XX0147                    
+  Enter  DO 4273.  n18, limcrd = 1097 30000
+  FNDFIL incoming arg =
+ D:\ATP\110\ganzi\fanji\noM\xiaohao.lib                                                                                              
+  Continuation next  N67, N16, keybrd, INCDAT, L = 29964 3 1 0 74
+  Continue comment.   J, N67 = 1215 29965
+  Begin arg continuation  ABUFF =
+ C   , XX0129, XX0118, LINE1A, LINE1B, LINE1C, XX0115, XX0116                    
+  Enter  DO 4273.  n18, limcrd = 1217 30000
+  Done copying lower cards back to top (DO 1835).
+  Enter loop with top at SN 2338  J, KCARD2, kill = 1 1357 0
+  Out of loop ending below SN 2382.  KSLASH, kill = 1 0
+  Sorry, class of BLANK not found, so bypass its use.
+  Over1 after EMTSPY.   kill = 0
+  Over1 checks  NUMDCD, KASEND, KCARD2, LLBUFF = 0 5 1344 -3333
+  ^^^^  Top  "SUBR1".   NUMDCD, KASEND, KCARD2 = 0 5 1344
+  Top SUBR1 saves  XMAXMX, TENERG =  2.  1.E+020
+  subr1 sets  LUNIT4, MOPLOT = -4 1
+  Begin new  DIMENS.   NCHARG, LISBEG = 0 0
+  Begin  TAPSAV/TAPSIZ.
+  Done  ENTRY TAPSIZ.   N3 = 39488436
+  Bytes of LABCOM from TAPSIZ.   N6 = 39488436
+  Exit new  DIMENS.   LISBEG = 0
+  LU2OPN ready to open with  FNAME =dum12345.bin                            
+  LU2OPN ready to open with  FSTAT =SCRATCH
+  Exit  LOWCAS  with  TEXT(1:K2) =d:\atp\110\ganzi\fanji\nom\work.pl4  
+  SYSDEP ready to read LUNIT6 file name.  KPARAM = 42
+  Top of CIMAG4.  KPARAM = 42
+  Top of CIMAG4.  SLOT1 =
+ both D:\ATP\110\ganzi\fanji\noM\work.atp s -r                                                                                                                                                           
+  CIMAG4 loads param.  KPARAM, J = 42 45
+  CIMAG4 loads param  CIM132 =
+   -r                                                                                                                                
+  CIMKEY  uses  LINUSE, N = -1 0
+  CIMKEY  right-most nonblank  N32 = 4
+  Revise this to before -r,  N32 = 4
+  Bottom of  CIMKEY.   N36, N32, CIM132(1:N32) = 0 4  -r
+  Keyboard defines  CIM132 =
+   -R                                                                                                                                
+  Parallel name begins with  FILNAM =
+ d:\atp\110\ganzi\fanji\nom\work.lis                                                                                                 
+ Salford  SYSDEP.   MAXKNT, MNT, ICAT, TMAX =    0    0    0  0.000000E+00
+           L4BYTE, ansi32L = 1
+ d:\atp\110\ganzi\fanji\nom\work.pl4                                                                                                 
+  SYSDEP considers  NUMRUN, KTRPL4 = 0 -6666
+  SYSDEP ready to delete old C-like .PL4 file.   ANSI32L =
+ d:\atp\110\ganzi\fanji\nom\work.pl4                                                                                                 
+  SYSDEP disconnects PL4?   L4HAND, IERROR = 0 0
+  After C-like .PL4 delete.
+  Salford  sysdep.   L4HAND, IERROR = 10 0
+  Next, exit SYSDEP with KTRPL4 = -6666
+  SUBR1 near bottom, 1.   NOTPPL = 1
+  Begin  ENTRY OV1FLT  of  SUBR1.
+  OVER2 (TACS) checks  KFAULT = 0
+  Begin new  DIMENS.   NCHARG, LISBEG = 20 0
+  Done 20.   LSIZE(1:8) = 0 340000 29 3 23 192000 1 6002
+  Exit new  DIMENS.   LISBEG = 0
+  Top SSTACS sets new  MIMSTP, JNDSTP = 9999999 7
+  Top SSTACS assigns LSTAT(32) = 16
+  Back from SSTACT.  Set NDX1 = INTINF = 9999999
+  Back from SSTACT.  Set NDX1 = INTINF = 9999999
+   SUBR15 sets new  MIMSTP, JNDSTP = 9999999 7
+  Salford HEADL4 begins writing C-like header.
+  NUMBUS, NCHAIN = 0 15
+  After rewind.  L4HAND, IERROR = 10 0
+  After  19-byte date/time.   IERROR = 0
+  After 7 integers of C-like header.   IERROR = 0
+  Done with C-like PL4 header.   IPRSOV(23) = 1646
+ TGRUNT.   Wall-clock times for the time-step loop are: 15:43:49  15:43:49
+  MAIN20 checks  KTRPL4, KEXACT = -6666 0
+  Salford  HEADL4/PLTEND.   L4BYTE, ICAT = 369738 1
+  L4HAND positioned on byte 43.  N8 = 43
+  Salford  HEADL4/PLTEND  done.   L4BYTE = 369738
+ TGRUNT.   Wall-clock times for the time-step loop are: 15:43:49  15:43:49
+  Dummy  ENTRY ENDPLT  in  SUBROUTINE EXTRA.
+  Top of LU4CLS.   ICAT, LUNIT4, L4BYTE, L4HAND = 1 -4 369738 10
+  LU4CLS disconnects PL4.   L4HAND, IERROR = 10 0
+  LU4CLS  checks  KPARAM, NCHAIN, KILL = -1 29 0
+  Begin new  DIMENS.   NCHARG, LISBEG = -66444 0
+  Top reinitializes.   Set  LISBEG = -22666.
+  Exit new  DIMENS.   LISBEG = -22666
+  End.   M4PLOT, NOTMAX, KFILE5, LOCKBR = 2 0 0 0
+  OVER1 after EMTSPY.  LSTAT(14) = 0
+  Enter loop with top at SN 2338  J, KCARD2, kill = 1 2 0
+  Out of loop ending below SN 2382.  KSLASH, kill = 0 0
+  Over1 after EMTSPY.   kill = 0
+  Over1 checks  NUMDCD, KASEND, KCARD2, LLBUFF = 0 5 2 1025
+  Two or more HP-GL plots?  KNTHPG = 0

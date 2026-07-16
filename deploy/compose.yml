@@ -1,0 +1,241 @@
+services:
+  db:
+    image: docker.m.daocloud.io/pgvector/pgvector:pg16
+    container_name: fquiz-db
+    environment:
+      POSTGRES_DB: fquiz
+      POSTGRES_USER: fquiz
+      POSTGRES_PASSWORD: replace_strong_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fquiz -d fquiz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: docker.m.daocloud.io/library/redis:7-alpine
+    container_name: fquiz-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - Cp990803
+      - --save
+      - ""
+      - --stop-writes-on-bgsave-error
+      - "no"
+    restart: unless-stopped
+
+  minio:
+    image: docker.m.daocloud.io/minio/minio:latest
+    container_name: fquiz-minio
+    environment:
+      MINIO_ROOT_USER: replace_strong_access_key
+      MINIO_ROOT_PASSWORD: replace_strong_secret_key
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./data/minio:/data
+    restart: unless-stopped
+    command:
+      - server
+      - /data
+      - --console-address
+      - ":9001"
+
+  minio-init:
+    image: docker.m.daocloud.io/minio/mc:latest
+    entrypoint: /bin/sh
+    container_name: fquiz-minio-init
+    depends_on:
+      - minio
+    command:
+      - -c
+      - >
+        until mc alias set local http://minio:9000 replace_strong_access_key replace_strong_secret_key; do
+          sleep 1;
+        done;
+        mc mb -p local/fquiz-files || true;
+    restart: "no"
+
+  proxy:
+    image: docker.m.daocloud.io/library/nginx:1.27-alpine
+    container_name: fquiz-proxy
+    depends_on:
+      - web
+      - api
+    ports:
+      - 3002:3000
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+
+  api:
+    image: fquiz-worker:84
+    container_name: fquiz-api
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: fquiz
+      DB_USERNAME: fquiz
+      DB_PASSWORD: replace_strong_password
+      DB_SCHEMA: public
+      DATABASE_URL: postgresql+psycopg://fquiz:replace_strong_password@db:5432/fquiz
+      USER_USERNAME_COLUMN: username
+      USER_PASSWORD_COLUMN: password_hash
+      USER_STATUS_COLUMN: status
+      MINIO_ENABLED: "true"
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: replace_strong_access_key
+      MINIO_SECRET_KEY: replace_strong_secret_key
+      MINIO_BUCKET: fquiz-files
+      MINIO_REGION: us-east-1
+      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
+      CELERY_TIMEZONE: Asia/Shanghai
+      FLOWER_BASIC_AUTH: admin:change_me
+      FLOWER_API_BASE_URL: http://flower:5555
+      FLOWER_API_TIMEOUT_SECONDS: 10
+      JWT_SECRET_KEY: replace_strong_jwt_secret
+      ACCESS_TOKEN_EXPIRE_MINUTES: 480
+      REFRESH_TOKEN_EXPIRE_DAYS: 30
+      REFRESH_COOKIE_SECURE: "false"
+      REFRESH_COOKIE_SAMESITE: lax
+      API_CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://223.109.142.84:3000,http://223.109.142.84:3001
+      WORKER_REGISTRY_TTL_SECONDS: 90
+      WINE_BINARY_PATH: wine
+      WINE_ALLOWED_ROOT: /app/data/wine
+      WINE_DEFAULT_TIMEOUT_SECONDS: 300
+      WINE_MAX_TIMEOUT_SECONDS: 1800
+      FILE_VFS_ROOT: /app/data/vfs
+      INITIAL_ADMIN_EMAIL: admin@example.com
+      INITIAL_ADMIN_USERNAME: admin
+      INITIAL_ADMIN_PASSWORD: replace_strong_password
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/app:/app/data
+    restart: unless-stopped
+
+  celery-worker:
+    image: fquiz-worker:84
+    container_name: fquiz-celery-worker
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=2
+      - --queues=default,celery
+    depends_on:
+      - api
+      - redis
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: fquiz
+      DB_USERNAME: fquiz
+      DB_PASSWORD: replace_strong_password
+      DB_SCHEMA: public
+      DATABASE_URL: postgresql+psycopg://fquiz:replace_strong_password@db:5432/fquiz
+      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
+      CELERY_TIMEZONE: Asia/Shanghai
+      MINIO_ENABLED: "true"
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: replace_strong_access_key
+      MINIO_SECRET_KEY: replace_strong_secret_key
+      MINIO_BUCKET: fquiz-files
+      MINIO_REGION: us-east-1
+      WINE_BINARY_PATH: wine
+      WINE_ALLOWED_ROOT: /app/data/wine
+      WINE_DEFAULT_TIMEOUT_SECONDS: 300
+      WINE_MAX_TIMEOUT_SECONDS: 1800
+      FILE_VFS_ROOT: /app/data/vfs
+    volumes:
+      - ./data/app:/app/data
+    restart: unless-stopped
+
+  celery-beat:
+    image: fquiz-worker:84
+    container_name: fquiz-celery-beat
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - beat
+      - --loglevel=INFO
+      - --schedule=/app/data/celery/beat-schedule
+    depends_on:
+      - api
+      - redis
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: fquiz
+      DB_USERNAME: fquiz
+      DB_PASSWORD: replace_strong_password
+      DATABASE_URL: postgresql+psycopg://fquiz:replace_strong_password@db:5432/fquiz
+      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
+      CELERY_TIMEZONE: Asia/Shanghai
+    volumes:
+      - ./data/app:/app/data
+    restart: unless-stopped
+
+  flower:
+    image: fquiz-worker:84
+    container_name: fquiz-flower
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - flower
+      - --address=0.0.0.0
+      - --port=5555
+      - --persistent=False
+      - --basic-auth=admin:change_me
+    depends_on:
+      - redis
+    environment:
+      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
+      CELERY_TIMEZONE: Asia/Shanghai
+      FLOWER_BASIC_AUTH: admin:change_me
+    ports:
+      - "5555:5555"
+    restart: unless-stopped
+
+  web:
+    image: fquiz-web:84-v5
+    entrypoint: ["node", "web/server.js"]
+    container_name: fquiz-web
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:3002
+      NEXT_PUBLIC_APP_BASE_PATH:
+      NODE_ENV: production
+    restart: unless-stopped

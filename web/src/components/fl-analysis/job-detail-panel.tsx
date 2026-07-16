@@ -1,0 +1,245 @@
+"use client";
+
+import { Alert, Button, Descriptions, Divider, Empty, Space, Spin, Tag } from "antd";
+
+import type {
+  FlAnalysisJobDetail,
+  FlAnalysisJobSummary,
+  FlAnalysisTowerResultSummary,
+} from "@/types/auth";
+
+import {
+  formatAltitudeCorrection,
+  formatCurrentWaveform,
+  formatDateTime,
+  formatFlashoverMethod,
+  formatInducedVoltageFormula,
+  formatJobType,
+  formatRangeSummary,
+  mitigationMode,
+  readObject,
+  readOptionalNumber,
+  readOptionalString,
+  selectedTowerCount,
+  statusColor,
+  type WorkflowSummary,
+} from "./types";
+
+type JobDetailPanelProps = {
+  selectedJob: FlAnalysisJobSummary | null;
+  selectedJobDetail: FlAnalysisJobDetail | null;
+  loading: boolean;
+  error: unknown;
+  canManage: boolean;
+  canCreateMitigation: boolean;
+  canCreateScenario: boolean;
+  canCreateReport: boolean;
+  canDownloadResults: boolean;
+  selectedJobDetailWaveformType: "normal" | "tongtiao" | null;
+  candidateMitigationRows: FlAnalysisTowerResultSummary[];
+  candidateScenarioRows: FlAnalysisTowerResultSummary[];
+  candidateScenarioBaseJobs: FlAnalysisJobSummary[];
+  candidateReportRows: FlAnalysisTowerResultSummary[];
+  startPending: boolean;
+  downloadResultsPending: boolean;
+  downloadReportPending: boolean;
+  onStart: () => void;
+  onOpenMitigation: () => void;
+  onOpenScenario: () => void;
+  onOpenReport: () => void;
+  onDownloadResults: () => void;
+  onDownloadReport: () => void;
+};
+
+export function JobDetailPanel({
+  selectedJob,
+  selectedJobDetail,
+  loading,
+  error,
+  canManage,
+  canCreateMitigation,
+  canCreateScenario,
+  canCreateReport,
+  canDownloadResults,
+  selectedJobDetailWaveformType,
+  candidateMitigationRows,
+  candidateScenarioRows,
+  candidateScenarioBaseJobs,
+  candidateReportRows,
+  startPending,
+  downloadResultsPending,
+  downloadReportPending,
+  onStart,
+  onOpenMitigation,
+  onOpenScenario,
+  onOpenReport,
+  onDownloadResults,
+  onDownloadReport,
+}: JobDetailPanelProps) {
+  if (loading) {
+    return <Spin />;
+  }
+
+  if (error) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message={error instanceof Error ? error.message : "任务详情加载失败"}
+      />
+    );
+  }
+
+  if (!selectedJobDetail || !selectedJob) {
+    return <Empty description="暂无任务详情" />;
+  }
+
+  const selectedJobExecutionOptions = readObject(selectedJobDetail.execution_options_json);
+  const selectedJobSummary = readObject(selectedJobDetail.result_summary_json);
+  const selectedJobWorkflow = readObject(selectedJobDetail.result_summary_json).workflow as WorkflowSummary | undefined;
+  const selectedJobExternalModelCode = readOptionalString(selectedJobSummary, "external_model_code");
+  const selectedJobExternalModelName = readOptionalString(selectedJobSummary, "external_model_name");
+  const selectedJobExternalVersionNo = readOptionalNumber(selectedJobSummary, "external_version_no");
+  const sourceJobId = readOptionalString(selectedJobExecutionOptions, "source_job_id");
+  const scenarioBaseJobName = readOptionalString(selectedJobExecutionOptions, "base_job_name");
+  const scenarioBaseJobType = readOptionalString(selectedJobExecutionOptions, "base_job_type");
+  const reportSourceJobType = readOptionalString(selectedJobSummary, "source_job_type");
+  const reportSourceJobName = readOptionalString(selectedJobSummary, "source_job_name");
+  const reportMitigationJobName = readOptionalString(selectedJobSummary, "mitigation_job_name");
+  const reportScenarioJobName = readOptionalString(selectedJobSummary, "scenario_job_name");
+  const reportDocumentName = readOptionalString(selectedJobSummary, "document_filename");
+
+  return (
+    <Space direction="vertical" size={16} className="flex w-full">
+      <Descriptions bordered size="small" column={2}>
+        <Descriptions.Item label="任务名称">{selectedJobDetail.job_name || "-"}</Descriptions.Item>
+        <Descriptions.Item label="任务状态">
+          <Tag color={statusColor(selectedJobDetail.status)}>{selectedJobDetail.status}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="线路">{selectedJobDetail.line_name || selectedJobDetail.line_code || "-"}</Descriptions.Item>
+        <Descriptions.Item label="任务类型">{formatJobType(selectedJobDetail.job_type, mitigationMode(selectedJobDetail))}</Descriptions.Item>
+        <Descriptions.Item label="结果杆塔数">{selectedJobDetail.result_tower_count}</Descriptions.Item>
+        <Descriptions.Item label="完成时间">{formatDateTime(selectedJobDetail.finished_at)}</Descriptions.Item>
+        <Descriptions.Item label="风险计数" span={2}>
+          {JSON.stringify(selectedJobDetail.result_summary_json?.risk_counts ?? {}, null, 2)}
+        </Descriptions.Item>
+        {selectedJobDetail.job_type === "mitigation" ? (
+          <>
+            <Descriptions.Item label="前驱风险任务">{sourceJobId || "-"}</Descriptions.Item>
+            <Descriptions.Item label="选塔数">{String(selectedTowerCount(selectedJobDetail) || "-")}</Descriptions.Item>
+            <Descriptions.Item label="模式">{mitigationMode(selectedJobDetail) ? "非建线" : "常规建线"}</Descriptions.Item>
+            <Descriptions.Item label="需装避雷器数">
+              {String(readObject(selectedJobDetail.result_summary_json).arrester_required_count ?? "-")}
+            </Descriptions.Item>
+          </>
+        ) : selectedJobDetail.job_type === "scenario" ? (
+          <>
+            <Descriptions.Item label="前驱措施任务">{sourceJobId || "-"}</Descriptions.Item>
+            <Descriptions.Item label="选塔数">{String(selectedTowerCount(selectedJobDetail) || "-")}</Descriptions.Item>
+            <Descriptions.Item label="复用计算口径">
+              {scenarioBaseJobType ? formatJobType(scenarioBaseJobType) : "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="基线计算任务">{scenarioBaseJobName || "-"}</Descriptions.Item>
+          </>
+        ) : selectedJobDetail.job_type === "report" ? (
+          <>
+            <Descriptions.Item label="报告来源">
+              {reportSourceJobType ? formatJobType(reportSourceJobType) : "-"}
+              {reportSourceJobName ? ` / ${reportSourceJobName}` : ""}
+            </Descriptions.Item>
+            <Descriptions.Item label="选塔数">
+              {String(readObject(selectedJobDetail.result_summary_json).selected_tower_count ?? "-")}
+            </Descriptions.Item>
+            <Descriptions.Item label="关联措施任务">{reportMitigationJobName || "未关联"}</Descriptions.Item>
+            <Descriptions.Item label="关联复算任务">{reportScenarioJobName || "未关联"}</Descriptions.Item>
+            <Descriptions.Item label="文档名" span={2}>{reportDocumentName || "-"}</Descriptions.Item>
+          </>
+        ) : selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
+          <>
+            <Descriptions.Item label="ATP模型">
+              {selectedJobExternalModelName || selectedJobExternalModelCode || "-"}
+              {selectedJobExternalModelName && selectedJobExternalModelCode ? ` / ${selectedJobExternalModelCode}` : ""}
+            </Descriptions.Item>
+            <Descriptions.Item label="模型版本">
+              {typeof selectedJobExternalVersionNo === "number" ? `v${selectedJobExternalVersionNo}` : "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="平均得分">{String(selectedJobDetail.result_summary_json?.score_average ?? "-")}</Descriptions.Item>
+            <Descriptions.Item label="平均扫描点">{String(readObject(selectedJobDetail.result_summary_json).scan_point_average ?? "-")}</Descriptions.Item>
+            <Descriptions.Item label="雷电流波形">{formatCurrentWaveform(selectedJobWorkflow?.current_waveform)}</Descriptions.Item>
+            <Descriptions.Item label="闪络判据">{formatFlashoverMethod(selectedJobWorkflow?.flashover_method)}</Descriptions.Item>
+            <Descriptions.Item label="海拔修正">{formatAltitudeCorrection(selectedJobWorkflow?.altitude_correction)}</Descriptions.Item>
+            <Descriptions.Item label="感应电压公式">{formatInducedVoltageFormula(selectedJobWorkflow?.induced_voltage_formula)}</Descriptions.Item>
+            <Descriptions.Item label="波头范围">{formatRangeSummary(selectedJobWorkflow?.head_time_range_us)}</Descriptions.Item>
+            <Descriptions.Item label="波尾范围">{formatRangeSummary(selectedJobWorkflow?.tail_time_range_us)}</Descriptions.Item>
+          </>
+        ) : (
+          <>
+            <Descriptions.Item label="平均得分">{String(selectedJobDetail.result_summary_json?.score_average ?? "-")}</Descriptions.Item>
+          </>
+        )}
+      </Descriptions>
+
+      {canManage || selectedJob.job_type === "report" ? (
+        <Space size={12} wrap split={<Divider type="vertical" />}>
+          {canManage ? (
+            <Space wrap>
+              <Button onClick={onStart} loading={startPending}>
+                {selectedJob.status === "success" ? "重新执行任务" : "启动任务"}
+              </Button>
+            </Space>
+          ) : null}
+          {canManage && (canCreateMitigation || canCreateScenario || canCreateReport) ? (
+            <Space wrap>
+              {canCreateMitigation ? (
+                <Button
+                  type="primary"
+                  disabled={candidateMitigationRows.length === 0}
+                  onClick={onOpenMitigation}
+                >
+                  生成措施推荐
+                </Button>
+              ) : null}
+              {canCreateScenario ? (
+                <Button
+                  disabled={candidateScenarioRows.length === 0 || candidateScenarioBaseJobs.length === 0}
+                  onClick={onOpenScenario}
+                >
+                  加装避雷器复算
+                </Button>
+              ) : null}
+              {canCreateReport ? (
+                <Button
+                  disabled={candidateReportRows.length === 0}
+                  onClick={onOpenReport}
+                >
+                  生成报告
+                </Button>
+              ) : null}
+            </Space>
+          ) : null}
+          <Space wrap>
+            {selectedJob.job_type !== "report" ? (
+              <Button
+                onClick={onDownloadResults}
+                loading={downloadResultsPending}
+                disabled={!canDownloadResults}
+              >
+                导出结果
+              </Button>
+            ) : null}
+            {selectedJob.job_type === "report" ? (
+              <Button
+                type="primary"
+                onClick={onDownloadReport}
+                loading={downloadReportPending}
+                disabled={selectedJob.status !== "success"}
+              >
+                下载报告
+              </Button>
+            ) : null}
+          </Space>
+        </Space>
+      ) : null}
+    </Space>
+  );
+}

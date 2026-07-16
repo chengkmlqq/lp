@@ -1,0 +1,65 @@
+# 本地 Worker Compose 文件
+# 连到 84 环境的 Redis 和 PostgreSQL（不启动本地依赖服务）
+#
+# 用法：
+#   先构建镜像： docker build -t lp-api:local -f ../../api/Dockerfile ../../api/
+#   然后启动：   docker compose -p lp-local-worker -f compose.yml up -d
+#   查看日志：   docker compose -p lp-local-worker -f compose.yml logs -f
+#   停止：       docker compose -p lp-local-worker -f compose.yml down
+
+services:
+  celery-worker:
+    image: lp-api:local-patched
+    container_name: lp-local-worker-celery-worker
+    command:
+      - python3
+      - /app/start-worker.py
+      - worker
+      - --loglevel=INFO
+      - --concurrency=2
+      - --queues=default,celery
+    environment:
+      # ── 禁用外部代理（Worker 只连 84 内部服务，不需要代理）──
+      http_proxy: ""
+      https_proxy: ""
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      NO_PROXY: "*"
+      no_proxy: "*"
+
+      # ── 84 PostgreSQL ──
+      DB_HOST: 223.109.142.84
+      DB_PORT: 5413
+      DB_NAME: lp
+      DB_USERNAME: lp
+      DB_PASSWORD: 7ujmMJU&
+      DB_SCHEMA: public
+      DATABASE_URL: postgresql+psycopg://lp:7ujmMJU&@223.109.142.84:5413/lp
+
+      # ── 84 Redis ──
+      CELERY_BROKER_URL: redis://:4rfvVFR$@223.109.142.84:6339/0
+      CELERY_RESULT_BACKEND: redis://:4rfvVFR$@223.109.142.84:6339/1
+      CELERY_TIMEZONE: Asia/Shanghai
+
+      # ── 最小配置 ──
+      JWT_SECRET_KEY: local-dev-secret-key
+      MINIO_ENABLED: "true"
+      MINIO_ENDPOINT: http://223.109.142.84:7779
+      MINIO_ACCESS_KEY: replace_strong_access_key
+      MINIO_SECRET_KEY: 3edcCDE#
+      MINIO_BUCKET: lp-files
+      MINIO_REGION: us-east-1
+      WINE_BINARY_PATH: wine
+      WINE_ALLOWED_ROOT: /app/data/wine
+      WINE_DEFAULT_TIMEOUT_SECONDS: 300
+      WINE_MAX_TIMEOUT_SECONDS: 1800
+      FLOWER_API_BASE_URL: http://223.109.142.84:5555
+      FLOWER_API_TIMEOUT_SECONDS: 10
+      UNPACK_SECRET_KEY: mR9rPYmTymyBlvHIqAlYQiKDFscsMbK4bG5LTeOS5yc
+      LP_API_BASE_URL: http://223.109.142.84:8000
+    extra_hosts:
+      - "minio:223.109.142.84"
+    volumes:
+      - ./data/app:/app/data
+      - ./start-worker.py:/app/start-worker.py
+    restart: unless-stopped

@@ -1,0 +1,38 @@
+# Python venv
+.venv*
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker data
+deploy/local-worker/data/
+deploy/local-worker/start-worker.py
+deploy/data/minio/
+deploy/dev-deploy/data/minio/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+.env
+deploy/pro-deploy/.env
+api/data/
+scripts/start_flower.sh
+scripts/start_worker.sh
+node_modules/
+web/node_modules/
+web/.next/

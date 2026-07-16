@@ -1,0 +1,22 @@
+{
+  "id": "313321162778084072",
+  "createDate": "2026-04-24T00:59:36.941773",
+  "createUser": "openclaw",
+  "createUserName": "小龙虾",
+  "updateDate": "2026-04-24T09:14:38.934132",
+  "updateUser": "openclaw",
+  "updateUserName": "小龙虾",
+  "groupName": null,
+  "groupLabel": null,
+  "tagNames": null,
+  "tagLabels": null,
+  "title": "fquiz页面Ant Design组件改造：/admin/requirements",
+  "projectName": "fquiz",
+  "gitUrl": null,
+  "branch": "main",
+  "descr": "# 需求分析（/admin/requirements Ant Design 组件改造）\n\n## 1. 目标\n在不改变后端接口协议与业务语义的前提下，将 `/admin/requirements` 页面升级为更标准、统一、可维护的 Ant Design 组件化实现：\n- 视觉一致性提升（表单/表格/按钮/反馈/空加载态）\n- 交互一致性提升（筛选、操作、状态反馈）\n- 可访问性与响应式体验提升\n\n## 2. 现状（基于真实代码）\n已定位并阅读以下核心代码：\n- `web/src/app/admin/requirements/page.tsx`（列表页主体）\n- `web/src/components/ui-antd.tsx`（AntD 封装层，含 `Select/Table/DropdownMenu/TextField`）\n- `web/src/components/row-action-menu.tsx`（行操作菜单）\n- 参考相关页：`web/src/app/admin/requirements/new/page.tsx`\n\n当前实现特征：\n1) 页面已通过 `@/components/ui-antd` 使用 AntD 封装组件（Select/Table/Button 等），但仍保留较多 Tailwind + CSS 变量的“手工样式”写法。\n2) 错误提示区存在重复 class（`overflow-auto rounded-lg ...` 重复）且视觉语义不够标准，建议用 `Alert` 统一。\n3) 表格仍为语义 table 封装（`Table.Root/Header/Body`），功能上可用，但缺少 AntD Table 的内建能力（空态、loading、列配置、滚动/响应式适配、统一分页扩展位）。\n4) 删除操作采用 `window.confirm`，交互较原生，不符合 AntD 统一确认交互体验（建议 Popconfirm/Modal.confirm）。\n5) 筛选区可用，但缺少“重置筛选”“筛选中状态提示”“移动端折叠策略”等体验细节。\n\n## 3. 范围（In Scope）\n仅针对 `/admin/requirements` 列表页前端改造：\n- 页面布局容器、筛选区、列表区、行操作区\n- 表单控件（关键词、状态、优先级、指派人）\n- 表格组件与空态/加载态/错误反馈\n- 删除确认、状态变更/领取等操作反馈\n- 样式 token 与组件用法规范化（优先 AntD props / token）\n\n## 4. 非范围（Out of Scope）\n- 不修改后端接口、字段协议、权限模型、业务状态机\n- 不新增需求领域业务逻辑（仅 UI 交互体验优化）\n- 不改 `/admin/requirements/new`、`/admin/requirements/[id]` 的业务流程（可做样式规范建议，不在本需求强制实施）\n\n## 5. 实现思路\n\n### P0（必须优先，保证统一与可用）\n1) **反馈组件标准化**\n- 现状：错误区为 `<pre>` + 自定义样式，class 重复。\n- 改法：使用 `Alert`（error/info）承载请求错误、操作错误、刷新状态；保留必要文本细节。\n- 位置：`web/src/app/admin/requirements/page.tsx`。\n\n2) **删除确认交互标准化**\n- 现状：`window.confirm`。\n- 改法：替换为 AntD `Popconfirm` 或 `Modal.confirm`（通过 `ui-antd` 暴露统一封装），并在确认态/提交态提供明确 loading。\n- 位置：`web/src/app/admin/requirements/page.tsx`，必要时扩展 `web/src/components/ui-antd.tsx`。\n\n3) **列表状态呈现标准化（loading/empty/error）**\n- 现状：loading 为文本、empty 依赖表格空行、error 样式自绘。\n- 改法：表格区域统一接入 loading skeleton/spinner、空态（Empty）、错误态（Alert），减少文本散落。\n- 位置：`web/src/app/admin/requirements/page.tsx`。\n\n### P1（高优，提升一致性与维护性）\n1) **筛选区组件化与操作补全**\n- 增加“重置筛选”按钮；筛选条件变化时统一触发 query key；在右侧显示“已筛选 n 项”。\n- 位置：`web/src/app/admin/requirements/page.tsx`。\n\n2) **表格升级策略**\n- 方案A：继续保留封装 Table，但补充列宽、ellipsis、固定操作列、响应式滚动；\n- 方案B（推荐）：在 `ui-antd` 增加 AntD `Table` 高阶封装并在本页落地，减少手写表格结构。\n- 位置：`web/src/components/ui-antd.tsx` + `web/src/app/admin/requirements/page.tsx`。\n\n3) **操作菜单一致性**\n- 统一禁用态、危险态文案与图标（可选）；对“删除中...”等异步态避免重复文案闪烁。\n- 位置：`web/src/components/row-action-menu.tsx`、`web/src/app/admin/requirements/page.tsx`。\n\n### P2（优化项，提升体验）\n1) **可访问性增强**：筛选项补全 `aria-label` 与可读文本一致性，操作菜单键盘可达性回归。\n2) **响应式优化**：小屏时筛选区改为两行/抽屉筛选，表格列显示优先级策略（隐藏低优先列）。\n3) **信息密度优化**：更新时间可做相对时间 + tooltip 精确时间，减少视觉噪音。\n\n## 6. UI/UX 专项评估（依据 ui-ux-pro-max）\n\n### 执行摘要（3-5条）\n1) 页面基础功能完备，但反馈与确认交互未完全 AntD 化，导致体验不统一。\n2) 列表状态（loading/empty/error）可感知度不足，需统一状态组件语义。\n3) 筛选区缺“重置/当前筛选态”与移动端策略，影响高频使用效率。\n4) 可访问性与响应式可做增强，尤其是操作菜单与表格在窄屏场景。\n5) 建议优先做 P0，确保“看起来像同一套系统”，再推进 P1/P2。\n\n### 3 条可快速落地的 UI Quick Wins\n1) 用 `Alert` 替换错误 `<pre>`（同时移除重复 class）。\n2) 删除确认从 `window.confirm` 切换到 `Popconfirm`。\n3) 筛选区新增“重置筛选”按钮，并在表头显示“当前筛选条件数”。\n\n## 7. 影响点\n- 前端页面：`web/src/app/admin/requirements/page.tsx`（主改动）\n- 组件封装层：`web/src/components/ui-antd.tsx`（若补充 Popconfirm/Table 高阶封装）\n- 行操作组件：`web/src/components/row-action-menu.tsx`（可选微调）\n- 数据接口层：无协议变更，仅复用现有 `/api/v1/requirements*` 与 `/api/v1/users`\n\n## 8. 风险 / 疑问\n1) `ui-antd` 封装策略边界：是继续“Radix 风格 API + AntD 内核”，还是在列表页直接用 AntD 原生 Table/Popconfirm？需先统一团队规范。\n2) 若切到 AntD Table，现有 `RowActionMenu` 的触发器样式与密度需校准，避免视觉割裂。\n3) 当前 queryKey 以 URL 字符串为主，可用但后续扩展分页/排序时建议结构化 queryKey，避免缓存命中不稳定。\n\n## 9. 建议验收标准\n1) 功能不回归：筛选、查看详情、领取、状态流转、删除均可用且权限逻辑不变。\n2) 组件一致性：页面主要交互控件均来自 AntD 或 `ui-antd` 封装，不再出现原生 `window.confirm`。\n3) 状态完整性：列表具备清晰的 loading / empty / error 呈现。\n4) 体验一致性：按钮、菜单、确认框、反馈提示的视觉与交互节奏统一。\n5) 响应式可用：在常见宽度（移动端/桌面端）均可完成核心操作，无关键内容被遮挡。",
+  "resultMsg": "批量从待评审改为待处理（程凯指令）",
+  "progressPercent": 0,
+  "status": "OPEN",
+  "priority": "MEDIUM"
+}
