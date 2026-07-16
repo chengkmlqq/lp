@@ -1025,49 +1025,8 @@ body {
 }
 
 /* ======================================
-   system-params 侧边栏布局样式 (参考 docs-view)
+   system-params 布局样式
    ====================================== */
-
-.admin-system-params-layout {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  gap: 0;
-}
-
-.admin-system-params-sider {
-  display: flex;
-  flex-direction: column;
-  width: 260px;
-  min-width: 260px;
-  border-right: 1px solid var(--ant-color-border-secondary);
-  background: var(--gray-a2);
-  overflow: hidden;
-  flex-shrink: 0;
-  transition: width 0.3s ease;
-}
-
-.admin-system-params-sider.collapsed {
-  width: 80px;
-  min-width: 80px;
-}
-
-.admin-system-params-sider-header {
-  border-bottom: 1px solid var(--ant-color-border-secondary);
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 5%, transparent);
-  flex-shrink: 0;
-}
-
-.admin-system-params-sider-header-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 12px 0;
-}
-
-.admin-system-params-search-wrapper {
-  padding: 12px;
-}
 
 .admin-system-params-search-input {
   border-radius: var(--ant-border-radius);
@@ -1098,23 +1057,6 @@ body {
   padding: 40px 24px;
 }
 
-.admin-system-params-sider-footer {
-  display: flex;
-  justify-content: center;
-  border-top: 1px solid var(--ant-color-border-secondary);
-  padding: 12px;
-  background: var(--gray-a2);
-  flex-shrink: 0;
-}
-
-.admin-system-params-content {
-  min-height: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
 .admin-system-params-skeleton-menu {
   padding: 16px;
   display: flex;
@@ -1124,15 +1066,6 @@ body {
 
 .admin-system-params-skeleton-item {
   height: 22px;
-}
-
-/* 暗色主题适配 */
-:root[data-fquiz-theme="dark"] .admin-system-params-sider {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 90%, black);
-}
-
-:root[data-fquiz-theme="dark"] .admin-system-params-sider-footer {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 85%, black);
 }
 
 /* 移动端侧边栏滚动条美化 */

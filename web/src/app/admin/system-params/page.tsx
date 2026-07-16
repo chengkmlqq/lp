@@ -952,28 +952,36 @@ export default function AdminSystemParamsPage() {
   }
 
   return (
-    <div className="admin-system-params-layout">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
       {/* Category Sidebar */}
       {!isMobile && (
-        <div className={`admin-system-params-sider${siderCollapsed ? " collapsed" : ""}`}>
-          <div className="admin-system-params-sider-header">
+        <Col span={siderCollapsed ? 2 : 6}>
+          <AntCard
+            className="admin-system-params-sider-card"
+            title={siderCollapsed ? null : "参数分类"}
+            extra={
+              <Space size={0}>
+                {!siderCollapsed && canManage && (
+                  <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openCategoryCreate(null)} />
+                )}
+                <Tooltip title={siderCollapsed ? "展开侧栏" : "收起侧栏"}>
+                  <Button
+                    aria-label={siderCollapsed ? "展开侧栏" : "收起侧栏"}
+                    icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                    type="text"
+                    onClick={() => setSiderCollapsed((prev) => !prev)}
+                  />
+                </Tooltip>
+              </Space>
+            }
+            style={{ height: "100%", display: "flex", flexDirection: "column" }}
+            bodyStyle={siderCollapsed ? { display: "none" } : { flex: 1, overflow: "auto" }}
+          >
             {!siderCollapsed && (
               <>
-                <div className="admin-system-params-sider-header-top">
-                  <Typography.Text strong style={{ fontSize: 14 }}>
-                    参数分类
-                  </Typography.Text>
-                  {canManage && (
-                    <Button
-                      type="link"
-                      size="small"
-                      icon={<PlusOutlined />}
-                      onClick={() => openCategoryCreate(null)}
-                    />
-                  )}
-                </div>
                 {!categoryTreeQuery.isLoading && categoryTreeQuery.data && categoryTreeQuery.data.length > 0 && (
-                  <div className="admin-system-params-search-wrapper">
+                  <div style={{ padding: "8px 12px" }}>
                     <Input
                       className="admin-system-params-search-input"
                       placeholder="搜索分类..."
@@ -985,54 +993,42 @@ export default function AdminSystemParamsPage() {
                     />
                   </div>
                 )}
+                {categoryTreeQuery.isLoading ? (
+                  skeletonMenu
+                ) : categoryTreeQuery.data && categoryTreeQuery.data.length > 0 ? (
+                  <>
+                    {categorySearch && (
+                      <div className="admin-system-params-search-results-count">
+                        {`找到 ${filteredTreeData.length} 个分类`}
+                      </div>
+                    )}
+                    <div className="admin-system-params-sider-menu">
+                      <Tree
+                        showLine
+                        selectedKeys={selectedCategoryId !== null ? [String(selectedCategoryId)] : []}
+                        treeData={[
+                          {
+                            key: "all",
+                            title: "全部参数",
+                          } as DataNode,
+                          ...convertToTreeData(filteredTreeData),
+                        ]}
+                        onSelect={handleCategoryClick}
+                        style={{ fontSize: 13 }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="admin-system-params-sider-empty">
+                    <Empty description="暂无分类" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  </div>
+                )}
               </>
             )}
-          </div>
-          {categoryTreeQuery.isLoading ? (
-            skeletonMenu
-          ) : categoryTreeQuery.data && categoryTreeQuery.data.length > 0 ? (
-            <>
-              {categorySearch && (
-                <div className="admin-system-params-search-results-count">
-                  {`找到 ${filteredTreeData.length} 个分类`}
-                </div>
-              )}
-              <div className="admin-system-params-sider-menu">
-                <Tree
-                  showLine
-                  selectedKeys={selectedCategoryId !== null ? [String(selectedCategoryId)] : []}
-                  treeData={[
-                    {
-                      key: "all",
-                      title: "全部参数",
-                    } as DataNode,
-                    ...convertToTreeData(filteredTreeData),
-                  ]}
-                  onSelect={handleCategoryClick}
-                  style={{ fontSize: 13 }}
-                />
-              </div>
-            </>
-          ) : (
-            <div className="admin-system-params-sider-empty">
-              <Empty description="暂无分类" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            </div>
-          )}
-          {!isMobile && (
-            <div className="admin-system-params-sider-footer">
-              <Tooltip title={siderCollapsed ? "展开侧栏" : "收起侧栏"}>
-                <Button
-                  aria-label={siderCollapsed ? "展开侧栏" : "收起侧栏"}
-                  icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                  type="text"
-                  onClick={() => setSiderCollapsed((prev) => !prev)}
-                />
-              </Tooltip>
-            </div>
-          )}
-        </div>
+          </AntCard>
+        </Col>
       )}
-      <div className="admin-system-params-content">
+      <Col span={siderCollapsed ? 22 : 18}>
         <AntCard
           ref={pageCardRef}
           className="admin-system-params-page-card"
@@ -1096,35 +1092,9 @@ export default function AdminSystemParamsPage() {
             </Space>
           ) : null}
         >
-        {viewMode === "card" ? (
-          <div className="admin-filter-bar">
+        <div className="admin-filter-bar">
             <Form layout="inline">
               <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按参数键/名称/值搜索"
-                  value={keywordInput}
-                  onChange={(event) => handleKeywordChange(event.target.value)}
-                  onPressEnter={handleQuery}
-                />
-              </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                htmlType="button"
-
-                  icon={<SearchOutlined />}
-                  onClick={handleQuery}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        ) : (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item">
                 <Input
                   allowClear
                   placeholder="搜索参数名"
@@ -1133,7 +1103,7 @@ export default function AdminSystemParamsPage() {
                   onPressEnter={handleQuery}
                 />
               </Form.Item>
-              <Form.Item label="状态" className="admin-filter-keyword-item">
+              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select<StatusFilter>
                   value={statusFilterInput}
                   allowClear
@@ -1145,7 +1115,7 @@ export default function AdminSystemParamsPage() {
                   onChange={(value) => setStatusFilterInput(value)}
                 />
               </Form.Item>
-              <Form.Item>
+              <Form.Item style={{ marginBottom: 0 }}>
                 <Button
                   htmlType="button"
                   icon={<SearchOutlined />}
@@ -1157,7 +1127,6 @@ export default function AdminSystemParamsPage() {
               </Form.Item>
             </Form>
           </div>
-        )}
 
         {viewMode === "table" ? (
           <div
@@ -1350,7 +1319,8 @@ export default function AdminSystemParamsPage() {
           </Form>
         </Modal>
       )}
-      </div>
+      </Col>
+    </Row>
     </div>
   );
 }
