@@ -1669,16 +1669,25 @@ export default function AdminPowerLinesPage() {
           >
             <Space direction="vertical" size={12} className="w-full">
               <div className="admin-filter-bar">
-                <Form layout="inline" style={{ width: '100%' }}>
-                  <Form.Item style={{ width: '100%', maxWidth: '100%', marginBottom: 0 }}>
+                <Form layout="inline">
+                  <Form.Item label="关键词" className="admin-filter-keyword-item">
                     <Input
                       value={keyword}
                       allowClear
                       onChange={(event) => setKeyword(event.target.value)}
                       placeholder="按线路编码/名称筛选"
                       onPressEnter={() => linesQuery.refetch()}
-                      style={{ width: '100%' }}
                     />
+                  </Form.Item>
+                  <Form.Item>
+                    <Button
+                      htmlType="button"
+                      icon={<SearchOutlined />}
+                      onClick={() => linesQuery.refetch()}
+                      className="admin-search-btn"
+                    >
+                      查询
+                    </Button>
                   </Form.Item>
                 </Form>
               </div>
