@@ -878,7 +878,7 @@ export default function AtpModelsPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item">
+              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   value={keywordInput}
@@ -891,7 +891,7 @@ export default function AtpModelsPage() {
                   }}
                 />
               </Form.Item>
-              <Form.Item>
+              <Form.Item style={ marginBottom: 0 }>
                 <Button
                   htmlType="button"
                   icon={<SearchOutlined />}

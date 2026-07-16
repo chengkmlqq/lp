@@ -477,7 +477,7 @@ export default function AdminScheduledTasksPage() {
       >
         <div className="admin-filter-bar">
           <Form layout="inline">
-            <Form.Item label="关键词" className="admin-filter-keyword-item">
+            <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
               <Input
                 value={keyword}
                 allowClear
@@ -487,7 +487,7 @@ export default function AdminScheduledTasksPage() {
               />
             </Form.Item>
 
-            <Form.Item label="状态" className="admin-filter-keyword-item">
+            <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
               <Select<StatusFilter>
                 value={statusFilter}
                 options={[...STATUS_FILTER_OPTIONS]}
@@ -495,7 +495,7 @@ export default function AdminScheduledTasksPage() {
               />
             </Form.Item>
 
-            <Form.Item>
+            <Form.Item style={ marginBottom: 0 }>
               <Button
                 icon={<SearchOutlined />}
                 onClick={() => void refreshList()}

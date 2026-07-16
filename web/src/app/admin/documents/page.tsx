@@ -806,7 +806,7 @@ export default function AdminDocumentsPage() {
             ) : (
               <div className="admin-filter-bar">
                 <Form layout="inline">
-                  <Form.Item label="关键词" className="admin-filter-keyword-item">
+                  <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Input
                       allowClear
                       placeholder="按标题/内容搜索"
@@ -821,7 +821,7 @@ export default function AdminDocumentsPage() {
                     />
                   </Form.Item>
 
-                  <Form.Item label="状态" className="admin-filter-keyword-item">
+                  <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Select<"draft" | "published">
                       value={statusFilter}
                       allowClear
@@ -839,7 +839,7 @@ export default function AdminDocumentsPage() {
                     />
                   </Form.Item>
 
-                  <Form.Item>
+                  <Form.Item style={ marginBottom: 0 }>
                     <Button
                       icon={<SearchOutlined />}
                       onClick={() => {

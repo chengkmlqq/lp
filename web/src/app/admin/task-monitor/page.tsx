@@ -823,7 +823,7 @@ export default function AdminTaskMonitorPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="任务" className="admin-filter-keyword-item">
+              <Form.Item label="任务" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   maxLength={200}
@@ -836,7 +836,7 @@ export default function AdminTaskMonitorPage() {
                 />
               </Form.Item>
 
-              <Form.Item label="状态" className="admin-filter-keyword-item">
+              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select
                   allowClear
                   value={statusFilter === "all" ? undefined : statusFilter}
@@ -851,7 +851,7 @@ export default function AdminTaskMonitorPage() {
                 />
               </Form.Item>
 
-              <Form.Item>
+              <Form.Item style={ marginBottom: 0 }>
                 <Button
                   icon={<SearchOutlined />}
                   onClick={handleSearch}

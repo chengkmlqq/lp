@@ -425,7 +425,7 @@ export default function AdminSyslogPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="动作" className="admin-filter-keyword-item">
+              <Form.Item label="动作" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   placeholder="按动作筛选（如 auth.login）"
@@ -434,7 +434,7 @@ export default function AdminSyslogPage() {
                   onPressEnter={handleSearch}
                 />
               </Form.Item>
-              <Form.Item label="用户ID" className="admin-filter-keyword-item">
+              <Form.Item label="用户ID" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   placeholder="按用户ID筛选（如 openclaw）"
@@ -443,7 +443,7 @@ export default function AdminSyslogPage() {
                   onPressEnter={handleSearch}
                 />
               </Form.Item>
-              <Form.Item>
+              <Form.Item style={ marginBottom: 0 }>
                 <Button
                   icon={<SearchOutlined />}
                   onClick={handleSearch}

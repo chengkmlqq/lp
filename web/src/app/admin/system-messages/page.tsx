@@ -874,7 +874,7 @@ export default function AdminSystemMessagesPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="类型" className="admin-filter-keyword-item">
+              <Form.Item label="类型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select<SystemMessageType | "all">
                   value={messageTypeFilter}
                   options={[
@@ -888,7 +888,7 @@ export default function AdminSystemMessagesPage() {
                 />
               </Form.Item>
 
-              <Form.Item label="状态" className="admin-filter-keyword-item">
+              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select<"all" | "unread">
                   value={unreadOnly ? "unread" : "all"}
                   options={[
@@ -902,7 +902,7 @@ export default function AdminSystemMessagesPage() {
                 />
               </Form.Item>
 
-              <Form.Item>
+              <Form.Item style={ marginBottom: 0 }>
                 <Button icon={<SearchOutlined />} onClick={refreshMessages} className="admin-search-btn">
                   查询
                 </Button>

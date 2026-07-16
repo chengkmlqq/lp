@@ -1123,7 +1123,7 @@ export default function AdminSystemParamsPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item">
+              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   placeholder="搜索参数名"
@@ -1132,7 +1132,7 @@ export default function AdminSystemParamsPage() {
                   onPressEnter={handleQuery}
                 />
               </Form.Item>
-              <Form.Item label="状态" className="admin-filter-keyword-item">
+              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select<StatusFilter>
                   value={statusFilterInput}
                   allowClear
@@ -1144,7 +1144,7 @@ export default function AdminSystemParamsPage() {
                   onChange={(value) => setStatusFilterInput(value)}
                 />
               </Form.Item>
-              <Form.Item>
+              <Form.Item style={ marginBottom: 0 }>
                 <Button
                   htmlType="button"
                   icon={<SearchOutlined />}

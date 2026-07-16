@@ -1670,7 +1670,7 @@ export default function AdminPowerLinesPage() {
             <Space direction="vertical" size={12} className="w-full">
               <div className="admin-filter-bar">
                 <Form layout="inline">
-                  <Form.Item label="关键词" className="admin-filter-keyword-item">
+                  <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Input
                       value={keyword}
                       allowClear
@@ -1679,7 +1679,7 @@ export default function AdminPowerLinesPage() {
                       onPressEnter={() => linesQuery.refetch()}
                     />
                   </Form.Item>
-                  <Form.Item>
+                  <Form.Item style={ marginBottom: 0 }>
                     <Button
                       htmlType="button"
                       icon={<SearchOutlined />}
@@ -1759,7 +1759,7 @@ export default function AdminPowerLinesPage() {
               <Space direction="vertical" size={12} className="w-full">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
-                    <Form.Item label="关键词" className="admin-filter-keyword-item">
+                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         value={towerKeyword}
                         allowClear
@@ -1768,14 +1768,14 @@ export default function AdminPowerLinesPage() {
                         onPressEnter={() => refreshTowers()}
                       />
                     </Form.Item>
-                    <Form.Item label="塔型" className="admin-filter-keyword-item">
+                    <Form.Item label="塔型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Select
                         value={towerTypeFilter}
                         options={[...TOWER_TYPE_OPTIONS]}
                         onChange={(value) => setTowerTypeFilter(value)}
                       />
                     </Form.Item>
-                    <Form.Item label="风险等级" className="admin-filter-keyword-item">
+                    <Form.Item label="风险等级" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         value={towerRiskFilter}
                         allowClear
@@ -1783,7 +1783,7 @@ export default function AdminPowerLinesPage() {
                         placeholder="按风险等级筛选"
                       />
                     </Form.Item>
-                    <Form.Item>
+                    <Form.Item style={ marginBottom: 0 }>
                       <Button
                         icon={<SearchOutlined />}
                         onClick={() => refreshTowers()}

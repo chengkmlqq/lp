@@ -211,7 +211,7 @@ export default function AdminFaultAnalysisPage() {
           <div className="flex flex-col gap-4" style={{ height: '100%' }}>
             <div className="admin-filter-bar">
               <Form layout="inline">
-                <Form.Item label="关键词" className="admin-filter-keyword-item">
+                <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                   <Input
                     placeholder="搜索分析名称、线路名称或描述"
                     value={keywordInput}
@@ -223,7 +223,7 @@ export default function AdminFaultAnalysisPage() {
                     }}
                   />
                 </Form.Item>
-                <Form.Item>
+                <Form.Item style={ marginBottom: 0 }>
                   <Button
                     icon={<SearchOutlined />}
                     onClick={() => {

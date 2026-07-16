@@ -712,7 +712,7 @@ export default function AdminLightningCurrentsPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item">
+              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   placeholder="按文件名搜索"
@@ -726,7 +726,7 @@ export default function AdminLightningCurrentsPage() {
                   }}
                 />
               </Form.Item>
-              <Form.Item>
+              <Form.Item style={ marginBottom: 0 }>
                 <Button
                   htmlType="button"
                   icon={<SearchOutlined />}

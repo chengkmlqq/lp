@@ -1048,7 +1048,7 @@ export default function AdminUsersPage() {
         {viewMode === "card" ? (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item">
+              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   placeholder="按用户 ID/邮箱/用户名搜索"
@@ -1057,7 +1057,7 @@ export default function AdminUsersPage() {
                   onPressEnter={handleSearch}
                 />
               </Form.Item>
-              <Form.Item>
+              <Form.Item style={ marginBottom: 0 }>
                 <Button
                   htmlType="button"
                   icon={<SearchOutlined />}
@@ -1072,7 +1072,7 @@ export default function AdminUsersPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item">
+              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   placeholder="按用户 ID/邮箱/用户名搜索"
@@ -1082,7 +1082,7 @@ export default function AdminUsersPage() {
                 />
               </Form.Item>
 
-              <Form.Item label="状态" className="admin-filter-keyword-item">
+              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select<"active" | "disabled">
                   value={statusFilter}
                   allowClear
@@ -1100,7 +1100,7 @@ export default function AdminUsersPage() {
                 />
               </Form.Item>
 
-              <Form.Item>
+              <Form.Item style={ marginBottom: 0 }>
                 <Button
                   htmlType="button"
                   icon={<SearchOutlined />}

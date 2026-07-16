@@ -690,7 +690,7 @@ export default function AdminDimensionsPage() {
                 }}
               />
             </Form.Item>
-            <Form.Item>
+            <Form.Item style={ marginBottom: 0 }>
               <Button
                 icon={<SearchOutlined />}
                 onClick={() => {

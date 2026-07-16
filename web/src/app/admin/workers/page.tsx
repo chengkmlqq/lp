@@ -681,7 +681,7 @@ export default function AdminWorkersPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="执行节点" className="admin-filter-keyword-item">
+              <Form.Item label="执行节点" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   placeholder="按节点名称筛选"
@@ -695,7 +695,7 @@ export default function AdminWorkersPage() {
                 />
               </Form.Item>
 
-              <Form.Item label="队列" className="admin-filter-keyword-item">
+              <Form.Item label="队列" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   placeholder="按队列名称筛选"
@@ -709,7 +709,7 @@ export default function AdminWorkersPage() {
                 />
               </Form.Item>
 
-              <Form.Item label="状态" className="admin-filter-keyword-item">
+              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select
                   value={statusFilter}
                   onChange={(value) => setStatusFilter(parseStatusFilter(value))}
@@ -721,7 +721,7 @@ export default function AdminWorkersPage() {
                 />
               </Form.Item>
 
-              <Form.Item>
+              <Form.Item style={ marginBottom: 0 }>
                 <Button
                   htmlType="button"
                   icon={<SearchOutlined />}
