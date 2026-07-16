@@ -1311,6 +1311,11 @@ body {
 .admin-filter-keyword-item .ant-form-item-control-input {
   min-width: 160px;
   max-width: 320px;
+  overflow: hidden;
+}
+
+.admin-filter-keyword-item .ant-input {
+  text-overflow: ellipsis;
 }
 
 /* ======================================
@@ -1326,6 +1331,8 @@ body {
 
 .admin-filter-bar .ant-form {
   flex: 1;
+  flex-wrap: nowrap;
+  overflow: hidden;
   row-gap: 12px;
 }
 
