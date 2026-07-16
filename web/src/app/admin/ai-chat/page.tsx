@@ -304,6 +304,13 @@ export default function AiChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [currentMessages]);
 
+  // Auto-select the most recent conversation when conversations load
+  useEffect(() => {
+    if (!convLoading && !selectedConvId && conversations?.items?.length) {
+      setSelectedConvId(conversations.items[0].id);
+    }
+  }, [convLoading, selectedConvId, conversations?.items]);
+
   const handleExamplePromptClick = useCallback(
     (prompt: string) => {
       setMessageInput(prompt);
@@ -339,7 +346,7 @@ export default function AiChatPage() {
   }
 
   return (
-    <div style={{ display: "flex", height: "calc(100vh - 64px)", overflow: "hidden" }}>
+    <div style={{ display: "flex", minHeight: 0, flex: 1, overflow: "hidden" }}>
       {/* Left Sidebar - Conversation List */}
       <div
         className="ai-chat-sidebar"
@@ -457,7 +464,6 @@ export default function AiChatPage() {
             />
           )}
         </div>
-
       </div>
 
       {/* Right Side - Chat Area */}
