@@ -833,7 +833,7 @@ export default function AdminTowerModelsPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item">
+              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   value={keywordInput}
                   allowClear
@@ -847,7 +847,7 @@ export default function AdminTowerModelsPage() {
                   }}
                 />
               </Form.Item>
-              <Form.Item label="状态" className="admin-filter-keyword-item">
+              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select<"enabled" | "disabled">
                   value={enabledFilter}
                   allowClear
@@ -864,7 +864,7 @@ export default function AdminTowerModelsPage() {
                   }}
                 />
               </Form.Item>
-              <Form.Item>
+              <Form.Item style={{ marginBottom: 0 }}>
                 <Button
                   icon={<SearchOutlined />}
                   onClick={() => {
