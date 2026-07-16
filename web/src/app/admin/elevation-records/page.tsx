@@ -749,7 +749,7 @@ export default function ElevationRecordsPage() {
       >
         {viewMode === "card" ? (
           <div className="admin-filter-bar">
-            <Form layout="inline">
+            <Form layout="inline" style={{ flexWrap: "nowrap" }}>
               <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
@@ -763,6 +763,7 @@ export default function ElevationRecordsPage() {
                     setCardViewPage(1);
                     setAllLoadedRecords([]);
                   }}
+                  style={{ textOverflow: "ellipsis", overflow: "hidden" }}
                 />
               </Form.Item>
               <Form.Item style={{ marginBottom: 0 }}>
@@ -784,7 +785,7 @@ export default function ElevationRecordsPage() {
           </div>
         ) : (
           <div className="admin-filter-bar">
-            <Form layout="inline">
+            <Form layout="inline" style={{ flexWrap: "nowrap" }}>
               <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
@@ -798,6 +799,7 @@ export default function ElevationRecordsPage() {
                     setCardViewPage(1);
                     setAllLoadedRecords([]);
                   }}
+                  style={{ textOverflow: "ellipsis", overflow: "hidden" }}
                 />
               </Form.Item>
 
