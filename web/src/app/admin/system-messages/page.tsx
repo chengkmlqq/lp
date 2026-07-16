@@ -839,7 +839,6 @@ export default function AdminSystemMessagesPage() {
               <Form.Item label="类型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select<SystemMessageType | "all">
                   value={messageTypeFilter}
-                  style={{ minWidth: 150 }}
                   options={[
                     { label: "全部类型", value: "all" },
                     ...MESSAGE_TYPE_OPTIONS,
@@ -854,7 +853,6 @@ export default function AdminSystemMessagesPage() {
               <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select<"all" | "unread">
                   value={unreadOnly ? "unread" : "all"}
-                  style={{ minWidth: 150 }}
                   options={[
                     { label: "全部状态", value: "all" },
                     { label: "仅未读", value: "unread" },
