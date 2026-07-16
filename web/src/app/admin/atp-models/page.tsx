@@ -877,7 +877,7 @@ export default function AtpModelsPage() {
           </div>
         ) : (
           <div className="admin-filter-bar">
-            <Form layout="inline">
+            <Form layout="inline" style={{ flex: 'none' }}>
               <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
@@ -891,35 +891,35 @@ export default function AtpModelsPage() {
                   }}
                 />
               </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={() => {
-                    setSearchKeyword(keywordInput);
-                    setPagination((previous) => ({ ...previous, current: 1 }));
-                    setCardViewPage(1);
-                  }}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
             </Form>
+            <Button
+              htmlType="button"
+              icon={<SearchOutlined />}
+              onClick={() => {
+                setSearchKeyword(keywordInput);
+                setPagination((previous) => ({ ...previous, current: 1 }));
+                setCardViewPage(1);
+              }}
+              className="admin-search-btn"
+            >
+              查询
+            </Button>
             {!isMobile && (
-              <Segmented
-                value={displayMode}
-                onChange={(value) => {
-                  setDisplayMode(value as "list" | "file");
-                  if (value === "list") {
-                    setFileViewPath([]);
-                  }
-                }}
-                options={[
-                  { value: "list", icon: <TableOutlined /> },
-                  { value: "file", icon: <FolderOpenOutlined /> },
-                ]}
-              />
+              <div style={{ marginLeft: 'auto' }}>
+                <Segmented
+                  value={displayMode}
+                  onChange={(value) => {
+                    setDisplayMode(value as "list" | "file");
+                    if (value === "list") {
+                      setFileViewPath([]);
+                    }
+                  }}
+                  options={[
+                    { value: "list", icon: <TableOutlined /> },
+                    { value: "file", icon: <FolderOpenOutlined /> },
+                  ]}
+                />
+              </div>
             )}
           </div>
         )}
