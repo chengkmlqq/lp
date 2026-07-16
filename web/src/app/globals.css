@@ -1338,6 +1338,11 @@ body {
   row-gap: 12px;
 }
 
+/* Task-monitor filter form: allow wrapping on narrow width */
+.admin-task-monitor-page-card .ant-form-inline {
+  flex-wrap: wrap;
+}
+
 .admin-search-btn {
   background-color: var(--ant-color-bg-container);
 }
