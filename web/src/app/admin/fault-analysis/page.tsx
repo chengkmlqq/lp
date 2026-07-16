@@ -223,7 +223,7 @@ export default function AdminFaultAnalysisPage() {
                     }}
                   />
                 </Form.Item>
-                <Form.Item style={ marginBottom: 0 }>
+                <Form.Item style={{ marginBottom: 0 }}>
                   <Button
                     htmlType="button"
                     icon={<SearchOutlined />}

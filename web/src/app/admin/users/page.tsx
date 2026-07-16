@@ -1057,7 +1057,7 @@ export default function AdminUsersPage() {
                   onPressEnter={handleSearch}
                 />
               </Form.Item>
-              <Form.Item style={ marginBottom: 0 }>
+              <Form.Item style={{ marginBottom: 0 }}>
                 <Button
                   htmlType="button"
                   icon={<SearchOutlined />}
@@ -1100,7 +1100,7 @@ export default function AdminUsersPage() {
                 />
               </Form.Item>
 
-              <Form.Item style={ marginBottom: 0 }>
+              <Form.Item style={{ marginBottom: 0 }}>
                 <Button
                   htmlType="button"
                   icon={<SearchOutlined />}

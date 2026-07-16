@@ -690,7 +690,7 @@ export default function AdminDimensionsPage() {
                 }}
               />
             </Form.Item>
-            <Form.Item style={ marginBottom: 0 }>
+            <Form.Item style={{ marginBottom: 0 }}>
               <Button
                 htmlType="button"
                 icon={<SearchOutlined />}
