@@ -414,6 +414,7 @@ def run_analysis(
 
         if chart_b64:
             result.three_phase_chart = chart_b64
+            result.zero_sequence_chart = chart_b64
             log_parts.append("图表已生成")
         else:
             log_parts.append("图表生成失败（matplotlib 不可用）")
@@ -492,6 +493,7 @@ def create_analysis_job(
             content_b=content_b,
             content_c=content_c,
         )
+        result.id = job_id
         record.result = result
         record.status = result.status
         record.finished_at = result.finished_at
