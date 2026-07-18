@@ -179,11 +179,11 @@ function toTaskRows(workerName: string, source: string, tasks: FlowerTaskItem[])
   }));
 }
 
-function parseStatusFilter(value: string | undefined): "all" | "online" | "offline" {
+function parseStatusFilter(value: string | undefined): "online" | "offline" | undefined {
   if (value === "online" || value === "offline") {
     return value;
   }
-  return "all";
+  return undefined;
 }
 
 export default function AdminTaskMonitorPage() {
@@ -194,7 +194,7 @@ export default function AdminTaskMonitorPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [pendingKeyword, setPendingKeyword] = useState("");
   const [taskKeyword, setTaskKeyword] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
+  const [statusFilter, setStatusFilter] = useState<"online" | "offline" | undefined>(undefined);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(TASK_MONITOR_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -507,7 +507,7 @@ export default function AdminTaskMonitorPage() {
   const handleResetFilters = () => {
     setTaskKeyword("");
     setPendingKeyword("");
-    setStatusFilter("all");
+    setStatusFilter(undefined);
     resetTaskListPagination();
   };
 
@@ -797,7 +797,7 @@ export default function AdminTaskMonitorPage() {
               <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select
                   allowClear
-                  value={statusFilter === "all" ? undefined : statusFilter}
+                  value={statusFilter}
                   onChange={(value) => {
                     setStatusFilter(parseStatusFilter(value));
                     resetTaskListPagination();
@@ -840,7 +840,7 @@ export default function AdminTaskMonitorPage() {
               <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select
                   allowClear
-                  value={statusFilter === "all" ? undefined : statusFilter}
+                  value={statusFilter}
                   onChange={(value) => {
                     setStatusFilter(parseStatusFilter(value));
                     resetTaskListPagination();

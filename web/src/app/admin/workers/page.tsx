@@ -153,11 +153,11 @@ function containsText(source: string | null | undefined, keyword: string): boole
   return (source || "").toLowerCase().includes(keyword.toLowerCase());
 }
 
-function parseStatusFilter(value: string | undefined): "all" | "online" | "offline" {
+function parseStatusFilter(value: string | undefined): "online" | "offline" | undefined {
   if (value === "online" || value === "offline") {
     return value;
   }
-  return "all";
+  return undefined;
 }
 
 export default function AdminWorkersPage() {
@@ -166,8 +166,8 @@ export default function AdminWorkersPage() {
   const canRead = hasPermission("celery.read") || hasPermission("celery.manage");
 
   const [workerKeyword, setWorkerKeyword] = useState("");
-  const [queueKeyword, setQueueKeyword] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
+  const [pendingWorkerKeyword, setPendingWorkerKeyword] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"online" | "offline" | undefined>(undefined);
   const [selectedWorker, setSelectedWorker] = useState<string | null>(null);
   const [tableScrollY, setTableScrollY] = useState(WORKERS_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -425,6 +425,11 @@ export default function AdminWorkersPage() {
     [],
   );
 
+  const handleWorkerSearch = useCallback(() => {
+    setWorkerKeyword(pendingWorkerKeyword);
+    void overviewQuery.refetch();
+  }, [pendingWorkerKeyword, overviewQuery]);
+
   const filteredWorkers = useMemo(() => {
     const rows = overviewQuery.data?.workers || [];
     return rows.filter((item) => {
@@ -438,15 +443,9 @@ export default function AdminWorkersPage() {
       if (!containsText(item.worker, workerKeyword.trim())) {
         return false;
       }
-      if (queueKeyword.trim()) {
-        const text = item.queue_names.join(", ");
-        if (!containsText(text, queueKeyword.trim())) {
-          return false;
-        }
-      }
       return true;
     });
-  }, [overviewQuery.data?.workers, queueKeyword, statusFilter, workerKeyword]);
+  }, [overviewQuery.data?.workers, statusFilter, workerKeyword]);
 
   const overviewErrorMessage = overviewQuery.error instanceof Error
     ? formatTaskMonitorErrorMessage(overviewQuery.error.message, "Worker监控数据加载失败，请稍后重试。")
@@ -626,26 +625,18 @@ export default function AdminWorkersPage() {
                 <Input
                   allowClear
                   placeholder="按节点名称筛选"
-                  value={workerKeyword}
-                  onChange={(event) => setWorkerKeyword(event.target.value)}
-                />
-              </Form.Item>
-
-              <Form.Item label="队列" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按队列名称筛选"
-                  value={queueKeyword}
-                  onChange={(event) => setQueueKeyword(event.target.value)}
+                  value={pendingWorkerKeyword}
+                  onChange={(event) => setPendingWorkerKeyword(event.target.value)}
+                  onPressEnter={handleWorkerSearch}
                 />
               </Form.Item>
 
               <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select
+                  allowClear
                   value={statusFilter}
                   onChange={(value) => setStatusFilter(parseStatusFilter(value))}
                   options={[
-                    { label: "全部状态", value: "all" },
                     { label: "在线", value: "online" },
                     { label: "离线", value: "offline" },
                   ]}
@@ -655,7 +646,10 @@ export default function AdminWorkersPage() {
               <Form.Item style={{ marginBottom: 0 }}>
                 <Button
                   htmlType="button"
-                  icon={<SearchOutlined />} onClick={() => void overviewQuery.refetch()} className="admin-search-btn">
+                  icon={<SearchOutlined />}
+                  onClick={handleWorkerSearch}
+                  className="admin-search-btn"
+                >
                   查询
                 </Button>
               </Form.Item>
@@ -668,28 +662,18 @@ export default function AdminWorkersPage() {
                 <Input
                   allowClear
                   placeholder="按节点名称筛选"
-                  value={workerKeyword}
-                  onChange={(event) => setWorkerKeyword(event.target.value)}
-                  onPressEnter={() => void overviewQuery.refetch()}
-                />
-              </Form.Item>
-
-              <Form.Item label="队列" className="admin-filter-keyword-item">
-                <Input
-                  allowClear
-                  placeholder="按队列名称筛选"
-                  value={queueKeyword}
-                  onChange={(event) => setQueueKeyword(event.target.value)}
-                  onPressEnter={() => void overviewQuery.refetch()}
+                  value={pendingWorkerKeyword}
+                  onChange={(event) => setPendingWorkerKeyword(event.target.value)}
+                  onPressEnter={handleWorkerSearch}
                 />
               </Form.Item>
 
               <Form.Item label="状态" className="admin-filter-keyword-item">
                 <Select
+                  allowClear
                   value={statusFilter}
                   onChange={(value) => setStatusFilter(parseStatusFilter(value))}
                   options={[
-                    { label: "全部状态", value: "all" },
                     { label: "在线", value: "online" },
                     { label: "离线", value: "offline" },
                   ]}
@@ -699,7 +683,10 @@ export default function AdminWorkersPage() {
               <Form.Item>
                 <Button
                   htmlType="button"
-                  icon={<SearchOutlined />} onClick={() => void overviewQuery.refetch()} className="admin-search-btn">
+                  icon={<SearchOutlined />}
+                  onClick={handleWorkerSearch}
+                  className="admin-search-btn"
+                >
                   查询
                 </Button>
               </Form.Item>
