@@ -20,7 +20,6 @@ import {
   Space,
   Table,
   Tag,
-  Tooltip,
   Tree,
   Typography,
   type CardProps,
@@ -28,7 +27,7 @@ import {
   type TableColumnsType,
   type TreeProps,
 } from "antd";
-import { EditOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { EditOutlined, MoreOutlined, SearchOutlined } from "@ant-design/icons";
 import type { DataNode } from "antd/es/tree";
 import type { ComponentType, RefAttributes } from "react";
 
@@ -107,7 +106,6 @@ export default function AdminSystemParamsPage() {
   const [categoryNameInput, setCategoryNameInput] = useState("");
   const [categoryParentId, setCategoryParentId] = useState<number | null>(null);
   const [categoryDeleteConfirmId, setCategoryDeleteConfirmId] = useState<number | null>(null);
-  const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [categorySearch, setCategorySearch] = useState("");
 
   const categoryTreeQuery = useQuery({
@@ -688,10 +686,6 @@ export default function AdminSystemParamsPage() {
       >
         <Space direction="vertical" size={10} style={{ width: "100%" }}>
           <div className="admin-system-params-param-card-field">
-            <Typography.Text type="secondary">ID</Typography.Text>
-            <Typography.Text>{param.id}</Typography.Text>
-          </div>
-          <div className="admin-system-params-param-card-field">
             <Typography.Text type="secondary">参数键</Typography.Text>
             <Typography.Text className="font-mono text-xs">{param.param_key}</Typography.Text>
           </div>
@@ -720,12 +714,6 @@ export default function AdminSystemParamsPage() {
 
   const columns = useMemo<TableColumnsType<SystemParamSummary>>(() => {
     const baseColumns: TableColumnsType<SystemParamSummary> = [
-      {
-        title: "ID",
-        dataIndex: "id",
-        key: "id",
-        width: 80,
-      },
       {
         title: "参数名",
         dataIndex: "param_key",
@@ -953,142 +941,108 @@ export default function AdminSystemParamsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {/* Top header: Title + New Param Button */}
+      <div className="mb-4 flex items-center justify-between">
+        <Typography.Title level={4} style={{ margin: 0 }}>系统参数管理</Typography.Title>
+        {canManage && (
+          <Button type="primary" onClick={startCreate}>新建参数</Button>
+        )}
+      </div>
+
       <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
       {/* Category Sidebar */}
       {!isMobile && (
-        <Col span={siderCollapsed ? 2 : 6}>
+        <Col span={6}>
           <AntCard
             className="admin-system-params-sider-card"
-            title={siderCollapsed ? null : "参数分类"}
-            extra={
-              <Space size={0}>
-                {!siderCollapsed && canManage && (
-                  <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openCategoryCreate(null)} />
-                )}
-                <Tooltip title={siderCollapsed ? "展开侧栏" : "收起侧栏"}>
-                  <Button
-                    aria-label={siderCollapsed ? "展开侧栏" : "收起侧栏"}
-                    icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                    type="text"
-                    onClick={() => setSiderCollapsed((prev) => !prev)}
-                  />
-                </Tooltip>
-              </Space>
-            }
+            title="参数分类"
             style={{ height: "100%", display: "flex", flexDirection: "column" }}
-            bodyStyle={siderCollapsed ? { display: "none" } : { flex: 1, overflow: "auto" }}
+            bodyStyle={{ flex: 1, overflow: "auto" }}
           >
-            {!siderCollapsed && (
+            {!categoryTreeQuery.isLoading && categoryTreeQuery.data && categoryTreeQuery.data.length > 0 && (
+              <div style={{ padding: "8px 12px" }}>
+                <Input
+                  className="admin-system-params-search-input"
+                  placeholder="搜索分类..."
+                  prefix={<SearchOutlined />}
+                  value={categorySearch}
+                  onChange={(e) => setCategorySearch(e.target.value)}
+                  allowClear
+                  size="small"
+                />
+              </div>
+            )}
+            {categoryTreeQuery.isLoading ? (
+              skeletonMenu
+            ) : categoryTreeQuery.data && categoryTreeQuery.data.length > 0 ? (
               <>
-                {!categoryTreeQuery.isLoading && categoryTreeQuery.data && categoryTreeQuery.data.length > 0 && (
-                  <div style={{ padding: "8px 12px" }}>
-                    <Input
-                      className="admin-system-params-search-input"
-                      placeholder="搜索分类..."
-                      prefix={<SearchOutlined />}
-                      value={categorySearch}
-                      onChange={(e) => setCategorySearch(e.target.value)}
-                      allowClear
-                      size="small"
-                    />
+                {categorySearch && (
+                  <div className="admin-system-params-search-results-count">
+                    {`找到 ${filteredTreeData.length} 个分类`}
                   </div>
                 )}
-                {categoryTreeQuery.isLoading ? (
-                  skeletonMenu
-                ) : categoryTreeQuery.data && categoryTreeQuery.data.length > 0 ? (
-                  <>
-                    {categorySearch && (
-                      <div className="admin-system-params-search-results-count">
-                        {`找到 ${filteredTreeData.length} 个分类`}
-                      </div>
-                    )}
-                    <div className="admin-system-params-sider-menu">
-                      <Tree
-                        showLine
-                        selectedKeys={selectedCategoryId !== null ? [String(selectedCategoryId)] : []}
-                        treeData={[
-                          {
-                            key: "all",
-                            title: "全部参数",
-                          } as DataNode,
-                          ...convertToTreeData(filteredTreeData),
-                        ]}
-                        onSelect={handleCategoryClick}
-                        style={{ fontSize: 13 }}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div className="admin-system-params-sider-empty">
-                    <Empty description="暂无分类" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                  </div>
-                )}
+                <div className="admin-system-params-sider-menu">
+                  <Tree
+                    showLine
+                    selectedKeys={selectedCategoryId !== null ? [String(selectedCategoryId)] : []}
+                    treeData={[
+                      {
+                        key: "all",
+                        title: "全部参数",
+                      } as DataNode,
+                      ...convertToTreeData(filteredTreeData),
+                    ]}
+                    onSelect={handleCategoryClick}
+                    style={{ fontSize: 13 }}
+                  />
+                </div>
               </>
+            ) : (
+              <div className="admin-system-params-sider-empty">
+                <Empty description="暂无分类" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              </div>
             )}
           </AntCard>
         </Col>
       )}
-      <Col span={siderCollapsed ? 22 : 18}>
+      <Col span={18}>
         <AntCard
           ref={pageCardRef}
           className="admin-system-params-page-card"
-          title={isMobile ? "系统参数管理" : (() => {
-            const selLabel = selectedCategoryId !== null ? ` - ${(() => {
-              const findName = (items: ParamCategoryTreeItem[], id: number): string => {
-                for (const item of items) {
-                  if (item.id === id) return item.name;
-                  if (item.children) {
-                    const found = findName(item.children, id);
-                    if (found) return found;
-                  }
-                }
-                return "";
-              };
-              return findName(categoryTreeQuery.data ?? [], selectedCategoryId!) || "已选分类";
-            })()}` : "";
-            return `系统参数管理${selLabel}`;
-          })()}
-          extra={canManage ? (
+          extra={canManage && selectedCategoryId !== null ? (
             <Space>
-              {selectedCategoryId !== null && (
-                <>
-                  {(() => {
-                    const findCat = (items: ParamCategoryTreeItem[], id: number): ParamCategoryTreeItem | null => {
-                      for (const item of items) {
-                        if (item.id === id) return item;
-                        if (item.children) {
-                          const found = findCat(item.children, id);
-                          if (found) return found;
-                        }
-                      }
-                      return null;
-                    };
-                    const currentCat = findCat(categoryTreeQuery.data ?? [], selectedCategoryId);
-                    return currentCat ? (
-                      <>
-                        <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
-                          编辑分类
-                        </Button>
-                        <Popconfirm
-                          title="删除分类"
-                          description={`确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`}
-                          okText="删除"
-                          cancelText="取消"
-                          okButtonProps={{ danger: true }}
-                          onConfirm={() => deleteCategoryMutation.mutate(currentCat.id)}
-                        >
-                          <Button size="small" danger>
-                            删除分类
-                          </Button>
-                        </Popconfirm>
-                      </>
-                    ) : null;
-                  })()}
-                </>
-              )}
-              <Button type="primary" onClick={startCreate}>
-                新建参数
-              </Button>
+              {(() => {
+                const findCat = (items: ParamCategoryTreeItem[], id: number): ParamCategoryTreeItem | null => {
+                  for (const item of items) {
+                    if (item.id === id) return item;
+                    if (item.children) {
+                      const found = findCat(item.children, id);
+                      if (found) return found;
+                    }
+                  }
+                  return null;
+                };
+                const currentCat = findCat(categoryTreeQuery.data ?? [], selectedCategoryId);
+                return currentCat ? (
+                  <>
+                    <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
+                      编辑分类
+                    </Button>
+                    <Popconfirm
+                      title="删除分类"
+                      description={`确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`}
+                      okText="删除"
+                      cancelText="取消"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => deleteCategoryMutation.mutate(currentCat.id)}
+                    >
+                      <Button size="small" danger>
+                        删除分类
+                      </Button>
+                    </Popconfirm>
+                  </>
+                ) : null;
+              })()}
             </Space>
           ) : null}
         >
