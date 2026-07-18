@@ -77,6 +77,7 @@ def serialize_audit_log(log: AuditLog) -> AuditLogPublic:
         username=log.user.username if log.user else None,
         action=log.action,
         detail=log.detail,
+        output=log.output,
         created_at=log.created_at,
     )
 
@@ -112,6 +113,12 @@ def list_audit_logs(
         limit=limit,
         offset=offset,
     )
+
+
+def list_audit_log_actions(db: Session) -> list[str]:
+    """Return distinct action values from audit_logs, sorted alphabetically."""
+    stmt = select(AuditLog.action).distinct().order_by(AuditLog.action.asc())
+    return list(db.execute(stmt).scalars().all())
 
 
 def _role_stmt():

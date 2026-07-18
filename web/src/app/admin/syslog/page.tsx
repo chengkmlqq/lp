@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Card, Col, Empty, Form, Input, Row, Space, Spin, Table, Tag, Typography, type CardProps } from "antd";
+import { Button, Card, Col, Empty, Form, Input, Row, Select, Space, Spin, Table, Tag, Typography, type CardProps } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { CSSProperties, ComponentType, RefAttributes } from "react";
@@ -20,6 +20,40 @@ const SYSLOG_TABLE_MIN_SCROLL_Y = 180;
 const SYSLOG_TABLE_VIEWPORT_GAP = 40;
 const SYSLOG_TABLE_FALLBACK_RESERVE = 220;
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
+
+/** 动作编码 → 中文显示名映射 */
+const ACTION_LABEL_MAP: Record<string, string> = {
+  "auth.login": "登录",
+  "auth.login_failed": "登录失败",
+  "auth.logout": "登出",
+  "user.create": "创建用户",
+  "user.update": "更新用户",
+  "user.delete": "删除用户",
+  "user.password.reset": "重置密码",
+  "user.roles.replace": "替换用户角色",
+  "role.create": "创建角色",
+  "role.update": "更新角色",
+  "role.delete": "删除角色",
+  "role.menus.replace": "替换角色菜单",
+  "menu.create": "创建菜单",
+  "menu.update": "更新菜单",
+  "menu.delete": "删除菜单",
+  "menu.seed_defaults": "初始化默认菜单",
+  "system_param.create": "创建系统参数",
+  "system_param.update": "更新系统参数",
+  "system_param.delete": "删除系统参数",
+  "file.mkdir": "创建目录",
+  "file.upload": "上传文件",
+  "file.rename": "重命名文件",
+  "file.move": "移动文件",
+  "file.download": "下载文件",
+  "file.download_zip": "下载目录压缩包",
+  "file.delete": "删除文件",
+};
+
+function getActionLabel(action: string): string {
+  return ACTION_LABEL_MAP[action] || action;
+}
 
 type Filters = {
   action: string;
@@ -63,6 +97,8 @@ export default function AdminSyslogPage() {
   const [allLoadedLogs, setAllLoadedLogs] = useState<AuditLogItem[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
+
+  const [actionOptions, setActionOptions] = useState<{ label: string; value: string }[]>([]);
 
   const canRead = hasPermission("menu.read") || hasPermission("menu.manage");
 
@@ -110,6 +146,32 @@ export default function AdminSyslogPage() {
     queryFn: loadLogs,
     enabled: !!user && canRead,
   });
+
+  // Fetch action options for the Select dropdown
+  const actionsPath = "/api/v1/admin/audit-logs/actions";
+  const loadActions = useCallback(async () => {
+    const response = await fetchWithAuth(actionsPath);
+    if (!response.ok) {
+      throw new Error(await readApiError(response));
+    }
+    return (await response.json()) as { items: string[] };
+  }, [fetchWithAuth]);
+
+  const actionsQuery = useQuery({
+    queryKey: [actionsPath],
+    queryFn: loadActions,
+    enabled: !!user && canRead,
+  });
+
+  // Build action options when actions data loads
+  useEffect(() => {
+    if (!actionsQuery.data) return;
+    const items = actionsQuery.data.items.map((action: string) => ({
+      label: getActionLabel(action),
+      value: action,
+    }));
+    setActionOptions(items);
+  }, [actionsQuery.data]);
 
   useTopicSubscription(
     "admin.audit_logs",
@@ -220,7 +282,7 @@ export default function AdminSyslogPage() {
         key: "user",
         width: 260,
         render: (_value, record) => (
-          <span>{record.username ?? "-"}</span>
+          <span>{record.username ?? record.user_id ?? "-"}</span>
         ),
       },
       {
@@ -228,12 +290,20 @@ export default function AdminSyslogPage() {
         dataIndex: "action",
         key: "action",
         width: 220,
-        render: (value: string) => <Tag>{value}</Tag>,
+        render: (value: string) => <Tag>{getActionLabel(value)}</Tag>,
       },
       {
-        title: "详情",
+        title: "入参",
         dataIndex: "detail",
         key: "detail",
+        render: (value: string | null) => (
+          <Typography.Text type="secondary">{value || "-"}</Typography.Text>
+        ),
+      },
+      {
+        title: "出参",
+        dataIndex: "output",
+        key: "output",
         render: (value: string | null) => (
           <Typography.Text type="secondary">{value || "-"}</Typography.Text>
         ),
@@ -317,8 +387,8 @@ export default function AdminSyslogPage() {
       size="small"
       title={
         <Space className="min-w-0" size={8}>
-          <Typography.Text strong>{log.username ?? "-"}</Typography.Text>
-          <Tag>{log.action}</Tag>
+          <Typography.Text strong>{log.username ?? log.user_id ?? "-"}</Typography.Text>
+          <Tag>{getActionLabel(log.action)}</Tag>
         </Space>
       }
     >
@@ -337,9 +407,17 @@ export default function AdminSyslogPage() {
         </div>
         {log.detail && (
           <div className="admin-syslog-log-card-field">
-            <Typography.Text type="secondary">详情</Typography.Text>
+            <Typography.Text type="secondary">入参</Typography.Text>
             <Typography.Text type="secondary" ellipsis={{ tooltip: log.detail }}>
               {log.detail}
+            </Typography.Text>
+          </div>
+        )}
+        {log.output && (
+          <div className="admin-syslog-log-card-field">
+            <Typography.Text type="secondary">出参</Typography.Text>
+            <Typography.Text type="secondary" ellipsis={{ tooltip: log.output }}>
+              {log.output}
             </Typography.Text>
           </div>
         )}
@@ -383,6 +461,48 @@ export default function AdminSyslogPage() {
     );
   }
 
+  const filterBar = (
+    <div className="admin-filter-bar">
+      <Form layout="inline">
+        <Form.Item label="动作" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+          <Select
+            allowClear
+            showSearch
+            placeholder="选择动作筛选"
+            value={draftFilters.action || undefined}
+            onChange={handleActionChange}
+            onClear={() => handleActionChange("")}
+            options={actionOptions}
+            style={{ minWidth: 200 }}
+            filterOption={(input, option) =>
+              (option?.label ?? "").toLowerCase().includes(input.toLowerCase()) ||
+              (option?.value ?? "").toLowerCase().includes(input.toLowerCase())
+            }
+          />
+        </Form.Item>
+        <Form.Item label="用户" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+          <Input
+            allowClear
+            placeholder="按用户ID或用户名搜索"
+            value={draftFilters.user_id}
+            onChange={(event) => handleUserIdChange(event.target.value)}
+            onPressEnter={handleSearch}
+          />
+        </Form.Item>
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Button
+            htmlType="button"
+            icon={<SearchOutlined />}
+            onClick={handleSearch}
+            className="admin-search-btn"
+          >
+            查询
+          </Button>
+        </Form.Item>
+      </Form>
+    </div>
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AntCard
@@ -390,73 +510,7 @@ export default function AdminSyslogPage() {
         className="admin-syslog-page-card"
         title="系统日志"
       >
-        {viewMode === "card" ? (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="动作" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按动作筛选（如 auth.login）"
-                  value={draftFilters.action}
-                  onChange={(event) => handleActionChange(event.target.value)}
-                  onPressEnter={handleSearch}
-                />
-              </Form.Item>
-              <Form.Item label="用户ID" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按用户ID筛选（如 openclaw）"
-                  value={draftFilters.user_id}
-                  onChange={(event) => handleUserIdChange(event.target.value)}
-                  onPressEnter={handleSearch}
-                />
-              </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={handleSearch}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        ) : (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="动作" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按动作筛选（如 auth.login）"
-                  value={draftFilters.action}
-                  onChange={(event) => handleActionChange(event.target.value)}
-                  onPressEnter={handleSearch}
-                />
-              </Form.Item>
-              <Form.Item label="用户ID" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按用户ID筛选（如 openclaw）"
-                  value={draftFilters.user_id}
-                  onChange={(event) => handleUserIdChange(event.target.value)}
-                  onPressEnter={handleSearch}
-                />
-              </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={handleSearch}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        )}
+        {filterBar}
 
         {viewMode === "table" ? (
           <div

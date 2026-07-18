@@ -102,6 +102,7 @@ class AuditLogPublic(BaseModel):
     username: str | None = None
     action: str
     detail: str | None = None
+    output: str | None = None
     created_at: datetime
 
 

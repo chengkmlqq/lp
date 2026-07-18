@@ -72,6 +72,7 @@ export type AuditLogItem = {
   username: string | null;
   action: string;
   detail: string | null;
+  output: string | null;
   created_at: string;
 };
 

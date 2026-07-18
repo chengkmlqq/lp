@@ -27,6 +27,7 @@ from ...schemas.admin import (
 )
 from ...services.admin_service import (
     build_menu_tree,
+    list_audit_log_actions,
     list_audit_logs,
 )
 from ...services.legacy_admin_rbac_service import (
@@ -178,6 +179,15 @@ def get_audit_logs(
         action=action,
         user_id=user_id,
     )
+
+
+@router.get("/audit-logs/actions")
+def get_audit_log_actions(
+    _: CurrentUser = Depends(require_any_permission("menu.read", "menu.manage")),
+    db: Session = Depends(get_db),
+) -> dict[str, list[str]]:
+    actions = list_audit_log_actions(db)
+    return {"items": actions}
 
 
 @router.post("/system/seed-defaults", response_model=SeedDefaultsResponse)

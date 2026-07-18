@@ -24,6 +24,7 @@ class AuditLog(Base):
     )
     action: Mapped[str] = mapped_column(String(128), index=True)
     detail: Mapped[str | None] = mapped_column(Text())
+    output: Mapped[str | None] = mapped_column(Text())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     user: Mapped[User | None] = relationship("User", back_populates="audit_logs")
