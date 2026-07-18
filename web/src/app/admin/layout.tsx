@@ -119,7 +119,7 @@ function resolveMenuIcon(icon: string | null): ReactNode {
 function buildMenuItems(items: MenuTreeItem[]): AntdMenuItems {
   return items.map((item) => {
     const children = buildMenuItems(item.children);
-    const label = item.path ? <Link href={item.path}>{item.name}</Link> : item.name;
+    const label = item.path ? <Link href={item.path} prefetch={false}>{item.name}</Link> : item.name;
     const icon = resolveMenuIcon(item.icon);
 
     if (children.length > 0) {
