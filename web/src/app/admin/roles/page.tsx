@@ -504,8 +504,8 @@ export default function AdminRolesPage() {
           }
           const menuLabels = value.map((menuId) => menuNameById.get(menuId) ?? String(menuId));
           const fullText = menuLabels.join("、");
-          const compactText = menuLabels.length > 2
-            ? `${menuLabels.slice(0, 2).join("、")}等${menuLabels.length}个...`
+          const compactText = menuLabels.length > 5
+            ? `${menuLabels.slice(0, 5).join("、")}等${menuLabels.length}个...`
             : fullText;
           return (
             <Typography.Text
@@ -674,8 +674,8 @@ export default function AdminRolesPage() {
               title={fullText}
               ellipsis={{ tooltip: fullText }}
             >
-              {menuLabels.length > 2
-                ? `${menuLabels.slice(0, 2).join("、")}等${menuLabels.length}个...`
+              {menuLabels.length > 5
+                ? `${menuLabels.slice(0, 5).join("、")}等${menuLabels.length}个...`
                 : fullText}
             </Typography.Text>
           </div>
