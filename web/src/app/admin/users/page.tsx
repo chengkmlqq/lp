@@ -770,7 +770,7 @@ export default function AdminUsersPage() {
         <Avatar
           size={32}
           src={row.avatar_url ? `${getApiBaseUrl()}${row.avatar_url}` : undefined}
-          style={{ backgroundColor: "var(--ant-color-primary)" }}
+          style={{ backgroundColor: "var(--ant-color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}
         >
           {!row.avatar_url ? row.username.trim().charAt(0).toUpperCase() || "U" : undefined}
         </Avatar>
@@ -815,13 +815,13 @@ export default function AdminUsersPage() {
       width: 100,
       align: "center",
       render: (value: string) => (
-        <Tag color={value === "active" ? "green" : "default"}>{statusLabel(value)}</Tag>
+        <Tag color={value === "active" ? "green" : "red"}>{statusLabel(value)}</Tag>
       ),
     },
     {
       title: "操作",
       key: "actions",
-      width: 180,
+      width: 120,
       render: (_value, row) => {
         const updatingLoading = updatingStatusUserId === row.id;
         const resetLoading = resettingUserId === row.id;
@@ -947,7 +947,7 @@ export default function AdminUsersPage() {
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong>{userItem.username}</Typography.Text>
-            <Tag color={userItem.status === "active" ? "green" : "default"}>
+            <Tag color={userItem.status === "active" ? "green" : "red"}>
               {statusLabel(userItem.status)}
             </Tag>
           </Space>
@@ -1260,7 +1260,7 @@ export default function AdminUsersPage() {
       </Modal>
 
       <Modal
-        title={editingUser ? `编辑用户：${editingUser.username}（${editingUser.id}）` : "编辑用户"}
+        title={editingUser ? `编辑用户：${editingUser.username}` : "编辑用户"}
         open={!!editingUser}
         destroyOnClose
         onCancel={closeEditUserModal}
@@ -1274,7 +1274,7 @@ export default function AdminUsersPage() {
             <Avatar
               size={80}
               src={editingUser.avatar_url ? `${getApiBaseUrl()}${editingUser.avatar_url}` : undefined}
-              style={{ backgroundColor: "var(--ant-color-primary)", display: "inline-block" }}
+              style={{ backgroundColor: "var(--ant-color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}
             >
               {!editingUser.avatar_url ? editingUser.username.trim().charAt(0).toUpperCase() || "U" : undefined}
             </Avatar>
@@ -1348,7 +1348,7 @@ export default function AdminUsersPage() {
       </Modal>
 
       <Modal
-        title={resetPasswordTarget ? `重置密码：${resetPasswordTarget.username}（${resetPasswordTarget.id}）` : "重置密码"}
+        title={resetPasswordTarget ? `重置密码：${resetPasswordTarget.username}` : "重置密码"}
         open={!!resetPasswordTarget}
         destroyOnClose
         onCancel={closeResetPasswordModal}
@@ -1382,7 +1382,7 @@ export default function AdminUsersPage() {
       </Modal>
 
       <Modal
-        title={assigningRolesUser ? `分配角色：${assigningRolesUser.username}（${assigningRolesUser.id}）` : "分配角色"}
+        title={assigningRolesUser ? `分配角色：${assigningRolesUser.username}` : "分配角色"}
         open={!!assigningRolesUser}
         destroyOnClose
         onCancel={closeAssignRolesModal}
