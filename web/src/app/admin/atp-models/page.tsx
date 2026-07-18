@@ -319,6 +319,40 @@ export default function AtpModelsPage() {
 
   const assetItems = useMemo(() => assetsQuery.data?.items ?? [], [assetsQuery.data?.items]);
   const voltageLevelOptions = useMemo(() => buildDimensionOptions(assetItems, (item) => item.voltage_level, DEFAULT_VOLTAGE_LEVELS), [assetItems]);
+
+  // File view mode needs ALL assets to build the dimension tree correctly.
+  // The paginated query only fetches 20 items which may all be from one voltage level.
+  // API max limit is 200, so we page through to get all items.
+  const fileViewAssetsQuery = useQuery({
+    queryKey: ["atp-assets-all", trimmedKeyword],
+    enabled: Boolean(user && canRead && displayMode === "file"),
+    queryFn: async () => {
+      const limit = 200;
+      let offset = 0;
+      let allItems: AtpAssetSummary[] = [];
+      while (true) {
+        const params = new URLSearchParams();
+        params.set("limit", String(limit));
+        params.set("offset", String(offset));
+        if (trimmedKeyword) {
+          params.set("keyword", trimmedKeyword);
+        }
+        const response = await fetchWithAuth(`/api/v1/atp/assets?${params.toString()}`);
+        if (!response.ok) {
+          throw new Error(await readApiError(response));
+        }
+        const data = (await response.json()) as AtpAssetListResponse;
+        allItems = allItems.concat(data.items);
+        if (data.items.length < limit) break;
+        offset += limit;
+      }
+      return { items: allItems, total: allItems.length } as AtpAssetListResponse;
+    },
+  });
+  const fileViewAssetItems = useMemo(
+    () => fileViewAssetsQuery.data?.items ?? assetItems,
+    [fileViewAssetsQuery.data?.items, assetItems],
+  );
   const towerTypeOptions = useMemo(() => buildDimensionOptions(assetItems, (item) => item.tower_type, DEFAULT_TOWER_TYPES), [assetItems]);
   const sceneTypeOptions = useMemo(() => buildDimensionOptions(assetItems, (item) => item.scene_type, DEFAULT_SCENE_TYPES), [assetItems]);
   const arresterConfigOptions = useMemo(() => buildDimensionOptions(assetItems, (item) => item.arrester_config, DEFAULT_ARRESTER_CONFIGS), [assetItems]);
@@ -533,14 +567,14 @@ export default function AtpModelsPage() {
     const scene = fileViewPath[2];
     const arrester = fileViewPath[3];
 
-    return assetItems.filter(
+    return fileViewAssetItems.filter(
       (item) =>
         (item.voltage_level || "未分类") === voltage &&
         (item.tower_type || "未分类") === tower &&
         (item.scene_type || "未分类") === scene &&
         (item.arrester_config || "未分类") === arrester
     );
-  }, [assetItems, fileViewPath]);
+  }, [fileViewAssetItems, fileViewPath]);
 
   const filesQueries = useQueries({
     queries: matchingAssets.map((asset) => ({
@@ -563,7 +597,7 @@ export default function AtpModelsPage() {
 
     if (currentLevel === 0) {
       const voltageSet = new Set<string>();
-      assetItems.forEach((item) => {
+      fileViewAssetItems.forEach((item) => {
         const voltage = item.voltage_level || "未分类";
         voltageSet.add(voltage);
       });
@@ -580,7 +614,7 @@ export default function AtpModelsPage() {
     if (currentLevel === 1) {
       const voltage = fileViewPath[0];
       const towerSet = new Set<string>();
-      assetItems
+      fileViewAssetItems
         .filter((item) => (item.voltage_level || "未分类") === voltage)
         .forEach((item) => {
           const tower = item.tower_type || "未分类";
@@ -600,7 +634,7 @@ export default function AtpModelsPage() {
       const voltage = fileViewPath[0];
       const tower = fileViewPath[1];
       const sceneSet = new Set<string>();
-      assetItems
+      fileViewAssetItems
         .filter(
           (item) =>
             (item.voltage_level || "未分类") === voltage &&
@@ -625,7 +659,7 @@ export default function AtpModelsPage() {
       const tower = fileViewPath[1];
       const scene = fileViewPath[2];
       const arresterSet = new Set<string>();
-      assetItems
+      fileViewAssetItems
         .filter(
           (item) =>
             (item.voltage_level || "未分类") === voltage &&
