@@ -514,7 +514,6 @@ export default function AdminMenusPage() {
   }, [updateMenuMutation]);
 
   const columns: ColumnsType<MenuItem> = [
-    { title: "ID", dataIndex: "id", width: 110 },
     {
       title: "编码",
       dataIndex: "code",
@@ -786,12 +785,23 @@ export default function AdminMenusPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {/* Header: title + new menu button */}
+      <div className="mb-4 flex items-center justify-between">
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          菜单管理
+        </Typography.Title>
+        {canManage ? (
+          <Button type="primary" onClick={startCreate}>
+            新建菜单
+          </Button>
+        ) : null}
+      </div>
       <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
         <Col span={5}>
           <AntCard
+            className="admin-menus-tree-card"
             title="菜单目录"
-            style={{ height: "100%", display: "flex", flexDirection: "column" }}
-            bodyStyle={{ flex: 1, overflow: "auto" }}
+            style={{ height: "100%" }}
           >
             {menusQuery.isLoading ? (
               <div style={{ textAlign: "center", padding: "24px" }}>
@@ -828,14 +838,6 @@ export default function AdminMenusPage() {
           <AntCard
             ref={pageCardRef}
             className="admin-menus-page-card"
-            title={selectedTreeKey ? "节点菜单" : "全部菜单"}
-            extra={
-              canManage ? (
-                <Button type="primary" onClick={startCreate}>
-                  新建菜单
-                </Button>
-              ) : null
-            }
           >
             {viewMode === "card" ? (
               <div className="admin-filter-bar">
