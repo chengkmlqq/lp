@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Button,
   Card,
@@ -95,6 +95,37 @@ export default function AdminSystemParamsPage() {
   const pageCardRef = useRef<HTMLDivElement | null>(null);
   const paramKeyCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [paramKeyValidationError, setParamKeyValidationError] = useState("");
+  const [leftPanelWidth, setLeftPanelWidth] = useState(240);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isResizing = useRef(false);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setLeftPanelWidth(Math.max(180, Math.min(600, e.clientX - rect.left)));
+    };
+    const handleMouseUp = () => {
+      if (isResizing.current) {
+        isResizing.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   const canRead = hasPermission("system_param.read") || hasPermission("system_param.manage");
   const canManage = hasPermission("system_param.manage");
@@ -941,26 +972,21 @@ export default function AdminSystemParamsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        className="admin-system-params-page-card"
-        title="系统参数管理"
-        extra={
-          canManage && (
-            <Button type="primary" onClick={startCreate}>新建参数</Button>
-          )
-        }
-        bodyStyle={{ padding: 0, flex: 1, display: "flex", flexDirection: "column" }}
-        style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
-      >
-        <div style={{ background: "#f5f5f5", padding: "16px", flex: 1, display: "flex" }}>
-          <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
+      {/* Top header: Title + New Param Button */}
+      <div className="mb-4 flex items-center justify-between">
+        <Typography.Title level={4} style={{ margin: 0 }}>系统参数管理</Typography.Title>
+        {canManage && (
+          <Button type="primary" onClick={startCreate}>新建参数</Button>
+        )}
+      </div>
+
+      <div ref={containerRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 0 }}>
       {/* Category Sidebar */}
       {!isMobile && (
-        <Col span={6}>
+        <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
           <AntCard
             className="admin-system-params-sider-card"
-            title="参数分类"
-            style={{ height: "100%", display: "flex", flexDirection: "column" }}
+            style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
             bodyStyle={{ flex: 1, overflow: "auto" }}
           >
             {!categoryTreeQuery.isLoading && categoryTreeQuery.data && categoryTreeQuery.data.length > 0 && (
@@ -1007,12 +1033,20 @@ export default function AdminSystemParamsPage() {
               </div>
             )}
           </AntCard>
-        </Col>
+        </div>
       )}
-      <Col span={isMobile ? 24 : 18}>
+      {!isMobile && (
+        <div
+          style={{ width: 8, cursor: "col-resize", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}
+          onMouseDown={handleResizeStart}
+        >
+          <div style={{ width: 2, height: 40, backgroundColor: "#d9d9d9", borderRadius: 1 }} />
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0, display: "flex" }}>
         <AntCard
           ref={pageCardRef}
-          className="admin-system-params-content-card"
+          className="admin-system-params-page-card"
           extra={canManage && selectedCategoryId !== null ? (
             <Space>
               {(() => {
@@ -1277,10 +1311,8 @@ export default function AdminSystemParamsPage() {
           </Form>
         </Modal>
       )}
-      </Col>
-    </Row>
+      </div>
     </div>
-      </AntCard>
     </div>
   );
 }

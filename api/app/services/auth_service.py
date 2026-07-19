@@ -16,7 +16,7 @@ from .legacy_authz_service import (
     get_user_authorization,
     is_user_enabled,
 )
-from .user_service import get_user_by_id
+from .user_service import get_user_by_email, get_user_by_id, get_user_by_username
 from ..core.config import get_settings
 from ..core.security import (
     create_access_token,
@@ -101,6 +101,8 @@ def login_user(
 ) -> AuthResult:
     requested_user_id = payload.user_id.strip()
     user = get_user_by_id(db, requested_user_id)
+    if not user:
+        user = get_user_by_username(db, requested_user_id)
 
     # Check if user exists
     if not user:
