@@ -1418,6 +1418,57 @@ def get_dataset_terrain_tile(
     return payload.content
 
 
+def get_dataset_heightmap(
+    db: Session,
+    *,
+    dataset_id: str,
+    resolution: int = 513,
+) -> dict:
+    """导出 DEM 高度数组供 Three.js 前端使用"""
+    from numpy import floor, linspace, meshgrid, minimum
+    dataset = get_dataset_by_id(db, dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
+    with _open_raster_dataset(db, dataset) as opened:
+        rasterio = _require_rasterio_available()
+        src = opened.dataset
+        data = src.read(1).astype(float)
+        h, w = data.shape
+
+        # Bilinear interpolation resampling to target resolution
+        ys = linspace(0, h - 1, resolution)
+        xs = linspace(0, w - 1, resolution)
+        yv, xv = meshgrid(ys, xs, indexing="ij")
+        y0 = floor(yv).astype(int)
+        x0 = floor(xv).astype(int)
+        y1 = minimum(y0 + 1, h - 1)
+        x1 = minimum(x0 + 1, w - 1)
+        dy = yv - y0
+        dx = xv - x0
+        resampled = (
+            (1 - dy) * (1 - dx) * data[y0, x0]
+            + (1 - dy) * dx * data[y0, x1]
+            + dy * (1 - dx) * data[y1, x0]
+            + dy * dx * data[y1, x1]
+        )
+
+        # Compute WGS84 bounds
+        bounds = _compute_raster_wgs84_bounds(rasterio=rasterio, src=src)
+
+    return {
+        "width": resolution,
+        "height": resolution,
+        "west": bounds["west"],
+        "south": bounds["south"],
+        "east": bounds["east"],
+        "north": bounds["north"],
+        "minHeight": float(resampled.min()),
+        "maxHeight": float(resampled.max()),
+        "heights": resampled.ravel().tolist(),
+    }
+
+
 def get_file_record_analysis_task_status(
     db: Session,
     *,

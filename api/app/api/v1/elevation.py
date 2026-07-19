@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
@@ -42,6 +43,7 @@ from ...services.elevation_service import (
     delete_dataset,
     get_data_import_job_by_id,
     get_dataset_analysis_task_status,
+    get_dataset_heightmap,
     get_file_record_analysis_task_status,
     get_file_record_terrain_layer,
     get_file_record_terrain_task_status,
@@ -418,6 +420,17 @@ def get_elevation_dataset_terrain_tile_endpoint(
 ) -> Response:
     content = get_dataset_terrain_tile(db, dataset_id=dataset_id, z=z, x=x, y=y)
     return Response(content=content, media_type="application/octet-stream")
+
+
+@router.get("/datasets/{dataset_id}/heightmap")
+def get_elevation_dataset_heightmap(
+    dataset_id: str,
+    res: int = Query(default=129, ge=17, le=1025, alias="res"),
+    _: CurrentUser = Depends(require_any_permission("elevation.read", "elevation.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """导出 DEM 高度数组供 Three.js 前端使用"""
+    return get_dataset_heightmap(db, dataset_id=dataset_id, resolution=res)
 
 
 @router.get("/jobs", response_model=ElevationApplyJobListResponse)

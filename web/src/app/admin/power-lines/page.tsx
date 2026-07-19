@@ -27,7 +27,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
-import { PowerLineCesiumMap } from "@/components/power-line-cesium-map";
+import { PowerLineThreeMap } from "@/components/power-line-three-map";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -1804,7 +1804,7 @@ export default function AdminPowerLinesPage() {
                         : "pointer-events-none absolute inset-0 translate-y-1 opacity-0"
                     }`}
                   >
-                    <PowerLineCesiumMap
+                    <PowerLineThreeMap
                       lineCode={selectedLine.code}
                       lineName={selectedLine.name}
                       towers={towers}

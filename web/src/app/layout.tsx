@@ -10,7 +10,6 @@ import { WSProvider } from "@/components/ws-provider";
 import "@ant-design/v5-patch-for-react-19";
 
 import "antd/dist/reset.css";
-import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
