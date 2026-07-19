@@ -941,15 +941,19 @@ export default function AdminSystemParamsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Top header: Title + New Param Button */}
-      <div className="mb-4 flex items-center justify-between">
-        <Typography.Title level={4} style={{ margin: 0 }}>系统参数管理</Typography.Title>
-        {canManage && (
-          <Button type="primary" onClick={startCreate}>新建参数</Button>
-        )}
-      </div>
-
-      <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
+      <AntCard
+        className="admin-system-params-page-card"
+        title="系统参数管理"
+        extra={
+          canManage && (
+            <Button type="primary" onClick={startCreate}>新建参数</Button>
+          )
+        }
+        bodyStyle={{ padding: 0, flex: 1, display: "flex", flexDirection: "column" }}
+        style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+      >
+        <div style={{ background: "#f5f5f5", padding: "16px", flex: 1, display: "flex" }}>
+          <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
       {/* Category Sidebar */}
       {!isMobile && (
         <Col span={6}>
@@ -1005,10 +1009,10 @@ export default function AdminSystemParamsPage() {
           </AntCard>
         </Col>
       )}
-      <Col span={18}>
+      <Col span={isMobile ? 24 : 18}>
         <AntCard
           ref={pageCardRef}
-          className="admin-system-params-page-card"
+          className="admin-system-params-content-card"
           extra={canManage && selectedCategoryId !== null ? (
             <Space>
               {(() => {
@@ -1275,6 +1279,8 @@ export default function AdminSystemParamsPage() {
       )}
       </Col>
     </Row>
+    </div>
+      </AntCard>
     </div>
   );
 }
