@@ -959,8 +959,8 @@ export default function AtpModelsPage() {
         )}
 
         {displayMode === "file" && viewMode === "table" ? (
-          <div className="admin-atp-models-file-view mt-4">
-            <div style={{ marginBottom: 16 }}>
+          <div className="admin-atp-models-file-view" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+            <div style={{ margin: "16px 0" }}>
               <Breadcrumb
                 items={[
                   {
@@ -980,7 +980,7 @@ export default function AtpModelsPage() {
                 ]}
               />
             </div>
-            <div style={{ maxHeight: `${tableScrollY}px`, overflow: "auto", border: "1px solid #f0f0f0", borderRadius: "4px" }}>
+            <div style={{ flex: 1, minHeight: 0, overflow: "auto", border: "1px solid #f0f0f0", borderRadius: "4px" }}>
               {assetsQuery.isLoading || assetsQuery.isFetching || isFileViewLoading ? (
                 <div style={{ textAlign: "center", padding: "40px 0" }}>
                   <Spin tip="加载中..." />
