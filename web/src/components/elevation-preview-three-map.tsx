@@ -189,6 +189,7 @@ export function ElevationPreviewThreeMap({
     return () => {
       cancelAnimationFrame(animId);
       ro.disconnect();
+      controls.dispose();
       renderer.dispose();
       if (container.contains(renderer.domElement)) container.removeChild(renderer.domElement);
       sceneRef.current = null;
@@ -256,9 +257,11 @@ export function ElevationPreviewThreeMap({
       while (g.children.length) {
         const child = g.children[0];
         g.remove(child);
-        child.geometry?.dispose();
-        if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
-        else child.material?.dispose();
+        if (child instanceof THREE.Mesh || child instanceof THREE.Points || child instanceof THREE.Line) {
+          child.geometry?.dispose();
+          if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+          else child.material?.dispose();
+        }
       }
     });
 
