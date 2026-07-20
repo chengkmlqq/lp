@@ -980,7 +980,7 @@ export default function AdminSystemParamsPage() {
         )}
       </div>
 
-      <div ref={containerRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 0 }}>
+      <div ref={containerRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 0, overflow: "hidden" }}>
       {/* Category Sidebar */}
       {!isMobile && (
         <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
