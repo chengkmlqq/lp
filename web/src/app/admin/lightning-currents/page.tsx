@@ -22,6 +22,7 @@ import {
   Tag,
   Tooltip as AntTooltip,
   Typography,
+  Upload,
   type CardProps,
   type MenuProps,
 } from "antd";
@@ -99,7 +100,6 @@ export default function AdminLightningCurrentsPage() {
   const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
-  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [importForm] = Form.useForm<ImportFormValues>();
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
@@ -248,8 +248,11 @@ export default function AdminLightningCurrentsPage() {
     if (typeof window === "undefined") {
       return;
     }
+    if (viewMode !== "table") {
+      return;
+    }
     window.requestAnimationFrame(updateTableScrollY);
-  }, [error, listError, sampleError, statsError, events.length, eventsQuery.isFetching, updateTableScrollY]);
+  }, [error, listError, sampleError, statsError, events.length, eventsQuery.isFetching, updateTableScrollY, viewMode]);
 
   useEffect(() => {
     if (viewMode !== "card" || eventsQuery.isLoading) {
@@ -313,6 +316,9 @@ export default function AdminLightningCurrentsPage() {
     if (typeof window === "undefined") {
       return;
     }
+    if (viewMode !== "table") {
+      return;
+    }
 
     const onViewportChange = () => {
       window.requestAnimationFrame(updateTableScrollY);
@@ -322,10 +328,13 @@ export default function AdminLightningCurrentsPage() {
     return () => {
       window.removeEventListener("resize", onViewportChange);
     };
-  }, [updateTableScrollY]);
+  }, [updateTableScrollY, viewMode]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    if (viewMode !== "table") {
       return;
     }
 
@@ -342,7 +351,7 @@ export default function AdminLightningCurrentsPage() {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [updateTableScrollY]);
+  }, [updateTableScrollY, viewMode]);
 
   const importMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -670,7 +679,7 @@ export default function AdminLightningCurrentsPage() {
         extra={
           canManage && (
             <Button type="primary" onClick={() => setImportModalOpen(true)}>
-              导入
+              雷电流幅值数据导入
             </Button>
           )
         }
@@ -825,7 +834,7 @@ export default function AdminLightningCurrentsPage() {
       >
         <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
           <div className="grid gap-3 md:grid-cols-2">
-            <Form.Item name="city" label="城市" className="md:col-span-2">
+            <Form.Item name="city" label="城市">
               <Select
                 showSearch
                 placeholder="请搜索选择城市"
@@ -867,29 +876,28 @@ export default function AdminLightningCurrentsPage() {
           </Form.Item>
           <div style={{ marginBottom: 16 }}>
             <Form.Item label="数据文件" required>
-              <Space>
-                <Button onClick={() => uploadInputRef.current?.click()}>
-                  选择文件
-                </Button>
-                {selectedFile ? (
-                  <Typography.Text>{selectedFile.name}</Typography.Text>
-                ) : (
-                  <Typography.Text type="secondary">未选择文件</Typography.Text>
-                )}
-              </Space>
-              <input
-                ref={uploadInputRef}
-                type="file"
+              <Upload.Dragger
                 accept=".txt,.csv,text/plain,text/csv"
-                className="hidden"
-                onChange={(event) => {
-                  setSelectedFile(event.target.files?.[0] ?? null);
-                  event.target.value = "";
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  setSelectedFile(file);
+                  return false;
                 }}
-              />
-              <div style={{ marginTop: 4 }}>
-                <Typography.Text type="secondary">支持单列电流序列（每行一个值）或"双列 time,current"格式。</Typography.Text>
-              </div>
+                onRemove={() => setSelectedFile(null)}
+              >
+                {selectedFile ? (
+                  <p className="ant-upload-text">{selectedFile.name}</p>
+                ) : (
+                  <>
+                    <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
+                      点击或拖拽文件到此区域上传
+                    </p>
+                    <Typography.Text type="secondary">
+                      支持单列电流序列（每行一个值）或"双列 time,current"格式。
+                    </Typography.Text>
+                  </>
+                )}
+              </Upload.Dragger>
             </Form.Item>
           </div>
           <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
@@ -936,10 +944,10 @@ export default function AdminLightningCurrentsPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   dataKey="threshold_ka"
-                  label={{ value: "阈值 (kA)", position: "insideBottom", offset: -5 }}
+                  label={{ value: "阈值 (kA)", position: "insideBottomRight", offset: -5 }}
                 />
                 <YAxis
-                  label={{ value: "超越概率 (%)", angle: -90, position: "insideLeft" }}
+                  label={{ value: "超越概率 (%)", angle: -90, position: "insideLeft", offset: 10 }}
                   domain={[0, 100]}
                 />
                 <Tooltip
@@ -994,8 +1002,33 @@ export default function AdminLightningCurrentsPage() {
             <div>
               <Typography.Title level={5}>基本信息</Typography.Title>
               <Descriptions bordered size="small" column={2}>
-                <Descriptions.Item label="来源">{selectedEventForModal.is_synthetic ? "合成" : "实测"}</Descriptions.Item>
                 <Descriptions.Item label="城市">{formatNullable(selectedEventForModal.city)}</Descriptions.Item>
+                <Descriptions.Item label="事件发生地点">{formatNullable(selectedEventForModal.location_tag)}</Descriptions.Item>
+                <Descriptions.Item label="传感器">{formatNullable(selectedEventForModal.sensor_model)}</Descriptions.Item>
+                <Descriptions.Item label="安装位置">{formatNullable(selectedEventForModal.install_position)}</Descriptions.Item>
+                <Descriptions.Item label={
+                  <span>
+                    采样点数{" "}
+                    <AntTooltip title="导入波形文件中解析出的数值行数，即该次雷击波形的时序采样长度。点数越多，波形记录越精细。">
+                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
+                    </AntTooltip>
+                  </span>
+                }>
+                  {selectedEventForModal.sample_count}
+                </Descriptions.Item>
+                <Descriptions.Item label={
+                  <span>
+                    采样间隔(us){" "}
+                    <AntTooltip title="采样点之间的时间间隔（μs）。">
+                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
+                    </AntTooltip>
+                  </span>
+                }>
+                  {formatNumber(selectedEventForModal.sample_interval_us, 6)}
+                </Descriptions.Item>
+                <Descriptions.Item label="海拔(m)">{formatNullable(selectedEventForModal.altitude_m)}</Descriptions.Item>
+                <Descriptions.Item label="气压(hPa)">{formatNullable(selectedEventForModal.pressure_hpa)}</Descriptions.Item>
+                <Descriptions.Item label="湿度(%)">{formatNullable(selectedEventForModal.humidity_percent)}</Descriptions.Item>
               </Descriptions>
             </div>
 
@@ -1099,8 +1132,8 @@ export default function AdminLightningCurrentsPage() {
                       current_ka: peak.current_ka || 0,
                     }))}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="index" label={{ value: "回击序号", position: "insideBottom", offset: -5 }} />
-                      <YAxis label={{ value: "峰值电流 (kA)", angle: -90, position: "insideLeft" }} />
+                      <XAxis dataKey="index" label={{ value: "回击序号", position: "insideBottomRight", offset: -5 }} />
+                      <YAxis label={{ value: "峰值电流 (kA)", angle: -90, position: "insideLeft", offset: 10 }} />
                       <Tooltip
                         formatter={(value: any, name?: string | number) => {
                           if (name === "current_ka") return [formatNumber(value, 3), "峰值电流 (kA)"];
@@ -1119,39 +1152,6 @@ export default function AdminLightningCurrentsPage() {
               )}
             </div>
 
-            <div>
-              <Typography.Title level={5}>采样参数</Typography.Title>
-              <Descriptions bordered size="small" column={2}>
-                <Descriptions.Item label={
-                  <span>
-                    采样点数{" "}
-                    <AntTooltip title="导入波形文件中解析出的数值行数，即该次雷击波形的时序采样长度。点数越多，波形记录越精细。">
-                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                    </AntTooltip>
-                  </span>
-                }>
-                  {selectedEventForModal.sample_count}
-                </Descriptions.Item>
-                <Descriptions.Item label={
-                  <span>
-                    采样间隔(us){" "}
-                    <AntTooltip title="采样点之间的时间间隔（μs）。">
-                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                    </AntTooltip>
-                  </span>
-                } span={2}>
-                  {formatNumber(selectedEventForModal.sample_interval_us, 6)}
-                </Descriptions.Item>
-              </Descriptions>
-            </div>
-
-            <div>
-              <Typography.Title level={5}>环境信息</Typography.Title>
-              <Descriptions bordered size="small" column={2}>
-                <Descriptions.Item label="传感器">{formatNullable(selectedEventForModal.sensor_model)}</Descriptions.Item>
-                <Descriptions.Item label="安装位置">{formatNullable(selectedEventForModal.install_position)}</Descriptions.Item>
-              </Descriptions>
-            </div>
           </Space>
         )}
       </Modal>
@@ -1176,8 +1176,8 @@ export default function AdminLightningCurrentsPage() {
               <ResponsiveContainer width="100%" height={400}>
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time_us" label={{ value: "时间 (μs)", position: "insideBottom", offset: -5 }} />
-                  <YAxis label={{ value: "电流 (kA)", angle: -90, position: "insideLeft" }} />
+                  <XAxis dataKey="time_us" label={{ value: "时间 (μs)", position: "insideBottomRight", offset: -5 }} />
+                  <YAxis label={{ value: "电流 (kA)", angle: -90, position: "insideLeft", offset: 10 }} />
                   <Tooltip
                     formatter={(value: any) => [formatNumber(value, 3), "电流 (kA)"]}
                     labelFormatter={(label) => `时间: ${formatNumber(label, 2)} μs`}
