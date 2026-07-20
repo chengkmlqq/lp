@@ -175,7 +175,7 @@ export function PowerLineThreeMap({
 
     // Camera
     const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 20000);
-    camera.position.set(0, 500, 800);
+    camera.position.set(0, 800, 0);
     camera.lookAt(0, 0, 0);
 
     // Renderer
@@ -503,7 +503,7 @@ export function PowerLineThreeMap({
       const radius = Math.max(size.x, size.z) / 2;
       controls.target.copy(center);
       const camDist = Math.max(radius * 2.5, MIN_CAMERA_RANGE);
-      camera.position.set(center.x, camDist * 0.6, center.z + camDist);
+      camera.position.set(center.x, camDist, center.z);
       controls.update();
     }
 
