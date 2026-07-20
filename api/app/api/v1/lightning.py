@@ -35,6 +35,7 @@ from ...services.lightning_service import (
     compare_measured_and_synthetic_distribution,
     compute_tower_terrain_metrics,
     delete_lightning_event,
+    delete_lightning_import_batch,
     get_lightning_distribution_stats,
     get_lightning_event_by_id,
     get_peak_exceedance_curve,
@@ -232,6 +233,26 @@ def get_import_batch_events(
     db: Session = Depends(get_db),
 ) -> LightningImportBatchEventsResponse:
     return get_lightning_import_batch_events(
+        db,
+        source_file_name=source_file_name,
+        import_time=import_time,
+        region_id=region_id,
+        location_tag=location_tag,
+        city=city,
+    )
+
+
+@router.delete("/import-batches")
+def delete_lightning_import_batch_endpoint(
+    source_file_name: str | None = Query(default=None),
+    import_time: datetime = Query(...),
+    region_id: str | None = Query(default=None),
+    location_tag: str | None = Query(default=None),
+    city: str | None = Query(default=None),
+    _: CurrentUser = Depends(require_permission("lightning.manage")),
+    db: Session = Depends(get_db),
+) -> dict[str, bool | int]:
+    return delete_lightning_import_batch(
         db,
         source_file_name=source_file_name,
         import_time=import_time,

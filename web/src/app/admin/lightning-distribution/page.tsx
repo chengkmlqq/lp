@@ -226,6 +226,38 @@ export default function AdminLightningDistributionPage() {
     },
   });
 
+  const deleteBatchMutation = useMutation({
+    mutationFn: async (batch: LightningImportBatchSummary) => {
+      if (!canManage) {
+        throw new Error("缺少 lightning.manage 权限");
+      }
+      const params = new URLSearchParams();
+      if (batch.source_file_name) params.set("source_file_name", batch.source_file_name);
+      params.set("import_time", batch.import_time);
+      if (batch.region_id) params.set("region_id", batch.region_id);
+      if (batch.location_tag) params.set("location_tag", batch.location_tag);
+      if (batch.city) params.set("city", batch.city);
+
+      const response = await fetchWithAuth(
+        `/api/v1/lightning-currents/import-batches?${params.toString()}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      setError("");
+      setSuccess("批次删除成功");
+      await refreshAll();
+    },
+    onError: (candidate) => {
+      setSuccess("");
+      setError(candidate instanceof Error ? candidate.message : "删除批次失败");
+    },
+  });
+
   const openEventsModal = (batch: LightningImportBatchSummary) => {
     setSelectedBatchForEvents(batch);
     setEventsModalOpen(true);
@@ -455,7 +487,7 @@ export default function AdminLightningDistributionPage() {
       {
         title: "操作",
         key: "actions",
-        width: 200,
+        width: canManage ? 280 : 200,
         fixed: "right",
         render: (_: unknown, row) => (
           <Space wrap>
@@ -465,14 +497,60 @@ export default function AdminLightningDistributionPage() {
             <Button size="small" onClick={() => openScatterModal(row)}>
               散点图
             </Button>
+            {canManage && (
+              <Popconfirm
+                title="确认删除该批次所有事件记录？"
+                description="此操作不可恢复，请谨慎操作。"
+                onConfirm={() => deleteBatchMutation.mutate(row)}
+                okText="确认删除"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+              >
+                <Button size="small" danger loading={deleteBatchMutation.isPending}>
+                  删除
+                </Button>
+              </Popconfirm>
+            )}
           </Space>
         ),
       },
     ],
-    [],
+    [canManage, deleteBatchMutation],
   );
 
   const renderBatchCard = (batch: LightningImportBatchSummary) => {
+    const dropdownItems: MenuProps["items"] = [
+      {
+        key: "events",
+        label: "事件明细",
+        onClick: () => openEventsModal(batch),
+      },
+      {
+        key: "scatter",
+        label: "散点图",
+        onClick: () => openScatterModal(batch),
+      },
+      ...(canManage
+        ? [
+            {
+              key: "delete",
+              label: "删除",
+              danger: true as const,
+              onClick: () => {
+                Modal.confirm({
+                  title: "确认删除",
+                  content: "确认删除该批次所有事件记录？此操作不可恢复。",
+                  okText: "确认删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true },
+                  onOk: () => deleteBatchMutation.mutate(batch),
+                });
+              },
+            },
+          ]
+        : []),
+    ];
+
     return (
       <AntCard
         key={batch.batch_id}
@@ -484,22 +562,7 @@ export default function AdminLightningDistributionPage() {
           </Space>
         }
         extra={
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: "events",
-                  label: "事件明细",
-                  onClick: () => openEventsModal(batch),
-                },
-                {
-                  key: "scatter",
-                  label: "散点图",
-                  onClick: () => openScatterModal(batch),
-                },
-              ],
-            }}
-          >
+          <Dropdown menu={{ items: dropdownItems }}>
             <Button type="text" size="small" icon={<MoreOutlined />} />
           </Dropdown>
         }

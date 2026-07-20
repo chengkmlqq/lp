@@ -2732,3 +2732,60 @@ def get_lightning_import_batch_events(
         events=events,
         total=len(events),
     )
+
+
+def delete_lightning_import_batch(
+    db: Session,
+    *,
+    source_file_name: str | None,
+    import_time: datetime,
+    region_id: str | None,
+    location_tag: str | None,
+    city: str | None,
+) -> dict[str, bool | int]:
+    """
+    删除某个导入批次的所有事件记录
+    """
+    time_tolerance = timedelta(seconds=5)
+    filters = [
+        LightningCurrentEvent.create_date >= import_time - time_tolerance,
+        LightningCurrentEvent.create_date <= import_time + time_tolerance,
+    ]
+
+    if source_file_name:
+        filters.append(LightningCurrentEvent.source_file_name == source_file_name)
+    else:
+        filters.append(LightningCurrentEvent.source_file_name.is_(None))
+
+    if region_id:
+        filters.append(LightningCurrentEvent.region_id == region_id)
+    else:
+        filters.append(LightningCurrentEvent.region_id.is_(None))
+
+    if location_tag:
+        filters.append(LightningCurrentEvent.location_tag == location_tag)
+    else:
+        filters.append(LightningCurrentEvent.location_tag.is_(None))
+
+    if city:
+        filters.append(LightningCurrentEvent.city == city)
+    else:
+        filters.append(LightningCurrentEvent.city.is_(None))
+
+    query = select(LightningCurrentEvent).where(*filters)
+    events = db.execute(query).scalars().all()
+
+    deleted_count = len(events)
+    if deleted_count == 0:
+        return {"success": False, "deleted_count": 0}
+
+    for event in events:
+        db.delete(event)
+
+    db.commit()
+    _publish_lightning_change(
+        "lightning.deleted",
+        {"action": "deleted", "batch_deleted_count": deleted_count},
+    )
+
+    return {"success": True, "deleted_count": deleted_count}
