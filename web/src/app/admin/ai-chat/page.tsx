@@ -486,6 +486,7 @@ export default function AiChatPage() {
                 alignItems: "center",
                 justifyContent: "center",
                 padding: "32px 24px",
+                overflowY: "auto",
               }}
             >
               <div style={{ width: "min(720px, 100%)" }}>
