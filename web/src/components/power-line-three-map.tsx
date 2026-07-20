@@ -259,10 +259,11 @@ export function PowerLineThreeMap({
     return () => {
       cancelAnimationFrame(animationId);
       ro.disconnect();
-      renderer.dispose();
-      labelRenderer.dispose();
+      renderer?.dispose?.();
+      labelRenderer?.dispose?.();
       if (container.contains(renderer.domElement)) container.removeChild(renderer.domElement);
       if (container.contains(labelRenderer.domElement)) container.removeChild(labelRenderer.domElement);
+      setReady(false);
       sceneRef.current = null;
     };
   }, []);

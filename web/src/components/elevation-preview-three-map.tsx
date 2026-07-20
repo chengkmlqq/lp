@@ -189,8 +189,8 @@ export function ElevationPreviewThreeMap({
     return () => {
       cancelAnimationFrame(animId);
       ro.disconnect();
-      controls.dispose();
-      renderer.dispose();
+      controls?.dispose?.();
+      renderer?.dispose?.();
       if (container.contains(renderer.domElement)) container.removeChild(renderer.domElement);
       sceneRef.current = null;
     };
