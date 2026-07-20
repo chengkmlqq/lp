@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from uuid import uuid4
 
@@ -29,6 +30,8 @@ from .legacy_authz_service import (
 )
 from .push_service import publish_topic, publish_to_user
 from .ws_manager import ws_connection_manager
+
+logger = logging.getLogger(__name__)
 
 
 def _user_with_rbac_stmt():
@@ -173,6 +176,7 @@ def delete_user(db: Session, user_id: str, *, actor_user_id: str | None) -> bool
     avatar_path = user.avatar_path  # Save before delete
     try:
         revoke_active_sessions_for_user(db, user_id)
+        db.flush()  # Persist session revocations before deleting the user
         write_audit_log(
             db,
             action="user.delete",
@@ -186,7 +190,8 @@ def delete_user(db: Session, user_id: str, *, actor_user_id: str | None) -> bool
         db.commit()
     except SQLAlchemyError:
         db.rollback()
-        return False
+        logger.exception("Failed to delete user %s", user_id)
+        raise
 
     # Clean up avatar file
     if avatar_path:
@@ -483,6 +488,7 @@ def revoke_active_sessions_for_user(db: Session, user_id: str) -> None:
         return
     for session in sessions:
         session.revoked_at = now
+    db.flush()  # Ensure session revocations are persisted
 
 
 def revoke_active_sessions_for_user_by_id(user_id: str) -> None:

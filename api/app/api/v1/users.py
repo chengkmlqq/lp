@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 import os
 from pathlib import Path
@@ -142,7 +143,13 @@ def remove_user(
     current_user: CurrentUser = Depends(require_permission("user.manage")),
     db: Session = Depends(get_db),
 ) -> MessageResponse:
-    deleted = delete_user(db, user_id, actor_user_id=current_user.user.id)
+    try:
+        deleted = delete_user(db, user_id, actor_user_id=current_user.user.id)
+    except SQLAlchemyError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete user due to a database error",
+        )
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return MessageResponse(message="User deleted")
