@@ -19,10 +19,11 @@ import {
   Table,
   Tag,
   Typography,
+  Upload,
   type CardProps,
   type MenuProps,
 } from "antd";
-import { MoreOutlined, EditOutlined, SearchOutlined } from "@ant-design/icons";
+import { MoreOutlined, EditOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
@@ -82,6 +83,9 @@ export default function AdminUsersPage() {
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
   const [updatingStatusUserId, setUpdatingStatusUserId] = useState<string | null>(null);
   const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
+  const [selectedCreateAvatarFile, setSelectedCreateAvatarFile] = useState<File | null>(null);
+  const [createAvatarPreview, setCreateAvatarPreview] = useState<string>("");
+  const [createAvatarUploading, setCreateAvatarUploading] = useState(false);
   const [editingUser, setEditingUser] = useState<UserPublic | null>(null);
   const [resetPasswordTarget, setResetPasswordTarget] = useState<UserPublic | null>(null);
   const [assigningRolesUser, setAssigningRolesUser] = useState<UserPublic | null>(null);
@@ -211,10 +215,27 @@ export default function AdminUsersPage() {
       if (!response.ok) throw new Error(await readApiError(response));
       return response.json() as Promise<UserPublic>;
     },
-    onSuccess: async () => {
-      setSuccess("用户已创建");
+    onSuccess: async (createdUser) => {
+      if (selectedCreateAvatarFile) {
+        setCreateAvatarUploading(true);
+        try {
+          await avatarUploadMutation.mutateAsync({
+            userId: createdUser.id,
+            file: selectedCreateAvatarFile,
+          });
+        } catch {
+          setError("用户已创建，但 Logo 上传失败，可在编辑中重试");
+          setSuccess("");
+        } finally {
+          setCreateAvatarUploading(false);
+        }
+      } else {
+        setSuccess("用户已创建");
+      }
       setError("");
       createForm.resetFields();
+      setSelectedCreateAvatarFile(null);
+      setCreateAvatarPreview("");
       setCreateUserModalOpen(false);
       await refreshData();
     },
@@ -592,14 +613,18 @@ export default function AdminUsersPage() {
     setSuccess("");
     setUserIdValidationError("");
     createForm.resetFields();
+    setSelectedCreateAvatarFile(null);
+    setCreateAvatarPreview("");
     setCreateUserModalOpen(true);
   };
 
   const closeCreateUserModal = () => {
-    if (createUserMutation.isPending) return;
+    if (createUserMutation.isPending || createAvatarUploading) return;
     setCreateUserModalOpen(false);
     setUserIdValidationError("");
     createForm.resetFields();
+    setSelectedCreateAvatarFile(null);
+    setCreateAvatarPreview("");
   };
 
   const handleKeywordChange = (value: string) => {
@@ -1198,8 +1223,37 @@ export default function AdminUsersPage() {
         onOk={() => createForm.submit()}
         okText="创建用户"
         cancelText="取消"
-        confirmLoading={createUserMutation.isPending}
+        confirmLoading={createUserMutation.isPending || createAvatarUploading}
       >
+        <div style={{ textAlign: "center", marginBottom: 16 }}>
+          <Avatar
+            size={80}
+            src={createAvatarPreview || undefined}
+            style={{ backgroundColor: "var(--ant-color-primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}
+          >
+            {!createAvatarPreview ? "U" : undefined}
+          </Avatar>
+          <div style={{ marginTop: 8 }}>
+            <Upload
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                setSelectedCreateAvatarFile(file);
+                setCreateAvatarPreview(URL.createObjectURL(file));
+                return false;
+              }}
+            >
+              <Button size="small" icon={<UploadOutlined />}>
+                上传 Logo
+              </Button>
+            </Upload>
+            {selectedCreateAvatarFile && (
+              <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+                {selectedCreateAvatarFile.name}
+              </Typography.Text>
+            )}
+          </div>
+        </div>
         <Form<CreateUserValues>
           form={createForm}
           layout="vertical"
@@ -1274,7 +1328,7 @@ export default function AdminUsersPage() {
             <Avatar
               size={80}
               src={editingUser.avatar_url ? `${getApiBaseUrl()}${editingUser.avatar_url}` : undefined}
-              style={{ backgroundColor: "var(--ant-color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}
+              style={{ backgroundColor: "var(--ant-color-primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}
             >
               {!editingUser.avatar_url ? editingUser.username.trim().charAt(0).toUpperCase() || "U" : undefined}
             </Avatar>

@@ -449,7 +449,7 @@ export default function AtpModelsPage() {
       return;
     }
     window.requestAnimationFrame(updateTableScrollY);
-  }, [anyError, paginationCurrent, paginationPageSize, assetItems.length, assetsQuery.isFetching, updateTableScrollY]);
+  }, [anyError, paginationCurrent, paginationPageSize, assetItems.length, assetsQuery.isFetching, displayMode, viewMode, updateTableScrollY]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -484,7 +484,7 @@ export default function AtpModelsPage() {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [updateTableScrollY]);
+  }, [updateTableScrollY, displayMode, viewMode]);
 
   const columns = useMemo<ColumnsType<AtpAssetSummary>>(
     () => [

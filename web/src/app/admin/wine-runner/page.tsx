@@ -6,20 +6,19 @@ import {
   Alert,
   Button,
   Card as AntdCard,
-  Col,
   Form,
   Input,
   InputNumber,
   Popover,
-  Row,
   Space,
   Tag,
   Typography,
   type CardProps,
 } from "antd";
-import type { ComponentType } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ComponentType, RefAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { readApiError } from "@/lib/api";
@@ -69,7 +68,7 @@ const DEFAULT_FORM_VALUES: WineRunFormValues = {
   timeout_seconds: 300,
 };
 
-const Card = AntdCard as unknown as ComponentType<CardProps>;
+const AntCard = AntdCard as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 function parseArguments(value: string | undefined): string[] {
   if (!value) {
@@ -137,6 +136,7 @@ export default function AdminWineRunnerPage() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const pageCardRef = useRef<HTMLDivElement | null>(null);
 
   const canRead = hasPermission("wine.read") || hasPermission("wine.manage");
   const canManage = hasPermission("wine.manage");
@@ -245,42 +245,47 @@ export default function AdminWineRunnerPage() {
   const logText = useMemo(() => formatLogText(runDetailQuery.data), [runDetailQuery.data]);
 
   if (initializing) {
-    return <Card loading />;
+    return <AdminPageLoading tip="加载 Wine 执行器中..." minHeightClassName="min-h-[280px]" />;
   }
 
-  if (!user) {
-    return <Alert type="info" showIcon message="请先登录后访问 Wine 执行器。" />;
-  }
-
-  if (!canRead) {
-    return <Alert type="warning" showIcon message="你没有访问该页面的权限（需要 wine.read）。" />;
+  if (!user || !canRead) {
+    return (
+      <AntCard title="Wine 测试">
+        <Typography.Text type="secondary">
+          {!user ? "请先登录后访问 Wine 执行器。" : "当前账号无 Wine 模块权限（需要 wine.read）。"}
+        </Typography.Text>
+      </AntCard>
+    );
   }
 
   return (
-    <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={8}>
-          <Card
-            title="测试执行"
-            extra={
-              <Space>
-                <Popover
-                  content={<WineStatusPopoverContent status={status} />}
-                  trigger="click"
-                >
-                  <Tag
-                    color={status?.available ? "success" : "error"}
-                    style={{ cursor: "pointer" }}
-                  >
-                    {status?.available ? "可用" : "不可用"}
-                  </Tag>
-                </Popover>
-                <Button icon={<ReloadOutlined />} loading={statusLoading} onClick={() => void loadStatus()}>
-                  检测
-                </Button>
-              </Space>
-            }
-          >
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AntCard
+        ref={pageCardRef}
+        className="admin-wine-runner-page-card"
+        title="Wine 测试"
+        extra={
+          <Space>
+            <Popover
+              content={<WineStatusPopoverContent status={status} />}
+              trigger="click"
+            >
+              <Tag
+                color={status?.available ? "success" : "error"}
+                style={{ cursor: "pointer" }}
+              >
+                {status?.available ? "可用" : "不可用"}
+              </Tag>
+            </Popover>
+            <Button icon={<ReloadOutlined />} loading={statusLoading} onClick={() => void loadStatus()}>
+              检测
+            </Button>
+          </Space>
+        }
+      >
+        <div className="admin-wine-runner-layout">
+          <div className="admin-wine-runner-config">
+            <Typography.Title level={5} style={{ marginTop: 0 }}>测试执行</Typography.Title>
             <Form<WineRunFormValues>
               form={form}
               layout="vertical"
@@ -289,27 +294,18 @@ export default function AdminWineRunnerPage() {
                 void handleRun(values);
               }}
             >
-              <Row gutter={12}>
-                <Col xs={24} md={16}>
-                  <Form.Item name="exe_path" label="EXE 路径" rules={[{ required: true, message: "请输入 EXE 路径" }]}>
-                    <Input placeholder="ATP/tpbig.exe （相对 wine_allowed_root 的路径）" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8}>
-                  <Form.Item name="timeout_seconds" label="超时秒数">
-                    <InputNumber min={1} max={status?.max_timeout_seconds ?? 1800} style={{ width: "100%" }} />
-                  </Form.Item>
-                </Col>
-              </Row>
-
+              <Form.Item name="exe_path" label="EXE 路径" rules={[{ required: true, message: "请输入 EXE 路径" }]}>
+                <Input placeholder="ATP/tpbig.exe （相对 wine_allowed_root 的路径）" />
+              </Form.Item>
+              <Form.Item name="timeout_seconds" label="超时秒数">
+                <InputNumber min={1} max={status?.max_timeout_seconds ?? 1800} style={{ width: "100%" }} />
+              </Form.Item>
               <Form.Item name="working_dir" label="工作目录">
                 <Input placeholder="留空时使用 EXE 所在目录" />
               </Form.Item>
-
               <Form.Item name="arguments_text" label="执行参数">
                 <Input.TextArea rows={4} placeholder="每行一个参数" />
               </Form.Item>
-
               <Space wrap>
                 <Button
                   type="primary"
@@ -325,35 +321,37 @@ export default function AdminWineRunnerPage() {
                 )}
               </Space>
             </Form>
-          </Card>
-        </Col>
+          </div>
 
-        <Col xs={24} lg={16}>
-          <Card title="运行状态">
+          <div className="admin-wine-runner-status">
+            <Typography.Title level={5} style={{ marginTop: 0 }}>运行状态</Typography.Title>
             {runDetailQuery.isLoading ? (
               <Typography.Text type="secondary">正在加载运行详情...</Typography.Text>
             ) : runDetailQuery.error instanceof Error ? (
               <Alert type="error" showIcon message="运行详情加载失败" description={runDetailQuery.error.message} />
             ) : (
-              <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                <Space wrap>
+              <div className="admin-wine-runner-status-body">
+                <div className="admin-wine-runner-status-line">
                   <Typography.Text strong>状态</Typography.Text>
                   {formatStatusTag(runDetailQuery.data?.status)}
-                </Space>
-                <Typography.Text type="secondary">Task ID: {runDetailQuery.data?.task_id ?? "-"}</Typography.Text>
-                <Typography.Text type="secondary">开始时间: {runDetailQuery.data?.started_at ?? "-"}</Typography.Text>
-                <Typography.Text type="secondary">结束时间: {runDetailQuery.data?.finished_at ?? "-"}</Typography.Text>
-                <Typography.Text type="secondary">错误信息: {runDetailQuery.data?.error_message ?? "-"}</Typography.Text>
-
-                <Typography.Text strong style={{ marginTop: 16 }}>执行日志</Typography.Text>
-                <pre className="h-[460px] overflow-auto rounded-md border border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)] p-4 text-xs leading-5 text-[var(--ant-color-text)]">
+                  <Typography.Text type="secondary">Task ID: {runDetailQuery.data?.task_id ?? "-"}</Typography.Text>
+                </div>
+                <div className="admin-wine-runner-status-line">
+                  <Typography.Text type="secondary">开始: {runDetailQuery.data?.started_at ?? "-"}</Typography.Text>
+                  <Typography.Text type="secondary">结束: {runDetailQuery.data?.finished_at ?? "-"}</Typography.Text>
+                </div>
+                {runDetailQuery.data?.error_message ? (
+                  <Alert type="error" showIcon message={runDetailQuery.data.error_message} />
+                ) : null}
+                <Typography.Text strong className="admin-wine-runner-log-label">执行日志</Typography.Text>
+                <pre className="admin-wine-runner-log">
                   {logText}
                 </pre>
-              </Space>
+              </div>
             )}
-          </Card>
-        </Col>
-      </Row>
-    </Space>
+          </div>
+        </div>
+      </AntCard>
+    </div>
   );
 }

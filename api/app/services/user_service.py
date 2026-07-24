@@ -177,6 +177,7 @@ def delete_user(db: Session, user_id: str, *, actor_user_id: str | None) -> bool
     try:
         revoke_active_sessions_for_user(db, user_id)
         db.flush()  # Persist session revocations before deleting the user
+        db.query(AuthSession).filter(AuthSession.user_id == user_id).delete(synchronize_session=False)
         write_audit_log(
             db,
             action="user.delete",

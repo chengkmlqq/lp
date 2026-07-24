@@ -7,7 +7,6 @@ import {
   Card,
   Col,
   Descriptions,
-  Divider,
   Dropdown,
   Empty,
   Form,
@@ -21,6 +20,7 @@ import {
   Table,
   Tag,
   Typography,
+  Upload,
   type CardProps,
   type MenuProps,
 } from "antd";
@@ -106,7 +106,6 @@ export default function AdminLightningDistributionPage() {
   const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
-  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [importForm] = Form.useForm<ImportFormValues>();
   const [distributionForm] = Form.useForm<DistributionFilterValues>();
 
@@ -789,43 +788,42 @@ export default function AdminLightningDistributionPage() {
             </Form.Item>
           </div>
 
-          <Divider />
-
           <div style={{ marginBottom: 16 }}>
-            <Typography.Text strong>上传文件</Typography.Text>
-          </div>
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <input
-              ref={uploadInputRef}
-              type="file"
-              accept=".txt,.csv,text/plain,text/csv"
-              className="hidden"
-
-              onChange={async (event) => {
-                const file = event.target.files?.[0];
-                if (file) {
+            <Form.Item label="数据文件" required>
+              <Upload.Dragger
+                accept=".txt,.csv,text/plain,text/csv"
+                showUploadList={false}
+                beforeUpload={(file) => {
                   setSelectedFile(file);
-                }
-                event.target.value = "";
-              }}
-            />
-            <Space>
-              <Button onClick={() => uploadInputRef.current?.click()}>
-                选择文件
-              </Button>
-              {selectedFile && (
-                <Typography.Text>
-                  已选择：{selectedFile.name}
-                </Typography.Text>
-              )}
-            </Space>
-            <Typography.Text type="secondary">
-              支持包含经纬度和电流的CSV或TXT文件。
-            </Typography.Text>
-            <Button type="primary" onClick={handleImportConfirm} loading={importMutation.isPending} disabled={!selectedFile}>
-              确定
+                  return false;
+                }}
+                onRemove={() => setSelectedFile(null)}
+              >
+                {selectedFile ? (
+                  <p className="ant-upload-text">{selectedFile.name}</p>
+                ) : (
+                  <>
+                    <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
+                      点击或拖拽文件到此区域上传
+                    </p>
+                    <Typography.Text type="secondary">
+                      支持包含经纬度和电流的 CSV 或 TXT 文件。
+                    </Typography.Text>
+                  </>
+                )}
+              </Upload.Dragger>
+            </Form.Item>
+          </div>
+          <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+            <Button
+              type="primary"
+              disabled={!selectedFile}
+              loading={importMutation.isPending}
+              onClick={handleImportConfirm}
+            >
+              确认导入
             </Button>
-          </Space>
+          </div>
         </Form>
       </Modal>
 

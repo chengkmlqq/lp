@@ -88,9 +88,11 @@ class User(Base):
         "AuthSession",
         back_populates="user",
         lazy="selectin",
+        passive_deletes=True,
     )
     audit_logs: Mapped[list[AuditLog]] = relationship(
         "AuditLog",
         back_populates="user",
         lazy="selectin",
+        passive_deletes=True,
     )

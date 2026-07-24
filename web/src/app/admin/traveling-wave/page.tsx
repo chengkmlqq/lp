@@ -20,9 +20,10 @@ import {
   type CardProps,
   type UploadFile,
 } from "antd";
-import type { ComponentType } from "react";
+import type { ComponentType, RefAttributes } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { readApiError } from "@/lib/api";
@@ -85,7 +86,7 @@ type AnalyzeFormValues = {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-const Card = AntdCard as unknown as ComponentType<CardProps>;
+const Card = AntdCard as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 const DEFAULT_FORM_VALUES: AnalyzeFormValues = {
   input_mode: "upload",
@@ -286,62 +287,44 @@ export default function AdminTravelingWavePage() {
 
   // ── Render ──────────────────────────────────────────────────────
 
-  if (initializing) return <Card loading />;
-  if (!user) return <Alert type="info" showIcon message="请先登录后访问行波分析页面。" />;
+  if (initializing) {
+    return <AdminPageLoading tip="加载行波分析中..." minHeightClassName="min-h-[280px]" />;
+  }
+  if (!user) {
+    return (
+      <Card title="行波分析">
+        <Typography.Text type="secondary">请先登录后访问行波分析页面。</Typography.Text>
+      </Card>
+    );
+  }
   if (!canRead) {
-    return <Alert type="warning" showIcon message="你没有访问该页面的权限（需要 traveling_wave.read）。" />;
+    return (
+      <Card title="行波分析">
+        <Typography.Text type="secondary">你没有访问该页面的权限（需要 traveling_wave.read）。</Typography.Text>
+      </Card>
+    );
   }
 
   return (
-    <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      {/* ── Top row: Status + Form ─────────────────────────────── */}
-      <Row gutter={[16, 16]}>
-        {/* Left: Environment Status */}
-        <Col xs={24} lg={8}>
-          <Card
-            title="行波分析环境状态"
-            extra={
-              <Button icon={<ReloadOutlined />} loading={statusLoading} onClick={() => void loadStatus()}>
-                检测
-              </Button>
-            }
-          >
-            <Space direction="vertical" size={10} style={{ width: "100%" }}>
-              <Space wrap>
-                <Typography.Text strong>Python</Typography.Text>
-                <Tag color={status?.python_available ? "success" : "error"}>
-                  {status?.python_available ? "可用" : "不可用"}
-                </Tag>
-              </Space>
-              <Space wrap>
-                <Typography.Text>numpy</Typography.Text>
-                <Tag color={status?.numpy_available ? "success" : "error"}>
-                  {status?.numpy_available ? "可用" : "不可用"}
-                </Tag>
-                <Typography.Text>scipy</Typography.Text>
-                <Tag color={status?.scipy_available ? "success" : "error"}>
-                  {status?.scipy_available ? "可用" : "不可用"}
-                </Tag>
-                <Typography.Text>matplotlib</Typography.Text>
-                <Tag color={status?.matplotlib_available ? "success" : "error"}>
-                  {status?.matplotlib_available ? "可用" : "不可用"}
-                </Tag>
-              </Space>
-              {status?.error && (
-                <Typography.Text type="danger" style={{ fontSize: 12 }}>
-                  {status.error}
-                </Typography.Text>
-              )}
-              {!status && !statusLoading && (
-                <Typography.Text type="secondary">尚未检测</Typography.Text>
-              )}
-            </Space>
-          </Card>
-        </Col>
-
-        {/* Right: Analysis Form */}
-        <Col xs={24} lg={16}>
-          <Card title="行波分析">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <Card
+        className="admin-traveling-wave-page-card"
+        title="行波分析"
+        extra={
+          <Space>
+            <Tag color={status?.python_available ? "success" : "error"}>
+              Python {status?.python_available ? "可用" : "不可用"}
+            </Tag>
+            <Button icon={<ReloadOutlined />} loading={statusLoading} onClick={() => void loadStatus()}>
+              检测
+            </Button>
+          </Space>
+        }
+      >
+        <div className="admin-traveling-wave-layout">
+          {/* Left: Analysis Form */}
+          <div className="admin-traveling-wave-form">
+            <Typography.Title level={5} style={{ marginTop: 0 }}>分析参数</Typography.Title>
             <Form<AnalyzeFormValues>
               form={form}
               layout="vertical"
@@ -443,64 +426,88 @@ export default function AdminTravelingWavePage() {
                 )}
               </Space>
             </Form>
-          </Card>
-        </Col>
-      </Row>
 
-      {/* ── Results ─────────────────────────────────────────────── */}
-      {result && (
-        <>
-          {/* Status */}
-          <Card title="分析状态">
-            {resultQuery.isLoading ? (
-              <Typography.Text type="secondary">正在加载分析详情...</Typography.Text>
-            ) : (
-              <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            {/* Environment status details */}
+            <div className="admin-traveling-wave-status">
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                依赖库状态：
+                <Tag color={status?.numpy_available ? "success" : "error"} style={{ marginInlineStart: 6 }}>
+                  numpy
+                </Tag>
+                <Tag color={status?.scipy_available ? "success" : "error"}>
+                  scipy
+                </Tag>
+                <Tag color={status?.matplotlib_available ? "success" : "error"}>
+                  matplotlib
+                </Tag>
+              </Typography.Text>
+              {status?.error && (
+                <Typography.Text type="danger" style={{ fontSize: 12 }}>
+                  {status.error}
+                </Typography.Text>
+              )}
+              {!status && !statusLoading && (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  尚未检测
+                </Typography.Text>
+              )}
+            </div>
+          </div>
+
+          {/* Right: Results */}
+          <div className="admin-traveling-wave-result">
+            <Typography.Title level={5} style={{ marginTop: 0 }}>分析结果</Typography.Title>
+            {!result && (
+              <div className="admin-traveling-wave-result-empty">
+                <Typography.Text type="secondary">
+                  {resultQuery.isLoading ? "正在加载分析详情..." : "提交分析任务后在此查看结果。"}
+                </Typography.Text>
+              </div>
+            )}
+            {result && (
+              <Space direction="vertical" size={12} style={{ width: "100%", flex: 1, minHeight: 0, display: "flex" }}>
+                {/* Status */}
                 <Space wrap>
                   <Typography.Text strong>状态</Typography.Text>
                   {formatStatusTag(result.status)}
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    分析 ID: {result.id}
+                  </Typography.Text>
                 </Space>
                 {result.error_message && (
                   <Alert type="error" showIcon message="分析失败" description={result.error_message} />
                 )}
+
+                {/* Parsed Info */}
+                {(result.phase_a_info || result.phase_b_info || result.phase_c_info) && (
+                  <pre className="admin-traveling-wave-pre admin-traveling-wave-info">
+                    {parsedInfoText}
+                  </pre>
+                )}
+
+                {/* Charts */}
+                {result.three_phase_chart && (
+                  <div style={{ textAlign: "center" }}>
+                    <Typography.Text strong>三相行波波形 + 零序分量</Typography.Text>
+                    <br />
+                    <Image
+                      src={`data:image/png;base64,${result.three_phase_chart}`}
+                      alt="三相行波波形图"
+                      style={{ maxWidth: "100%", marginTop: 8 }}
+                    />
+                  </div>
+                )}
+
+                {/* Analysis Log */}
+                <Typography.Text strong style={{ marginTop: 4 }}>分析日志</Typography.Text>
+                <pre className="admin-traveling-wave-pre admin-traveling-wave-log">
+                  {result.log_text || "无日志"}
+                </pre>
               </Space>
             )}
-          </Card>
-
-          {/* Parsed Info */}
-          {(result.phase_a_info || result.phase_b_info || result.phase_c_info) && (
-            <Card title="解析信息">
-              <pre className="overflow-auto rounded-md border border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)] p-4 text-xs leading-5 text-[var(--ant-color-text)]">
-                {parsedInfoText}
-              </pre>
-            </Card>
-          )}
-
-          {/* Charts */}
-          {result.three_phase_chart && (
-            <Card title="波形图表">
-              <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <div style={{ textAlign: "center" }}>
-                  <Typography.Text strong>三相行波波形 + 零序分量</Typography.Text>
-                  <br />
-                  <Image
-                    src={`data:image/png;base64,${result.three_phase_chart}`}
-                    alt="三相行波波形图"
-                    style={{ maxWidth: "100%", marginTop: 8 }}
-                  />
-                </div>
-              </Space>
-            </Card>
-          )}
-
-          {/* Analysis Log */}
-          <Card title="分析日志">
-            <pre className="h-[320px] overflow-auto rounded-md border border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)] p-4 text-xs leading-5 text-[var(--ant-color-text)]">
-              {result.log_text || "无日志"}
-            </pre>
-          </Card>
-        </>
-      )}
-    </Space>
+          </div>
+        </div>
+      </Card>
+    </div>
   );
 }

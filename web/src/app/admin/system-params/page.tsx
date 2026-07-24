@@ -972,20 +972,13 @@ export default function AdminSystemParamsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Top header: Title + New Param Button */}
-      <div className="mb-4 flex items-center justify-between">
-        <Typography.Title level={4} style={{ margin: 0 }}>系统参数管理</Typography.Title>
-        {canManage && (
-          <Button type="primary" onClick={startCreate}>新建参数</Button>
-        )}
-      </div>
-
       <div ref={containerRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 0, overflow: "hidden" }}>
       {/* Category Sidebar */}
       {!isMobile && (
         <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
           <AntCard
             className="admin-system-params-sider-card"
+            title="参数分类"
             style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
             bodyStyle={{ flex: 1, overflow: "auto" }}
           >
@@ -1047,42 +1040,50 @@ export default function AdminSystemParamsPage() {
         <AntCard
           ref={pageCardRef}
           className="admin-system-params-page-card"
-          extra={canManage && selectedCategoryId !== null ? (
+          title="系统参数管理"
+          extra={
             <Space>
-              {(() => {
-                const findCat = (items: ParamCategoryTreeItem[], id: number): ParamCategoryTreeItem | null => {
-                  for (const item of items) {
-                    if (item.id === id) return item;
-                    if (item.children) {
-                      const found = findCat(item.children, id);
-                      if (found) return found;
-                    }
-                  }
-                  return null;
-                };
-                const currentCat = findCat(categoryTreeQuery.data ?? [], selectedCategoryId);
-                return currentCat ? (
-                  <>
-                    <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
-                      编辑分类
-                    </Button>
-                    <Popconfirm
-                      title="删除分类"
-                      description={`确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`}
-                      okText="删除"
-                      cancelText="取消"
-                      okButtonProps={{ danger: true }}
-                      onConfirm={() => deleteCategoryMutation.mutate(currentCat.id)}
-                    >
-                      <Button size="small" danger>
-                        删除分类
-                      </Button>
-                    </Popconfirm>
-                  </>
-                ) : null;
-              })()}
+              {canManage && (
+                <Button type="primary" onClick={startCreate}>新建参数</Button>
+              )}
+              {canManage && selectedCategoryId !== null ? (
+                <Space>
+                  {(() => {
+                    const findCat = (items: ParamCategoryTreeItem[], id: number): ParamCategoryTreeItem | null => {
+                      for (const item of items) {
+                        if (item.id === id) return item;
+                        if (item.children) {
+                          const found = findCat(item.children, id);
+                          if (found) return found;
+                        }
+                      }
+                      return null;
+                    };
+                    const currentCat = findCat(categoryTreeQuery.data ?? [], selectedCategoryId);
+                    return currentCat ? (
+                      <>
+                        <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
+                          编辑分类
+                        </Button>
+                        <Popconfirm
+                          title="删除分类"
+                          description={`确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`}
+                          okText="删除"
+                          cancelText="取消"
+                          okButtonProps={{ danger: true }}
+                          onConfirm={() => deleteCategoryMutation.mutate(currentCat.id)}
+                        >
+                          <Button size="small" danger>
+                            删除分类
+                          </Button>
+                        </Popconfirm>
+                      </>
+                    ) : null;
+                  })()}
+                </Space>
+              ) : null}
             </Space>
-          ) : null}
+          }
         >
         <div className="admin-filter-bar">
             <Form layout="inline">

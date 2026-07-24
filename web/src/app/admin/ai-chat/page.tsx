@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
+  Card,
   Input,
   List,
   Popconfirm,
@@ -346,13 +347,19 @@ export default function AiChatPage() {
   }
 
   return (
-    <div style={{ display: "flex", minHeight: 0, flex: 1, overflow: "hidden" }}>
-      {/* Left Sidebar - Conversation List */}
-      <div
-        className="ai-chat-sidebar"
-        style={{
-          width: 280,
-          background: "var(--fquiz-theme-bg-elevated)",
+    <div className="flex min-h-0 flex-1 flex-col">
+      <Card
+        className="admin-ai-chat-page-card"
+        bordered={false}
+        styles={{ body: { padding: 0 } }}
+      >
+        <div style={{ display: "flex", minHeight: 0, flex: 1 }}>
+          {/* Left Sidebar - Conversation List */}
+          <div
+            className="ai-chat-sidebar"
+            style={{
+              width: 280,
+              background: "var(--fquiz-theme-bg-elevated)",
           display: "flex",
           flexDirection: "column",
           borderRight: "1px solid var(--ant-color-border-secondary)",
@@ -735,6 +742,8 @@ export default function AiChatPage() {
           </>
         )}
       </div>
+      </div>
+      </Card>
     </div>
   );
 }
