@@ -8,7 +8,7 @@ import { ArrowLeftOutlined, DownloadOutlined } from "@ant-design/icons";
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { readApiError } from "@/lib/api";
-import type { FaultAnalysisDetail } from "./types";
+import type { FaultAnalysisDetail } from "@/types/auth";
 import { exportToPDF, exportToWord } from "@/lib/export-utils";
 
 const { Title, Text, Paragraph } = Typography;
@@ -18,6 +18,135 @@ interface AnalysisDetailViewProps {
   onBack: () => void;
 }
 
+interface ReportSectionItem {
+  type: "text" | "subtitle" | "bullet" | "highlight" | "card";
+  text: string;
+  items?: string[];
+}
+
+interface ReportSection {
+  title: string;
+  content: ReportSectionItem[];
+}
+
+/** Build report sections from a FaultAnalysisDetail returned by the API. */
+function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]; station: string; fault_datetime: string; fault_id: string } {
+  // If the backend already stored structured sections, use them.
+  const storedSections = (detail.result_json?.sections as ReportSection[] | undefined);
+  if (storedSections && storedSections.length > 0) {
+    return {
+      sections: storedSections,
+      station: detail.station ?? "",
+      fault_datetime: detail.fault_time ?? "",
+      fault_id: `FA-${detail.id?.slice(0, 12) ?? ""}`,
+    };
+  }
+
+  // Otherwise build a lightweight report from the available scalar fields.
+  const sections: ReportSection[] = [];
+  const station = detail.station ?? "";
+  const faultDatetime = detail.fault_time ?? "";
+  const faultId = `FA-${detail.id?.slice(0, 12) ?? ""}`;
+
+  // Section 1: fault basics
+  const basics: ReportSectionItem[] = [];
+  if (station || faultDatetime) {
+    basics.push({
+      type: "text",
+      text: `故障录波记录厂站: ${station}，故障时刻: ${faultDatetime}`,
+    });
+  }
+  if (detail.fault_type) {
+    basics.push({ type: "text", text: `故障类型: ${detail.fault_type}` });
+  }
+  if (detail.fault_phase) {
+    basics.push({ type: "text", text: `故障相: ${detail.fault_phase}` });
+  }
+  if (detail.fault_duration_ms != null) {
+    basics.push({ type: "text", text: `故障持续时间: ${detail.fault_duration_ms} ms` });
+  }
+  if (detail.reclosure_status) {
+    basics.push({ type: "text", text: `重合闸情况: ${detail.reclosure_status}` });
+  }
+  if (basics.length > 0) {
+    sections.push({ title: "一、故障基本信息", content: basics });
+  }
+
+  // Section 2: electrical parameters
+  const electrical: ReportSectionItem[] = [];
+  if (detail.fault_voltage_v != null) {
+    electrical.push({ type: "text", text: `故障相电压: ${detail.fault_voltage_v} V` });
+  }
+  if (detail.fault_current_a != null) {
+    electrical.push({ type: "text", text: `故障相电流: ${detail.fault_current_a} A` });
+  }
+  if (detail.max_zero_current_a != null) {
+    electrical.push({ type: "text", text: `最大零序电流: ${detail.max_zero_current_a} A` });
+  }
+  if (detail.zero_compensation != null) {
+    electrical.push({ type: "text", text: `零序补偿系数K: ${detail.zero_compensation}` });
+  }
+  if (detail.fault_resistance_ohm != null) {
+    electrical.push({ type: "text", text: `故障电阻: ${detail.fault_resistance_ohm} Ω` });
+  }
+  if (detail.line_length_km != null) {
+    electrical.push({ type: "text", text: `线路总长度: ${detail.line_length_km} km` });
+  }
+  if (electrical.length > 0) {
+    sections.push({ title: "二、电气参数", content: electrical });
+  }
+
+  // Section 3: lightning & location
+  const location: ReportSectionItem[] = [];
+  if (detail.lightning_current_ka != null) {
+    location.push({ type: "text", text: `雷电流幅值: ${detail.lightning_current_ka} kA` });
+  }
+  if (detail.lightning_longitude != null && detail.lightning_latitude != null) {
+    location.push({ type: "text", text: `雷电定位: 经度 ${detail.lightning_longitude}°, 纬度 ${detail.lightning_latitude}°` });
+  }
+  if (detail.wave_distance_km != null) {
+    location.push({ type: "text", text: `录波测距: ${detail.wave_distance_km} km` });
+  }
+  if (detail.traveling_wave_distance_km != null) {
+    location.push({ type: "text", text: `行波测距: ${detail.traveling_wave_distance_km} km` });
+  }
+  if (detail.optical_position) {
+    location.push({ type: "text", text: `光学接闪位置: ${detail.optical_position}` });
+  }
+  if (detail.optical_device_location) {
+    location.push({ type: "text", text: `光学设备安装位置: ${detail.optical_device_location}` });
+  }
+  if (location.length > 0) {
+    sections.push({ title: "三、雷电定位与测距", content: location });
+  }
+
+  // Section 4: conclusion
+  const conclusion: ReportSectionItem[] = [];
+  if (detail.confidence != null) {
+    conclusion.push({
+      type: "text",
+      text: `综合置信度: ${detail.confidence}%`,
+    });
+  }
+  if (detail.risk_level) {
+    const riskMap: Record<string, string> = { high: "高风险", medium: "中风险", low: "低风险" };
+    conclusion.push({ type: "text", text: `风险等级: ${riskMap[detail.risk_level] ?? detail.risk_level}` });
+  }
+  conclusion.push({
+    type: "card",
+    text: detail.confidence != null && detail.confidence >= 90
+      ? "综合判定: 高置信度，可直接采纳分析结论。"
+      : detail.confidence != null && detail.confidence >= 70
+        ? `综合判定: 置信度 S=${detail.confidence}%，建议人工复核后再做决策。`
+        : "综合判定: 置信度较低，建议结合现场情况综合分析。",
+  });
+  if (conclusion.length > 0) {
+    sections.push({ title: "四、综合判定", content: conclusion });
+  }
+
+  return { sections, station, fault_datetime: faultDatetime, fault_id: faultId };
+}
+
 export function AnalysisDetailView({ analysisId, onBack }: AnalysisDetailViewProps) {
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
@@ -25,219 +154,14 @@ export function AnalysisDetailView({ analysisId, onBack }: AnalysisDetailViewPro
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
 
   const detailQuery = useQuery({
-    queryKey: ["/api/v1/fault-analysis/detail", analysisId],
+    queryKey: ["/api/v1/fault-analysis", analysisId],
     enabled: !!user && canRead && !!analysisId,
     queryFn: async () => {
-      const mockDetail: FaultAnalysisDetail & {
-        fault_id: string;
-        station: string;
-        fault_datetime: string;
-        sections: Array<{
-          title: string;
-          content: Array<{
-            type: "text" | "subtitle" | "bullet" | "highlight" | "card";
-            text: string;
-            items?: string[];
-          }>;
-        }>;
-      } = {
-        id: analysisId,
-        title: "220kV XX线路雷击故障分析",
-        description: "2024年夏季雷电多发期故障分析",
-        status: "completed",
-        risk_level: "high",
-        tower_count: 45,
-        line_name: "北源线 220kV",
-        fault_time: "2026-07-03 14:32:18",
-        fault_type: "A相接地 · 绕击",
-        confidence: 76.3,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        line_id: "line-123",
-        analysis_type: "lightning",
-        fault_id: "FA-2026-0703-001",
-        station: "广东河源500kV上寨变",
-        fault_datetime: "2026-07-03 14:32:18",
-        sections: [
-          {
-            title: "一、故障初判（录波分析）",
-            content: [
-              {
-                type: "text",
-                text: "查询广东河源500kV上寨变录波数据，2026-07-03 14:32:18，220kV龙和线发生故障。",
-              },
-              {
-                type: "text",
-                text: "故障特征分析如下：",
-              },
-              {
-                type: "bullet",
-                text: "",
-                items: [
-                  "A相电流突增；",
-                  "A相电压明显跌落；",
-                  "零序电流及零序电压显著增大。",
-                ],
-              },
-              {
-                type: "text",
-                text: "综合判定，本次故障类型为：A相接地故障。",
-              },
-              {
-                type: "highlight",
-                text: "计算故障阻抗：Zm = 37.04V / 1.3A × (1 + 0.52) = 43.3Ω",
-              },
-              {
-                type: "text",
-                text: "判定故障性质属于：高阻接地故障（≥500Ω）",
-              },
-              {
-                type: "text",
-                text: "综上分析，2026-07-03 14:32:18，广东河源500kV上寨变记录220kV龙和线出现A相接地故障，本次故障属于高阻接地故障，64ms后重合成功，为单相接地故障。",
-              },
-            ],
-          },
-          {
-            title: "二、故障定位（雷电定位、录波测距、行波测距）",
-            content: [
-              {
-                type: "text",
-                text: "基于录波测距算法，故障点距离线路首端约 16.022 km，位于 35-36# 区段；",
-              },
-              {
-                type: "text",
-                text: "基于两端行波测距，故障点距离线路首端约 16.51 km，位于 33-34# 区段；",
-              },
-              {
-                type: "text",
-                text: "查询雷电定位系统，故障前后30秒线路5km范围内存在落雷记录，其中2026-07-03 14:32:18雷电流为20.3kA，距离33#-34#塔约180m。",
-              },
-            ],
-          },
-          {
-            title: "三、故障原因分析",
-            content: [
-              {
-                type: "subtitle",
-                text: "① 故障区段线路台账参数",
-              },
-              {
-                type: "text",
-                text: "地形类型: 丘陵  |  海拔高度: 85m  |  杆塔型号: ZM1-42",
-              },
-              {
-                type: "text",
-                text: "绝缘子串长度: 2.4m  |  杆塔接地电阻设计值: 15Ω  |  杆塔接地电阻实测值: 18.5Ω",
-              },
-              {
-                type: "text",
-                text: "基于线路结构参数及实测接地电阻计算得到：",
-              },
-              {
-                type: "bullet",
-                text: "",
-                items: ["反击耐雷水平: 28.5kA", "绕击耐雷水平: 12.3kA"],
-              },
-              {
-                type: "text",
-                text: "本次雷击电流幅值为 20.3kA。",
-              },
-              {
-                type: "text",
-                text: "绕击耐雷水平12.3kA < 20.3kA < 绕击上限电流，判定绕击概率较高，置信度50%",
-              },
-              {
-                type: "subtitle",
-                text: "② 分布式行波监测数据",
-              },
-              {
-                type: "text",
-                text: "查询分布式行波监测数据，杆塔 33#、34#装设分布式故障定位装置。",
-              },
-              {
-                type: "text",
-                text: "行波特征分析如下：",
-              },
-              {
-                type: "bullet",
-                text: "",
-                items: [
-                  "波尾时间: 28μs（≥20μs）",
-                  "频谱特征: 中高频为主",
-                  "波形结构: 单峰",
-                ],
-              },
-              {
-                type: "text",
-                text: "判定为雷击故障",
-              },
-              {
-                type: "text",
-                text: "行波特征分析如下：",
-              },
-              {
-                type: "bullet",
-                text: "",
-                items: ["主波前特征: 无反极性脉冲", "频谱特征: 高频为主"],
-              },
-              {
-                type: "text",
-                text: "判定为绕击",
-              },
-              {
-                type: "subtitle",
-                text: "③ 光学监控装置分析",
-              },
-              {
-                type: "text",
-                text: "65#安装有光学监控装置，故障时刻2026-07-03 14:32:18，65#识别到一起雷击记录。",
-              },
-              {
-                type: "text",
-                text: "根据图像识别结果，判定为 A相导线 接闪，判定本次故障为绕击，置信度80%。",
-              },
-              {
-                type: "subtitle",
-                text: "④ 综合融合判别",
-              },
-              {
-                type: "text",
-                text: "台账分析: 绕击（置信度: 50%）",
-              },
-              {
-                type: "text",
-                text: "行波分析: 绕击（置信度: 60%）",
-              },
-              {
-                type: "text",
-                text: "光学监测: 绕击（置信度: 80%）",
-              },
-              {
-                type: "text",
-                text: "三源一致（结论一致性高），一致性评分: 0.83",
-              },
-              {
-                type: "text",
-                text: "最终置信度: 绕击 76.3%、反击 12.1%、分叉雷 5.2%、非雷击 6.4%",
-              },
-            ],
-          },
-          {
-            title: "四、最终判定结果",
-            content: [
-              {
-                type: "card",
-                text: "故障类型: A相接地故障\n故障定位: 位于 33-34# 区段，置信度 S=62.5%\n雷击类型: 绕击，置信度 S=76.3%，关键依据: 光学/行波/台账\n雷击类型冲突来源: 无",
-              },
-              {
-                type: "card",
-                text: "决策建议\n根据置信度 S=76.3% 做出决策：\n建议人工复核（S<0.9）",
-              },
-            ],
-          },
-        ],
-      };
-      return mockDetail;
+      const response = await fetchWithAuth(`/api/v1/fault-analysis/${analysisId}`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as FaultAnalysisDetail;
     },
   });
 
@@ -247,10 +171,10 @@ export function AnalysisDetailView({ analysisId, onBack }: AnalysisDetailViewPro
     setExporting(true);
     try {
       if (format === "pdf") {
-        await exportToPDF(detail as any, "analysis-export-content");
+        await exportToPDF({ ...detail } as any, "analysis-export-content");
         message.success("PDF导出成功");
       } else {
-        await exportToWord(detail as any);
+        await exportToWord({ ...detail } as any);
         message.success("Word文档导出成功");
       }
     } catch (error) {
@@ -290,6 +214,8 @@ export function AnalysisDetailView({ analysisId, onBack }: AnalysisDetailViewPro
     return <Alert type="info" showIcon message="未找到该故障分析记录" />;
   }
 
+  const { sections, station, fault_datetime, fault_id } = buildSections(detail);
+
   return (
     <div className="flex flex-col gap-4 h-full">
       <Card>
@@ -304,7 +230,7 @@ export function AnalysisDetailView({ analysisId, onBack }: AnalysisDetailViewPro
             <div className="flex items-start justify-between mb-5">
               <div className="flex items-center gap-3">
                 <Title level={3} className="mb-0">
-                  {detail.fault_id} 故障分析报告
+                  {fault_id} 故障分析报告
                 </Title>
                 <Tag color="orange">待复核</Tag>
               </div>
@@ -335,103 +261,103 @@ export function AnalysisDetailView({ analysisId, onBack }: AnalysisDetailViewPro
               </Dropdown>
             </div>
             <Text type="secondary" className="text-sm">
-              线路: {detail.line_name} | 录波记录厂站: {detail.station} | 故障时间:{" "}
-              {detail.fault_datetime}
+              线路: {detail.line_name ?? "-"} | 录波记录厂站: {station} | 故障时间:{" "}
+              {fault_datetime}
             </Text>
           </div>
 
-        <Space direction="vertical" size={24} className="w-full">
-          {detail.sections?.map((section, sectionIndex) => (
-            <div key={sectionIndex}>
-              <div
-                className="px-5 py-3 rounded-md mb-4"
-                style={{
-                  background: 'var(--ant-color-primary)',
-                  color: 'var(--accent-contrast)'
-                }}
-              >
-                <Text
-                  className="font-semibold text-base"
-                  style={{ color: 'var(--accent-contrast)' }}
+          <Space direction="vertical" size={24} className="w-full">
+            {sections.map((section, sectionIndex) => (
+              <div key={sectionIndex}>
+                <div
+                  className="px-5 py-3 rounded-md mb-4"
+                  style={{
+                    background: 'var(--ant-color-primary)',
+                    color: 'var(--accent-contrast)'
+                  }}
                 >
-                  {section.title}
-                </Text>
-              </div>
-              <Space direction="vertical" size={12} className="w-full">
-                {section.content.map((item, itemIndex) => {
-                  if (item.type === "subtitle") {
-                    return (
-                      <Text key={itemIndex} strong className="text-sm">
-                        {item.text}
-                      </Text>
-                    );
-                  }
-                  if (item.type === "bullet") {
-                    return (
-                      <div key={itemIndex} className="ml-2">
-                        {item.items?.map((bullet, bulletIndex) => (
-                          <Paragraph
-                            key={bulletIndex}
-                            className="text-sm mb-2 text-gray-700"
-                          >
-                            • {bullet}
-                          </Paragraph>
-                        ))}
-                      </div>
-                    );
-                  }
-                  if (item.type === "highlight") {
-                    return (
-                      <Text
-                        key={itemIndex}
-                        className="text-sm text-orange-600 font-medium"
-                      >
-                        {item.text}
-                      </Text>
-                    );
-                  }
-                  if (item.type === "card") {
-                    const lines = item.text.split("\n");
-                    return (
-                      <div
-                        key={itemIndex}
-                        className="bg-gray-50 border border-gray-200 rounded-lg p-5"
-                      >
-                        {lines.map((line, lineIndex) => {
-                          const isHighlight =
-                            line.includes("建议人工复核") ||
-                            line.includes("雷击类型:");
-                          const isTitle =
-                            line === "决策建议" ||
-                            (lineIndex === 0 && !line.includes(":"));
-                          return (
+                  <Text
+                    className="font-semibold text-base"
+                    style={{ color: 'var(--accent-contrast)' }}
+                  >
+                    {section.title}
+                  </Text>
+                </div>
+                <Space direction="vertical" size={12} className="w-full">
+                  {section.content.map((item, itemIndex) => {
+                    if (item.type === "subtitle") {
+                      return (
+                        <Text key={itemIndex} strong className="text-sm">
+                          {item.text}
+                        </Text>
+                      );
+                    }
+                    if (item.type === "bullet") {
+                      return (
+                        <div key={itemIndex} className="ml-2">
+                          {item.items?.map((bullet, bulletIndex) => (
                             <Paragraph
-                              key={lineIndex}
-                              className={`text-sm mb-2 ${
-                                isTitle
-                                  ? "font-semibold text-gray-900"
-                                  : isHighlight
-                                  ? "text-orange-600 font-medium"
-                                  : "text-gray-700"
-                              }`}
+                              key={bulletIndex}
+                              className="text-sm mb-2 text-gray-700"
                             >
-                              {line}
+                              • {bullet}
                             </Paragraph>
-                          );
-                        })}
-                      </div>
+                          ))}
+                        </div>
+                      );
+                    }
+                    if (item.type === "highlight") {
+                      return (
+                        <Text
+                          key={itemIndex}
+                          className="text-sm text-orange-600 font-medium"
+                        >
+                          {item.text}
+                        </Text>
+                      );
+                    }
+                    if (item.type === "card") {
+                      const lines = item.text.split("\n");
+                      return (
+                        <div
+                          key={itemIndex}
+                          className="bg-gray-50 border border-gray-200 rounded-lg p-5"
+                        >
+                          {lines.map((line, lineIndex) => {
+                            const isHighlight =
+                              line.includes("建议人工复核") ||
+                              line.includes("雷击类型:");
+                            const isTitle =
+                              line === "综合判定" ||
+                              (lineIndex === 0 && !line.includes(":"));
+                            return (
+                              <Paragraph
+                                key={lineIndex}
+                                className={`text-sm mb-2 ${
+                                  isTitle
+                                    ? "font-semibold text-gray-900"
+                                    : isHighlight
+                                    ? "text-orange-600 font-medium"
+                                    : "text-gray-700"
+                                }`}
+                              >
+                                {line}
+                              </Paragraph>
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+                    return (
+                      <Paragraph key={itemIndex} className="text-sm text-gray-700">
+                        {item.text}
+                      </Paragraph>
                     );
-                  }
-                  return (
-                    <Paragraph key={itemIndex} className="text-sm text-gray-700">
-                      {item.text}
-                    </Paragraph>
-                  );
-                })}
-              </Space>
-            </div>
-          ))}
-        </Space>
+                  })}
+                </Space>
+              </div>
+            ))}
+          </Space>
         </div>
       </Card>
     </div>

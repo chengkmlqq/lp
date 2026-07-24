@@ -778,6 +778,57 @@ export type FlAnalysisTowerResultListResponse = {
   total: number;
 };
 
+export type FaultAnalysisStatus = "pending" | "processing" | "completed" | "failed";
+
+export type FaultAnalysisSummary = {
+  id: string;
+  title: string | null;
+  description: string | null;
+  line_id: string | null;
+  line_name: string | null;
+  status: FaultAnalysisStatus | string;
+  risk_level: string | null;
+  fault_time: string | null;
+  fault_type: string | null;
+  fault_phase: string | null;
+  confidence: number | null;
+  station: string | null;
+  lightning_current_ka: number | null;
+  wave_distance_km: number | null;
+  traveling_wave_distance_km: number | null;
+  create_date: string;
+  create_user: string | null;
+  update_date: string;
+  update_user: string | null;
+};
+
+export type FaultAnalysisDetail = FaultAnalysisSummary & {
+  fault_duration_ms: number | null;
+  reclosure_status: string | null;
+  fault_voltage_v: number | null;
+  fault_current_a: number | null;
+  max_zero_current_a: number | null;
+  zero_compensation: number | null;
+  fault_resistance_ohm: number | null;
+  line_length_km: number | null;
+  line_angle_deg: number | null;
+  line_impedance_ohm: number | null;
+  lightning_longitude: number | null;
+  lightning_latitude: number | null;
+  optical_position: string | null;
+  optical_device_location: string | null;
+  result_json: Record<string, unknown>;
+};
+
+export type FaultAnalysisListResponse = {
+  items: FaultAnalysisSummary[];
+  total: number;
+};
+
+export type FaultAnalysisCreateResponse = {
+  analysis: FaultAnalysisDetail;
+};
+
 export type FaultRecurrenceStrokeMode = "counterstroke" | "shielding";
 export type FaultRecurrenceResultStatus = "matched" | "no_need";
 

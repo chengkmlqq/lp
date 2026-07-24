@@ -13,7 +13,7 @@ import {
   Input,
   Pagination,
 } from "antd";
-import { PlusOutlined, SearchOutlined, ArrowLeftOutlined } from "@ant-design/icons";
+import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
@@ -23,11 +23,34 @@ import { CreateAnalysisFormAdvanced } from "@/components/fault-analysis/create-a
 import { readApiError } from "@/lib/api";
 import type { LineListResponse } from "@/types/auth";
 import type {
+  FaultAnalysisListResponse,
+  FaultAnalysisCreateResponse,
+} from "@/types/auth";
+import type {
   FaultAnalysis,
   CreateFaultAnalysisFormValues,
 } from "@/components/fault-analysis/types";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
+
+/** Map backend FaultAnalysisSummary to the frontend FaultAnalysis type used by card components. */
+function mapSummary(item: FaultAnalysisListResponse["items"][0]): FaultAnalysis {
+  return {
+    id: item.id,
+    title: item.title ?? "",
+    description: item.description ?? "",
+    status: item.status as FaultAnalysis["status"],
+    risk_level: item.risk_level as FaultAnalysis["risk_level"],
+    tower_count: 0, // not stored in the current fault_analysis model
+    line_name: item.line_name ?? "",
+    fault_time: item.fault_time ?? "",
+    fault_type: item.fault_type ?? "",
+    confidence: item.confidence ?? 0,
+    created_at: item.create_date,
+    updated_at: item.update_date,
+    created_by: item.create_user ?? undefined,
+  };
+}
 
 export default function AdminFaultAnalysisPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
@@ -56,73 +79,34 @@ export default function AdminFaultAnalysisPage() {
   });
 
   const analysesQuery = useQuery({
-    queryKey: ["/api/v1/fault-analysis"],
+    queryKey: ["/api/v1/fault-analysis", searchKeyword],
     enabled: !!user && canRead,
     queryFn: async () => {
-      const mockData: FaultAnalysis[] = [
-        {
-          id: "1",
-          title: "FA-2026-0703-001",
-          description: "2024年夏季雷电多发期故障分析",
-          status: "completed",
-          risk_level: "high",
-          tower_count: 45,
-          line_name: "线路 LT-2024-001",
-          fault_time: "2026-07-03 11:30",
-          fault_type: "A相接地 · 绕击",
-          confidence: 62.5,
-          created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-          updated_at: new Date(Date.now() - 86400000).toISOString(),
-          created_by: "张三",
-        },
-        {
-          id: "2",
-          title: "FA-2026-0702-002",
-          description: "绝缘子污闪故障综合分析",
-          status: "completed",
-          risk_level: "medium",
-          tower_count: 32,
-          line_name: "线路 LT-2023-015",
-          fault_time: "2026-07-02 14:20",
-          fault_type: "B相接地 · 反击",
-          confidence: 93.1,
-          created_at: new Date(Date.now() - 86400000).toISOString(),
-          updated_at: new Date(Date.now() - 3600000).toISOString(),
-          created_by: "李四",
-        },
-        {
-          id: "3",
-          title: "FA-2026-0701-003",
-          description: "年度综合评估分析报告",
-          status: "processing",
-          risk_level: "critical",
-          tower_count: 78,
-          line_name: "线路 LT-2023-008",
-          fault_time: "2026-07-01 09:45",
-          fault_type: "C相接地 · 绕击",
-          confidence: 0,
-          created_at: new Date(Date.now() - 3600000).toISOString(),
-          updated_at: new Date(Date.now() - 3600000).toISOString(),
-        },
-      ];
-      return { items: mockData, total: mockData.length };
+      const params = new URLSearchParams();
+      params.set("limit", "100");
+      if (searchKeyword.trim()) {
+        params.set("keyword", searchKeyword.trim());
+      }
+      const response = await fetchWithAuth(`/api/v1/fault-analysis?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as FaultAnalysisListResponse;
     },
   });
 
-  const analyses = useMemo(() => analysesQuery.data?.items ?? [], [analysesQuery.data?.items]);
+  const analyses = useMemo(
+    () => (analysesQuery.data?.items ?? []).map(mapSummary),
+    [analysesQuery.data?.items],
+  );
   const totalCount = useMemo(() => analysesQuery.data?.total ?? 0, [analysesQuery.data?.total]);
 
   const filteredAnalyses = useMemo(() => {
     if (!searchKeyword.trim()) {
       return analyses;
     }
-    const search = searchKeyword.toLowerCase();
-    return analyses.filter(
-      (analysis) =>
-        analysis.title.toLowerCase().includes(search) ||
-        analysis.line_name.toLowerCase().includes(search) ||
-        analysis.description?.toLowerCase().includes(search),
-    );
+    // Backend already filters by keyword; this is just in case we need client-side filtering
+    return analyses;
   }, [analyses, searchKeyword]);
 
   const paginatedAnalyses = useMemo(() => {
@@ -133,15 +117,41 @@ export default function AdminFaultAnalysisPage() {
 
   const createMutation = useMutation({
     mutationFn: async (values: CreateFaultAnalysisFormValues) => {
+      const body: Record<string, unknown> = {};
+      if (values.title) body.title = values.title;
+      if (values.description) body.description = values.description;
+      if (values.line_id) body.line_id = values.line_id;
+      if (values.station_name) body.station = values.station_name;
+      if (values.fault_time) body.fault_time = values.fault_time;
+      if (values.fault_line_name) body.line_name = values.fault_line_name;
+      if (values.fault_phase) body.fault_phase = values.fault_phase;
+      if (values.fault_duration != null) body.fault_duration_ms = values.fault_duration;
+      if (values.reclosure_status) body.reclosure_status = values.reclosure_status;
+      if (values.fault_voltage != null) body.fault_voltage_v = values.fault_voltage;
+      if (values.fault_current != null) body.fault_current_a = values.fault_current;
+      if (values.max_zero_current != null) body.max_zero_current_a = values.max_zero_current;
+      if (values.zero_compensation != null) body.zero_compensation = values.zero_compensation;
+      if (values.fault_resistance != null) body.fault_resistance_ohm = values.fault_resistance;
+      if (values.line_length != null) body.line_length_km = values.line_length;
+      if (values.line_angle != null) body.line_angle_deg = values.line_angle;
+      if (values.line_impedance != null) body.line_impedance_ohm = values.line_impedance;
+      if (values.lightning_current) body.lightning_current_ka = parseFloat(values.lightning_current) || undefined;
+      if (values.lightning_longitude != null) body.lightning_longitude = values.lightning_longitude;
+      if (values.lightning_latitude != null) body.lightning_latitude = values.lightning_latitude;
+      if (values.wave_distance != null) body.wave_distance_km = values.wave_distance;
+      if (values.traveling_wave_distance != null) body.traveling_wave_distance_km = values.traveling_wave_distance;
+      if (values.optical_position) body.optical_position = values.optical_position;
+      if (values.optical_device_location) body.optical_device_location = values.optical_device_location;
+
       const response = await fetchWithAuth("/api/v1/fault-analysis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify(body),
       });
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return (await response.json()) as { analysis: FaultAnalysis };
+      return (await response.json()) as FaultAnalysisCreateResponse;
     },
     onSuccess: async (data) => {
       await queryClient.invalidateQueries({

@@ -9,6 +9,7 @@ from .v1.avatar import router as avatar_router
 from .v1.dimensions import router as dimensions_router
 from .v1.documents import router as documents_router
 from .v1.elevation import router as elevation_router
+from .v1.fault_analysis import router as fault_analysis_router
 from .v1.fault_recurrence import router as fault_recurrence_router
 from .v1.fl_analysis import router as fl_analysis_router
 from .v1.flower_monitor import router as flower_monitor_router
@@ -43,6 +44,7 @@ v1_router.include_router(scheduled_tasks_router)
 v1_router.include_router(system_messages_router)
 v1_router.include_router(system_params_router)
 v1_router.include_router(elevation_router)
+v1_router.include_router(fault_analysis_router)
 v1_router.include_router(fault_recurrence_router)
 v1_router.include_router(fl_analysis_router)
 v1_router.include_router(flower_monitor_router)

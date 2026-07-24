@@ -597,6 +597,7 @@ def init_db() -> None:
         auth_session,
         dimension_item,
         elevation,
+        fault_analysis,
         file_storage,
         fl_analysis,
         lightning_event,
