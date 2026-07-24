@@ -36,3 +36,6 @@ scripts/start_worker.sh
 node_modules/
 web/node_modules/
 web/.next/
+
+# Three.js render test artifacts
+.three-test-*
