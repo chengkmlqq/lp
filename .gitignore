@@ -47,6 +47,5 @@ backups/
 deploy/data/
 deploy/*/data/minio/
 deploy/*/data/app/
-api/static/wine/
 *.dump
 *.tif
