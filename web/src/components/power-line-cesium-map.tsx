@@ -1,7 +1,7 @@
 "use client";
 
 import { AimOutlined, MinusOutlined, PlusOutlined } from "@ant-design/icons";
-import { Alert, Button, Checkbox, Empty, Spin, Typography } from "antd";
+import { Alert, Button, Checkbox, Empty, Space, Spin, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getApiBaseUrl } from "@/lib/api";
@@ -115,6 +115,7 @@ export function PowerLineCesiumMap({
   const cesiumRef = useRef<CesiumNamespace | null>(null);
   const routeViewRef = useRef<RouteViewState | null>(null);
   const [initError, setInitError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
   const [ready, setReady] = useState(false);
   const [terrainError, setTerrainError] = useState("");
   const [pointerInfo, setPointerInfo] = useState("");
@@ -200,6 +201,19 @@ export function PowerLineCesiumMap({
     }
     viewer.camera.zoomOut(resolveZoomDistance());
   }, [resolveZoomDistance]);
+
+  const handleRetry = useCallback(() => {
+    if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+      viewerRef.current.destroy();
+    }
+    viewerRef.current = null;
+    cesiumRef.current = null;
+    routeViewRef.current = null;
+    setInitError("");
+    setReady(false);
+    setPointerInfo("");
+    setRetryKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -292,7 +306,7 @@ export function PowerLineCesiumMap({
       setReady(false);
       setPointerInfo("");
     };
-  }, [terrainDataset?.name]);
+  }, [terrainDataset?.name, retryKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -476,7 +490,12 @@ export function PowerLineCesiumMap({
           显示塔号
         </Checkbox>
       </div>
-      {initError ? <Alert type="error" showIcon message="走向图加载失败" description={initError} /> : null}
+      {initError ? (
+        <Space>
+          <Alert type="error" showIcon message="走向图加载失败" description={initError} />
+          <Button onClick={handleRetry}>重试</Button>
+        </Space>
+      ) : null}
 
       <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-900/90" style={{ height }}>
         <div ref={containerRef} className="h-full w-full" />
