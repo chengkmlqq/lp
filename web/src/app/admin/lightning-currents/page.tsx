@@ -757,6 +757,7 @@ export default function AdminLightningCurrentsPage() {
           <div
             ref={tableScrollAnchorRef}
             className="lightning-table-anchor"
+            style={{ "--lightning-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
           >
             <Table<LightningCurrentEventSummary>
               rowKey={(row) => row.id}
