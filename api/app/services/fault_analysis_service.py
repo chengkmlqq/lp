@@ -13,6 +13,7 @@ from ..schemas.fault_analysis import (
     FaultAnalysisDetail,
     FaultAnalysisListResponse,
     FaultAnalysisSummary,
+    FaultAnalysisUpdateRequest,
 )
 
 
@@ -194,3 +195,35 @@ def delete_analysis(db: Session, analysis_id: str) -> None:
         )
     db.delete(item)
     db.commit()
+
+
+def update_analysis(
+    db: Session,
+    analysis_id: str,
+    payload: FaultAnalysisUpdateRequest,
+    *,
+    actor: User,
+) -> FaultAnalysisCreateResponse:
+    item = get_analysis_by_id(db, analysis_id)
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="故障分析记录不存在",
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(item, field, value)
+
+    now = utcnow()
+    item.update_date = now
+    item.update_user = actor.id
+    db.commit()
+
+    saved = get_analysis_by_id(db, analysis_id)
+    if not saved:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="更新故障分析记录失败",
+        )
+    return FaultAnalysisCreateResponse(analysis=serialize_detail(saved))

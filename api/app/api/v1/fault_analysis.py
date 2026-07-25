@@ -10,6 +10,7 @@ from ...schemas.fault_analysis import (
     FaultAnalysisCreateResponse,
     FaultAnalysisDetail,
     FaultAnalysisListResponse,
+    FaultAnalysisUpdateRequest,
 )
 from ...services.fault_analysis_service import (
     create_analysis,
@@ -17,6 +18,7 @@ from ...services.fault_analysis_service import (
     get_analysis_by_id,
     list_analyses,
     serialize_detail,
+    update_analysis,
 )
 
 router = APIRouter(
@@ -57,6 +59,17 @@ def create_fault_analysis(
     db: Session = Depends(get_db),
 ) -> FaultAnalysisCreateResponse:
     return create_analysis(db, payload, actor=current_user.user)
+
+
+@router.put("/{analysis_id}", response_model=FaultAnalysisDetail)
+def update_fault_analysis(
+    analysis_id: str,
+    payload: FaultAnalysisUpdateRequest,
+    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    db: Session = Depends(get_db),
+) -> FaultAnalysisDetail:
+    result = update_analysis(db, analysis_id, payload, actor=current_user.user)
+    return result.analysis
 
 
 @router.delete("/{analysis_id}")

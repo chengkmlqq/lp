@@ -25,6 +25,7 @@ import type { LineListResponse } from "@/types/auth";
 import type {
   FaultAnalysisListResponse,
   FaultAnalysisCreateResponse,
+  FaultAnalysisDetail,
 } from "@/types/auth";
 import type {
   FaultAnalysis,
@@ -62,6 +63,12 @@ export default function AdminFaultAnalysisPage() {
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [createForm] = Form.useForm<CreateFaultAnalysisFormValues>();
   const [messageApi, contextHolder] = message.useMessage();
+
+  // Edit / delete state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm] = Form.useForm<CreateFaultAnalysisFormValues>();
+  const [editLoading, setEditLoading] = useState(false);
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage");
@@ -167,6 +174,130 @@ export default function AdminFaultAnalysisPage() {
     },
   });
 
+  // --- Edit handlers ---
+
+  const handleEdit = async (id: string) => {
+    setEditingId(id);
+    setEditModalOpen(true);
+    setEditLoading(true);
+    editForm.resetFields();
+
+    try {
+      const response = await fetchWithAuth(`/api/v1/fault-analysis/${id}`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const detail: FaultAnalysisDetail = await response.json();
+
+      editForm.setFieldsValue({
+        line_id: detail.line_id ?? "",
+        station_name: detail.station ?? undefined,
+        fault_time: detail.fault_time ?? undefined,
+        fault_line_name: detail.line_name ?? undefined,
+        fault_phase: detail.fault_phase ?? undefined,
+        fault_duration: detail.fault_duration_ms ?? undefined,
+        reclosure_status: detail.reclosure_status ?? undefined,
+        fault_voltage: detail.fault_voltage_v ?? undefined,
+        fault_current: detail.fault_current_a ?? undefined,
+        max_zero_current: detail.max_zero_current_a ?? undefined,
+        zero_compensation: detail.zero_compensation ?? undefined,
+        fault_resistance: detail.fault_resistance_ohm ?? undefined,
+        line_length: detail.line_length_km ?? undefined,
+        line_angle: detail.line_angle_deg ?? undefined,
+        line_impedance: detail.line_impedance_ohm ?? undefined,
+        lightning_current: detail.lightning_current_ka?.toString() ?? undefined,
+        lightning_longitude: detail.lightning_longitude ?? undefined,
+        lightning_latitude: detail.lightning_latitude ?? undefined,
+        wave_distance: detail.wave_distance_km ?? undefined,
+        traveling_wave_distance: detail.traveling_wave_distance_km ?? undefined,
+        optical_position: detail.optical_position ?? undefined,
+        optical_device_location: detail.optical_device_location ?? undefined,
+      });
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "加载故障分析详情失败");
+      setEditModalOpen(false);
+      setEditingId(null);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: async (values: CreateFaultAnalysisFormValues) => {
+      if (!editingId) throw new Error("未指定编辑记录");
+
+      const body: Record<string, unknown> = {};
+      if (values.title) body.title = values.title;
+      if (values.description) body.description = values.description;
+      if (values.line_id) body.line_id = values.line_id;
+      if (values.station_name) body.station = values.station_name;
+      if (values.fault_time) body.fault_time = values.fault_time;
+      if (values.fault_line_name) body.line_name = values.fault_line_name;
+      if (values.fault_phase) body.fault_phase = values.fault_phase;
+      if (values.fault_duration != null) body.fault_duration_ms = values.fault_duration;
+      if (values.reclosure_status) body.reclosure_status = values.reclosure_status;
+      if (values.fault_voltage != null) body.fault_voltage_v = values.fault_voltage;
+      if (values.fault_current != null) body.fault_current_a = values.fault_current;
+      if (values.max_zero_current != null) body.max_zero_current_a = values.max_zero_current;
+      if (values.zero_compensation != null) body.zero_compensation = values.zero_compensation;
+      if (values.fault_resistance != null) body.fault_resistance_ohm = values.fault_resistance;
+      if (values.line_length != null) body.line_length_km = values.line_length;
+      if (values.line_angle != null) body.line_angle_deg = values.line_angle;
+      if (values.line_impedance != null) body.line_impedance_ohm = values.line_impedance;
+      if (values.lightning_current) body.lightning_current_ka = parseFloat(values.lightning_current) || undefined;
+      if (values.lightning_longitude != null) body.lightning_longitude = values.lightning_longitude;
+      if (values.lightning_latitude != null) body.lightning_latitude = values.lightning_latitude;
+      if (values.wave_distance != null) body.wave_distance_km = values.wave_distance;
+      if (values.traveling_wave_distance != null) body.traveling_wave_distance_km = values.traveling_wave_distance;
+      if (values.optical_position) body.optical_position = values.optical_position;
+      if (values.optical_device_location) body.optical_device_location = values.optical_device_location;
+
+      const response = await fetchWithAuth(`/api/v1/fault-analysis/${editingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as FaultAnalysisDetail;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
+      setEditModalOpen(false);
+      setEditingId(null);
+      messageApi.success("故障分析更新成功");
+      editForm.resetFields();
+    },
+    onError: (error) => {
+      messageApi.error(error instanceof Error ? error.message : "更新失败");
+    },
+  });
+
+  const handleDelete = (id: string) => {
+    Modal.confirm({
+      title: "确认删除",
+      content: "确定要删除该故障分析记录吗？此操作不可撤销。",
+      okText: "确认删除",
+      okType: "danger",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          const response = await fetchWithAuth(`/api/v1/fault-analysis/${id}`, {
+            method: "DELETE",
+          });
+          if (!response.ok) {
+            throw new Error(await readApiError(response));
+          }
+          await queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
+          messageApi.success("故障分析已删除");
+        } catch (error) {
+          messageApi.error(error instanceof Error ? error.message : "删除失败");
+        }
+      },
+    });
+  };
+
   if (!initializing && !user) {
     return (
       <Alert
@@ -268,8 +399,8 @@ export default function AdminFaultAnalysisPage() {
                   selectedId={null}
                   loading={analysesQuery.isLoading}
                   onView={(id) => setViewingId(id)}
-                  onEdit={(id) => messageApi.info("编辑功能开发中")}
-                  onDelete={(id) => messageApi.info("删除功能开发中")}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
                 />
               </div>
 
@@ -312,6 +443,35 @@ export default function AdminFaultAnalysisPage() {
           lines={linesQuery.data?.items ?? []}
           linesLoading={linesQuery.isLoading}
           onSubmit={(values) => createMutation.mutate(values)}
+        />
+      </Modal>
+
+      <Modal
+        title="编辑故障分析"
+        open={editModalOpen}
+        width={950}
+        onCancel={() => {
+          if (updateMutation.isPending) {
+            return;
+          }
+          setEditModalOpen(false);
+          setEditingId(null);
+        }}
+        onOk={() => editForm.submit()}
+        okText="保存修改"
+        cancelText="取消"
+        confirmLoading={updateMutation.isPending}
+        destroyOnClose
+        afterClose={() => {
+          editForm.resetFields();
+          setEditingId(null);
+        }}
+      >
+        <CreateAnalysisFormAdvanced
+          form={editForm}
+          lines={linesQuery.data?.items ?? []}
+          linesLoading={linesQuery.isLoading}
+          onSubmit={(values) => updateMutation.mutate(values)}
         />
       </Modal>
     </>
