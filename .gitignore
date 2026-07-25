@@ -39,3 +39,14 @@ web/.next/
 
 # Three.js render test artifacts
 .three-test-*
+
+# Large data files (do not track in git)
+backups/
+雷电数据.txt
+雷电流file_1.txt
+deploy/data/
+deploy/*/data/minio/
+deploy/*/data/app/
+api/static/wine/
+*.dump
+*.tif
