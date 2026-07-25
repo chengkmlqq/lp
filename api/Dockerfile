@@ -42,8 +42,8 @@ RUN python -c "import rasterio; print('rasterio ready:', rasterio.__version__)"
 RUN python -c "from osgeo import gdal; print('GDAL ready:', gdal.__version__)"
 RUN command -v gdal2tiles.py && echo "gdal2tiles.py available"
 
-# Static assets (tpbig.exe, etc.)
-COPY static/ /app/static/
+# Static assets (tpbig.exe, etc.) are volume-mounted at runtime
+# from deploy/pro-deploy/data/app/wine/
 
 # Entrypoint: ensures tpbig.exe is available in runtime volume
 COPY docker-entrypoint.sh /docker-entrypoint.sh
