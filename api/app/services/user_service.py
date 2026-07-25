@@ -175,9 +175,15 @@ def delete_user(db: Session, user_id: str, *, actor_user_id: str | None) -> bool
     target_username = user.username
     avatar_path = user.avatar_path  # Save before delete
     try:
-        revoke_active_sessions_for_user(db, user_id)
-        db.flush()  # Persist session revocations before deleting the user
-        db.query(AuthSession).filter(AuthSession.user_id == user_id).delete(synchronize_session=False)
+        # Delete active sessions first with ORM sync to avoid StaleDataError.
+        # No need to revoke-then-delete; ON DELETE CASCADE will handle any
+        # remaining rows when the user row is removed.
+        sessions = db.execute(
+            select(AuthSession).where(AuthSession.user_id == user_id)
+        ).scalars().all()
+        for session in sessions:
+            db.delete(session)
+        db.flush()
         write_audit_log(
             db,
             action="user.delete",
