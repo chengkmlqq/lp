@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/sync-cesium-assets.mjs",
+    "prebuild": "node scripts/sync-cesium-assets.mjs",
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
@@ -17,6 +19,7 @@
     "@tanstack/react-query": "^5.90.5",
     "antd": "^5.29.3",
     "class-variance-authority": "^0.7.1",
+    "cesium": "^1.140.0",
     "clsx": "^2.1.1",
     "docx": "^9.7.1",
     "file-saver": "^2.0.5",
@@ -38,7 +41,6 @@
     "scroll-into-view-if-needed": "^3.1.0",
     "stylis": "^4.4.0",
     "tailwind-merge": "^3.5.0",
-    "three": "^0.185.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -47,7 +49,6 @@
     "@types/node": "^20",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/three": "^0.185.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "puppeteer": "^25.3.0",

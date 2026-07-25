@@ -32,7 +32,7 @@ import { MoreOutlined, UploadOutlined, SearchOutlined } from "@ant-design/icons"
 import type { ColumnsType } from "antd/es/table";
 
 import { useAuth } from "@/components/auth-provider";
-import { ElevationPreviewThreeMap } from "@/components/elevation-preview-three-map";
+import { ElevationPreviewCesiumMap } from "@/components/elevation-preview-cesium-map";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
@@ -1053,7 +1053,7 @@ export default function ElevationRecordsPage() {
                 <Typography.Text strong>地形预览</Typography.Text>
                 <Tag color={statusTagColor(previewData.record.terrain_status)}>{previewData.record.terrain_status}</Tag>
               </div>
-              <ElevationPreviewThreeMap
+              <ElevationPreviewCesiumMap
                 dataset={{
                   id: previewData.record.id,
                   name: previewData.record.file_name,
