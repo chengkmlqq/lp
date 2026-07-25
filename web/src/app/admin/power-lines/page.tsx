@@ -11,7 +11,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Segmented,
   Select,
   Space,
@@ -1393,25 +1392,26 @@ export default function AdminPowerLinesPage() {
             >
               编辑
             </Button>
-            <Popconfirm
-              title="删除线路"
-              description={`确认删除线路 ${line.code} 吗？`}
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-              onConfirm={async () => {
-                await deleteLineMutation.mutateAsync(line.id);
+            <Button
+              size="small"
+              danger
+              loading={deleteLineMutation.isPending}
+              onClick={(event) => {
+                event.stopPropagation();
+                Modal.confirm({
+                  title: "删除线路",
+                  content: `确认删除线路 ${line.code} 吗？`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true },
+                  onOk: async () => {
+                    await deleteLineMutation.mutateAsync(line.id);
+                  },
+                });
               }}
             >
-              <Button
-                size="small"
-                danger
-                loading={deleteLineMutation.isPending}
-                onClick={(event) => event.stopPropagation()}
-              >
-                删除
-              </Button>
-            </Popconfirm>
+              删除
+            </Button>
           </Space>
         ) : null}
       >

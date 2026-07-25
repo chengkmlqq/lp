@@ -15,7 +15,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Row,
   Select,
   Space,
@@ -633,18 +632,19 @@ export default function ElevationRecordsPage() {
               预览
             </Button>
 
-            <Popconfirm
-              title={`确认删除文件 "${row.file_name}"？`}
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true, loading: deleting }}
-              onConfirm={() => deleteMutation.mutate(row.id)}
-              disabled={rowBusy}
+            <Button danger size="small" loading={deleting} disabled={rowBusy}
+              onClick={() => {
+                Modal.confirm({
+                  title: `确认删除文件 "${row.file_name}"？`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true, loading: deleting },
+                  onOk: () => deleteMutation.mutate(row.id),
+                });
+              }}
             >
-              <Button danger size="small" loading={deleting} disabled={rowBusy}>
-                删除
-              </Button>
-            </Popconfirm>
+              删除
+            </Button>
           </Space>
         );
       },

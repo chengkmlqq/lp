@@ -11,7 +11,6 @@ import {
   Form,
   Input,
   Modal,
-  Popconfirm,
   Row,
   Select,
   Space,
@@ -757,18 +756,20 @@ export default function AdminSystemMessagesPage() {
               标记已读
             </Button>
             {canManage && (
-              <Popconfirm
-                title="删除系统消息"
-                description={`确认删除系统消息「${item.title}」吗？`}
-                okText="删除"
-                cancelText="取消"
-                okButtonProps={{ danger: true, loading: isDeleting }}
-                onConfirm={() => deleteMutation.mutate(item.id)}
+              <Button danger disabled={isDeleting} loading={isDeleting} size="small" type="link"
+                onClick={() => {
+                  Modal.confirm({
+                    title: "删除系统消息",
+                    content: `确认删除系统消息「${item.title}」吗？`,
+                    okText: "删除",
+                    cancelText: "取消",
+                    okButtonProps: { danger: true, loading: isDeleting },
+                    onOk: () => deleteMutation.mutate(item.id),
+                  });
+                }}
               >
-                <Button danger disabled={isDeleting} loading={isDeleting} size="small" type="link">
-                  删除
-                </Button>
-              </Popconfirm>
+                删除
+              </Button>
             )}
           </Space>
         );

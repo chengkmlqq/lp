@@ -11,7 +11,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Row,
   Select,
   Space,
@@ -578,18 +577,19 @@ export default function AdminDocumentsPage() {
               编辑
             </Button>
 
-            <Popconfirm
-              title={`确认删除文档 ${record.title}？`}
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true, loading: deleteLoading }}
-              onConfirm={() => deleteDocumentMutation.mutate(record.id)}
-              disabled={rowBusy || !canManage}
+            <Button danger size="small" loading={deleteLoading} disabled={rowBusy || !canManage}
+              onClick={() => {
+                Modal.confirm({
+                  title: `确认删除文档 ${record.title}？`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true, loading: deleteLoading },
+                  onOk: () => deleteDocumentMutation.mutate(record.id),
+                });
+              }}
             >
-              <Button danger size="small" loading={deleteLoading} disabled={rowBusy || !canManage}>
-                删除
-              </Button>
-            </Popconfirm>
+              删除
+            </Button>
           </Space>
         );
       },
@@ -625,24 +625,24 @@ export default function AdminDocumentsPage() {
             >
               编辑
             </Button>
-            <Popconfirm
-              title={`确认删除文档 ${doc.title}？`}
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true, loading: deleteLoading }}
-              onConfirm={() => deleteDocumentMutation.mutate(doc.id)}
+            <Button
+              type="text"
+              size="small"
+              danger
               disabled={rowBusy || !canManage}
+              loading={deleteLoading}
+              onClick={() => {
+                Modal.confirm({
+                  title: `确认删除文档 ${doc.title}？`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true, loading: deleteLoading },
+                  onOk: () => deleteDocumentMutation.mutate(doc.id),
+                });
+              }}
             >
-              <Button
-                type="text"
-                size="small"
-                danger
-                disabled={rowBusy || !canManage}
-                loading={deleteLoading}
-              >
-                删除
-              </Button>
-            </Popconfirm>
+              删除
+            </Button>
           </Space>
         }
       >

@@ -12,7 +12,6 @@ import {
   Form,
   Input,
   Modal,
-  Popconfirm,
   Row,
   Select,
   Skeleton,
@@ -830,19 +829,20 @@ export default function AdminSystemParamsPage() {
               <Button size="small" disabled={rowBusy} onClick={() => startEdit(record)}>
                 编辑
               </Button>
-              <Popconfirm
-                title="删除系统参数"
-                description={`确认删除系统参数 ${record.param_key} 吗？`}
-                okText="删除"
-                cancelText="取消"
-                okButtonProps={{ danger: true, loading: deleteLoading }}
-                onConfirm={() => void removeParam(record)}
-                disabled={rowBusy}
+              <Button size="small" danger loading={deleteLoading} disabled={rowBusy}
+                onClick={() => {
+                  Modal.confirm({
+                    title: "删除系统参数",
+                    content: `确认删除系统参数 ${record.param_key} 吗？`,
+                    okText: "删除",
+                    cancelText: "取消",
+                    okButtonProps: { danger: true, loading: deleteLoading },
+                    onOk: () => void removeParam(record),
+                  });
+                }}
               >
-                <Button size="small" danger loading={deleteLoading} disabled={rowBusy}>
-                  删除
-                </Button>
-              </Popconfirm>
+                删除
+              </Button>
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" disabled={rowBusy} icon={<MoreOutlined />} />
               </Dropdown>
@@ -1065,18 +1065,20 @@ export default function AdminSystemParamsPage() {
                         <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
                           编辑分类
                         </Button>
-                        <Popconfirm
-                          title="删除分类"
-                          description={`确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`}
-                          okText="删除"
-                          cancelText="取消"
-                          okButtonProps={{ danger: true }}
-                          onConfirm={() => deleteCategoryMutation.mutate(currentCat.id)}
+                        <Button size="small" danger
+                          onClick={() => {
+                            Modal.confirm({
+                              title: "删除分类",
+                              content: `确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`,
+                              okText: "删除",
+                              cancelText: "取消",
+                              okButtonProps: { danger: true },
+                              onOk: () => deleteCategoryMutation.mutate(currentCat.id),
+                            });
+                          }}
                         >
-                          <Button size="small" danger>
-                            删除分类
-                          </Button>
-                        </Popconfirm>
+                          删除分类
+                        </Button>
                       </>
                     ) : null;
                   })()}

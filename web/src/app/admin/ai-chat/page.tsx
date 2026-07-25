@@ -6,7 +6,7 @@ import {
   Card,
   Input,
   List,
-  Popconfirm,
+  Modal,
   Space,
   Spin,
   Typography,
@@ -448,24 +448,24 @@ export default function AiChatPage() {
                       {conv.message_count || 0} 条消息
                     </div>
                   </div>
-                  <Popconfirm
-                    title="确认删除"
-                    description="删除后将无法恢复，确定删除此对话吗？"
-                    onConfirm={(e) => {
-                      e?.stopPropagation();
-                      deleteConvMutation.mutate(conv.id);
+                  <Button
+                    danger
+                    size="small"
+                    type="text"
+                    icon={<DeleteOutlined />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      Modal.confirm({
+                        title: "确认删除",
+                        content: "删除后将无法恢复，确定删除此对话吗？",
+                        okText: "确定",
+                        cancelText: "取消",
+                        onOk: () => {
+                          deleteConvMutation.mutate(conv.id);
+                        },
+                      });
                     }}
-                    okText="确定"
-                    cancelText="取消"
-                  >
-                    <Button
-                      danger
-                      size="small"
-                      type="text"
-                      icon={<DeleteOutlined />}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </Popconfirm>
+                  />
                 </div>
               )}
             />

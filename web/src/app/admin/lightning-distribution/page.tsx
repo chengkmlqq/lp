@@ -13,7 +13,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Row,
   Space,
   Spin,
@@ -497,18 +496,20 @@ export default function AdminLightningDistributionPage() {
               散点图
             </Button>
             {canManage && (
-              <Popconfirm
-                title="确认删除该批次所有事件记录？"
-                description="此操作不可恢复，请谨慎操作。"
-                onConfirm={() => deleteBatchMutation.mutate(row)}
-                okText="确认删除"
-                cancelText="取消"
-                okButtonProps={{ danger: true }}
+              <Button size="small" danger loading={deleteBatchMutation.isPending}
+                onClick={() => {
+                  Modal.confirm({
+                    title: "确认删除该批次所有事件记录？",
+                    content: "此操作不可恢复，请谨慎操作。",
+                    onOk: () => deleteBatchMutation.mutate(row),
+                    okText: "确认删除",
+                    cancelText: "取消",
+                    okButtonProps: { danger: true },
+                  });
+                }}
               >
-                <Button size="small" danger loading={deleteBatchMutation.isPending}>
-                  删除
-                </Button>
-              </Popconfirm>
+                删除
+              </Button>
             )}
           </Space>
         ),

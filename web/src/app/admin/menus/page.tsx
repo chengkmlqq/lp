@@ -12,7 +12,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Row,
   Select,
   Space,
@@ -574,18 +573,19 @@ export default function AdminMenusPage() {
               编辑
             </Button>
 
-            <Popconfirm
-              title={`确认删除菜单 ${record.name}（${record.code}）？`}
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true, loading: deleteLoading }}
-              onConfirm={() => deleteMenuMutation.mutate(record.id)}
-              disabled={menuBusy}
+            <Button danger size="small" loading={deleteLoading} disabled={menuBusy}
+              onClick={() => {
+                Modal.confirm({
+                  title: `确认删除菜单 ${record.name}（${record.code}）？`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true, loading: deleteLoading },
+                  onOk: () => deleteMenuMutation.mutate(record.id),
+                });
+              }}
             >
-              <Button danger size="small" loading={deleteLoading} disabled={menuBusy}>
-                删除
-              </Button>
-            </Popconfirm>
+              删除
+            </Button>
 
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
               <Button size="small" loading={updatingLoading} disabled={menuBusy} icon={<MoreOutlined />} />

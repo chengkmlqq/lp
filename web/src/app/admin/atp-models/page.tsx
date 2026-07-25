@@ -9,7 +9,6 @@ import {
   Form,
   Input,
   Modal,
-  Popconfirm,
   Row,
   Segmented,
   Select,
@@ -527,19 +526,20 @@ export default function AtpModelsPage() {
           const rowBusy = deleteLoading;
 
           return (
-            <Popconfirm
-              title="删除模型"
-              description="这会同时删除其文件与运行记录。"
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true, loading: deleteLoading }}
-              onConfirm={() => deleteMutation.mutate(item.id)}
-              disabled={!canManage || rowBusy}
+            <Button danger size="small" icon={<DeleteOutlined />} loading={deleteLoading} disabled={!canManage || rowBusy}
+              onClick={() => {
+                Modal.confirm({
+                  title: "删除模型",
+                  content: "这会同时删除其文件与运行记录。",
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true, loading: deleteLoading },
+                  onOk: () => deleteMutation.mutate(item.id),
+                });
+              }}
             >
-              <Button danger size="small" icon={<DeleteOutlined />} loading={deleteLoading} disabled={!canManage || rowBusy}>
-                删除
-              </Button>
-            </Popconfirm>
+              删除
+            </Button>
           );
         },
       },
@@ -1034,19 +1034,20 @@ export default function AtpModelsPage() {
                             </Typography.Text>
                           </div>
                           {item.item && (
-                            <Popconfirm
-                              title="删除模型"
-                              description="这会同时删除其文件与运行记录。"
-                              okText="删除"
-                              cancelText="取消"
-                              okButtonProps={{ danger: true }}
-                              onConfirm={() => item.item && deleteMutation.mutate(item.item.id)}
-                              disabled={!canManage}
+                            <Button danger size="small" disabled={!canManage}
+                              onClick={() => {
+                                Modal.confirm({
+                                  title: "删除模型",
+                                  content: "这会同时删除其文件与运行记录。",
+                                  okText: "删除",
+                                  cancelText: "取消",
+                                  okButtonProps: { danger: true },
+                                  onOk: () => item.item && deleteMutation.mutate(item.item.id),
+                                });
+                              }}
                             >
-                              <Button danger size="small" disabled={!canManage}>
-                                删除
-                              </Button>
-                            </Popconfirm>
+                              删除
+                            </Button>
                           )}
                         </div>
                       </div>

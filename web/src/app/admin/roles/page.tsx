@@ -12,7 +12,6 @@ import {
   Form,
   Input,
   Modal,
-  Popconfirm,
   Row,
   Select,
   Space,
@@ -542,24 +541,24 @@ export default function AdminRolesPage() {
               >
                 编辑
               </Button>
-              <Popconfirm
-                title={`确认删除角色 ${role.code} 吗？`}
-                description="删除后无法恢复，请谨慎操作。"
-                okText="删除"
-                cancelText="取消"
-                okButtonProps={{ danger: true, loading: isDeleting }}
-                onConfirm={() => deleteRoleMutation.mutate(role.id)}
+              <Button
+                danger
+                size="small"
+                loading={isDeleting}
                 disabled={rowBusy}
+                onClick={() => {
+                  Modal.confirm({
+                    title: `确认删除角色 ${role.code} 吗？`,
+                    content: "删除后无法恢复，请谨慎操作。",
+                    okText: "删除",
+                    cancelText: "取消",
+                    okButtonProps: { danger: true, loading: isDeleting },
+                    onOk: () => deleteRoleMutation.mutate(role.id),
+                  });
+                }}
               >
-                <Button
-                  danger
-                  size="small"
-                  loading={isDeleting}
-                  disabled={rowBusy}
-                >
-                  删除
-                </Button>
-              </Popconfirm>
+                删除
+              </Button>
             </Space>
           );
         },

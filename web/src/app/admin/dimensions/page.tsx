@@ -10,7 +10,6 @@ import {
   Form,
   Input,
   Modal,
-  Popconfirm,
   Row,
   Select,
   Space,
@@ -503,18 +502,19 @@ export default function AdminDimensionsPage() {
               编辑
             </Button>
 
-            <Popconfirm
-              title={`确认删除维度项 ${row.name}（${row.code}）？`}
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true, loading: deleteLoading }}
-              onConfirm={() => deleteDimensionMutation.mutate(row.id)}
-              disabled={rowBusy || !canManage}
+            <Button danger size="small" loading={deleteLoading} disabled={rowBusy || !canManage}
+              onClick={() => {
+                Modal.confirm({
+                  title: `确认删除维度项 ${row.name}（${row.code}）？`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true, loading: deleteLoading },
+                  onOk: () => deleteDimensionMutation.mutate(row.id),
+                });
+              }}
             >
-              <Button danger size="small" loading={deleteLoading} disabled={rowBusy || !canManage}>
-                删除
-              </Button>
-            </Popconfirm>
+              删除
+            </Button>
 
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
               <Button size="small" disabled={rowBusy || !canManage} icon={<MoreOutlined />} />

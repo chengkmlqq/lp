@@ -11,7 +11,6 @@ import {
   Form,
   Input,
   Modal,
-  Popconfirm,
   Row,
   Select,
   Space,
@@ -892,18 +891,19 @@ export default function AdminUsersPage() {
               编辑
             </Button>
 
-            <Popconfirm
-              title={`确认删除用户 ${row.username}（${row.id}）？`}
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true, loading: deleteLoading }}
-              onConfirm={() => deleteUserMutation.mutate(row.id)}
-              disabled={rowBusy}
+            <Button danger size="small" loading={deleteLoading} disabled={rowBusy}
+              onClick={() => {
+                Modal.confirm({
+                  title: `确认删除用户 ${row.username}（${row.id}）？`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true, loading: deleteLoading },
+                  onOk: () => deleteUserMutation.mutate(row.id),
+                });
+              }}
             >
-              <Button danger size="small" loading={deleteLoading} disabled={rowBusy}>
-                删除
-              </Button>
-            </Popconfirm>
+              删除
+            </Button>
 
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
               <Button size="small" disabled={rowBusy} icon={<MoreOutlined />} />
