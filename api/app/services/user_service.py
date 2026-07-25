@@ -289,6 +289,17 @@ def update_user(
     changed_fields: list[str] = []
     previous_status = user.status
 
+    # Handle new_user_id (user ID change)
+    if payload.new_user_id is not None:
+        next_user_id = payload.new_user_id.strip()
+        if next_user_id and next_user_id != user.id:
+            # Check uniqueness against other users
+            existing = get_user_by_id(db, next_user_id)
+            if existing:
+                return None
+            user.id = next_user_id
+            changed_fields.append("user_id")
+
     if payload.email is not None:
         next_email = payload.email.strip().lower()
         if not next_email:
@@ -347,29 +358,28 @@ def update_user(
         db.rollback()
         return None
 
-    updated = get_user_by_id(db, user_id)
-    if updated:
-        queue_user_auth_refresh(updated, status_changed=status_changed)
-        _fire_and_forget(
-            publish_topic(
-                "admin.users",
-                name="users.changed",
-                payload={"action": "updated", "user_id": updated.id},
-                requires_refetch=["/api/v1/users"],
-                dedupe_key=f"users:updated:{updated.id}",
-            )
+    # Use the ORM object directly (its id may have changed due to new_user_id)
+    queue_user_auth_refresh(user, status_changed=status_changed)
+    _fire_and_forget(
+        publish_topic(
+            "admin.users",
+            name="users.changed",
+            payload={"action": "updated", "user_id": user.id},
+            requires_refetch=["/api/v1/users"],
+            dedupe_key=f"users:updated:{user.id}",
         )
-        _fire_and_forget(
-            publish_to_user(
-                updated.id,
-                topic="auth",
-                name="auth.profile_changed",
-                payload={"user_id": updated.id, "status": updated.status},
-                requires_refetch=["/api/v1/auth/me"],
-                dedupe_key=f"auth:profile_changed:{updated.id}:{updated.status}",
-            )
+    )
+    _fire_and_forget(
+        publish_to_user(
+            user.id,
+            topic="auth",
+            name="auth.profile_changed",
+            payload={"user_id": user.id, "status": user.status},
+            requires_refetch=["/api/v1/auth/me"],
+            dedupe_key=f"auth:profile_changed:{user.id}:{user.status}",
         )
-    return serialize_user(updated) if updated else None
+    )
+    return serialize_user(user)
 
 
 def set_user_roles(

@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Literal
 
@@ -27,9 +28,22 @@ class UserIdCheckResponse(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
+    new_user_id: str | None = Field(default=None, min_length=3, max_length=64)
     email: str | None = None
     username: str | None = Field(default=None, min_length=3, max_length=64)
     status: Literal["active", "disabled", "enabled"] | None = None
+
+    @field_validator("new_user_id")
+    @classmethod
+    def validate_new_user_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("new_user_id cannot be empty")
+        if not re.match(r"^[a-zA-Z0-9_]+$", normalized):
+            raise ValueError("new_user_id must contain only letters, numbers, and underscores")
+        return normalized
 
 
 class UserRoleUpdateRequest(BaseModel):

@@ -24,7 +24,7 @@ class AuthSession(Base):
     )
     user_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("users.user_id", ondelete="CASCADE"),
+        ForeignKey("users.user_id", ondelete="CASCADE", onupdate="CASCADE"),
         index=True,
     )
     refresh_token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)

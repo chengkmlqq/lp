@@ -19,7 +19,7 @@ class AuditLog(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[str | None] = mapped_column(
         String(36),
-        ForeignKey("users.user_id", ondelete="SET NULL"),
+        ForeignKey("users.user_id", ondelete="SET NULL", onupdate="CASCADE"),
         index=True,
     )
     action: Mapped[str] = mapped_column(String(128), index=True)

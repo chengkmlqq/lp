@@ -41,12 +41,12 @@ class ScheduledTask(Base):
     run_count: Mapped[int] = mapped_column(Integer, default=0)
     create_user: Mapped[str | None] = mapped_column(
         String(36),
-        ForeignKey("users.user_id", ondelete="SET NULL"),
+        ForeignKey("users.user_id", ondelete="SET NULL", onupdate="CASCADE"),
         index=True,
     )
     update_user: Mapped[str | None] = mapped_column(
         String(36),
-        ForeignKey("users.user_id", ondelete="SET NULL"),
+        ForeignKey("users.user_id", ondelete="SET NULL", onupdate="CASCADE"),
         index=True,
     )
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

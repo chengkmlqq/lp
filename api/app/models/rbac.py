@@ -59,7 +59,7 @@ class UserRole(Base):
 
     user_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("users.user_id", ondelete="CASCADE"),
+        ForeignKey("users.user_id", ondelete="CASCADE", onupdate="CASCADE"),
         primary_key=True,
     )
     role_id: Mapped[int] = mapped_column(

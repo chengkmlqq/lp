@@ -20,7 +20,7 @@ class AiChatConversation(Base):
     title: Mapped[str] = mapped_column(String(256), default="新对话")
     user_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("users.user_id", ondelete="CASCADE"),
+        ForeignKey("users.user_id", ondelete="CASCADE", onupdate="CASCADE"),
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

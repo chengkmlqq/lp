@@ -1322,6 +1322,7 @@ export default function AdminUsersPage() {
         okText="保存"
         cancelText="取消"
         confirmLoading={updateUserProfileMutation.isPending}
+        okButtonProps={{ disabled: !!editUserIdValidationError }}
       >
         {editingUser && (
           <div style={{ textAlign: "center", marginBottom: 16 }}>

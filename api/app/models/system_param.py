@@ -24,12 +24,12 @@ class SystemParam(Base):
     status: Mapped[str] = mapped_column(String(16), default="enabled", index=True)
     created_by_user_id: Mapped[str | None] = mapped_column(
         String(36),
-        ForeignKey("users.user_id", ondelete="SET NULL"),
+        ForeignKey("users.user_id", ondelete="SET NULL", onupdate="CASCADE"),
         index=True,
     )
     updated_by_user_id: Mapped[str | None] = mapped_column(
         String(36),
-        ForeignKey("users.user_id", ondelete="SET NULL"),
+        ForeignKey("users.user_id", ondelete="SET NULL", onupdate="CASCADE"),
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
