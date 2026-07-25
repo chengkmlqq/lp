@@ -879,8 +879,11 @@ export default function AdminSystemParamsPage() {
   }, []);
 
   useEffect(() => {
-    updateTableScrollY();
-  }, [items.length, listQuery.isFetching, listError, error, success, updateTableScrollY]);
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.requestAnimationFrame(updateTableScrollY);
+  }, [paginationCurrent, paginationPageSize, items.length, listQuery.isFetching, listError, error, success, updateTableScrollY]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -978,6 +981,7 @@ export default function AdminSystemParamsPage() {
           justifyContent: "space-between",
           padding: "16px 24px",
           flexShrink: 0,
+          background: "var(--ant-color-bg-container)",
         }}
       >
         <Typography.Title level={4} style={{ margin: 0 }}>系统参数管理</Typography.Title>
@@ -1033,7 +1037,6 @@ export default function AdminSystemParamsPage() {
           <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
             <AntCard
               className="admin-system-params-sider-card"
-              title="参数分类"
               style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
               bodyStyle={{ flex: 1, overflow: "auto" }}
             >
@@ -1102,6 +1105,7 @@ export default function AdminSystemParamsPage() {
             flexDirection: "column",
             overflowX: "hidden",
             overflowY: isMobile ? "auto" : "hidden",
+            background: "var(--ant-color-bg-container)",
           }}
         >
           <div className="admin-filter-bar">
@@ -1144,7 +1148,7 @@ export default function AdminSystemParamsPage() {
             <div
               ref={tableScrollAnchorRef}
               className="admin-system-params-table-anchor"
-              style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+              style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", "--admin-system-params-table-body-min-height": `${tableScrollY}px` } as React.CSSProperties}
             >
               <Table<SystemParamSummary>
                 rowKey="id"

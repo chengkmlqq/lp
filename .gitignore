@@ -34,6 +34,7 @@ api/data/
 scripts/start_flower.sh
 scripts/start_worker.sh
 node_modules/
+.next/
 web/node_modules/
 web/.next/
 
