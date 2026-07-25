@@ -8,6 +8,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY web/package.json ./web/
 COPY web/scripts ./web/scripts
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 RUN npm config set registry ${NPM_REGISTRY} && \
     npm install --legacy-peer-deps --no-audit --no-fund
 
