@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Card,
@@ -609,18 +609,15 @@ export default function AdminSystemParamsPage() {
   useEffect(() => {
     if (viewMode !== "card") return;
 
-    const pageCard = pageCardRef.current;
-    if (!pageCard) return;
-
-    const cardBody = pageCard.querySelector<HTMLElement>(".ant-card-body");
-    if (!cardBody) return;
+    const scrollContainer = pageCardRef.current;
+    if (!scrollContainer) return;
 
     const handleScroll = () => {
       if (isLoadingMore || listQuery.isLoading) return;
 
-      const scrollTop = cardBody.scrollTop;
-      const scrollHeight = cardBody.scrollHeight;
-      const clientHeight = cardBody.clientHeight;
+      const scrollTop = scrollContainer.scrollTop;
+      const scrollHeight = scrollContainer.scrollHeight;
+      const clientHeight = scrollContainer.clientHeight;
 
       if (scrollTop + clientHeight >= scrollHeight - 100) {
         const total = listQuery.data?.total ?? 0;
@@ -634,8 +631,8 @@ export default function AdminSystemParamsPage() {
       }
     };
 
-    cardBody.addEventListener("scroll", handleScroll);
-    return () => cardBody.removeEventListener("scroll", handleScroll);
+    scrollContainer.addEventListener("scroll", handleScroll);
+    return () => scrollContainer.removeEventListener("scroll", handleScroll);
   }, [viewMode, isLoadingMore, listQuery.isLoading, listQuery.data?.total, allLoadedParams.length]);
 
   useEffect(() => {
@@ -972,122 +969,142 @@ export default function AdminSystemParamsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {/* ===== Top Area: Header with title + buttons ===== */}
+      <div
+        className="admin-system-params-header"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "16px 24px",
+          flexShrink: 0,
+        }}
+      >
+        <Typography.Title level={4} style={{ margin: 0 }}>系统参数管理</Typography.Title>
+        <Space>
+          {canManage && (
+            <Button type="primary" onClick={startCreate}>新建参数</Button>
+          )}
+          {canManage && selectedCategoryId !== null ? (
+            <Space>
+              {(() => {
+                const findCat = (items: ParamCategoryTreeItem[], id: number): ParamCategoryTreeItem | null => {
+                  for (const item of items) {
+                    if (item.id === id) return item;
+                    if (item.children) {
+                      const found = findCat(item.children, id);
+                      if (found) return found;
+                    }
+                  }
+                  return null;
+                };
+                const currentCat = findCat(categoryTreeQuery.data ?? [], selectedCategoryId);
+                return currentCat ? (
+                  <>
+                    <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
+                      编辑分类
+                    </Button>
+                    <Button size="small" danger
+                      onClick={() => {
+                        Modal.confirm({
+                          title: "删除分类",
+                          content: `确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`,
+                          okText: "删除",
+                          cancelText: "取消",
+                          okButtonProps: { danger: true },
+                          onOk: () => deleteCategoryMutation.mutate(currentCat.id),
+                        });
+                      }}
+                    >
+                      删除分类
+                    </Button>
+                  </>
+                ) : null;
+              })()}
+            </Space>
+          ) : null}
+        </Space>
+      </div>
+
+      {/* ===== Bottom Area: Two-column layout ===== */}
       <div ref={containerRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 0, overflow: "hidden" }}>
-      {/* Category Sidebar */}
-      {!isMobile && (
-        <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
-          <AntCard
-            className="admin-system-params-sider-card"
-            title="参数分类"
-            style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-            bodyStyle={{ flex: 1, overflow: "auto" }}
-          >
-            {!categoryTreeQuery.isLoading && categoryTreeQuery.data && categoryTreeQuery.data.length > 0 && (
-              <div style={{ padding: "8px 12px" }}>
-                <Input
-                  className="admin-system-params-search-input"
-                  placeholder="搜索分类..."
-                  prefix={<SearchOutlined />}
-                  value={categorySearch}
-                  onChange={(e) => setCategorySearch(e.target.value)}
-                  allowClear
-                  size="small"
-                />
-              </div>
-            )}
-            {categoryTreeQuery.isLoading ? (
-              skeletonMenu
-            ) : categoryTreeQuery.data && categoryTreeQuery.data.length > 0 ? (
-              <>
-                {categorySearch && (
-                  <div className="admin-system-params-search-results-count">
-                    {`找到 ${filteredTreeData.length} 个分类`}
-                  </div>
-                )}
-                <div className="admin-system-params-sider-menu">
-                  <Tree
-                    showLine
-                    selectedKeys={selectedCategoryId !== null ? [String(selectedCategoryId)] : []}
-                    treeData={[
-                      {
-                        key: "all",
-                        title: "全部参数",
-                      } as DataNode,
-                      ...convertToTreeData(filteredTreeData),
-                    ]}
-                    onSelect={handleCategoryClick}
-                    style={{ fontSize: 13 }}
+        {/* Category Sidebar */}
+        {!isMobile && (
+          <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
+            <AntCard
+              className="admin-system-params-sider-card"
+              title="参数分类"
+              style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
+              bodyStyle={{ flex: 1, overflow: "auto" }}
+            >
+              {!categoryTreeQuery.isLoading && categoryTreeQuery.data && categoryTreeQuery.data.length > 0 && (
+                <div style={{ padding: "8px 12px" }}>
+                  <Input
+                    className="admin-system-params-search-input"
+                    placeholder="搜索分类..."
+                    prefix={<SearchOutlined />}
+                    value={categorySearch}
+                    onChange={(e) => setCategorySearch(e.target.value)}
+                    allowClear
+                    size="small"
                   />
                 </div>
-              </>
-            ) : (
-              <div className="admin-system-params-sider-empty">
-                <Empty description="暂无分类" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              </div>
-            )}
-          </AntCard>
-        </div>
-      )}
-      {!isMobile && (
-        <div
-          style={{ width: 8, cursor: "col-resize", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}
-          onMouseDown={handleResizeStart}
-        >
-          <div style={{ width: 2, height: 40, backgroundColor: "#d9d9d9", borderRadius: 1 }} />
-        </div>
-      )}
-      <div style={{ flex: 1, minWidth: 0, display: "flex" }}>
-        <AntCard
-          ref={pageCardRef}
-          className="admin-system-params-page-card"
-          title="系统参数管理"
-          extra={
-            <Space>
-              {canManage && (
-                <Button type="primary" onClick={startCreate}>新建参数</Button>
               )}
-              {canManage && selectedCategoryId !== null ? (
-                <Space>
-                  {(() => {
-                    const findCat = (items: ParamCategoryTreeItem[], id: number): ParamCategoryTreeItem | null => {
-                      for (const item of items) {
-                        if (item.id === id) return item;
-                        if (item.children) {
-                          const found = findCat(item.children, id);
-                          if (found) return found;
-                        }
-                      }
-                      return null;
-                    };
-                    const currentCat = findCat(categoryTreeQuery.data ?? [], selectedCategoryId);
-                    return currentCat ? (
-                      <>
-                        <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
-                          编辑分类
-                        </Button>
-                        <Button size="small" danger
-                          onClick={() => {
-                            Modal.confirm({
-                              title: "删除分类",
-                              content: `确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`,
-                              okText: "删除",
-                              cancelText: "取消",
-                              okButtonProps: { danger: true },
-                              onOk: () => deleteCategoryMutation.mutate(currentCat.id),
-                            });
-                          }}
-                        >
-                          删除分类
-                        </Button>
-                      </>
-                    ) : null;
-                  })()}
-                </Space>
-              ) : null}
-            </Space>
-          }
+              {categoryTreeQuery.isLoading ? (
+                skeletonMenu
+              ) : categoryTreeQuery.data && categoryTreeQuery.data.length > 0 ? (
+                <>
+                  {categorySearch && (
+                    <div className="admin-system-params-search-results-count">
+                      {`找到 ${filteredTreeData.length} 个分类`}
+                    </div>
+                  )}
+                  <div className="admin-system-params-sider-menu">
+                    <Tree
+                      showLine
+                      selectedKeys={selectedCategoryId !== null ? [String(selectedCategoryId)] : []}
+                      treeData={[
+                        {
+                          key: "all",
+                          title: "全部参数",
+                        } as DataNode,
+                        ...convertToTreeData(filteredTreeData),
+                      ]}
+                      onSelect={handleCategoryClick}
+                      style={{ fontSize: 13 }}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="admin-system-params-sider-empty">
+                  <Empty description="暂无分类" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                </div>
+              )}
+            </AntCard>
+          </div>
+        )}
+        {!isMobile && (
+          <div
+            style={{ width: 8, cursor: "col-resize", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}
+            onMouseDown={handleResizeStart}
+          >
+            <div style={{ width: 2, height: 40, backgroundColor: "#d9d9d9", borderRadius: 1 }} />
+          </div>
+        )}
+        {/* Right Panel: filter + table/card-view */}
+        <div
+          ref={isMobile ? pageCardRef : undefined}
+          className="admin-system-params-right-panel"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflowX: "hidden",
+            overflowY: isMobile ? "auto" : "hidden",
+          }}
         >
-        <div className="admin-filter-bar">
+          <div className="admin-filter-bar">
             <Form layout="inline">
               <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
@@ -1123,199 +1140,198 @@ export default function AdminSystemParamsPage() {
             </Form>
           </div>
 
-        {viewMode === "table" ? (
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-system-params-table-anchor"
-            style={{ "--admin-system-params-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<SystemParamSummary>
-              rowKey="id"
-              dataSource={items}
-              columns={columns}
-              loading={listQuery.isLoading}
-              tableLayout="fixed"
-              pagination={{
-                current: pagination.current,
-                pageSize: pagination.pageSize,
-                total: Math.max(listQuery.data?.total ?? 0, 1),
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: () => `共 ${listQuery.data?.total ?? 0} 条`,
-                hideOnSinglePage: false,
-                style: { marginBottom: 0 },
-                onChange: (page, pageSize) => {
-                  setPagination({ current: page, pageSize });
-                },
-              }}
-              scroll={{ x: 1200, y: tableScrollY }}
-              locale={{
-                emptyText: (
+          {viewMode === "table" ? (
+            <div
+              ref={tableScrollAnchorRef}
+              className="admin-system-params-table-anchor"
+              style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+            >
+              <Table<SystemParamSummary>
+                rowKey="id"
+                dataSource={items}
+                columns={columns}
+                loading={listQuery.isLoading}
+                tableLayout="fixed"
+                pagination={{
+                  current: pagination.current,
+                  pageSize: pagination.pageSize,
+                  total: Math.max(listQuery.data?.total ?? 0, 1),
+                  showSizeChanger: true,
+                  pageSizeOptions: [10, 20, 50, 100],
+                  showTotal: () => `共 ${listQuery.data?.total ?? 0} 条`,
+                  hideOnSinglePage: false,
+                  style: { marginBottom: 0 },
+                  onChange: (page, pageSize) => {
+                    setPagination({ current: page, pageSize });
+                  },
+                }}
+                scroll={{ x: 1200, y: tableScrollY }}
+                locale={{
+                  emptyText: (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="未找到符合筛选条件的系统参数。"
+                    />
+                  ),
+                }}
+              />
+            </div>
+          ) : (
+            <div className="admin-system-params-card-view">
+              {listQuery.isLoading && allLoadedParams.length === 0 ? (
+                <div className="admin-system-params-card-view-state">
+                  <Spin tip="加载中..." />
+                </div>
+              ) : allLoadedParams.length === 0 ? (
+                <div className="admin-system-params-card-view-state">
                   <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
                     description="未找到符合筛选条件的系统参数。"
                   />
-                ),
-              }}
-            />
-          </div>
-        ) : (
-          <div className="admin-system-params-card-view">
-            {listQuery.isLoading && allLoadedParams.length === 0 ? (
-              <div className="admin-system-params-card-view-state">
-                <Spin tip="加载中..." />
-              </div>
-            ) : allLoadedParams.length === 0 ? (
-              <div className="admin-system-params-card-view-state">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的系统参数。"
-                />
-              </div>
-            ) : (
-              <div className="admin-system-params-card-view-content">
-                <Row gutter={[12, 12]}>
-                  {allLoadedParams.map((param) => (
-                    <Col key={param.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                      {renderParamCard(param)}
-                    </Col>
-                  ))}
-                </Row>
-                {isLoadingMore && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Spin tip="加载更多..." />
-                  </div>
-                )}
-                {allLoadedParams.length >= (listQuery.data?.total ?? 0) && allLoadedParams.length > 0 && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Typography.Text type="secondary">
-                      已加载全部 {allLoadedParams.length} 条数据
-                    </Typography.Text>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </AntCard>
-
-      {canManage && (
-        <Modal
-          title={editingId === null ? "新建系统参数" : `编辑系统参数：${formApi.getFieldValue("param_name")}（ID: ${editingId}）`}
-          open={editorOpen}
-          onCancel={closeEditor}
-          onOk={() => formApi.submit()}
-          okText={editingId === null ? "创建" : "保存"}
-          cancelText="取消"
-          confirmLoading={saveMutation.isPending}
-          destroyOnClose
-        >
-          <Form<FormState>
-            form={formApi}
-            layout="vertical"
-            initialValues={EMPTY_FORM}
-            onFinish={() => saveMutation.mutate()}
-            autoComplete="off"
-          >
-            <div className="grid gap-4 md:grid-cols-2">
-              <Form.Item<FormState>
-                label="参数键"
-                name="param_key"
-                validateStatus={paramKeyValidationError ? "error" : ""}
-                help={paramKeyValidationError}
-                rules={[
-                  { required: true, message: "请输入参数键" },
-                  { min: 2, message: "参数键至少 2 位" },
-                  { max: 128, message: "参数键不能超过 128 位" },
-                ]}
-              >
-                <Input
-                  disabled={editingId !== null}
-                  placeholder="请输入参数键"
-                  onChange={(event) => handleParamKeyChange(event.target.value)}
-                />
-              </Form.Item>
-
-              <Form.Item<FormState>
-                label="参数名称"
-                name="param_name"
-                rules={[
-                  { required: true, message: "请输入参数名称" },
-                  { min: 2, message: "参数名称至少 2 位" },
-                  { max: 128, message: "参数名称不能超过 128 位" },
-                ]}
-              >
-                <Input placeholder="请输入参数名称" />
-              </Form.Item>
-
-              <Form.Item<FormState>
-                label="参数分类"
-                name="category_id"
-              >
-                <Select
-                  allowClear
-                  placeholder="请选择分类"
-                  style={{ width: "100%" }}
-                  options={(() => {
-                    const flattenCategories = (cats: ParamCategoryTreeItem[], level: number = 0): { value: number; label: string }[] => {
-                      return cats.flatMap((cat) => [
-                        { value: cat.id, label: "　".repeat(level) + cat.name },
-                        ...flattenCategories(cat.children, level + 1),
-                      ]);
-                    };
-                    return flattenCategories(categoryTreeQuery.data ?? []);
-                  })()}
-                />
-              </Form.Item>
-
-              <Form.Item<FormState>
-                className="md:col-span-2"
-                label="参数值"
-                name="param_value"
-                rules={[{ max: 20000, message: "参数值不能超过 20000 位" }]}
-              >
-                <Input.TextArea rows={4} />
-              </Form.Item>
-
-              <Form.Item<FormState>
-                className="md:col-span-2"
-                label="说明"
-                name="description"
-                rules={[{ max: 20000, message: "说明不能超过 20000 位" }]}
-              >
-                <Input.TextArea rows={3} />
-              </Form.Item>
+                </div>
+              ) : (
+                <div className="admin-system-params-card-view-content">
+                  <Row gutter={[12, 12]}>
+                    {allLoadedParams.map((param) => (
+                      <Col key={param.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                        {renderParamCard(param)}
+                      </Col>
+                    ))}
+                  </Row>
+                  {isLoadingMore && (
+                    <div style={{ textAlign: "center", padding: "20px 0" }}>
+                      <Spin tip="加载更多..." />
+                    </div>
+                  )}
+                  {allLoadedParams.length >= (listQuery.data?.total ?? 0) && allLoadedParams.length > 0 && (
+                    <div style={{ textAlign: "center", padding: "20px 0" }}>
+                      <Typography.Text type="secondary">
+                        已加载全部 {allLoadedParams.length} 条数据
+                      </Typography.Text>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </Form>
-        </Modal>
-      )}
+          )}
+        </div>
 
-      {/* Category management modal */}
-      {canManage && (
-        <Modal
-          title={editingCategoryId === null ? (categoryParentId !== null ? "新建子分类" : "新建参数分类") : `编辑分类：${categoryNameInput}`}
-          open={categoryEditorOpen}
-          onCancel={() => setCategoryEditorOpen(false)}
-          onOk={() => saveCategoryMutation.mutate()}
-          okText={editingCategoryId === null ? "创建" : "保存"}
-          cancelText="取消"
-          confirmLoading={saveCategoryMutation.isPending}
-          destroyOnClose
-        >
-          <Form layout="vertical" style={{ marginTop: 16 }}>
-            <Form.Item label="分类名称" required>
-              <Input
-                placeholder="请输入分类名称"
-                value={categoryNameInput}
-                onChange={(e) => setCategoryNameInput(e.target.value)}
-                onPressEnter={() => saveCategoryMutation.mutate()}
-              />
-            </Form.Item>
-          </Form>
-        </Modal>
-      )}
+        {canManage && (
+          <Modal
+            title={editingId === null ? "新建系统参数" : `编辑系统参数：${formApi.getFieldValue("param_name")}（ID: ${editingId}）`}
+            open={editorOpen}
+            onCancel={closeEditor}
+            onOk={() => formApi.submit()}
+            okText={editingId === null ? "创建" : "保存"}
+            cancelText="取消"
+            confirmLoading={saveMutation.isPending}
+            destroyOnClose
+          >
+            <Form<FormState>
+              form={formApi}
+              layout="vertical"
+              initialValues={EMPTY_FORM}
+              onFinish={() => saveMutation.mutate()}
+              autoComplete="off"
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                <Form.Item<FormState>
+                  label="参数键"
+                  name="param_key"
+                  validateStatus={paramKeyValidationError ? "error" : ""}
+                  help={paramKeyValidationError}
+                  rules={[
+                    { required: true, message: "请输入参数键" },
+                    { min: 2, message: "参数键至少 2 位" },
+                    { max: 128, message: "参数键不能超过 128 位" },
+                  ]}
+                >
+                  <Input
+                    disabled={editingId !== null}
+                    placeholder="请输入参数键"
+                    onChange={(event) => handleParamKeyChange(event.target.value)}
+                  />
+                </Form.Item>
+
+                <Form.Item<FormState>
+                  label="参数名称"
+                  name="param_name"
+                  rules={[
+                    { required: true, message: "请输入参数名称" },
+                    { min: 2, message: "参数名称至少 2 位" },
+                    { max: 128, message: "参数名称不能超过 128 位" },
+                  ]}
+                >
+                  <Input placeholder="请输入参数名称" />
+                </Form.Item>
+
+                <Form.Item<FormState>
+                  label="参数分类"
+                  name="category_id"
+                >
+                  <Select
+                    allowClear
+                    placeholder="请选择分类"
+                    style={{ width: "100%" }}
+                    options={(() => {
+                      const flattenCategories = (cats: ParamCategoryTreeItem[], level: number = 0): { value: number; label: string }[] => {
+                        return cats.flatMap((cat) => [
+                          { value: cat.id, label: "　".repeat(level) + cat.name },
+                          ...flattenCategories(cat.children, level + 1),
+                        ]);
+                      };
+                      return flattenCategories(categoryTreeQuery.data ?? []);
+                    })()}
+                  />
+                </Form.Item>
+
+                <Form.Item<FormState>
+                  className="md:col-span-2"
+                  label="参数值"
+                  name="param_value"
+                  rules={[{ max: 20000, message: "参数值不能超过 20000 位" }]}
+                >
+                  <Input.TextArea rows={4} />
+                </Form.Item>
+
+                <Form.Item<FormState>
+                  className="md:col-span-2"
+                  label="说明"
+                  name="description"
+                  rules={[{ max: 20000, message: "说明不能超过 20000 位" }]}
+                >
+                  <Input.TextArea rows={3} />
+                </Form.Item>
+              </div>
+            </Form>
+          </Modal>
+        )}
+
+        {/* Category management modal */}
+        {canManage && (
+          <Modal
+            title={editingCategoryId === null ? (categoryParentId !== null ? "新建子分类" : "新建参数分类") : `编辑分类：${categoryNameInput}`}
+            open={categoryEditorOpen}
+            onCancel={() => setCategoryEditorOpen(false)}
+            onOk={() => saveCategoryMutation.mutate()}
+            okText={editingCategoryId === null ? "创建" : "保存"}
+            cancelText="取消"
+            confirmLoading={saveCategoryMutation.isPending}
+            destroyOnClose
+          >
+            <Form layout="vertical" style={{ marginTop: 16 }}>
+              <Form.Item label="分类名称" required>
+                <Input
+                  placeholder="请输入分类名称"
+                  value={categoryNameInput}
+                  onChange={(e) => setCategoryNameInput(e.target.value)}
+                  onPressEnter={() => saveCategoryMutation.mutate()}
+                />
+              </Form.Item>
+            </Form>
+          </Modal>
+        )}
       </div>
-    </div>
     </div>
   );
 }

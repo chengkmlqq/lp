@@ -959,7 +959,7 @@ body {
   min-height: var(--admin-system-params-table-body-min-height, 180px);
 }
 
-.admin-system-params-page-card {
+.admin-system-params-right-panel {
   display: flex;
   flex: 1;
   min-height: 0;
@@ -967,19 +967,9 @@ body {
   flex-direction: column;
 }
 
-.admin-system-params-page-card > .ant-card-head,
 .admin-system-params-sider-card > .ant-card-head {
   background: transparent;
   border-bottom-color: var(--ant-color-border-secondary);
-}
-
-.admin-system-params-page-card > .ant-card-body {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: auto;
 }
 
 .admin-system-params-card-view {
