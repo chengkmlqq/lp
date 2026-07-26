@@ -33,6 +33,7 @@ from api.app.schemas.file_storage import (
 from api.app.schemas.system_param import SystemParamCreateRequest, SystemParamUpdateRequest
 from api.app.schemas.user import UserCreateRequest, UserPasswordResetRequest, UserRoleUpdateRequest, UserUpdateRequest
 from api.app.services import auth_service, file_service, legacy_admin_rbac_service, system_param_service, user_service
+from api.app.services.audit_service import write_audit_log
 from api.app.services.legacy_authz_service import UserAuthorization
 
 
@@ -61,6 +62,42 @@ class AuditLogCoverageTest(unittest.TestCase):
         Base.metadata.drop_all(bind=self.engine)
         self.engine.dispose()
         self.tempdir.cleanup()
+
+    def test_write_audit_log_with_output(self) -> None:
+        log = write_audit_log(
+            self.session,
+            action="test.action",
+            actor_user_id="tester",
+            detail="test detail",
+            output='{"result": "success", "id": 42}',
+        )
+        self.session.commit()
+        self.assertIsNotNone(log.id)
+        self.assertEqual(log.action, "test.action")
+        self.assertEqual(log.detail, "test detail")
+        self.assertEqual(log.output, '{"result": "success", "id": 42}')
+
+    def test_write_audit_log_output_defaults_to_none(self) -> None:
+        log = write_audit_log(
+            self.session,
+            action="test.no_output",
+            actor_user_id="tester",
+            detail="no output provided",
+        )
+        self.session.commit()
+        self.assertIsNotNone(log.id)
+        self.assertIsNone(log.output)
+        self.assertEqual(log.detail, "no output provided")
+
+    def test_write_audit_log_empty_output_normalized_to_none(self) -> None:
+        log = write_audit_log(
+            self.session,
+            action="test.empty_output",
+            actor_user_id="tester",
+            output="   ",
+        )
+        self.session.commit()
+        self.assertIsNone(log.output)
 
     def test_auth_login_failure_writes_audit_log(self) -> None:
         user = self._create_user(user_id="alice", username="alice", password="correct-pass")

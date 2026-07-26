@@ -13,11 +13,13 @@ def write_audit_log(
     action: str,
     actor_user_id: str | None,
     detail: str | None = None,
+    output: str | None = None,
 ) -> AuditLog:
     log = AuditLog(
         user_id=actor_user_id,
         action=action,
         detail=_normalize_detail(detail),
+        output=_normalize_detail(output),
     )
     db.add(log)
     return log
