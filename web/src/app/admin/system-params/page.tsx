@@ -973,17 +973,7 @@ export default function AdminSystemParamsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* ===== Top Area: Header with title + buttons ===== */}
-      <div
-        className="admin-system-params-header"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "16px 24px",
-          flexShrink: 0,
-          background: "var(--ant-color-bg-container)",
-        }}
-      >
+      <div className="mb-4 flex items-center justify-between">
         <Typography.Title level={4} style={{ margin: 0 }}>系统参数管理</Typography.Title>
         <Space>
           {canManage && (
