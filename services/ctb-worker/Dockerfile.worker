@@ -1,7 +1,10 @@
 # ============================================================
 # Stage 1: Build ctb (uses Debian 13 trixie for GDAL >= 3.10)
 # ============================================================
-FROM docker.m.daocloud.io/library/debian:13-slim AS builder
+ARG BUILDER_BASE_IMAGE=debian:13-slim
+ARG RUNTIME_BASE_IMAGE=python:3.11-slim
+
+FROM ${BUILDER_BASE_IMAGE} AS builder
 
 RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true && \
     apt-get update && \
@@ -30,7 +33,7 @@ RUN mkdir /tmp/ctb-build && \
 # ============================================================
 # Stage 2: Runtime — 轻量 Python 环境 + ctb 工具
 # ============================================================
-FROM docker.m.daocloud.io/library/python:3.11-slim
+FROM ${RUNTIME_BASE_IMAGE}
 
 RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
     sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list 2>/dev/null || true && \

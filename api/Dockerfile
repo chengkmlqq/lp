@@ -1,4 +1,4 @@
-ARG PYTHON_BASE_IMAGE=docker.m.daocloud.io/library/python:3.11-slim
+ARG PYTHON_BASE_IMAGE=python:3.11-slim
 FROM ${PYTHON_BASE_IMAGE}
 
 WORKDIR /app
@@ -13,6 +13,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT}
 ENV PIP_RETRIES=${PIP_RETRIES}
 
+# Keep daocloud mirror for apt/pip (internal mirrors work from GitHub runners too)
 RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
     sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list 2>/dev/null; \
     dpkg --add-architecture i386 \

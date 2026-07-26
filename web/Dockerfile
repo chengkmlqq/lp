@@ -1,4 +1,4 @@
-ARG NODE_BASE_IMAGE=docker.m.daocloud.io/library/node:22-slim
+ARG NODE_BASE_IMAGE=node:22-slim
 ARG NPM_REGISTRY=https://registry.npmmirror.com/
 
 FROM ${NODE_BASE_IMAGE} AS deps
