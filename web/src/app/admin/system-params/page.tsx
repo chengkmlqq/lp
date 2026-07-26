@@ -973,7 +973,7 @@ export default function AdminSystemParamsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* ===== Top Area: Header with title + buttons ===== */}
-      <div className="mb-4 flex items-center justify-between rounded-lg bg-white px-6 py-4 shadow-sm">
+      <div className="mb-4 flex items-center justify-between rounded-lg px-6 py-4 shadow-sm" style={{ borderBottom: "1px solid var(--ant-color-border)", background: "var(--ant-color-bg-container)" }}>
         <Typography.Title level={4} style={{ margin: 0 }}>系统参数管理</Typography.Title>
         <Space>
           {canManage && (
