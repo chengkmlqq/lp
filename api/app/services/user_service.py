@@ -299,6 +299,11 @@ def update_user(
                 return None
             user.id = next_user_id
             changed_fields.append("user_id")
+            # If the actor is changing their own user ID, update actor_user_id
+            # so the audit log write succeeds (the old id no longer exists
+            # after the UPDATE + ON UPDATE CASCADE flushes).
+            if actor_user_id is not None and actor_user_id == user_id:
+                actor_user_id = next_user_id
 
     if payload.email is not None:
         next_email = payload.email.strip().lower()
