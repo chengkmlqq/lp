@@ -1,0 +1,58 @@
+# ============================================================
+# Stage 1: Build ctb (uses Debian 13 trixie for GDAL >= 3.10)
+# ============================================================
+FROM docker.m.daocloud.io/library/debian:13-slim AS builder
+
+RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates \
+        cmake \
+        g++ \
+        libgdal-dev \
+        libz-dev \
+        make \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY CMakeLists.txt /src/ctb/
+COPY src/ /src/ctb/src/
+COPY deps/ /src/ctb/deps/
+COPY tools/ /src/ctb/tools/
+
+RUN mkdir /tmp/ctb-build && \
+    cd /tmp/ctb-build && \
+    cmake /src/ctb && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    rm -rf /tmp/ctb-build
+
+# ============================================================
+# Stage 2: Runtime — 轻量 Python 环境 + ctb 工具
+# ============================================================
+FROM docker.m.daocloud.io/library/python:3.11-slim
+
+RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list 2>/dev/null || true && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        gdal-bin \
+        libgdal-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 从 builder 复制 ctb 库和工具
+COPY --from=builder /usr/local/lib/libctb* /usr/local/lib/
+COPY --from=builder /usr/local/bin/ctb-* /usr/local/bin/
+RUN ldconfig
+
+RUN pip install --no-cache-dir -i https://mirrors.ustc.edu.cn/pypi/web/simple/ \
+        celery redis
+
+ENV TERRAIN_ROOT=/data/terrain
+RUN mkdir -p /data/terrain
+
+WORKDIR /worker
+COPY ctb_worker.py .
+
+CMD ["celery", "-A", "ctb_worker.celery_app", "worker", \
+     "--loglevel=INFO", "--concurrency=1", "--queues=ctb"]

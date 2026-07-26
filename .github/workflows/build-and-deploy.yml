@@ -79,3 +79,16 @@ jobs:
             ${{ steps.vars.outputs.web_image }}:latest
           cache-from: type=gha,scope=fquiz-web
           cache-to: type=gha,mode=max,scope=fquiz-web
+
+      - name: 构建并推送 ctb-worker 镜像
+        uses: docker/build-push-action@v7
+        with:
+          context: ./services/ctb-worker
+          file: ./services/ctb-worker/Dockerfile.worker
+          pull: true
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/ctb-worker:${{ steps.vars.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/ctb-worker:latest
+          cache-from: type=gha,scope=ctb-worker
+          cache-to: type=gha,mode=max,scope=ctb-worker
