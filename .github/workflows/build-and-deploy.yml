@@ -32,7 +32,11 @@ jobs:
           NS="${{ env.REGISTRY_NAMESPACE }}"
           echo "api_image=${{ env.REGISTRY }}/${NS}/fquiz-api" >> "$GITHUB_OUTPUT"
           echo "web_image=${{ env.REGISTRY }}/${NS}/fquiz-web" >> "$GITHUB_OUTPUT"
+          echo "ctb_image=${{ env.REGISTRY }}/${NS}/ctb-worker" >> "$GITHUB_OUTPUT"
           echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: 安装 QEMU（多架构支持）
+        uses: docker/setup-qemu-action@v3
 
       - name: 安装 Buildx
         uses: docker/setup-buildx-action@v4
@@ -52,6 +56,7 @@ jobs:
         with:
           context: ./api
           file: ./api/Dockerfile
+          platforms: linux/amd64,linux/arm64
           pull: true
           push: true
           build-args: |
@@ -68,6 +73,7 @@ jobs:
         with:
           context: .
           file: ./web/Dockerfile
+          platforms: linux/amd64,linux/arm64
           pull: true
           push: true
           build-args: |
@@ -85,10 +91,11 @@ jobs:
         with:
           context: ./services/ctb-worker
           file: ./services/ctb-worker/Dockerfile.worker
+          platforms: linux/amd64,linux/arm64
           pull: true
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/ctb-worker:${{ steps.vars.outputs.image_tag }}
-            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/ctb-worker:latest
+            ${{ steps.vars.outputs.ctb_image }}:${{ steps.vars.outputs.image_tag }}
+            ${{ steps.vars.outputs.ctb_image }}:latest
           cache-from: type=gha,scope=ctb-worker
           cache-to: type=gha,mode=max,scope=ctb-worker
