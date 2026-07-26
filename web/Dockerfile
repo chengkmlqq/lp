@@ -24,7 +24,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/web/node_modules ./web/node_modules
 COPY package.json package-lock.json ./
 COPY web ./web
-RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build:web
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build:web \
+    && node web/scripts/fix-chunk-octals.js
 
 FROM ${NODE_BASE_IMAGE} AS runner
 WORKDIR /app
