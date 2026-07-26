@@ -47,29 +47,7 @@ services:
     volumes:
       - ./data/app:/app/data
     restart: unless-stopped
-    
-  ctb-worker:
-    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/ctb-worker:latest
-    container_name: lp-ctb-worker
-    command:
-      - celery
-      - -A
-      - ctb_worker.celery_app
-      - worker
-      - --loglevel=INFO
-      - --concurrency=1
-      - --queues=ctb
-    environment:
-      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
-      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
-      TERRAIN_ROOT: /data/terrain
-    volumes:
-      - ./data/app:/data/app
-    restart: unless-stopped
     networks:
-      - deploy_default
-
-networks:
       - deploy_default
 
   celery-worker:
@@ -109,7 +87,9 @@ networks:
     volumes:
       - ./data/app:/app/data
     restart: unless-stopped
-    
+    networks:
+      - deploy_default
+
   ctb-worker:
     image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/ctb-worker:latest
     container_name: lp-ctb-worker
@@ -129,9 +109,6 @@ networks:
       - ./data/app:/data/app
     restart: unless-stopped
     networks:
-      - deploy_default
-
-networks:
       - deploy_default
 
   celery-beat:
@@ -158,29 +135,7 @@ networks:
     volumes:
       - ./data/app:/app/data
     restart: unless-stopped
-    
-  ctb-worker:
-    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/ctb-worker:latest
-    container_name: lp-ctb-worker
-    command:
-      - celery
-      - -A
-      - ctb_worker.celery_app
-      - worker
-      - --loglevel=INFO
-      - --concurrency=1
-      - --queues=ctb
-    environment:
-      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
-      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
-      TERRAIN_ROOT: /data/terrain
-    volumes:
-      - ./data/app:/data/app
-    restart: unless-stopped
     networks:
-      - deploy_default
-
-networks:
       - deploy_default
 
   flower:
@@ -204,29 +159,7 @@ networks:
     ports:
       - "5555:5555"
     restart: unless-stopped
-    
-  ctb-worker:
-    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/ctb-worker:latest
-    container_name: lp-ctb-worker
-    command:
-      - celery
-      - -A
-      - ctb_worker.celery_app
-      - worker
-      - --loglevel=INFO
-      - --concurrency=1
-      - --queues=ctb
-    environment:
-      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
-      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
-      TERRAIN_ROOT: /data/terrain
-    volumes:
-      - ./data/app:/data/app
-    restart: unless-stopped
     networks:
-      - deploy_default
-
-networks:
       - deploy_default
 
   web:
@@ -237,29 +170,7 @@ networks:
       NEXT_PUBLIC_APP_BASE_PATH: ""
       NODE_ENV: production
     restart: unless-stopped
-    
-  ctb-worker:
-    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/ctb-worker:latest
-    container_name: lp-ctb-worker
-    command:
-      - celery
-      - -A
-      - ctb_worker.celery_app
-      - worker
-      - --loglevel=INFO
-      - --concurrency=1
-      - --queues=ctb
-    environment:
-      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
-      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
-      TERRAIN_ROOT: /data/terrain
-    volumes:
-      - ./data/app:/data/app
-    restart: unless-stopped
     networks:
-      - deploy_default
-
-networks:
       - deploy_default
 
   proxy:
@@ -269,50 +180,6 @@ networks:
       - "3001:3000"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./data/app:/data/app
-    restart: unless-stopped
-    
-  ctb-worker:
-    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/ctb-worker:latest
-    container_name: lp-ctb-worker
-    command:
-      - celery
-      - -A
-      - ctb_worker.celery_app
-      - worker
-      - --loglevel=INFO
-      - --concurrency=1
-      - --queues=ctb
-    environment:
-      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
-      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
-      TERRAIN_ROOT: /data/terrain
-    volumes:
-      - ./data/app:/data/app
-    restart: unless-stopped
-    networks:
-      - deploy_default
-
-networks:
-      - deploy_default
-
-
-  ctb-worker:
-    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/ctb-worker:latest
-    container_name: lp-ctb-worker
-    command:
-      - celery
-      - -A
-      - ctb_worker.celery_app
-      - worker
-      - --loglevel=INFO
-      - --concurrency=1
-      - --queues=ctb
-    environment:
-      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
-      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
-      TERRAIN_ROOT: /data/terrain
-    volumes:
       - ./data/app:/data/app
     restart: unless-stopped
     networks:
