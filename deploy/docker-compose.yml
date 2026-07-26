@@ -15,6 +15,7 @@ services:
       USER_USERNAME_COLUMN: username
       USER_PASSWORD_COLUMN: password_hash
       USER_STATUS_COLUMN: status
+      UNPACK_SECRET_KEY: KkSWIOcRXH5hDRFMn0RX2BmhcZcXDz38WhZ189LDBVc
       MINIO_ENABLED: "true"
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: replace_strong_access_key
@@ -84,6 +85,8 @@ services:
       WINE_DEFAULT_TIMEOUT_SECONDS: 300
       WINE_MAX_TIMEOUT_SECONDS: 1800
       FILE_VFS_ROOT: /app/data/vfs
+      UNPACK_SECRET_KEY: KkSWIOcRXH5hDRFMn0RX2BmhcZcXDz38WhZ189LDBVc
+      LP_API_BASE_URL: http://api:8000
     volumes:
       - ./data/app:/app/data
     restart: unless-stopped
