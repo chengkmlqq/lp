@@ -12,7 +12,7 @@ class AiChatMessageSummary(BaseModel):
     conversation_id: int
     role: str
     content: str
-    tool_calls: dict | None = None
+    tool_calls: list | dict | None = None
     tool_call_id: str | None = None
     created_at: datetime
 

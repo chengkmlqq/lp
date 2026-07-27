@@ -50,7 +50,7 @@ class AiChatMessage(Base):
     )
     role: Mapped[str] = mapped_column(String(16), index=True)
     content: Mapped[str] = mapped_column(Text())
-    tool_calls: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    tool_calls: Mapped[list | dict | None] = mapped_column(JSON, nullable=True)
     tool_call_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

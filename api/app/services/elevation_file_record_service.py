@@ -25,6 +25,9 @@ from ..schemas.elevation import (
     ElevationFileRecordTerrainBuildResponse,
     ElevationFileRecordUpdateRequest,
     ElevationFileRecordUploadResponse,
+    ElevationPreviewCell,
+    ElevationPreviewDiagnostics,
+    ElevationPreviewPoint,
 )
 from .elevation_service import (
     ELEVATION_FILE_EXT_FORMAT_MAP,
@@ -41,8 +44,7 @@ from .elevation_service import (
     _require_rasterio_available,
     _resolve_dataset_mount_code,
     _sample_preview_points_from_csv,
-    ElevationDatasetPreviewDiagnostics,
-    ElevationDatasetPreviewPoint,
+
     join_virtual_path,
 )
 from .file_service import _build_driver_or_400
@@ -696,9 +698,9 @@ def preview_file_record(
             preview_mode="point_cloud",
             total_points=len(points),
             sampled_points=len(sampled),
-            points=[ElevationDatasetPreviewPoint(longitude=point.lon, latitude=point.lat, altitude_m=point.altitude_m) for point in sampled],
+            points=[ElevationPreviewPoint(longitude=point.lon, latitude=point.lat, altitude_m=point.altitude_m) for point in sampled],
             cells=[],
-            diagnostics=ElevationDatasetPreviewDiagnostics(
+            diagnostics=ElevationPreviewDiagnostics(
                 source_crs="EPSG:4326",
                 source_bounds_min_x=min(point.lon for point in points),
                 source_bounds_max_x=max(point.lon for point in points),
