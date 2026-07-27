@@ -18,25 +18,20 @@ env:
   REGISTRY_NAMESPACE: ${{ vars.REGISTRY_NAMESPACE || 'ck-registry' }}
 
 jobs:
-  build-and-push:
+  # ───── API 镜像（wine i386，仅 amd64） ─────
+  build-api:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 拉取代码
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
       - name: 生成镜像变量
         id: vars
         shell: bash
         run: |
           NS="${{ env.REGISTRY_NAMESPACE }}"
-          echo "api_image=${{ env.REGISTRY }}/${NS}/fquiz-api" >> "$GITHUB_OUTPUT"
-          echo "web_image=${{ env.REGISTRY }}/${NS}/fquiz-web" >> "$GITHUB_OUTPUT"
-          echo "ctb_image=${{ env.REGISTRY }}/${NS}/ctb-worker" >> "$GITHUB_OUTPUT"
-          echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-
-      - name: 安装 QEMU（多架构支持）
-        uses: docker/setup-qemu-action@v3
+          echo "image=${{ env.REGISTRY }}/${NS}/fquiz-api" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: 安装 Buildx
         uses: docker/setup-buildx-action@v4
@@ -53,7 +48,6 @@ jobs:
         with:
           context: ./api
           file: ./api/Dockerfile
-          # API 依赖 wine i386，仅支持 amd64
           platforms: linux/amd64
           pull: true
           push: true
@@ -61,17 +55,45 @@ jobs:
             PIP_INDEX_URL=${{ secrets.PIP_INDEX_URL || vars.PIP_INDEX_URL || 'https://pypi.org/simple' }}
             PIP_DEFAULT_TIMEOUT=${{ vars.PIP_DEFAULT_TIMEOUT || '120' }}
           tags: |
-            ${{ steps.vars.outputs.api_image }}:${{ steps.vars.outputs.image_tag }}
-            ${{ steps.vars.outputs.api_image }}:latest
+            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
+            ${{ steps.vars.outputs.image }}:latest
           cache-from: type=gha,scope=fquiz-api
           cache-to: type=gha,mode=max,scope=fquiz-api
 
-      - name: 构建并推送 Web 镜像
+  # ───── Web 镜像（分架构并行构建） ─────
+  build-web:
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 生成镜像变量
+        id: vars
+        shell: bash
+        run: |
+          NS="${{ env.REGISTRY_NAMESPACE }}"
+          echo "image=${{ env.REGISTRY }}/${NS}/fquiz-web" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: 安装 Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: 登录镜像仓库
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 构建并推送 Web 镜像 (${{ matrix.arch }})
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./web/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/${{ matrix.arch }}
           pull: true
           push: true
           build-args: |
@@ -79,21 +101,86 @@ jobs:
             NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000' }}
             NEXT_PUBLIC_APP_BASE_PATH=${{ vars.NEXT_PUBLIC_APP_BASE_PATH || '' }}
           tags: |
-            ${{ steps.vars.outputs.web_image }}:${{ steps.vars.outputs.image_tag }}
-            ${{ steps.vars.outputs.web_image }}:latest
-          cache-from: type=gha,scope=fquiz-web
-          cache-to: type=gha,mode=max,scope=fquiz-web
+            # 原生架构镜像 + 每架构独立标签
+            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}-${{ matrix.arch }}
+            ${{ steps.vars.outputs.image }}:latest-${{ matrix.arch }}
+          cache-from: type=gha,scope=fquiz-web-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=fquiz-web-${{ matrix.arch }}
 
-      - name: 构建并推送 ctb-worker 镜像
+  # ───── ctb-worker 镜像（分架构并行构建） ─────
+  build-ctb-worker:
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 生成镜像变量
+        id: vars
+        shell: bash
+        run: |
+          NS="${{ env.REGISTRY_NAMESPACE }}"
+          echo "image=${{ env.REGISTRY }}/${NS}/ctb-worker" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: 安装 Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: 登录镜像仓库
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 构建并推送 ctb-worker 镜像 (${{ matrix.arch }})
         uses: docker/build-push-action@v7
         with:
           context: ./services/ctb-worker
           file: ./services/ctb-worker/Dockerfile.worker
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/${{ matrix.arch }}
           pull: true
           push: true
           tags: |
-            ${{ steps.vars.outputs.ctb_image }}:${{ steps.vars.outputs.image_tag }}
-            ${{ steps.vars.outputs.ctb_image }}:latest
-          cache-from: type=gha,scope=ctb-worker
-          cache-to: type=gha,mode=max,scope=ctb-worker
+            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}-${{ matrix.arch }}
+            ${{ steps.vars.outputs.image }}:latest-${{ matrix.arch }}
+          cache-from: type=gha,scope=ctb-worker-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=ctb-worker-${{ matrix.arch }}
+
+  # ───── 合并多架构 manifest 标签 ─────
+  merge-manifests:
+    needs: [build-web, build-ctb-worker]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 登录镜像仓库
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 安装 Buildx（用于 imagetools）
+        uses: docker/setup-buildx-action@v4
+
+      - name: 合并 Web 多架构 manifest
+        run: |
+          IMG="${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/fquiz-web"
+          TAG="${GITHUB_SHA}"
+          # 创建 sha 标签的多架构 manifest
+          docker buildx imagetools create -t "${IMG}:${TAG}" \
+            "${IMG}:${TAG}-amd64" "${IMG}:${TAG}-arm64"
+          # 创建 latest 标签的多架构 manifest
+          docker buildx imagetools create -t "${IMG}:latest" \
+            "${IMG}:latest-amd64" "${IMG}:latest-arm64"
+
+      - name: 合并 ctb-worker 多架构 manifest
+        run: |
+          IMG="${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/ctb-worker"
+          TAG="${GITHUB_SHA}"
+          docker buildx imagetools create -t "${IMG}:${TAG}" \
+            "${IMG}:${TAG}-amd64" "${IMG}:${TAG}-arm64"
+          docker buildx imagetools create -t "${IMG}:latest" \
+            "${IMG}:latest-amd64" "${IMG}:latest-arm64"
