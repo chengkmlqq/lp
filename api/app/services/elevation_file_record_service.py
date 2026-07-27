@@ -245,21 +245,19 @@ def create_file_record_from_upload(
 
     warnings: list[str] = []
 
-    # Trigger analysis if requested
-    if payload.trigger_analysis:
-        try:
-            from ..tasks.elevation_tasks import analyze_elevation_file_record_job
-            task = analyze_elevation_file_record_job.delay(saved.id, actor.id)
-            saved.analysis_task_id = str(task.id)
-            saved.analysis_status = "queued"
-            saved.update_date = utcnow()
-            db.commit()
-        except Exception as exc:
-            warnings.append(f"自动分析任务派发失败：{exc}")
+    # Trigger analysis
+    try:
+        from ..tasks.elevation_tasks import analyze_elevation_file_record_job
+        task = analyze_elevation_file_record_job.delay(saved.id, actor.id)
+        saved.analysis_task_id = str(task.id)
+        saved.analysis_status = "queued"
+        saved.update_date = utcnow()
+        db.commit()
+    except Exception as exc:
+        warnings.append(f"自动分析任务派发失败：{exc}")
 
     return ElevationFileRecordUploadResponse(
         record=serialize_file_record(saved),
-        queued=payload.trigger_analysis,
         detail="文件已上传并创建记录",
         warnings=warnings,
     )
@@ -382,15 +380,14 @@ def _create_file_records_from_zip(
             {"action": "file_record_created", "file_record_id": record.id},
         )
 
-        if payload.trigger_analysis:
-            try:
-                from ..tasks.elevation_tasks import analyze_elevation_file_record_job
-                task = analyze_elevation_file_record_job.delay(record.id, actor.id)
-                record.analysis_task_id = str(task.id)
-                record.analysis_status = "queued"
-                record.update_date = utcnow()
-            except Exception as exc:
-                warnings.append(f"文件 {record.file_name} 自动分析任务派发失败：{exc}")
+        try:
+            from ..tasks.elevation_tasks import analyze_elevation_file_record_job
+            task = analyze_elevation_file_record_job.delay(record.id, actor.id)
+            record.analysis_task_id = str(task.id)
+            record.analysis_status = "queued"
+            record.update_date = utcnow()
+        except Exception as exc:
+            warnings.append(f"文件 {record.file_name} 自动分析任务派发失败：{exc}")
 
     db.commit()
 
@@ -408,7 +405,6 @@ def _create_file_records_from_zip(
 
     return ElevationFileRecordUploadResponse(
         record=serialize_file_record(first_record),
-        queued=payload.trigger_analysis,
         detail=detail,
         warnings=warnings,
     )

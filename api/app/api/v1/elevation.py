@@ -73,7 +73,6 @@ def create_elevation_file_record(
     mount_code: str | None = Form(default=None),
     resolution_m: float | None = Form(default=None),
     notes: str | None = Form(default=None),
-    trigger_analysis: bool = Form(default=True),
     current_user: CurrentUser = Depends(require_permission("elevation.manage")),
     db: Session = Depends(get_db),
 ) -> ElevationFileRecordUploadResponse:
@@ -82,7 +81,6 @@ def create_elevation_file_record(
         mount_code=mount_code,
         resolution_m=resolution_m,
         notes=notes,
-        trigger_analysis=trigger_analysis,
     )
     return create_file_record_from_upload(db, file, payload, actor=current_user.user)
 

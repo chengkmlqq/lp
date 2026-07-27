@@ -59,7 +59,6 @@ class ElevationFileRecordCreateRequest(BaseModel):
     mount_code: str | None = Field(default=None, min_length=2, max_length=64)
     resolution_m: float | None = Field(default=None, gt=0)
     notes: str | None = Field(default=None, max_length=2000)
-    trigger_analysis: bool = Field(default=True)
 
     @field_validator("source", "mount_code", "notes", mode="before")
     @classmethod
@@ -87,7 +86,6 @@ class ElevationFileRecordUpdateRequest(BaseModel):
 class ElevationFileRecordAnalyzeResponse(BaseModel):
     record: ElevationFileRecordSummary
     task_id: str | None = None
-    queued: bool = True
     detail: str | None = None
     warnings: list[str] = Field(default_factory=list)
 
@@ -95,14 +93,12 @@ class ElevationFileRecordAnalyzeResponse(BaseModel):
 class ElevationFileRecordTerrainBuildResponse(BaseModel):
     record: ElevationFileRecordSummary
     task_id: str | None = None
-    queued: bool = True
     detail: str | None = None
     warnings: list[str] = Field(default_factory=list)
 
 
 class ElevationFileRecordUploadResponse(BaseModel):
     record: ElevationFileRecordSummary
-    queued: bool = True
     detail: str | None = None
     warnings: list[str] = Field(default_factory=list)
 
