@@ -21,6 +21,8 @@ from ...schemas.lightning import (
     LightningDistributionImportResponse,
     LightningDistributionReportResponse,
     LightningDistributionStatsResponse,
+    LightningComputeDensityRequest,
+    LightningComputeDensityResponse,
     LightningSyntheticCompareResponse,
     LightningTowerTerrainComputeRequest,
     LightningTowerTerrainComputeResponse,
@@ -50,6 +52,7 @@ from ...services.lightning_service import (
     update_lightning_event,
     list_lightning_import_batches,
     get_lightning_import_batch_events,
+    trigger_ground_flash_density_computation,
 )
 
 router = APIRouter(
@@ -170,6 +173,7 @@ def import_lightning_distribution_file(
     city: str | None = Form(default=None),
     is_synthetic: bool = Form(default=False),
     notes: str | None = Form(default=None),
+    line_id: str | None = Form(default=None),
     current_user: CurrentUser = Depends(require_permission("lightning.manage")),
     db: Session = Depends(get_db),
 ) -> LightningDistributionImportResponse:
@@ -183,6 +187,22 @@ def import_lightning_distribution_file(
         city=city,
         is_synthetic=is_synthetic,
         notes=notes,
+        line_id=line_id,
+    )
+
+
+@router.post("/compute-density", response_model=LightningComputeDensityResponse)
+def trigger_ground_flash_density(
+    payload: LightningComputeDensityRequest,
+    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningComputeDensityResponse:
+    return trigger_ground_flash_density_computation(
+        db,
+        line_id=payload.line_id,
+        region_id=payload.region_id,
+        is_synthetic=payload.is_synthetic,
+        actor_user_id=current_user.user.id,
     )
 
 

@@ -111,6 +111,8 @@ class LightningDistributionImportResponse(BaseModel):
     skipped_count: int
     warning_count: int
     warnings: list[str] = Field(default_factory=list)
+    line_id: str | None = None
+    task_id: str | None = None
 
 
 class LightningDistributionSummary(BaseModel):
@@ -323,6 +325,17 @@ class LightningDensityPreparationRequest(BaseModel):
     is_synthetic: bool | None = None
     radius_km: float | None = Field(default=None, gt=0.05, le=50.0)
     years: float | None = Field(default=None, gt=0)
+
+
+class LightningComputeDensityRequest(BaseModel):
+    line_id: str = Field(min_length=1, max_length=64)
+    region_id: str | None = Field(default=None, max_length=64)
+    is_synthetic: bool | None = None
+
+
+class LightningComputeDensityResponse(BaseModel):
+    task_id: str
+    status: str = "submitted"
 
 
 class LightningDensityPreparationResponse(BaseModel):

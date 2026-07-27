@@ -1228,9 +1228,12 @@ export type LightningDistributionRecordSummary = {
 
 export type LightningDistributionImportResponse = {
   record: LightningDistributionRecordSummary;
+  imported_count: number;
   skipped_count: number;
   warning_count: number;
   warnings: string[];
+  line_id: string | null;
+  task_id: string | null;
 };
 
 export type LightningDistributionSummary = {
@@ -1307,6 +1310,8 @@ export type LightningImportBatchSummary = {
   event_year: number | null;
   is_synthetic: boolean;
   notes: string | null;
+  line_id: string | null;
+  line_name: string | null;
   max_abs_current_ka: number | null;
   avg_abs_current_ka: number | null;
   positive_count: number;

@@ -36,7 +36,7 @@ import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
 import { normalizeAppRoutePath } from "@/lib/app-route-path";
-import type { MenuItem, MenuListResponse } from "@/types/auth";
+import type { MenuItem, MenuListResponse, MenuTreeItem } from "@/types/auth";
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
@@ -104,8 +104,8 @@ function normalizeMenuItemPath(menu: MenuItem): MenuItem {
 }
 
 function buildMenuTreeData(menus: MenuItem[]): DataNode[] {
-  const menuMap = new Map<string, MenuItem & { children: (MenuItem & { children: MenuItem[] })[] }>();
-  const roots: (MenuItem & { children: (MenuItem & { children: MenuItem[] })[] })[] = [];
+  const menuMap = new Map<string, MenuTreeItem>();
+  const roots: MenuTreeItem[] = [];
 
   menus.forEach((menu) => {
     menuMap.set(menu.id, { ...menu, children: [] });
@@ -120,9 +120,7 @@ function buildMenuTreeData(menus: MenuItem[]): DataNode[] {
     }
   });
 
-  const toDataNode = (
-    item: MenuItem & { children: (MenuItem & { children: (MenuItem & { children: MenuItem[] })[] })[] },
-  ): DataNode => {
+  const toDataNode = (item: MenuTreeItem): DataNode => {
     const isDirectory = item.type === "directory";
     return {
       key: `menu-${item.id}`,

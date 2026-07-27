@@ -2468,7 +2468,64 @@ def execute_file_record_terrain_build_job(*, record_id: str, actor_user_id: str 
             )
             return
 
-        artifacts = _build_file_record_terrain_tiles(db, item)
+        # 使用 CTB Worker (ctb-tile) 生成地形瓦片
+        import os as _os
+        from ..core.celery_app import celery_app as _celery_app
+        from celery.result import AsyncResult as _AsyncResult
+
+        # 1. 从 MinIO 下载 DEM 到共享卷临时路径
+        mount = _require_mount(db, item.mount_code)
+        driver = _build_driver_or_400(mount)
+        _read_result = driver.read_file(item.file_path)
+        _temp_dir = "/app/data/temp"
+        _os.makedirs(_temp_dir, exist_ok=True)
+        _temp_dem = f"{_temp_dir}/{record_id}.tif"
+        with open(_temp_dem, "wb") as _f:
+            _f.write(_read_result.content)
+
+        # 2. 发送任务到 CTB Worker (ctb queue)
+        _ctb_input = f"/data/app/temp/{record_id}.tif"
+        _task = _celery_app.send_task(
+            "app.tasks.ctb.build_file_record_terrain",
+            kwargs={
+                "record_id": record_id,
+                "input_path": _ctb_input,
+                "name": item.file_name or record_id,
+            },
+            queue="ctb",
+        )
+
+        # 3. 等待 CTB Worker 完成（最多 1 小时）
+        _ctb_result = _task.get(timeout=3600)
+
+        # 4. 清理临时 DEM 文件
+        try:
+            _os.unlink(_temp_dem)
+        except Exception:
+            pass
+
+        # 5. 映射 CTB Worker 结果到 _TerrainBuildArtifacts
+        _tile_count = _ctb_result.get("tile_count", 0)
+        _min_zoom = _ctb_result.get("min_zoom", 0)
+        _max_zoom = _ctb_result.get("max_zoom", 6)
+        _bounds_list = _ctb_result.get("bounds", [0, 0, 0, 0])
+        _layer_url = _ctb_result.get("layer_url", f"/terrain/{record_id}/layer.json")
+
+        artifacts = _TerrainBuildArtifacts(
+            min_zoom=_min_zoom,
+            max_zoom=_max_zoom,
+            bounds={"west": _bounds_list[0], "south": _bounds_list[1], "east": _bounds_list[2], "north": _bounds_list[3]},
+            metadata={
+                "tool": "ctb-tile",
+                "format": "heightmap-1.0",
+                "projection": "EPSG:4326",
+                "tile_size": 65,
+                "generated_at": utcnow().isoformat(),
+                "tile_count": _tile_count,
+                "layer_url": _layer_url,
+                "terrain_url_template": f"/terrain/{record_id}/{{z}}/{{x}}/{{y}}.terrain",
+            },
+        )
 
         saved = get_file_record_by_id(db, record_id)
         if saved is None:

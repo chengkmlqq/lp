@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
   Card,
+  Checkbox,
   Col,
   Descriptions,
   Dropdown,
@@ -14,6 +15,7 @@ import {
   InputNumber,
   Modal,
   Row,
+  Select,
   Space,
   Spin,
   Table,
@@ -46,6 +48,8 @@ import type {
   LightningImportBatchListResponse,
   LightningImportBatchEventsResponse,
   LightningImportBatchEventItem,
+  LineSummary,
+  LineListResponse,
 } from "@/types/auth";
 
 type ImportFormValues = {
@@ -55,6 +59,8 @@ type ImportFormValues = {
   longitude: number;
   latitude: number;
   notes: string;
+  line_id: string | null;
+  auto_compute: boolean;
 };
 
 type DistributionFilterValues = {
@@ -69,6 +75,8 @@ const INITIAL_IMPORT_VALUES: ImportFormValues = {
   longitude: 0,
   latitude: 0,
   notes: "",
+  line_id: null,
+  auto_compute: true,
 };
 
 const INITIAL_DISTRIBUTION_FILTERS: DistributionFilterValues = {
@@ -121,6 +129,7 @@ export default function AdminLightningDistributionPage() {
   const [selectedBatchForScatter, setSelectedBatchForScatter] = useState<LightningImportBatchSummary | null>(null);
   const [eventsModalOpen, setEventsModalOpen] = useState(false);
   const [scatterModalOpen, setScatterModalOpen] = useState(false);
+  const [lineSearchText, setLineSearchText] = useState("");
   const pageCardRef = useRef<HTMLDivElement | null>(null);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const viewMode: "table" | "card" = isMobile ? "card" : "table";
@@ -133,6 +142,30 @@ export default function AdminLightningDistributionPage() {
 
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
   const canManage = hasPermission("lightning.manage");
+
+  const linesQuery = useQuery({
+    queryKey: ["/api/v1/power-lines", lineSearchText],
+    enabled: importModalOpen && canRead,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("limit", "200");
+      params.set("offset", "0");
+      if (lineSearchText.trim()) params.set("keyword", lineSearchText.trim());
+      const response = await fetchWithAuth(`/api/v1/power-lines?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LineListResponse;
+    },
+  });
+
+  const lineOptions = useMemo(() => {
+    const items = linesQuery.data?.items ?? [];
+    return items.map((line: LineSummary) => ({
+      label: `${line.code} - ${line.name}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`,
+      value: line.id,
+    }));
+  }, [linesQuery.data]);
 
   const trimmedKeyword = searchKeyword.trim();
   const importBatchesPath = useMemo(() => {
@@ -195,6 +228,7 @@ export default function AdminLightningDistributionPage() {
       formData.append("longitude", String(values.longitude));
       formData.append("latitude", String(values.latitude));
       if (values.notes?.trim()) formData.append("notes", values.notes.trim());
+      if (values.line_id) formData.append("line_id", values.line_id);
 
       const response = await fetchWithAuth("/api/v1/lightning-currents/import-distribution", {
         method: "POST",
@@ -208,11 +242,34 @@ export default function AdminLightningDistributionPage() {
 
     onSuccess: async (payload) => {
       setError("");
+      const totalPoints = payload.imported_count ?? payload.record?.total_points ?? 0;
       setSuccess(
         payload.warning_count > 0
-          ? `分布导入完成：共 ${payload.record.total_points} 个坐标点，跳过 ${payload.skipped_count} 条，告警 ${payload.warning_count} 条`
-          : `分布导入完成：共 ${payload.record.total_points} 个坐标点`,
+          ? `分布导入完成：共 ${totalPoints} 个坐标点，跳过 ${payload.skipped_count} 条，告警 ${payload.warning_count} 条`
+          : `分布导入完成：共 ${totalPoints} 个坐标点`,
       );
+
+      // 如果勾选了自动计算且有 line_id，触发 Celery 计算
+      const values = importForm.getFieldsValue(true);
+      if (values.auto_compute && payload.line_id) {
+        try {
+          const computeResponse = await fetchWithAuth("/api/v1/lightning-currents/compute-density", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              line_id: payload.line_id,
+              region_id: values.region_id || undefined,
+            }),
+          });
+          if (computeResponse.ok) {
+            const computeResult = await computeResponse.json();
+            setSuccess((prev) => `${prev}；地闪密度计算任务已提交（任务ID: ${computeResult.task_id}）`);
+          }
+        } catch {
+          // 计算任务提交失败不影响导入结果
+        }
+      }
+
       setImportModalOpen(false);
       importForm.resetFields();
       setSelectedFile(null);
@@ -270,6 +327,7 @@ export default function AdminLightningDistributionPage() {
     setImportModalOpen(false);
     importForm.resetFields();
     setSelectedFile(null);
+    setLineSearchText("");
   };
 
   const handleImportConfirm = async () => {
@@ -786,6 +844,26 @@ export default function AdminLightningDistributionPage() {
             </Form.Item>
             <Form.Item name="notes" label="数据说明">
               <Input placeholder="可填写数据来源、采集说明等" />
+            </Form.Item>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-1" style={{ marginBottom: 16 }}>
+            <Form.Item name="line_id" label="关联线路">
+              <Select
+                showSearch
+                allowClear
+                placeholder="选择关联线路（可选）"
+                filterOption={false}
+                onSearch={setLineSearchText}
+                notFoundContent={linesQuery.isLoading ? <Spin size="small" /> : undefined}
+                options={lineOptions}
+              />
+            </Form.Item>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <Form.Item name="auto_compute" valuePropName="checked">
+              <Checkbox>导入后自动计算 Ng 密度</Checkbox>
             </Form.Item>
           </div>
 

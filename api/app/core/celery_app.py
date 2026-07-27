@@ -14,6 +14,7 @@ celery_app = Celery(
         "app.tasks.atp_asset_tasks",
         "app.tasks.elevation_tasks",
         "app.tasks.fl_analysis_tasks",
+        "app.tasks.lightning_tasks",
         "app.tasks.scheduled_task_tasks",
         "app.tasks.wine_tasks",
         "app.tasks.worker_registry_tasks",

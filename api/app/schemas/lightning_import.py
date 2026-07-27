@@ -20,6 +20,8 @@ class LightningImportBatchSummary(BaseModel):
     event_year: int | None = None
     is_synthetic: bool = False
     notes: str | None = None
+    line_id: str | None = None
+    line_name: str | None = None
 
     # 统计信息
     max_abs_current_ka: float | None = None

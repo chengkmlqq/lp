@@ -481,6 +481,7 @@ def import_lightning_distribution_from_file(
     city: str | None,
     is_synthetic: bool,
     notes: str | None,
+    line_id: str | None = None,
 ) -> LightningDistributionImportResponse:
     content = file.file.read()
     if not content:
@@ -571,6 +572,10 @@ def import_lightning_distribution_from_file(
                 "feature_json": {
                     "source": "distribution-import",
                     "line_no": line_no,
+                    "line_id": line_id,
+                } if line_id else {
+                    "source": "distribution-import",
+                    "line_no": line_no,
                 },
                 "notes": normalized_notes,
                 "create_user": actor_user_id,
@@ -601,6 +606,30 @@ def import_lightning_distribution_from_file(
         skipped_count=skipped_count,
         warning_count=len(warnings),
         warnings=warnings,
+        line_id=line_id,
+    )
+
+
+def trigger_ground_flash_density_computation(
+    db: Session,
+    *,
+    line_id: str,
+    region_id: str | None = None,
+    is_synthetic: bool | None = None,
+    actor_user_id: str | None = None,
+) -> LightningComputeDensityResponse:
+    from ..tasks.lightning_tasks import compute_ground_flash_density_job
+
+    task = compute_ground_flash_density_job.delay(
+        line_id=line_id,
+        region_id=region_id,
+        is_synthetic=is_synthetic,
+        actor_user_id=actor_user_id,
+    )
+
+    return LightningComputeDensityResponse(
+        task_id=task.id,
+        status="submitted",
     )
 
 

@@ -107,7 +107,7 @@ services:
     environment:
       CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
       CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
-      TERRAIN_ROOT: /data/terrain
+      TERRAIN_ROOT: /data/app/terrain
     volumes:
       - ./data/app:/data/app
     restart: unless-stopped

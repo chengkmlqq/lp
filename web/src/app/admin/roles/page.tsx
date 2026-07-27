@@ -31,6 +31,7 @@ import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
+import type { DataNode } from "antd/es/tree";
 import type { MenuItem, RoleItem } from "@/types/auth";
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
@@ -240,7 +241,7 @@ export default function AdminRolesPage() {
     }
 
     // Build tree recursively
-    function buildNodes(parentKey: string | null): { title: string; value: string; key: string; children?: unknown[]; selectable: boolean }[] {
+    function buildNodes(parentKey: string | null): DataNode[] {
       const key = parentKey === null ? "__root__" : parentKey;
       const children = childrenByParent.get(key) ?? [];
       return children.map((menu) => {
