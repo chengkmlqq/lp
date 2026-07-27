@@ -101,7 +101,6 @@ jobs:
             NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000' }}
             NEXT_PUBLIC_APP_BASE_PATH=${{ vars.NEXT_PUBLIC_APP_BASE_PATH || '' }}
           tags: |
-            # 原生架构镜像 + 每架构独立标签
             ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}-${{ matrix.arch }}
             ${{ steps.vars.outputs.image }}:latest-${{ matrix.arch }}
           cache-from: type=gha,scope=fquiz-web-${{ matrix.arch }}
