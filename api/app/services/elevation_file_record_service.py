@@ -289,6 +289,11 @@ def _create_file_records_from_zip(
                     warnings.append(f"压缩包条目 {member.filename} 文件名无效，已跳过")
                     continue
 
+                # 跳过 ASTER GDEM 质量图文件（_num.tif）
+                if member_name.lower().endswith("_num.tif"):
+                    warnings.append(f"压缩包条目 {member_name} 是质量图文件（_num.tif），已跳过")
+                    continue
+
                 suffix = Path(member_name).suffix.lower()
                 if suffix not in IMPORTABLE_ELEVATION_EXTENSIONS:
                     warnings.append(f"压缩包条目 {member_name} 类型不支持，已跳过")
@@ -721,49 +726,7 @@ def preview_file_record(
         )
 
     elif file_format in RASTER_FILE_FORMATS:
-        # Use existing raster preview logic
-        # Create a temporary dataset-like object for compatibility
-        class TempDataset:
-            def __init__(self, record: ElevationFileRecord):
-                self.id = record.id
-                self.code = record.file_name
-                self.name = record.file_name
-                self.source = record.source
-                self.file_format = record.file_format
-                self.mount_code = record.mount_code
-                self.dataset_dir = ""
-                self.file_path = record.file_path
-                self.resolution_m = record.resolution_m
-                self.status = record.status
-                self.usage_status = "idle"
-                self.sample_count = record.sample_count
-                self.bbox_min_lon = record.bbox_min_lon
-                self.bbox_max_lon = record.bbox_max_lon
-                self.bbox_min_lat = record.bbox_min_lat
-                self.bbox_max_lat = record.bbox_max_lat
-                self.data_source_type = record.data_source_type
-                self.analysis_task_id = record.analysis_task_id
-                self.analysis_status = record.analysis_status
-                self.analysis_error_message = record.analysis_error_message
-                self.analysis_started_at = record.analysis_started_at
-                self.analysis_finished_at = record.analysis_finished_at
-                self.terrain_status = record.terrain_status
-                self.terrain_task_id = record.terrain_task_id
-                self.terrain_error_message = record.terrain_error_message
-                self.terrain_root_path = record.terrain_root_path
-                self.terrain_url_template = record.terrain_url_template
-                self.terrain_min_zoom = record.terrain_min_zoom
-                self.terrain_max_zoom = record.terrain_max_zoom
-                self.terrain_bounds = record.terrain_bounds
-                self.terrain_metadata = record.terrain_metadata
-                self.notes = record.notes
-                self.create_date = record.create_date
-                self.create_user = record.create_user
-                self.update_date = record.update_date
-                self.update_user = record.update_user
-
-        temp_ds = TempDataset(item)
-        result = _build_raster_preview(db, dataset=temp_ds, limit=preview_limit)  # type: ignore
+        result = _build_raster_preview(db, record=item, limit=preview_limit)
 
         return ElevationFileRecordPreviewResponse(
             record=serialize_file_record(item),

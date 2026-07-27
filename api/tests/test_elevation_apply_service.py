@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
-from app.models.elevation import ElevationApplyJob, ElevationDataset, ElevationFileRecord
+from app.models.elevation import ElevationApplyJob, ElevationFileRecord
 from app.models.line import Line
 from app.models.line_tower import LineTower
 from app.models.tower_profile import TowerProfile
@@ -27,7 +27,6 @@ def _build_session_factory() -> sessionmaker[Session]:
             Line.__table__,
             LineTower.__table__,
             TowerProfile.__table__,
-            ElevationDataset.__table__,
             ElevationFileRecord.__table__,
             ElevationApplyJob.__table__,
         ],
@@ -35,22 +34,26 @@ def _build_session_factory() -> sessionmaker[Session]:
     return sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
 
 
+def _make_record(session: Session, *, file_name: str = "record.csv") -> ElevationFileRecord:
+    record = ElevationFileRecord(
+        file_name=file_name,
+        file_path=f"/elevation/records/ab/cd/{file_name}",
+        file_format="csv",
+        file_size=32,
+        mount_code="default",
+        status="active",
+    )
+    session.add(record)
+    return record
+
+
 def test_create_apply_job_dispatches_actor_user_id(monkeypatch) -> None:
     testing_session = _build_session_factory()
     session = testing_session()
     try:
         line = Line(code="L-APPLY-001", name="回填线路", voltage_kv=220, lightning_param_json={})
-        dataset = ElevationDataset(
-            code="DEM-APPLY-001",
-            name="高程数据集",
-            file_format="csv",
-            mount_code="default",
-            dataset_dir="/elevation/datasets/DEM-APPLY-001",
-            file_path="/elevation/datasets/DEM-APPLY-001/dataset.csv",
-            status="active",
-            usage_status="idle",
-        )
-        session.add_all([line, dataset])
+        record = _make_record(session)
+        session.add_all([line, record])
         session.flush()
         session.add(LineTower(line_id=line.id, seq_no=1, tower_no="T1", longitude=120.0, latitude=30.0))
         session.commit()
@@ -67,7 +70,7 @@ def test_create_apply_job_dispatches_actor_user_id(monkeypatch) -> None:
 
         response = elevation_service.create_apply_job(
             session,
-            ElevationApplyJobCreateRequest(line_id=line.id, dataset_id=dataset.id, mode="overwrite_all"),
+            ElevationApplyJobCreateRequest(line_id=line.id, file_record_id=record.id, mode="overwrite_all"),
             actor=SimpleNamespace(id="tester"),
         )
 
@@ -121,7 +124,6 @@ def test_create_apply_job_accepts_file_record_id(monkeypatch) -> None:
         assert dispatched == {"job_id": response.job.id, "actor_user_id": "tester"}
         assert saved_job is not None
         assert saved_job.file_record_id == record.id
-        assert saved_job.dataset_id is None
         assert saved_job.task_id == "celery-task-file-record"
         assert response.job.file_record_id == record.id
         assert response.job.file_record_name == "record.csv"
@@ -134,17 +136,8 @@ def test_execute_apply_job_uses_saved_actor_for_preparation_source(monkeypatch) 
     session = testing_session()
     try:
         line = Line(code="L-APPLY-002", name="高程回填线路", voltage_kv=110, lightning_param_json={})
-        dataset = ElevationDataset(
-            code="DEM-APPLY-002",
-            name="高程数据集",
-            file_format="csv",
-            mount_code="default",
-            dataset_dir="/elevation/datasets/DEM-APPLY-002",
-            file_path="/elevation/datasets/DEM-APPLY-002/dataset.csv",
-            status="active",
-            usage_status="idle",
-        )
-        session.add_all([line, dataset])
+        record = _make_record(session)
+        session.add_all([line, record])
         session.flush()
 
         meter_to_lat = 1 / 111_320.0
@@ -159,7 +152,7 @@ def test_execute_apply_job_uses_saved_actor_for_preparation_source(monkeypatch) 
 
         job = ElevationApplyJob(
             line_id=line.id,
-            dataset_id=dataset.id,
+            file_record_id=record.id,
             mode="overwrite_all",
             status="pending",
             total_tower_count=3,
@@ -182,7 +175,6 @@ def test_execute_apply_job_uses_saved_actor_for_preparation_source(monkeypatch) 
         monkeypatch.setattr(elevation_service, "_load_dataset_points", lambda *_args, **_kwargs: (points, []))
         monkeypatch.setattr(elevation_service, "_publish_elevation_change", lambda *args, **kwargs: None)
         monkeypatch.setattr(elevation_service, "_publish_line_change", lambda *args, **kwargs: None)
-        monkeypatch.setattr(elevation_service, "_refresh_dataset_usage_status", lambda *args, **kwargs: None)
 
         elevation_service.execute_apply_job(job.id)
 
@@ -202,7 +194,7 @@ def test_execute_apply_job_uses_saved_actor_for_preparation_source(monkeypatch) 
 
             source = saved_line.lightning_param_json["preparation_sources"]["ground_slope"]
             assert source["prepared_by_user_id"] == "tester"
-            assert source["dataset_id"] == dataset.id
+            assert source["file_record_id"] == record.id
             assert source["job_id"] == job.id
         finally:
             verification_session.close()
@@ -282,7 +274,6 @@ def test_execute_apply_job_uses_file_record_source(monkeypatch) -> None:
             assert source["prepared_by_user_id"] == "tester"
             assert source["file_record_id"] == record.id
             assert source["file_record_name"] == "record.csv"
-            assert source["dataset_id"] is None
             assert source["job_id"] == job.id
         finally:
             verification_session.close()
