@@ -973,7 +973,7 @@ body {
   flex-direction: column;
   overflow: hidden;
   background: var(--ant-color-bg-container);
-  border: 1px solid var(--ant-color-border);
+  border: 1px solid var(--ant-color-border-secondary);
   border-radius: 8px;
   margin: var(--space-4, 16px);
 }
@@ -1013,7 +1013,7 @@ body {
 
 /* ---- Category sider card ---- */
 .admin-system-params-sider-card {
-  border: 1px solid var(--ant-color-border);
+  border: 1px solid var(--ant-color-border-secondary);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -1157,7 +1157,7 @@ body {
 .admin-system-params-resize-handle-line {
   width: 2px;
   height: 32px;
-  background: var(--ant-color-border);
+  background: var(--ant-color-border-secondary);
   border-radius: 1px;
   transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
 }
@@ -1187,13 +1187,13 @@ body {
   font-weight: 600;
   font-size: 12px;
   color: var(--ant-color-text);
-  border-bottom: 1px solid var(--ant-color-border);
+  border-bottom: 1px solid var(--ant-color-border-secondary);
   padding: 9px 16px;
 }
 
 .admin-system-params-table-anchor .ant-table-tbody > tr > td {
   padding: 8px 16px;
-  border-bottom: 1px solid var(--ant-color-border);
+  border-bottom: 1px solid var(--ant-color-border-secondary);
   font-size: 14px;
 }
 
@@ -1828,7 +1828,7 @@ body {
   gap: 12px;
   padding: 12px 16px;
   background: var(--ant-color-bg-container);
-  border: 1px solid var(--ant-color-border);
+  border: 1px solid var(--ant-color-border-secondary);
   border-radius: 10px;
   margin-bottom: 12px;
   flex-shrink: 0;
