@@ -26,7 +26,7 @@ import {
   type TableColumnsType,
   type TreeProps,
 } from "antd";
-import { EditOutlined, MoreOutlined, SearchOutlined } from "@ant-design/icons";
+import { EditOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import type { DataNode } from "antd/es/tree";
 import type { ComponentType, RefAttributes } from "react";
 
@@ -971,67 +971,77 @@ export default function AdminSystemParamsPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      {/* ===== Top Area: Header with title + buttons ===== */}
-      <div className="mb-4 flex items-center justify-between rounded-lg px-6 py-4 shadow-sm" style={{ borderBottom: "1px solid var(--ant-color-border)", background: "var(--ant-color-bg-container)" }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>系统参数管理</Typography.Title>
-        <Space>
-          {canManage && (
-            <Button type="primary" onClick={startCreate}>新建参数</Button>
-          )}
-          {canManage && selectedCategoryId !== null ? (
+    <div className="admin-system-params-page-wrapper">
+      <div className="admin-system-params-page-card">
+        {/* ===== Page Header ===== */}
+        <div className="admin-system-params-page-header">
+          <h2 className="admin-system-params-page-title">系统参数管理</h2>
+          <div className="admin-system-params-page-actions">
             <Space>
-              {(() => {
-                const findCat = (items: ParamCategoryTreeItem[], id: number): ParamCategoryTreeItem | null => {
-                  for (const item of items) {
-                    if (item.id === id) return item;
-                    if (item.children) {
-                      const found = findCat(item.children, id);
-                      if (found) return found;
-                    }
-                  }
-                  return null;
-                };
-                const currentCat = findCat(categoryTreeQuery.data ?? [], selectedCategoryId);
-                return currentCat ? (
-                  <>
-                    <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
-                      编辑分类
-                    </Button>
-                    <Button size="small" danger
-                      onClick={() => {
-                        Modal.confirm({
-                          title: "删除分类",
-                          content: `确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`,
-                          okText: "删除",
-                          cancelText: "取消",
-                          okButtonProps: { danger: true },
-                          onOk: () => deleteCategoryMutation.mutate(currentCat.id),
-                        });
-                      }}
-                    >
-                      删除分类
-                    </Button>
-                  </>
-                ) : null;
-              })()}
+              {canManage && (
+                <Button type="primary" onClick={startCreate}>
+                  <PlusOutlined /> 新建参数
+                </Button>
+              )}
+              {canManage && selectedCategoryId !== null ? (
+                <Space>
+                  {(() => {
+                    const findCat = (items: ParamCategoryTreeItem[], id: number): ParamCategoryTreeItem | null => {
+                      for (const item of items) {
+                        if (item.id === id) return item;
+                        if (item.children) {
+                          const found = findCat(item.children, id);
+                          if (found) return found;
+                        }
+                      }
+                      return null;
+                    };
+                    const currentCat = findCat(categoryTreeQuery.data ?? [], selectedCategoryId);
+                    return currentCat ? (
+                      <>
+                        <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
+                          编辑分类
+                        </Button>
+                        <Button size="small" danger
+                          onClick={() => {
+                            Modal.confirm({
+                              title: "删除分类",
+                              content: `确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`,
+                              okText: "删除",
+                              cancelText: "取消",
+                              okButtonProps: { danger: true },
+                              onOk: () => deleteCategoryMutation.mutate(currentCat.id),
+                            });
+                          }}
+                        >
+                          删除分类
+                        </Button>
+                      </>
+                    ) : null;
+                  })()}
+                </Space>
+              ) : null}
             </Space>
-          ) : null}
-        </Space>
-      </div>
+          </div>
+        </div>
 
-      {/* ===== Bottom Area: Two-column layout ===== */}
-      <div ref={containerRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 0, overflow: "hidden" }}>
+        {/* ===== Body Area: Two-column layout ===== */}
+        <div ref={containerRef} className="admin-system-params-page-body">
         {/* Category Sidebar */}
         {!isMobile && (
           <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
             <AntCard
               className="admin-system-params-sider-card"
               style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-              bodyStyle={{ flex: 1, overflow: "auto" }}
+              bodyStyle={{ flex: 1, overflow: "auto", padding: 0 }}
+              actions={canManage ? [
+                <Button type="link" size="small" key="add-cat" onClick={() => openCategoryCreate(null)} style={{ padding: "4px 12px", color: "var(--ant-color-primary)" }}>
+                  <PlusOutlined /> 新建分类
+                </Button>,
+              ] : undefined}
             >
               {!categoryTreeQuery.isLoading && categoryTreeQuery.data && categoryTreeQuery.data.length > 0 && (
-                <div style={{ padding: "8px 12px" }}>
+                <div className="admin-system-params-sider-card-search">
                   <Input
                     className="admin-system-params-search-input"
                     placeholder="搜索分类..."
@@ -1078,10 +1088,10 @@ export default function AdminSystemParamsPage() {
         )}
         {!isMobile && (
           <div
-            style={{ width: 8, cursor: "col-resize", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}
+            className="admin-system-params-resize-handle"
             onMouseDown={handleResizeStart}
           >
-            <div style={{ width: 2, height: 40, backgroundColor: "#d9d9d9", borderRadius: 1 }} />
+            <div className="admin-system-params-resize-handle-line" />
           </div>
         )}
         {/* Right Panel: filter + table/card-view */}
@@ -1326,6 +1336,7 @@ export default function AdminSystemParamsPage() {
           </Modal>
         )}
       </div>
+    </div>
     </div>
   );
 }

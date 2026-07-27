@@ -955,23 +955,252 @@ body {
   background: var(--ant-color-bg-container) !important;
 }
 
-.admin-system-params-table-anchor .ant-table-body {
-  min-height: var(--admin-system-params-table-body-min-height, 180px);
+/* ======================================
+   system-params 布局样式 (redesigned)
+   ====================================== */
+
+/* ---- Page wrapper & card ---- */
+.admin-system-params-page-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
+.admin-system-params-page-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ant-color-bg-container);
+  border-radius: 8px;
+  margin: var(--space-4, 16px);
+}
+
+/* ---- Page header ---- */
+.admin-system-params-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4, 16px);
+  flex-shrink: 0;
+}
+
+.admin-system-params-page-title {
+  font-family: var(--font-display, "Plus Jakarta Sans", "Ant Sans", "Alibaba PuHuiTi", Inter, Arial, sans-serif);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  margin: 0;
+}
+
+.admin-system-params-page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+/* ---- Page body (two-column) ---- */
+.admin-system-params-page-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0;
+  overflow: hidden;
+  padding: 0 var(--space-4, 16px) var(--space-4, 16px);
+}
+
+/* ---- Category sider card ---- */
+.admin-system-params-sider-card {
+  border: 1px solid var(--ant-color-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.admin-system-params-sider-card > .ant-card-body {
+  padding: 0 !important;
+}
+
+.admin-system-params-sider-card > .ant-card-actions {
+  border-top: 1px solid var(--ant-color-border-secondary);
+  background: transparent !important;
+}
+
+.admin-system-params-sider-card > .ant-card-actions > li {
+  margin: 0 !important;
+}
+
+.admin-system-params-sider-card > .ant-card-actions > li:not(:last-child) {
+  border-right: none !important;
+}
+
+.admin-system-params-sider-card-search {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+  flex-shrink: 0;
+}
+
+/* ---- Search input ---- */
+.admin-system-params-search-input {
+  border-radius: 6px;
+  transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.admin-system-params-search-input:focus {
+  border-color: var(--ant-color-primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ant-color-primary) 22%, transparent);
+}
+
+.admin-system-params-search-results-count {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary);
+  padding: 4px 16px 0;
+}
+
+/* ---- Sider tree menu ---- */
+.admin-system-params-sider-menu {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.admin-system-params-sider-menu .ant-tree {
+  background: transparent;
+}
+
+.admin-system-params-sider-menu .ant-tree-treenode {
+  padding: 2px 0;
+  transition: background 140ms cubic-bezier(0.2, 0, 0, 1);
+  border-radius: 6px;
+}
+
+.admin-system-params-sider-menu .ant-tree-treenode:hover {
+  background: var(--ant-color-bg-text-hover);
+}
+
+.admin-system-params-sider-menu .ant-tree-treenode.ant-tree-treenode-selected {
+  background: color-mix(in srgb, var(--ant-color-primary) 8%, transparent);
+}
+
+.admin-system-params-sider-menu .ant-tree-node-content-wrapper {
+  transition: color 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.admin-system-params-sider-menu .ant-tree-node-content-wrapper:hover {
+  background: transparent !important;
+}
+
+.admin-system-params-sider-menu .ant-tree-treenode-selected .ant-tree-node-content-wrapper {
+  color: var(--ant-color-primary);
+  font-weight: 500;
+  background: transparent !important;
+}
+
+/* "全部参数" root node styling */
+.admin-system-params-sider-menu .ant-tree .ant-tree-treenode:first-child {
+  font-weight: 500;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+  margin-bottom: 4px;
+  padding-bottom: 6px;
+}
+
+.admin-system-params-sider-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 24px;
+}
+
+/* ---- Skeleton ---- */
+.admin-system-params-skeleton-menu {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-system-params-skeleton-item {
+  height: 22px;
+}
+
+/* ---- Scrollbar ---- */
+.admin-system-params-sider-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.admin-system-params-sider-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-system-params-sider-menu::-webkit-scrollbar-thumb {
+  background: var(--fquiz-scrollbar-thumb);
+  border-radius: 3px;
+}
+
+.admin-system-params-sider-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--fquiz-scrollbar-thumb-hover);
+}
+
+/* ---- Resize handle ---- */
+.admin-system-params-resize-handle {
+  width: 8px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.admin-system-params-resize-handle-line {
+  width: 2px;
+  height: 32px;
+  background: var(--ant-color-border);
+  border-radius: 1px;
+  transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.admin-system-params-resize-handle:hover .admin-system-params-resize-handle-line {
+  background: var(--ant-color-primary);
+  height: 48px;
+}
+
+/* ---- Right panel ---- */
 .admin-system-params-right-panel {
   display: flex;
   flex: 1;
   min-height: 0;
   min-width: 0;
   flex-direction: column;
+  margin-left: 12px;
 }
 
-.admin-system-params-sider-card > .ant-card-head {
-  background: transparent;
-  border-bottom-color: var(--ant-color-border-secondary);
+/* ---- Table ---- */
+.admin-system-params-table-anchor .ant-table-body {
+  min-height: var(--admin-system-params-table-body-min-height, 180px);
 }
 
+.admin-system-params-table-anchor .ant-table-thead > tr > th {
+  background: color-mix(in srgb, var(--ant-color-primary) 6%, transparent) !important;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--ant-color-text);
+  border-bottom: 1px solid var(--ant-color-border);
+  padding: 9px 16px;
+}
+
+.admin-system-params-table-anchor .ant-table-tbody > tr > td {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--ant-color-border);
+  font-size: 14px;
+}
+
+.admin-system-params-table-anchor .ant-table-tbody > tr:hover > td {
+  background: color-mix(in srgb, var(--ant-color-text) 4%, transparent) !important;
+}
+
+/* ---- Card view ---- */
 .admin-system-params-card-view {
   display: flex;
   min-height: 0;
@@ -993,6 +1222,7 @@ body {
   justify-content: center;
 }
 
+/* ---- Param card ---- */
 .admin-system-params-param-card {
   height: 100%;
   border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary));
@@ -1022,66 +1252,58 @@ body {
   align-items: baseline;
 }
 
-/* ======================================
-   system-params 布局样式
-   ====================================== */
+/* ---- Responsive ---- */
+@media (max-width: 1024px) {
+  .admin-system-params-page-card {
+    margin: var(--space-3, 12px);
+  }
 
-.admin-system-params-search-input {
-  border-radius: var(--ant-border-radius);
-  transition: all 0.3s ease;
+  .admin-system-params-page-body {
+    padding: 0 var(--space-3, 12px) var(--space-3, 12px);
+  }
+
+  .admin-system-params-right-panel {
+    margin-left: 8px;
+  }
 }
 
-.admin-system-params-search-input:focus {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ant-color-primary) 20%, transparent);
-}
+@media (max-width: 768px) {
+  .admin-system-params-page-card {
+    margin: var(--space-2, 8px);
+  }
 
-.admin-system-params-search-results-count {
-  font-size: 12px;
-  color: var(--ant-color-text-secondary);
-  padding: 4px 16px 0;
-}
+  .admin-system-params-page-header {
+    padding: var(--space-3, 12px) var(--space-4, 16px) 0;
+  }
 
-.admin-system-params-sider-menu {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 8px 0;
-}
+  .admin-system-params-page-body {
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+    padding: 0 var(--space-2, 8px) var(--space-2, 8px);
+  }
 
-.admin-system-params-sider-empty {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 40px 24px;
-}
+  .admin-system-params-resize-handle {
+    display: none;
+  }
 
-.admin-system-params-skeleton-menu {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+  .admin-system-params-right-panel {
+    margin-left: 0;
+  }
 
-.admin-system-params-skeleton-item {
-  height: 22px;
-}
+  .admin-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-/* 移动端侧边栏滚动条美化 */
-.admin-system-params-sider-menu::-webkit-scrollbar {
-  width: 6px;
-}
+  .admin-filter-keyword-item {
+    min-width: 100%;
+    max-width: 100%;
+  }
 
-.admin-system-params-sider-menu::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.admin-system-params-sider-menu::-webkit-scrollbar-thumb {
-  background: var(--fquiz-scrollbar-thumb);
-  border-radius: 3px;
-}
-
-.admin-system-params-sider-menu::-webkit-scrollbar-thumb:hover {
-  background: var(--fquiz-scrollbar-thumb-hover);
+  .admin-filter-keyword-item .ant-form-item-control-input {
+    min-width: 100%;
+    max-width: 100%;
+  }
 }
 
 .admin-scheduled-tasks-table-anchor .ant-table-body {
@@ -1603,7 +1825,12 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .admin-filter-bar .ant-form {
