@@ -282,6 +282,7 @@ function ThemeCssVarsScope({ children }: { children: ReactNode }) {
         "--ant-color-primary-bg-hover": token.colorPrimaryBgHover,
         "--ant-color-primary-hover": token.colorPrimaryHover,
         "--ant-color-fill-alter": token.colorFillAlter,
+        "--ant-color-border": token.colorBorder,
         "--ant-color-border-secondary": token.colorBorderSecondary,
         "--ant-border-radius": `${token.borderRadius}px`,
         "--ant-border-radius-lg": `${token.borderRadiusLG}px`,
