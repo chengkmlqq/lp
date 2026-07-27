@@ -285,6 +285,18 @@ export function PowerLineCesiumMap({
         // Force an immediate resize to sync canvas dimensions with container
         viewer.resize();
 
+        // Ensure Cesium canvas visually fills the container. Without importing
+        // widgets.css the canvas defaults to a small size, leaving the rendered
+        // image in the top-left corner of the container.
+        const canvas = viewer.scene.canvas as HTMLCanvasElement;
+        if (canvas) {
+          canvas.style.position = "absolute";
+          canvas.style.top = "0";
+          canvas.style.left = "0";
+          canvas.style.width = "100%";
+          canvas.style.height = "100%";
+        }
+
         // Use ResizeObserver to resize Cesium canvas when container layout changes
         resizeObserver = new ResizeObserver(() => {
           if (viewerRef.current && !viewerRef.current.isDestroyed()) {

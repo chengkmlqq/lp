@@ -67,6 +67,8 @@ export function LightningDistributionMap({
 
   useEffect(() => {
     let disposed = false;
+    let resizeObserver: ResizeObserver | null = null;
+
     const init = async () => {
       if (typeof window === "undefined" || !containerRef.current) {
         return;
@@ -93,6 +95,25 @@ export function LightningDistributionMap({
         viewer.scene.globe.depthTestAgainstTerrain = false;
         viewerRef.current = viewer;
         cesiumRef.current = Cesium;
+        viewer.resize();
+
+        // Ensure Cesium canvas fills the container
+        const canvas = viewer.scene.canvas as HTMLCanvasElement;
+        if (canvas) {
+          canvas.style.position = "absolute";
+          canvas.style.top = "0";
+          canvas.style.left = "0";
+          canvas.style.width = "100%";
+          canvas.style.height = "100%";
+        }
+
+        resizeObserver = new ResizeObserver(() => {
+          if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+            viewerRef.current.resize();
+          }
+        });
+        resizeObserver.observe(containerRef.current);
+
         setReady(true);
         setError("");
       } catch (candidate) {
@@ -104,6 +125,9 @@ export function LightningDistributionMap({
     void init();
     return () => {
       disposed = true;
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
       setReady(false);
       if (viewerRef.current && !viewerRef.current.isDestroyed?.()) {
         viewerRef.current.destroy();
@@ -179,6 +203,20 @@ export function LightningDistributionMap({
     }
   }, [safePoints, safeGrids, ready]);
 
+  // After ready, force resize on next animation frame to sync canvas with
+  // the final container layout.
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    const raf = requestAnimationFrame(() => {
+      if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+        viewerRef.current.resize();
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [ready]);
+
   if (error) {
     return (
       <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600">
@@ -192,7 +230,7 @@ export function LightningDistributionMap({
       <div className="text-xs text-slate-500">
         红色网格表示雷击密度更高；散点颜色表示电流幅值（红色高、蓝色低）。
       </div>
-      <div ref={containerRef} className="h-[520px] w-full overflow-hidden rounded-md border border-slate-200 bg-slate-100" />
+      <div ref={containerRef} className="relative h-[520px] w-full overflow-hidden rounded-md border border-slate-200 bg-slate-100" />
       {loading && <div className="text-xs text-slate-500">地图数据加载中...</div>}
     </div>
   );
