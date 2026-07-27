@@ -973,7 +973,7 @@ def _detect_file_format(file_path: str) -> str:
     if not file_format:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的高程文件类型: {extension or 'unknown'}，仅支持 .csv/.img/.tif/.tiff",
+            detail=f"不支持的高程文件类型: {extension or 'unknown'}，仅支持 .tif",
         )
     return file_format
 
@@ -1915,6 +1915,7 @@ def _build_raster_preview(
     record: ElevationFileRecord,
     limit: int,
 ) -> ElevationFileRecordPreviewResponse:
+    from ..services.elevation_file_record_service import serialize_file_record
     warnings: list[str] = []
     with _open_raster_dataset(db, record) as opened:
         rasterio = opened.rasterio

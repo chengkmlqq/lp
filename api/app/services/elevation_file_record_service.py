@@ -144,7 +144,7 @@ def create_file_record_from_upload(
     if file_ext not in IMPORTABLE_ELEVATION_EXTENSIONS and file_ext not in IMPORTABLE_ARCHIVE_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的文件格式: {file_ext}，仅支持 .csv/.img/.tif/.tiff/.zip"
+            detail=f"不支持的文件格式: {file_ext}，仅支持 .tif/.zip"
         )
 
     # Read file content
@@ -181,11 +181,15 @@ def create_file_record_from_upload(
             actor=actor,
         )
 
-    # Handle single file upload (original logic)
-    file_format = ELEVATION_FILE_EXT_FORMAT_MAP.get(file_ext, "csv")
+    # Handle single file upload
+    file_format = ELEVATION_FILE_EXT_FORMAT_MAP.get(file_ext)
+    if file_format is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的文件格式: {file_ext}"
+        )
 
-    if file_format in RASTER_FILE_FORMATS:
-        _require_rasterio_available()
+    _require_rasterio_available()
 
     file_size = len(content)
 
