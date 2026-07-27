@@ -198,6 +198,21 @@ export function ElevationPreviewCesiumMap({
         viewerRef.current = viewer;
         cesiumRef.current = Cesium;
 
+        // Force an immediate resize to sync canvas dimensions with container
+        viewer.resize();
+
+        // Ensure Cesium canvas visually fills the container by overriding its
+        // default sizing (which can leave the rendered image in the top-left
+        // corner with empty space below/to the right).
+        const canvas = viewer.scene.canvas as HTMLCanvasElement;
+        if (canvas) {
+          canvas.style.position = "absolute";
+          canvas.style.top = "0";
+          canvas.style.left = "0";
+          canvas.style.width = "100%";
+          canvas.style.height = "100%";
+        }
+
         // Use ResizeObserver to resize Cesium canvas when container layout changes
         // (e.g., Modal animation transitions that delay layout completion)
         resizeObserver = new ResizeObserver(() => {
@@ -320,6 +335,21 @@ export function ElevationPreviewCesiumMap({
       }
     };
   }, [accessToken, dataset, ready, shouldLoadTerrain]);
+
+  // After ready, force resize on next animation frame to sync canvas with
+  // the final container layout (handles Modal animation transitions where
+  // ResizeObserver may fire before layout is complete).
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    const raf = requestAnimationFrame(() => {
+      if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+        viewerRef.current.resize();
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [ready]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -603,7 +633,7 @@ export function ElevationPreviewCesiumMap({
       ) : null}
       <div
         ref={containerRef}
-        className="w-full overflow-hidden rounded-md border border-slate-200 bg-slate-100"
+        className="relative w-full overflow-hidden rounded-md border border-slate-200 bg-slate-100"
         style={{ height }}
       />
       {pointerInfo ? <div className="text-xs text-slate-500">{pointerInfo}</div> : null}

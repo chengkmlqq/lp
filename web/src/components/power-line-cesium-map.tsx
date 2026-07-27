@@ -282,6 +282,9 @@ export function PowerLineCesiumMap({
 
         viewerRef.current = viewer;
 
+        // Force an immediate resize to sync canvas dimensions with container
+        viewer.resize();
+
         // Use ResizeObserver to resize Cesium canvas when container layout changes
         resizeObserver = new ResizeObserver(() => {
           if (viewerRef.current && !viewerRef.current.isDestroyed()) {
@@ -375,6 +378,21 @@ export function PowerLineCesiumMap({
       cancelled = true;
     };
   }, [accessToken, exaggeration, ready, terrainDataset, terrainRenderState]);
+
+  // After ready, force resize on next animation frame to sync canvas with
+  // the final container layout (handles Modal/Tab animation transitions
+  // where ResizeObserver may fire before layout is complete).
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    const raf = requestAnimationFrame(() => {
+      if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+        viewerRef.current.resize();
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [ready]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
