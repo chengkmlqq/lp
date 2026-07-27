@@ -11,7 +11,12 @@
       "Bash(git commit -m ' *)",
       "Bash(npx tsc *)",
       "Bash(npx next *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(docker exec *)",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(f'[{c[\\\\\"id\\\\\"]}] {c[\\\\\"name\\\\\"]} \\(docs: {len\\(c.get\\(\\\\\"documents\\\\\",[]\\)\\)}, children: {len\\(c.get\\(\\\\\"children\\\\\",[]\\)\\)}\\)'\\) for c in data]\")",
+      "Bash(curl -s http://localhost:3001/api/v1/documents/chapters/tree)",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s -X POST http://localhost:3001/api/v1/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"admin123\"}')"
     ]
   }
 }
