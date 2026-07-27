@@ -133,6 +133,8 @@ export function ElevationPreviewCesiumMap({
 
   useEffect(() => {
     let cancelled = false;
+    let resizeObserver: ResizeObserver | null = null;
+
     async function initViewer() {
       if (!containerRef.current || viewerRef.current) return;
       try {
@@ -195,6 +197,16 @@ export function ElevationPreviewCesiumMap({
 
         viewerRef.current = viewer;
         cesiumRef.current = Cesium;
+
+        // Use ResizeObserver to resize Cesium canvas when container layout changes
+        // (e.g., Modal animation transitions that delay layout completion)
+        resizeObserver = new ResizeObserver(() => {
+          if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+            viewerRef.current.resize();
+          }
+        });
+        resizeObserver.observe(containerRef.current);
+
         setReady(true);
         setError("");
       } catch (candidate) {
@@ -208,6 +220,9 @@ export function ElevationPreviewCesiumMap({
     void initViewer();
     return () => {
       cancelled = true;
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
       if (viewerRef.current && !viewerRef.current.isDestroyed()) {
         viewerRef.current.destroy();
       }

@@ -217,6 +217,7 @@ export function PowerLineCesiumMap({
 
   useEffect(() => {
     let cancelled = false;
+    let resizeObserver: ResizeObserver | null = null;
 
     async function initViewer() {
       if (viewerRef.current || !containerRef.current) {
@@ -280,6 +281,15 @@ export function PowerLineCesiumMap({
         }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
         viewerRef.current = viewer;
+
+        // Use ResizeObserver to resize Cesium canvas when container layout changes
+        resizeObserver = new ResizeObserver(() => {
+          if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+            viewerRef.current.resize();
+          }
+        });
+        resizeObserver.observe(containerRef.current);
+
         setInitError("");
         setReady(true);
       } catch (error) {
@@ -297,6 +307,9 @@ export function PowerLineCesiumMap({
 
     return () => {
       cancelled = true;
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
       if (viewerRef.current && !viewerRef.current.isDestroyed()) {
         viewerRef.current.destroy();
       }
@@ -497,7 +510,7 @@ export function PowerLineCesiumMap({
         </Space>
       ) : null}
 
-      <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-900/90" style={{ height }}>
+      <div className="relative w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-900/90" style={{ height }}>
         <div ref={containerRef} className="h-full w-full" />
         <div className="absolute right-3 top-3 z-10 flex flex-col gap-2 rounded-md border border-slate-700/80 bg-slate-950/70 p-1.5 shadow-lg backdrop-blur-sm">
           <Button
