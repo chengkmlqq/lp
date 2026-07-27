@@ -35,6 +35,7 @@ from ..schemas.elevation import (
     ElevationPreviewCell,
     ElevationPreviewDiagnostics,
     ElevationPreviewPoint,
+    ElevationTerrainLayerResponse,
 )
 from .file_service import _build_driver_or_400, _require_mount, list_enabled_mounts
 from .line_preparation_service import record_line_preparation_source
