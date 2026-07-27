@@ -2595,6 +2595,10 @@ def _extract_zip_to_dataset_directory(
                 if not member_name:
                     warnings.append(f"压缩包条目 {member.filename} 文件名无效，已跳过")
                     continue
+                # 跳过 _num.tif（ASTER GDEM 质量图，非高程数据）
+                if member_name.lower().endswith("_num.tif"):
+                    warnings.append(f"压缩包条目 {member_name} 为 NUM 质量图文件，已跳过")
+                    continue
                 suffix = Path(member_name).suffix.lower()
                 if suffix not in IMPORTABLE_ELEVATION_EXTENSIONS:
                     warnings.append(f"压缩包条目 {member_name} 类型不支持，已跳过")
