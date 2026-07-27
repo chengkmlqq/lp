@@ -250,7 +250,6 @@ export default function ElevationRecordsPage() {
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(ELEVATION_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -271,13 +270,12 @@ export default function ElevationRecordsPage() {
 
   // Fetch file records
   const { data: recordsData, isLoading } = useQuery<FileRecordListResponse>({
-    queryKey: ["elevation-records", searchKeyword, statusFilter, pagination.current, pagination.pageSize],
+    queryKey: ["elevation-records", searchKeyword, pagination.current, pagination.pageSize],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", String(pagination.pageSize));
       params.set("offset", String((pagination.current - 1) * pagination.pageSize));
       if (searchKeyword) params.append("keyword", searchKeyword);
-      if (statusFilter) params.append("status", statusFilter);
       const query = params.toString();
       const response = await fetchWithAuth(`/api/v1/elevation/records?${query}`);
       return readJsonResponse<FileRecordListResponse>(response);
@@ -800,24 +798,6 @@ export default function ElevationRecordsPage() {
                     setAllLoadedRecords([]);
                   }}
                   style={{ textOverflow: "ellipsis", overflow: "hidden" }}
-                />
-              </Form.Item>
-
-              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Select
-                  value={statusFilter}
-                  allowClear
-                  placeholder="全部"
-                  options={[
-                    { value: "active", label: "启用" },
-                    { value: "disabled", label: "禁用" },
-                  ]}
-                  onChange={(value) => {
-                    setStatusFilter(value);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedRecords([]);
-                  }}
                 />
               </Form.Item>
 
