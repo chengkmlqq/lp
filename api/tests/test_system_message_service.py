@@ -74,3 +74,100 @@ def test_list_user_messages_filters_items_and_total_by_type() -> None:
         assert [message.id for message in messages] == [info_message.id]
         assert total == 1
         assert unread_count == 2
+
+
+def test_list_user_messages_filters_by_read_status_read() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(bind=engine, tables=[SystemMessage.__table__])
+
+    with Session(engine) as db:
+        msg1 = create_system_message(
+            db,
+            SystemMessageCreateRequest(
+                title="通知1",
+                content="测试内容",
+                message_type="info",
+            ),
+        )
+        msg2 = create_system_message(
+            db,
+            SystemMessageCreateRequest(
+                title="通知2",
+                content="测试内容",
+                message_type="warning",
+            ),
+        )
+        # Mark msg1 as read
+        from datetime import datetime
+        from sqlalchemy import update
+        db.execute(
+            update(SystemMessage)
+            .where(SystemMessage.id == msg1.id)
+            .values(is_read=True, read_at=datetime.utcnow())
+        )
+        db.commit()
+
+        messages, total, _ = list_user_messages(
+            db,
+            user_id="user-1",
+            read_status="read",
+        )
+
+        assert [m.id for m in messages] == [msg1.id]
+        assert total == 1
+
+
+def test_list_user_messages_filters_by_read_status_unread() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(bind=engine, tables=[SystemMessage.__table__])
+
+    with Session(engine) as db:
+        create_system_message(
+            db,
+            SystemMessageCreateRequest(
+                title="通知1",
+                content="测试内容",
+                message_type="info",
+            ),
+        )
+
+        messages, total, _ = list_user_messages(
+            db,
+            user_id="user-1",
+            read_status="unread",
+        )
+
+        assert len(messages) == 1
+        assert total == 1
+
+
+def test_list_user_messages_read_status_none_returns_all() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(bind=engine, tables=[SystemMessage.__table__])
+
+    with Session(engine) as db:
+        create_system_message(
+            db,
+            SystemMessageCreateRequest(
+                title="通知1",
+                content="测试内容",
+                message_type="info",
+            ),
+        )
+        create_system_message(
+            db,
+            SystemMessageCreateRequest(
+                title="通知2",
+                content="测试内容",
+                message_type="warning",
+            ),
+        )
+
+        messages, total, _ = list_user_messages(
+            db,
+            user_id="user-1",
+            read_status=None,
+        )
+
+        assert len(messages) == 2
+        assert total == 2

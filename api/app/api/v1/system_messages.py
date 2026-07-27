@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from typing import Literal
 
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, get_current_user, require_enabled_menu_route, require_permission
@@ -42,7 +43,7 @@ def create_message(
 def get_my_messages(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    unread_only: bool = Query(default=False),
+    read_status: Literal["read", "unread"] | None = Query(default=None),
     message_type: SystemMessageType | None = Query(default=None),
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -53,7 +54,7 @@ def get_my_messages(
         user_id=current_user.user.id,
         limit=limit,
         offset=offset,
-        unread_only=unread_only,
+        read_status=read_status,
         message_type=message_type,
     )
     return SystemMessageListResponse(

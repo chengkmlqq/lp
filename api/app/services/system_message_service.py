@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
@@ -33,7 +33,7 @@ def list_user_messages(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
-    unread_only: bool = False,
+    read_status: Literal["read", "unread"] | None = None,
     message_type: SystemMessageType | None = None,
 ) -> tuple[list[SystemMessage], int, int]:
     """获取用户的系统消息列表"""
@@ -41,7 +41,9 @@ def list_user_messages(
         (SystemMessage.target_user_id == user_id) | (SystemMessage.target_user_id.is_(None)),
     ]
 
-    if unread_only:
+    if read_status == "read":
+        base_conditions.append(SystemMessage.is_read == True)
+    elif read_status == "unread":
         base_conditions.append(SystemMessage.is_read == False)
 
     if message_type:

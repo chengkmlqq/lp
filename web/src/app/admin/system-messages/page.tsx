@@ -300,8 +300,8 @@ export default function AdminSystemMessagesPage() {
   const isMobile = useMobileDetection();
   const [formApi] = Form.useForm<CreateMessageValues>();
   const contentPreview = Form.useWatch("content", formApi) ?? "";
-  const [messageTypeFilter, setMessageTypeFilter] = useState<SystemMessageType | "all">("all");
-  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [messageTypeFilter, setMessageTypeFilter] = useState<SystemMessageType | undefined>(undefined);
+  const [readStatus, setReadStatus] = useState<"read" | "unread" | undefined>(undefined);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [createMessageModalOpen, setCreateMessageModalOpen] = useState(false);
   const [detailMessage, setDetailMessage] = useState<SystemMessageSummary | null>(null);
@@ -325,15 +325,15 @@ export default function AdminSystemMessagesPage() {
     } else {
       params.set("limit", "200");
     }
-    if (unreadOnly) {
-      params.set("unread_only", "true");
+    if (readStatus) {
+      params.set("read_status", readStatus);
     }
-    if (messageTypeFilter !== "all") {
+    if (messageTypeFilter) {
       params.set("message_type", messageTypeFilter);
     }
     const qs = params.toString();
     return `/api/v1/system-messages/me?${qs}`;
-  }, [unreadOnly, viewMode, cardViewPage, messageTypeFilter]);
+  }, [readStatus, viewMode, cardViewPage, messageTypeFilter]);
 
   const listQuery = useQuery({
     queryKey: ["admin.system-messages", listPath],
@@ -481,7 +481,7 @@ export default function AdminSystemMessagesPage() {
       return;
     }
     window.requestAnimationFrame(updateTableScrollY);
-  }, [messages.length, listQuery.isFetching, messageTypeFilter, unreadOnly, updateTableScrollY]);
+  }, [messages.length, listQuery.isFetching, messageTypeFilter, readStatus, updateTableScrollY]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -838,13 +838,12 @@ export default function AdminSystemMessagesPage() {
           <div className="admin-filter-bar">
             <Form layout="inline">
               <Form.Item label="类型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Select<SystemMessageType | "all">
+                <Select<SystemMessageType | undefined>
                   value={messageTypeFilter}
                   style={{ minWidth: 150 }}
-                  options={[
-                    { label: "全部类型", value: "all" },
-                    ...MESSAGE_TYPE_OPTIONS,
-                  ]}
+                  allowClear
+                  placeholder="全部类型"
+                  options={MESSAGE_TYPE_OPTIONS}
                   onChange={(value) => {
                     setMessageTypeFilter(value);
                     resetCardViewState();
@@ -853,15 +852,17 @@ export default function AdminSystemMessagesPage() {
               </Form.Item>
 
               <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Select<"all" | "unread">
-                  value={unreadOnly ? "unread" : "all"}
+                <Select<"read" | "unread" | undefined>
+                  value={readStatus}
                   style={{ minWidth: 150 }}
+                  allowClear
+                  placeholder="全部状态"
                   options={[
-                    { label: "全部状态", value: "all" },
-                    { label: "仅未读", value: "unread" },
+                    { label: "已读", value: "read" },
+                    { label: "未读", value: "unread" },
                   ]}
                   onChange={(value) => {
-                    setUnreadOnly(value === "unread");
+                    setReadStatus(value);
                     resetCardViewState();
                   }}
                 />
@@ -880,12 +881,11 @@ export default function AdminSystemMessagesPage() {
           <div className="admin-filter-bar">
             <Form layout="inline">
               <Form.Item label="类型" className="admin-filter-keyword-item">
-                <Select<SystemMessageType | "all">
+                <Select<SystemMessageType | undefined>
                   value={messageTypeFilter}
-                  options={[
-                    { label: "全部类型", value: "all" },
-                    ...MESSAGE_TYPE_OPTIONS,
-                  ]}
+                  allowClear
+                  placeholder="全部类型"
+                  options={MESSAGE_TYPE_OPTIONS}
                   onChange={(value) => {
                     setMessageTypeFilter(value);
                     resetCardViewState();
@@ -894,14 +894,16 @@ export default function AdminSystemMessagesPage() {
               </Form.Item>
 
               <Form.Item label="状态" className="admin-filter-keyword-item">
-                <Select<"all" | "unread">
-                  value={unreadOnly ? "unread" : "all"}
+                <Select<"read" | "unread" | undefined>
+                  value={readStatus}
+                  allowClear
+                  placeholder="全部状态"
                   options={[
-                    { label: "全部状态", value: "all" },
-                    { label: "仅未读", value: "unread" },
+                    { label: "已读", value: "read" },
+                    { label: "未读", value: "unread" },
                   ]}
                   onChange={(value) => {
-                    setUnreadOnly(value === "unread");
+                    setReadStatus(value);
                     resetCardViewState();
                   }}
                 />
