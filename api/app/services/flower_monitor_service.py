@@ -241,6 +241,11 @@ def _extract_queue_name(task_data: dict[str, Any]) -> str | None:
     routing_key = _safe_text(delivery.get("routing_key"))
     if routing_key:
         return routing_key
+    # Fallback: check top-level routing_key for task events (started/succeeded/failed)
+    # that don't include delivery_info
+    routing_key = _safe_text(task_data.get("routing_key"))
+    if routing_key:
+        return routing_key
     exchange = _safe_text(task_data.get("exchange") or delivery.get("exchange"))
     return exchange
 

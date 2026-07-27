@@ -14,7 +14,6 @@ import {
   Input,
   Modal,
   Row,
-  Select,
   Space,
   Spin,
   Switch,
@@ -179,13 +178,6 @@ function toTaskRows(workerName: string, source: string, tasks: FlowerTaskItem[])
   }));
 }
 
-function parseStatusFilter(value: string | undefined): "online" | "offline" | undefined {
-  if (value === "online" || value === "offline") {
-    return value;
-  }
-  return undefined;
-}
-
 export default function AdminTaskMonitorPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const isMobile = useMobileDetection();
@@ -194,7 +186,6 @@ export default function AdminTaskMonitorPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [pendingKeyword, setPendingKeyword] = useState("");
   const [taskKeyword, setTaskKeyword] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"online" | "offline" | undefined>(undefined);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(TASK_MONITOR_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -416,19 +407,7 @@ export default function AdminTaskMonitorPage() {
     [handleViewLog],
   );
 
-  const filteredWorkers = useMemo(() => {
-    const rows = workersOverview?.workers || [];
-    return rows.filter((item) => {
-      const online = (item.status || "").toUpperCase() === "ONLINE";
-      if (statusFilter === "online" && !online) {
-        return false;
-      }
-      if (statusFilter === "offline" && online) {
-        return false;
-      }
-      return true;
-    });
-  }, [workersOverview?.workers, statusFilter]);
+  const filteredWorkers = useMemo(() => workersOverview?.workers || [], [workersOverview?.workers]);
 
   const allTaskRows = useMemo(() => {
     const workerTaskOverviews = allTasksQuery.data || [];
@@ -507,7 +486,6 @@ export default function AdminTaskMonitorPage() {
   const handleResetFilters = () => {
     setTaskKeyword("");
     setPendingKeyword("");
-    setStatusFilter(undefined);
     resetTaskListPagination();
   };
 
@@ -631,7 +609,6 @@ export default function AdminTaskMonitorPage() {
   }, [
     allTasksQuery.isFetching,
     filteredTaskRows.length,
-    statusFilter,
     updateTableScrollY,
     viewMode,
     workersOverviewQuery.error,
@@ -794,21 +771,6 @@ export default function AdminTaskMonitorPage() {
                 />
               </Form.Item>
 
-              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Select
-                  allowClear
-                  value={statusFilter}
-                  onChange={(value) => {
-                    setStatusFilter(parseStatusFilter(value));
-                    resetTaskListPagination();
-                  }}
-                  options={[
-                    { label: "在线", value: "online" },
-                    { label: "离线", value: "offline" },
-                  ]}
-                />
-              </Form.Item>
-
               <Form.Item style={{ marginBottom: 0 }}>
                 <Button
                   htmlType="button"
@@ -834,21 +796,6 @@ export default function AdminTaskMonitorPage() {
                     setPendingKeyword(event.target.value);
                   }}
                   onPressEnter={handleSearch}
-                />
-              </Form.Item>
-
-              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Select
-                  allowClear
-                  value={statusFilter}
-                  onChange={(value) => {
-                    setStatusFilter(parseStatusFilter(value));
-                    resetTaskListPagination();
-                  }}
-                  options={[
-                    { label: "在线", value: "online" },
-                    { label: "离线", value: "offline" },
-                  ]}
                 />
               </Form.Item>
 
