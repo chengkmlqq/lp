@@ -43,6 +43,8 @@ from .elevation_service import (
     _require_mount,
     _require_rasterio_available,
     _resolve_dataset_mount_code,
+    _resolve_file_record_terrain_dir,
+    _delete_virtual_directory_if_exists,
     _sample_preview_points_from_csv,
 
     join_virtual_path,
@@ -474,6 +476,24 @@ def delete_file_record(db: Session, record_id: str) -> bool:
             status_code=status.HTTP_409_CONFLICT,
             detail=f"该文件存在 {running_job_count} 个运行中的回填任务，暂不能删除",
         )
+
+    # Clean up stored files before deleting the record
+    try:
+        mount = _require_mount(db, item.mount_code)
+        driver = _build_driver_or_400(mount)
+
+        # 1. Delete the original DEM file from MinIO / storage
+        if item.file_path:
+            try:
+                driver.delete_path(item.file_path, is_dir=False, recursive=False)
+            except Exception:
+                pass  # ignore if file already gone
+
+        # 2. Delete the generated terrain tiles from shared volume
+        terrain_dir = _resolve_file_record_terrain_dir(record_id)
+        _delete_virtual_directory_if_exists(driver, terrain_dir)
+    except Exception:
+        pass  # Best-effort cleanup; don't block record deletion
 
     # Delete associated jobs
     from sqlalchemy import delete as sql_delete
