@@ -203,8 +203,8 @@ def list_lightning_events(
     limit: int,
     offset: int,
 ) -> LightningCurrentEventListResponse:
-    stmt = select(LightningCurrentEvent)
-    total_stmt = select(func.count()).select_from(LightningCurrentEvent)
+    stmt = select(LightningCurrentEvent).where(LightningCurrentEvent.sample_count >= 2)
+    total_stmt = select(func.count()).select_from(LightningCurrentEvent).where(LightningCurrentEvent.sample_count >= 2)
 
     normalized_keyword = (keyword or "").strip()
     if normalized_keyword:
@@ -584,17 +584,17 @@ def get_lightning_distribution_stats(
     summary_row = db.execute(
         select(
             func.count().label("total_records"),
-            func.min(LightningCurrentEvent.latitude).label("min_lat"),
-            func.max(LightningCurrentEvent.latitude).label("max_lat"),
-            func.min(LightningCurrentEvent.longitude).label("min_lon"),
-            func.max(LightningCurrentEvent.longitude).label("max_lon"),
-            func.max(LightningCurrentEvent.peak_abs_current_ka).label("max_abs"),
-            func.avg(LightningCurrentEvent.peak_abs_current_ka).label("avg_abs"),
-            func.sum(case((LightningCurrentEvent.polarity == "positive", 1), else_=0)).label("positive_count"),
-            func.sum(case((LightningCurrentEvent.polarity == "negative", 1), else_=0)).label("negative_count"),
-            func.sum(case((LightningCurrentEvent.polarity == "mixed", 1), else_=0)).label("mixed_count"),
-            func.sum(case((LightningCurrentEvent.polarity == "unknown", 1), else_=0)).label("unknown_count"),
-            func.sum(case((LightningCurrentEvent.is_synthetic.is_(True), 1), else_=0)).label("synthetic_count"),
+            func.min(LightningDistributionPoint.latitude).label("min_lat"),
+            func.max(LightningDistributionPoint.latitude).label("max_lat"),
+            func.min(LightningDistributionPoint.longitude).label("min_lon"),
+            func.max(LightningDistributionPoint.longitude).label("max_lon"),
+            func.max(LightningDistributionPoint.peak_abs_current_ka).label("max_abs"),
+            func.avg(LightningDistributionPoint.peak_abs_current_ka).label("avg_abs"),
+            func.sum(case((LightningDistributionPoint.polarity == "positive", 1), else_=0)).label("positive_count"),
+            func.sum(case((LightningDistributionPoint.polarity == "negative", 1), else_=0)).label("negative_count"),
+            func.sum(case((LightningDistributionPoint.polarity == "mixed", 1), else_=0)).label("mixed_count"),
+            func.sum(case((LightningDistributionPoint.polarity == "unknown", 1), else_=0)).label("unknown_count"),
+            func.sum(case((LightningDistributionPoint.is_synthetic.is_(True), 1), else_=0)).label("synthetic_count"),
         ).where(*filters)
     ).one()
 
@@ -637,16 +637,16 @@ def get_lightning_distribution_stats(
     unknown_count = int(summary_row.unknown_count or 0)
     synthetic_count = int(summary_row.synthetic_count or 0)
 
-    cell_x_expr = func.floor(((LightningCurrentEvent.longitude - min_lon_value) * km_per_lon) / grid_size_km)
-    cell_y_expr = func.floor(((LightningCurrentEvent.latitude - min_lat_value) * DEGREE_TO_KM) / grid_size_km)
+    cell_x_expr = func.floor(((LightningDistributionPoint.longitude - min_lon_value) * km_per_lon) / grid_size_km)
+    cell_y_expr = func.floor(((LightningDistributionPoint.latitude - min_lat_value) * DEGREE_TO_KM) / grid_size_km)
     grid_rows = db.execute(
         select(
             cell_x_expr.label("cell_x"),
             cell_y_expr.label("cell_y"),
             func.count().label("strike_count"),
-            func.max(LightningCurrentEvent.peak_abs_current_ka).label("i_max"),
-            func.avg(LightningCurrentEvent.peak_abs_current_ka).label("i_avg"),
-            func.sum(case((LightningCurrentEvent.polarity == "positive", 1), else_=0)).label("positive_count"),
+            func.max(LightningDistributionPoint.peak_abs_current_ka).label("i_max"),
+            func.avg(LightningDistributionPoint.peak_abs_current_ka).label("i_avg"),
+            func.sum(case((LightningDistributionPoint.polarity == "positive", 1), else_=0)).label("positive_count"),
         )
         .where(*filters)
         .group_by(cell_x_expr, cell_y_expr)
@@ -693,23 +693,23 @@ def get_lightning_distribution_stats(
 
     scatter_rows = db.execute(
         select(
-            LightningCurrentEvent.id,
-            LightningCurrentEvent.event_id,
-            LightningCurrentEvent.longitude,
-            LightningCurrentEvent.latitude,
-            LightningCurrentEvent.peak_current_ka,
-            LightningCurrentEvent.peak_abs_current_ka,
-            LightningCurrentEvent.polarity,
-            LightningCurrentEvent.region_id,
-            LightningCurrentEvent.city,
-            LightningCurrentEvent.location_tag,
-            LightningCurrentEvent.event_time,
+            LightningDistributionPoint.id,
+            LightningDistributionPoint.event_id,
+            LightningDistributionPoint.longitude,
+            LightningDistributionPoint.latitude,
+            LightningDistributionPoint.peak_current_ka,
+            LightningDistributionPoint.peak_abs_current_ka,
+            LightningDistributionPoint.polarity,
+            LightningDistributionPoint.region_id,
+            LightningDistributionPoint.city,
+            LightningDistributionPoint.location_tag,
+            LightningDistributionPoint.event_time,
         )
         .where(*filters)
         .order_by(
-            LightningCurrentEvent.peak_abs_current_ka.desc(),
-            LightningCurrentEvent.update_date.desc(),
-            LightningCurrentEvent.id.desc(),
+            LightningDistributionPoint.peak_abs_current_ka.desc(),
+            LightningDistributionPoint.update_date.desc(),
+            LightningDistributionPoint.id.desc(),
         )
         .limit(scatter_limit)
     ).all()
@@ -817,16 +817,16 @@ def get_tower_buffer_stats(
 
     candidate_rows = db.execute(
         select(
-            LightningCurrentEvent.id,
-            LightningCurrentEvent.event_id,
-            LightningCurrentEvent.longitude,
-            LightningCurrentEvent.latitude,
-            LightningCurrentEvent.peak_current_ka,
-            LightningCurrentEvent.peak_abs_current_ka,
-            LightningCurrentEvent.polarity,
-            LightningCurrentEvent.event_time,
-            LightningCurrentEvent.location_tag,
-            LightningCurrentEvent.city,
+            LightningDistributionPoint.id,
+            LightningDistributionPoint.event_id,
+            LightningDistributionPoint.longitude,
+            LightningDistributionPoint.latitude,
+            LightningDistributionPoint.peak_current_ka,
+            LightningDistributionPoint.peak_abs_current_ka,
+            LightningDistributionPoint.polarity,
+            LightningDistributionPoint.event_time,
+            LightningDistributionPoint.location_tag,
+            LightningDistributionPoint.city,
         ).where(*filters)
     ).all()
 
@@ -1062,10 +1062,10 @@ def compare_measured_and_synthetic_distribution(
 
     extent_row = db.execute(
         select(
-            func.min(LightningCurrentEvent.latitude).label("min_lat"),
-            func.max(LightningCurrentEvent.latitude).label("max_lat"),
-            func.min(LightningCurrentEvent.longitude).label("min_lon"),
-            func.max(LightningCurrentEvent.longitude).label("max_lon"),
+            func.min(LightningDistributionPoint.latitude).label("min_lat"),
+            func.max(LightningDistributionPoint.latitude).label("max_lat"),
+            func.min(LightningDistributionPoint.longitude).label("min_lon"),
+            func.max(LightningDistributionPoint.longitude).label("max_lon"),
         ).where(*base_filters)
     ).one()
 
@@ -1092,8 +1092,8 @@ def compare_measured_and_synthetic_distribution(
     data_years = years if years is not None else _infer_data_years(db, base_filters)
     data_years = max(data_years, 1e-6)
 
-    measured_filters = [*base_filters, LightningCurrentEvent.is_synthetic.is_(False)]
-    synthetic_filters = [*base_filters, LightningCurrentEvent.is_synthetic.is_(True)]
+    measured_filters = [*base_filters, LightningDistributionPoint.is_synthetic.is_(False)]
+    synthetic_filters = [*base_filters, LightningDistributionPoint.is_synthetic.is_(True)]
     measured = _aggregate_dataset_stats(db, measured_filters, area_km2=area_km2, data_years=data_years)
     synthetic = _aggregate_dataset_stats(db, synthetic_filters, area_km2=area_km2, data_years=data_years)
 
@@ -1153,19 +1153,19 @@ def build_lightning_distribution_report(
         polarity=None,
         is_synthetic=is_synthetic,
     )
-    event_ts_expr = func.coalesce(LightningCurrentEvent.event_time, LightningCurrentEvent.create_date)
+    event_ts_expr = func.coalesce(LightningDistributionPoint.event_time, LightningDistributionPoint.create_date)
     filters.append(and_(event_ts_expr >= start_time, event_ts_expr <= now))
 
     summary_row = db.execute(
         select(
             func.count().label("count"),
-            func.max(LightningCurrentEvent.peak_abs_current_ka).label("max_abs"),
-            func.avg(LightningCurrentEvent.peak_abs_current_ka).label("avg_abs"),
-            func.sum(case((LightningCurrentEvent.polarity == "positive", 1), else_=0)).label("positive_count"),
-            func.min(LightningCurrentEvent.latitude).label("min_lat"),
-            func.max(LightningCurrentEvent.latitude).label("max_lat"),
-            func.min(LightningCurrentEvent.longitude).label("min_lon"),
-            func.max(LightningCurrentEvent.longitude).label("max_lon"),
+            func.max(LightningDistributionPoint.peak_abs_current_ka).label("max_abs"),
+            func.avg(LightningDistributionPoint.peak_abs_current_ka).label("avg_abs"),
+            func.sum(case((LightningDistributionPoint.polarity == "positive", 1), else_=0)).label("positive_count"),
+            func.min(LightningDistributionPoint.latitude).label("min_lat"),
+            func.max(LightningDistributionPoint.latitude).label("max_lat"),
+            func.min(LightningDistributionPoint.longitude).label("min_lon"),
+            func.max(LightningDistributionPoint.longitude).label("max_lon"),
         ).where(*filters)
     ).one()
 
@@ -1188,22 +1188,22 @@ def build_lightning_distribution_report(
 
     most_severe_row = db.execute(
         select(
-            LightningCurrentEvent.id,
-            LightningCurrentEvent.event_id,
-            LightningCurrentEvent.longitude,
-            LightningCurrentEvent.latitude,
-            LightningCurrentEvent.peak_current_ka,
-            LightningCurrentEvent.peak_abs_current_ka,
-            LightningCurrentEvent.polarity,
-            LightningCurrentEvent.event_time,
-            LightningCurrentEvent.location_tag,
-            LightningCurrentEvent.city,
+            LightningDistributionPoint.id,
+            LightningDistributionPoint.event_id,
+            LightningDistributionPoint.longitude,
+            LightningDistributionPoint.latitude,
+            LightningDistributionPoint.peak_current_ka,
+            LightningDistributionPoint.peak_abs_current_ka,
+            LightningDistributionPoint.polarity,
+            LightningDistributionPoint.event_time,
+            LightningDistributionPoint.location_tag,
+            LightningDistributionPoint.city,
         )
         .where(*filters)
         .order_by(
-            LightningCurrentEvent.peak_abs_current_ka.desc(),
+            LightningDistributionPoint.peak_abs_current_ka.desc(),
             event_ts_expr.desc(),
-            LightningCurrentEvent.id.desc(),
+            LightningDistributionPoint.id.desc(),
         )
         .limit(1)
     ).one_or_none()
@@ -1247,7 +1247,7 @@ def get_peak_exceedance_curve(
     thresholds_ka: list[float] | None,
     default_points: int = 12,
 ) -> LightningCurrentExceedanceResponse:
-    filters: list[Any] = [LightningCurrentEvent.peak_abs_current_ka.is_not(None)]
+    filters: list[Any] = [LightningCurrentEvent.peak_abs_current_ka.is_not(None), LightningCurrentEvent.sample_count >= 2]
 
     normalized_region = _normalize_str(region_id)
     if normalized_region:
@@ -1308,7 +1308,7 @@ def prepare_line_lightning_current(
     if not towers:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前线路没有可回填的杆塔数据")
 
-    filters: list[Any] = [LightningCurrentEvent.peak_abs_current_ka.is_not(None)]
+    filters: list[Any] = [LightningCurrentEvent.peak_abs_current_ka.is_not(None), LightningCurrentEvent.sample_count >= 2]
     normalized_region = _normalize_str(payload.region_id)
     if normalized_region:
         filters.append(LightningCurrentEvent.region_id == normalized_region)
@@ -1461,9 +1461,9 @@ def prepare_line_lightning_density(
     )
     candidate_rows = db.execute(
         select(
-            LightningCurrentEvent.longitude,
-            LightningCurrentEvent.latitude,
-            LightningCurrentEvent.event_time,
+            LightningDistributionPoint.longitude,
+            LightningDistributionPoint.latitude,
+            LightningDistributionPoint.event_time,
         ).where(*filters)
     ).all()
     if not candidate_rows:
@@ -1577,37 +1577,37 @@ def _build_distribution_filters(
     is_synthetic: bool | None,
 ) -> list[Any]:
     filters: list[Any] = [
-        LightningCurrentEvent.latitude.is_not(None),
-        LightningCurrentEvent.longitude.is_not(None),
-        LightningCurrentEvent.peak_abs_current_ka.is_not(None),
+        LightningDistributionPoint.latitude.is_not(None),
+        LightningDistributionPoint.longitude.is_not(None),
+        LightningDistributionPoint.peak_abs_current_ka.is_not(None),
     ]
     if min_lat is not None:
-        filters.append(LightningCurrentEvent.latitude >= min_lat)
+        filters.append(LightningDistributionPoint.latitude >= min_lat)
     if max_lat is not None:
-        filters.append(LightningCurrentEvent.latitude <= max_lat)
+        filters.append(LightningDistributionPoint.latitude <= max_lat)
     if min_lon is not None:
-        filters.append(LightningCurrentEvent.longitude >= min_lon)
+        filters.append(LightningDistributionPoint.longitude >= min_lon)
     if max_lon is not None:
-        filters.append(LightningCurrentEvent.longitude <= max_lon)
+        filters.append(LightningDistributionPoint.longitude <= max_lon)
 
     normalized_region = _normalize_str(region_id)
     if normalized_region:
-        filters.append(LightningCurrentEvent.region_id == normalized_region)
+        filters.append(LightningDistributionPoint.region_id == normalized_region)
 
     normalized_city = _normalize_str(city)
     if normalized_city:
-        filters.append(func.lower(LightningCurrentEvent.city) == normalized_city.lower())
+        filters.append(func.lower(LightningDistributionPoint.city) == normalized_city.lower())
 
     normalized_location = _normalize_str(location_tag)
     if normalized_location:
-        filters.append(LightningCurrentEvent.location_tag.ilike(f"%{normalized_location}%"))
+        filters.append(LightningDistributionPoint.location_tag.ilike(f"%{normalized_location}%"))
 
     normalized_polarity = _normalize_str(polarity)
     if normalized_polarity:
-        filters.append(LightningCurrentEvent.polarity == normalized_polarity.lower())
+        filters.append(LightningDistributionPoint.polarity == normalized_polarity.lower())
 
     if is_synthetic is not None:
-        filters.append(LightningCurrentEvent.is_synthetic == is_synthetic)
+        filters.append(LightningDistributionPoint.is_synthetic == is_synthetic)
 
     return filters
 
@@ -1634,9 +1634,9 @@ def _build_p_curve_with_filters(
     for threshold in thresholds:
         exceed_count = int(
             db.scalar(
-                select(func.count()).select_from(LightningCurrentEvent).where(
+                select(func.count()).select_from(LightningDistributionPoint).where(
                     *filters,
-                    LightningCurrentEvent.peak_abs_current_ka >= threshold,
+                    LightningDistributionPoint.peak_abs_current_ka >= threshold,
                 )
             )
             or 0
@@ -1661,9 +1661,9 @@ def _aggregate_dataset_stats(
     row = db.execute(
         select(
             func.count().label("count"),
-            func.max(LightningCurrentEvent.peak_abs_current_ka).label("max_abs"),
-            func.avg(LightningCurrentEvent.peak_abs_current_ka).label("avg_abs"),
-            func.sum(case((LightningCurrentEvent.polarity == "positive", 1), else_=0)).label("positive_count"),
+            func.max(LightningDistributionPoint.peak_abs_current_ka).label("max_abs"),
+            func.avg(LightningDistributionPoint.peak_abs_current_ka).label("avg_abs"),
+            func.sum(case((LightningDistributionPoint.polarity == "positive", 1), else_=0)).label("positive_count"),
         ).where(*filters)
     ).one()
     count = int(row.count or 0)
@@ -1688,8 +1688,8 @@ def _compute_grid_cosine_similarity(
     km_per_lon: float,
     grid_size_km: float,
 ) -> float | None:
-    cell_x_expr = func.floor(((LightningCurrentEvent.longitude - min_lon) * km_per_lon) / grid_size_km)
-    cell_y_expr = func.floor(((LightningCurrentEvent.latitude - min_lat) * DEGREE_TO_KM) / grid_size_km)
+    cell_x_expr = func.floor(((LightningDistributionPoint.longitude - min_lon) * km_per_lon) / grid_size_km)
+    cell_y_expr = func.floor(((LightningDistributionPoint.latitude - min_lat) * DEGREE_TO_KM) / grid_size_km)
     measured_rows = db.execute(
         select(cell_x_expr.label("x"), cell_y_expr.label("y"), func.count().label("c"))
         .where(*measured_filters)
@@ -1766,9 +1766,9 @@ def _resolve_data_years_from_timestamps(values: list[datetime]) -> float:
 def _infer_data_years(db: Session, filters: list[Any]) -> float:
     row = db.execute(
         select(
-            func.min(LightningCurrentEvent.event_time).label("min_time"),
-            func.max(LightningCurrentEvent.event_time).label("max_time"),
-        ).where(*filters, LightningCurrentEvent.event_time.is_not(None))
+            func.min(LightningDistributionPoint.event_time).label("min_time"),
+            func.max(LightningDistributionPoint.event_time).label("max_time"),
+        ).where(*filters, LightningDistributionPoint.event_time.is_not(None))
     ).one()
     if row.min_time is None or row.max_time is None:
         return 1.0
@@ -2485,95 +2485,83 @@ def _fire_and_forget(coro: object) -> None:
     loop.create_task(coro)
 
 
-def list_lightning_import_batches(
+def _query_batch_groups(
     db: Session,
+    model: type,
     *,
-    keyword: str | None = None,
-    region_id: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
-) -> LightningImportBatchListResponse:
-    """
-    列出文件导入批次记录，按导入时间分组
-    """
-    # 构建过滤条件
+    keyword: str | None,
+    region_id: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[int, list[LightningImportBatchSummary]]:
+    """Query import batch groups from a single model table."""
+    import hashlib
+
     filters = []
 
     if keyword:
         keyword_pattern = f"%{keyword}%"
         filters.append(
             or_(
-                LightningCurrentEvent.source_file_name.ilike(keyword_pattern),
-                LightningCurrentEvent.location_tag.ilike(keyword_pattern),
-                LightningCurrentEvent.city.ilike(keyword_pattern),
+                model.source_file_name.ilike(keyword_pattern),
+                model.location_tag.ilike(keyword_pattern),
+                model.city.ilike(keyword_pattern),
             )
         )
 
     if region_id:
-        filters.append(LightningCurrentEvent.region_id == region_id)
+        filters.append(model.region_id == region_id)
 
-    # 按 source_file_name + create_date (精确到秒) + region_id + location_tag + city 分组
-    # 使用 create_date 的日期和小时作为分组依据
     batch_key = func.concat(
-        func.coalesce(LightningCurrentEvent.source_file_name, ""),
+        func.coalesce(model.source_file_name, ""),
         "|",
-        func.date_trunc("second", LightningCurrentEvent.create_date).cast(String),
+        func.date_trunc("second", model.create_date).cast(String),
         "|",
-        func.coalesce(LightningCurrentEvent.region_id, ""),
+        func.coalesce(model.region_id, ""),
         "|",
-        func.coalesce(LightningCurrentEvent.location_tag, ""),
+        func.coalesce(model.location_tag, ""),
         "|",
-        func.coalesce(LightningCurrentEvent.city, ""),
+        func.coalesce(model.city, ""),
     )
 
-    # 获取总数
-    total_query = (
+    total = db.execute(
         select(func.count(func.distinct(batch_key)))
-        .select_from(LightningCurrentEvent)
+        .select_from(model)
         .where(*filters)
-    )
-    total = db.execute(total_query).scalar() or 0
+    ).scalar() or 0
 
-    # 查询批次数据
-    batch_query = (
+    rows = db.execute(
         select(
             batch_key.label("batch_key"),
-            LightningCurrentEvent.source_file_name,
-            func.min(LightningCurrentEvent.create_date).label("import_time"),
+            model.source_file_name,
+            func.min(model.create_date).label("import_time"),
             func.count().label("event_count"),
-            LightningCurrentEvent.region_id,
-            LightningCurrentEvent.location_tag,
-            LightningCurrentEvent.city,
-            func.extract("year", func.min(LightningCurrentEvent.event_time)).label("event_year"),
-            func.bool_or(LightningCurrentEvent.is_synthetic).label("is_synthetic"),
-            func.max(LightningCurrentEvent.notes).label("notes"),
-            func.max(LightningCurrentEvent.peak_abs_current_ka).label("max_abs_current_ka"),
-            func.avg(LightningCurrentEvent.peak_abs_current_ka).label("avg_abs_current_ka"),
-            func.sum(case((LightningCurrentEvent.polarity == "positive", 1), else_=0)).label("positive_count"),
-            func.sum(case((LightningCurrentEvent.polarity == "negative", 1), else_=0)).label("negative_count"),
-            func.max(LightningCurrentEvent.create_user).label("create_user"),
+            model.region_id,
+            model.location_tag,
+            model.city,
+            func.extract("year", func.min(model.event_time)).label("event_year"),
+            func.bool_or(model.is_synthetic).label("is_synthetic"),
+            func.max(model.notes).label("notes"),
+            func.max(model.peak_abs_current_ka).label("max_abs_current_ka"),
+            func.avg(model.peak_abs_current_ka).label("avg_abs_current_ka"),
+            func.sum(case((model.polarity == "positive", 1), else_=0)).label("positive_count"),
+            func.sum(case((model.polarity == "negative", 1), else_=0)).label("negative_count"),
+            func.max(model.create_user).label("create_user"),
         )
         .where(*filters)
         .group_by(
             batch_key,
-            LightningCurrentEvent.source_file_name,
-            LightningCurrentEvent.region_id,
-            LightningCurrentEvent.location_tag,
-            LightningCurrentEvent.city,
+            model.source_file_name,
+            model.region_id,
+            model.location_tag,
+            model.city,
         )
-        .order_by(func.min(LightningCurrentEvent.create_date).desc())
-        .limit(limit)
-        .offset(offset)
-    )
-
-    rows = db.execute(batch_query).all()
+        .order_by(func.min(model.create_date).desc())
+    ).all()
 
     items = []
     for row in rows:
-        # 使用批次key的哈希作为batch_id
-        import hashlib
         batch_id = hashlib.md5(row.batch_key.encode()).hexdigest()[:16]
-
         items.append(
             LightningImportBatchSummary(
                 batch_id=batch_id,
@@ -2594,71 +2582,86 @@ def list_lightning_import_batches(
             )
         )
 
+    return total, items
+
+
+def list_lightning_import_batches(
+    db: Session,
+    *,
+    keyword: str | None = None,
+    region_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> LightningImportBatchListResponse:
+    """
+    列出文件导入批次记录，按导入时间分组。
+    同时查询波形事件表（LightningCurrentEvent）和地闪分布表（LightningDistributionPoint）。
+    """
+    # 查询波形导入批次
+    total_waveform, waveform_items = _query_batch_groups(
+        db, LightningCurrentEvent,
+        keyword=keyword, region_id=region_id, limit=1000, offset=0,
+    )
+    # 查询地闪分布导入批次
+    total_distribution, distribution_items = _query_batch_groups(
+        db, LightningDistributionPoint,
+        keyword=keyword, region_id=region_id, limit=1000, offset=0,
+    )
+
+    all_items = waveform_items + distribution_items
+    all_items.sort(key=lambda x: x.import_time or datetime.min, reverse=True)
+    total = len(all_items)
+    paginated = all_items[offset:offset + limit]
+
     return LightningImportBatchListResponse(
-        items=items,
+        items=paginated,
         total=total,
         limit=limit,
         offset=offset,
     )
 
 
-def get_lightning_import_batch_events(
+def _query_batch_events_from_model(
     db: Session,
+    model: type,
     *,
     source_file_name: str | None,
     import_time: datetime,
     region_id: str | None,
     location_tag: str | None,
     city: str | None,
-) -> LightningImportBatchEventsResponse:
-    """
-    获取某个导入批次的所有事件
-    """
-    import hashlib
-
-    # 构建批次key
-    batch_key_str = "|".join([
-        source_file_name or "",
-        import_time.isoformat(),
-        region_id or "",
-        location_tag or "",
-        city or "",
-    ])
-    batch_id = hashlib.md5(batch_key_str.encode()).hexdigest()[:16]
-
-    # 查询该批次的所有事件
-    # 允许 create_date 有 5 秒误差
+) -> list[LightningImportBatchEventItem]:
+    """Query batch events from a single model table."""
     time_tolerance = timedelta(seconds=5)
     filters = [
-        LightningCurrentEvent.create_date >= import_time - time_tolerance,
-        LightningCurrentEvent.create_date <= import_time + time_tolerance,
+        model.create_date >= import_time - time_tolerance,
+        model.create_date <= import_time + time_tolerance,
     ]
 
     if source_file_name:
-        filters.append(LightningCurrentEvent.source_file_name == source_file_name)
+        filters.append(model.source_file_name == source_file_name)
     else:
-        filters.append(LightningCurrentEvent.source_file_name.is_(None))
+        filters.append(model.source_file_name.is_(None))
 
     if region_id:
-        filters.append(LightningCurrentEvent.region_id == region_id)
+        filters.append(model.region_id == region_id)
     else:
-        filters.append(LightningCurrentEvent.region_id.is_(None))
+        filters.append(model.region_id.is_(None))
 
     if location_tag:
-        filters.append(LightningCurrentEvent.location_tag == location_tag)
+        filters.append(model.location_tag == location_tag)
     else:
-        filters.append(LightningCurrentEvent.location_tag.is_(None))
+        filters.append(model.location_tag.is_(None))
 
     if city:
-        filters.append(LightningCurrentEvent.city == city)
+        filters.append(model.city == city)
     else:
-        filters.append(LightningCurrentEvent.city.is_(None))
+        filters.append(model.city.is_(None))
 
-    query = select(LightningCurrentEvent).where(*filters).order_by(LightningCurrentEvent.event_time)
-
+    query = select(model).where(*filters).order_by(model.event_time)
     events_db = db.execute(query).scalars().all()
 
-    events = [
+    return [
         LightningImportBatchEventItem(
             id=event.id,
             event_id=event.event_id,
@@ -2672,12 +2675,57 @@ def get_lightning_import_batch_events(
         for event in events_db
     ]
 
+
+def get_lightning_import_batch_events(
+    db: Session,
+    *,
+    source_file_name: str | None,
+    import_time: datetime,
+    region_id: str | None,
+    location_tag: str | None,
+    city: str | None,
+) -> LightningImportBatchEventsResponse:
+    """
+    获取某个导入批次的所有事件。
+    同时查询波形事件表（LightningCurrentEvent）和地闪分布表（LightningDistributionPoint）。
+    """
+    import hashlib
+
+    batch_key_str = "|".join([
+        source_file_name or "",
+        import_time.isoformat(),
+        region_id or "",
+        location_tag or "",
+        city or "",
+    ])
+    batch_id = hashlib.md5(batch_key_str.encode()).hexdigest()[:16]
+
+    waveform_events = _query_batch_events_from_model(
+        db, LightningCurrentEvent,
+        source_file_name=source_file_name,
+        import_time=import_time,
+        region_id=region_id,
+        location_tag=location_tag,
+        city=city,
+    )
+    distribution_events = _query_batch_events_from_model(
+        db, LightningDistributionPoint,
+        source_file_name=source_file_name,
+        import_time=import_time,
+        region_id=region_id,
+        location_tag=location_tag,
+        city=city,
+    )
+
+    all_events = waveform_events + distribution_events
+    all_events.sort(key=lambda x: x.event_time or datetime.min)
+
     return LightningImportBatchEventsResponse(
         batch_id=batch_id,
         source_file_name=source_file_name,
         import_time=import_time,
-        events=events,
-        total=len(events),
+        events=all_events,
+        total=len(all_events),
     )
 
 
@@ -2691,189 +2739,57 @@ def delete_lightning_import_batch(
     city: str | None,
 ) -> dict[str, bool | int]:
     """
-    删除某个导入批次的所有事件记录
+    删除某个导入批次的所有事件记录。
+    同时删除波形事件表（LightningCurrentEvent）和地闪分布表（LightningDistributionPoint）中的记录。
     """
+    import hashlib
+
+    batch_key_str = "|".join([
+        source_file_name or "",
+        import_time.isoformat(),
+        region_id or "",
+        location_tag or "",
+        city or "",
+    ])
+    batch_id = hashlib.md5(batch_key_str.encode()).hexdigest()[:16]
+
     time_tolerance = timedelta(seconds=5)
-    filters = [
-        LightningCurrentEvent.create_date >= import_time - time_tolerance,
-        LightningCurrentEvent.create_date <= import_time + time_tolerance,
-    ]
+    total_deleted = 0
 
-    if source_file_name:
-        filters.append(LightningCurrentEvent.source_file_name == source_file_name)
-    else:
-        filters.append(LightningCurrentEvent.source_file_name.is_(None))
+    for model in (LightningCurrentEvent, LightningDistributionPoint):
+        filters = [
+            model.create_date >= import_time - time_tolerance,
+            model.create_date <= import_time + time_tolerance,
+        ]
+        if source_file_name:
+            filters.append(model.source_file_name == source_file_name)
+        else:
+            filters.append(model.source_file_name.is_(None))
+        if region_id:
+            filters.append(model.region_id == region_id)
+        else:
+            filters.append(model.region_id.is_(None))
+        if location_tag:
+            filters.append(model.location_tag == location_tag)
+        else:
+            filters.append(model.location_tag.is_(None))
+        if city:
+            filters.append(model.city == city)
+        else:
+            filters.append(model.city.is_(None))
 
-    if region_id:
-        filters.append(LightningCurrentEvent.region_id == region_id)
-    else:
-        filters.append(LightningCurrentEvent.region_id.is_(None))
+        events = db.execute(select(model).where(*filters)).scalars().all()
+        for event in events:
+            db.delete(event)
+        total_deleted += len(events)
 
-    if location_tag:
-        filters.append(LightningCurrentEvent.location_tag == location_tag)
-    else:
-        filters.append(LightningCurrentEvent.location_tag.is_(None))
-
-    if city:
-        filters.append(LightningCurrentEvent.city == city)
-    else:
-        filters.append(LightningCurrentEvent.city.is_(None))
-
-    query = select(LightningCurrentEvent).where(*filters)
-    events = db.execute(query).scalars().all()
-
-    deleted_count = len(events)
-    if deleted_count == 0:
+    if total_deleted == 0:
         return {"success": False, "deleted_count": 0}
-
-    for event in events:
-        db.delete(event)
 
     db.commit()
     _publish_lightning_change(
         "lightning.deleted",
-        {"action": "deleted", "batch_deleted_count": deleted_count},
+        f"{source_file_name or 'unknown'} (batch {batch_id})",
     )
 
-    return {"success": True, "deleted_count": deleted_count}
-
-
-# ---------------------------------------------------------------------------
-# 异步雷电分布导入执行函数（供 Celery task 调用）
-# ---------------------------------------------------------------------------
-def execute_distribution_import_from_path(
-    *,
-    file_path: str,
-    source_file_name: str | None,
-    actor_user_id: str,
-    event_year: int | None,
-    region_id: str | None,
-    location_tag: str | None,
-    city: str | None,
-    notes: str | None,
-    is_synthetic: bool,
-    line_id: str | None = None,
-) -> dict[str, Any]:
-    """从文件路径读取雷电分布数据并执行导入。由 Celery task 或直接调用。"""
-    db: Session = SessionLocal()
-    try:
-        with open(file_path, "rb") as _f:
-            content = _f.read()
-        text = _decode_text_bytes(content)
-        parsed_event_time = datetime(event_year, 1, 1) if event_year is not None else None
-
-        rows_to_insert: list[dict[str, Any]] = []
-        inserted_count = 0
-        skipped_count = 0
-        warnings: list[str] = []
-        now = utcnow()
-
-        insert_stmt = insert(LightningCurrentEvent)
-        for line_no, raw_line in enumerate(text.splitlines(), start=1):
-            if inserted_count + skipped_count >= MAX_DISTRIBUTION_ROWS:
-                break
-
-            parsed = _parse_distribution_line(raw_line)
-            if not parsed:
-                stripped = raw_line.strip()
-                if stripped and len(warnings) < 50:
-                    warnings.append(f"第 {line_no} 行无法解析为'纬度 经度 电流'，已跳过")
-                skipped_count += 1
-                continue
-
-            latitude, longitude, current_ka = parsed
-            if not (-90.0 <= latitude <= 90.0 and -180.0 <= longitude <= 180.0):
-                skipped_count += 1
-                if len(warnings) < 50:
-                    warnings.append(f"第 {line_no} 行坐标越界（lat={latitude}, lon={longitude}），已跳过")
-                continue
-
-            if math.isclose(current_ka, 0.0, abs_tol=1e-12):
-                polarity: LightningPolarity = "unknown"
-            else:
-                polarity = "positive" if current_ka > 0 else "negative"
-
-            event_id = _generate_distribution_event_id()
-            stroke_peaks = [
-                {
-                    "seq_no": 1,
-                    "sample_index": 1,
-                    "time_us": 0.0,
-                    "current_ka": current_ka,
-                }
-            ]
-            rows_to_insert.append(
-                {
-                    "id": uuid4().hex,
-                    "event_id": event_id,
-                    "source_file_name": source_file_name,
-                    "event_time": parsed_event_time,
-                    "sample_count": 1,
-                    "sample_interval_us": None,
-                    "sampling_frequency_hz": None,
-                    "peak_current_ka": current_ka,
-                    "peak_abs_current_ka": abs(current_ka),
-                    "wavefront_time_t1_us": None,
-                    "half_value_time_t2_us": None,
-                    "steepness_ka_per_us": None,
-                    "action_integral_j_ohm": None,
-                    "wave_shape": None,
-                    "polarity": polarity,
-                    "stroke_count": 1,
-                    "stroke_peaks_json": stroke_peaks,
-                    "region_id": region_id,
-                    "location_tag": location_tag,
-                    "city": city,
-                    "longitude": longitude,
-                    "latitude": latitude,
-                    "altitude_m": None,
-                    "sensor_model": None,
-                    "install_position": None,
-                    "weather_level": None,
-                    "pressure_hpa": None,
-                    "humidity_percent": None,
-                    "is_synthetic": is_synthetic,
-                    "feature_json": {
-                        "source": "distribution-import",
-                        "line_no": line_no,
-                        "line_id": line_id,
-                    } if line_id else {
-                        "source": "distribution-import",
-                        "line_no": line_no,
-                    },
-                    "notes": notes,
-                    "create_user": actor_user_id,
-                    "update_user": actor_user_id,
-                    "create_date": now,
-                    "update_date": now,
-                }
-            )
-            if len(rows_to_insert) >= INSERT_CHUNK_SIZE:
-                db.execute(insert_stmt, rows_to_insert)
-                inserted_count += len(rows_to_insert)
-                rows_to_insert.clear()
-
-        if rows_to_insert:
-            db.execute(insert_stmt, rows_to_insert)
-            inserted_count += len(rows_to_insert)
-
-        db.commit()
-
-        # Clean up temp file
-        try:
-            import os as _os
-            _os.unlink(file_path)
-        except Exception:
-            pass
-
-        return {
-            "status": "done",
-            "imported_count": inserted_count,
-            "skipped_count": skipped_count,
-            "warnings": warnings,
-        }
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    return {"success": True, "deleted_count": total_deleted}

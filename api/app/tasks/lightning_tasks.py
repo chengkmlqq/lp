@@ -12,7 +12,7 @@ from ..core.celery_app import celery_app
 from ..core.database import SessionLocal
 from ..models.line import Line
 from ..models.line_tower import LineTower
-from ..models.lightning_event import LightningCurrentEvent
+from ..models.lightning_distribution import LightningDistributionPoint
 
 
 # ---------------------------------------------------------------------------
@@ -244,21 +244,21 @@ def compute_ground_flash_density_job(
         )
 
         filters = [
-            LightningCurrentEvent.longitude >= min_lon,
-            LightningCurrentEvent.longitude <= max_lon,
-            LightningCurrentEvent.latitude >= min_lat,
-            LightningCurrentEvent.latitude <= max_lat,
+            LightningDistributionPoint.longitude >= min_lon,
+            LightningDistributionPoint.longitude <= max_lon,
+            LightningDistributionPoint.latitude >= min_lat,
+            LightningDistributionPoint.latitude <= max_lat,
         ]
         if region_id:
-            filters.append(LightningCurrentEvent.region_id == region_id)
+            filters.append(LightningDistributionPoint.region_id == region_id)
         if is_synthetic is not None:
-            filters.append(LightningCurrentEvent.is_synthetic == is_synthetic)
+            filters.append(LightningDistributionPoint.is_synthetic == is_synthetic)
 
         storm_rows = db.execute(
             select(
-                LightningCurrentEvent.longitude,
-                LightningCurrentEvent.latitude,
-                LightningCurrentEvent.event_time,
+                LightningDistributionPoint.longitude,
+                LightningDistributionPoint.latitude,
+                LightningDistributionPoint.event_time,
             ).where(*filters)
         ).all()
 
