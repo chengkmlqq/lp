@@ -703,72 +703,76 @@ export default function AdminDocumentsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
-        <Col span={6}>
-          <AntCard
-            title="章节目录"
-            extra={
-              canManage && (
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<PlusOutlined />}
-                  onClick={handleCreateChapter}
-                >
-                  新建
-                </Button>
-              )
-            }
-            style={{ height: "100%", display: "flex", flexDirection: "column" }}
-            bodyStyle={{ flex: 1, overflow: "auto" }}
-          >
-            {treeLoading ? (
-              <div style={{ textAlign: "center", padding: "24px" }}>
-                <Spin />
-              </div>
-            ) : treeData && treeData.length > 0 ? (
-              <Tree
-                showLine
-                defaultExpandAll
-                expandedKeys={expandedKeys}
-                onExpand={(keys) => setExpandedKeys(keys)}
-                treeData={convertToTreeData(treeData)}
-                onSelect={(keys) => {
-                  if (keys.length > 0) {
-                    const key = keys[0] as string;
-                    if (key.startsWith("chapter-")) {
-                      const id = parseInt(key.replace("chapter-", ""), 10);
-                      setSelectedChapterId(id);
+      <AntCard
+        className="admin-documents-page-card"
+        title="文档管理"
+        extra={
+          canManage && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleCreateDocument}
+            >
+              新建文档
+            </Button>
+          )
+        }
+      >
+        <div className="admin-documents-page-body">
+          {/* Left: Tree */}
+          <div className="admin-documents-sider">
+            <AntCard
+              title="章节目录"
+              className="admin-documents-tree-card"
+              extra={
+                canManage && (
+                  <Button
+                    type="primary"
+                    size="small"
+                    icon={<PlusOutlined />}
+                    onClick={handleCreateChapter}
+                  >
+                    新建
+                  </Button>
+                )
+              }
+              bodyStyle={{ flex: 1, overflow: "auto" }}
+            >
+              {treeLoading ? (
+                <div style={{ textAlign: "center", padding: "24px" }}>
+                  <Spin />
+                </div>
+              ) : treeData && treeData.length > 0 ? (
+                <Tree
+                  showLine
+                  defaultExpandAll
+                  expandedKeys={expandedKeys}
+                  onExpand={(keys) => setExpandedKeys(keys)}
+                  treeData={convertToTreeData(treeData)}
+                  onSelect={(keys) => {
+                    if (keys.length > 0) {
+                      const key = keys[0] as string;
+                      if (key.startsWith("chapter-")) {
+                        const id = parseInt(key.replace("chapter-", ""), 10);
+                        setSelectedChapterId(id);
+                      }
+                    } else {
+                      setSelectedChapterId(null);
                     }
-                  } else {
-                    setSelectedChapterId(null);
-                  }
-                }}
-              />
-            ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="未找到符合筛选条件的章节。"
-              />
-            )}
-          </AntCard>
-        </Col>
-        <Col span={18}>
-          <AntCard
-            ref={pageCardRef}
-            className="admin-documents-page-card"
-            title={selectedChapterId ? "章节文档" : "全部文档"}
-            extra={
-              canManage && (
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={handleCreateDocument}
-                >
-                  新建文档
-                </Button>
-              )
-            }
+                  }}
+                />
+              ) : (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="未找到符合筛选条件的章节。"
+                />
+              )}
+            </AntCard>
+          </div>
+          {/* Right: Table */}
+          <div
+            ref={isMobile ? pageCardRef : undefined}
+            className="admin-documents-main"
           >
             {viewMode === "card" ? (
               <div className="admin-filter-bar">
@@ -933,9 +937,9 @@ export default function AdminDocumentsPage() {
                 )}
               </div>
             )}
-          </AntCard>
-        </Col>
-      </Row>
+          </div>
+        </div>
+      </AntCard>
 
       <Modal
         title={editingChapterId ? "编辑章节" : "新建章节"}

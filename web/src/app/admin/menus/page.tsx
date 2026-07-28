@@ -783,59 +783,59 @@ export default function AdminMenusPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Header: title + new menu button */}
-      <div className="mb-4 flex items-center justify-between">
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          菜单管理
-        </Typography.Title>
-        {canManage ? (
-          <Button type="primary" onClick={startCreate}>
-            新建菜单
-          </Button>
-        ) : null}
-      </div>
-      <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
-        <Col span={5}>
-          <AntCard
-            className="admin-menus-tree-card"
-            title="菜单目录"
-            style={{ height: "100%" }}
-          >
-            {menusQuery.isLoading ? (
-              <div style={{ textAlign: "center", padding: "24px" }}>
-                <Spin />
-              </div>
-            ) : treeData.length > 0 ? (
-              <Tree
-                showLine
-                defaultExpandAll
-                treeData={treeData}
-                onSelect={(keys) => {
-                  if (keys.length > 0) {
-                    const key = keys[0] as string;
-                    if (key.startsWith("menu-")) {
-                      const id = key.replace("menu-", "");
-                      setSelectedTreeKey(id);
+      <AntCard
+        className="admin-menus-page-card"
+        title="菜单管理"
+        extra={
+          canManage ? (
+            <Button type="primary" onClick={startCreate}>
+              新建菜单
+            </Button>
+          ) : null
+        }
+      >
+        <div className="admin-menus-page-body">
+          {/* Left: Tree */}
+          <div className="admin-menus-sider">
+            <AntCard
+              className="admin-menus-tree-card"
+              title="菜单目录"
+            >
+              {menusQuery.isLoading ? (
+                <div style={{ textAlign: "center", padding: "24px" }}>
+                  <Spin />
+                </div>
+              ) : treeData.length > 0 ? (
+                <Tree
+                  showLine
+                  defaultExpandAll
+                  treeData={treeData}
+                  onSelect={(keys) => {
+                    if (keys.length > 0) {
+                      const key = keys[0] as string;
+                      if (key.startsWith("menu-")) {
+                        const id = key.replace("menu-", "");
+                        setSelectedTreeKey(id);
+                        setPagination((prev) => ({ ...prev, current: 1 }));
+                      }
+                    } else {
+                      setSelectedTreeKey(null);
                       setPagination((prev) => ({ ...prev, current: 1 }));
                     }
-                  } else {
-                    setSelectedTreeKey(null);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                  }
-                }}
-              />
-            ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="暂无菜单数据"
-              />
-            )}
-          </AntCard>
-        </Col>
-        <Col span={19}>
-          <AntCard
+                  }}
+                />
+              ) : (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="暂无菜单数据"
+                />
+              )}
+            </AntCard>
+          </div>
+          {/* Right: Table */}
+          <div
             ref={pageCardRef}
-            className="admin-menus-page-card"
+            className="admin-menus-main"
           >
             {viewMode === "card" ? (
               <div className="admin-filter-bar">
@@ -982,9 +982,9 @@ export default function AdminMenusPage() {
                 )}
               </div>
             )}
-          </AntCard>
-        </Col>
-      </Row>
+          </div>
+        </div>
+      </AntCard>
 
       <Modal
         title={editingMenu ? `编辑菜单：${editingMenu.name}（${editingMenu.id}）` : editingMenuId ? "编辑菜单" : "新建菜单"}

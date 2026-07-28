@@ -405,6 +405,7 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
+  border-radius: 8px;
 }
 
 .admin-menus-page-card > .ant-card-body {
@@ -412,8 +413,26 @@ body {
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* ---- Menus page two-column body ---- */
+.admin-menus-page-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0;
+  overflow: hidden;
+}
+
+.admin-menus-sider {
+  width: var(--admin-menus-sider-width, 240px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--ant-color-border-secondary);
+  flex-shrink: 0;
 }
 
 .admin-menus-tree-card {
@@ -421,11 +440,39 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 
 .admin-menus-tree-card > .ant-card-body {
   flex: 1;
   overflow: auto;
+  padding: 0 !important;
+}
+
+.admin-menus-tree-card .ant-card-head {
+  min-height: 48px;
+  padding-left: 16px;
+  padding-right: 12px;
+}
+
+.admin-menus-tree-card .ant-tree {
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.admin-menus-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.admin-menus-table-anchor .ant-table-body {
+  min-height: var(--admin-menus-table-body-min-height, 180px);
 }
 
 .admin-users-table-anchor .ant-table-body {
@@ -610,12 +657,67 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
+  border-radius: 8px;
 }
 
 .admin-documents-page-card > .ant-card-body {
   display: flex;
   min-height: 0;
   flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* ---- Documents page two-column body ---- */
+.admin-documents-page-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0;
+  overflow: hidden;
+}
+
+.admin-documents-sider {
+  width: var(--admin-documents-sider-width, 260px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--ant-color-border-secondary);
+  flex-shrink: 0;
+}
+
+.admin-documents-tree-card {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.admin-documents-tree-card > .ant-card-body {
+  flex: 1;
+  overflow: auto;
+  padding: 0 !important;
+}
+
+.admin-documents-tree-card .ant-card-head {
+  min-height: 48px;
+  padding-left: 16px;
+  padding-right: 12px;
+}
+
+.admin-documents-tree-card .ant-tree {
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.admin-documents-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
@@ -1262,7 +1364,7 @@ body {
 /* ---- Responsive ---- */
 @media (max-width: 1024px) {
   .admin-system-params-page-card {
-    margin: var(--space-3, 12px);
+    margin: 0;
   }
 
   .admin-system-params-page-body {
@@ -1276,7 +1378,7 @@ body {
 
 @media (max-width: 768px) {
   .admin-system-params-page-card {
-    margin: var(--space-2, 8px);
+    margin: 0;
   }
 
   .admin-system-params-page-header {
