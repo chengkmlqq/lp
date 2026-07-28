@@ -345,3 +345,66 @@ def _upload_log(task_id: str, log_parts: list[str]) -> None:
         upload_task_log(task_id, "\n".join(log_parts))
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# 异步雷电分布数据导入任务
+# ---------------------------------------------------------------------------
+@celery_app.task(
+    name="app.tasks.lightning_tasks.import_lightning_distribution_job",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=30,
+    acks_late=True,
+)
+def import_lightning_distribution_job(
+    self,
+    file_path: str,
+    source_file_name: str | None = None,
+    actor_user_id: str | None = None,
+    event_year: int | None = None,
+    region_id: str | None = None,
+    location_tag: str | None = None,
+    city: str | None = None,
+    notes: str | None = None,
+    is_synthetic: bool = False,
+    line_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    在 Celery Worker 后台执行雷电分布数据导入。
+    从共享卷读取临时文件 → 解析 → batch insert → 清理临时文件。
+    """
+    task_id = self.request.id
+    log_parts: list[str] = [f"[{task_id}] Starting distribution import: {source_file_name}"]
+
+    try:
+        from ..services.lightning_service import execute_distribution_import_from_path
+
+        result = execute_distribution_import_from_path(
+            file_path=file_path,
+            source_file_name=source_file_name,
+            actor_user_id=actor_user_id or "system",
+            event_year=event_year,
+            region_id=region_id,
+            location_tag=location_tag,
+            city=city,
+            notes=notes,
+            is_synthetic=is_synthetic,
+            line_id=line_id,
+        )
+
+        log_parts.append(
+            f"[{task_id}] Done: imported={result.get('imported_count')}, "
+            f"skipped={result.get('skipped_count')}, "
+            f"warnings={len(result.get('warnings', []))}"
+        )
+        _upload_log(task_id, log_parts)
+        return result
+
+    except Exception as exc:
+        import traceback
+
+        log_parts.append(f"[{task_id}] FAILED: {exc}")
+        log_parts.append(traceback.format_exc())
+        _upload_log(task_id, log_parts)
+        raise

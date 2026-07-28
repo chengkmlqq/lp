@@ -12,7 +12,10 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import and_, case, func, insert, or_, select, String
 from sqlalchemy.orm import Session
 
+from ..core.database import SessionLocal
+
 from ..models.base import utcnow
+from ..models.lightning_distribution import LightningDistributionPoint
 from ..models.lightning_event import LightningCurrentEvent
 from ..models.lightning_sample import LightningCurrentSample
 from ..models.line import Line
@@ -487,126 +490,41 @@ def import_lightning_distribution_from_file(
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
 
-    text = _decode_text_bytes(content)
-    normalized_region = _normalize_str(region_id)
-    normalized_location = _normalize_str(location_tag)
-    normalized_city = _normalize_str(city)
-    normalized_notes = _normalize_str(notes)
-    source_file_name = _normalize_str(file.filename)
-    parsed_event_time = datetime(event_year, 1, 1) if event_year is not None else None
+    # Save file to shared temp volume for async processing
+    import os as _os
+    _temp_dir = "/app/data/temp/lightning-distribution"
+    _os.makedirs(_temp_dir, exist_ok=True)
+    from uuid import uuid4 as _uuid4
+    _temp_path = f"{_temp_dir}/{_uuid4().hex}_{_normalize_str(str(file.filename or 'upload'))}"
+    with open(_temp_path, "wb") as _f:
+        _f.write(content)
 
-    rows_to_insert: list[dict[str, Any]] = []
-    inserted_count = 0
-    skipped_count = 0
-    warnings: list[str] = []
-    now = utcnow()
-
-    insert_stmt = insert(LightningCurrentEvent)
-    for line_no, raw_line in enumerate(text.splitlines(), start=1):
-        if inserted_count + skipped_count >= MAX_DISTRIBUTION_ROWS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"记录数超过上限（>{MAX_DISTRIBUTION_ROWS}），请拆分文件后重试",
-            )
-
-        parsed = _parse_distribution_line(raw_line)
-        if not parsed:
-            stripped = raw_line.strip()
-            if stripped and len(warnings) < 50:
-                warnings.append(f"第 {line_no} 行无法解析为“纬度 经度 电流”，已跳过")
-            skipped_count += 1
-            continue
-
-        latitude, longitude, current_ka = parsed
-        if not (-90.0 <= latitude <= 90.0 and -180.0 <= longitude <= 180.0):
-            skipped_count += 1
-            if len(warnings) < 50:
-                warnings.append(f"第 {line_no} 行坐标越界（lat={latitude}, lon={longitude}），已跳过")
-            continue
-
-        if math.isclose(current_ka, 0.0, abs_tol=1e-12):
-            polarity: LightningPolarity = "unknown"
-        else:
-            polarity = "positive" if current_ka > 0 else "negative"
-
-        event_id = _generate_distribution_event_id()
-        stroke_peaks = [
-            {
-                "seq_no": 1,
-                "sample_index": 1,
-                "time_us": 0.0,
-                "current_ka": current_ka,
-            }
-        ]
-        rows_to_insert.append(
-            {
-                "id": uuid4().hex,
-                "event_id": event_id,
-                "source_file_name": source_file_name,
-                "event_time": parsed_event_time,
-                "sample_count": 1,
-                "sample_interval_us": None,
-                "sampling_frequency_hz": None,
-                "peak_current_ka": current_ka,
-                "peak_abs_current_ka": abs(current_ka),
-                "wavefront_time_t1_us": None,
-                "half_value_time_t2_us": None,
-                "steepness_ka_per_us": None,
-                "action_integral_j_ohm": None,
-                "wave_shape": None,
-                "polarity": polarity,
-                "stroke_count": 1,
-                "stroke_peaks_json": stroke_peaks,
-                "region_id": normalized_region,
-                "location_tag": normalized_location,
-                "city": normalized_city,
-                "longitude": longitude,
-                "latitude": latitude,
-                "altitude_m": None,
-                "sensor_model": None,
-                "install_position": None,
-                "weather_level": None,
-                "pressure_hpa": None,
-                "humidity_percent": None,
-                "is_synthetic": bool(is_synthetic),
-                "feature_json": {
-                    "source": "distribution-import",
-                    "line_no": line_no,
-                    "line_id": line_id,
-                } if line_id else {
-                    "source": "distribution-import",
-                    "line_no": line_no,
-                },
-                "notes": normalized_notes,
-                "create_user": actor_user_id,
-                "update_user": actor_user_id,
-                "create_date": now,
-                "update_date": now,
-            }
-        )
-        if len(rows_to_insert) >= INSERT_CHUNK_SIZE:
-            db.execute(insert_stmt, rows_to_insert)
-            inserted_count += len(rows_to_insert)
-            rows_to_insert.clear()
-
-    if rows_to_insert:
-        db.execute(insert_stmt, rows_to_insert)
-        inserted_count += len(rows_to_insert)
-
-    if inserted_count == 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未解析到可导入的有效地闪密度记录")
-
-    db.commit()
-    _publish_lightning_change(
-        "lightning.distribution.imported",
-        {"action": "distribution_imported", "imported_count": inserted_count},
+    # Queue Celery task for async processing
+    from ..core.celery_app import celery_app as _celery_app
+    _task = _celery_app.send_task(
+        "app.tasks.lightning_tasks.import_lightning_distribution_job",
+        kwargs=dict(
+            file_path=_temp_path,
+            source_file_name=_normalize_str(file.filename),
+            actor_user_id=actor_user_id,
+            event_year=event_year,
+            region_id=_normalize_str(region_id),
+            location_tag=_normalize_str(location_tag),
+            city=_normalize_str(city),
+            notes=_normalize_str(notes),
+            is_synthetic=bool(is_synthetic),
+            line_id=line_id,
+        ),
+        queue="celery",
     )
+
     return LightningDistributionImportResponse(
-        imported_count=inserted_count,
-        skipped_count=skipped_count,
-        warning_count=len(warnings),
-        warnings=warnings,
+        imported_count=0,
+        skipped_count=0,
+        warning_count=0,
+        warnings=[],
         line_id=line_id,
+        task_id=str(_task.id),
     )
 
 
@@ -2096,7 +2014,7 @@ def _tower_risk_recommendation(risk_level: str) -> str:
 
 
 def _generate_distribution_event_id() -> str:
-    return f"LD-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
+    return f"LD-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex}"
 
 
 def _parse_current_series(text: str) -> ParsedSeries:
@@ -2818,3 +2736,144 @@ def delete_lightning_import_batch(
     )
 
     return {"success": True, "deleted_count": deleted_count}
+
+
+# ---------------------------------------------------------------------------
+# 异步雷电分布导入执行函数（供 Celery task 调用）
+# ---------------------------------------------------------------------------
+def execute_distribution_import_from_path(
+    *,
+    file_path: str,
+    source_file_name: str | None,
+    actor_user_id: str,
+    event_year: int | None,
+    region_id: str | None,
+    location_tag: str | None,
+    city: str | None,
+    notes: str | None,
+    is_synthetic: bool,
+    line_id: str | None = None,
+) -> dict[str, Any]:
+    """从文件路径读取雷电分布数据并执行导入。由 Celery task 或直接调用。"""
+    db: Session = SessionLocal()
+    try:
+        with open(file_path, "rb") as _f:
+            content = _f.read()
+        text = _decode_text_bytes(content)
+        parsed_event_time = datetime(event_year, 1, 1) if event_year is not None else None
+
+        rows_to_insert: list[dict[str, Any]] = []
+        inserted_count = 0
+        skipped_count = 0
+        warnings: list[str] = []
+        now = utcnow()
+
+        insert_stmt = insert(LightningCurrentEvent)
+        for line_no, raw_line in enumerate(text.splitlines(), start=1):
+            if inserted_count + skipped_count >= MAX_DISTRIBUTION_ROWS:
+                break
+
+            parsed = _parse_distribution_line(raw_line)
+            if not parsed:
+                stripped = raw_line.strip()
+                if stripped and len(warnings) < 50:
+                    warnings.append(f"第 {line_no} 行无法解析为'纬度 经度 电流'，已跳过")
+                skipped_count += 1
+                continue
+
+            latitude, longitude, current_ka = parsed
+            if not (-90.0 <= latitude <= 90.0 and -180.0 <= longitude <= 180.0):
+                skipped_count += 1
+                if len(warnings) < 50:
+                    warnings.append(f"第 {line_no} 行坐标越界（lat={latitude}, lon={longitude}），已跳过")
+                continue
+
+            if math.isclose(current_ka, 0.0, abs_tol=1e-12):
+                polarity: LightningPolarity = "unknown"
+            else:
+                polarity = "positive" if current_ka > 0 else "negative"
+
+            event_id = _generate_distribution_event_id()
+            stroke_peaks = [
+                {
+                    "seq_no": 1,
+                    "sample_index": 1,
+                    "time_us": 0.0,
+                    "current_ka": current_ka,
+                }
+            ]
+            rows_to_insert.append(
+                {
+                    "id": uuid4().hex,
+                    "event_id": event_id,
+                    "source_file_name": source_file_name,
+                    "event_time": parsed_event_time,
+                    "sample_count": 1,
+                    "sample_interval_us": None,
+                    "sampling_frequency_hz": None,
+                    "peak_current_ka": current_ka,
+                    "peak_abs_current_ka": abs(current_ka),
+                    "wavefront_time_t1_us": None,
+                    "half_value_time_t2_us": None,
+                    "steepness_ka_per_us": None,
+                    "action_integral_j_ohm": None,
+                    "wave_shape": None,
+                    "polarity": polarity,
+                    "stroke_count": 1,
+                    "stroke_peaks_json": stroke_peaks,
+                    "region_id": region_id,
+                    "location_tag": location_tag,
+                    "city": city,
+                    "longitude": longitude,
+                    "latitude": latitude,
+                    "altitude_m": None,
+                    "sensor_model": None,
+                    "install_position": None,
+                    "weather_level": None,
+                    "pressure_hpa": None,
+                    "humidity_percent": None,
+                    "is_synthetic": is_synthetic,
+                    "feature_json": {
+                        "source": "distribution-import",
+                        "line_no": line_no,
+                        "line_id": line_id,
+                    } if line_id else {
+                        "source": "distribution-import",
+                        "line_no": line_no,
+                    },
+                    "notes": notes,
+                    "create_user": actor_user_id,
+                    "update_user": actor_user_id,
+                    "create_date": now,
+                    "update_date": now,
+                }
+            )
+            if len(rows_to_insert) >= INSERT_CHUNK_SIZE:
+                db.execute(insert_stmt, rows_to_insert)
+                inserted_count += len(rows_to_insert)
+                rows_to_insert.clear()
+
+        if rows_to_insert:
+            db.execute(insert_stmt, rows_to_insert)
+            inserted_count += len(rows_to_insert)
+
+        db.commit()
+
+        # Clean up temp file
+        try:
+            import os as _os
+            _os.unlink(file_path)
+        except Exception:
+            pass
+
+        return {
+            "status": "done",
+            "imported_count": inserted_count,
+            "skipped_count": skipped_count,
+            "warnings": warnings,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
