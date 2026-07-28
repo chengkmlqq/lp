@@ -442,6 +442,7 @@ def import_lightning_current_job(
 )
 def import_lightning_distribution_job(
     self,
+    batch_id: str,
     file_path: str,
     source_file_name: str | None = None,
     actor_user_id: str | None = None,
@@ -459,6 +460,20 @@ def import_lightning_distribution_job(
     """
     task_id = self.request.id
     log_parts: list[str] = [f"[{task_id}] Starting distribution import: {source_file_name}"]
+
+    # Update batch status to processing
+    from ..core.database import SessionLocal
+    from ..models.lightning_import_batch import LightningImportBatch
+    _session = SessionLocal()
+    try:
+        _batch = _session.query(LightningImportBatch).filter(LightningImportBatch.id == batch_id).first()
+        if _batch:
+            _batch.status = "processing"
+            _session.commit()
+    except Exception:
+        _session.rollback()
+    finally:
+        _session.close()
 
     try:
         from ..services.lightning_service import execute_distribution_import_from_path
@@ -482,6 +497,22 @@ def import_lightning_distribution_job(
             f"warnings={len(result.get('warnings', []))}"
         )
         _upload_log(task_id, log_parts)
+
+        # Update batch status to completed
+        _session2 = SessionLocal()
+        try:
+            _batch2 = _session2.query(LightningImportBatch).filter(LightningImportBatch.id == batch_id).first()
+            if _batch2:
+                _batch2.status = "completed"
+                _batch2.event_count = result.get("imported_count", 0)
+                _batch2.skipped_count = result.get("skipped_count", 0)
+                _batch2.warning_count = result.get("warning_count", 0)
+                _session2.commit()
+        except Exception:
+            _session2.rollback()
+        finally:
+            _session2.close()
+
         return result
 
     except Exception as exc:
@@ -490,4 +521,18 @@ def import_lightning_distribution_job(
         log_parts.append(f"[{task_id}] FAILED: {exc}")
         log_parts.append(traceback.format_exc())
         _upload_log(task_id, log_parts)
+
+        # Update batch status to failed
+        _session3 = SessionLocal()
+        try:
+            _batch3 = _session3.query(LightningImportBatch).filter(LightningImportBatch.id == batch_id).first()
+            if _batch3:
+                _batch3.status = "failed"
+                _batch3.error_message = str(exc)
+                _session3.commit()
+        except Exception:
+            _session3.rollback()
+        finally:
+            _session3.close()
+
         raise

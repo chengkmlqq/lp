@@ -23,6 +23,10 @@ class LightningImportBatchSummary(BaseModel):
     line_id: str | None = None
     line_name: str | None = None
 
+    # 导入状态（distribution 类型可用）
+    status: str | None = None  # pending / processing / completed / failed
+    task_id: str | None = None
+
     # 统计信息
     max_abs_current_ka: float | None = None
     avg_abs_current_ka: float | None = None

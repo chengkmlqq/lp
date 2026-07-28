@@ -642,11 +642,33 @@ def import_lightning_distribution_from_file(
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
 
+    # Create an import batch record immediately with status="pending"
+    from ..models.lightning_import_batch import LightningImportBatch
+    from uuid import uuid4 as _uuid4
+    _now = utcnow()
+    _batch = LightningImportBatch(
+        id=_uuid4().hex,
+        source_file_name=_normalize_str(str(file.filename or "upload")),
+        import_type="distribution",
+        status="pending",
+        region_id=_normalize_str(region_id),
+        location_tag=_normalize_str(location_tag),
+        city=_normalize_str(city),
+        event_year=event_year,
+        is_synthetic=bool(is_synthetic),
+        notes=_normalize_str(notes),
+        line_id=line_id,
+        create_user=actor_user_id,
+        create_date=_now,
+        update_date=_now,
+    )
+    db.add(_batch)
+    db.commit()
+
     # Save file to shared temp volume for async processing
     import os as _os
     _temp_dir = "/app/data/temp/lightning-distribution"
     _os.makedirs(_temp_dir, exist_ok=True)
-    from uuid import uuid4 as _uuid4
     _temp_path = f"{_temp_dir}/{_uuid4().hex}_{_normalize_str(str(file.filename or 'upload'))}"
     with open(_temp_path, "wb") as _f:
         _f.write(content)
@@ -656,6 +678,7 @@ def import_lightning_distribution_from_file(
     _task = _celery_app.send_task(
         "app.tasks.lightning_tasks.import_lightning_distribution_job",
         kwargs=dict(
+            batch_id=_batch.id,
             file_path=_temp_path,
             source_file_name=_normalize_str(file.filename),
             actor_user_id=actor_user_id,
@@ -669,6 +692,10 @@ def import_lightning_distribution_from_file(
         ),
         queue="celery",
     )
+    # Link task_id to batch
+    _batch.task_id = str(_task.id)
+    _batch.status = "processing"
+    db.commit()
 
     return LightningDistributionImportResponse(
         imported_count=0,
@@ -677,6 +704,7 @@ def import_lightning_distribution_from_file(
         warnings=[],
         line_id=line_id,
         task_id=str(_task.id),
+        batch_id=_batch.id,
     )
 
 
@@ -2873,7 +2901,38 @@ def list_lightning_import_batches(
         keyword=keyword, region_id=region_id, limit=1000, offset=0,
     )
 
-    all_items = waveform_items + distribution_items
+    # 从 LightningImportBatch 表查询正在处理或待处理的导入记录
+    from ..models.lightning_import_batch import LightningImportBatch as ImportBatchModel
+    batch_filters = [ImportBatchModel.status.in_(["pending", "processing", "failed"])]
+    if keyword:
+        batch_filters.append(ImportBatchModel.source_file_name.ilike(f"%{keyword}%"))
+    if region_id:
+        batch_filters.append(ImportBatchModel.region_id == region_id)
+    pending_batches = db.execute(
+        select(ImportBatchModel).where(*batch_filters).order_by(ImportBatchModel.create_date.desc())
+    ).scalars().all()
+
+    batch_items = []
+    for b in pending_batches:
+        batch_items.append(
+            LightningImportBatchSummary(
+                batch_id=b.id,
+                source_file_name=b.source_file_name,
+                import_time=b.create_date,
+                event_count=b.event_count,
+                region_id=b.region_id,
+                location_tag=b.location_tag,
+                city=b.city,
+                event_year=b.event_year,
+                is_synthetic=b.is_synthetic,
+                notes=b.notes,
+                line_id=b.line_id,
+                status=b.status,
+                create_user=b.create_user,
+            )
+        )
+
+    all_items = batch_items + waveform_items + distribution_items
     all_items.sort(key=lambda x: x.import_time or datetime.min, reverse=True)
     total = len(all_items)
     paginated = all_items[offset:offset + limit]

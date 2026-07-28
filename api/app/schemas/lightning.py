@@ -115,6 +115,7 @@ class LightningDistributionImportResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     line_id: str | None = None
     task_id: str | None = None
+    batch_id: str | None = None
 
 
 class LightningDistributionSummary(BaseModel):
