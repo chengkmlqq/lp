@@ -75,9 +75,11 @@ class LightningCurrentEventUpdateRequest(BaseModel):
 
 
 class LightningCurrentImportResponse(BaseModel):
-    event: LightningCurrentEventSummary
-    warning_count: int
+    imported_count: int = 0
+    skipped_count: int = 0
+    warning_count: int = 0
     warnings: list[str] = Field(default_factory=list)
+    task_id: str | None = None
 
 
 class LightningCurrentSampleItem(BaseModel):

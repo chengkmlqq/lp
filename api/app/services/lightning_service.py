@@ -473,6 +473,158 @@ def import_lightning_event_from_file(
     )
 
 
+def execute_current_import_from_path(
+    *,
+    file_path: str,
+    source_file_name: str | None,
+    actor_user_id: str,
+    event_id: str | None,
+    event_time_str: str | None,
+    sample_interval_us: float | None,
+    region_id: str | None,
+    location_tag: str | None,
+    city: str | None,
+    longitude: float | None,
+    latitude: float | None,
+    altitude_m: float | None,
+    sensor_model: str | None,
+    install_position: str | None,
+    weather_level: str | None,
+    pressure_hpa: float | None,
+    humidity_percent: float | None,
+    is_synthetic: bool,
+    notes: str | None,
+) -> LightningCurrentImportResponse:
+    """从文件路径读取雷电流波形数据并执行导入。由 Celery task 或直接调用。"""
+    db: Session = SessionLocal()
+    try:
+        with open(file_path, "rb") as _f:
+            content = _f.read()
+        text = _decode_text_bytes(content)
+        parsed = _parse_current_series(text)
+        if len(parsed.currents_ka) < 2:
+            return LightningCurrentImportResponse(
+                imported_count=0, skipped_count=0, warning_count=1,
+                warnings=["有效采样点数量不足（至少需要 2 个点）"],
+            )
+        if len(parsed.currents_ka) > MAX_SAMPLES:
+            return LightningCurrentImportResponse(
+                imported_count=0, skipped_count=0, warning_count=1,
+                warnings=[f"采样点过多（>{MAX_SAMPLES}），请拆分后再导入"],
+            )
+
+        event_time = None
+        if event_time_str:
+            try:
+                event_time = datetime.fromisoformat(event_time_str)
+            except ValueError:
+                pass
+
+        time_axis_us, inferred_interval_us, inferred_fs_hz, time_warnings = _build_time_axis(
+            parsed.time_us,
+            sample_interval_us=sample_interval_us,
+            sample_count=len(parsed.currents_ka),
+        )
+        warnings = [*parsed.warnings, *time_warnings]
+        features = _extract_wave_features(parsed.currents_ka, time_axis_us, inferred_interval_us)
+
+        normalized_event_id = _normalize_str(event_id) or _generate_event_id()
+        if get_lightning_event_by_event_id(db, normalized_event_id):
+            return LightningCurrentImportResponse(
+                imported_count=0, skipped_count=0, warning_count=1,
+                warnings=[f"事件编号已存在：{normalized_event_id}"],
+            )
+
+        now = utcnow()
+        event = LightningCurrentEvent(
+            event_id=normalized_event_id,
+            source_file_name=source_file_name,
+            event_time=event_time,
+            sample_count=len(parsed.currents_ka),
+            sample_interval_us=inferred_interval_us,
+            sampling_frequency_hz=inferred_fs_hz,
+            peak_current_ka=features.peak_current_ka,
+            peak_abs_current_ka=features.peak_abs_current_ka,
+            wavefront_time_t1_us=features.wavefront_time_t1_us,
+            half_value_time_t2_us=features.half_value_time_t2_us,
+            steepness_ka_per_us=features.steepness_ka_per_us,
+            action_integral_j_ohm=features.action_integral_j_ohm,
+            wave_shape=features.wave_shape,
+            polarity=features.polarity,
+            stroke_count=features.stroke_count,
+            stroke_peaks_json=features.stroke_peaks_json,
+            region_id=region_id,
+            location_tag=location_tag,
+            city=city,
+            longitude=longitude,
+            latitude=latitude,
+            altitude_m=altitude_m,
+            sensor_model=sensor_model,
+            install_position=install_position,
+            weather_level=weather_level,
+            pressure_hpa=pressure_hpa,
+            humidity_percent=humidity_percent,
+            is_synthetic=bool(is_synthetic),
+            notes=notes,
+            feature_json={
+                "source": "import-file",
+                "has_explicit_time_axis": parsed.time_us is not None,
+            },
+            create_user=actor_user_id,
+            update_user=actor_user_id,
+            create_date=now,
+            update_date=now,
+        )
+        db.add(event)
+        db.flush()
+
+        sample_insert_stmt = insert(LightningCurrentSample)
+        total_samples = len(parsed.currents_ka)
+        for start in range(0, total_samples, INSERT_CHUNK_SIZE):
+            end = min(start + INSERT_CHUNK_SIZE, total_samples)
+            chunk = [
+                {
+                    "event_ref_id": event.id,
+                    "seq_no": idx + 1,
+                    "time_us": time_axis_us[idx],
+                    "current_ka": parsed.currents_ka[idx],
+                }
+                for idx in range(start, end)
+            ]
+            db.execute(sample_insert_stmt, chunk)
+
+        db.commit()
+
+        _publish_lightning_change(
+            "lightning.created",
+            f"导入雷电流数据：{normalized_event_id}（源文件：{source_file_name}）",
+        )
+
+        warning_count = len(warnings)
+        imported_count = 1
+        return LightningCurrentImportResponse(
+            imported_count=imported_count,
+            skipped_count=0,
+            warning_count=warning_count,
+            warnings=warnings[:50] if warnings else [],
+        )
+
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+        # Clean up temp file
+        import os as _os2
+        try:
+            _os2.remove(file_path)
+        except OSError:
+            pass
+
+
+
+
+
 def import_lightning_distribution_from_file(
     db: Session,
     *,
@@ -526,6 +678,119 @@ def import_lightning_distribution_from_file(
         line_id=line_id,
         task_id=str(_task.id),
     )
+
+
+def execute_distribution_import_from_path(
+    *,
+    file_path: str,
+    source_file_name: str | None,
+    actor_user_id: str,
+    event_year: int | None,
+    region_id: str | None,
+    location_tag: str | None,
+    city: str | None,
+    notes: str | None,
+    is_synthetic: bool,
+    line_id: str | None = None,
+) -> dict[str, Any]:
+    """从文件路径读取雷电分布数据并执行导入。由 Celery task 或直接调用。"""
+    db: Session = SessionLocal()
+    try:
+        with open(file_path, "rb") as _f:
+            content = _f.read()
+        text = _decode_text_bytes(content)
+        parsed_event_time = datetime(event_year, 1, 1) if event_year is not None else None
+
+        rows_to_insert: list[dict[str, Any]] = []
+        inserted_count = 0
+        skipped_count = 0
+        warnings: list[str] = []
+        now = utcnow()
+
+        insert_stmt = insert(LightningDistributionPoint)
+        for line_no, raw_line in enumerate(text.splitlines(), start=1):
+            if inserted_count + skipped_count >= MAX_DISTRIBUTION_ROWS:
+                break
+
+            parsed = _parse_distribution_line(raw_line)
+            if not parsed:
+                stripped = raw_line.strip()
+                if stripped and len(warnings) < 50:
+                    warnings.append(f'第 {line_no} 行无法解析为"纬度 经度 电流"，已跳过')
+                skipped_count += 1
+                continue
+
+            latitude, longitude, current_ka = parsed
+            if not (-90.0 <= latitude <= 90.0 and -180.0 <= longitude <= 180.0):
+                skipped_count += 1
+                if len(warnings) < 50:
+                    warnings.append(f"第 {line_no} 行坐标越界（lat={latitude}, lon={longitude}），已跳过")
+                continue
+
+            if math.isclose(current_ka, 0.0, abs_tol=1e-12):
+                polarity: str = "unknown"
+            else:
+                polarity = "positive" if current_ka > 0 else "negative"
+
+            event_id = _generate_distribution_event_id()
+            rows_to_insert.append(
+                {
+                    "id": uuid4().hex,
+                    "event_id": event_id,
+                    "source_file_name": source_file_name,
+                    "event_time": parsed_event_time,
+                    "peak_current_ka": current_ka,
+                    "peak_abs_current_ka": abs(current_ka),
+                    "polarity": polarity,
+                    "region_id": region_id,
+                    "location_tag": location_tag,
+                    "city": city,
+                    "longitude": longitude,
+                    "latitude": latitude,
+                    "is_synthetic": bool(is_synthetic),
+                    "feature_json": {"source": "distribution-import", "line_no": line_no},
+                    "notes": notes,
+                    "create_user": actor_user_id,
+                    "update_user": actor_user_id,
+                    "create_date": now,
+                    "update_date": now,
+                }
+            )
+            inserted_count += 1
+
+        # Batch insert in chunks
+        for start in range(0, len(rows_to_insert), INSERT_CHUNK_SIZE):
+            end = min(start + INSERT_CHUNK_SIZE, len(rows_to_insert))
+            db.execute(insert_stmt, rows_to_insert[start:end])
+
+        db.commit()
+
+        _publish_lightning_change(
+            "lightning.created",
+            f"导入地闪分布数据：{source_file_name}（{inserted_count} 条记录）",
+        )
+
+        return {
+            "imported_count": inserted_count,
+            "skipped_count": skipped_count,
+            "warning_count": len(warnings),
+            "warnings": warnings[:50],
+            "line_id": line_id,
+        }
+
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+        # Clean up temp file
+        import os as _os2
+        try:
+            _os2.remove(file_path)
+        except OSError:
+            pass
+
+
 
 
 def trigger_ground_flash_density_computation(

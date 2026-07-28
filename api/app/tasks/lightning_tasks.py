@@ -351,6 +351,89 @@ def _upload_log(task_id: str, log_parts: list[str]) -> None:
 # 异步雷电分布数据导入任务
 # ---------------------------------------------------------------------------
 @celery_app.task(
+    name="app.tasks.lightning_tasks.import_lightning_current_job",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=30,
+    acks_late=True,
+)
+def import_lightning_current_job(
+    self,
+    file_path: str,
+    source_file_name: str | None = None,
+    actor_user_id: str | None = None,
+    event_id: str | None = None,
+    event_time: str | None = None,
+    sample_interval_us: float | None = None,
+    region_id: str | None = None,
+    location_tag: str | None = None,
+    city: str | None = None,
+    longitude: float | None = None,
+    latitude: float | None = None,
+    altitude_m: float | None = None,
+    sensor_model: str | None = None,
+    install_position: str | None = None,
+    weather_level: str | None = None,
+    pressure_hpa: float | None = None,
+    humidity_percent: float | None = None,
+    is_synthetic: bool = False,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    """
+    在 Celery Worker 后台执行雷电流波形数据导入。
+    从共享卷读取临时文件 → 解析 → batch insert → 清理临时文件。
+    """
+    task_id = self.request.id
+    log_parts: list[str] = [f"[{task_id}] Starting current import: {source_file_name}"]
+
+    try:
+        from ..services.lightning_service import execute_current_import_from_path
+
+        result = execute_current_import_from_path(
+            file_path=file_path,
+            source_file_name=source_file_name,
+            actor_user_id=actor_user_id or "system",
+            event_id=event_id,
+            event_time_str=event_time,
+            sample_interval_us=sample_interval_us,
+            region_id=region_id,
+            location_tag=location_tag,
+            city=city,
+            longitude=longitude,
+            latitude=latitude,
+            altitude_m=altitude_m,
+            sensor_model=sensor_model,
+            install_position=install_position,
+            weather_level=weather_level,
+            pressure_hpa=pressure_hpa,
+            humidity_percent=humidity_percent,
+            is_synthetic=is_synthetic,
+            notes=notes,
+        )
+
+        log_parts.append(
+            f"[{task_id}] Done: imported={result.imported_count}, "
+            f"skipped={result.skipped_count}, "
+            f"warnings={result.warning_count}"
+        )
+        _upload_log(task_id, log_parts)
+        return {
+            "imported_count": result.imported_count,
+            "skipped_count": result.skipped_count,
+            "warning_count": result.warning_count,
+            "warnings": result.warnings,
+        }
+
+    except Exception as exc:
+        import traceback
+
+        log_parts.append(f"[{task_id}] FAILED: {exc}")
+        log_parts.append(traceback.format_exc())
+        _upload_log(task_id, log_parts)
+        raise
+
+
+@celery_app.task(
     name="app.tasks.lightning_tasks.import_lightning_distribution_job",
     bind=True,
     max_retries=2,
