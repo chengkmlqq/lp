@@ -1035,7 +1035,7 @@ export default function AdminSystemParamsPage() {
               style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
               bodyStyle={{ flex: 1, overflow: "auto", padding: 0 }}
               actions={canManage ? [
-                <Button type="link" size="small" key="add-cat" onClick={() => openCategoryCreate(null)} style={{ padding: "4px 12px", color: "var(--ant-color-primary)" }}>
+                <Button type="text" key="add-cat" onClick={() => openCategoryCreate(null)} style={{ width: "100%", color: "var(--ant-color-primary)" }}>
                   <PlusOutlined /> 新建分类
                 </Button>,
               ] : undefined}
@@ -1104,7 +1104,7 @@ export default function AdminSystemParamsPage() {
             display: "flex",
             flexDirection: "column",
             overflowX: "hidden",
-            overflowY: isMobile ? "auto" : "hidden",
+            overflowY: "auto",
             background: "var(--ant-color-bg-container)",
           }}
         >

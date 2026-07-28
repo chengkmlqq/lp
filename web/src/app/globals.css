@@ -975,7 +975,7 @@ body {
   background: var(--ant-color-bg-container);
   border: 1px solid var(--ant-color-border-secondary);
   border-radius: 8px;
-  margin: var(--space-4, 16px);
+  margin: var(--space-2, 8px);
 }
 
 /* ---- Page header ---- */
@@ -983,7 +983,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-4, 16px);
+  padding: 10px var(--space-4, 16px);
   flex-shrink: 0;
 }
 
@@ -1008,7 +1008,7 @@ body {
   display: flex;
   gap: 0;
   overflow: hidden;
-  padding: 0 var(--space-4, 16px) var(--space-4, 16px);
+  padding: 0 var(--space-2, 8px) var(--space-2, 8px);
 }
 
 /* ---- Category sider card ---- */
@@ -1029,6 +1029,12 @@ body {
 
 .admin-system-params-sider-card > .ant-card-actions > li {
   margin: 0 !important;
+}
+
+.admin-system-params-sider-card > .ant-card-actions .ant-btn {
+  height: 36px;
+  font-size: 13px;
+  line-height: 36px;
 }
 
 .admin-system-params-sider-card > .ant-card-actions > li:not(:last-child) {
