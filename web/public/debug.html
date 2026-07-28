@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Terrain Debug</title></head>
+<body>
+<script type="importmap">{
+  "imports": {
+    "cesium": "/cesium/index.js"
+  }
+}</script>
+<script type="module">
+import { CesiumTerrainProvider } from 'cesium';
+const url = 'http://127.0.0.1:8000/terrain/_v2_97309e4c918546d48711c9195143c4a2';
+try {
+  const p = await CesiumTerrainProvider.fromUrl(url, {requestMetadata: true});
+  document.body.innerHTML = '<pre>SUCCESS: Provider created!\n' + 
+    'URL: ' + p._layers?.[0]?.tileUrlTemplates?.[0] + '\n' +
+    'Format: quantized-mesh-1.0</pre>';
+} catch(e) {
+  document.body.innerHTML = '<pre>ERROR: ' + e.message + '</pre>';
+}
+</script>
+</body>
+</html>
