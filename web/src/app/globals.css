@@ -975,7 +975,7 @@ body {
   background: var(--ant-color-bg-container);
   border: 1px solid var(--ant-color-border-secondary);
   border-radius: 8px;
-  margin: var(--space-2, 8px);
+  margin: 0;
 }
 
 /* ---- Page header ---- */
