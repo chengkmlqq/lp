@@ -3113,7 +3113,7 @@ def delete_lightning_import_batch(
     db.commit()
     _publish_lightning_change(
         "lightning.deleted",
-        f"{source_file_name or 'unknown'} (batch {batch_id})",
+        {"event_id": batch_id, "message": f"{source_file_name or 'unknown'} (batch {batch_id})"},
     )
 
     return {"success": True, "deleted_count": total_deleted}
