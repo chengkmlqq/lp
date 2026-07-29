@@ -795,7 +795,7 @@ def execute_distribution_import_from_path(
 
         _publish_lightning_change(
             "lightning.created",
-            f"导入地闪分布数据：{source_file_name}（{inserted_count} 条记录）",
+            {"message": f"导入地闪分布数据：{source_file_name}（{inserted_count} 条记录）"},
         )
 
         return {
