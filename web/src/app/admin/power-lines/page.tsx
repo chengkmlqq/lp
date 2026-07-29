@@ -1418,9 +1418,7 @@ export default function AdminPowerLinesPage() {
         <Space direction="vertical" size={4} className="w-full">
           <Typography.Text type="secondary">电压等级：{line.voltage_kv ?? "-"} kV</Typography.Text>
           <Typography.Text type="secondary">杆塔总数：{line.tower_count}</Typography.Text>
-          {displayRouteLengthKm > 0 && (
-            <Typography.Text type="secondary">估算长度：{displayRouteLengthKm.toFixed(2)} km</Typography.Text>
-          )}
+          <Typography.Text type="secondary">估算长度：{displayRouteLengthKm > 0 ? `${displayRouteLengthKm.toFixed(2)} km` : "-"}</Typography.Text>
           <Typography.Text type="secondary">
             更新时间：{new Date(line.update_date).toLocaleString()}
           </Typography.Text>
