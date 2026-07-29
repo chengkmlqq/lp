@@ -856,7 +856,7 @@ export default function AdminTaskMonitorPage() {
                   />
                 ),
               }}
-              scroll={{ y: tableScrollY }}
+              scroll={{ x: 1600, y: tableScrollY }}
             />
           </div>
         ) : workersOverview ? (

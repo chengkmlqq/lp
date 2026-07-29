@@ -290,6 +290,7 @@ export default function AdminWorkersPage() {
         title: "操作",
         key: "action",
         width: 110,
+        fixed: "right",
         render: (_: unknown, record) => (
           <Button size="small" icon={<EyeOutlined />} onClick={() => setSelectedWorker(record.worker)}>
             任务
@@ -725,7 +726,7 @@ export default function AdminWorkersPage() {
                   />
                 ),
               }}
-              scroll={{ y: tableScrollY }}
+              scroll={{ x: 1300, y: tableScrollY }}
             />
           </div>
         ) : (
