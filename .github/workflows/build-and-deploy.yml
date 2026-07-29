@@ -254,7 +254,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
-          IMAGE_TAG: ${GITHUB_SHA}
+          IMAGE_TAG: ${{ github.sha }}
           NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000' }}
           FLOWER_BASIC_AUTH: ${{ secrets.FLOWER_BASIC_AUTH || vars.FLOWER_BASIC_AUTH || 'admin:admin' }}
           REGISTRY: ${{ env.REGISTRY }}
