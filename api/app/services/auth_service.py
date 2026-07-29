@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import timedelta
+import json
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, or_, select
@@ -80,6 +81,7 @@ def register_user(
             f"user_id={user.id}",
             f"username={user.username}",
         ),
+        output=json.dumps({"user_id": user.id, "username": user.username}),
     )
     db.commit()
 
@@ -253,6 +255,7 @@ def refresh_user_session(
             f"user_id={session.user_id}",
             "session_rotated=true",
         ),
+        output=json.dumps({"user_id": session.user_id, "session_rotated": True}),
     )
     db.commit()
 
@@ -294,6 +297,7 @@ def logout_user_session(db: Session, refresh_token: str | None, *, user_id: str 
             f"user_id={session.user_id}",
             "session_revoked=true",
         ),
+        output=json.dumps({"user_id": session.user_id, "session_revoked": True}),
     )
     db.commit()
 
@@ -341,6 +345,7 @@ def issue_auth_result_for_user(
             f"username={user.username}",
             "access_token_issued=true",
         ),
+        output=json.dumps({"user_id": user.id, "username": user.username, "access_token_issued": True}),
     )
     db.commit()
 

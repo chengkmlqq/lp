@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -129,6 +130,7 @@ def create_system_param(db: Session, payload: SystemParamCreateRequest, *, actor
             f"param_key={item.param_key}",
             f"status={item.status}",
         ),
+        output=json.dumps({"param_id": item.id, "param_key": item.param_key, "status": item.status}),
     )
     db.commit()
 
@@ -192,6 +194,12 @@ def update_system_param(
                     else None
                 ),
             ),
+            output=json.dumps({
+                "param_id": item.id,
+                "param_key": item.param_key,
+                "changed_fields": changed_fields,
+                "status_transition": f"{previous_status}->{item.status}" if "status" in changed_fields else None,
+            }),
         )
     db.commit()
 
@@ -227,6 +235,7 @@ def delete_system_param(db: Session, param_id: int, *, actor_user_id: str) -> bo
             f"param_id={deleted_id}",
             f"param_key={deleted_key}",
         ),
+        output=json.dumps({"param_id": deleted_id, "param_key": deleted_key}),
     )
     db.delete(item)
     db.commit()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime
 from uuid import uuid4
 
@@ -264,6 +265,7 @@ def create_role(db: Session, payload: RoleCreateRequest, *, actor_user_id: str |
                 f"role_name={role_name}",
                 f"menu_ids={summarize_values(menu_ids)}" if menu_ids else None,
             ),
+            output=json.dumps({"role_id": role_id, "role_code": role_id, "role_name": role_name, "menu_ids": menu_ids}),
         )
         db.commit()
     except SQLAlchemyError:
@@ -369,6 +371,11 @@ def update_role(db: Session, role_id: str, payload: RoleUpdateRequest, *, actor_
                         else None
                     ),
                 ),
+                output=json.dumps({
+                    "role_id": resolved_role_id,
+                    "role_code": resolved_role_code,
+                    "changed_fields": changed_fields,
+                }),
             )
         db.commit()
     except SQLAlchemyError:
@@ -444,6 +451,7 @@ def delete_role(db: Session, role_id: str, *, actor_user_id: str | None) -> bool
                 f"role_code={resolved_role_code}",
                 f"role_name={current_role.name}" if current_role else None,
             ),
+            output=json.dumps({"role_id": resolved_role_id, "role_code": resolved_role_code, "role_name": current_role.name if current_role else None}),
         )
         if role_source == "legacy":
             db.execute(text("DELETE FROM role_menu_rela WHERE role_id = :role_id"), {"role_id": resolved_role_id})
@@ -597,6 +605,7 @@ def create_menu(db: Session, payload: MenuCreateRequest, *, actor_user_id: str |
                 f"path={_to_legacy_url(payload.path) or ''}",
                 f"parent_id={parent_id}" if parent_id else None,
             ),
+            output=json.dumps({"menu_id": menu_id, "menu_code": menu_code, "menu_name": menu_name}),
         )
         db.commit()
     except SQLAlchemyError as e:
@@ -714,6 +723,13 @@ def update_menu(db: Session, menu_id: str, payload: MenuUpdateRequest, *, actor_
                         else None
                     ),
                 ),
+                output=json.dumps({
+                    "menu_id": menu.id,
+                    "menu_code": menu.code,
+                    "menu_name": next_name,
+                    "changed_fields": changed_fields,
+                    "status_transition": f"{menu.status}->{next_status}" if "status" in changed_fields else None,
+                }),
             )
         db.commit()
     except SQLAlchemyError:
@@ -763,6 +779,7 @@ def delete_menu(db: Session, menu_id: str, *, actor_user_id: str | None) -> bool
                     f"menu_name={menu.name}",
                     f"path={menu.path}" if menu.path else None,
                 ),
+                output=json.dumps({"menu_id": menu.id, "menu_code": menu.code, "menu_name": menu.name}),
             )
             db.execute(text("DELETE FROM role_menu_rela WHERE menu_id = :menu_id"), {"menu_id": menu.id})
             db.execute(text("DELETE FROM menus WHERE id::text = :menu_id OR code = :menu_id"), {"menu_id": menu.id})
@@ -807,6 +824,7 @@ def delete_menu(db: Session, menu_id: str, *, actor_user_id: str | None) -> bool
                     f"menu_id={resolved_menu_id}",
                     f"menu_code={resolved_menu_code}",
                 ),
+                output=json.dumps({"menu_id": resolved_menu_id, "menu_code": resolved_menu_code}),
             )
             db.execute(text("DELETE FROM role_menus WHERE menu_id::text = :menu_id"), {"menu_id": resolved_menu_id})
             db.execute(text("DELETE FROM menus WHERE id::text = :menu_id"), {"menu_id": resolved_menu_id})
@@ -888,6 +906,7 @@ def replace_role_menus(db: Session, role_id: str, menu_ids: list[str], *, actor_
                 f"role_name={current_role.name}" if current_role else None,
                 f"menu_ids={summarize_values(normalized_menu_ids)}",
             ),
+            output=json.dumps({"role_id": role_id, "role_code": current_role.code if current_role else role_id, "menu_ids": normalized_menu_ids}),
         )
         db.commit()
     except SQLAlchemyError:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from uuid import uuid4
@@ -143,6 +144,7 @@ def create_user(
                 f"target_username={user.username}",
                 f"target_status={user.status}",
             ),
+            output=json.dumps({"user_id": user.id, "username": user.username, "status": user.status}),
         )
         db.commit()
     except SQLAlchemyError as e:
@@ -192,6 +194,7 @@ def delete_user(db: Session, user_id: str, *, actor_user_id: str | None) -> bool
                 f"target_user_id={user_id}",
                 f"target_username={target_username}",
             ),
+            output=json.dumps({"user_id": user_id, "username": target_username}),
         )
         db.delete(user)
         db.commit()
@@ -245,6 +248,7 @@ def reset_user_password(
                 "password_updated=true",
                 "sessions_revoked=true",
             ),
+            output=json.dumps({"user_id": user.id, "username": user.username, "password_updated": True, "sessions_revoked": True}),
         )
         db.commit()
     except SQLAlchemyError:
@@ -357,6 +361,12 @@ def update_user(
                     else None
                 ),
             ),
+            output=json.dumps({
+                "user_id": user.id,
+                "username": user.username,
+                "changed_fields": changed_fields,
+                "status_transition": f"{previous_status}->{user.status}" if status_changed else None,
+            }),
         )
         db.commit()
     except SQLAlchemyError:
@@ -419,6 +429,11 @@ def set_user_roles(
                     f"target_username={updated.username}",
                     f"role_codes={summarize_values(sorted(authz.role_codes))}",
                 ),
+                output=json.dumps({
+                    "user_id": updated.id,
+                    "username": updated.username,
+                    "role_codes": sorted(authz.role_codes),
+                }),
             )
             db.commit()
         except SQLAlchemyError:

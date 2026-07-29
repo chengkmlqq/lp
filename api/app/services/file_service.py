@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import mimetypes
 import zipfile
 from datetime import datetime
@@ -136,6 +137,7 @@ def create_directory(
             f"path={target_path}",
             f"parent_path={parent_path}",
         ),
+        output=json.dumps({"mount_code": mount.code, "path": target_path, "parent_path": parent_path}),
     )
     db.commit()
     _notify_files_changed(action="created_directory", mount_code=mount.code, path=target_path)
@@ -193,6 +195,7 @@ def delete_file_path(
             f"is_dir={str(payload.is_dir).lower()}",
             f"recursive={str(payload.recursive).lower()}",
         ),
+        output=json.dumps({"mount_code": mount.code, "path": target_path, "is_dir": payload.is_dir, "recursive": payload.recursive}),
     )
     db.commit()
     _notify_files_changed(action="deleted_path", mount_code=mount.code, path=target_path)
@@ -254,6 +257,7 @@ def rename_file_path(
             f"target_path={target_path}",
             f"is_dir={str(payload.is_dir).lower()}",
         ),
+        output=json.dumps({"mount_code": mount.code, "source_path": source_path, "target_path": target_path, "is_dir": payload.is_dir}),
     )
     db.commit()
     _notify_files_changed(action="renamed_path", mount_code=mount.code, path=target_path)
@@ -328,6 +332,7 @@ def move_file_path(
             f"target_path={target_path}",
             f"is_dir={str(payload.is_dir).lower()}",
         ),
+        output=json.dumps({"mount_code": mount.code, "source_path": source_path, "target_path": target_path, "is_dir": payload.is_dir}),
     )
     db.commit()
     _notify_files_changed(action="moved_path", mount_code=mount.code, path=target_path)
@@ -404,6 +409,7 @@ def upload_file_to_path(
             f"content_type={content_type or 'application/octet-stream'}",
             f"size={len(content)}",
         ),
+        output=json.dumps({"mount_code": mount.code, "path": target_path, "content_type": content_type or "application/octet-stream", "size": len(content)}),
     )
     db.commit()
 
@@ -450,6 +456,7 @@ def download_file_from_path(
                 f"path={normalized_path}",
                 f"filename={result.name}",
             ),
+            output=json.dumps({"mount_code": mount.code, "path": normalized_path, "filename": result.name}),
         )
         db.commit()
 
@@ -523,6 +530,7 @@ def download_directory_as_zip(
                 f"path={normalized_path}",
                 f"filename={zip_filename}",
             ),
+            output=json.dumps({"mount_code": mount.code, "path": normalized_path, "filename": zip_filename}),
         )
         db.commit()
 
