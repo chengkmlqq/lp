@@ -31,10 +31,11 @@ def get_system_params(
     offset: int = Query(default=0, ge=0),
     keyword: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
+    category_id: int | None = Query(default=None),
     _: CurrentUser = Depends(require_any_permission("system_param.read", "system_param.manage")),
     db: Session = Depends(get_db),
 ) -> SystemParamListResponse:
-    return list_system_params(db, limit=limit, offset=offset, keyword=keyword, status_filter=status_filter)
+    return list_system_params(db, limit=limit, offset=offset, keyword=keyword, status_filter=status_filter, category_id=category_id)
 
 
 @router.post("", response_model=SystemParamSummary)

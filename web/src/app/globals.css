@@ -3131,3 +3131,18 @@ body {
   border-color: var(--ant-color-primary) !important;
   background: color-mix(in srgb, var(--ant-color-primary) 20%, transparent) !important;
 }
+
+/* Fix: operation column header transparency */
+.admin-system-params-table-anchor .ant-table-cell-fix-right,
+.admin-system-params-table-anchor .ant-table-cell-fix-right-last {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-system-params-table-anchor .ant-table-cell-fix-right.ant-table-cell-fix-header {
+  background: color-mix(in srgb, var(--ant-color-primary) 6%, transparent) !important;
+}
+
+/* Fix: operation column z-index to prevent overlap */
+.admin-system-params-table-anchor .ant-table-cell-fix-right {
+  z-index: 2;
+}

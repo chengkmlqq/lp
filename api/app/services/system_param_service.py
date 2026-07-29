@@ -35,6 +35,7 @@ def serialize_system_param(item: SystemParam) -> SystemParamSummary:
         param_value=item.param_value,
         description=item.description,
         status=item.status,
+        category_id=item.category_id,
         created_by_user_id=item.created_by_user_id,
         updated_by_user_id=item.updated_by_user_id,
         created_at=item.created_at,
@@ -51,6 +52,7 @@ def list_system_params(
     offset: int,
     keyword: str | None,
     status_filter: str | None,
+    category_id: int | None = None,
 ) -> SystemParamListResponse:
     stmt = _system_param_stmt()
     if keyword:
@@ -67,6 +69,8 @@ def list_system_params(
             )
     if status_filter in {"enabled", "disabled"}:
         stmt = stmt.where(SystemParam.status == status_filter)
+    if category_id is not None:
+        stmt = stmt.where(SystemParam.category_id == category_id)
 
     total_stmt = select(func.count()).select_from(SystemParam)
     if keyword:
@@ -83,6 +87,8 @@ def list_system_params(
             )
     if status_filter in {"enabled", "disabled"}:
         total_stmt = total_stmt.where(SystemParam.status == status_filter)
+    if category_id is not None:
+        total_stmt = total_stmt.where(SystemParam.category_id == category_id)
 
     total = db.scalar(total_stmt) or 0
     items = (
@@ -116,6 +122,7 @@ def create_system_param(db: Session, payload: SystemParamCreateRequest, *, actor
         param_value=payload.param_value,
         description=(payload.description or "").strip(),
         status=payload.status,
+        category_id=payload.category_id,
         created_by_user_id=actor_user_id,
         updated_by_user_id=actor_user_id,
     )
@@ -177,6 +184,9 @@ def update_system_param(
     if "status" in update_data and update_data["status"] is not None:
         item.status = str(update_data["status"])
         changed_fields.append("status")
+    if "category_id" in update_data:
+        item.category_id = update_data["category_id"]
+        changed_fields.append("category_id")
 
     item.updated_by_user_id = actor_user_id
     if changed_fields:

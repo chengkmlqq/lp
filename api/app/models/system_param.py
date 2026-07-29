@@ -22,6 +22,12 @@ class SystemParam(Base):
     param_value: Mapped[str] = mapped_column(Text(), default="")
     description: Mapped[str | None] = mapped_column(Text(), default="")
     status: Mapped[str] = mapped_column(String(16), default="enabled", index=True)
+    category_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("system_param_categories.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     created_by_user_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("users.user_id", ondelete="SET NULL", onupdate="CASCADE"),

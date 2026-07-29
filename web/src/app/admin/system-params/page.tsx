@@ -1169,7 +1169,7 @@ export default function AdminSystemParamsPage() {
                     setPagination({ current: page, pageSize });
                   },
                 }}
-                scroll={{ x: 1200, y: tableScrollY }}
+                scroll={{ x: 1400, y: tableScrollY }}
                 locale={{
                   emptyText: (
                     <Empty

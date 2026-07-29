@@ -608,6 +608,7 @@ def init_db() -> None:
         line_tower,
         menu,
         object_group,
+        param_category,
         rbac,
         scheduled_task,
         system_param,

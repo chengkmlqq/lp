@@ -16,6 +16,7 @@ from .v1.flower_monitor import router as flower_monitor_router
 from .v1.internal import router as internal_router
 from .v1.lightning import router as lightning_router
 from .v1.lines import router as lines_router
+from .v1.param_category import router as param_category_router
 from .v1.scheduled_tasks import router as scheduled_tasks_router
 from .v1.system_messages import router as system_messages_router
 from .v1.system_params import router as system_params_router
@@ -43,6 +44,7 @@ v1_router.include_router(task_logs_router)
 v1_router.include_router(scheduled_tasks_router)
 v1_router.include_router(system_messages_router)
 v1_router.include_router(system_params_router)
+v1_router.include_router(param_category_router)
 v1_router.include_router(elevation_router)
 v1_router.include_router(fault_analysis_router)
 v1_router.include_router(fault_recurrence_router)

@@ -14,6 +14,7 @@ class SystemParamSummary(BaseModel):
     param_value: str
     description: str | None = None
     status: str
+    category_id: int | None = None
     created_by_user_id: str | None = None
     updated_by_user_id: str | None = None
     created_at: datetime
@@ -33,6 +34,7 @@ class SystemParamCreateRequest(BaseModel):
     param_value: str = Field(default="", max_length=20000)
     description: str | None = Field(default=None, max_length=20000)
     status: str = Field(default="enabled", pattern="^(enabled|disabled)$")
+    category_id: int | None = None
 
 
 class SystemParamUpdateRequest(BaseModel):
@@ -40,3 +42,4 @@ class SystemParamUpdateRequest(BaseModel):
     param_value: str | None = Field(default=None, max_length=20000)
     description: str | None = Field(default=None, max_length=20000)
     status: str | None = Field(default=None, pattern="^(enabled|disabled)$")
+    category_id: int | None = None
