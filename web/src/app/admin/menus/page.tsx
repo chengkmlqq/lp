@@ -337,6 +337,13 @@ export default function AdminMenusPage() {
     setKeywordInput(value);
   };
 
+  const handleSearch = () => {
+    setSearchKeyword(keywordInput);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    setCardViewPage(1);
+    setAllLoadedMenus([]);
+  };
+
   const handleStatusFilterChange = (value?: "enabled" | "disabled") => {
     setStatusFilter(value);
     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -846,14 +853,14 @@ export default function AdminMenusPage() {
                       value={keywordInput}
                       onChange={(event) => handleKeywordChange(event.currentTarget.value)}
                       placeholder="按编码/名称/路径筛选"
-                      onPressEnter={() => void menusQuery.refetch()}
+                      onPressEnter={() => handleSearch()}
                     />
                   </Form.Item>
                   <Form.Item style={{ marginBottom: 0 }}>
                     <Button
                     htmlType="button"
                       icon={<SearchOutlined />}
-                      onClick={() => void menusQuery.refetch()}
+                      onClick={() => handleSearch()}
                       className="admin-search-btn"
                     >
                       查询
@@ -870,7 +877,7 @@ export default function AdminMenusPage() {
                       value={keywordInput}
                       onChange={(event) => handleKeywordChange(event.currentTarget.value)}
                       placeholder="按编码/名称/路径筛选"
-                      onPressEnter={() => void menusQuery.refetch()}
+                      onPressEnter={() => handleSearch()}
                     />
                   </Form.Item>
 
@@ -898,7 +905,7 @@ export default function AdminMenusPage() {
                     <Button
                     htmlType="button"
                       icon={<SearchOutlined />}
-                      onClick={() => void menusQuery.refetch()}
+                      onClick={() => handleSearch()}
                       className="admin-search-btn"
                     >
                       查询
