@@ -157,11 +157,43 @@ export default function AdminMenusPage() {
   const [cardViewPage, setCardViewPage] = useState(1);
   const [allLoadedMenus, setAllLoadedMenus] = useState<MenuItem[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [treeFilterKeyword, setTreeFilterKeyword] = useState("");
+  const [leftPanelWidth, setLeftPanelWidth] = useState(240);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isResizing = useRef(false);
   const [form] = Form.useForm<MenuFormValues>();
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
   const paginationCurrent = pagination.current;
   const paginationPageSize = pagination.pageSize;
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setLeftPanelWidth(Math.max(180, Math.min(600, e.clientX - rect.left)));
+    };
+    const handleMouseUp = () => {
+      if (isResizing.current) {
+        isResizing.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   const canManage = hasPermission("menu.manage");
   const canRead = hasPermission("menu.read") || hasPermission("menu.manage");
@@ -226,7 +258,48 @@ export default function AdminMenusPage() {
     return map;
   }, [menus]);
 
-  const treeData = useMemo(() => buildMenuTreeData(menus), [menus]);
+  const treeMenus = useMemo(() => {
+    const keyword = treeFilterKeyword.trim().toLowerCase();
+    if (!keyword) return menus;
+
+    // Find menus matching the keyword by name or code
+    const matchedIds = new Set<string>();
+    menus.forEach((m) => {
+      if (m.name.toLowerCase().includes(keyword) || m.code.toLowerCase().includes(keyword)) {
+        matchedIds.add(m.id);
+      }
+    });
+
+    if (matchedIds.size === 0) return [];
+
+    // Include ancestors so the tree structure is preserved
+    let added = true;
+    while (added) {
+      added = false;
+      menus.forEach((m) => {
+        if (matchedIds.has(m.id) && m.parent_id && !matchedIds.has(m.parent_id)) {
+          matchedIds.add(m.parent_id);
+          added = true;
+        }
+      });
+    }
+
+    // Include descendants
+    added = true;
+    while (added) {
+      added = false;
+      menus.forEach((m) => {
+        if (m.parent_id && matchedIds.has(m.parent_id) && !matchedIds.has(m.id)) {
+          matchedIds.add(m.id);
+          added = true;
+        }
+      });
+    }
+
+    return menus.filter((m) => matchedIds.has(m.id));
+  }, [menus, treeFilterKeyword]);
+
+  const treeData = useMemo(() => buildMenuTreeData(treeMenus), [treeMenus]);
 
   const filteredMenus = useMemo(() => {
     let result = menus;
@@ -801,44 +874,68 @@ export default function AdminMenusPage() {
           ) : null
         }
       >
-        <div className="admin-menus-page-body">
-          {/* Left: Tree */}
-          <div className="admin-menus-sider">
-            <AntCard
-              className="admin-menus-tree-card"
-              title="菜单目录"
-            >
-              {menusQuery.isLoading ? (
-                <div style={{ textAlign: "center", padding: "24px" }}>
-                  <Spin />
+        <div ref={containerRef} className="admin-menus-page-body">
+          {/* Left: Tree panel with keyword filter */}
+          {!isMobile ? (
+            <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
+              <AntCard
+                className="admin-menus-tree-card"
+                style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
+                bodyStyle={{ flex: 1, overflow: "auto", padding: 0 }}
+              >
+                <div className="admin-menus-sider-search">
+                  <Input
+                    className="admin-menus-search-input"
+                    placeholder="搜索菜单..."
+                    prefix={<SearchOutlined />}
+                    value={treeFilterKeyword}
+                    onChange={(e) => setTreeFilterKeyword(e.target.value)}
+                    allowClear
+                    size="small"
+                  />
                 </div>
-              ) : treeData.length > 0 ? (
-                <Tree
-                  showLine
-                  defaultExpandAll
-                  treeData={treeData}
-                  onSelect={(keys) => {
-                    if (keys.length > 0) {
-                      const key = keys[0] as string;
-                      if (key.startsWith("menu-")) {
-                        const id = key.replace("menu-", "");
-                        setSelectedTreeKey(id);
-                        setPagination((prev) => ({ ...prev, current: 1 }));
-                      }
-                    } else {
-                      setSelectedTreeKey(null);
-                      setPagination((prev) => ({ ...prev, current: 1 }));
-                    }
-                  }}
-                />
-              ) : (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="暂无菜单数据"
-                />
-              )}
-            </AntCard>
-          </div>
+                <div className="admin-menus-sider-menu">
+                  {menusQuery.isLoading ? (
+                    <div style={{ textAlign: "center", padding: "24px" }}>
+                      <Spin />
+                    </div>
+                  ) : treeData.length > 0 ? (
+                    <Tree
+                      showLine
+                      defaultExpandAll
+                      treeData={treeData}
+                      onSelect={(keys) => {
+                        if (keys.length > 0) {
+                          const key = keys[0] as string;
+                          if (key.startsWith("menu-")) {
+                            const id = key.replace("menu-", "");
+                            setSelectedTreeKey(id);
+                            setPagination((prev) => ({ ...prev, current: 1 }));
+                          }
+                        } else {
+                          setSelectedTreeKey(null);
+                          setPagination((prev) => ({ ...prev, current: 1 }));
+                        }
+                      }}
+                    />
+                  ) : (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={treeFilterKeyword.trim() ? "未找到匹配的菜单" : "暂无菜单数据"}
+                    />
+                  )}
+                </div>
+              </AntCard>
+            </div>
+          ) : null}
+          {!isMobile ? (
+            <div
+              className="admin-menus-resize-handle"
+              onMouseDown={handleResizeStart}
+            >
+              <div className="admin-menus-resize-handle-line" />
+            </div>
+          ) : null}
           {/* Right: Table */}
           <div
             ref={pageCardRef}
