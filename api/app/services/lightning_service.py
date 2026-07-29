@@ -473,6 +473,80 @@ def import_lightning_event_from_file(
     )
 
 
+def import_lightning_current_async(
+    *,
+    file: UploadFile,
+    actor_user_id: str,
+    event_id: str | None,
+    event_time: datetime | None,
+    sample_interval_us: float | None,
+    region_id: str | None,
+    location_tag: str | None,
+    city: str | None,
+    longitude: float | None,
+    latitude: float | None,
+    altitude_m: float | None,
+    sensor_model: str | None,
+    install_position: str | None,
+    weather_level: str | None,
+    pressure_hpa: float | None,
+    humidity_percent: float | None,
+    is_synthetic: bool,
+    notes: str | None,
+) -> LightningCurrentImportResponse:
+    """
+    保存上传文件到临时目录并异步提交 Celery 任务处理。
+    参照 import_lightning_distribution_from_file 的异步模式实现。
+    """
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
+
+    # Save file to shared temp volume for async Celery processing
+    import os as _os
+    _temp_dir = "/app/data/temp/lightning-current"
+    _os.makedirs(_temp_dir, exist_ok=True)
+    _temp_path = f"{_temp_dir}/{uuid4().hex}_{_normalize_str(str(file.filename or 'upload'))}"
+    with open(_temp_path, "wb") as _f:
+        _f.write(content)
+
+    # Queue Celery task for async processing
+    from ..core.celery_app import celery_app as _celery_app
+    _task = _celery_app.send_task(
+        "app.tasks.lightning_tasks.import_lightning_current_job",
+        kwargs=dict(
+            file_path=_temp_path,
+            source_file_name=_normalize_str(file.filename),
+            actor_user_id=actor_user_id,
+            event_id=event_id,
+            event_time=event_time.isoformat() if event_time else None,
+            sample_interval_us=sample_interval_us,
+            region_id=_normalize_str(region_id),
+            location_tag=_normalize_str(location_tag),
+            city=_normalize_str(city),
+            longitude=longitude,
+            latitude=latitude,
+            altitude_m=altitude_m,
+            sensor_model=_normalize_str(sensor_model),
+            install_position=_normalize_str(install_position),
+            weather_level=_normalize_str(weather_level),
+            pressure_hpa=pressure_hpa,
+            humidity_percent=humidity_percent,
+            is_synthetic=is_synthetic,
+            notes=_normalize_str(notes),
+        ),
+        queue="celery",
+    )
+
+    return LightningCurrentImportResponse(
+        imported_count=0,
+        skipped_count=0,
+        warning_count=0,
+        warnings=[],
+        task_id=str(_task.id),
+    )
+
+
 def execute_current_import_from_path(
     *,
     file_path: str,

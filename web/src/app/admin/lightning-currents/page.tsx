@@ -373,7 +373,7 @@ export default function AdminLightningCurrentsPage() {
         if (dt) formData.append("event_time", dt);
       }
 
-      const response = await fetchWithAuth("/api/v1/lightning-currents/import", {
+      const response = await fetchWithAuth("/api/v1/lightning-currents/import-async", {
         method: "POST",
         body: formData,
       });
@@ -385,9 +385,11 @@ export default function AdminLightningCurrentsPage() {
     onSuccess: async (payload) => {
       setError("");
       setSuccess(
-        payload.warning_count > 0
-          ? `导入完成，存在 ${payload.warning_count} 条告警`
-          : "导入完成并已提取防雷特征参数",
+        payload.task_id
+          ? `导入任务已提交（任务ID: ${payload.task_id}），正在后台处理`
+          : payload.warning_count > 0
+            ? `导入任务已提交，存在 ${payload.warning_count} 条告警`
+            : "导入任务已提交，正在后台处理",
       );
       setImportModalOpen(false);
       importForm.resetFields();

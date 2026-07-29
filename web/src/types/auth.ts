@@ -1156,9 +1156,11 @@ export type LightningCurrentEventListResponse = {
 };
 
 export type LightningCurrentImportResponse = {
-  event: LightningCurrentEventSummary;
+  imported_count: number;
+  skipped_count: number;
   warning_count: number;
   warnings: string[];
+  task_id: string | null;
 };
 
 export type LightningCurrentPreparationResponse = {

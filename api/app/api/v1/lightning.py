@@ -42,6 +42,7 @@ from ...services.lightning_service import (
     get_lightning_event_by_id,
     get_peak_exceedance_curve,
     get_tower_buffer_stats,
+    import_lightning_current_async,
     import_lightning_distribution_from_file,
     import_lightning_event_from_file,
     list_lightning_events,
@@ -143,6 +144,53 @@ def import_lightning_current_file(
 ) -> LightningCurrentImportResponse:
     return import_lightning_event_from_file(
         db,
+        file=file,
+        actor_user_id=current_user.user.id,
+        event_id=event_id,
+        event_time=event_time,
+        sample_interval_us=sample_interval_us,
+        region_id=region_id,
+        location_tag=location_tag,
+        city=city,
+        longitude=longitude,
+        latitude=latitude,
+        altitude_m=altitude_m,
+        sensor_model=sensor_model,
+        install_position=install_position,
+        weather_level=weather_level,
+        pressure_hpa=pressure_hpa,
+        humidity_percent=humidity_percent,
+        is_synthetic=is_synthetic,
+        notes=notes,
+    )
+
+
+@router.post("/import-async", response_model=LightningCurrentImportResponse)
+def import_lightning_current_file_async(
+    file: UploadFile = File(...),
+    event_id: str | None = Form(default=None),
+    event_time: datetime | None = Form(default=None),
+    sample_interval_us: float | None = Form(default=1.0),
+    region_id: str | None = Form(default=None),
+    location_tag: str | None = Form(default=None),
+    city: str | None = Form(default=None),
+    longitude: float | None = Form(default=None),
+    latitude: float | None = Form(default=None),
+    altitude_m: float | None = Form(default=None),
+    sensor_model: str | None = Form(default=None),
+    install_position: str | None = Form(default=None),
+    weather_level: str | None = Form(default=None),
+    pressure_hpa: float | None = Form(default=None),
+    humidity_percent: float | None = Form(default=None),
+    is_synthetic: bool = Form(default=False),
+    notes: str | None = Form(default=None),
+    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
+) -> LightningCurrentImportResponse:
+    """
+    异步导入雷电流波形数据（通过 Celery Worker 后台处理）。
+    上传文件后立即返回 task_id，不阻塞请求。
+    """
+    return import_lightning_current_async(
         file=file,
         actor_user_id=current_user.user.id,
         event_id=event_id,
