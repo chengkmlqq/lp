@@ -17,6 +17,8 @@ from ..models.elevation import ElevationApplyJob, ElevationFileRecord
 from ..models.line import Line
 from ..models.user import User
 from ..schemas.elevation import (
+    ElevationDatasetListResponse,
+    ElevationDatasetSummary,
     ElevationFileRecordAnalyzeResponse,
     ElevationFileRecordCreateRequest,
     ElevationFileRecordListResponse,
@@ -119,6 +121,70 @@ def list_file_records(
     ).scalars().all()
     return ElevationFileRecordListResponse(
         items=[serialize_file_record(item) for item in items],
+        total=total,
+    )
+
+
+def serialize_elevation_dataset(item: ElevationFileRecord) -> ElevationDatasetSummary:
+    """Map an ElevationFileRecord to the legacy ElevationDatasetSummary format."""
+    from pathlib import Path as _Path
+    return ElevationDatasetSummary(
+        id=item.id,
+        code=item.id,
+        name=item.file_name,
+        source=item.source,
+        file_format=item.file_format,
+        mount_code=item.mount_code,
+        dataset_dir=str(_Path(item.file_path).parent) if item.file_path else "",
+        file_path=item.file_path,
+        resolution_m=item.resolution_m,
+        status=item.status,  # type: ignore[arg-type]
+        usage_status="idle",
+        sample_count=item.sample_count,
+        bbox_min_lon=item.bbox_min_lon,
+        bbox_max_lon=item.bbox_max_lon,
+        bbox_min_lat=item.bbox_min_lat,
+        bbox_max_lat=item.bbox_max_lat,
+        analysis_task_id=item.analysis_task_id,
+        analysis_status=item.analysis_status,
+        analysis_error_message=item.analysis_error_message,
+        analysis_started_at=item.analysis_started_at,
+        analysis_finished_at=item.analysis_finished_at,
+        terrain_status=item.terrain_status,  # type: ignore[arg-type]
+        terrain_task_id=item.terrain_task_id,
+        terrain_error_message=item.terrain_error_message,
+        terrain_root_path=item.terrain_root_path,
+        terrain_url_template=item.terrain_url_template,
+        terrain_min_zoom=item.terrain_min_zoom,
+        terrain_max_zoom=item.terrain_max_zoom,
+        terrain_bounds=item.terrain_bounds,
+        terrain_metadata=item.terrain_metadata,
+        notes=item.notes,
+        create_date=item.create_date,
+        create_user=item.create_user,
+        update_date=item.update_date,
+        update_user=item.update_user,
+    )
+
+
+def list_elevation_datasets(
+    db: Session,
+) -> ElevationDatasetListResponse:
+    """List elevation file records mapped to the legacy dataset format.
+
+    The frontend still references the old /api/v1/elevation/datasets endpoint
+    which expects ElevationDatasetSummary. This function bridges the gap by
+    mapping ElevationFileRecord records to the dataset format.
+    """
+    stmt = select(ElevationFileRecord)
+    total_stmt = select(func.count()).select_from(ElevationFileRecord)
+
+    total = int(db.scalar(total_stmt) or 0)
+    items = db.execute(
+        stmt.order_by(ElevationFileRecord.update_date.desc(), ElevationFileRecord.create_date.desc())
+    ).scalars().all()
+    return ElevationDatasetListResponse(
+        items=[serialize_elevation_dataset(item) for item in items],
         total=total,
     )
 

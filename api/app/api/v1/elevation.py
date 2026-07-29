@@ -11,6 +11,7 @@ from ...schemas.elevation import (
     ElevationApplyJobCreateResponse,
     ElevationApplyJobListResponse,
     ElevationApplyJobSummary,
+    ElevationDatasetListResponse,
     ElevationTerrainLayerResponse,
     ElevationFileRecordAnalyzeResponse,
     ElevationFileRecordCreateRequest,
@@ -37,6 +38,7 @@ from ...services.elevation_file_record_service import (
     create_file_record_from_upload,
     delete_file_record,
     get_file_record_by_id,
+    list_elevation_datasets,
     list_file_records,
     preview_file_record,
     queue_file_record_analysis,
@@ -195,3 +197,19 @@ def get_elevation_file_record_terrain_tile_endpoint(
 
 
 # ============================================================================
+# Legacy Dataset API (backed by ElevationFileRecord)
+# ============================================================================
+
+
+@router.get("/datasets", response_model=ElevationDatasetListResponse)
+def list_elevation_datasets_endpoint(
+    _: CurrentUser = Depends(require_any_permission("elevation.read", "elevation.manage")),
+    db: Session = Depends(get_db),
+) -> ElevationDatasetListResponse:
+    """List elevation file records in the legacy dataset format.
+
+    The frontend power-lines page calls GET /api/v1/elevation/datasets to
+    populate terrain dataset selection.  This endpoint bridges the gap by
+    returning file records mapped to the old ElevationDatasetSummary shape.
+    """
+    return list_elevation_datasets(db)

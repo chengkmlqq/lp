@@ -231,3 +231,46 @@ class ElevationApplyJobCreateRequest(BaseModel):
 class ElevationApplyJobCreateResponse(BaseModel):
     job: ElevationApplyJobSummary
     queued: bool = True
+
+
+class ElevationDatasetSummary(BaseModel):
+    id: str
+    code: str
+    name: str
+    source: str | None = None
+    file_format: str
+    mount_code: str
+    dataset_dir: str = ""
+    file_path: str
+    resolution_m: float | None = None
+    status: ElevationStatus
+    usage_status: str = "idle"
+    sample_count: int = 0
+    bbox_min_lon: float | None = None
+    bbox_max_lon: float | None = None
+    bbox_min_lat: float | None = None
+    bbox_max_lat: float | None = None
+    analysis_task_id: str | None = None
+    analysis_status: str = "not_started"
+    analysis_error_message: str | None = None
+    analysis_started_at: datetime | None = None
+    analysis_finished_at: datetime | None = None
+    terrain_status: ElevationTerrainStatus = "not_supported"
+    terrain_task_id: str | None = None
+    terrain_error_message: str | None = None
+    terrain_root_path: str | None = None
+    terrain_url_template: str | None = None
+    terrain_min_zoom: int | None = None
+    terrain_max_zoom: int | None = None
+    terrain_bounds: dict[str, Any] | None = None
+    terrain_metadata: dict[str, Any] | None = None
+    notes: str | None = None
+    create_date: datetime
+    create_user: str | None = None
+    update_date: datetime
+    update_user: str | None = None
+
+
+class ElevationDatasetListResponse(BaseModel):
+    items: list[ElevationDatasetSummary]
+    total: int
