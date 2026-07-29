@@ -3064,7 +3064,8 @@ def delete_lightning_import_batch(
 ) -> dict[str, bool | int]:
     """
     删除某个导入批次的所有事件记录。
-    同时删除波形事件表（LightningCurrentEvent）和地闪分布表（LightningDistributionPoint）中的记录。
+    同时删除 LightningImportBatch 表记录，
+    以及波形事件表（LightningCurrentEvent）和地闪分布表（LightningDistributionPoint）中的记录。
     """
     import hashlib
 
@@ -3077,9 +3078,24 @@ def delete_lightning_import_batch(
     ])
     batch_id = hashlib.md5(batch_key_str.encode()).hexdigest()[:16]
 
-    time_tolerance = timedelta(seconds=5)
     total_deleted = 0
 
+    # 1. Delete LightningImportBatch record (handles pending/processing/failed batches)
+    from ..models.lightning_import_batch import LightningImportBatch as ImportBatchModel
+    batch_records = db.execute(
+        select(ImportBatchModel).where(
+            ImportBatchModel.source_file_name == source_file_name,
+            ImportBatchModel.create_date >= import_time - timedelta(seconds=60),
+            ImportBatchModel.create_date <= import_time + timedelta(seconds=60),
+        )
+    ).scalars().all()
+    for br in batch_records:
+        db.delete(br)
+    total_deleted += len(batch_records)
+
+    # 2. Delete data records (LightningCurrentEvent, LightningDistributionPoint)
+    # Use a generous time window to accommodate Celery async import delays
+    time_tolerance = timedelta(seconds=60)
     for model in (LightningCurrentEvent, LightningDistributionPoint):
         filters = [
             model.create_date >= import_time - time_tolerance,
@@ -3091,16 +3107,23 @@ def delete_lightning_import_batch(
             filters.append(model.source_file_name.is_(None))
         if region_id:
             filters.append(model.region_id == region_id)
-        else:
-            filters.append(model.region_id.is_(None))
+        elif region_id is None:
+            # region_id is None: match both NULL and empty string
+            filters.append(
+                or_(model.region_id.is_(None), model.region_id == "")
+            )
         if location_tag:
             filters.append(model.location_tag == location_tag)
-        else:
-            filters.append(model.location_tag.is_(None))
+        elif location_tag is None:
+            filters.append(
+                or_(model.location_tag.is_(None), model.location_tag == "")
+            )
         if city:
             filters.append(model.city == city)
-        else:
-            filters.append(model.city.is_(None))
+        elif city is None:
+            filters.append(
+                or_(model.city.is_(None), model.city == "")
+            )
 
         events = db.execute(select(model).where(*filters)).scalars().all()
         for event in events:

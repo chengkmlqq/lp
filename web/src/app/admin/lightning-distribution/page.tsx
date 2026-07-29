@@ -302,7 +302,12 @@ export default function AdminLightningDistributionPage() {
       }
       return response.json();
     },
-    onSuccess: async () => {
+    onSuccess: async (data: { success?: boolean; deleted_count?: number }) => {
+      if (data?.success === false) {
+        setSuccess("");
+        setError(data.deleted_count === 0 ? "未找到匹配的记录，删除未生效" : "删除批次失败");
+        return;
+      }
       setError("");
       setSuccess("批次删除成功");
       await refreshAll();
