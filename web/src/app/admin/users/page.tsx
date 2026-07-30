@@ -845,7 +845,7 @@ export default function AdminUsersPage() {
     {
       title: "操作",
       key: "actions",
-      width: 120,
+      width: 200,
       render: (_value, row) => {
         const updatingLoading = updatingStatusUserId === row.id;
         const resetLoading = resettingUserId === row.id;
