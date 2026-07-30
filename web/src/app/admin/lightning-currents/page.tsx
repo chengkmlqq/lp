@@ -703,7 +703,7 @@ export default function AdminLightningCurrentsPage() {
         extra={
           canManage && (
             <Button type="primary" onClick={() => setImportModalOpen(true)}>
-              雷电流幅值数据导入
+              导入
             </Button>
           )
         }
