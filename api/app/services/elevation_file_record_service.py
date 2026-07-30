@@ -382,13 +382,6 @@ def _create_file_records_from_zip(
                 # Determine file format
                 file_format = ELEVATION_FILE_EXT_FORMAT_MAP.get(suffix, "csv")
 
-                if file_format in RASTER_FILE_FORMATS:
-                    try:
-                        _require_rasterio_available()
-                    except HTTPException as exc:
-                        warnings.append(f"压缩包条目 {member_name} 需要栅格处理但rasterio不可用：{exc.detail}")
-                        continue
-
                 file_size = len(data)
 
                 # Generate unique storage path for each file
@@ -438,9 +431,14 @@ def _create_file_records_from_zip(
         ) from exc
 
     if not created_records:
+        detail = "ZIP 文件中没有找到有效的高程数据文件"
+        if warnings:
+            detail += "：" + "；".join(warnings[:10])
+            if len(warnings) > 10:
+                detail += f"（共 {len(warnings)} 条警告，仅显示前 10 条）"
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="ZIP 文件中没有找到有效的高程数据文件"
+            detail=detail,
         )
 
     db.commit()

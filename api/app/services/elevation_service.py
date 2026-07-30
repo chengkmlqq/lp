@@ -49,6 +49,7 @@ CSV_IMPORT_TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "gbk", "latin-1")
 NEAREST_MATCH_MAX_DISTANCE_M = 2000.0
 ELEVATION_FILE_EXT_FORMAT_MAP = {
     ".tif": "tif",
+    ".tiff": "tif",
 }
 RASTER_FILE_FORMATS = {"tif"}
 IMPORTABLE_ELEVATION_EXTENSIONS = set(ELEVATION_FILE_EXT_FORMAT_MAP.keys())
@@ -78,8 +79,8 @@ TERRAIN_UNPACK_ENDPOINT = "/api/v1/internal/elevation/records/{record_id}/terrai
 LOCAL_TERRAIN_ROOT = "/app/data/terrain"  # API 容器中 mount 的 terrain 目录（Nginx 直接服务）
 IMPORT_JOB_STAGE_DIRNAME = ".imports"
 GDEM_FILENAME_PATTERNS = [
-    r"ASTGTMV003_[NS]\d{2}[EW]\d{3}_dem\.tif",  # GDEM V3
-    r"ASTGTM2_[NS]\d{2}[EW]\d{3}_dem\.tif",      # GDEM V2
+    r"ASTGTMV003_[NS]\d{2}[EW]\d{3}_dem\.tiff?",  # GDEM V3
+    r"ASTGTM2_[NS]\d{2}[EW]\d{3}_dem\.tiff?",      # GDEM V2
 ]
 GDEM_DEFAULT_RESOLUTION_M = 30.0
 
@@ -973,7 +974,7 @@ def _detect_file_format(file_path: str) -> str:
     if not file_format:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的高程文件类型: {extension or 'unknown'}，仅支持 .tif",
+            detail=f"不支持的高程文件类型: {extension or 'unknown'}，仅支持 .tif/.tiff",
         )
     return file_format
 
