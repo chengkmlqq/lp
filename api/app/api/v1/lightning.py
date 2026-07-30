@@ -278,6 +278,7 @@ def prepare_lightning_density_for_line(
 def get_lightning_import_batches(
     keyword: str | None = Query(default=None),
     region_id: str | None = Query(default=None),
+    import_type: str | None = Query(default=None, description="过滤类型：waveform（雷电流波形）| distribution（地闪分布）"),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
@@ -287,6 +288,7 @@ def get_lightning_import_batches(
         db,
         keyword=keyword,
         region_id=region_id,
+        import_type=import_type,
         limit=limit,
         offset=offset,
     )
@@ -299,6 +301,7 @@ def get_import_batch_events(
     region_id: str | None = Query(default=None),
     location_tag: str | None = Query(default=None),
     city: str | None = Query(default=None),
+    import_type: str | None = Query(default=None, description="过滤类型：waveform（雷电流波形）| distribution（地闪分布）"),
     _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
     db: Session = Depends(get_db),
 ) -> LightningImportBatchEventsResponse:
@@ -309,6 +312,7 @@ def get_import_batch_events(
         region_id=region_id,
         location_tag=location_tag,
         city=city,
+        import_type=import_type,
     )
 
 
@@ -319,6 +323,7 @@ def delete_lightning_import_batch_endpoint(
     region_id: str | None = Query(default=None),
     location_tag: str | None = Query(default=None),
     city: str | None = Query(default=None),
+    import_type: str | None = Query(default=None, description="过滤类型：waveform（雷电流波形）| distribution（地闪分布）"),
     _: CurrentUser = Depends(require_permission("lightning.manage")),
     db: Session = Depends(get_db),
 ) -> dict[str, bool | int]:
@@ -329,6 +334,7 @@ def delete_lightning_import_batch_endpoint(
         region_id=region_id,
         location_tag=location_tag,
         city=city,
+        import_type=import_type,
     )
 
 

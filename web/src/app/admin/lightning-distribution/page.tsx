@@ -173,6 +173,7 @@ export default function AdminLightningDistributionPage() {
     if (trimmedKeyword) params.set("keyword", trimmedKeyword);
     params.set("limit", "100");
     params.set("offset", "0");
+    params.set("import_type", "distribution");
     return `/api/v1/lightning-currents/import-batches?${params.toString()}`;
   }, [trimmedKeyword]);
 
@@ -292,6 +293,7 @@ export default function AdminLightningDistributionPage() {
       if (batch.region_id) params.set("region_id", batch.region_id);
       if (batch.location_tag) params.set("location_tag", batch.location_tag);
       if (batch.city) params.set("city", batch.city);
+      params.set("import_type", "distribution");
 
       const response = await fetchWithAuth(
         `/api/v1/lightning-currents/import-batches?${params.toString()}`,
@@ -958,6 +960,7 @@ function EventsModal({
       if (batch.region_id) params.set("region_id", batch.region_id);
       if (batch.location_tag) params.set("location_tag", batch.location_tag);
       if (batch.city) params.set("city", batch.city);
+      params.set("import_type", "distribution");
 
       const response = await fetchWithAuth(
         `/api/v1/lightning-currents/import-batches/events?${params.toString()}`

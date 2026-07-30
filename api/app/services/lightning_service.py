@@ -2985,23 +2985,33 @@ def list_lightning_import_batches(
     *,
     keyword: str | None = None,
     region_id: str | None = None,
+    import_type: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> LightningImportBatchListResponse:
     """
     列出文件导入批次记录，按导入时间分组。
     同时查询波形事件表（LightningCurrentEvent）和地闪分布表（LightningDistributionPoint）。
+    可通过 import_type 参数限定查询范围：
+    - "waveform"：仅查询雷电流波形导入批次
+    - "distribution"：仅查询地闪分布导入批次
+    - None（默认）：查询全部
     """
+    waveform_items = []
+    distribution_items = []
+
     # 查询波形导入批次
-    total_waveform, waveform_items = _query_batch_groups(
-        db, LightningCurrentEvent,
-        keyword=keyword, region_id=region_id, limit=1000, offset=0,
-    )
+    if import_type is None or import_type == "waveform":
+        _, waveform_items = _query_batch_groups(
+            db, LightningCurrentEvent,
+            keyword=keyword, region_id=region_id, limit=1000, offset=0,
+        )
     # 查询地闪分布导入批次
-    total_distribution, distribution_items = _query_batch_groups(
-        db, LightningDistributionPoint,
-        keyword=keyword, region_id=region_id, limit=1000, offset=0,
-    )
+    if import_type is None or import_type == "distribution":
+        _, distribution_items = _query_batch_groups(
+            db, LightningDistributionPoint,
+            keyword=keyword, region_id=region_id, limit=1000, offset=0,
+        )
 
     # 从 LightningImportBatch 表查询正在处理或待处理的导入记录
     from ..models.lightning_import_batch import LightningImportBatch as ImportBatchModel
@@ -3110,10 +3120,15 @@ def get_lightning_import_batch_events(
     region_id: str | None,
     location_tag: str | None,
     city: str | None,
+    import_type: str | None = None,
 ) -> LightningImportBatchEventsResponse:
     """
     获取某个导入批次的所有事件。
     同时查询波形事件表（LightningCurrentEvent）和地闪分布表（LightningDistributionPoint）。
+    可通过 import_type 参数限定查询范围：
+    - "waveform"：仅查询雷电流波形事件
+    - "distribution"：仅查询地闪分布事件
+    - None（默认）：查询全部
     """
     import hashlib
 
@@ -3126,22 +3141,27 @@ def get_lightning_import_batch_events(
     ])
     batch_id = hashlib.md5(batch_key_str.encode()).hexdigest()[:16]
 
-    waveform_events = _query_batch_events_from_model(
-        db, LightningCurrentEvent,
-        source_file_name=source_file_name,
-        import_time=import_time,
-        region_id=region_id,
-        location_tag=location_tag,
-        city=city,
-    )
-    distribution_events = _query_batch_events_from_model(
-        db, LightningDistributionPoint,
-        source_file_name=source_file_name,
-        import_time=import_time,
-        region_id=region_id,
-        location_tag=location_tag,
-        city=city,
-    )
+    waveform_events = []
+    distribution_events = []
+
+    if import_type is None or import_type == "waveform":
+        waveform_events = _query_batch_events_from_model(
+            db, LightningCurrentEvent,
+            source_file_name=source_file_name,
+            import_time=import_time,
+            region_id=region_id,
+            location_tag=location_tag,
+            city=city,
+        )
+    if import_type is None or import_type == "distribution":
+        distribution_events = _query_batch_events_from_model(
+            db, LightningDistributionPoint,
+            source_file_name=source_file_name,
+            import_time=import_time,
+            region_id=region_id,
+            location_tag=location_tag,
+            city=city,
+        )
 
     all_events = waveform_events + distribution_events
     all_events.sort(key=lambda x: x.event_time or datetime.min)
@@ -3163,11 +3183,16 @@ def delete_lightning_import_batch(
     region_id: str | None,
     location_tag: str | None,
     city: str | None,
+    import_type: str | None = None,
 ) -> dict[str, bool | int]:
     """
     删除某个导入批次的所有事件记录。
     同时删除 LightningImportBatch 表记录，
     以及波形事件表（LightningCurrentEvent）和地闪分布表（LightningDistributionPoint）中的记录。
+    可通过 import_type 参数限定删除范围：
+    - "waveform"：仅删除雷电流波形导入批次
+    - "distribution"：仅删除地闪分布导入批次
+    - None（默认）：全部删除
     """
     import hashlib
 
@@ -3195,10 +3220,16 @@ def delete_lightning_import_batch(
         db.delete(br)
     total_deleted += len(batch_records)
 
-    # 2. Delete data records (LightningCurrentEvent, LightningDistributionPoint)
+    # 2. Delete data records, filtered by import_type
+    models_to_delete = []
+    if import_type is None or import_type == "waveform":
+        models_to_delete.append(LightningCurrentEvent)
+    if import_type is None or import_type == "distribution":
+        models_to_delete.append(LightningDistributionPoint)
+
     # Use a generous time window to accommodate Celery async import delays
     time_tolerance = timedelta(seconds=60)
-    for model in (LightningCurrentEvent, LightningDistributionPoint):
+    for model in models_to_delete:
         filters = [
             model.create_date >= import_time - time_tolerance,
             model.create_date <= import_time + time_tolerance,

@@ -155,7 +155,7 @@ export default function AdminLightningCurrentsPage() {
   const events = useMemo(() => eventsQuery.data?.items ?? [], [eventsQuery.data?.items]);
 
   // ---- 导入批次状态查询 ----
-  const importBatchesPath = "/api/v1/lightning-currents/import-batches?limit=100";
+  const importBatchesPath = "/api/v1/lightning-currents/import-batches?limit=100&import_type=waveform";
   const importBatchesQuery = useQuery({
     queryKey: [importBatchesPath],
     enabled: !!user && canRead,
