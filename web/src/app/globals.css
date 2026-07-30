@@ -1048,6 +1048,25 @@ body {
   align-items: baseline;
 }
 
+/* ---- Task monitor running state pulse animation ---- */
+@keyframes admin-task-tag-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(22, 119, 255, 0);
+  }
+}
+.admin-task-tag-running {
+  animation: admin-task-tag-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-task-tag-running {
+    animation: none;
+  }
+}
+
 .admin-roles-table-anchor .ant-table-body {
   min-height: var(--admin-roles-table-body-min-height, 180px);
 }

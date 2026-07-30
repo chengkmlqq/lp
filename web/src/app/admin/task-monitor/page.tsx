@@ -154,7 +154,13 @@ function formatDateTime(value: string | null | undefined): string {
 
 function renderTaskStateTag(state: string) {
   const display = getTaskStateDisplay(state);
-  return <Tag color={display.color}>{display.label}</Tag>;
+  const isRunning = ["STARTED", "RUNNING"].includes(state?.toUpperCase());
+  return (
+    <Tag color={display.color} className={isRunning ? "admin-task-tag-running" : undefined}>
+      {isRunning && <Spin size="small" style={{ marginRight: 4 }} />}
+      {display.label}
+    </Tag>
+  );
 }
 
 function renderTaskSourceTag(source: string) {
@@ -393,7 +399,7 @@ export default function AdminTaskMonitorPage() {
       {
         title: "操作",
         key: "actions",
-        width: 180,
+        width: 100,
         fixed: "right",
         render: (_: unknown, record: TaskTableRow) => (
           <Space size={4}>
