@@ -80,6 +80,7 @@ class LightningCurrentImportResponse(BaseModel):
     warning_count: int = 0
     warnings: list[str] = Field(default_factory=list)
     task_id: str | None = None
+    batch_id: str | None = None
 
 
 class LightningCurrentSampleItem(BaseModel):

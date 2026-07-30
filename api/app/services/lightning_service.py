@@ -474,6 +474,7 @@ def import_lightning_event_from_file(
 
 
 def import_lightning_current_async(
+    db: Session,
     *,
     file: UploadFile,
     actor_user_id: str,
@@ -502,6 +503,27 @@ def import_lightning_current_async(
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
 
+    # Create an import batch record immediately with status="pending"
+    from ..models.lightning_import_batch import LightningImportBatch
+    from uuid import uuid4 as _uuid4
+    _now = utcnow()
+    _batch = LightningImportBatch(
+        id=_uuid4().hex,
+        source_file_name=_normalize_str(str(file.filename or "upload")),
+        import_type="waveform",
+        status="pending",
+        region_id=_normalize_str(region_id),
+        location_tag=_normalize_str(location_tag),
+        city=_normalize_str(city),
+        is_synthetic=bool(is_synthetic),
+        notes=_normalize_str(notes),
+        create_user=actor_user_id,
+        create_date=_now,
+        update_date=_now,
+    )
+    db.add(_batch)
+    db.commit()
+
     # Save file to shared temp volume for async Celery processing
     import os as _os
     _temp_dir = "/app/data/temp/lightning-current"
@@ -515,6 +537,7 @@ def import_lightning_current_async(
     _task = _celery_app.send_task(
         "app.tasks.lightning_tasks.import_lightning_current_job",
         kwargs=dict(
+            batch_id=_batch.id,
             file_path=_temp_path,
             source_file_name=_normalize_str(file.filename),
             actor_user_id=actor_user_id,
@@ -537,6 +560,10 @@ def import_lightning_current_async(
         ),
         queue="celery",
     )
+    # Link task_id to batch
+    _batch.task_id = str(_task.id)
+    _batch.status = "processing"
+    db.commit()
 
     return LightningCurrentImportResponse(
         imported_count=0,
@@ -544,6 +571,7 @@ def import_lightning_current_async(
         warning_count=0,
         warnings=[],
         task_id=str(_task.id),
+        batch_id=_batch.id,
     )
 
 

@@ -1314,6 +1314,8 @@ export type LightningImportBatchSummary = {
   notes: string | null;
   line_id: string | null;
   line_name: string | null;
+  status: string | null;
+  task_id: string | null;
   max_abs_current_ka: number | null;
   avg_abs_current_ka: number | null;
   positive_count: number;

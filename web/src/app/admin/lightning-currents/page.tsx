@@ -44,6 +44,8 @@ import type {
   LightningCurrentImportResponse,
   LightningCurrentSampleListResponse,
   LightningCurrentSampleItem,
+  LightningImportBatchSummary,
+  LightningImportBatchListResponse,
   LightningPolarity,
 } from "@/types/auth";
 import { CHINESE_CITIES, type CityOption } from "@/data/chinese-cities";
@@ -151,6 +153,27 @@ export default function AdminLightningCurrentsPage() {
   });
 
   const events = useMemo(() => eventsQuery.data?.items ?? [], [eventsQuery.data?.items]);
+
+  // ---- 导入批次状态查询 ----
+  const importBatchesPath = "/api/v1/lightning-currents/import-batches?limit=100";
+  const importBatchesQuery = useQuery({
+    queryKey: [importBatchesPath],
+    enabled: !!user && canRead,
+    queryFn: async () => {
+      const response = await fetchWithAuth(importBatchesPath);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LightningImportBatchListResponse;
+    },
+    refetchInterval: 5000,
+  });
+  const activeBatches = useMemo(
+    () => (importBatchesQuery.data?.items ?? []).filter(
+      (b) => b.status === "pending" || b.status === "processing" || b.status === "failed",
+    ),
+    [importBatchesQuery.data?.items],
+  );
 
   const exceedancePath = useMemo(() => {
     if (!selectedEventForModal?.id) return "";
@@ -752,6 +775,29 @@ export default function AdminLightningCurrentsPage() {
                 </Button>
               </Form.Item>
             </Form>
+          </div>
+        )}
+
+        {/* 导入任务状态展示 */}
+        {activeBatches.length > 0 && (
+          <div style={{ marginBottom: 12, marginTop: 8 }}>
+            {activeBatches.map((batch) => {
+              const statusColor =
+                batch.status === "failed" ? "red" :
+                batch.status === "processing" ? "blue" :
+                "orange";
+              const statusLabel =
+                batch.status === "failed" ? "导入失败" :
+                batch.status === "processing" ? "导入中" :
+                "等待处理";
+              return (
+                <Tag key={batch.batch_id} color={statusColor} style={{ marginBottom: 4, padding: "2px 8px", fontSize: 13 }}>
+                  {batch.source_file_name || "未命名文件"}
+                  {" — "}
+                  {statusLabel}
+                </Tag>
+              );
+            })}
           </div>
         )}
 

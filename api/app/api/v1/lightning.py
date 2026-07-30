@@ -185,12 +185,14 @@ def import_lightning_current_file_async(
     is_synthetic: bool = Form(default=False),
     notes: str | None = Form(default=None),
     current_user: CurrentUser = Depends(require_permission("lightning.manage")),
+    db: Session = Depends(get_db),
 ) -> LightningCurrentImportResponse:
     """
     异步导入雷电流波形数据（通过 Celery Worker 后台处理）。
     上传文件后立即返回 task_id，不阻塞请求。
     """
     return import_lightning_current_async(
+        db,
         file=file,
         actor_user_id=current_user.user.id,
         event_id=event_id,
