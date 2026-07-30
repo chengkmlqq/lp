@@ -705,7 +705,7 @@ export default function AdminLightningDistributionPage() {
         extra={
           canManage && (
             <Button type="primary" onClick={() => setImportModalOpen(true)}>
-              导入地闪密度数据
+              导入
             </Button>
           )
         }
