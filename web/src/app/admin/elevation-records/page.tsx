@@ -909,13 +909,6 @@ export default function ElevationRecordsPage() {
         confirmLoading={uploadMutation.isPending}
         width={600}
       >
-        <Alert
-          message="上传即创建"
-          description="选择 TIF 文件后立即上传并创建记录，自动触发分析任务。仅支持 TIF 格式。"
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
         <Form
           form={uploadForm}
           layout="vertical"
