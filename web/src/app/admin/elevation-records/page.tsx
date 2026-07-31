@@ -773,6 +773,7 @@ export default function ElevationRecordsPage() {
                     setPagination((prev) => ({ ...prev, current: 1 }));
                     setCardViewPage(1);
                     setAllLoadedRecords([]);
+                    void queryClient.refetchQueries({ queryKey: ["elevation-records"] });
                   }}
                   className="admin-search-btn"
                 >
@@ -810,6 +811,7 @@ export default function ElevationRecordsPage() {
                     setPagination((prev) => ({ ...prev, current: 1 }));
                     setCardViewPage(1);
                     setAllLoadedRecords([]);
+                    void queryClient.refetchQueries({ queryKey: ["elevation-records"] });
                   }}
                   className="admin-search-btn"
                 >

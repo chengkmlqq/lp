@@ -823,6 +823,7 @@ export default function AdminTowerModelsPage() {
                     setPagination((previous) => ({ ...previous, current: 1 }));
                     setCardViewPage(1);
                     setAllLoadedModels([]);
+                    void queryClient.refetchQueries({ queryKey: [listPath] });
                   }}
                   className="admin-search-btn"
                 >
@@ -874,6 +875,7 @@ export default function AdminTowerModelsPage() {
                     setPagination((previous) => ({ ...previous, current: 1 }));
                     setCardViewPage(1);
                     setAllLoadedModels([]);
+                    void queryClient.refetchQueries({ queryKey: [listPath] });
                   }}
                   className="admin-search-btn"
                 >

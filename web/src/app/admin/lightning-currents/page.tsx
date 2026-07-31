@@ -734,6 +734,7 @@ export default function AdminLightningCurrentsPage() {
                   setPagination((prev) => ({ ...prev, current: 1 }));
                   setCardViewPage(1);
                   setAllLoadedEvents([]);
+                  void queryClient.refetchQueries({ queryKey: [eventListPath] });
                 }}
                 className="admin-search-btn"
               >
@@ -756,6 +757,7 @@ export default function AdminLightningCurrentsPage() {
                     setPagination((prev) => ({ ...prev, current: 1 }));
                     setCardViewPage(1);
                     setAllLoadedEvents([]);
+                    void queryClient.refetchQueries({ queryKey: [eventListPath] });
                   }}
                 />
               </Form.Item>
@@ -768,6 +770,7 @@ export default function AdminLightningCurrentsPage() {
                     setPagination((prev) => ({ ...prev, current: 1 }));
                     setCardViewPage(1);
                     setAllLoadedEvents([]);
+                    void queryClient.refetchQueries({ queryKey: [eventListPath] });
                   }}
                   className="admin-search-btn"
                 >

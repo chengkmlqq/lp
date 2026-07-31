@@ -118,6 +118,12 @@ export default function AdminSyslogPage() {
     setOffset(0);
     setCardViewPage(1);
     setAllLoadedLogs([]);
+    void queryClient.refetchQueries({
+      predicate: (query) =>
+        Array.isArray(query.queryKey)
+        && typeof query.queryKey[0] === "string"
+        && query.queryKey[0].startsWith("/api/v1/admin/audit-logs"),
+    });
   };
 
   const logsPath = useMemo(() => {

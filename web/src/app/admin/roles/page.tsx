@@ -410,6 +410,7 @@ export default function AdminRolesPage() {
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(1);
+    void queryClient.refetchQueries({ queryKey: ["admin.roles"] });
   };
 
   const queryError = rolesQuery.error instanceof Error ? rolesQuery.error.message : "";

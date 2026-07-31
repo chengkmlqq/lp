@@ -367,6 +367,7 @@ export default function AdminLightningDistributionPage() {
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(1);
     setAllLoadedBatches([]);
+    void queryClient.refetchQueries({ queryKey: [importBatchesPath] });
   };
 
   const updateTableScrollY = useCallback(() => {

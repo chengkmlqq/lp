@@ -415,6 +415,7 @@ export default function AdminMenusPage() {
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(1);
     setAllLoadedMenus([]);
+    void queryClient.refetchQueries({ queryKey: ["admin.menus"] });
   };
 
   const handleStatusFilterChange = (value?: "enabled" | "disabled") => {
@@ -881,7 +882,7 @@ export default function AdminMenusPage() {
               <AntCard
                 className="admin-menus-tree-card"
                 style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-                bodyStyle={{ flex: 1, overflow: "auto", padding: 0 }}
+                bodyStyle={{ flex: 1, padding: 0 }}
               >
                 <div className="admin-menus-sider-search">
                   <Input
@@ -891,7 +892,6 @@ export default function AdminMenusPage() {
                     value={treeFilterKeyword}
                     onChange={(e) => setTreeFilterKeyword(e.target.value)}
                     allowClear
-                    size="small"
                   />
                 </div>
                 <div className="admin-menus-sider-menu">

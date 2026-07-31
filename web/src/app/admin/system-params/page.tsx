@@ -559,6 +559,7 @@ export default function AdminSystemParamsPage() {
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(() => 1);
     setAllLoadedParams(() => []);
+    void queryClient.refetchQueries({ queryKey: [listPath] });
   };
 
   const rawItems = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items]);

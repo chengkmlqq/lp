@@ -890,6 +890,12 @@ export default function AtpModelsPage() {
                       setSearchKeyword(keywordInput);
                       setPagination((previous) => ({ ...previous, current: 1 }));
                       setCardViewPage(1);
+                      void queryClient.refetchQueries({
+                        predicate: (query) =>
+                          Array.isArray(query.queryKey)
+                          && typeof query.queryKey[0] === "string"
+                          && query.queryKey[0].startsWith("atp-assets"),
+                      });
                     }}
                   />
               </Form.Item>
@@ -901,6 +907,12 @@ export default function AtpModelsPage() {
                     setSearchKeyword(keywordInput);
                     setPagination((previous) => ({ ...previous, current: 1 }));
                     setCardViewPage(1);
+                    void queryClient.refetchQueries({
+                      predicate: (query) =>
+                        Array.isArray(query.queryKey)
+                        && typeof query.queryKey[0] === "string"
+                        && query.queryKey[0].startsWith("atp-assets"),
+                    });
                   }}
                   className="admin-search-btn"
                 >
@@ -922,6 +934,12 @@ export default function AtpModelsPage() {
                     setSearchKeyword(keywordInput);
                     setPagination((previous) => ({ ...previous, current: 1 }));
                     setCardViewPage(1);
+                    void queryClient.refetchQueries({
+                      predicate: (query) =>
+                        Array.isArray(query.queryKey)
+                        && typeof query.queryKey[0] === "string"
+                        && query.queryKey[0].startsWith("atp-assets"),
+                    });
                   }}
                 />
               </Form.Item>
@@ -933,6 +951,12 @@ export default function AtpModelsPage() {
                 setSearchKeyword(keywordInput);
                 setPagination((previous) => ({ ...previous, current: 1 }));
                 setCardViewPage(1);
+                void queryClient.refetchQueries({
+                  predicate: (query) =>
+                    Array.isArray(query.queryKey)
+                    && typeof query.queryKey[0] === "string"
+                    && query.queryKey[0].startsWith("atp-assets"),
+                });
               }}
               className="admin-search-btn"
             >

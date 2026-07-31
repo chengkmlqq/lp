@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import and_, case, func, insert, or_, select, String
+from sqlalchemy import and_, case, delete as sa_delete, func, insert, or_, select, String
 from sqlalchemy.orm import Session
 
 from ..core.database import SessionLocal
@@ -68,6 +68,7 @@ TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "gbk", "latin-1")
 MAX_SAMPLES = 2_000_000
 INSERT_CHUNK_SIZE = 5_000
 MAX_DISTRIBUTION_ROWS = 2_000_000
+DELETE_CHUNK_SIZE = 50_000
 STANDARD_WAVE_SHAPES: tuple[tuple[str, float, float], ...] = (
     ("10/350", 10.0, 350.0),
     ("8/20", 8.0, 20.0),
@@ -3258,10 +3259,19 @@ def delete_lightning_import_batch(
                 or_(model.city.is_(None), model.city == "")
             )
 
-        events = db.execute(select(model).where(*filters)).scalars().all()
-        for event in events:
-            db.delete(event)
-        total_deleted += len(events)
+        # 批量删除（按主键分块提交），避免逐行 db.delete() 产生海量单行 DELETE，
+        # 也避免超大单事务长时间锁表/锁索引。
+        while True:
+            subq = select(model.id).where(*filters).limit(DELETE_CHUNK_SIZE)
+            result = db.execute(
+                sa_delete(model).where(model.id.in_(subq)),
+                execution_options={"synchronize_session": False},
+            )
+            deleted = result.rowcount or 0
+            db.commit()
+            total_deleted += deleted
+            if deleted < DELETE_CHUNK_SIZE:
+                break
 
     if total_deleted == 0:
         return {"success": False, "deleted_count": 0}

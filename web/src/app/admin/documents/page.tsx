@@ -800,6 +800,7 @@ export default function AdminDocumentsPage() {
                         setPagination((prev) => ({ ...prev, current: 1 }));
                         setCardViewPage(1);
                         setAllLoadedDocuments([]);
+                        void queryClient.refetchQueries({ queryKey: ["/api/v1/documents"] });
                       }}
                       className="admin-search-btn"
                     >
@@ -853,6 +854,7 @@ export default function AdminDocumentsPage() {
                         setPagination((prev) => ({ ...prev, current: 1 }));
                         setCardViewPage(1);
                         setAllLoadedDocuments([]);
+                        void queryClient.refetchQueries({ queryKey: ["/api/v1/documents"] });
                       }}
                       className="admin-search-btn"
                     >

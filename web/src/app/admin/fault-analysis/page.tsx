@@ -361,6 +361,7 @@ export default function AdminFaultAnalysisPage() {
                     onPressEnter={() => {
                       setSearchKeyword(keywordInput);
                       setPagination((prev) => ({ ...prev, current: 1 }));
+                      void queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"] });
                     }}
                   />
                 </Form.Item>
@@ -371,6 +372,7 @@ export default function AdminFaultAnalysisPage() {
                     onClick={() => {
                       setSearchKeyword(keywordInput);
                       setPagination((prev) => ({ ...prev, current: 1 }));
+                      void queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"] });
                     }}
                     className="admin-search-btn"
                   >

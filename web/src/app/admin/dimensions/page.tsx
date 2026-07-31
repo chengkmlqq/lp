@@ -698,6 +698,7 @@ export default function AdminDimensionsPage() {
                   setPagination((prev) => ({ ...prev, current: 1 }));
                   setCardViewPage(1);
                   setAllLoadedDimensions([]);
+                  void queryClient.refetchQueries({ queryKey: ["admin.dimensions"] });
                 }}
                 className="admin-search-btn"
               >
