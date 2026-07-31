@@ -477,6 +477,7 @@ def serialize_user(user: User | None) -> UserPublic:
         role_codes=sorted(authz.role_codes),
         permission_codes=sorted(authz.permission_codes),
         created_at=user.created_at or utcnow(),
+        updated_at=user.updated_at,
         last_login_at=user.last_login_at,
         avatar_url=avatar_url,
     )

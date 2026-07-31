@@ -374,9 +374,11 @@ export default function AdminUsersPage() {
     onMutate: ({ userId }) => {
       setUploadingAvatarUserId(userId);
     },
-    onSuccess: async () => {
+    onSuccess: (updatedUser) => {
       setSuccess("头像已更新");
-      await refreshData();
+      // 同步更新编辑弹窗快照，使弹窗头像即时刷新
+      setEditingUser((prev) => (prev ? { ...prev, ...updatedUser } : prev));
+      void refreshData();
     },
     onError: (candidate) => {
       setError(candidate instanceof Error ? candidate.message : "上传头像失败");
@@ -634,7 +636,6 @@ export default function AdminUsersPage() {
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(1);
-    void queryClient.refetchQueries({ queryKey: ["admin.users"] });
   };
 
   const queryError =
@@ -794,7 +795,7 @@ export default function AdminUsersPage() {
       render: (_value, row) => (
         <Avatar
           size={32}
-          src={row.avatar_url ? `${getApiBaseUrl()}${row.avatar_url}` : undefined}
+          src={row.avatar_url ? `${getApiBaseUrl()}${row.avatar_url}?t=${encodeURIComponent(row.updated_at ?? "")}` : undefined}
           style={{ backgroundColor: "var(--ant-color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}
         >
           {!row.avatar_url ? row.username.trim().charAt(0).toUpperCase() || "U" : undefined}
@@ -846,6 +847,7 @@ export default function AdminUsersPage() {
     {
       title: "操作",
       key: "actions",
+      fixed: "right",
       width: 200,
       render: (_value, row) => {
         const updatingLoading = updatingStatusUserId === row.id;
@@ -1067,7 +1069,7 @@ export default function AdminUsersPage() {
         title="用户管理"
         extra={(
           <Button type="primary" onClick={openCreateUserModal}>
-            新增用户
+            新建用户
           </Button>
         )}
       >
@@ -1329,7 +1331,7 @@ export default function AdminUsersPage() {
           <div style={{ textAlign: "center", marginBottom: 16 }}>
             <Avatar
               size={80}
-              src={editingUser.avatar_url ? `${getApiBaseUrl()}${editingUser.avatar_url}` : undefined}
+              src={editingUser.avatar_url ? `${getApiBaseUrl()}${editingUser.avatar_url}?t=${encodeURIComponent(editingUser.updated_at ?? "")}` : undefined}
               style={{ backgroundColor: "var(--ant-color-primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}
             >
               {!editingUser.avatar_url ? editingUser.username.trim().charAt(0).toUpperCase() || "U" : undefined}

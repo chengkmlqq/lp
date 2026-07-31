@@ -520,6 +520,7 @@ export default function AtpModelsPage() {
       {
         title: "操作",
         key: "actions",
+        fixed: "right",
         width: 100,
         render: (_, item) => {
           const deleteLoading = deleteMutation.isPending;

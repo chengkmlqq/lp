@@ -102,3 +102,52 @@ class UserEmailOptionalTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UserPublicSerializeTest(unittest.TestCase):
+    """Test that serialize_user returns the updated_at contract field."""
+
+    def setUp(self) -> None:
+        self.engine = create_engine(
+            "sqlite+pysqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.SessionLocal = sessionmaker(
+            bind=self.engine,
+            autocommit=False,
+            autoflush=False,
+            expire_on_commit=False,
+        )
+        Base.metadata.create_all(bind=self.engine)
+        self.session = self.SessionLocal()
+
+    def tearDown(self) -> None:
+        self.session.close()
+        Base.metadata.drop_all(bind=self.engine)
+        self.engine.dispose()
+
+    def test_serialize_user_includes_updated_at(self) -> None:
+        """serialize_user should expose updated_at so the frontend can cache-bust avatars."""
+        user = User(
+            id="avatar_user_1",
+            email=None,
+            username="AvatarUser1",
+            password_hash=hash_password("password123"),
+            status="ENABLED",
+        )
+        self.session.add(user)
+        self.session.commit()
+        self.session.refresh(user)
+
+        serialized = user_service.serialize_user(user)
+        self.assertIsNotNone(serialized.updated_at)
+        self.assertIsNone(serialized.avatar_url)
+
+        # Avatar upload path updates avatar_path; verify avatar_url flips and updated_at present
+        user.avatar_path = "avatar_user_1.png"
+        self.session.commit()
+        self.session.refresh(user)
+        serialized = user_service.serialize_user(user)
+        self.assertEqual(serialized.avatar_url, "/api/v1/users/avatar_user_1/avatar")
+        self.assertIsNotNone(serialized.updated_at)

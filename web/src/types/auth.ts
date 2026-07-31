@@ -6,6 +6,7 @@ export type UserPublic = {
   role_codes: string[];
   permission_codes: string[];
   created_at: string;
+  updated_at: string | null;
   last_login_at: string | null;
   avatar_url: string | null;
 };
@@ -611,6 +612,7 @@ export type LineSummary = {
   lightning_param_json: Record<string, unknown>;
   preparation_json: Record<string, unknown>;
   tower_count: number;
+  estimated_length_km: number | null;
   create_date: string;
   create_user: string | null;
   update_date: string;

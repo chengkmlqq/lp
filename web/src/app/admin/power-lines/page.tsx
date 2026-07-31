@@ -1360,7 +1360,7 @@ export default function AdminPowerLinesPage() {
   };
   const lineCards = lines.map((line) => {
     const selected = line.id === effectiveSelectedLineId;
-    const displayRouteLengthKm = routeLengthMap[line.id] ?? 0;
+    const displayRouteLengthKm = routeLengthMap[line.id] ?? line.estimated_length_km ?? 0;
     return (
       <Card
         key={line.id}
@@ -1880,8 +1880,11 @@ export default function AdminPowerLinesPage() {
             rules={[{ required: true, message: "请选择电压等级" }]}
           >
             <Select
+              showSearch
               placeholder="请选择电压等级"
               options={[...LINE_VOLTAGE_OPTIONS].map((item) => ({ value: item.value, label: item.label }))}
+              filterOption={(input, option) =>
+                String(option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
             />
           </Form.Item>
         </Form>

@@ -614,6 +614,7 @@ export default function ElevationRecordsPage() {
     {
       title: "操作",
       key: "actions",
+      fixed: "right",
       width: 180,
       render: (_value, row) => {
         const analyzing = analyzeMutation.isPending && analyzingId === row.id;

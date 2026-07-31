@@ -15,6 +15,7 @@ class LineSummary(BaseModel):
     lightning_param_json: dict[str, Any] = Field(default_factory=dict)
     preparation_json: dict[str, Any] = Field(default_factory=dict)
     tower_count: int = 0
+    estimated_length_km: float | None = None
     create_date: datetime
     create_user: str | None = None
     update_date: datetime

@@ -239,3 +239,114 @@ def test_export_line_towers_to_csv_includes_legacy_professional_columns() -> Non
         assert row["额外字段JSON"] == "{}"
     finally:
         session.close()
+
+
+def test_list_lines_returns_estimated_length_from_tower_coordinates(monkeypatch) -> None:
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        line = Line(
+            code="PL-EST-001",
+            name="估算长度线路",
+            voltage_kv=220,
+            status="enabled",
+        )
+        session.add(line)
+        session.flush()
+
+        # 3 towers with valid coordinates + 1 tower without coordinates.
+        session.add_all(
+            [
+                LineTower(line_id=line.id, seq_no=1, tower_no="E001", longitude=120.0, latitude=30.0),
+                LineTower(line_id=line.id, seq_no=2, tower_no="E002", longitude=120.01, latitude=30.0),
+                LineTower(line_id=line.id, seq_no=3, tower_no="E003", longitude=120.02, latitude=30.0),
+                LineTower(line_id=line.id, seq_no=4, tower_no="E004"),
+            ]
+        )
+        session.commit()
+
+        response = line_service.list_lines(session, keyword=None)
+        assert response.total == 1
+        item = response.items[0]
+        assert item.tower_count == 4
+        assert item.estimated_length_km is not None
+        assert item.estimated_length_km > 0
+
+        # Haversine distance: ~0.01 deg longitude at 30 deg latitude ≈ 0.9616 km
+        # per pair, so 2 pairs should sum to roughly 1.92 km.
+        assert abs(item.estimated_length_km - 2 * _expected_km_per_0_01_deg_at_30()) < 0.05
+    finally:
+        session.close()
+
+
+def test_list_lines_estimated_length_breaks_at_invalid_coordinates(monkeypatch) -> None:
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        line = Line(
+            code="PL-EST-002",
+            name="估算长度分段线路",
+            voltage_kv=220,
+            status="enabled",
+        )
+        session.add(line)
+        session.flush()
+
+        # Middle tower has no coordinates → route is split into 2 segments,
+        # each contributing one pair of consecutive distances.
+        session.add_all(
+            [
+                LineTower(line_id=line.id, seq_no=1, tower_no="E011", longitude=120.0, latitude=30.0),
+                LineTower(line_id=line.id, seq_no=2, tower_no="E012", longitude=120.01, latitude=30.0),
+                LineTower(line_id=line.id, seq_no=3, tower_no="E013"),
+                LineTower(line_id=line.id, seq_no=4, tower_no="E014", longitude=120.02, latitude=30.0),
+                LineTower(line_id=line.id, seq_no=5, tower_no="E015", longitude=120.03, latitude=30.0),
+            ]
+        )
+        session.commit()
+
+        response = line_service.list_lines(session, keyword=None)
+        item = response.items[0]
+        assert item.estimated_length_km is not None
+        expected = 2 * _expected_km_per_0_01_deg_at_30()
+        assert abs(item.estimated_length_km - expected) < 0.05
+    finally:
+        session.close()
+
+
+def test_list_lines_estimated_length_none_without_coordinates(monkeypatch) -> None:
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        line = Line(
+            code="PL-EST-003",
+            name="无坐标线路",
+            voltage_kv=220,
+            status="enabled",
+        )
+        session.add(line)
+        session.flush()
+
+        session.add_all(
+            [
+                LineTower(line_id=line.id, seq_no=1, tower_no="E021"),
+                LineTower(line_id=line.id, seq_no=2, tower_no="E022"),
+            ]
+        )
+        session.commit()
+
+        response = line_service.list_lines(session, keyword=None)
+        item = response.items[0]
+        assert item.tower_count == 2
+        assert item.estimated_length_km is None
+    finally:
+        session.close()
+
+
+def _expected_km_per_0_01_deg_at_30() -> float:
+    from app.services.line_service import _haversine_km
+
+    return _haversine_km(30.0, 120.0, 30.0, 120.01)

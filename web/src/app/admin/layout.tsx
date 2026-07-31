@@ -574,7 +574,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               {user.avatar_url && !avatarError ? (
                 <Avatar
                   size="small"
-                  src={`${getApiBaseUrl()}${user.avatar_url}`}
+                  src={`${getApiBaseUrl()}${user.avatar_url}?t=${encodeURIComponent(user.updated_at ?? "")}`}
                   style={{ backgroundColor: "var(--ant-color-primary)" }}
                   onError={() => {
                     setAvatarError(true);

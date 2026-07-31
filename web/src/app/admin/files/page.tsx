@@ -702,6 +702,7 @@ export default function AdminFilesPage() {
       {
         title: "操作",
         key: "actions",
+        fixed: "right",
         width: 280,
         render: (_value, item) => {
           const menuItems: MenuProps["items"] = [

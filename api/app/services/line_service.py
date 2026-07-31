@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -54,6 +55,7 @@ def serialize_line(
     *,
     tower_count: int = 0,
     preparation_json: dict[str, Any] | None = None,
+    estimated_length_km: float | None = None,
 ) -> LineSummary:
     return LineSummary(
         id=line.id,
@@ -65,6 +67,7 @@ def serialize_line(
         lightning_param_json=line.lightning_param_json or {},
         preparation_json=preparation_json or {},
         tower_count=tower_count,
+        estimated_length_km=estimated_length_km,
         create_date=line.create_date,
         create_user=line.create_user,
         update_date=line.update_date,
@@ -120,6 +123,7 @@ def list_lines(
     items = db.execute(stmt.order_by(Line.update_date.desc(), Line.code.asc())).scalars().all()
     line_ids = [item.id for item in items]
     tower_count_map = _load_tower_counts(db, line_ids)
+    estimated_length_map = _load_line_estimated_lengths(db, line_ids)
     preparation_map = summarize_line_preparations(db, items, tower_count_map=tower_count_map)
 
     return LineListResponse(
@@ -128,6 +132,7 @@ def list_lines(
                 item,
                 tower_count=tower_count_map.get(item.id, 0),
                 preparation_json=preparation_map.get(item.id, {}),
+                estimated_length_km=estimated_length_map.get(item.id),
             )
             for item in items
         ],
@@ -788,6 +793,82 @@ def _load_tower_counts(db: Session, line_ids: list[str]) -> dict[str, int]:
         .group_by(LineTower.line_id)
     ).all()
     return {str(row[0]): int(row[1] or 0) for row in rows}
+
+
+def _load_line_estimated_lengths(db: Session, line_ids: list[str]) -> dict[str, float]:
+    """Batch load each line's estimated length (km) from tower coordinates.
+
+    Mirrors the frontend `buildRouteSegments` / `estimateRouteLengthKm` logic in
+    `web/src/lib/power-line-route.ts` + `web/src/components/power-line-cesium-map.tsx`:
+    towers are ordered by seq_no, invalid coordinates break the route into
+    segments, and the haversine distance of consecutive towers within each
+    segment is summed.
+    """
+    if not line_ids:
+        return {}
+    rows = db.execute(
+        select(LineTower.line_id, LineTower.seq_no, LineTower.longitude, LineTower.latitude)
+        .where(LineTower.line_id.in_(line_ids))
+        .order_by(LineTower.line_id.asc(), LineTower.seq_no.asc())
+    ).all()
+
+    result: dict[str, float] = {}
+    current_line: str | None = None
+    valid_points: list[tuple[float, float]] = []
+
+    def flush_segment() -> None:
+        nonlocal valid_points
+        if current_line is not None and valid_points:
+            result[current_line] = result.get(current_line, 0.0) + _sum_consecutive_distances(valid_points)
+            valid_points = []
+
+    for line_id, _, longitude, latitude in rows:
+        if line_id != current_line:
+            flush_segment()
+            current_line = line_id
+        if _is_valid_geo(longitude, latitude):
+            valid_points.append((float(latitude), float(longitude)))
+        else:
+            flush_segment()
+    flush_segment()
+    return result
+
+
+def _is_valid_geo(longitude: float | None, latitude: float | None) -> bool:
+    if longitude is None or latitude is None:
+        return False
+    if math.isnan(longitude) or math.isnan(latitude):
+        return False
+    if longitude < -180 or longitude > 180:
+        return False
+    if latitude < -90 or latitude > 90:
+        return False
+    return True
+
+
+def _sum_consecutive_distances(points: list[tuple[float, float]]) -> float:
+    if len(points) < 2:
+        return 0.0
+    total = 0.0
+    for index in range(1, len(points)):
+        lat1, lon1 = points[index - 1]
+        lat2, lon2 = points[index]
+        total += _haversine_km(lat1, lon1, lat2, lon2)
+    return total
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    radius_km = 6371.0
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lat = lat2_rad - lat1_rad
+    delta_lon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(delta_lat / 2.0) ** 2
+        + math.cos(lat1_rad) * math.cos(lat2_rad) * (math.sin(delta_lon / 2.0) ** 2)
+    )
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(max(1.0 - a, 0.0)))
+    return radius_km * c
 
 
 def _apply_line_metadata_from_csv(

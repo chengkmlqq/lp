@@ -13,6 +13,7 @@ class UserPublic(BaseModel):
     role_codes: list[str]
     permission_codes: list[str]
     created_at: datetime
+    updated_at: datetime | None = None
     last_login_at: datetime | None = None
     avatar_url: str | None = None
 
