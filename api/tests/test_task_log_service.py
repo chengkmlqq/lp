@@ -11,19 +11,20 @@ from app.services.task_log_service import (
     TaskLogServiceError,
     TaskLogNotFoundError,
     _get_log_path,
+    _get_legacy_log_path,
     upload_task_log,
     get_task_log,
 )
 
 
 def test_get_log_path_with_timestamp():
-    """Test log path generation with specific timestamp"""
+    """Test fixed log path generation (no longer date-based)"""
     timestamp = datetime(2026, 6, 28, 12, 30, 45, tzinfo=timezone.utc)
     task_id = "test-task-123"
 
     result = _get_log_path(task_id, timestamp)
 
-    assert result == "logs/2026/06/28/test-task-123.log"
+    assert result == "logs/test-task-123.log"
 
 
 def test_get_log_path_without_timestamp():
@@ -32,10 +33,17 @@ def test_get_log_path_without_timestamp():
 
     result = _get_log_path(task_id)
 
-    # Should contain the task_id and follow the pattern
-    assert task_id in result
-    assert result.startswith("logs/")
-    assert result.endswith(f"/{task_id}.log")
+    assert result == "logs/test-task-456.log"
+
+
+def test_get_legacy_log_path_keeps_date_pattern():
+    """Legacy fallback path retains the date-based pattern for old logs"""
+    timestamp = datetime(2026, 6, 28, 12, 30, 45, tzinfo=timezone.utc)
+    task_id = "test-task-123"
+
+    result = _get_legacy_log_path(task_id, timestamp)
+
+    assert result == "logs/2026/06/28/test-task-123.log"
 
 
 @patch("app.services.task_log_service.get_settings")

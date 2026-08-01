@@ -1,0 +1,12 @@
+-- Migration: 彻底移除线路表 power_line 的废弃字段 tower_shape
+-- Date: 2026-08-01
+-- Description:
+--   power_line.tower_shape 为早期「一线路一塔型」简化模型的遗留字段，现已废弃。
+--   塔型的正确归属为杆塔级：power_line_tower.tower_model / tower_type，
+--   以及 tower_model / tower_profile 表。本脚本幂等删除该列。
+-- 幂等性：使用 DROP COLUMN IF EXISTS，兼容「库中存在该列」与「库中不存在该列」
+--   两种场景；若列不存在则静默跳过，不会报错。
+-- 注意：该列已从 ORM 模型（api/app/models/line.py）删除，应用启动时
+--   Base.metadata.create_all 不会自动删列，必须在发布流程中执行本脚本。
+
+ALTER TABLE power_line DROP COLUMN IF EXISTS tower_shape;

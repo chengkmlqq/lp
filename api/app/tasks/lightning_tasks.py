@@ -101,8 +101,26 @@ def _compute_ng_per_group(
 # ---------------------------------------------------------------------------
 # Celery 任务
 # ---------------------------------------------------------------------------
+def _capture(task_id: str, text: str) -> None:
+    """写入 TaskLogCapture 缓冲（实时流 + 终态 MinIO 日志的权威来源）。"""
+    try:
+        from ..core.task_log_capture import TaskLogCapture
+
+        buffer = TaskLogCapture.get(task_id)
+        if buffer is not None:
+            buffer.write(text)
+    except Exception:
+        pass
+
+
+def _append_log(log_parts: list[str], task_id: str, text: str) -> None:
+    """追加业务日志：写内存 log_parts（兼容旧 _upload_log 兜底）+ 同时写入采集器。"""
+    log_parts.append(text)
+    _capture(task_id, text)
+
+
 def _upload_log(task_id: str, log_parts: list[str]) -> None:
-    """上传任务日志（非致命错误）"""
+    """上传任务日志（非致命错误，capture 为权威，此处保留为兜底）"""
     try:
         from ..services.task_log_service import upload_task_log
 
@@ -148,7 +166,7 @@ def import_lightning_distribution_job(
             select(LightningDistribution).where(LightningDistribution.id == distribution_id)
         ).scalar_one_or_none()
         if not dist:
-            log_parts.append(f"[{task_id}] Distribution {distribution_id} not found, aborting")
+            _append_log(log_parts, task_id, f"[{task_id}] Distribution {distribution_id} not found, aborting")
             _upload_log(task_id, log_parts)
             return {"status": "failed", "error": "distribution not found"}
 
@@ -157,7 +175,7 @@ def import_lightning_distribution_job(
         dist.progress = 5
         dist.task_id = task_id
         db.commit()
-        log_parts.append(f"[{task_id}] source_object_key={dist.source_object_key}")
+        _append_log(log_parts, task_id, f"[{task_id}] source_object_key={dist.source_object_key}")
 
         # ---- 2. 从 MinIO 下载原始文件 ----
         content = minio_storage.get_object(dist.source_object_key)
@@ -180,7 +198,7 @@ def import_lightning_distribution_job(
         dist.stage = "statistics"
         dist.progress = 50
         db.commit()
-        log_parts.append(
+        _append_log(log_parts, task_id, 
             f"[{task_id}] Parsed {len(strikes)} strikes, skipped={skipped_count}, "
             f"warnings={len(warnings)}"
         )
@@ -202,7 +220,7 @@ def import_lightning_distribution_job(
         dist.stats_json = stats
         dist.progress = 75
         db.commit()
-        log_parts.append(
+        _append_log(log_parts, task_id, 
             f"[{task_id}] Stats: area={stats['area_km2']:.3f}km², "
             f"Ng={stats['overall_ng']:.4f}"
         )
@@ -219,9 +237,9 @@ def import_lightning_distribution_job(
             image_key = minio_storage.build_image_key(dist.id)
             minio_storage.put_object(image_key, png, content_type="image/png")
             dist.image_object_key = image_key
-            log_parts.append(f"[{task_id}] Image uploaded to {image_key}")
+            _append_log(log_parts, task_id, f"[{task_id}] Image uploaded to {image_key}")
         else:
-            log_parts.append(f"[{task_id}] matplotlib unavailable, skip image rendering")
+            _append_log(log_parts, task_id, f"[{task_id}] matplotlib unavailable, skip image rendering")
 
         dist.status = "completed"
         dist.progress = 100
@@ -240,8 +258,8 @@ def import_lightning_distribution_job(
         import traceback
 
         db.rollback()
-        log_parts.append(f"[{task_id}] FAILED: {exc}")
-        log_parts.append(traceback.format_exc())
+        _append_log(log_parts, task_id, f"[{task_id}] FAILED: {exc}")
+        _append_log(log_parts, task_id, traceback.format_exc())
         _upload_log(task_id, log_parts)
         try:
             dist = db.execute(
@@ -302,14 +320,14 @@ def fill_line_lightning_density_job(
         # ---- 步骤 1：获取线路和杆塔 ----
         line = db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
         if not line:
-            log_parts.append(f"[{task_id}] Line {line_id} not found, aborting")
+            _append_log(log_parts, task_id, f"[{task_id}] Line {line_id} not found, aborting")
             _upload_log(task_id, log_parts)
             return {"status": "failed", "error": "line not found"}
 
         group_size, radius_km_resolved, num4 = _resolve_params_for_voltage(line.voltage_kv)
         if radius_km is not None:
             radius_km_resolved = radius_km
-        log_parts.append(
+        _append_log(log_parts, task_id, 
             f"[{task_id}] Line '{line.name}' voltage={line.voltage_kv}kV -> "
             f"group_size={group_size}, radius={radius_km_resolved}km, num4={num4}"
         )
@@ -321,7 +339,7 @@ def fill_line_lightning_density_job(
         ).scalars().all()
 
         if not towers:
-            log_parts.append(f"[{task_id}] No towers found for line {line_id}, aborting")
+            _append_log(log_parts, task_id, f"[{task_id}] No towers found for line {line_id}, aborting")
             _upload_log(task_id, log_parts)
             return {"status": "failed", "error": "no towers"}
 
@@ -331,11 +349,11 @@ def fill_line_lightning_density_job(
             if t.longitude is not None and t.latitude is not None
         ]
         if not geo_towers:
-            log_parts.append(f"[{task_id}] No towers with geo coordinates, aborting")
+            _append_log(log_parts, task_id, f"[{task_id}] No towers with geo coordinates, aborting")
             _upload_log(task_id, log_parts)
             return {"status": "failed", "error": "no geo towers"}
 
-        log_parts.append(f"[{task_id}] Total towers={len(towers)}, with_geo={len(geo_towers)}")
+        _append_log(log_parts, task_id, f"[{task_id}] Total towers={len(towers)}, with_geo={len(geo_towers)}")
 
         groups: list[dict[str, Any]] = []
         for i in range(0, len(geo_towers), group_size):
@@ -349,7 +367,7 @@ def fill_line_lightning_density_job(
                 "center_lon": avg_lon,
             })
 
-        log_parts.append(f"[{task_id}] Created {len(groups)} groups")
+        _append_log(log_parts, task_id, f"[{task_id}] Created {len(groups)} groups")
 
         # ---- 步骤 3：读取落雷集合（仅来自 LightningDistribution + MinIO）----
         dist = db.execute(
@@ -362,7 +380,7 @@ def fill_line_lightning_density_job(
         ).scalars().first()
 
         if not dist or not dist.source_object_key:
-            log_parts.append(
+            _append_log(log_parts, task_id, 
                 f"[{task_id}] No completed LightningDistribution for line {line_id}, "
                 f"fill aborted (point table is no longer used)"
             )
@@ -372,20 +390,20 @@ def fill_line_lightning_density_job(
         try:
             content = minio_storage.get_object(dist.source_object_key)
         except Exception as exc:
-            log_parts.append(f"[{task_id}] Failed to read source file from MinIO: {exc}")
+            _append_log(log_parts, task_id, f"[{task_id}] Failed to read source file from MinIO: {exc}")
             _upload_log(task_id, log_parts)
             return {"status": "failed", "error": f"minio read failed: {exc}"}
 
         try:
             text = lightning_statistics.decode_text_bytes(content)
         except Exception as exc:
-            log_parts.append(f"[{task_id}] Failed to decode source file: {exc}")
+            _append_log(log_parts, task_id, f"[{task_id}] Failed to decode source file: {exc}")
             _upload_log(task_id, log_parts)
             return {"status": "failed", "error": f"decode failed: {exc}"}
 
         all_strikes = lightning_statistics.parse_distribution_content(text)
         if not all_strikes:
-            log_parts.append(f"[{task_id}] No strikes parsed from source file, aborting")
+            _append_log(log_parts, task_id, f"[{task_id}] No strikes parsed from source file, aborting")
             _upload_log(task_id, log_parts)
             return {"status": "failed", "error": "no strikes in source file"}
 
@@ -414,7 +432,7 @@ def fill_line_lightning_density_job(
         ]
 
         if not lightning_strikes:
-            log_parts.append(f"[{task_id}] No lightning data in bounding box, returning empty")
+            _append_log(log_parts, task_id, f"[{task_id}] No lightning data in bounding box, returning empty")
             _upload_log(task_id, log_parts)
             return {"status": "done", "updated_tower_count": 0, "note": "no lightning data"}
 
@@ -424,7 +442,7 @@ def fill_line_lightning_density_job(
         else:
             data_years = max(float(dist.data_years or 1.0), 1e-6)
 
-        log_parts.append(
+        _append_log(log_parts, task_id, 
             f"[{task_id}] Found {len(lightning_strikes)} strikes, data_years={data_years:.2f}"
         )
 
@@ -459,7 +477,7 @@ def fill_line_lightning_density_job(
                 updated_count += 1
 
         db.commit()
-        log_parts.append(f"[{task_id}] Updated {updated_count} towers with Ng values")
+        _append_log(log_parts, task_id, f"[{task_id}] Updated {updated_count} towers with Ng values")
 
         _upload_log(task_id, log_parts)
         return {
@@ -473,8 +491,8 @@ def fill_line_lightning_density_job(
         db.rollback()
         import traceback
 
-        log_parts.append(f"[{task_id}] FAILED: {exc}")
-        log_parts.append(traceback.format_exc())
+        _append_log(log_parts, task_id, f"[{task_id}] FAILED: {exc}")
+        _append_log(log_parts, task_id, traceback.format_exc())
         _upload_log(task_id, log_parts)
         raise
 
@@ -561,7 +579,7 @@ def import_lightning_current_job(
             notes=notes,
         )
 
-        log_parts.append(
+        _append_log(log_parts, task_id, 
             f"[{task_id}] Done: imported={result.imported_count}, "
             f"skipped={result.skipped_count}, "
             f"warnings={result.warning_count}"
@@ -593,8 +611,8 @@ def import_lightning_current_job(
     except Exception as exc:
         import traceback
 
-        log_parts.append(f"[{task_id}] FAILED: {exc}")
-        log_parts.append(traceback.format_exc())
+        _append_log(log_parts, task_id, f"[{task_id}] FAILED: {exc}")
+        _append_log(log_parts, task_id, traceback.format_exc())
         _upload_log(task_id, log_parts)
 
         # Update batch status to failed

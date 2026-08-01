@@ -5,7 +5,12 @@ from datetime import datetime, timezone
 from celery import signals
 
 from ..core.database import SessionLocal
+from ..core.task_log_capture import TaskLogCapture
 from ..models.task_history import TaskHistory
+from ..services.task_log_service import (
+    TaskLogServiceError,
+    upload_task_log,
+)
 
 
 def _get_db_task(task_id: str) -> TaskHistory | None:
@@ -30,6 +35,7 @@ def _upsert_task(
     done_at: datetime | None = None,
     runtime_seconds: float | None = None,
     error: str | None = None,
+    log_path: str | None = None,
 ) -> None:
     """Create or update a task record in the DB."""
     db = SessionLocal()
@@ -59,10 +65,48 @@ def _upsert_task(
             record.runtime_seconds = runtime_seconds
         if error is not None:
             record.error = error
+        if log_path is not None:
+            record.log_path = log_path
 
         db.commit()
     finally:
         db.close()
+
+
+def _persist_log(task_id: str, full_text: str) -> str | None:
+    """
+    任务终态持久化：上传全量日志到 MinIO 固定路径，返回 log_path。
+    上传失败不抛异常（避免信号阻断任务收尾），返回 None，由调用方记录 error 字段提示。
+    """
+    try:
+        log_path, _uploaded_at = upload_task_log(task_id, full_text)
+        return log_path
+    except TaskLogServiceError:
+        return None
+
+
+def _finalize_task_log(task_id: str) -> None:
+    """
+    任务收尾（task_postrun / task_revoked 内调用）：
+      1. 先 flush 增量（含 Celery 的 succeeded/failed 边界日志 —— postrun 在日志输出之后触发）
+      2. 卸载采集器并取全量文本
+      3. 上传 MinIO 固定路径 + 写回 log_path
+    上传失败不阻断：log_path 不写，error 字段追加提示（成功任务无 error 时写入）。
+    """
+    full_lines = TaskLogCapture.stop(task_id)
+    if not full_lines:
+        return
+    full_text = "\n".join(full_lines)
+    log_path = _persist_log(task_id, full_text)
+
+    if log_path:
+        _upsert_task(task_id, log_path=log_path)
+        return
+
+    # 上传失败：log_path 不写，保留 Redis 数据供页面降级展示，error 字段提示
+    record = _get_db_task(task_id)
+    if record is not None and not record.error:
+        _upsert_task(task_id, error="日志未持久化（MinIO 不可用）")
 
 
 @signals.task_prerun.connect
@@ -77,6 +121,22 @@ def on_task_prerun(task_id=None, task=None, **kwargs):  # type: ignore[no-untype
         state="STARTED",
         started_at=started_at,
     )
+    # 新增：安装采集器，从任务开始捕获 Celery / print / 业务日志
+    TaskLogCapture.start(task_id)
+
+
+@signals.task_postrun.connect
+def on_task_postrun(sender=None, task_id=None, task=None, **kwargs):  # type: ignore[no-untyped-def]
+    """
+    Finalize task execution log capture (SUCCESS / FAILURE / REJECTED).
+
+    注意：不要把它放在 task_success / task_failure 里 —— 这两个信号在 Celery 输出
+    "Task xxx succeeded" / "raised unexpected" 边界日志**之前**触发，此时停止采集会
+    丢掉边界日志；task_postrun 在 finally 块中、所有边界日志输出**之后**触发。
+    """
+    if not task_id:
+        return
+    _finalize_task_log(task_id)
 
 
 @signals.task_success.connect
@@ -138,6 +198,7 @@ def on_task_revoked(sender=None, request=None, terminated=None, signum=None, exp
     if not task_id:
         return
 
+    _finalize_task_log(task_id)
     _upsert_task(
         task_id,
         state="REVOKED",

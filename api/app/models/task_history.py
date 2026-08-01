@@ -18,6 +18,7 @@ class TaskHistory(Base):
         Index("idx_celery_task_history_create_date", "create_date"),
         Index("idx_celery_task_history_done_at", "done_at"),
         Index("idx_celery_task_history_worker", "worker"),
+        Index("idx_celery_task_history_log_path", "log_path"),
     )
 
     task_id: Mapped[str] = mapped_column(String(255), primary_key=True)
@@ -31,5 +32,6 @@ class TaskHistory(Base):
     done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     runtime_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    log_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     create_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow)
     update_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

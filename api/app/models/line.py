@@ -30,7 +30,6 @@ class Line(Base):
     code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     voltage_kv: Mapped[int | None] = mapped_column(Integer, index=True)
-    tower_shape: Mapped[str | None] = mapped_column(String(64))
     phase_sequence_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     arrester_install_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     lightning_param_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

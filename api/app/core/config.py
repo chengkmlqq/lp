@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     flower_basic_auth: str = ""
     worker_registry_ttl_seconds: int = 90
 
+    # --- 任务实时执行日志（SSE 流式） ---
+    task_log_flush_interval_seconds: float = 3.0      # worker 增量 flush 周期
+    task_log_redis_db: int = 0                        # 复用 broker 库(0)
+    task_log_redis_ttl_seconds: int = 86400           # Redis Stream 数据 TTL（1 天）
+    task_log_max_buffer_lines: int = 100_000          # 单任务内存缓冲上限（超限丢最旧行并计数）
+    task_log_redis_key_prefix: str = "task_log"       # key 前缀（task_log:{task_id}）
+    task_log_sse_heartbeat_seconds: int = 15          # SSE 心跳间隔（配置项，XREAD BLOCK 用之）
+
     wine_binary_path: str = "wine"
     wine_allowed_root: str = "./data/wine"
     wine_default_timeout_seconds: int = 300
@@ -94,6 +102,9 @@ class Settings(BaseSettings):
         "wine_max_timeout_seconds",
         "atp_engine_default_timeout_seconds",
         "atp_engine_max_timeout_seconds",
+        "task_log_redis_ttl_seconds",
+        "task_log_max_buffer_lines",
+        "task_log_sse_heartbeat_seconds",
     )
     @classmethod
     def validate_positive_numbers(cls, value: int) -> int:

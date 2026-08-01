@@ -64,7 +64,13 @@ class LineContractTest(unittest.TestCase):
         self.assertNotIn("tower_shape:", export_source)
         self.assertNotIn("status:", export_source)
 
-    def test_line_tower_csv_export_header_excludes_tower_shape(self) -> None:
+    def test_line_tower_csv_export_header_keeps_line_tower_tower_type(self) -> None:
+        """线路杆塔 CSV 导出表头保留「塔形」（映射 tower.tower_type，杆塔级合法字段）。
+
+        此前的断言（表头不得含「塔形」）源自早期线路级 tower_shape 残留的收口，
+        与当前「一线路多塔型」结构不符；「塔形」列实际导出 tower.tower_type，
+        属杆塔级合法字段，应保留。
+        """
         module = _load_module(SERVICE_FILE)
         function = _function_node(module, "export_line_towers_to_csv")
         header_values: list[str] | None = None
@@ -84,7 +90,7 @@ class LineContractTest(unittest.TestCase):
                 break
 
         self.assertIsNotNone(header_values)
-        self.assertNotIn("塔形", header_values)
+        self.assertIn("塔形", header_values)
 
 
 if __name__ == "__main__":

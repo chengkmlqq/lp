@@ -28,7 +28,7 @@ import { SearchOutlined } from "@ant-design/icons";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
-import { readApiError } from "@/lib/api";
+import { readApiError, API_BASE_URL } from "@/lib/api";
 import { getTaskDisplayName } from "@/lib/celery-task-display";
 import {
   formatTaskMonitorDuration,
@@ -206,6 +206,7 @@ export default function AdminTaskMonitorPage() {
   const [logModalTaskId, setLogModalTaskId] = useState("");
   const [logModalLoading, setLogModalLoading] = useState(false);
   const [logModalStreaming, setLogModalStreaming] = useState(false);
+  const [logModalStatus, setLogModalStatus] = useState("");
   const logEventSourceRef = useRef<EventSource | null>(null);
   const logModalContentRef = useRef<HTMLPreElement | null>(null);
 
@@ -216,33 +217,109 @@ export default function AdminTaskMonitorPage() {
     setIsLoadingMore(false);
   }, []);
 
+  const closeLogEventSource = useCallback(() => {
+    const es = logEventSourceRef.current;
+    if (es) {
+      es.close();
+      logEventSourceRef.current = null;
+    }
+  }, []);
+
   const handleViewLog = async (taskId: string) => {
     setLogModalTaskId(taskId);
     setLogModalVisible(true);
     setLogModalLoading(true);
     setLogModalContent("");
+    setLogModalStatus("");
+    setLogModalStreaming(false);
+    closeLogEventSource();
 
     try {
-      const response = await fetchWithAuth(`/api/v1/admin/task-logs/${encodeURIComponent(taskId)}`);
-      if (!response.ok) {
-        const errorText = await readApiError(response);
-        throw new Error(errorText);
+      // 1. 先签发一次性 ticket（复用 /api/v1/ws/ticket）
+      const ticketRes = await fetchWithAuth("/api/v1/ws/ticket", { method: "POST" });
+      if (!ticketRes.ok) {
+        const errorText = await readApiError(ticketRes);
+        throw new Error(errorText || "获取日志凭证失败");
       }
-      const data = await response.json();
-      setLogModalContent(data.log_content || "日志内容为空");
+      const ticketPayload = (await ticketRes.json()) as { ticket: string };
+      if (!ticketPayload.ticket) {
+        throw new Error("获取日志凭证失败");
+      }
+
+      // 2. 建立 SSE 连接（EventSource 无法自定义 Authorization header，走 ticket 查询参数）
+      const es = new EventSource(
+        `${API_BASE_URL}/api/v1/admin/task-logs/${encodeURIComponent(taskId)}/sse?ticket=${encodeURIComponent(ticketPayload.ticket)}`,
+      );
+      logEventSourceRef.current = es;
+
+      es.onopen = () => {
+        setLogModalLoading(false);
+        setLogModalStreaming(true);
+      };
+
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data) as { line?: string; lines?: string };
+          const linesText = data.lines;
+          const singleLine = data.line;
+          if (linesText) {
+            setLogModalContent(linesText);
+          } else if (singleLine) {
+            setLogModalContent((prev) => (prev ? `${prev}\n${singleLine}` : singleLine));
+          }
+        } catch {
+          // 忽略无法解析的 SSE 数据
+        }
+      };
+
+      es.addEventListener("done", () => {
+        es.close();
+        logEventSourceRef.current = null;
+        setLogModalStreaming(false);
+        setLogModalStatus("任务已完成");
+      });
+
+      es.addEventListener("error", (e) => {
+        // error 事件也可能由 `event: error` 自定义事件触发
+        const eventSourceError = e as MessageEvent<string>;
+        try {
+          const data = JSON.parse(eventSourceError.data ?? "") as { message?: string };
+          if (data.message) {
+            setLogModalContent(data.message);
+          }
+        } catch {
+          // 普通连接错误（EventSource 自动重连，无需处理）
+        }
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "获取日志失败";
       setLogModalContent(`错误：${errorMessage}`);
-    } finally {
       setLogModalLoading(false);
     }
   };
 
   const handleCloseLogModal = () => {
+    closeLogEventSource();
     setLogModalVisible(false);
     setLogModalTaskId("");
     setLogModalContent("");
+    setLogModalStatus("");
+    setLogModalStreaming(false);
   };
+
+  // 组件卸载时断开 SSE
+  useEffect(() => () => closeLogEventSource(), [closeLogEventSource]);
+
+  // 日志追加时自动滚底（仅流式场景）
+  useEffect(() => {
+    if (!logModalStreaming || logModalStatus) {
+      return;
+    }
+    const el = logModalContentRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [logModalContent, logModalStreaming, logModalStatus]);
 
   const workersOverviewQuery = useQuery({
     queryKey: ["flower-workers-overview"],
@@ -922,21 +999,35 @@ export default function AdminTaskMonitorPage() {
             <Spin tip="加载日志中..." />
           </div>
         ) : (
-          <pre
-            style={{
-              maxHeight: "60vh",
-              overflow: "auto",
-              padding: "16px",
-              backgroundColor: "#f5f5f5",
-              borderRadius: "4px",
-              fontSize: "12px",
-              lineHeight: "1.5",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-            }}
-          >
-            {logModalContent}
-          </pre>
+          <>
+            {logModalStreaming && !logModalStatus && (
+              <div style={{ marginBottom: 8, fontSize: 12, color: "var(--gray-11)" }}>
+                <Spin size="small" style={{ marginRight: 6 }} />
+                任务运行中，实时接收日志...
+              </div>
+            )}
+            {logModalStatus && (
+              <div style={{ marginBottom: 8, fontSize: 12, color: "var(--gray-11)" }}>
+                {logModalStatus}
+              </div>
+            )}
+            <pre
+              ref={logModalContentRef}
+              style={{
+                maxHeight: "60vh",
+                overflow: "auto",
+                padding: "16px",
+                backgroundColor: "#f5f5f5",
+                borderRadius: "4px",
+                fontSize: "12px",
+                lineHeight: "1.5",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}
+            >
+              {logModalContent}
+            </pre>
+          </>
         )}
       </Modal>
     </div>
