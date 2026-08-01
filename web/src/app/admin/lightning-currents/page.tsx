@@ -14,6 +14,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Progress,
   Row,
   Select,
   Space,
@@ -25,7 +26,7 @@ import {
   type CardProps,
   type MenuProps,
 } from "antd";
-import { MoreOutlined, QuestionCircleOutlined, EditOutlined, SearchOutlined } from "@ant-design/icons";
+import { MoreOutlined, QuestionCircleOutlined, SearchOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
@@ -38,14 +39,11 @@ import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
 import type {
-  LightningCurrentEventListResponse,
-  LightningCurrentEventSummary,
+  LightningAmplitudeRecord,
+  LightningAmplitudeListResponse,
+  LightningAmplitudeImportResponse,
+  LightningAmplitudeStatusResponse,
   LightningCurrentExceedanceResponse,
-  LightningCurrentImportResponse,
-  LightningCurrentSampleListResponse,
-  LightningCurrentSampleItem,
-  LightningImportBatchSummary,
-  LightningImportBatchListResponse,
   LightningPolarity,
 } from "@/types/auth";
 import { CHINESE_CITIES, type CityOption } from "@/data/chinese-cities";
@@ -70,6 +68,13 @@ const INITIAL_IMPORT_VALUES: ImportFormValues = {
   notes: "",
   location_tag: "",
   event_time: null,
+};
+
+const STATUS_META: Record<string, { color: string; label: string }> = {
+  pending: { color: "default", label: "待处理" },
+  processing: { color: "processing", label: "导入中" },
+  completed: { color: "success", label: "已完成" },
+  failed: { color: "error", label: "失败" },
 };
 
 function formatNullable(value: number | string | null | undefined): string {
@@ -110,17 +115,15 @@ export default function AdminLightningCurrentsPage() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [exceedanceModalOpen, setExceedanceModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [sampleModalOpen, setSampleModalOpen] = useState(false);
-  const [selectedEventForModal, setSelectedEventForModal] = useState<LightningCurrentEventSummary | null>(null);
+  const [selectedRecordForModal, setSelectedRecordForModal] = useState<LightningAmplitudeRecord | null>(null);
+  const [activeImportId, setActiveImportId] = useState<string | null>(null);
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
-  const [samplePage, setSamplePage] = useState(1);
-  const [samplePageSize, setSamplePageSize] = useState(50);
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const viewMode: "table" | "card" = isMobile ? "card" : "table";
   const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedEvents, setAllLoadedEvents] = useState<LightningCurrentEventSummary[]>([]);
+  const [allLoadedRecords, setAllLoadedRecords] = useState<LightningAmplitudeRecord[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -129,7 +132,7 @@ export default function AdminLightningCurrentsPage() {
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
 
   const trimmedKeyword = searchKeyword.trim();
-  const eventListParams = useMemo(() => {
+  const listParams = useMemo(() => {
     const params = new URLSearchParams();
     params.set("limit", String(paginationPageSize));
     params.set("offset", String((paginationCurrent - 1) * paginationPageSize));
@@ -138,51 +141,53 @@ export default function AdminLightningCurrentsPage() {
     }
     return params.toString();
   }, [paginationCurrent, paginationPageSize, trimmedKeyword]);
-  const eventListPath = `/api/v1/lightning-currents?${eventListParams}`;
+  const listPath = `/api/v1/lightning-currents/amplitudes?${listParams}`;
 
-  const eventsQuery = useQuery({
-    queryKey: [eventListPath],
+  const recordsQuery = useQuery({
+    queryKey: [listPath],
     enabled: !!user && canRead,
-    queryFn: async () => {
-      const response = await fetchWithAuth(eventListPath);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LightningCurrentEventListResponse;
-    },
-  });
-
-  const events = useMemo(() => eventsQuery.data?.items ?? [], [eventsQuery.data?.items]);
-
-  // ---- 导入批次状态查询 ----
-  const importBatchesPath = "/api/v1/lightning-currents/import-batches?limit=100&import_type=waveform";
-  const importBatchesQuery = useQuery({
-    queryKey: [importBatchesPath],
-    enabled: !!user && canRead,
-    queryFn: async () => {
-      const response = await fetchWithAuth(importBatchesPath);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LightningImportBatchListResponse;
-    },
     refetchInterval: 5000,
+    queryFn: async () => {
+      const response = await fetchWithAuth(listPath);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LightningAmplitudeListResponse;
+    },
   });
-  const activeBatches = useMemo(
-    () => (importBatchesQuery.data?.items ?? []).filter(
-      (b) => b.status === "pending" || b.status === "processing" || b.status === "failed",
-    ),
-    [importBatchesQuery.data?.items],
-  );
 
-  const exceedancePath = useMemo(() => {
-    if (!selectedEventForModal?.id) return "";
-    return `/api/v1/lightning-currents/stats/exceedance`;
-  }, [selectedEventForModal?.id]);
+  const records = useMemo(() => recordsQuery.data?.items ?? [], [recordsQuery.data?.items]);
+
+  // ---- 导入任务进度轮询 ----
+  const importStatusPath = activeImportId
+    ? `/api/v1/lightning-currents/amplitudes/${activeImportId}/status`
+    : null;
+  const importStatusQuery = useQuery({
+    queryKey: [importStatusPath],
+    enabled: !!importStatusPath,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === "completed" || status === "failed") return false;
+      return 2000;
+    },
+    queryFn: async () => {
+      if (!importStatusPath) return null;
+      const response = await fetchWithAuth(importStatusPath);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LightningAmplitudeStatusResponse;
+    },
+  });
+
+  const activeRecord = importStatusQuery.data?.record ?? null;
+  const activeStatus = importStatusQuery.data?.status;
+
+  const exceedancePath = `/api/v1/lightning-currents/stats/exceedance`;
 
   const exceedanceQuery = useQuery({
-    queryKey: [exceedancePath, selectedEventForModal?.id],
-    enabled: !!user && canRead && exceedanceModalOpen && !!selectedEventForModal,
+    queryKey: [exceedancePath],
+    enabled: !!user && canRead && exceedanceModalOpen,
     queryFn: async () => {
       const response = await fetchWithAuth(exceedancePath);
       if (!response.ok) {
@@ -192,33 +197,11 @@ export default function AdminLightningCurrentsPage() {
     },
   });
 
-  const samplePath = useMemo(() => {
-    if (!selectedEventForModal?.id) return "";
-    const offset = (samplePage - 1) * samplePageSize;
-    return `/api/v1/lightning-currents/${selectedEventForModal.id}/samples?limit=${samplePageSize}&offset=${offset}`;
-  }, [selectedEventForModal?.id, samplePage, samplePageSize]);
-
-  const samplesQuery = useQuery({
-    queryKey: [samplePath],
-    enabled: !!user && canRead && sampleModalOpen && !!selectedEventForModal,
-    queryFn: async () => {
-      if (!samplePath) {
-        return { items: [], total: 0, limit: 0, offset: 0 } satisfies LightningCurrentSampleListResponse;
-      }
-      const response = await fetchWithAuth(samplePath);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LightningCurrentSampleListResponse;
-    },
-  });
-
-  const listError = eventsQuery.error instanceof Error ? eventsQuery.error.message : "";
-  const sampleError = samplesQuery.error instanceof Error ? samplesQuery.error.message : "";
+  const listError = recordsQuery.error instanceof Error ? recordsQuery.error.message : "";
   const statsError = exceedanceQuery.error instanceof Error ? exceedanceQuery.error.message : "";
 
   useToastFeedback({
-    errorMessage: error || listError || sampleError || statsError,
+    errorMessage: error || listError || statsError,
     successMessage: success,
     clearError: () => setError(""),
     clearSuccess: () => setSuccess(""),
@@ -274,24 +257,24 @@ export default function AdminLightningCurrentsPage() {
       return;
     }
     window.requestAnimationFrame(updateTableScrollY);
-  }, [error, listError, sampleError, statsError, events.length, eventsQuery.isFetching, updateTableScrollY, viewMode]);
+  }, [error, listError, statsError, records.length, recordsQuery.isFetching, updateTableScrollY, viewMode]);
 
   useEffect(() => {
-    if (viewMode !== "card" || eventsQuery.isLoading) {
+    if (viewMode !== "card" || recordsQuery.isLoading) {
       return;
     }
 
     const frameId = window.requestAnimationFrame(() => {
       if (cardViewPage === 1) {
-        setAllLoadedEvents(() => events);
+        setAllLoadedRecords(() => records);
       } else {
-        setAllLoadedEvents((prev) => {
-          if (events.length === 0) {
+        setAllLoadedRecords((prev) => {
+          if (records.length === 0) {
             return prev;
           }
           const existingIds = new Set(prev.map(e => e.id));
-          const newEvents = events.filter(e => !existingIds.has(e.id));
-          return [...prev, ...newEvents];
+          const newRecords = records.filter(e => !existingIds.has(e.id));
+          return [...prev, ...newRecords];
         });
       }
       setIsLoadingMore(false);
@@ -300,7 +283,7 @@ export default function AdminLightningCurrentsPage() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [events, eventsQuery.isLoading, viewMode, cardViewPage]);
+  }, [records, recordsQuery.isLoading, viewMode, cardViewPage]);
 
   useEffect(() => {
     if (viewMode !== "card") return;
@@ -312,15 +295,15 @@ export default function AdminLightningCurrentsPage() {
     if (!cardBody) return;
 
     const handleScroll = () => {
-      if (isLoadingMore || eventsQuery.isLoading) return;
+      if (isLoadingMore || recordsQuery.isLoading) return;
 
       const scrollTop = cardBody.scrollTop;
       const scrollHeight = cardBody.scrollHeight;
       const clientHeight = cardBody.clientHeight;
 
       if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const total = eventsQuery.data?.total ?? 0;
-        const loadedCount = allLoadedEvents.length;
+        const total = recordsQuery.data?.total ?? 0;
+        const loadedCount = allLoadedRecords.length;
 
         if (loadedCount < total) {
           setIsLoadingMore(true);
@@ -332,7 +315,7 @@ export default function AdminLightningCurrentsPage() {
 
     cardBody.addEventListener("scroll", handleScroll);
     return () => cardBody.removeEventListener("scroll", handleScroll);
-  }, [viewMode, isLoadingMore, eventsQuery.isLoading, eventsQuery.data?.total, allLoadedEvents.length]);
+  }, [viewMode, isLoadingMore, recordsQuery.isLoading, recordsQuery.data?.total, allLoadedRecords.length]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -375,6 +358,27 @@ export default function AdminLightningCurrentsPage() {
     };
   }, [updateTableScrollY, viewMode]);
 
+  // 导入任务完成/失败时的反馈
+  useEffect(() => {
+    if (!activeImportId) return;
+    if (activeStatus === "completed") {
+      if (activeRecord) {
+        setSuccess(
+          `导入完成：采样点 ${activeRecord.sample_count} 个，峰值 ${formatNumber(activeRecord.peak_abs_current_ka, 2)}kA`,
+        );
+      } else {
+        setSuccess("导入完成");
+      }
+      setActiveImportId(null);
+    } else if (activeStatus === "failed") {
+      setError(activeRecord?.error_message || "导入失败，请在列表中对失败记录执行重试");
+      setActiveImportId(null);
+    }
+  }, [activeStatus, activeImportId, activeRecord]);
+
+  // 导入中弹窗展示进度
+  const importProgressModalOpen = !!activeImportId && (activeStatus === "processing" || activeStatus === "pending");
+
   const importMutation = useMutation({
     mutationFn: async (file: File) => {
       if (!canManage) {
@@ -403,17 +407,12 @@ export default function AdminLightningCurrentsPage() {
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return (await response.json()) as LightningCurrentImportResponse;
+      return (await response.json()) as LightningAmplitudeImportResponse;
     },
     onSuccess: async (payload) => {
       setError("");
-      setSuccess(
-        payload.task_id
-          ? `导入任务已提交（任务ID: ${payload.task_id}），正在后台处理`
-          : payload.warning_count > 0
-            ? `导入任务已提交，存在 ${payload.warning_count} 条告警`
-            : "导入任务已提交，正在后台处理",
-      );
+      setSuccess(`导入任务已提交（任务ID: ${payload.task_id}），正在后台处理`);
+      setActiveImportId(payload.amplitude_id);
       setImportModalOpen(false);
       importForm.resetFields();
       setSelectedFile(null);
@@ -426,18 +425,18 @@ export default function AdminLightningCurrentsPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (eventId: string) => {
-      const response = await fetchWithAuth(`/api/v1/lightning-currents/${eventId}`, {
+    mutationFn: async (record: LightningAmplitudeRecord) => {
+      const response = await fetchWithAuth(`/api/v1/lightning-currents/amplitudes/${record.id}`, {
         method: "DELETE",
       });
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return eventId;
+      return record.id;
     },
     onSuccess: async () => {
       setError("");
-      setSuccess("雷电流事件已删除");
+      setSuccess("雷电流幅值记录已删除");
       await refreshAll();
     },
     onError: (candidate) => {
@@ -446,66 +445,110 @@ export default function AdminLightningCurrentsPage() {
     },
   });
 
-  const openExceedanceModal = (event: LightningCurrentEventSummary) => {
-    setSelectedEventForModal(event);
+  const retryMutation = useMutation({
+    mutationFn: async (record: LightningAmplitudeRecord) => {
+      if (!canManage) {
+        throw new Error("缺少 lightning.manage 权限");
+      }
+      const response = await fetchWithAuth(`/api/v1/lightning-currents/amplitudes/${record.id}/retry`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LightningAmplitudeImportResponse;
+    },
+    onSuccess: async (payload) => {
+      setError("");
+      setSuccess(`重试任务已提交（任务ID: ${payload.task_id}）`);
+      setActiveImportId(payload.amplitude_id);
+      await refreshAll();
+    },
+    onError: (candidate) => {
+      setSuccess("");
+      setError(candidate instanceof Error ? candidate.message : "重试失败");
+    },
+  });
+
+  const openExceedanceModal = () => {
     setExceedanceModalOpen(true);
   };
 
-  const openDetailModal = (event: LightningCurrentEventSummary) => {
-    setSelectedEventForModal(event);
+  const openDetailModal = (record: LightningAmplitudeRecord) => {
+    setSelectedRecordForModal(record);
     setDetailModalOpen(true);
-  };
-
-  const openSampleModal = (event: LightningCurrentEventSummary) => {
-    setSelectedEventForModal(event);
-    setSamplePage(1);
-    setSampleModalOpen(true);
   };
 
   const handleKeywordChange = (value: string) => {
     setKeywordInput(value);
   };
 
-  const renderLightningEventCard = (event: LightningCurrentEventSummary) => {
+  const handleSearch = () => {
+    setSearchKeyword(keywordInput);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    setCardViewPage(1);
+    setAllLoadedRecords([]);
+    void queryClient.refetchQueries({ queryKey: [listPath] });
+  };
+
+  const renderRecordCard = (record: LightningAmplitudeRecord) => {
     const moreMenuItems: MenuProps["items"] = [
       {
-        key: "exceedance",
-        label: "峰值超越概率",
-        onClick: () => openExceedanceModal(event),
+        key: "detail",
+        label: "详情",
+        onClick: () => openDetailModal(record),
       },
       {
         type: "divider",
       },
-      {
-        key: "delete",
-        label: "删除",
-        danger: true,
-        disabled: !canManage,
-        onClick: () => {
-          Modal.confirm({
-            title: "删除事件",
-            content: `确认删除事件 ${event.event_id} 吗？`,
-            okText: "删除",
-            cancelText: "取消",
-            okButtonProps: { danger: true },
-            onOk: async () => {
-              await deleteMutation.mutateAsync(event.id);
+      ...(record.status === "failed" && canManage
+        ? [
+            {
+              key: "retry",
+              label: "重试",
+              onClick: () => retryMutation.mutate(record),
             },
-          });
-        },
-      },
+            {
+              type: "divider" as const,
+            },
+          ]
+        : []),
+      ...(canManage
+        ? [
+            {
+              key: "delete",
+              label: "删除",
+              danger: true as const,
+              onClick: () => {
+                Modal.confirm({
+                  title: "删除记录",
+                  content: `确认删除记录 ${record.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true },
+                  onOk: async () => {
+                    await deleteMutation.mutateAsync(record);
+                  },
+                });
+              },
+            },
+          ]
+        : []),
     ];
+
+    const meta = STATUS_META[record.status] ?? { color: "default", label: record.status };
 
     return (
       <AntCard
-        key={event.id}
+        key={record.id}
         className="admin-lightning-events-card"
         size="small"
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong ellipsis>
-              {event.source_file_name || "-"}
+              {record.source_file_name || "-"}
             </Typography.Text>
+            <Tag color={meta.color}>{meta.label}</Tag>
           </Space>
         }
         extra={
@@ -517,88 +560,117 @@ export default function AdminLightningCurrentsPage() {
         <Space direction="vertical" size={10} style={{ width: "100%" }}>
           <div className="admin-lightning-events-card-field">
             <Typography.Text type="secondary">城市</Typography.Text>
-            <Typography.Text>{event.city || "-"}</Typography.Text>
+            <Typography.Text>{record.city || "-"}</Typography.Text>
           </div>
           <div className="admin-lightning-events-card-field">
             <Typography.Text type="secondary">安装位置</Typography.Text>
-            <Typography.Text>{event.install_position || "-"}</Typography.Text>
+            <Typography.Text>{record.install_position || "-"}</Typography.Text>
           </div>
           <div className="admin-lightning-events-card-field">
             <Typography.Text type="secondary">传感器型号</Typography.Text>
-            <Typography.Text>{event.sensor_model || "-"}</Typography.Text>
+            <Typography.Text>{record.sensor_model || "-"}</Typography.Text>
           </div>
           <div className="admin-lightning-events-card-field">
             <Typography.Text type="secondary">采样点数</Typography.Text>
-            <Typography.Text>{event.sample_count}</Typography.Text>
+            <Typography.Text>{record.sample_count}</Typography.Text>
           </div>
-          <Space wrap style={{ width: "100%", justifyContent: "flex-start" }}>
-            <Button
-              size="small"
-              onClick={() => openDetailModal(event)}
-            >
-              详情
-            </Button>
-            <Button
-              size="small"
-              onClick={() => openSampleModal(event)}
-            >
-              预览
-            </Button>
-          </Space>
+          {record.status === "processing" && (
+            <Progress percent={record.progress} size="small" />
+          )}
         </Space>
       </AntCard>
     );
   };
 
-  const eventColumns = useMemo<ColumnsType<LightningCurrentEventSummary>>(
+  const columns = useMemo<ColumnsType<LightningAmplitudeRecord>>(
     () => [
       {
         title: "文件名称",
         dataIndex: "source_file_name",
         width: 200,
-        render: (value: string | null) => value || "-",
+        render: (value: string) => value || "-",
       },
       {
         title: "城市",
         dataIndex: "city",
-        width: 120,
+        width: 110,
         render: (value: string | null) => value || "-",
       },
       {
         title: "导入时间",
         dataIndex: "create_date",
-        width: 180,
-        render: (value: string) => {
-          const date = new Date(value);
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          const hour = String(date.getHours()).padStart(2, '0');
-          const minute = String(date.getMinutes()).padStart(2, '0');
-          const second = String(date.getSeconds()).padStart(2, '0');
-          return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
-        },
+        width: 170,
+        render: (value: string) => new Date(value).toLocaleString("zh-CN", { hour12: false }),
       },
       {
         title: "采样点数",
         dataIndex: "sample_count",
         width: 100,
+        render: (value: number) => value ?? 0,
+      },
+      {
+        title: "峰值(kA)",
+        dataIndex: "peak_abs_current_ka",
+        width: 100,
+        render: (value: number | null) => formatNumber(value, 2),
+      },
+      {
+        title: "极性",
+        dataIndex: "polarity",
+        width: 90,
+        render: (value: LightningPolarity) => formatPolarity(value),
+      },
+      {
+        title: "状态",
+        dataIndex: "status",
+        width: 160,
+        render: (_: unknown, row) => {
+          const meta = STATUS_META[row.status] ?? { color: "default", label: row.status };
+          const failed = row.status === "failed";
+          const statusTag = (
+            <Tag color={meta.color}>{meta.label}</Tag>
+          );
+          return (
+            <Space size={6}>
+              {failed && row.error_message ? (
+                <AntTooltip title={row.error_message}>
+                  {statusTag}
+                </AntTooltip>
+              ) : statusTag}
+              {row.status === "processing" && (
+                <Progress percent={row.progress} size="small" style={{ width: 80 }} />
+              )}
+            </Space>
+          );
+        },
       },
       {
         title: "操作",
         key: "actions",
-        width: 150,
+        width: 220,
         fixed: "right",
         render: (_: unknown, row) => {
           const moreMenuItems: MenuProps["items"] = [
             {
               key: "exceedance",
               label: "峰值超越概率",
-              onClick: () => openExceedanceModal(row),
+              onClick: () => openExceedanceModal(),
             },
             {
               type: "divider",
             },
+            ...(row.status === "failed" && canManage
+              ? [
+                  {
+                    key: "retry",
+                    label: "重试",
+                    onClick: () => retryMutation.mutate(row),
+                  },
+                  {
+                    type: "divider" as const,
+                  },
+                ]
+              : []),
             {
               key: "delete",
               label: "删除",
@@ -606,13 +678,13 @@ export default function AdminLightningCurrentsPage() {
               disabled: !canManage,
               onClick: () => {
                 Modal.confirm({
-                  title: "删除事件",
-                  content: `确认删除事件 ${row.event_id} 吗？`,
+                  title: "删除记录",
+                  content: `确认删除记录 ${row.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
                   okText: "删除",
                   cancelText: "取消",
                   okButtonProps: { danger: true },
                   onOk: async () => {
-                    await deleteMutation.mutateAsync(row.id);
+                    await deleteMutation.mutateAsync(row);
                   },
                 });
               },
@@ -620,18 +692,12 @@ export default function AdminLightningCurrentsPage() {
           ];
 
           return (
-            <Space>
+            <Space wrap>
               <Button
                 size="small"
                 onClick={() => openDetailModal(row)}
               >
                 详情
-              </Button>
-              <Button
-                size="small"
-                onClick={() => openSampleModal(row)}
-              >
-                预览
               </Button>
               <Dropdown
                 menu={{
@@ -646,7 +712,7 @@ export default function AdminLightningCurrentsPage() {
         },
       },
     ],
-    [canManage, deleteMutation],
+    [canManage, deleteMutation, retryMutation],
   );
 
   if (initializing) {
@@ -686,13 +752,7 @@ export default function AdminLightningCurrentsPage() {
     );
   }
 
-  const samples = samplesQuery.data?.items ?? [];
   const exceedance = exceedanceQuery.data?.thresholds ?? [];
-
-  const chartData = samples.map((item) => ({
-    time_us: item.time_us,
-    current_ka: item.current_ka,
-  }));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -708,101 +768,24 @@ export default function AdminLightningCurrentsPage() {
           )
         }
       >
-        {viewMode === "card" ? (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-            <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+        <div className="admin-filter-bar">
+          <Form layout="inline">
+            <Form.Item label="关键词" className="admin-filter-keyword-item">
               <Input
                 allowClear
-                placeholder="按文件名搜索"
+                placeholder="按文件名/事件编号搜索"
                 value={keywordInput}
                 onChange={(event) => handleKeywordChange(event.target.value)}
-                onPressEnter={() => {
-                  setSearchKeyword(keywordInput);
-                  setPagination((prev) => ({ ...prev, current: 1 }));
-                  setCardViewPage(1);
-                  setAllLoadedEvents([]);
-                }}
+                onPressEnter={handleSearch}
               />
             </Form.Item>
-            <Form.Item style={{ marginBottom: 0 }}>
-              <Button
-                htmlType="button"
-                icon={<SearchOutlined />}
-                onClick={() => {
-                  setSearchKeyword(keywordInput);
-                  setPagination((prev) => ({ ...prev, current: 1 }));
-                  setCardViewPage(1);
-                  setAllLoadedEvents([]);
-                  void queryClient.refetchQueries({ queryKey: [eventListPath] });
-                }}
-                className="admin-search-btn"
-              >
+            <Form.Item>
+              <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
                 查询
               </Button>
             </Form.Item>
           </Form>
-          </div>
-        ) : (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item">
-                <Input
-                  allowClear
-                  placeholder="按文件名搜索"
-                  value={keywordInput}
-                  onChange={(event) => handleKeywordChange(event.target.value)}
-                  onPressEnter={() => {
-                    setSearchKeyword(keywordInput);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedEvents([]);
-                    void queryClient.refetchQueries({ queryKey: [eventListPath] });
-                  }}
-                />
-              </Form.Item>
-              <Form.Item>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={() => {
-                    setSearchKeyword(keywordInput);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedEvents([]);
-                    void queryClient.refetchQueries({ queryKey: [eventListPath] });
-                  }}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        )}
-
-        {/* 导入任务状态展示 */}
-        {activeBatches.length > 0 && (
-          <div style={{ marginBottom: 12, marginTop: 8 }}>
-            {activeBatches.map((batch) => {
-              const statusColor =
-                batch.status === "failed" ? "red" :
-                batch.status === "processing" ? "blue" :
-                "orange";
-              const statusLabel =
-                batch.status === "failed" ? "导入失败" :
-                batch.status === "processing" ? "导入中" :
-                "等待处理";
-              return (
-                <Tag key={batch.batch_id} color={statusColor} style={{ marginBottom: 4, padding: "2px 8px", fontSize: 13 }}>
-                  {batch.source_file_name || "未命名文件"}
-                  {" — "}
-                  {statusLabel}
-                </Tag>
-              );
-            })}
-          </div>
-        )}
+        </div>
 
         {viewMode === "table" ? (
           <div
@@ -810,46 +793,54 @@ export default function AdminLightningCurrentsPage() {
             className="lightning-table-anchor"
             style={{ "--lightning-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
           >
-            <Table<LightningCurrentEventSummary>
+            <Table<LightningAmplitudeRecord>
               rowKey={(row) => row.id}
-              columns={eventColumns}
-              dataSource={events}
-              loading={eventsQuery.isFetching}
+              columns={columns}
+              dataSource={records}
+              loading={recordsQuery.isFetching}
               tableLayout="fixed"
               pagination={{
                 current: pagination.current,
                 pageSize: pagination.pageSize,
-                total: Math.max(eventsQuery.data?.total ?? 0, 1),
+                total: Math.max(recordsQuery.data?.total ?? 0, 1),
                 showSizeChanger: true,
                 pageSizeOptions: [10, 20, 50, 100],
-                showTotal: (total) => `共 ${eventsQuery.data?.total ?? 0} 条`,
+                showTotal: () => `共 ${recordsQuery.data?.total ?? 0} 条`,
                 hideOnSinglePage: false,
                 onChange: (page, pageSize) => {
                   setPagination({ current: page, pageSize });
                 },
               }}
               scroll={{ x: 1200, y: tableScrollY }}
+              locale={{
+                emptyText: (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="未找到符合筛选条件的记录。"
+                  />
+                ),
+              }}
             />
           </div>
         ) : (
           <div className="admin-lightning-events-card-view">
-            {eventsQuery.isLoading && allLoadedEvents.length === 0 ? (
+            {recordsQuery.isLoading && allLoadedRecords.length === 0 ? (
               <div className="admin-lightning-events-card-view-state">
                 <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[180px]" />
               </div>
-            ) : allLoadedEvents.length === 0 ? (
+            ) : allLoadedRecords.length === 0 ? (
               <div className="admin-lightning-events-card-view-state">
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的事件。"
+                  description="未找到符合筛选条件的记录。"
                 />
               </div>
             ) : (
               <div className="admin-lightning-events-card-view-content">
                 <Row gutter={[12, 12]}>
-                  {allLoadedEvents.map((eventItem) => (
-                    <Col key={eventItem.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                      {renderLightningEventCard(eventItem)}
+                  {allLoadedRecords.map((record) => (
+                    <Col key={record.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                      {renderRecordCard(record)}
                     </Col>
                   ))}
                 </Row>
@@ -858,10 +849,10 @@ export default function AdminLightningCurrentsPage() {
                     <AdminPageLoading tip="加载更多..." minHeightClassName="min-h-[60px]" />
                   </div>
                 )}
-                {allLoadedEvents.length >= (eventsQuery.data?.total ?? 0) && allLoadedEvents.length > 0 && (
+                {allLoadedRecords.length >= (recordsQuery.data?.total ?? 0) && allLoadedRecords.length > 0 && (
                   <div style={{ textAlign: "center", padding: "20px 0" }}>
                     <Typography.Text type="secondary">
-                      已加载全部 {allLoadedEvents.length} 条数据
+                      已加载全部 {allLoadedRecords.length} 条数据
                     </Typography.Text>
                   </div>
                 )}
@@ -872,7 +863,7 @@ export default function AdminLightningCurrentsPage() {
       </AntCard>
 
       <Modal
-        title="导入雷电流数据"
+        title="导入雷电流幅值数据"
         open={importModalOpen}
         onCancel={() => {
           setImportModalOpen(false);
@@ -944,7 +935,7 @@ export default function AdminLightningCurrentsPage() {
                       点击或拖拽文件到此区域上传
                     </p>
                     <Typography.Text type="secondary">
-                      支持单列电流序列（每行一个值）或"双列 time,current"格式。
+                      支持单列电流序列（每行一个值）或双列 time,current 格式。原始文件将存入 MinIO。
                     </Typography.Text>
                   </>
                 )}
@@ -973,18 +964,17 @@ export default function AdminLightningCurrentsPage() {
       </Modal>
 
       <Modal
-        title={selectedEventForModal ? `峰值超越概率（P 曲线） - ${selectedEventForModal.event_id}` : "峰值超越概率（P 曲线）"}
+        title="峰值超越概率（P 曲线）"
         open={exceedanceModalOpen}
         onCancel={() => {
           setExceedanceModalOpen(false);
-          setSelectedEventForModal(null);
         }}
         footer={null}
         width={900}
         destroyOnClose
       >
         {exceedance.length === 0 ? (
-          <Empty description="暂无统计数据" />
+          <Empty description="暂无统计数据（需先导入并完成解析）" />
         ) : (
           <Space direction="vertical" size={16} className="w-full">
             <ResponsiveContainer width="100%" height={400}>
@@ -1002,6 +992,7 @@ export default function AdminLightningCurrentsPage() {
                   domain={[0, 100]}
                 />
                 <Tooltip
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   formatter={(value: any) => [`${Number(value).toFixed(2)}%`, "超越概率"]}
                   labelFormatter={(label) => `阈值: ${Number(label).toFixed(2)} kA`}
                 />
@@ -1038,48 +1029,38 @@ export default function AdminLightningCurrentsPage() {
       </Modal>
 
       <Modal
-        title={selectedEventForModal ? `事件详情 - ${selectedEventForModal.event_id}` : "事件详情"}
+        title={selectedRecordForModal ? `记录详情 - ${selectedRecordForModal.event_id ?? selectedRecordForModal.source_file_name}` : "记录详情"}
         open={detailModalOpen}
         onCancel={() => {
           setDetailModalOpen(false);
-          setSelectedEventForModal(null);
+          setSelectedRecordForModal(null);
         }}
         footer={null}
         width={900}
         destroyOnClose
       >
-        {selectedEventForModal && (
+        {selectedRecordForModal && (
           <Space direction="vertical" size={16} className="w-full">
             <div>
               <Typography.Title level={5}>基本信息</Typography.Title>
               <Descriptions bordered size="small" column={2}>
-                <Descriptions.Item label="城市">{formatNullable(selectedEventForModal.city)}</Descriptions.Item>
-                <Descriptions.Item label="事件发生地点">{formatNullable(selectedEventForModal.location_tag)}</Descriptions.Item>
-                <Descriptions.Item label="传感器">{formatNullable(selectedEventForModal.sensor_model)}</Descriptions.Item>
-                <Descriptions.Item label="安装位置">{formatNullable(selectedEventForModal.install_position)}</Descriptions.Item>
-                <Descriptions.Item label={
-                  <span>
-                    采样点数{" "}
-                    <AntTooltip title="导入波形文件中解析出的数值行数，即该次雷击波形的时序采样长度。点数越多，波形记录越精细。">
-                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                    </AntTooltip>
-                  </span>
-                }>
-                  {selectedEventForModal.sample_count}
+                <Descriptions.Item label="状态">
+                  {(() => {
+                    const meta = STATUS_META[selectedRecordForModal.status] ?? { color: "default", label: selectedRecordForModal.status };
+                    return <Tag color={meta.color}>{meta.label}</Tag>;
+                  })()}
                 </Descriptions.Item>
-                <Descriptions.Item label={
-                  <span>
-                    采样间隔(us){" "}
-                    <AntTooltip title="采样点之间的时间间隔（μs）。">
-                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                    </AntTooltip>
-                  </span>
-                }>
-                  {formatNumber(selectedEventForModal.sample_interval_us, 6)}
-                </Descriptions.Item>
-                <Descriptions.Item label="海拔(m)">{formatNullable(selectedEventForModal.altitude_m)}</Descriptions.Item>
-                <Descriptions.Item label="气压(hPa)">{formatNullable(selectedEventForModal.pressure_hpa)}</Descriptions.Item>
-                <Descriptions.Item label="湿度(%)">{formatNullable(selectedEventForModal.humidity_percent)}</Descriptions.Item>
+                <Descriptions.Item label="事件编号">{formatNullable(selectedRecordForModal.event_id)}</Descriptions.Item>
+                <Descriptions.Item label="城市">{formatNullable(selectedRecordForModal.city)}</Descriptions.Item>
+                <Descriptions.Item label="事件发生地点">{formatNullable(selectedRecordForModal.location_tag)}</Descriptions.Item>
+                <Descriptions.Item label="传感器">{formatNullable(selectedRecordForModal.sensor_model)}</Descriptions.Item>
+                <Descriptions.Item label="安装位置">{formatNullable(selectedRecordForModal.install_position)}</Descriptions.Item>
+                <Descriptions.Item label="发生时间">{formatNullable(selectedRecordForModal.event_time)}</Descriptions.Item>
+                <Descriptions.Item label="采样点数">{selectedRecordForModal.sample_count}</Descriptions.Item>
+                <Descriptions.Item label="采样间隔(us)">{formatNumber(selectedRecordForModal.sample_interval_us, 6)}</Descriptions.Item>
+                <Descriptions.Item label="海拔(m)">{formatNullable(selectedRecordForModal.altitude_m)}</Descriptions.Item>
+                <Descriptions.Item label="气压(hPa)">{formatNullable(selectedRecordForModal.pressure_hpa)}</Descriptions.Item>
+                <Descriptions.Item label="湿度(%)">{formatNullable(selectedRecordForModal.humidity_percent)}</Descriptions.Item>
               </Descriptions>
             </div>
 
@@ -1094,9 +1075,9 @@ export default function AdminLightningCurrentsPage() {
                     </AntTooltip>
                   </span>
                 }>
-                  {formatNumber(selectedEventForModal.peak_current_ka, 3)}
+                  {formatNumber(selectedRecordForModal.peak_current_ka, 3)}
                 </Descriptions.Item>
-                <Descriptions.Item label="绝对峰值(kA)">{formatNumber(selectedEventForModal.peak_abs_current_ka, 3)}</Descriptions.Item>
+                <Descriptions.Item label="绝对峰值(kA)">{formatNumber(selectedRecordForModal.peak_abs_current_ka, 3)}</Descriptions.Item>
                 <Descriptions.Item label={
                   <span>
                     波形分类{" "}
@@ -1105,7 +1086,7 @@ export default function AdminLightningCurrentsPage() {
                     </AntTooltip>
                   </span>
                 }>
-                  {formatNullable(selectedEventForModal.wave_shape)}
+                  {formatNullable(selectedRecordForModal.wave_shape)}
                 </Descriptions.Item>
                 <Descriptions.Item label={
                   <span>
@@ -1115,7 +1096,7 @@ export default function AdminLightningCurrentsPage() {
                     </AntTooltip>
                   </span>
                 }>
-                  {formatPolarity(selectedEventForModal.polarity)}
+                  {formatPolarity(selectedRecordForModal.polarity)}
                 </Descriptions.Item>
                 <Descriptions.Item label={
                   <span>
@@ -1125,7 +1106,7 @@ export default function AdminLightningCurrentsPage() {
                     </AntTooltip>
                   </span>
                 }>
-                  {formatNumber(selectedEventForModal.wavefront_time_t1_us, 3)}
+                  {formatNumber(selectedRecordForModal.wavefront_time_t1_us, 3)}
                 </Descriptions.Item>
                 <Descriptions.Item label={
                   <span>
@@ -1135,7 +1116,7 @@ export default function AdminLightningCurrentsPage() {
                     </AntTooltip>
                   </span>
                 }>
-                  {formatNumber(selectedEventForModal.half_value_time_t2_us, 3)}
+                  {formatNumber(selectedRecordForModal.half_value_time_t2_us, 3)}
                 </Descriptions.Item>
                 <Descriptions.Item label={
                   <span>
@@ -1145,7 +1126,7 @@ export default function AdminLightningCurrentsPage() {
                     </AntTooltip>
                   </span>
                 }>
-                  {formatNumber(selectedEventForModal.steepness_ka_per_us, 6)}
+                  {formatNumber(selectedRecordForModal.steepness_ka_per_us, 6)}
                 </Descriptions.Item>
                 <Descriptions.Item label={
                   <span>
@@ -1155,118 +1136,71 @@ export default function AdminLightningCurrentsPage() {
                     </AntTooltip>
                   </span>
                 }>
-                  {formatNumber(selectedEventForModal.action_integral_j_ohm, 3)}
+                  {formatNumber(selectedRecordForModal.action_integral_j_ohm, 3)}
                 </Descriptions.Item>
               </Descriptions>
             </div>
 
-            <div>
-              <Typography.Title level={5}>多回击峰值分布</Typography.Title>
-              {selectedEventForModal.stroke_peaks_json && selectedEventForModal.stroke_peaks_json.length > 0 ? (
-                <>
-                  <Descriptions bordered size="small" column={1} style={{ marginBottom: 12 }}>
-                    <Descriptions.Item label={
-                      <span>
-                        回击数{" "}
-                        <AntTooltip title="一次雷击过程中检测到的多次放电次数。一次雷击通常包含 3~5 次回击，主峰最高，后续回击会产生累积热效应。">
-                          <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                        </AntTooltip>
-                      </span>
-                    }>
-                      {selectedEventForModal.stroke_count}
-                    </Descriptions.Item>
-                  </Descriptions>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <LineChart data={selectedEventForModal.stroke_peaks_json.map((peak: any, idx: number) => ({
-                      index: idx + 1,
-                      time_us: peak.time_us || 0,
-                      current_ka: peak.current_ka || 0,
-                    }))}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="index" label={{ value: "回击序号", position: "insideBottomRight", offset: -5 }} />
-                      <YAxis label={{ value: "峰值电流 (kA)", angle: -90, position: "insideLeft", offset: 10 }} />
-                      <Tooltip
-                        formatter={(value: any, name?: string | number) => {
-                          if (name === "current_ka") return [formatNumber(value, 3), "峰值电流 (kA)"];
-                          if (name === "time_us") return [formatNumber(value, 2), "时间 (μs)"];
-                          return [value, name];
-                        }}
-                        labelFormatter={(label) => `回击 ${label}`}
-                      />
-                      <Legend />
-                      <Line type="monotone" dataKey="current_ka" stroke="#1890ff" name="峰值电流 (kA)" strokeWidth={2} dot={{ r: 4 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </>
-              ) : (
-                <Empty description="暂无多回击数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              )}
-            </div>
+            {selectedRecordForModal.stroke_peaks_json && selectedRecordForModal.stroke_peaks_json.length > 0 && (
+              <div>
+                <Typography.Title level={5}>多回击峰值分布</Typography.Title>
+                <Descriptions bordered size="small" column={1} style={{ marginBottom: 12 }}>
+                  <Descriptions.Item label="回击数">{selectedRecordForModal.stroke_count}</Descriptions.Item>
+                </Descriptions>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={selectedRecordForModal.stroke_peaks_json.map((peak: Record<string, unknown>, idx: number) => ({
+                    index: idx + 1,
+                    time_us: Number(peak.time_us) || 0,
+                    current_ka: Number(peak.current_ka) || 0,
+                  }))}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="index" label={{ value: "回击序号", position: "insideBottomRight", offset: -5 }} />
+                    <YAxis label={{ value: "峰值电流 (kA)", angle: -90, position: "insideLeft", offset: 10 }} />
+                    <Tooltip
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      formatter={(value: any, name?: string | number) => {
+                        if (name === "current_ka") return [formatNumber(Number(value), 3), "峰值电流 (kA)"];
+                        if (name === "time_us") return [formatNumber(Number(value), 2), "时间 (μs)"];
+                        return [value, name];
+                      }}
+                      labelFormatter={(label) => `回击 ${label}`}
+                    />
+                    <Legend />
+                    <Line type="monotone" dataKey="current_ka" stroke="#1890ff" name="峰值电流 (kA)" strokeWidth={2} dot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
 
+            {selectedRecordForModal.status === "failed" && (
+              <div>
+                <Typography.Title level={5}>失败原因</Typography.Title>
+                <Typography.Paragraph type="danger">
+                  {selectedRecordForModal.error_message || "未知错误"}
+                </Typography.Paragraph>
+                {canManage && (
+                  <Button danger loading={retryMutation.isPending} onClick={() => retryMutation.mutate(selectedRecordForModal)}>
+                    重试
+                  </Button>
+                )}
+              </div>
+            )}
           </Space>
         )}
       </Modal>
 
       <Modal
-        title={selectedEventForModal ? `采样预览 - ${selectedEventForModal.event_id}` : "采样预览"}
-        open={sampleModalOpen}
-        onCancel={() => {
-          setSampleModalOpen(false);
-          setSelectedEventForModal(null);
-          setSamplePage(1);
-        }}
+        title="导入处理中"
+        open={importProgressModalOpen}
         footer={null}
-        width={1200}
-        destroyOnClose
+        closable={false}
+        width={420}
       >
-        <Space direction="vertical" size={16} className="w-full">
-          {samples.length === 0 ? (
-            <Empty description="暂无采样数据" />
-          ) : (
-            <>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time_us" label={{ value: "时间 (μs)", position: "insideBottomRight", offset: -5 }} />
-                  <YAxis label={{ value: "电流 (kA)", angle: -90, position: "insideLeft", offset: 10 }} />
-                  <Tooltip
-                    formatter={(value: any) => [formatNumber(value, 3), "电流 (kA)"]}
-                    labelFormatter={(label) => `时间: ${formatNumber(label, 2)} μs`}
-                  />
-                  <Legend />
-                  <Line type="monotone" dataKey="current_ka" stroke="#8884d8" name="电流 (kA)" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-              <Table<LightningCurrentSampleItem>
-                rowKey={(row) => row.id}
-                dataSource={samples}
-                loading={samplesQuery.isFetching}
-                pagination={{
-                  current: samplePage,
-                  pageSize: samplePageSize,
-                  total: samplesQuery.data?.total ?? 0,
-                  showSizeChanger: true,
-                  showTotal: (total) => `共 ${total} 条`,
-                  pageSizeOptions: [20, 50, 100, 200],
-                  hideOnSinglePage: false,
-                  onChange: (page, pageSize) => {
-                    setSamplePage(page);
-                    if (pageSize !== samplePageSize) {
-                      setSamplePageSize(pageSize);
-                      setSamplePage(1);
-                    }
-                  },
-                }}
-                columns={[
-                  { title: "序号", dataIndex: "seq_no", width: 100 },
-                  { title: "时间 (μs)", dataIndex: "time_us", width: 150, render: (value: number) => formatNumber(value, 2) },
-                  { title: "电流 (kA)", dataIndex: "current_ka", width: 150, render: (value: number) => formatNumber(value, 3) },
-                ]}
-                size="small"
-                scroll={{ y: 300 }}
-              />
-            </>
-          )}
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Typography.Text>
+            正在解析文件并提取波形特征…
+          </Typography.Text>
+          <Progress percent={activeRecord?.progress ?? 0} status={activeStatus === "failed" ? "exception" : "active"} />
         </Space>
       </Modal>
     </div>

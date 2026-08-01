@@ -8,14 +8,13 @@ from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
 from ...schemas.lightning import (
-    LightningCurrentEventListResponse,
-    LightningCurrentEventSummary,
-    LightningCurrentEventUpdateRequest,
+    LightningAmplitudeImportResponse,
+    LightningAmplitudeRecord,
+    LightningAmplitudeListResponse,
+    LightningAmplitudeStatusResponse,
     LightningCurrentPreparationRequest,
     LightningCurrentPreparationResponse,
     LightningCurrentExceedanceResponse,
-    LightningCurrentImportResponse,
-    LightningCurrentSampleListResponse,
     LightningDistributionImportResponse,
     LightningDistributionRecord,
     LightningDistributionListResponse,
@@ -26,28 +25,24 @@ from ...schemas.lightning import (
     LightningFillDensityRequest,
     LightningFillDensityResponse,
 )
-from ...schemas.lightning_import import LightningImportBatchListResponse
 from ...services.lightning_service import (
-    delete_lightning_event,
+    delete_lightning_amplitude,
     delete_lightning_distribution,
+    get_lightning_amplitude_detail,
+    get_lightning_amplitude_status,
     get_lightning_distribution_detail,
     get_lightning_distribution_image_url,
     get_lightning_distribution_status,
-    get_lightning_event_by_id,
     get_peak_exceedance_curve,
-    import_lightning_current_async,
+    import_lightning_amplitude_from_file,
     import_lightning_distribution_from_file,
-    import_lightning_event_from_file,
+    list_lightning_amplitudes,
     list_lightning_distributions,
-    list_lightning_events,
-    list_lightning_samples,
     prepare_line_lightning_current,
     prepare_line_lightning_density,
+    retry_lightning_amplitude,
     retry_lightning_distribution,
-    serialize_lightning_event,
     trigger_line_density_fill,
-    update_lightning_event,
-    list_lightning_import_batches,
 )
 
 router = APIRouter(
@@ -57,27 +52,136 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=LightningCurrentEventListResponse)
-def get_lightning_event_list(
+# ---------------------------------------------------------------------------
+# 雷电流幅值（LightningAmplitude）
+# ---------------------------------------------------------------------------
+@router.get("", response_model=LightningAmplitudeListResponse)
+def get_lightning_amplitude_list(
     keyword: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
     region_id: str | None = Query(default=None),
-    polarity: str | None = Query(default=None),
-    wave_shape: str | None = Query(default=None),
-    is_synthetic: bool | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
     db: Session = Depends(get_db),
-) -> LightningCurrentEventListResponse:
-    return list_lightning_events(
+) -> LightningAmplitudeListResponse:
+    """雷电流幅值记录列表（兼容旧 GET /，供线路页事件选择器使用）。"""
+    return list_lightning_amplitudes(
         db,
         keyword=keyword,
+        status_filter=status_filter,
         region_id=region_id,
-        polarity=polarity,
-        wave_shape=wave_shape,
-        is_synthetic=is_synthetic,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/amplitudes", response_model=LightningAmplitudeListResponse)
+def get_lightning_amplitudes(
+    keyword: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    region_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningAmplitudeListResponse:
+    """雷电流幅值记录列表（分页 + 关键词/状态过滤）。"""
+    return list_lightning_amplitudes(
+        db,
+        keyword=keyword,
+        status_filter=status_filter,
+        region_id=region_id,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/amplitudes/{amplitude_id}", response_model=LightningAmplitudeRecord)
+def get_lightning_amplitude_detail_endpoint(
+    amplitude_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningAmplitudeRecord:
+    return get_lightning_amplitude_detail(db, amplitude_id)
+
+
+@router.get("/amplitudes/{amplitude_id}/status", response_model=LightningAmplitudeStatusResponse)
+def get_lightning_amplitude_status_endpoint(
+    amplitude_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningAmplitudeStatusResponse:
+    return get_lightning_amplitude_status(db, amplitude_id)
+
+
+@router.post("/amplitudes/{amplitude_id}/retry", response_model=LightningAmplitudeImportResponse)
+def retry_lightning_amplitude_endpoint(
+    amplitude_id: str,
+    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningAmplitudeImportResponse:
+    return retry_lightning_amplitude(db, amplitude_id, actor_user_id=current_user.user.id)
+
+
+@router.delete("/amplitudes/{amplitude_id}")
+def delete_lightning_amplitude_endpoint(
+    amplitude_id: str,
+    _: CurrentUser = Depends(require_permission("lightning.manage")),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    deleted = delete_lightning_amplitude(db, amplitude_id)
+    if not deleted.get("success"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流幅值记录不存在")
+    return deleted
+
+
+@router.post("/import-async", response_model=LightningAmplitudeImportResponse)
+def import_lightning_amplitude_file_async(
+    file: UploadFile = File(...),
+    event_id: str | None = Form(default=None),
+    event_time: datetime | None = Form(default=None),
+    sample_interval_us: float | None = Form(default=1.0),
+    region_id: str | None = Form(default=None),
+    location_tag: str | None = Form(default=None),
+    city: str | None = Form(default=None),
+    longitude: float | None = Form(default=None),
+    latitude: float | None = Form(default=None),
+    altitude_m: float | None = Form(default=None),
+    sensor_model: str | None = Form(default=None),
+    install_position: str | None = Form(default=None),
+    weather_level: str | None = Form(default=None),
+    pressure_hpa: float | None = Form(default=None),
+    humidity_percent: float | None = Form(default=None),
+    is_synthetic: bool = Form(default=False),
+    notes: str | None = Form(default=None),
+    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningAmplitudeImportResponse:
+    """
+    异步导入雷电流幅值波形数据（Celery Worker 后台处理）。
+    上传文件立即 put_object 到 MinIO → 建 LightningAmplitude(pending) → 派发任务。
+    """
+    return import_lightning_amplitude_from_file(
+        db,
+        file=file,
+        actor_user_id=current_user.user.id,
+        event_id=event_id,
+        event_time=event_time,
+        sample_interval_us=sample_interval_us,
+        region_id=region_id,
+        location_tag=location_tag,
+        city=city,
+        longitude=longitude,
+        latitude=latitude,
+        altitude_m=altitude_m,
+        sensor_model=sensor_model,
+        install_position=install_position,
+        weather_level=weather_level,
+        pressure_hpa=pressure_hpa,
+        humidity_percent=humidity_percent,
+        is_synthetic=is_synthetic,
+        notes=notes,
     )
 
 
@@ -114,100 +218,9 @@ def get_lightning_peak_exceedance(
     )
 
 
-@router.post("/import", response_model=LightningCurrentImportResponse)
-def import_lightning_current_file(
-    file: UploadFile = File(...),
-    event_id: str | None = Form(default=None),
-    event_time: datetime | None = Form(default=None),
-    sample_interval_us: float | None = Form(default=1.0),
-    region_id: str | None = Form(default=None),
-    location_tag: str | None = Form(default=None),
-    city: str | None = Form(default=None),
-    longitude: float | None = Form(default=None),
-    latitude: float | None = Form(default=None),
-    altitude_m: float | None = Form(default=None),
-    sensor_model: str | None = Form(default=None),
-    install_position: str | None = Form(default=None),
-    weather_level: str | None = Form(default=None),
-    pressure_hpa: float | None = Form(default=None),
-    humidity_percent: float | None = Form(default=None),
-    is_synthetic: bool = Form(default=False),
-    notes: str | None = Form(default=None),
-    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
-    db: Session = Depends(get_db),
-) -> LightningCurrentImportResponse:
-    return import_lightning_event_from_file(
-        db,
-        file=file,
-        actor_user_id=current_user.user.id,
-        event_id=event_id,
-        event_time=event_time,
-        sample_interval_us=sample_interval_us,
-        region_id=region_id,
-        location_tag=location_tag,
-        city=city,
-        longitude=longitude,
-        latitude=latitude,
-        altitude_m=altitude_m,
-        sensor_model=sensor_model,
-        install_position=install_position,
-        weather_level=weather_level,
-        pressure_hpa=pressure_hpa,
-        humidity_percent=humidity_percent,
-        is_synthetic=is_synthetic,
-        notes=notes,
-    )
-
-
-@router.post("/import-async", response_model=LightningCurrentImportResponse)
-def import_lightning_current_file_async(
-    file: UploadFile = File(...),
-    event_id: str | None = Form(default=None),
-    event_time: datetime | None = Form(default=None),
-    sample_interval_us: float | None = Form(default=1.0),
-    region_id: str | None = Form(default=None),
-    location_tag: str | None = Form(default=None),
-    city: str | None = Form(default=None),
-    longitude: float | None = Form(default=None),
-    latitude: float | None = Form(default=None),
-    altitude_m: float | None = Form(default=None),
-    sensor_model: str | None = Form(default=None),
-    install_position: str | None = Form(default=None),
-    weather_level: str | None = Form(default=None),
-    pressure_hpa: float | None = Form(default=None),
-    humidity_percent: float | None = Form(default=None),
-    is_synthetic: bool = Form(default=False),
-    notes: str | None = Form(default=None),
-    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
-    db: Session = Depends(get_db),
-) -> LightningCurrentImportResponse:
-    """
-    异步导入雷电流波形数据（通过 Celery Worker 后台处理）。
-    上传文件后立即返回 task_id，不阻塞请求。
-    """
-    return import_lightning_current_async(
-        db,
-        file=file,
-        actor_user_id=current_user.user.id,
-        event_id=event_id,
-        event_time=event_time,
-        sample_interval_us=sample_interval_us,
-        region_id=region_id,
-        location_tag=location_tag,
-        city=city,
-        longitude=longitude,
-        latitude=latitude,
-        altitude_m=altitude_m,
-        sensor_model=sensor_model,
-        install_position=install_position,
-        weather_level=weather_level,
-        pressure_hpa=pressure_hpa,
-        humidity_percent=humidity_percent,
-        is_synthetic=is_synthetic,
-        notes=notes,
-    )
-
-
+# ---------------------------------------------------------------------------
+# 地闪分布（LightningDistribution）
+# ---------------------------------------------------------------------------
 @router.post("/import-distribution", response_model=LightningDistributionImportResponse)
 def import_lightning_distribution_file(
     file: UploadFile = File(...),
@@ -310,6 +323,9 @@ def trigger_line_lightning_density_fill(
     return trigger_line_density_fill(db, payload, actor_user_id=current_user.user.id)
 
 
+# ---------------------------------------------------------------------------
+# 线路回填（prepare）
+# ---------------------------------------------------------------------------
 @router.post("/prepare-current", response_model=LightningCurrentPreparationResponse)
 def prepare_lightning_current_for_line(
     payload: LightningCurrentPreparationRequest,
@@ -326,74 +342,3 @@ def prepare_lightning_density_for_line(
     db: Session = Depends(get_db),
 ) -> LightningDensityPreparationResponse:
     return prepare_line_lightning_density(db, payload, actor_user_id=current_user.user.id)
-
-
-@router.get("/import-batches", response_model=LightningImportBatchListResponse)
-def get_lightning_import_batches(
-    keyword: str | None = Query(default=None),
-    region_id: str | None = Query(default=None),
-    import_type: str | None = Query(default=None, description="过滤类型：waveform（雷电流波形）"),
-    limit: int = Query(default=50, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
-    db: Session = Depends(get_db),
-) -> LightningImportBatchListResponse:
-    return list_lightning_import_batches(
-        db,
-        keyword=keyword,
-        region_id=region_id,
-        import_type=import_type,
-        limit=limit,
-        offset=offset,
-    )
-
-
-@router.get("/{event_id}", response_model=LightningCurrentEventSummary)
-def get_lightning_event_detail(
-    event_id: str,
-    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
-    db: Session = Depends(get_db),
-) -> LightningCurrentEventSummary:
-    event = get_lightning_event_by_id(db, event_id)
-    if not event:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流事件不存在")
-    return serialize_lightning_event(event)
-
-
-@router.patch("/{event_id}", response_model=LightningCurrentEventSummary)
-def update_lightning_event_endpoint(
-    event_id: str,
-    payload: LightningCurrentEventUpdateRequest,
-    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
-    db: Session = Depends(get_db),
-) -> LightningCurrentEventSummary:
-    updated = update_lightning_event(db, event_id, payload, actor_user_id=current_user.user.id)
-    if not updated:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流事件不存在")
-    return updated
-
-
-@router.delete("/{event_id}")
-def delete_lightning_event_endpoint(
-    event_id: str,
-    _: CurrentUser = Depends(require_permission("lightning.manage")),
-    db: Session = Depends(get_db),
-) -> dict[str, bool]:
-    deleted = delete_lightning_event(db, event_id)
-    if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流事件不存在")
-    return {"success": True}
-
-
-@router.get("/{event_id}/samples", response_model=LightningCurrentSampleListResponse)
-def get_lightning_samples(
-    event_id: str,
-    limit: int = Query(default=200, ge=1, le=2000),
-    offset: int = Query(default=0, ge=0),
-    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
-    db: Session = Depends(get_db),
-) -> LightningCurrentSampleListResponse:
-    event = get_lightning_event_by_id(db, event_id)
-    if not event:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流事件不存在")
-    return list_lightning_samples(db, event_id=event_id, limit=limit, offset=offset)

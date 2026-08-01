@@ -10,14 +10,44 @@ from .line import LineSummary
 LightningPolarity = Literal["positive", "negative", "mixed", "unknown"]
 
 
-class LightningCurrentEventSummary(BaseModel):
+class LightningCurrentExceedancePoint(BaseModel):
+    threshold_ka: float
+    exceedance_probability: float
+    exceedance_count: int
+
+
+class LightningCurrentExceedanceResponse(BaseModel):
+    total_events: int
+    thresholds: list[LightningCurrentExceedancePoint]
+
+
+# ---------------------------------------------------------------------------
+# 雷电流幅值（LightningAmplitude）
+# ---------------------------------------------------------------------------
+class LightningAmplitudeImportResponse(BaseModel):
+    """上传文件后立即返回，Celery 异步处理。"""
+    amplitude_id: str
+    task_id: str | None = None
+    status: str = "pending"
+
+
+class LightningAmplitudeRecord(BaseModel):
+    """一次雷电流幅值导入的「状态机 + 元数据 + 波形特征统计 + MinIO 引用」记录。"""
     id: str
-    event_id: str
-    source_file_name: str | None = None
+    event_id: str | None = None
+    source_file_name: str = "upload"
     event_time: datetime | None = None
+    source_object_key: str = ""
+
+    status: str = "pending"   # pending|processing|completed|failed
+    progress: int = 0
+    task_id: str | None = None
+    error_message: str | None = None
+
     sample_count: int = 0
     sample_interval_us: float | None = None
     sampling_frequency_hz: float | None = None
+
     peak_current_ka: float | None = None
     peak_abs_current_ka: float | None = None
     wavefront_time_t1_us: float | None = None
@@ -25,9 +55,10 @@ class LightningCurrentEventSummary(BaseModel):
     steepness_ka_per_us: float | None = None
     action_integral_j_ohm: float | None = None
     wave_shape: str | None = None
-    polarity: LightningPolarity
+    polarity: LightningPolarity = "unknown"
     stroke_count: int = 1
     stroke_peaks_json: list[dict[str, Any]] = Field(default_factory=list)
+
     region_id: str | None = None
     location_tag: str | None = None
     city: str | None = None
@@ -42,73 +73,31 @@ class LightningCurrentEventSummary(BaseModel):
     is_synthetic: bool = False
     feature_json: dict[str, Any] = Field(default_factory=dict)
     notes: str | None = None
-    create_date: datetime
+
     create_user: str | None = None
+    create_date: datetime
     update_date: datetime
     update_user: str | None = None
 
 
-class LightningCurrentEventListResponse(BaseModel):
-    items: list[LightningCurrentEventSummary]
+class LightningAmplitudeListResponse(BaseModel):
+    items: list[LightningAmplitudeRecord]
     total: int
     limit: int
     offset: int
 
 
-class LightningCurrentEventUpdateRequest(BaseModel):
-    event_time: datetime | None = None
-    region_id: str | None = Field(default=None, max_length=64)
-    location_tag: str | None = Field(default=None, max_length=255)
-    city: str | None = Field(default=None, max_length=128)
-    longitude: float | None = None
-    latitude: float | None = None
-    altitude_m: float | None = None
-    sensor_model: str | None = Field(default=None, max_length=128)
-    install_position: str | None = Field(default=None, max_length=128)
-    weather_level: str | None = Field(default=None, max_length=64)
-    pressure_hpa: float | None = None
-    humidity_percent: float | None = Field(default=None, ge=0, le=100)
-    is_synthetic: bool | None = None
-    wave_shape: str | None = Field(default=None, max_length=32)
-    notes: str | None = None
-    feature_json: dict[str, Any] | None = None
+class LightningAmplitudeStatusResponse(BaseModel):
+    amplitude_id: str
+    status: str
+    progress: int
+    error_message: str | None = None
+    record: LightningAmplitudeRecord | None = None
 
 
-class LightningCurrentImportResponse(BaseModel):
-    imported_count: int = 0
-    skipped_count: int = 0
-    warning_count: int = 0
-    warnings: list[str] = Field(default_factory=list)
-    task_id: str | None = None
-    batch_id: str | None = None
-
-
-class LightningCurrentSampleItem(BaseModel):
-    id: int
-    event_ref_id: str
-    seq_no: int
-    time_us: float
-    current_ka: float
-
-
-class LightningCurrentSampleListResponse(BaseModel):
-    items: list[LightningCurrentSampleItem]
-    total: int
-    limit: int
-    offset: int
-
-
-class LightningCurrentExceedancePoint(BaseModel):
-    threshold_ka: float
-    exceedance_probability: float
-    exceedance_count: int
-
-
-class LightningCurrentExceedanceResponse(BaseModel):
-    total_events: int
-    thresholds: list[LightningCurrentExceedancePoint]
-
-
+# ---------------------------------------------------------------------------
+# 地闪分布（LightningDistribution）
+# ---------------------------------------------------------------------------
 class LightningDistributionImportResponse(BaseModel):
     """上传文件后立即返回，Celery 异步处理。"""
     distribution_id: str
@@ -180,6 +169,9 @@ class LightningDistributionImageResponse(BaseModel):
     image_url: str | None = None
 
 
+# ---------------------------------------------------------------------------
+# 线路回填（prepare / fill）
+# ---------------------------------------------------------------------------
 class LightningCurrentPreparationRequest(BaseModel):
     line_id: str = Field(min_length=1, max_length=64)
     region_id: str | None = Field(default=None, max_length=64)

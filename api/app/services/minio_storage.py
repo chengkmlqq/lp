@@ -8,6 +8,7 @@ from ..core.config import get_settings
 # 对象 Key 业务前缀规划（按业务分区）
 SOURCE_PREFIX = "lightning/distribution/source/"  # 原始文件
 IMAGE_PREFIX = "lightning/distribution/image/"    # 密度图
+AMPLITUDE_SOURCE_PREFIX = "lightning/amplitude/source/"  # 雷电流幅值原始波形文件
 
 
 class MinioStorageError(RuntimeError):
@@ -115,6 +116,12 @@ def build_source_key(source_file_name: str) -> str:
     """构造原始文件对象 Key：lightning/distribution/source/{uuid}_{file}"""
     safe_name = (source_file_name or "upload").strip() or "upload"
     return f"{SOURCE_PREFIX}{uuid4().hex}_{safe_name}"
+
+
+def build_amplitude_source_key(source_file_name: str) -> str:
+    """构造雷电流幅值源文件对象 Key：lightning/amplitude/source/{uuid}_{file}"""
+    safe_name = (source_file_name or "upload").strip() or "upload"
+    return f"{AMPLITUDE_SOURCE_PREFIX}{uuid4().hex}_{safe_name}"
 
 
 def build_image_key(distribution_id: str) -> str:

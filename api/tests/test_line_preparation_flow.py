@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
 from app.models.fl_analysis import FlAnalysisJob
-from app.models.lightning_event import LightningCurrentEvent
+from app.models.lightning_amplitude import LightningAmplitude
 from app.models.line import Line
 from app.models.line_tower import LineTower
 from app.models.tower_analysis import TowerAnalysis
@@ -32,7 +32,7 @@ def _build_session() -> Session:
             TowerCircuit.__table__,
             TowerLightningResult.__table__,
             TowerAnalysis.__table__,
-            LightningCurrentEvent.__table__,
+            LightningAmplitude.__table__,
             FlAnalysisJob.__table__,
         ],
     )
@@ -44,6 +44,14 @@ def test_prepare_line_lightning_current_backfills_profiles_and_line_state(monkey
     session = _build_session()
     try:
         monkeypatch.setattr(lightning_service, "_publish_line_change", lambda *args, **kwargs: None)
+        # 新实现按地闪密度做法：从 MinIO 源文件实时解析，mock get_object 返回波形数据
+        from app.services import minio_storage
+        source_files: dict[str, bytes] = {
+            "lightning/amplitude/source/a.csv": "0\n-18\n0\n".encode("utf-8"),
+            "lightning/amplitude/source/b.csv": "0\n-32\n0\n".encode("utf-8"),
+            "lightning/amplitude/source/c.csv": "0\n-46\n0\n".encode("utf-8"),
+        }
+        monkeypatch.setattr(minio_storage, "get_object", lambda key: source_files[key])
 
         line = Line(code="L-001", name="示例线路", voltage_kv=220, lightning_param_json={})
         session.add(line)
@@ -57,34 +65,22 @@ def test_prepare_line_lightning_current_backfills_profiles_and_line_state(monkey
         )
         session.add_all(
             [
-                LightningCurrentEvent(
+                LightningAmplitude(
                     event_id="LC-001",
-                    peak_abs_current_ka=18.0,
-                    peak_current_ka=18.0,
-                    polarity="negative",
-                    sample_count=1,
-                    stroke_count=1,
-                    stroke_peaks_json=[],
+                    source_object_key="lightning/amplitude/source/a.csv",
+                    status="completed",
                     region_id="HB",
                 ),
-                LightningCurrentEvent(
+                LightningAmplitude(
                     event_id="LC-002",
-                    peak_abs_current_ka=32.0,
-                    peak_current_ka=32.0,
-                    polarity="negative",
-                    sample_count=1,
-                    stroke_count=1,
-                    stroke_peaks_json=[],
+                    source_object_key="lightning/amplitude/source/b.csv",
+                    status="completed",
                     region_id="HB",
                 ),
-                LightningCurrentEvent(
+                LightningAmplitude(
                     event_id="LC-003",
-                    peak_abs_current_ka=46.0,
-                    peak_current_ka=46.0,
-                    polarity="negative",
-                    sample_count=1,
-                    stroke_count=1,
-                    stroke_peaks_json=[],
+                    source_object_key="lightning/amplitude/source/c.csv",
+                    status="completed",
                     region_id="HB",
                 ),
             ]
@@ -105,6 +101,36 @@ def test_prepare_line_lightning_current_backfills_profiles_and_line_state(monkey
         assert response.line.preparation_json["lightning_current"]["ready"] is True
         assert session.get(Line, line.id).lightning_param_json["雷电流幅值a"] == response.current_a
         assert session.get(Line, line.id).lightning_param_json["雷电流幅值b"] == response.current_b
+    finally:
+        session.close()
+
+
+def test_prepare_line_lightning_current_no_data_aborts(monkeypatch) -> None:
+    session = _build_session()
+    try:
+        monkeypatch.setattr(lightning_service, "_publish_line_change", lambda *args, **kwargs: None)
+        from app.services import minio_storage
+        monkeypatch.setattr(minio_storage, "get_object", lambda key: (_ for _ in ()).throw(KeyError(key)))
+
+        line = Line(code="L-001", name="示例线路", voltage_kv=220, lightning_param_json={})
+        session.add(line)
+        session.flush()
+        session.add_all(
+            [
+                LineTower(line_id=line.id, seq_no=1, tower_no="N1", longitude=120.0, latitude=30.0),
+            ]
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as captured:
+            lightning_service.prepare_line_lightning_current(
+                session,
+                LightningCurrentPreparationRequest(line_id=line.id, region_id="HB"),
+                actor_user_id="tester",
+            )
+
+        assert captured.value.status_code == 400
+        assert "未找到可用于线路雷电流拟合的幅值记录" in str(captured.value.detail)
     finally:
         session.close()
 

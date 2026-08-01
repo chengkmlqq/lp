@@ -11,7 +11,7 @@ const TASK_NAME_LABELS: Record<string, string> = {
   "app.tasks.fl_analysis_tasks.execute_fl_analysis_job": "防雷分析计算",
   "app.tasks.lightning_tasks.compute_ground_flash_density_job": "雷电密度计算",
   "app.tasks.lightning_tasks.import_lightning_distribution_job": "地闪分布数据导入",
-  "app.tasks.lightning_tasks.import_lightning_current_job": "雷电流数据导入",
+  "app.tasks.lightning_tasks.import_lightning_amplitude_job": "雷电流幅值数据导入",
   "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks": "到期定时任务派发",
   "app.tasks.scheduled_task_tasks.execute_scheduled_task_job": "定时任务执行",
   "app.tasks.wine_tasks.execute_wine_run_job": "Wine 程序执行",

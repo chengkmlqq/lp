@@ -12,8 +12,8 @@ from ..core.celery_app import celery_app
 from ..core.database import SessionLocal
 from ..models.line import Line
 from ..models.line_tower import LineTower
+from ..models.lightning_amplitude import LightningAmplitude
 from ..models.lightning_distribution import LightningDistribution
-from ..models.lightning_event import LightningCurrentEvent
 
 
 # ---------------------------------------------------------------------------
@@ -501,131 +501,166 @@ def fill_line_lightning_density_job(
 
 
 # ---------------------------------------------------------------------------
-# 异步雷电流波形数据导入任务（保持现有实现，依赖 LightningImportBatch）
+# 异步雷电流幅值导入任务（对标 import_lightning_distribution_job）
 # ---------------------------------------------------------------------------
 @celery_app.task(
-    name="app.tasks.lightning_tasks.import_lightning_current_job",
+    name="app.tasks.lightning_tasks.import_lightning_amplitude_job",
     bind=True,
     max_retries=2,
     default_retry_delay=30,
     acks_late=True,
 )
-def import_lightning_current_job(
+def import_lightning_amplitude_job(
     self,
-    batch_id: str,
-    file_path: str,
-    source_file_name: str | None = None,
+    amplitude_id: str,
     actor_user_id: str | None = None,
-    event_id: str | None = None,
-    event_time: str | None = None,
-    sample_interval_us: float | None = None,
-    region_id: str | None = None,
-    location_tag: str | None = None,
-    city: str | None = None,
-    longitude: float | None = None,
-    latitude: float | None = None,
-    altitude_m: float | None = None,
-    sensor_model: str | None = None,
-    install_position: str | None = None,
-    weather_level: str | None = None,
-    pressure_hpa: float | None = None,
-    humidity_percent: float | None = None,
-    is_synthetic: bool = False,
-    notes: str | None = None,
 ) -> dict[str, Any]:
     """
-    在 Celery Worker 后台执行雷电流波形数据导入。
-    从共享卷读取临时文件 → 解析 → batch insert → 清理临时文件。
+    雷电流幅值导入一条龙任务。
+
+    Steps:
+      1) 按 id 取 LightningAmplitude，status=processing / progress=10
+      2) 从 MinIO 下载 source_object_key → 字节流
+      3) 解码（utf-8-sig → utf-8 → gbk → latin-1）→ _parse_current_series 解析电流/时间序列
+      4) 校验：采样点 < 2 → 失败；> MAX_SAMPLES → 失败
+      5) _build_time_axis 构建时间轴（推断采样间隔/频率）
+      6) _extract_wave_features 提取 8 类特征（峰值/极性/T1/T2/陡度/动作积分/波形分类/多重回击）
+         —— 解析逻辑全部复用现有纯函数，只是不写 Sample 表
+      7) 统计回写新表：sample_count / sample_interval_us / sampling_frequency_hz + 全部特征字段
+      8) event_id 为空则任务内自动生成
+      9) status=completed / progress=100，发布 lightning.created 通知
+
+    失败路径：异常 → status=failed + error_message + progress 保留 → 前端展示失败原因，可点「重试」。
     """
     task_id = self.request.id
-    log_parts: list[str] = [f"[{task_id}] Starting current import: {source_file_name}"]
+    log_parts: list[str] = [f"[{task_id}] Starting amplitude import: {amplitude_id}"]
 
-    # Update batch status to processing
-    from ..core.database import SessionLocal
-    from ..models.lightning_import_batch import LightningImportBatch
-    _session = SessionLocal()
+    db: Session = SessionLocal()
     try:
-        _batch = _session.query(LightningImportBatch).filter(LightningImportBatch.id == batch_id).first()
-        if _batch:
-            _batch.status = "processing"
-            _session.commit()
-    except Exception:
-        _session.rollback()
-    finally:
-        _session.close()
-
-    try:
-        from ..services.lightning_service import execute_current_import_from_path
-
-        result = execute_current_import_from_path(
-            file_path=file_path,
-            source_file_name=source_file_name,
-            actor_user_id=actor_user_id or "system",
-            event_id=event_id,
-            event_time_str=event_time,
-            sample_interval_us=sample_interval_us,
-            region_id=region_id,
-            location_tag=location_tag,
-            city=city,
-            longitude=longitude,
-            latitude=latitude,
-            altitude_m=altitude_m,
-            sensor_model=sensor_model,
-            install_position=install_position,
-            weather_level=weather_level,
-            pressure_hpa=pressure_hpa,
-            humidity_percent=humidity_percent,
-            is_synthetic=is_synthetic,
-            notes=notes,
+        from ..services import minio_storage
+        from ..services.lightning_service import (
+            MAX_SAMPLES,
+            _build_time_axis,
+            _decode_text_bytes,
+            _extract_wave_features,
+            _generate_event_id,
+            _normalize_str,
+            _parse_current_series,
         )
 
-        _append_log(log_parts, task_id, 
-            f"[{task_id}] Done: imported={result.imported_count}, "
-            f"skipped={result.skipped_count}, "
-            f"warnings={result.warning_count}"
+        amp = db.execute(
+            select(LightningAmplitude).where(LightningAmplitude.id == amplitude_id)
+        ).scalar_one_or_none()
+        if not amp:
+            _append_log(log_parts, task_id, f"[{task_id}] Amplitude {amplitude_id} not found, aborting")
+            _upload_log(task_id, log_parts)
+            return {"status": "failed", "error": "amplitude not found"}
+
+        amp.status = "processing"
+        amp.progress = 10
+        amp.task_id = task_id
+        db.commit()
+        _append_log(log_parts, task_id, f"[{task_id}] source_object_key={amp.source_object_key}")
+
+        # ---- 2. 从 MinIO 下载原始文件 ----
+        content = minio_storage.get_object(amp.source_object_key)
+        text = _decode_text_bytes(content)
+
+        # ---- 3. 解析 + 校验 ----
+        parsed = _parse_current_series(text)
+        if len(parsed.currents_ka) < 2:
+            raise ValueError("有效采样点数量不足（至少需要 2 个点）")
+        if len(parsed.currents_ka) > MAX_SAMPLES:
+            raise ValueError(f"采样点过多（>{MAX_SAMPLES}），请拆分后再导入")
+
+        amp.progress = 30
+        db.commit()
+        _append_log(log_parts, task_id,
+            f"[{task_id}] Parsed {len(parsed.currents_ka)} samples, "
+            f"warnings={len(parsed.warnings)}"
+        )
+
+        # ---- 4. 时间轴 ----
+        time_axis_us, inferred_interval_us, inferred_fs_hz, time_warnings = _build_time_axis(
+            parsed.time_us,
+            sample_interval_us=amp.sample_interval_us,
+            sample_count=len(parsed.currents_ka),
+        )
+        warnings = [*parsed.warnings, *time_warnings]
+
+        # ---- 5. 特征提取（复用现有纯函数，不写 Sample 表）----
+        features = _extract_wave_features(parsed.currents_ka, time_axis_us, inferred_interval_us)
+        amp.progress = 70
+        db.commit()
+
+        # ---- 6. 统计回写 ----
+        if not amp.event_id:
+            amp.event_id = _generate_event_id()
+        amp.sample_count = len(parsed.currents_ka)
+        amp.sample_interval_us = inferred_interval_us
+        amp.sampling_frequency_hz = inferred_fs_hz
+        amp.peak_current_ka = features.peak_current_ka
+        amp.peak_abs_current_ka = features.peak_abs_current_ka
+        amp.wavefront_time_t1_us = features.wavefront_time_t1_us
+        amp.half_value_time_t2_us = features.half_value_time_t2_us
+        amp.steepness_ka_per_us = features.steepness_ka_per_us
+        amp.action_integral_j_ohm = features.action_integral_j_ohm
+        amp.wave_shape = features.wave_shape
+        amp.polarity = features.polarity
+        amp.stroke_count = features.stroke_count
+        amp.stroke_peaks_json = features.stroke_peaks_json
+        amp.feature_json = {
+            "source": "import-file",
+            "has_explicit_time_axis": parsed.time_us is not None,
+        }
+        amp.update_user = actor_user_id
+
+        amp.status = "completed"
+        amp.progress = 100
+        db.commit()
+        _append_log(log_parts, task_id,
+            f"[{task_id}] Completed: peak={amp.peak_abs_current_ka}kA, "
+            f"samples={amp.sample_count}, shape={amp.wave_shape}"
         )
         _upload_log(task_id, log_parts)
 
-        # Update batch status to completed
-        _session2 = SessionLocal()
+        # ---- 7. 发布通知 ----
         try:
-            _batch2 = _session2.query(LightningImportBatch).filter(LightningImportBatch.id == batch_id).first()
-            if _batch2:
-                _batch2.status = "completed"
-                _batch2.event_count = result.imported_count
-                _batch2.skipped_count = result.skipped_count
-                _batch2.warning_count = result.warning_count
-                _session2.commit()
+            from ..services.lightning_service import _publish_lightning_change
+            _publish_lightning_change(
+                "lightning.created",
+                {"event_id": amp.id, "message": f"雷电流幅值导入完成：{amp.source_file_name}"},
+            )
         except Exception:
-            _session2.rollback()
-        finally:
-            _session2.close()
+            pass
 
         return {
-            "imported_count": result.imported_count,
-            "skipped_count": result.skipped_count,
-            "warning_count": result.warning_count,
-            "warnings": result.warnings,
+            "status": "completed",
+            "amplitude_id": amp.id,
+            "sample_count": amp.sample_count,
+            "peak_abs_current_ka": amp.peak_abs_current_ka,
+            "warnings": warnings[:50],
         }
 
     except Exception as exc:
         import traceback
 
+        db.rollback()
         _append_log(log_parts, task_id, f"[{task_id}] FAILED: {exc}")
         _append_log(log_parts, task_id, traceback.format_exc())
         _upload_log(task_id, log_parts)
-
-        # Update batch status to failed
-        _session3 = SessionLocal()
         try:
-            _batch3 = _session3.query(LightningImportBatch).filter(LightningImportBatch.id == batch_id).first()
-            if _batch3:
-                _batch3.status = "failed"
-                _batch3.error_message = str(exc)
-                _session3.commit()
+            amp = db.execute(
+                select(LightningAmplitude).where(LightningAmplitude.id == amplitude_id)
+            ).scalar_one_or_none()
+            if amp:
+                amp.status = "failed"
+                amp.error_message = str(exc)
+                amp.update_user = actor_user_id
+                db.commit()
         except Exception:
-            _session3.rollback()
-        finally:
-            _session3.close()
-
+            db.rollback()
         raise
+
+    finally:
+        db.close()

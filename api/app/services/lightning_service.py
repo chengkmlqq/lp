@@ -4,27 +4,27 @@ import asyncio
 import math
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import and_, case, delete as sa_delete, func, insert, or_, select, String
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..core.database import SessionLocal
 
 from ..models.base import utcnow
+from ..models.lightning_amplitude import LightningAmplitude
 from ..models.lightning_distribution import LightningDistribution
-from ..models.lightning_event import LightningCurrentEvent
-from ..models.lightning_sample import LightningCurrentSample
 from ..models.line import Line
 from ..models.line_tower import LineTower
 from ..models.tower_profile import TowerProfile
 from ..schemas.lightning import (
-    LightningCurrentEventListResponse,
-    LightningCurrentEventSummary,
-    LightningCurrentEventUpdateRequest,
+    LightningAmplitudeImportResponse,
+    LightningAmplitudeRecord,
+    LightningAmplitudeListResponse,
+    LightningAmplitudeStatusResponse,
     LightningCurrentPreparationRequest,
     LightningCurrentPreparationResponse,
     LightningDistributionImportResponse,
@@ -36,16 +36,9 @@ from ..schemas.lightning import (
     LightningDensityPreparationResponse,
     LightningCurrentExceedancePoint,
     LightningCurrentExceedanceResponse,
-    LightningCurrentImportResponse,
-    LightningCurrentSampleItem,
-    LightningCurrentSampleListResponse,
     LightningPolarity,
     LightningFillDensityRequest,
     LightningFillDensityResponse,
-)
-from ..schemas.lightning_import import (
-    LightningImportBatchSummary,
-    LightningImportBatchListResponse,
 )
 from .line_preparation_service import record_line_preparation_source, summarize_line_preparation
 from .line_service import serialize_line
@@ -55,9 +48,6 @@ LIGHTNING_TOPIC = "admin.lightning-currents"
 POWER_LINES_TOPIC = "admin.power-lines"
 TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "gbk", "latin-1")
 MAX_SAMPLES = 2_000_000
-INSERT_CHUNK_SIZE = 5_000
-MAX_DISTRIBUTION_ROWS = 2_000_000
-DELETE_CHUNK_SIZE = 50_000
 STANDARD_WAVE_SHAPES: tuple[tuple[str, float, float], ...] = (
     ("10/350", 10.0, 350.0),
     ("8/20", 8.0, 20.0),
@@ -65,7 +55,6 @@ STANDARD_WAVE_SHAPES: tuple[tuple[str, float, float], ...] = (
 )
 TOKEN_SPLIT_PATTERN = re.compile(r"[,\t; ]+")
 DEGREE_TO_KM = 111.32
-TERRAIN_ALGORITHM_VERSION = "horn_3x3.v1"
 
 def recommend_radius_km(voltage_kv: int | None) -> float:
     """
@@ -115,224 +104,63 @@ class WaveFeatures:
     stroke_count: int
     stroke_peaks_json: list[dict[str, Any]]
 
-def serialize_lightning_event(event: LightningCurrentEvent) -> LightningCurrentEventSummary:
-    return LightningCurrentEventSummary(
-        id=event.id,
-        event_id=event.event_id,
-        source_file_name=event.source_file_name,
-        event_time=event.event_time,
-        sample_count=event.sample_count,
-        sample_interval_us=event.sample_interval_us,
-        sampling_frequency_hz=event.sampling_frequency_hz,
-        peak_current_ka=event.peak_current_ka,
-        peak_abs_current_ka=event.peak_abs_current_ka,
-        wavefront_time_t1_us=event.wavefront_time_t1_us,
-        half_value_time_t2_us=event.half_value_time_t2_us,
-        steepness_ka_per_us=event.steepness_ka_per_us,
-        action_integral_j_ohm=event.action_integral_j_ohm,
-        wave_shape=event.wave_shape,
-        polarity=event.polarity,  # type: ignore[arg-type]
-        stroke_count=event.stroke_count,
-        stroke_peaks_json=event.stroke_peaks_json or [],
-        region_id=event.region_id,
-        location_tag=event.location_tag,
-        city=event.city,
-        longitude=event.longitude,
-        latitude=event.latitude,
-        altitude_m=event.altitude_m,
-        sensor_model=event.sensor_model,
-        install_position=event.install_position,
-        weather_level=event.weather_level,
-        pressure_hpa=event.pressure_hpa,
-        humidity_percent=event.humidity_percent,
-        is_synthetic=event.is_synthetic,
-        feature_json=event.feature_json or {},
-        notes=event.notes,
-        create_date=event.create_date,
-        create_user=event.create_user,
-        update_date=event.update_date,
-        update_user=event.update_user,
+
+# ---------------------------------------------------------------------------
+# 雷电流幅值（LightningAmplitude）服务函数
+# ---------------------------------------------------------------------------
+def _serialize_amplitude(amp: LightningAmplitude) -> LightningAmplitudeRecord:
+    """把 LightningAmplitude ORM 对象序列化为 schema。"""
+    return LightningAmplitudeRecord(
+        id=amp.id,
+        event_id=amp.event_id,
+        source_file_name=amp.source_file_name,
+        event_time=amp.event_time,
+        source_object_key=amp.source_object_key,
+        status=amp.status,
+        progress=amp.progress,
+        task_id=amp.task_id,
+        error_message=amp.error_message,
+        sample_count=amp.sample_count,
+        sample_interval_us=amp.sample_interval_us,
+        sampling_frequency_hz=amp.sampling_frequency_hz,
+        peak_current_ka=amp.peak_current_ka,
+        peak_abs_current_ka=amp.peak_abs_current_ka,
+        wavefront_time_t1_us=amp.wavefront_time_t1_us,
+        half_value_time_t2_us=amp.half_value_time_t2_us,
+        steepness_ka_per_us=amp.steepness_ka_per_us,
+        action_integral_j_ohm=amp.action_integral_j_ohm,
+        wave_shape=amp.wave_shape,
+        polarity=amp.polarity,  # type: ignore[arg-type]
+        stroke_count=amp.stroke_count,
+        stroke_peaks_json=amp.stroke_peaks_json or [],
+        region_id=amp.region_id,
+        location_tag=amp.location_tag,
+        city=amp.city,
+        longitude=amp.longitude,
+        latitude=amp.latitude,
+        altitude_m=amp.altitude_m,
+        sensor_model=amp.sensor_model,
+        install_position=amp.install_position,
+        weather_level=amp.weather_level,
+        pressure_hpa=amp.pressure_hpa,
+        humidity_percent=amp.humidity_percent,
+        is_synthetic=amp.is_synthetic,
+        feature_json=amp.feature_json or {},
+        notes=amp.notes,
+        create_user=amp.create_user,
+        create_date=amp.create_date,
+        update_date=amp.update_date,
+        update_user=amp.update_user,
     )
 
-def serialize_lightning_sample(sample: LightningCurrentSample) -> LightningCurrentSampleItem:
-    return LightningCurrentSampleItem(
-        id=sample.id,
-        event_ref_id=sample.event_ref_id,
-        seq_no=sample.seq_no,
-        time_us=sample.time_us,
-        current_ka=sample.current_ka,
-    )
 
-def get_lightning_event_by_id(db: Session, event_id: str) -> LightningCurrentEvent | None:
-    return db.execute(select(LightningCurrentEvent).where(LightningCurrentEvent.id == event_id)).scalar_one_or_none()
-
-def get_lightning_event_by_event_id(db: Session, event_id: str) -> LightningCurrentEvent | None:
-    normalized = _normalize_str(event_id)
-    if normalized is None:
-        return None
+def get_lightning_amplitude_by_id(db: Session, amplitude_id: str) -> LightningAmplitude | None:
     return db.execute(
-        select(LightningCurrentEvent).where(func.lower(LightningCurrentEvent.event_id) == normalized.lower())
+        select(LightningAmplitude).where(LightningAmplitude.id == amplitude_id)
     ).scalar_one_or_none()
 
-def list_lightning_events(
-    db: Session,
-    *,
-    keyword: str | None,
-    region_id: str | None,
-    polarity: str | None,
-    wave_shape: str | None,
-    is_synthetic: bool | None,
-    limit: int,
-    offset: int,
-) -> LightningCurrentEventListResponse:
-    stmt = select(LightningCurrentEvent).where(LightningCurrentEvent.sample_count >= 2)
-    total_stmt = select(func.count()).select_from(LightningCurrentEvent).where(LightningCurrentEvent.sample_count >= 2)
 
-    normalized_keyword = (keyword or "").strip()
-    if normalized_keyword:
-        like = f"%{normalized_keyword}%"
-        predicate = or_(
-            LightningCurrentEvent.event_id.ilike(like),
-            LightningCurrentEvent.location_tag.ilike(like),
-            LightningCurrentEvent.city.ilike(like),
-            LightningCurrentEvent.source_file_name.ilike(like),
-        )
-        stmt = stmt.where(predicate)
-        total_stmt = total_stmt.where(predicate)
-
-    normalized_region = _normalize_str(region_id)
-    if normalized_region:
-        stmt = stmt.where(LightningCurrentEvent.region_id == normalized_region)
-        total_stmt = total_stmt.where(LightningCurrentEvent.region_id == normalized_region)
-
-    normalized_polarity = _normalize_str(polarity)
-    if normalized_polarity:
-        stmt = stmt.where(LightningCurrentEvent.polarity == normalized_polarity.lower())
-        total_stmt = total_stmt.where(LightningCurrentEvent.polarity == normalized_polarity.lower())
-
-    normalized_wave_shape = _normalize_str(wave_shape)
-    if normalized_wave_shape:
-        stmt = stmt.where(func.lower(LightningCurrentEvent.wave_shape) == normalized_wave_shape.lower())
-        total_stmt = total_stmt.where(func.lower(LightningCurrentEvent.wave_shape) == normalized_wave_shape.lower())
-
-    if is_synthetic is not None:
-        stmt = stmt.where(LightningCurrentEvent.is_synthetic == is_synthetic)
-        total_stmt = total_stmt.where(LightningCurrentEvent.is_synthetic == is_synthetic)
-
-    total = int(db.scalar(total_stmt) or 0)
-    rows = db.execute(
-        stmt.order_by(
-            LightningCurrentEvent.event_time.desc(),
-            LightningCurrentEvent.update_date.desc(),
-            LightningCurrentEvent.id.desc(),
-        )
-        .offset(offset)
-        .limit(limit)
-    ).scalars().all()
-
-    return LightningCurrentEventListResponse(
-        items=[serialize_lightning_event(item) for item in rows],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
-
-def update_lightning_event(
-    db: Session,
-    event_id: str,
-    payload: LightningCurrentEventUpdateRequest,
-    *,
-    actor_user_id: str,
-) -> LightningCurrentEventSummary | None:
-    event = get_lightning_event_by_id(db, event_id)
-    if not event:
-        return None
-
-    data = payload.model_dump(exclude_unset=True)
-
-    if "event_time" in data:
-        event.event_time = data["event_time"]
-    if "region_id" in data:
-        event.region_id = _normalize_str(data["region_id"])
-    if "location_tag" in data:
-        event.location_tag = _normalize_str(data["location_tag"])
-    if "city" in data:
-        event.city = _normalize_str(data["city"])
-    if "longitude" in data:
-        event.longitude = data["longitude"]
-    if "latitude" in data:
-        event.latitude = data["latitude"]
-    if "altitude_m" in data:
-        event.altitude_m = data["altitude_m"]
-    if "sensor_model" in data:
-        event.sensor_model = _normalize_str(data["sensor_model"])
-    if "install_position" in data:
-        event.install_position = _normalize_str(data["install_position"])
-    if "weather_level" in data:
-        event.weather_level = _normalize_str(data["weather_level"])
-    if "pressure_hpa" in data:
-        event.pressure_hpa = data["pressure_hpa"]
-    if "humidity_percent" in data:
-        event.humidity_percent = data["humidity_percent"]
-    if "is_synthetic" in data and data["is_synthetic"] is not None:
-        event.is_synthetic = bool(data["is_synthetic"])
-    if "wave_shape" in data:
-        event.wave_shape = _normalize_str(data["wave_shape"])
-    if "notes" in data:
-        event.notes = _normalize_str(data["notes"])
-    if "feature_json" in data and data["feature_json"] is not None:
-        event.feature_json = dict(data["feature_json"])
-
-    event.update_user = actor_user_id
-    event.update_date = utcnow()
-    db.commit()
-
-    saved = get_lightning_event_by_id(db, event_id)
-    if not saved:
-        return None
-
-    _publish_lightning_change("lightning.updated", {"action": "updated", "event_id": saved.id})
-    return serialize_lightning_event(saved)
-
-def delete_lightning_event(db: Session, event_id: str) -> bool:
-    event = get_lightning_event_by_id(db, event_id)
-    if not event:
-        return False
-
-    db.delete(event)
-    db.commit()
-    _publish_lightning_change("lightning.deleted", {"action": "deleted", "event_id": event_id})
-    return True
-
-def list_lightning_samples(
-    db: Session,
-    *,
-    event_id: str,
-    limit: int,
-    offset: int,
-) -> LightningCurrentSampleListResponse:
-    total = int(
-        db.scalar(
-            select(func.count()).select_from(LightningCurrentSample).where(LightningCurrentSample.event_ref_id == event_id)
-        )
-        or 0
-    )
-    rows = db.execute(
-        select(LightningCurrentSample)
-        .where(LightningCurrentSample.event_ref_id == event_id)
-        .order_by(LightningCurrentSample.seq_no.asc())
-        .offset(offset)
-        .limit(limit)
-    ).scalars().all()
-
-    return LightningCurrentSampleListResponse(
-        items=[serialize_lightning_sample(item) for item in rows],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
-
-def import_lightning_event_from_file(
+def import_lightning_amplitude_from_file(
     db: Session,
     *,
     file: UploadFile,
@@ -353,51 +181,44 @@ def import_lightning_event_from_file(
     humidity_percent: float | None,
     is_synthetic: bool,
     notes: str | None,
-) -> LightningCurrentImportResponse:
+) -> LightningAmplitudeImportResponse:
+    """上传文件 → 立即 put_object 到 MinIO → 建 LightningAmplitude(pending) → 派发 Celery。
+
+    与 import_lightning_distribution_from_file 同一异步模式：
+    源文件只存 MinIO，不再写容器临时盘；采样明细不落库。
+    """
     content = file.file.read()
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
 
-    text = _decode_text_bytes(content)
-    parsed = _parse_current_series(text)
-    if len(parsed.currents_ka) < 2:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="有效采样点数量不足（至少需要 2 个点）")
-    if len(parsed.currents_ka) > MAX_SAMPLES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"采样点过多（>{MAX_SAMPLES}），请拆分后再导入",
-        )
+    from ..services.minio_storage import build_amplitude_source_key, put_object
+    from uuid import uuid4 as _uuid4
 
-    time_axis_us, inferred_interval_us, inferred_fs_hz, time_warnings = _build_time_axis(
-        parsed.time_us,
-        sample_interval_us=sample_interval_us,
-        sample_count=len(parsed.currents_ka),
-    )
-    warnings = [*parsed.warnings, *time_warnings]
-    features = _extract_wave_features(parsed.currents_ka, time_axis_us, inferred_interval_us)
+    source_file_name = _normalize_str(str(file.filename or "upload")) or "upload"
+    source_key = build_amplitude_source_key(source_file_name)
+    put_object(source_key, content, content_type="text/plain")
 
-    normalized_event_id = _normalize_str(event_id) or _generate_event_id()
-    if get_lightning_event_by_event_id(db, normalized_event_id):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"事件编号已存在：{normalized_event_id}")
+    normalized_event_id = _normalize_str(event_id)
+    # 事件编号唯一：用户显式填写时校验不重复，为空则由任务内自动生成
+    if normalized_event_id:
+        existing = db.execute(
+            select(LightningAmplitude).where(
+                func.lower(LightningAmplitude.event_id) == normalized_event_id.lower()
+            )
+        ).scalar_one_or_none()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"事件编号已存在：{normalized_event_id}")
 
-    now = utcnow()
-    event = LightningCurrentEvent(
+    _now = utcnow()
+    amp = LightningAmplitude(
+        id=_uuid4().hex,
         event_id=normalized_event_id,
-        source_file_name=_normalize_str(file.filename),
+        source_file_name=source_file_name,
+        source_object_key=source_key,
+        status="pending",
+        progress=0,
         event_time=event_time,
-        sample_count=len(parsed.currents_ka),
-        sample_interval_us=inferred_interval_us,
-        sampling_frequency_hz=inferred_fs_hz,
-        peak_current_ka=features.peak_current_ka,
-        peak_abs_current_ka=features.peak_abs_current_ka,
-        wavefront_time_t1_us=features.wavefront_time_t1_us,
-        half_value_time_t2_us=features.half_value_time_t2_us,
-        steepness_ka_per_us=features.steepness_ka_per_us,
-        action_integral_j_ohm=features.action_integral_j_ohm,
-        wave_shape=features.wave_shape,
-        polarity=features.polarity,
-        stroke_count=features.stroke_count,
-        stroke_peaks_json=features.stroke_peaks_json,
+        sample_interval_us=sample_interval_us,
         region_id=_normalize_str(region_id),
         location_tag=_normalize_str(location_tag),
         city=_normalize_str(city),
@@ -411,293 +232,165 @@ def import_lightning_event_from_file(
         humidity_percent=humidity_percent,
         is_synthetic=bool(is_synthetic),
         notes=_normalize_str(notes),
-        feature_json={
-            "source": "import-file",
-            "has_explicit_time_axis": parsed.time_us is not None,
-        },
-        create_user=actor_user_id,
-        update_user=actor_user_id,
-        create_date=now,
-        update_date=now,
-    )
-    db.add(event)
-    db.flush()
-
-    sample_insert_stmt = insert(LightningCurrentSample)
-    total_samples = len(parsed.currents_ka)
-    for start in range(0, total_samples, INSERT_CHUNK_SIZE):
-        end = min(start + INSERT_CHUNK_SIZE, total_samples)
-        chunk = [
-            {
-                "event_ref_id": event.id,
-                "seq_no": idx + 1,
-                "time_us": time_axis_us[idx],
-                "current_ka": parsed.currents_ka[idx],
-            }
-            for idx in range(start, end)
-        ]
-        db.execute(sample_insert_stmt, chunk)
-
-    db.commit()
-    saved = get_lightning_event_by_id(db, event.id)
-    if not saved:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="雷电流事件保存失败")
-
-    _publish_lightning_change("lightning.imported", {"action": "imported", "event_id": saved.id})
-    return LightningCurrentImportResponse(
-        event=serialize_lightning_event(saved),
-        warning_count=len(warnings),
-        warnings=warnings,
-    )
-
-def import_lightning_current_async(
-    db: Session,
-    *,
-    file: UploadFile,
-    actor_user_id: str,
-    event_id: str | None,
-    event_time: datetime | None,
-    sample_interval_us: float | None,
-    region_id: str | None,
-    location_tag: str | None,
-    city: str | None,
-    longitude: float | None,
-    latitude: float | None,
-    altitude_m: float | None,
-    sensor_model: str | None,
-    install_position: str | None,
-    weather_level: str | None,
-    pressure_hpa: float | None,
-    humidity_percent: float | None,
-    is_synthetic: bool,
-    notes: str | None,
-) -> LightningCurrentImportResponse:
-    """
-    保存上传文件到临时目录并异步提交 Celery 任务处理。
-    参照 import_lightning_distribution_from_file 的异步模式实现。
-    """
-    content = file.file.read()
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
-
-    # Create an import batch record immediately with status="pending"
-    from ..models.lightning_import_batch import LightningImportBatch
-    from uuid import uuid4 as _uuid4
-    _now = utcnow()
-    _batch = LightningImportBatch(
-        id=_uuid4().hex,
-        source_file_name=_normalize_str(str(file.filename or "upload")),
-        import_type="waveform",
-        status="pending",
-        region_id=_normalize_str(region_id),
-        location_tag=_normalize_str(location_tag),
-        city=_normalize_str(city),
-        is_synthetic=bool(is_synthetic),
-        notes=_normalize_str(notes),
         create_user=actor_user_id,
         create_date=_now,
         update_date=_now,
+        update_user=actor_user_id,
     )
-    db.add(_batch)
+    db.add(amp)
     db.commit()
 
-    # Save file to shared temp volume for async Celery processing
-    import os as _os
-    _temp_dir = "/app/data/temp/lightning-current"
-    _os.makedirs(_temp_dir, exist_ok=True)
-    _temp_path = f"{_temp_dir}/{uuid4().hex}_{_normalize_str(str(file.filename or 'upload'))}"
-    with open(_temp_path, "wb") as _f:
-        _f.write(content)
-
-    # Queue Celery task for async processing
     from ..core.celery_app import celery_app as _celery_app
     _task = _celery_app.send_task(
-        "app.tasks.lightning_tasks.import_lightning_current_job",
+        "app.tasks.lightning_tasks.import_lightning_amplitude_job",
         kwargs=dict(
-            batch_id=_batch.id,
-            file_path=_temp_path,
-            source_file_name=_normalize_str(file.filename),
+            amplitude_id=amp.id,
             actor_user_id=actor_user_id,
-            event_id=event_id,
-            event_time=event_time.isoformat() if event_time else None,
-            sample_interval_us=sample_interval_us,
-            region_id=_normalize_str(region_id),
-            location_tag=_normalize_str(location_tag),
-            city=_normalize_str(city),
-            longitude=longitude,
-            latitude=latitude,
-            altitude_m=altitude_m,
-            sensor_model=_normalize_str(sensor_model),
-            install_position=_normalize_str(install_position),
-            weather_level=_normalize_str(weather_level),
-            pressure_hpa=pressure_hpa,
-            humidity_percent=humidity_percent,
-            is_synthetic=is_synthetic,
-            notes=_normalize_str(notes),
         ),
         queue="celery",
     )
-    # Link task_id to batch
-    _batch.task_id = str(_task.id)
-    _batch.status = "processing"
+    amp.task_id = str(_task.id)
+    amp.status = "processing"
     db.commit()
 
-    return LightningCurrentImportResponse(
-        imported_count=0,
-        skipped_count=0,
-        warning_count=0,
-        warnings=[],
+    return LightningAmplitudeImportResponse(
+        amplitude_id=amp.id,
         task_id=str(_task.id),
-        batch_id=_batch.id,
+        status="processing",
     )
 
-def execute_current_import_from_path(
+
+def list_lightning_amplitudes(
+    db: Session,
     *,
-    file_path: str,
-    source_file_name: str | None,
+    keyword: str | None = None,
+    status_filter: str | None = None,
+    region_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> LightningAmplitudeListResponse:
+    """列出雷电流幅值记录（元数据 + 状态 + 波形特征统计）。"""
+    filters: list[Any] = []
+    if keyword:
+        keyword_pattern = f"%{keyword}%"
+        filters.append(
+            or_(
+                LightningAmplitude.source_file_name.ilike(keyword_pattern),
+                LightningAmplitude.event_id.ilike(keyword_pattern),
+                LightningAmplitude.location_tag.ilike(keyword_pattern),
+                LightningAmplitude.city.ilike(keyword_pattern),
+            )
+        )
+    if status_filter:
+        normalized_status = _normalize_str(status_filter)
+        if normalized_status:
+            filters.append(LightningAmplitude.status == normalized_status)
+    if region_id:
+        filters.append(LightningAmplitude.region_id == region_id)
+
+    total = db.execute(
+        select(func.count()).select_from(LightningAmplitude).where(*filters)
+    ).scalar() or 0
+    rows = db.execute(
+        select(LightningAmplitude)
+        .where(*filters)
+        .order_by(LightningAmplitude.create_date.desc(), LightningAmplitude.id.desc())
+        .limit(limit)
+        .offset(offset)
+    ).scalars().all()
+
+    return LightningAmplitudeListResponse(
+        items=[_serialize_amplitude(a) for a in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def get_lightning_amplitude_detail(
+    db: Session,
+    amplitude_id: str,
+) -> LightningAmplitudeRecord:
+    """单条详情（含全部特征字段 + 状态）。"""
+    amp = get_lightning_amplitude_by_id(db, amplitude_id)
+    if not amp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流幅值记录不存在")
+    return _serialize_amplitude(amp)
+
+
+def get_lightning_amplitude_status(
+    db: Session,
+    amplitude_id: str,
+) -> LightningAmplitudeStatusResponse:
+    """轮询任务进度（status/progress）。"""
+    amp = get_lightning_amplitude_by_id(db, amplitude_id)
+    if not amp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流幅值记录不存在")
+    return LightningAmplitudeStatusResponse(
+        amplitude_id=amp.id,
+        status=amp.status,
+        progress=amp.progress,
+        error_message=amp.error_message,
+        record=_serialize_amplitude(amp),
+    )
+
+
+def retry_lightning_amplitude(
+    db: Session,
+    amplitude_id: str,
     actor_user_id: str,
-    event_id: str | None,
-    event_time_str: str | None,
-    sample_interval_us: float | None,
-    region_id: str | None,
-    location_tag: str | None,
-    city: str | None,
-    longitude: float | None,
-    latitude: float | None,
-    altitude_m: float | None,
-    sensor_model: str | None,
-    install_position: str | None,
-    weather_level: str | None,
-    pressure_hpa: float | None,
-    humidity_percent: float | None,
-    is_synthetic: bool,
-    notes: str | None,
-) -> LightningCurrentImportResponse:
-    """从文件路径读取雷电流波形数据并执行导入。由 Celery task 或直接调用。"""
-    db: Session = SessionLocal()
-    try:
-        with open(file_path, "rb") as _f:
-            content = _f.read()
-        text = _decode_text_bytes(content)
-        parsed = _parse_current_series(text)
-        if len(parsed.currents_ka) < 2:
-            return LightningCurrentImportResponse(
-                imported_count=0, skipped_count=0, warning_count=1,
-                warnings=["有效采样点数量不足（至少需要 2 个点）"],
-            )
-        if len(parsed.currents_ka) > MAX_SAMPLES:
-            return LightningCurrentImportResponse(
-                imported_count=0, skipped_count=0, warning_count=1,
-                warnings=[f"采样点过多（>{MAX_SAMPLES}），请拆分后再导入"],
-            )
-
-        event_time = None
-        if event_time_str:
-            try:
-                event_time = datetime.fromisoformat(event_time_str)
-            except ValueError:
-                pass
-
-        time_axis_us, inferred_interval_us, inferred_fs_hz, time_warnings = _build_time_axis(
-            parsed.time_us,
-            sample_interval_us=sample_interval_us,
-            sample_count=len(parsed.currents_ka),
+) -> LightningAmplitudeImportResponse:
+    """失败重试：重置状态并重新派发导入任务。"""
+    amp = get_lightning_amplitude_by_id(db, amplitude_id)
+    if not amp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流幅值记录不存在")
+    if not amp.source_object_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="记录缺少 MinIO 源文件引用，无法重试",
         )
-        warnings = [*parsed.warnings, *time_warnings]
-        features = _extract_wave_features(parsed.currents_ka, time_axis_us, inferred_interval_us)
+    amp.status = "pending"
+    amp.progress = 0
+    amp.error_message = None
+    amp.update_user = actor_user_id
+    db.commit()
 
-        normalized_event_id = _normalize_str(event_id) or _generate_event_id()
-        if get_lightning_event_by_event_id(db, normalized_event_id):
-            return LightningCurrentImportResponse(
-                imported_count=0, skipped_count=0, warning_count=1,
-                warnings=[f"事件编号已存在：{normalized_event_id}"],
-            )
+    from ..core.celery_app import celery_app as _celery_app
+    _task = _celery_app.send_task(
+        "app.tasks.lightning_tasks.import_lightning_amplitude_job",
+        kwargs=dict(amplitude_id=amp.id, actor_user_id=actor_user_id),
+        queue="celery",
+    )
+    amp.task_id = str(_task.id)
+    amp.status = "processing"
+    db.commit()
 
-        now = utcnow()
-        event = LightningCurrentEvent(
-            event_id=normalized_event_id,
-            source_file_name=source_file_name,
-            event_time=event_time,
-            sample_count=len(parsed.currents_ka),
-            sample_interval_us=inferred_interval_us,
-            sampling_frequency_hz=inferred_fs_hz,
-            peak_current_ka=features.peak_current_ka,
-            peak_abs_current_ka=features.peak_abs_current_ka,
-            wavefront_time_t1_us=features.wavefront_time_t1_us,
-            half_value_time_t2_us=features.half_value_time_t2_us,
-            steepness_ka_per_us=features.steepness_ka_per_us,
-            action_integral_j_ohm=features.action_integral_j_ohm,
-            wave_shape=features.wave_shape,
-            polarity=features.polarity,
-            stroke_count=features.stroke_count,
-            stroke_peaks_json=features.stroke_peaks_json,
-            region_id=region_id,
-            location_tag=location_tag,
-            city=city,
-            longitude=longitude,
-            latitude=latitude,
-            altitude_m=altitude_m,
-            sensor_model=sensor_model,
-            install_position=install_position,
-            weather_level=weather_level,
-            pressure_hpa=pressure_hpa,
-            humidity_percent=humidity_percent,
-            is_synthetic=bool(is_synthetic),
-            notes=notes,
-            feature_json={
-                "source": "import-file",
-                "has_explicit_time_axis": parsed.time_us is not None,
-            },
-            create_user=actor_user_id,
-            update_user=actor_user_id,
-            create_date=now,
-            update_date=now,
-        )
-        db.add(event)
-        db.flush()
+    return LightningAmplitudeImportResponse(
+        amplitude_id=amp.id,
+        task_id=str(_task.id),
+        status="processing",
+    )
 
-        sample_insert_stmt = insert(LightningCurrentSample)
-        total_samples = len(parsed.currents_ka)
-        for start in range(0, total_samples, INSERT_CHUNK_SIZE):
-            end = min(start + INSERT_CHUNK_SIZE, total_samples)
-            chunk = [
-                {
-                    "event_ref_id": event.id,
-                    "seq_no": idx + 1,
-                    "time_us": time_axis_us[idx],
-                    "current_ka": parsed.currents_ka[idx],
-                }
-                for idx in range(start, end)
-            ]
-            db.execute(sample_insert_stmt, chunk)
 
-        db.commit()
-
-        _publish_lightning_change(
-            "lightning.created",
-            f"导入雷电流数据：{normalized_event_id}（源文件：{source_file_name}）",
-        )
-
-        warning_count = len(warnings)
-        imported_count = 1
-        return LightningCurrentImportResponse(
-            imported_count=imported_count,
-            skipped_count=0,
-            warning_count=warning_count,
-            warnings=warnings[:50] if warnings else [],
-        )
-
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
-        # Clean up temp file
-        import os as _os2
+def delete_lightning_amplitude(db: Session, amplitude_id: str) -> dict[str, bool]:
+    """删除雷电流幅值记录，并同步删除 MinIO 上的源文件。"""
+    amp = get_lightning_amplitude_by_id(db, amplitude_id)
+    if not amp:
+        return {"success": False}
+    from ..services import minio_storage
+    if amp.source_object_key:
         try:
-            _os2.remove(file_path)
-        except OSError:
+            minio_storage.delete_object(amp.source_object_key)
+        except Exception:
             pass
+    db.delete(amp)
+    db.commit()
+    _publish_lightning_change(
+        "lightning.deleted",
+        {"event_id": amp.id, "message": f"删除雷电流幅值记录：{amp.source_file_name}"},
+    )
+    return {"success": True}
+
 
 def get_peak_exceedance_curve(
     db: Session,
@@ -709,21 +402,25 @@ def get_peak_exceedance_curve(
     thresholds_ka: list[float] | None,
     default_points: int = 12,
 ) -> LightningCurrentExceedanceResponse:
-    filters: list[Any] = [LightningCurrentEvent.peak_abs_current_ka.is_not(None), LightningCurrentEvent.sample_count >= 2]
+    """峰值超越概率 P 曲线：聚合 LightningAmplitude.peak_abs_current_ka（仅 completed 记录）。"""
+    filters: list[Any] = [
+        LightningAmplitude.peak_abs_current_ka.is_not(None),
+        LightningAmplitude.status == "completed",
+    ]
 
     normalized_region = _normalize_str(region_id)
     if normalized_region:
-        filters.append(LightningCurrentEvent.region_id == normalized_region)
+        filters.append(LightningAmplitude.region_id == normalized_region)
     normalized_polarity = _normalize_str(polarity)
     if normalized_polarity:
-        filters.append(LightningCurrentEvent.polarity == normalized_polarity.lower())
+        filters.append(LightningAmplitude.polarity == normalized_polarity.lower())
     normalized_wave_shape = _normalize_str(wave_shape)
     if normalized_wave_shape:
-        filters.append(func.lower(LightningCurrentEvent.wave_shape) == normalized_wave_shape.lower())
+        filters.append(func.lower(LightningAmplitude.wave_shape) == normalized_wave_shape.lower())
     if is_synthetic is not None:
-        filters.append(LightningCurrentEvent.is_synthetic == is_synthetic)
+        filters.append(LightningAmplitude.is_synthetic == is_synthetic)
 
-    values = db.execute(select(LightningCurrentEvent.peak_abs_current_ka).where(*filters)).scalars().all()
+    values = db.execute(select(LightningAmplitude.peak_abs_current_ka).where(*filters)).scalars().all()
     peaks = [float(item) for item in values if item is not None]
     total = len(peaks)
     if total == 0:
@@ -751,12 +448,18 @@ def get_peak_exceedance_curve(
 
     return LightningCurrentExceedanceResponse(total_events=total, thresholds=points)
 
+
 def prepare_line_lightning_current(
     db: Session,
     payload: LightningCurrentPreparationRequest,
     *,
     actor_user_id: str,
 ) -> LightningCurrentPreparationResponse:
+    """线路雷电流幅值分析（按地闪密度做法，读 MinIO 文件现算）。
+
+    数据源：线路关联的 LightningAmplitude（completed）→ 按 source_object_key 从 MinIO
+    下载源文件 → 实时解析落雷电流集合 → 拟合。禁止直接读库表统计字段做该分析。
+    """
     line = db.execute(select(Line).where(Line.id == payload.line_id)).scalar_one_or_none()
     if not line:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="线路不存在")
@@ -769,18 +472,52 @@ def prepare_line_lightning_current(
     if not towers:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前线路没有可回填的杆塔数据")
 
-    filters: list[Any] = [LightningCurrentEvent.peak_abs_current_ka.is_not(None), LightningCurrentEvent.sample_count >= 2]
+    filters: list[Any] = [
+        LightningAmplitude.status == "completed",
+        LightningAmplitude.source_object_key != "",
+    ]
     normalized_region = _normalize_str(payload.region_id)
     if normalized_region:
-        filters.append(LightningCurrentEvent.region_id == normalized_region)
+        filters.append(LightningAmplitude.region_id == normalized_region)
     if payload.is_synthetic is not None:
-        filters.append(LightningCurrentEvent.is_synthetic == payload.is_synthetic)
+        filters.append(LightningAmplitude.is_synthetic == payload.is_synthetic)
 
-    peaks = [
-        float(item)
-        for item in db.execute(select(LightningCurrentEvent.peak_abs_current_ka).where(*filters)).scalars().all()
-        if item is not None
-    ]
+    amplitudes = db.execute(
+        select(LightningAmplitude)
+        .where(*filters)
+        .order_by(LightningAmplitude.create_date.desc())
+    ).scalars().all()
+
+    if not amplitudes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="未找到可用于线路雷电流拟合的幅值记录（请先导入并等待处理完成）",
+        )
+
+    from ..services import minio_storage
+    peaks: list[float] = []
+    for amp in amplitudes:
+        try:
+            content = minio_storage.get_object(amp.source_object_key)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"读取幅值源文件失败（{amp.source_file_name}）：{exc}",
+            ) from exc
+        try:
+            text = _decode_text_bytes(content)
+            parsed = _parse_current_series(text)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"解析幅值源文件失败（{amp.source_file_name}）：{exc}",
+            ) from exc
+        if not parsed.currents_ka:
+            continue
+        peak_abs = max(abs(float(value)) for value in parsed.currents_ka)
+        if peak_abs > 0:
+            peaks.append(peak_abs)
+
     if not peaks:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未找到可用于线路雷电流拟合的幅值样本")
 
@@ -1331,105 +1068,6 @@ def _fire_and_forget(coro: object) -> None:
         return
     loop.create_task(coro)
 
-def _query_batch_groups(
-    db: Session,
-    model: type,
-    *,
-    keyword: str | None,
-    region_id: str | None,
-    limit: int,
-    offset: int,
-) -> tuple[int, list[LightningImportBatchSummary]]:
-    """Query import batch groups from a single model table."""
-    import hashlib
-
-    filters = []
-
-    if keyword:
-        keyword_pattern = f"%{keyword}%"
-        filters.append(
-            or_(
-                model.source_file_name.ilike(keyword_pattern),
-                model.location_tag.ilike(keyword_pattern),
-                model.city.ilike(keyword_pattern),
-            )
-        )
-
-    if region_id:
-        filters.append(model.region_id == region_id)
-
-    batch_key = func.concat(
-        func.coalesce(model.source_file_name, ""),
-        "|",
-        func.date_trunc("second", model.create_date).cast(String),
-        "|",
-        func.coalesce(model.region_id, ""),
-        "|",
-        func.coalesce(model.location_tag, ""),
-        "|",
-        func.coalesce(model.city, ""),
-    )
-
-    total = db.execute(
-        select(func.count(func.distinct(batch_key)))
-        .select_from(model)
-        .where(*filters)
-    ).scalar() or 0
-
-    rows = db.execute(
-        select(
-            batch_key.label("batch_key"),
-            model.source_file_name,
-            func.min(model.create_date).label("import_time"),
-            func.count().label("event_count"),
-            model.region_id,
-            model.location_tag,
-            model.city,
-            func.extract("year", func.min(model.event_time)).label("event_year"),
-            func.bool_or(model.is_synthetic).label("is_synthetic"),
-            func.max(model.notes).label("notes"),
-            func.max(model.peak_abs_current_ka).label("max_abs_current_ka"),
-            func.avg(model.peak_abs_current_ka).label("avg_abs_current_ka"),
-            func.sum(case((model.polarity == "positive", 1), else_=0)).label("positive_count"),
-            func.sum(case((model.polarity == "negative", 1), else_=0)).label("negative_count"),
-            func.max(model.create_user).label("create_user"),
-        )
-        .where(*filters)
-        .group_by(
-            batch_key,
-            model.source_file_name,
-            model.region_id,
-            model.location_tag,
-            model.city,
-        )
-        .order_by(func.min(model.create_date).desc())
-    ).all()
-
-    items = []
-    for row in rows:
-        batch_id = hashlib.md5(row.batch_key.encode()).hexdigest()[:16]
-        items.append(
-            LightningImportBatchSummary(
-                batch_id=batch_id,
-                source_file_name=row.source_file_name,
-                import_time=row.import_time,
-                event_count=row.event_count,
-                region_id=row.region_id,
-                location_tag=row.location_tag,
-                city=row.city,
-                event_year=int(row.event_year) if row.event_year else None,
-                is_synthetic=row.is_synthetic or False,
-                notes=row.notes,
-                max_abs_current_ka=float(row.max_abs_current_ka) if row.max_abs_current_ka else None,
-                avg_abs_current_ka=float(row.avg_abs_current_ka) if row.avg_abs_current_ka else None,
-                positive_count=int(row.positive_count or 0),
-                negative_count=int(row.negative_count or 0),
-                create_user=row.create_user,
-            )
-        )
-
-    return total, items
-
 
 # ---------------------------------------------------------------------------
 # 地闪分布（LightningDistribution）服务函数
@@ -1874,75 +1512,4 @@ def prepare_line_lightning_density(
         max_density=round(max(density_values), 6) if density_values else None,
         warning_count=len(warnings),
         warnings=warnings,
-    )
-
-
-# ---------------------------------------------------------------------------
-# 文件导入批次列表（仅波形，distribution 已迁移至 /distributions）
-# ---------------------------------------------------------------------------
-def list_lightning_import_batches(
-    db: Session,
-    *,
-    keyword: str | None = None,
-    region_id: str | None = None,
-    import_type: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
-) -> LightningImportBatchListResponse:
-    """
-    列出文件导入批次记录，按导入时间分组。
-    地闪分布导入已迁移至 /distributions 系列（LightningDistribution 表），
-    本接口仅服务雷电流波形导入（LightningCurrentEvent + LightningImportBatch）。
-    """
-    waveform_items = []
-
-    if import_type is None or import_type == "waveform":
-        _, waveform_items = _query_batch_groups(
-            db, LightningCurrentEvent,
-            keyword=keyword, region_id=region_id, limit=1000, offset=0,
-        )
-
-    # 从 LightningImportBatch 表查询正在处理或待处理的导入记录
-    from ..models.lightning_import_batch import LightningImportBatch as ImportBatchModel
-    batch_filters = [ImportBatchModel.status.in_(["pending", "processing", "failed"])]
-    if import_type and import_type != "waveform":
-        batch_filters.append(ImportBatchModel.import_type == import_type)
-    if keyword:
-        batch_filters.append(ImportBatchModel.source_file_name.ilike(f"%{keyword}%"))
-    if region_id:
-        batch_filters.append(ImportBatchModel.region_id == region_id)
-    pending_batches = db.execute(
-        select(ImportBatchModel).where(*batch_filters).order_by(ImportBatchModel.create_date.desc())
-    ).scalars().all()
-
-    batch_items = []
-    for b in pending_batches:
-        batch_items.append(
-            LightningImportBatchSummary(
-                batch_id=b.id,
-                source_file_name=b.source_file_name,
-                import_time=b.create_date,
-                event_count=b.event_count,
-                region_id=b.region_id,
-                location_tag=b.location_tag,
-                city=b.city,
-                event_year=b.event_year,
-                is_synthetic=b.is_synthetic,
-                notes=b.notes,
-                line_id=b.line_id,
-                status=b.status,
-                create_user=b.create_user,
-            )
-        )
-
-    all_items = batch_items + waveform_items
-    all_items.sort(key=lambda x: x.import_time or datetime.min, reverse=True)
-    total = len(all_items)
-    paginated = all_items[offset:offset + limit]
-
-    return LightningImportBatchListResponse(
-        items=paginated,
-        total=total,
-        limit=limit,
-        offset=offset,
     )

@@ -46,8 +46,7 @@ import type {
   TowerCircuitSummary,
   TowerModelSummary,
   TowerProfileDetail,
-  LightningCurrentEventSummary,
-  LightningCurrentEventListResponse,
+  LightningAmplitudeListResponse,
   LightningCurrentPreparationResponse,
   LightningDensityPreparationResponse,
 } from "@/types/auth";
@@ -746,7 +745,7 @@ export default function AdminPowerLinesPage() {
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return (await response.json()) as LightningCurrentEventListResponse;
+      return (await response.json()) as LightningAmplitudeListResponse;
     },
   });
   const towerProfileQuery = useQuery({
@@ -2548,14 +2547,14 @@ export default function AdminPowerLinesPage() {
       >
         <Space direction="vertical" size={12} className="w-full">
           <Typography.Text type="secondary">
-            请选择一条雷电流事件记录作为回填数据源。选择的记录将用于 Weibull 参数拟合。
+            将读取该线路关联的全部已完成雷电流幅值记录的 MinIO 源文件进行拟合计算。可先查看已有记录。
           </Typography.Text>
           <Select
             className="w-full"
-            placeholder="搜索并选择雷电流事件..."
+            placeholder="搜索并查看雷电流幅值记录..."
             showSearch
             loading={lightningEventsQuery.isFetching}
-            notFoundContent={lightningEventsQuery.isFetching ? "加载中..." : "暂无雷电流事件数据"}
+            notFoundContent={lightningEventsQuery.isFetching ? "加载中..." : "暂无雷电流幅值记录"}
             value={selectedCurrentEventId}
             onChange={(value) => setSelectedCurrentEventId(value)}
             filterOption={(input, option) =>

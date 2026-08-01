@@ -1149,11 +1149,16 @@ export type AtpAssetRunListResponse = {
 
 export type LightningPolarity = "positive" | "negative" | "mixed" | "unknown";
 
-export type LightningCurrentEventSummary = {
+export type LightningAmplitudeRecord = {
   id: string;
-  event_id: string;
-  source_file_name: string | null;
+  event_id: string | null;
+  source_file_name: string;
   event_time: string | null;
+  source_object_key: string;
+  status: string;
+  progress: number;
+  task_id: string | null;
+  error_message: string | null;
   sample_count: number;
   sample_interval_us: number | null;
   sampling_frequency_hz: number | null;
@@ -1187,19 +1192,25 @@ export type LightningCurrentEventSummary = {
   update_user: string | null;
 };
 
-export type LightningCurrentEventListResponse = {
-  items: LightningCurrentEventSummary[];
+export type LightningAmplitudeListResponse = {
+  items: LightningAmplitudeRecord[];
   total: number;
   limit: number;
   offset: number;
 };
 
-export type LightningCurrentImportResponse = {
-  imported_count: number;
-  skipped_count: number;
-  warning_count: number;
-  warnings: string[];
+export type LightningAmplitudeImportResponse = {
+  amplitude_id: string;
   task_id: string | null;
+  status: string;
+};
+
+export type LightningAmplitudeStatusResponse = {
+  amplitude_id: string;
+  status: string;
+  progress: number;
+  error_message: string | null;
+  record: LightningAmplitudeRecord | null;
 };
 
 export type LightningCurrentPreparationResponse = {
@@ -1224,21 +1235,6 @@ export type LightningDensityPreparationResponse = {
   max_density: number | null;
   warning_count: number;
   warnings: string[];
-};
-
-export type LightningCurrentSampleItem = {
-  id: number;
-  event_ref_id: string;
-  seq_no: number;
-  time_us: number;
-  current_ka: number;
-};
-
-export type LightningCurrentSampleListResponse = {
-  items: LightningCurrentSampleItem[];
-  total: number;
-  limit: number;
-  offset: number;
 };
 
 export type LightningCurrentExceedancePoint = {
@@ -1326,35 +1322,6 @@ export type LightningFillDensityRequest = {
 export type LightningFillDensityResponse = {
   task_id: string;
   status: string;
-};
-
-export type LightningImportBatchSummary = {
-  batch_id: string;
-  source_file_name: string | null;
-  import_time: string;
-  event_count: number;
-  region_id: string | null;
-  location_tag: string | null;
-  city: string | null;
-  event_year: number | null;
-  is_synthetic: boolean;
-  notes: string | null;
-  line_id: string | null;
-  line_name: string | null;
-  status: string | null;
-  task_id: string | null;
-  max_abs_current_ka: number | null;
-  avg_abs_current_ka: number | null;
-  positive_count: number;
-  negative_count: number;
-  create_user: string | null;
-};
-
-export type LightningImportBatchListResponse = {
-  items: LightningImportBatchSummary[];
-  total: number;
-  limit: number;
-  offset: number;
 };
 
 export type LightningDensityStatus = "pending" | "running" | "completed" | "failed";
