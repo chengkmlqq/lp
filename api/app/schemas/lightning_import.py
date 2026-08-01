@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .lightning import LightningPolarity
-
 
 class LightningImportBatchSummary(BaseModel):
-    """文件导入批次摘要"""
+    """文件导入批次摘要（雷电流波形导入使用）。"""
     batch_id: str  # 使用 source_file_name + create_date 的哈希作为批次ID
     source_file_name: str | None = None
     import_time: datetime
@@ -23,7 +20,7 @@ class LightningImportBatchSummary(BaseModel):
     line_id: str | None = None
     line_name: str | None = None
 
-    # 导入状态（distribution 类型可用）
+    # 导入状态（waveform 类型可用）
     status: str | None = None  # pending / processing / completed / failed
     task_id: str | None = None
 
@@ -42,23 +39,3 @@ class LightningImportBatchListResponse(BaseModel):
     total: int
     limit: int
     offset: int
-
-
-class LightningImportBatchEventItem(BaseModel):
-    """导入批次中的单个事件"""
-    id: str
-    event_id: str
-    longitude: float | None = None
-    latitude: float | None = None
-    current_ka: float | None = None
-    abs_current_ka: float | None = None
-    polarity: LightningPolarity
-    event_time: datetime | None = None
-
-
-class LightningImportBatchEventsResponse(BaseModel):
-    batch_id: str
-    source_file_name: str | None = None
-    import_time: datetime
-    events: list[LightningImportBatchEventItem]
-    total: int

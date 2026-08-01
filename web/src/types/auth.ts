@@ -1215,92 +1215,80 @@ export type LightningCurrentExceedanceResponse = {
   thresholds: LightningCurrentExceedancePoint[];
 };
 
-export type LightningDistributionRecordSummary = {
-  id: string;
-  file_name: string | null;
-  city: string | null;
-  longitude: number | null;
-  latitude: number | null;
-  year: number | null;
-  region_id: string | null;
-  notes: string | null;
-  is_synthetic: boolean;
-  total_points: number;
-  create_date: string;
-  create_user: string | null;
+export type LightningDistributionImportResponse = {
+  distribution_id: string;
+  task_id: string | null;
+  status: string;
 };
 
-export type LightningDistributionImportResponse = {
-  record: LightningDistributionRecordSummary;
-  imported_count: number;
+export type LightningDistributionRecord = {
+  id: string;
+  region_id: string | null;
+  location_tag: string | null;
+  city: string | null;
+  event_year: number | null;
+  line_id: string | null;
+  source_file_name: string;
+  source_object_key: string | null;
+  import_type: string;
+  status: string;
+  stage: string;
+  progress: number;
+  task_id: string | null;
+  error_message: string | null;
+  total_lines: number;
+  valid_count: number;
   skipped_count: number;
   warning_count: number;
-  warnings: string[];
-  line_id: string | null;
-  task_id: string | null;
-};
-
-export type LightningDistributionSummary = {
-  total_records: number;
-  area_km2: number;
-  data_years: number;
-  grid_size_km: number;
-  overall_ng_per_km2_year: number;
-  max_abs_current_ka: number | null;
-  avg_abs_current_ka: number | null;
-};
-
-export type LightningPolarityStats = {
+  warnings: string[] | null;
+  area_km2: number | null;
+  data_years: number | null;
+  grid_size_km: number | null;
+  overall_ng: number | null;
+  max_abs_current: number | null;
+  avg_abs_current: number | null;
   positive_count: number;
   negative_count: number;
-  mixed_count: number;
   unknown_count: number;
-  positive_ratio: number;
-  negative_ratio: number;
+  stats_json: Record<string, unknown> | null;
+  has_image: boolean;
+  create_user: string | null;
+  create_date: string;
+  update_date: string;
+  update_user: string | null;
 };
 
-export type LightningSourceStats = {
-  measured_count: number;
-  synthetic_count: number;
+export type LightningDistributionListResponse = {
+  items: LightningDistributionRecord[];
+  total: number;
+  limit: number;
+  offset: number;
 };
 
-export type LightningDistributionGridCell = {
-  grid_x: number;
-  grid_y: number;
-  min_lat: number;
-  max_lat: number;
-  min_lon: number;
-  max_lon: number;
-  center_lat: number;
-  center_lon: number;
-  strike_count: number;
-  ng_per_km2_year: number;
-  i_max_ka: number | null;
-  i_avg_ka: number | null;
-  positive_ratio: number;
+export type LightningDistributionStatusResponse = {
+  distribution_id: string;
+  status: string;
+  stage: string;
+  progress: number;
+  error_message: string | null;
+  record: LightningDistributionRecord | null;
 };
 
-export type LightningDistributionScatterPoint = {
-  id: string;
-  event_id: string;
-  longitude: number;
-  latitude: number;
-  current_ka: number | null;
-  abs_current_ka: number | null;
-  polarity: LightningPolarity;
-  region_id: string | null;
-  city: string | null;
-  location_tag: string | null;
-  event_time: string | null;
+export type LightningDistributionImageResponse = {
+  distribution_id: string;
+  image_url: string | null;
 };
 
-export type LightningDistributionStatsResponse = {
-  summary: LightningDistributionSummary;
-  polarity: LightningPolarityStats;
-  sources: LightningSourceStats;
-  grid_cells: LightningDistributionGridCell[];
-  scatter_points: LightningDistributionScatterPoint[];
-  p_curve: LightningCurrentExceedancePoint[];
+export type LightningFillDensityRequest = {
+  line_id: string;
+  region_id?: string | null;
+  years?: number | null;
+  radius_km?: number | null;
+};
+
+export type LightningFillDensityResponse = {
+  task_id: string;
+  status: string;
 };
 
 export type LightningImportBatchSummary = {
@@ -1330,148 +1318,6 @@ export type LightningImportBatchListResponse = {
   total: number;
   limit: number;
   offset: number;
-};
-
-export type LightningImportBatchEventItem = {
-  id: string;
-  event_id: string;
-  longitude: number | null;
-  latitude: number | null;
-  current_ka: number | null;
-  abs_current_ka: number | null;
-  polarity: LightningPolarity;
-  event_time: string | null;
-};
-
-export type LightningImportBatchEventsResponse = {
-  batch_id: string;
-  source_file_name: string | null;
-  import_time: string;
-  events: LightningImportBatchEventItem[];
-  total: number;
-};
-
-export type LightningTowerBufferEventItem = {
-  id: string;
-  event_id: string;
-  longitude: number | null;
-  latitude: number | null;
-  current_ka: number | null;
-  abs_current_ka: number | null;
-  polarity: LightningPolarity;
-  event_time: string | null;
-  location_tag: string | null;
-  city: string | null;
-  distance_km: number;
-};
-
-export type LightningTowerTerrainMetrics = {
-  slope_deg: number | null;
-  aspect_deg: number | null;
-  slope_mean_deg: number | null;
-  slope_p95_deg: number | null;
-  slope_max_deg: number | null;
-  slope_along_line_deg: number | null;
-  slope_cross_line_deg: number | null;
-  relief_m_50: number | null;
-  dem_source: string | null;
-  dem_resolution_m: number | null;
-  quality_score: number | null;
-  quality_level: string | null;
-  terrain_exposure_index: number | null;
-  windward_factor: number | null;
-  algorithm_version: string | null;
-  computed_at: string | null;
-  land_cover_type: string | null;
-};
-
-export type LightningTowerBufferStatsResponse = {
-  tower_id: string | null;
-  tower_no: string | null;
-  line_id: string | null;
-  center_longitude: number;
-  center_latitude: number;
-  radius_km: number;
-  design_current_ka: number;
-  strike_count: number;
-  exceed_design_count: number;
-  max_abs_current_ka: number | null;
-  avg_abs_current_ka: number | null;
-  ng_per_km2_year: number;
-  positive_ratio: number;
-  risk_level: string;
-  recommended_action: string;
-  events: LightningTowerBufferEventItem[];
-  terrain_metrics: LightningTowerTerrainMetrics | null;
-};
-
-export type LightningTowerTerrainComputeRequest = {
-  tower_id?: string | null;
-  longitude?: number | null;
-  latitude?: number | null;
-  altitude_m?: number | null;
-  dem_grid_m: number[][];
-  cell_size_m?: number;
-  search_radius_m?: number;
-  dem_source?: string | null;
-  dem_resolution_m?: number | null;
-  wind_direction_deg?: number | null;
-  land_cover_type?: string | null;
-  persist?: boolean;
-};
-
-export type LightningTowerTerrainComputeResponse = {
-  tower_id: string | null;
-  tower_no: string | null;
-  line_id: string | null;
-  center_longitude: number;
-  center_latitude: number;
-  method: string;
-  persisted: boolean;
-  terrain_metrics: LightningTowerTerrainMetrics;
-  warnings: string[];
-};
-
-export type LightningSyntheticDatasetStats = {
-  count: number;
-  max_abs_current_ka: number | null;
-  avg_abs_current_ka: number | null;
-  positive_ratio: number;
-  ng_per_km2_year: number;
-};
-
-export type LightningSyntheticCompareResponse = {
-  grid_size_km: number;
-  data_years: number;
-  measured: LightningSyntheticDatasetStats;
-  synthetic: LightningSyntheticDatasetStats;
-  grid_cosine_similarity: number | null;
-  note: string | null;
-};
-
-export type LightningDistributionEventBrief = {
-  id: string;
-  event_id: string;
-  longitude: number | null;
-  latitude: number | null;
-  current_ka: number | null;
-  abs_current_ka: number | null;
-  polarity: LightningPolarity;
-  event_time: string | null;
-  location_tag: string | null;
-  city: string | null;
-};
-
-export type LightningDistributionReportResponse = {
-  period: "week" | "month";
-  start_time: string;
-  end_time: string;
-  strike_count: number;
-  max_abs_current_ka: number | null;
-  avg_abs_current_ka: number | null;
-  positive_ratio: number;
-  ng_per_km2_year: number;
-  most_severe_event: LightningDistributionEventBrief | null;
 };
 
 export type LightningDensityStatus = "pending" | "running" | "completed" | "failed";

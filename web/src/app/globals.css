@@ -425,6 +425,7 @@ body {
   gap: 0;
   overflow: hidden;
   padding: 0 8px 8px;
+  padding-top: 8px;
 }
 
 
@@ -553,7 +554,6 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  margin-left: 12px;
 }
 
 .admin-menus-table-anchor .ant-table-body {

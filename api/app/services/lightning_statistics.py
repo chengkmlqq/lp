@@ -1,0 +1,347 @@
+"""雷电流地闪密度模块的纯统计逻辑。
+
+从 lightning_service.py 中抽取的纯函数集合（网格 / Ng / 极性比 / 电流统计 / 出图），
+供导入异步任务与线路回填任务共用，便于单元测试。本模块不直接访问数据库。
+"""
+
+from __future__ import annotations
+
+import io
+import math
+import re
+from datetime import datetime
+from typing import Any
+
+DEGREE_TO_KM = 111.32
+TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "gbk", "latin-1")
+TOKEN_SPLIT_PATTERN = re.compile(r"[,\t; ]+")
+MAX_DISTRIBUTION_ROWS = 2_000_000
+
+# 每条落雷数据的字段名
+STRIKE_LAT = "lat"
+STRIKE_LON = "lon"
+STRIKE_CURRENT = "current_ka"
+STRIKE_POLARITY = "polarity"
+
+
+# ---------------------------------------------------------------------------
+# 文本解码与行解析
+# ---------------------------------------------------------------------------
+def decode_text_bytes(content: bytes) -> str:
+    """按候选编码顺序解码文本文件内容。"""
+    for encoding in TEXT_ENCODINGS:
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("文件编码不受支持")
+
+
+def parse_distribution_line(raw_line: str) -> tuple[float, float, float] | None:
+    """解析一行 \"纬度 经度 电流\"，返回 (lat, lon, current_ka) 或 None。"""
+    stripped = raw_line.strip()
+    if not stripped:
+        return None
+    tokens = [token for token in TOKEN_SPLIT_PATTERN.split(stripped) if token]
+    if len(tokens) < 3:
+        return None
+    values: list[float] = []
+    for token in tokens:
+        parsed = _parse_float(token)
+        if parsed is not None:
+            values.append(parsed)
+        if len(values) >= 3:
+            break
+    if len(values) < 3:
+        return None
+    return (values[0], values[1], values[2])
+
+
+def _parse_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    if not normalized:
+        return None
+    try:
+        return float(normalized)
+    except ValueError:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# 解析 + 校验
+# ---------------------------------------------------------------------------
+def parse_distribution_content(
+    text: str,
+    *,
+    max_rows: int = MAX_DISTRIBUTION_ROWS,
+    warnings: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """逐行解析文本并校验，返回合法落雷集合。
+
+    返回列表元素：{lat, lon, current_ka, polarity}
+    warnings 会在原地累计（最多 50 条）。
+    """
+    result: list[dict[str, Any]] = []
+    collected_warnings: list[str] = warnings if warnings is not None else []
+
+    for line_no, raw_line in enumerate(text.splitlines(), start=1):
+        if len(result) >= max_rows:
+            break
+        parsed = parse_distribution_line(raw_line)
+        if not parsed:
+            stripped = raw_line.strip()
+            if stripped and len(collected_warnings) < 50:
+                collected_warnings.append(f'第 {line_no} 行无法解析为"纬度 经度 电流"，已跳过')
+            continue
+
+        latitude, longitude, current_ka = parsed
+        if not (-90.0 <= latitude <= 90.0 and -180.0 <= longitude <= 180.0):
+            if len(collected_warnings) < 50:
+                collected_warnings.append(f"第 {line_no} 行坐标越界（lat={latitude}, lon={longitude}），已跳过")
+            continue
+
+        if math.isclose(current_ka, 0.0, abs_tol=1e-12):
+            polarity: str = "unknown"
+        else:
+            polarity = "positive" if current_ka > 0 else "negative"
+
+        result.append(
+            {
+                STRIKE_LAT: latitude,
+                STRIKE_LON: longitude,
+                STRIKE_CURRENT: current_ka,
+                STRIKE_POLARITY: polarity,
+            }
+        )
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 统计
+# ---------------------------------------------------------------------------
+def safe_km_per_lon(latitude: float) -> float:
+    """在给定纬度上，1°经度大约多少公里。"""
+    factor = abs(math.cos(math.radians(latitude)))
+    return max(DEGREE_TO_KM * factor, 1e-6)
+
+
+def resolve_data_years(event_times: list[datetime | None], default: float = 1.0) -> float:
+    """根据事件时间跨度推算数据年数；无足够时间信息时返回默认值。"""
+    values = [t for t in event_times if t is not None]
+    if len(values) < 2:
+        return default
+    minimum = min(values)
+    maximum = max(values)
+    delta_days = (maximum - minimum).total_seconds() / 86400.0
+    return max(delta_days / 365.25, default)
+
+
+def compute_statistics(
+    strikes: list[dict[str, Any]],
+    *,
+    grid_size_km: float,
+    data_years: float | None = None,
+    event_times: list[datetime | None] | None = None,
+) -> dict[str, Any]:
+    """基于内存中的落雷集合计算统计结果（纯函数，不查库）。
+
+    返回 dict 包含：
+      total_records / area_km2 / data_years / overall_ng /
+      max_abs_current / avg_abs_current / positive_count / negative_count /
+      unknown_count / grid_cells（网格列表）
+    """
+    total = len(strikes)
+    if total == 0:
+        return {
+            "total_records": 0,
+            "area_km2": 0.0,
+            "data_years": float(data_years or 1.0),
+            "overall_ng": 0.0,
+            "max_abs_current": None,
+            "avg_abs_current": None,
+            "positive_count": 0,
+            "negative_count": 0,
+            "unknown_count": 0,
+            "grid_cells": [],
+        }
+
+    lats = [float(s[STRIKE_LAT]) for s in strikes]
+    lons = [float(s[STRIKE_LON]) for s in strikes]
+    min_lat = min(lats)
+    max_lat = max(lats)
+    min_lon = min(lons)
+    max_lon = max(lons)
+    center_lat = (min_lat + max_lat) / 2.0
+    km_per_lon = safe_km_per_lon(center_lat)
+
+    width_km = max((max_lon - min_lon) * km_per_lon, grid_size_km)
+    height_km = max((max_lat - min_lat) * DEGREE_TO_KM, grid_size_km)
+    area_km2 = max(width_km * height_km, grid_size_km * grid_size_km)
+
+    if data_years is not None:
+        years = float(data_years)
+    elif event_times:
+        years = resolve_data_years(event_times)
+    else:
+        years = 1.0
+    years = max(years, 1e-6)
+
+    overall_ng = total / (area_km2 * years)
+
+    positive_count = 0
+    negative_count = 0
+    unknown_count = 0
+    abs_currents: list[float] = []
+    for s in strikes:
+        polarity = s.get(STRIKE_POLARITY)
+        if polarity == "positive":
+            positive_count += 1
+        elif polarity == "negative":
+            negative_count += 1
+        else:
+            unknown_count += 1
+        current = s.get(STRIKE_CURRENT)
+        if current is not None:
+            abs_currents.append(abs(float(current)))
+
+    max_abs = max(abs_currents) if abs_currents else None
+    avg_abs = sum(abs_currents) / len(abs_currents) if abs_currents else None
+
+    # 网格聚合
+    cell_counts: dict[tuple[int, int], int] = {}
+    cell_imax: dict[tuple[int, int], float] = {}
+    cell_positive: dict[tuple[int, int], int] = {}
+    for s in strikes:
+        cell_x = int(math.floor(((float(s[STRIKE_LON]) - min_lon) * km_per_lon) / grid_size_km))
+        cell_y = int(math.floor(((float(s[STRIKE_LAT]) - min_lat) * DEGREE_TO_KM) / grid_size_km))
+        key = (cell_x, cell_y)
+        cell_counts[key] = cell_counts.get(key, 0) + 1
+        abs_current = abs(float(s[STRIKE_CURRENT]))
+        if abs_current > cell_imax.get(key, 0.0):
+            cell_imax[key] = abs_current
+        if s.get(STRIKE_POLARITY) == "positive":
+            cell_positive[key] = cell_positive.get(key, 0) + 1
+
+    grid_cells: list[dict[str, Any]] = []
+    for (cell_x, cell_y), count in cell_counts.items():
+        x0_km = cell_x * grid_size_km
+        x1_km = (cell_x + 1) * grid_size_km
+        y0_km = cell_y * grid_size_km
+        y1_km = (cell_y + 1) * grid_size_km
+        cell_min_lat = min_lat + y0_km / DEGREE_TO_KM
+        cell_max_lat = min_lat + y1_km / DEGREE_TO_KM
+        cell_center_lat = (cell_min_lat + cell_max_lat) / 2.0
+        cell_km_per_lon = safe_km_per_lon(cell_center_lat)
+        cell_min_lon = min_lon + x0_km / cell_km_per_lon
+        cell_max_lon = min_lon + x1_km / cell_km_per_lon
+        cell_center_lon = (cell_min_lon + cell_max_lon) / 2.0
+        positive_in_cell = cell_positive.get((cell_x, cell_y), 0)
+        grid_cells.append(
+            {
+                "grid_x": cell_x,
+                "grid_y": cell_y,
+                "min_lat": cell_min_lat,
+                "max_lat": cell_max_lat,
+                "min_lon": cell_min_lon,
+                "max_lon": cell_max_lon,
+                "center_lat": cell_center_lat,
+                "center_lon": cell_center_lon,
+                "strike_count": count,
+                "ng_per_km2_year": count / (grid_size_km * grid_size_km * years),
+                "i_max_ka": cell_imax.get((cell_x, cell_y)),
+                "positive_ratio": (positive_in_cell / count) if count > 0 else 0.0,
+            }
+        )
+
+    grid_cells.sort(key=lambda cell: cell["strike_count"], reverse=True)
+
+    return {
+        "total_records": total,
+        "area_km2": area_km2,
+        "data_years": years,
+        "overall_ng": overall_ng,
+        "max_abs_current": max_abs,
+        "avg_abs_current": avg_abs,
+        "positive_count": positive_count,
+        "negative_count": negative_count,
+        "unknown_count": unknown_count,
+        "grid_cells": grid_cells,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 密度图渲染
+# ---------------------------------------------------------------------------
+def render_density_image(
+    strikes: list[dict[str, Any]],
+    *,
+    grid_size_km: float,
+    title: str | None = None,
+) -> bytes:
+    """用 matplotlib 渲染地闪密度图（网格热力图），返回 PNG 字节。
+
+    matplotlib 不可用时返回 b""（调用方降级为无图）。
+    """
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
+    except ImportError:
+        return b""
+
+    if not strikes:
+        return b""
+
+    lats = [float(s[STRIKE_LAT]) for s in strikes]
+    lons = [float(s[STRIKE_LON]) for s in strikes]
+    min_lat = min(lats)
+    max_lat = max(lats)
+    min_lon = min(lons)
+    max_lon = max(lons)
+    center_lat = (min_lat + max_lat) / 2.0
+    km_per_lon = safe_km_per_lon(center_lat)
+
+    cell_counts: dict[tuple[int, int], int] = {}
+    for s in strikes:
+        cell_x = int(math.floor(((float(s[STRIKE_LON]) - min_lon) * km_per_lon) / grid_size_km))
+        cell_y = int(math.floor(((float(s[STRIKE_LAT]) - min_lat) * DEGREE_TO_KM) / grid_size_km))
+        key = (cell_x, cell_y)
+        cell_counts[key] = cell_counts.get(key, 0) + 1
+
+    xs = [key[0] for key in cell_counts]
+    ys = [key[1] for key in cell_counts]
+    if not xs:
+        return b""
+
+    width_cells = max(xs) - min(xs) + 1
+    height_cells = max(ys) - min(ys) + 1
+    width_cells = max(width_cells, 1)
+    height_cells = max(height_cells, 1)
+
+    matrix = np.zeros((height_cells, width_cells), dtype=float)
+    for (cell_x, cell_y), count in cell_counts.items():
+        matrix[cell_y - min(ys), cell_x - min(xs)] = count
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    image = ax.imshow(
+        matrix,
+        origin="lower",
+        aspect="auto",
+        cmap="YlOrRd",
+        interpolation="nearest",
+    )
+    ax.set_xlabel("经度方向网格")
+    ax.set_ylabel("纬度方向网格")
+    ax.set_title(title or "雷电流地闪密度分布")
+    fig.colorbar(image, ax=ax, label="落雷次数")
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150)
+    plt.close(fig)
+    return buf.getvalue()

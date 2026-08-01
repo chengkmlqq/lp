@@ -15,45 +15,39 @@ from ...schemas.lightning import (
     LightningCurrentPreparationResponse,
     LightningCurrentExceedanceResponse,
     LightningCurrentImportResponse,
-    LightningDensityPreparationRequest,
-    LightningDensityPreparationResponse,
     LightningCurrentSampleListResponse,
     LightningDistributionImportResponse,
-    LightningDistributionReportResponse,
-    LightningDistributionStatsResponse,
-    LightningComputeDensityRequest,
-    LightningComputeDensityResponse,
-    LightningSyntheticCompareResponse,
-    LightningTowerTerrainComputeRequest,
-    LightningTowerTerrainComputeResponse,
-    LightningTowerBufferStatsResponse,
+    LightningDistributionRecord,
+    LightningDistributionListResponse,
+    LightningDistributionStatusResponse,
+    LightningDistributionImageResponse,
+    LightningDensityPreparationRequest,
+    LightningDensityPreparationResponse,
+    LightningFillDensityRequest,
+    LightningFillDensityResponse,
 )
-from ...schemas.lightning_import import (
-    LightningImportBatchListResponse,
-    LightningImportBatchEventsResponse,
-)
+from ...schemas.lightning_import import LightningImportBatchListResponse
 from ...services.lightning_service import (
-    build_lightning_distribution_report,
-    compare_measured_and_synthetic_distribution,
-    compute_tower_terrain_metrics,
     delete_lightning_event,
-    delete_lightning_import_batch,
-    get_lightning_distribution_stats,
+    delete_lightning_distribution,
+    get_lightning_distribution_detail,
+    get_lightning_distribution_image_url,
+    get_lightning_distribution_status,
     get_lightning_event_by_id,
     get_peak_exceedance_curve,
-    get_tower_buffer_stats,
     import_lightning_current_async,
     import_lightning_distribution_from_file,
     import_lightning_event_from_file,
+    list_lightning_distributions,
     list_lightning_events,
     list_lightning_samples,
     prepare_line_lightning_current,
     prepare_line_lightning_density,
+    retry_lightning_distribution,
     serialize_lightning_event,
+    trigger_line_density_fill,
     update_lightning_event,
     list_lightning_import_batches,
-    get_lightning_import_batch_events,
-    trigger_ground_flash_density_computation,
 )
 
 router = APIRouter(
@@ -221,7 +215,6 @@ def import_lightning_distribution_file(
     region_id: str | None = Form(default=None),
     location_tag: str | None = Form(default=None),
     city: str | None = Form(default=None),
-    is_synthetic: bool = Form(default=False),
     notes: str | None = Form(default=None),
     line_id: str | None = Form(default=None),
     current_user: CurrentUser = Depends(require_permission("lightning.manage")),
@@ -235,25 +228,86 @@ def import_lightning_distribution_file(
         region_id=region_id,
         location_tag=location_tag,
         city=city,
-        is_synthetic=is_synthetic,
         notes=notes,
         line_id=line_id,
     )
 
 
-@router.post("/compute-density", response_model=LightningComputeDensityResponse)
-def trigger_ground_flash_density(
-    payload: LightningComputeDensityRequest,
+@router.get("/distributions", response_model=LightningDistributionListResponse)
+def get_lightning_distributions(
+    keyword: str | None = Query(default=None),
+    region_id: str | None = Query(default=None),
+    city: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningDistributionListResponse:
+    return list_lightning_distributions(
+        db,
+        keyword=keyword,
+        region_id=region_id,
+        city=city,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/distributions/{distribution_id}/status", response_model=LightningDistributionStatusResponse)
+def get_lightning_distribution_status_endpoint(
+    distribution_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningDistributionStatusResponse:
+    return get_lightning_distribution_status(db, distribution_id)
+
+
+@router.get("/distributions/{distribution_id}/image", response_model=LightningDistributionImageResponse)
+def get_lightning_distribution_image_endpoint(
+    distribution_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningDistributionImageResponse:
+    return get_lightning_distribution_image_url(db, distribution_id)
+
+
+@router.post("/distributions/{distribution_id}/retry", response_model=LightningDistributionImportResponse)
+def retry_lightning_distribution_endpoint(
+    distribution_id: str,
     current_user: CurrentUser = Depends(require_permission("lightning.manage")),
     db: Session = Depends(get_db),
-) -> LightningComputeDensityResponse:
-    return trigger_ground_flash_density_computation(
-        db,
-        line_id=payload.line_id,
-        region_id=payload.region_id,
-        is_synthetic=payload.is_synthetic,
-        actor_user_id=current_user.user.id,
-    )
+) -> LightningDistributionImportResponse:
+    return retry_lightning_distribution(db, distribution_id, actor_user_id=current_user.user.id)
+
+
+@router.delete("/distributions/{distribution_id}")
+def delete_lightning_distribution_endpoint(
+    distribution_id: str,
+    _: CurrentUser = Depends(require_permission("lightning.manage")),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    deleted = delete_lightning_distribution(db, distribution_id)
+    if not deleted.get("success"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
+    return deleted
+
+
+@router.get("/distributions/{distribution_id}", response_model=LightningDistributionRecord)
+def get_lightning_distribution_detail_endpoint(
+    distribution_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningDistributionRecord:
+    return get_lightning_distribution_detail(db, distribution_id)
+
+
+@router.post("/fill-density", response_model=LightningFillDensityResponse)
+def trigger_line_lightning_density_fill(
+    payload: LightningFillDensityRequest,
+    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningFillDensityResponse:
+    return trigger_line_density_fill(db, payload, actor_user_id=current_user.user.id)
 
 
 @router.post("/prepare-current", response_model=LightningCurrentPreparationResponse)
@@ -278,7 +332,7 @@ def prepare_lightning_density_for_line(
 def get_lightning_import_batches(
     keyword: str | None = Query(default=None),
     region_id: str | None = Query(default=None),
-    import_type: str | None = Query(default=None, description="过滤类型：waveform（雷电流波形）| distribution（地闪分布）"),
+    import_type: str | None = Query(default=None, description="过滤类型：waveform（雷电流波形）"),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
@@ -291,50 +345,6 @@ def get_lightning_import_batches(
         import_type=import_type,
         limit=limit,
         offset=offset,
-    )
-
-
-@router.get("/import-batches/events", response_model=LightningImportBatchEventsResponse)
-def get_import_batch_events(
-    source_file_name: str | None = Query(default=None),
-    import_time: datetime = Query(...),
-    region_id: str | None = Query(default=None),
-    location_tag: str | None = Query(default=None),
-    city: str | None = Query(default=None),
-    import_type: str | None = Query(default=None, description="过滤类型：waveform（雷电流波形）| distribution（地闪分布）"),
-    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
-    db: Session = Depends(get_db),
-) -> LightningImportBatchEventsResponse:
-    return get_lightning_import_batch_events(
-        db,
-        source_file_name=source_file_name,
-        import_time=import_time,
-        region_id=region_id,
-        location_tag=location_tag,
-        city=city,
-        import_type=import_type,
-    )
-
-
-@router.delete("/import-batches")
-def delete_lightning_import_batch_endpoint(
-    source_file_name: str | None = Query(default=None),
-    import_time: datetime = Query(...),
-    region_id: str | None = Query(default=None),
-    location_tag: str | None = Query(default=None),
-    city: str | None = Query(default=None),
-    import_type: str | None = Query(default=None, description="过滤类型：waveform（雷电流波形）| distribution（地闪分布）"),
-    _: CurrentUser = Depends(require_permission("lightning.manage")),
-    db: Session = Depends(get_db),
-) -> dict[str, bool | int]:
-    return delete_lightning_import_batch(
-        db,
-        source_file_name=source_file_name,
-        import_time=import_time,
-        region_id=region_id,
-        location_tag=location_tag,
-        city=city,
-        import_type=import_type,
     )
 
 
@@ -387,161 +397,3 @@ def get_lightning_samples(
     if not event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流事件不存在")
     return list_lightning_samples(db, event_id=event_id, limit=limit, offset=offset)
-
-
-@router.get("/stats/distribution", response_model=LightningDistributionStatsResponse)
-def get_lightning_distribution_statistics(
-    min_lat: float | None = Query(default=None),
-    max_lat: float | None = Query(default=None),
-    min_lon: float | None = Query(default=None),
-    max_lon: float | None = Query(default=None),
-    region_id: str | None = Query(default=None),
-    city: str | None = Query(default=None),
-    location_tag: str | None = Query(default=None),
-    polarity: str | None = Query(default=None),
-    is_synthetic: bool | None = Query(default=None),
-    grid_size_km: float = Query(default=1.0, gt=0.05, le=100),
-    years: float | None = Query(default=None, gt=0),
-    grid_limit: int = Query(default=600, ge=1, le=5000),
-    scatter_limit: int = Query(default=1200, ge=1, le=5000),
-    thresholds: str | None = Query(default=None, description="逗号分隔阈值，如 10,20,50"),
-    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
-    db: Session = Depends(get_db),
-) -> LightningDistributionStatsResponse:
-    thresholds_ka: list[float] = []
-    if thresholds:
-        for token in thresholds.split(","):
-            token = token.strip()
-            if not token:
-                continue
-            try:
-                value = float(token)
-            except ValueError:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"无效阈值：{token}") from None
-            if value > 0:
-                thresholds_ka.append(value)
-
-    return get_lightning_distribution_stats(
-        db,
-        min_lat=min_lat,
-        max_lat=max_lat,
-        min_lon=min_lon,
-        max_lon=max_lon,
-        region_id=region_id,
-        city=city,
-        location_tag=location_tag,
-        polarity=polarity,
-        is_synthetic=is_synthetic,
-        grid_size_km=grid_size_km,
-        years=years,
-        grid_limit=grid_limit,
-        scatter_limit=scatter_limit,
-        thresholds_ka=thresholds_ka,
-    )
-
-
-@router.get("/stats/tower-buffer", response_model=LightningTowerBufferStatsResponse)
-def get_lightning_tower_buffer_statistics(
-    tower_id: str | None = Query(default=None),
-    longitude: float | None = Query(default=None),
-    latitude: float | None = Query(default=None),
-    radius_km: float = Query(default=3.0, gt=0.1, le=20),
-    design_current_ka: float = Query(default=100.0, gt=1, le=1000),
-    years: float | None = Query(default=None, gt=0),
-    region_id: str | None = Query(default=None),
-    is_synthetic: bool | None = Query(default=None),
-    include_events_limit: int = Query(default=100, ge=1, le=1000),
-    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage", "tower.read", "tower.manage")),
-    db: Session = Depends(get_db),
-) -> LightningTowerBufferStatsResponse:
-    return get_tower_buffer_stats(
-        db,
-        tower_id=tower_id,
-        longitude=longitude,
-        latitude=latitude,
-        radius_km=radius_km,
-        design_current_ka=design_current_ka,
-        years=years,
-        region_id=region_id,
-        is_synthetic=is_synthetic,
-        include_events_limit=include_events_limit,
-    )
-
-
-@router.post("/stats/tower-terrain", response_model=LightningTowerTerrainComputeResponse)
-def compute_lightning_tower_terrain(
-    payload: LightningTowerTerrainComputeRequest,
-    current_user: CurrentUser = Depends(
-        require_any_permission("lightning.read", "lightning.manage", "tower.read", "tower.manage")
-    ),
-    db: Session = Depends(get_db),
-) -> LightningTowerTerrainComputeResponse:
-    can_persist = (
-        "admin" in current_user.role_codes
-        or "lightning.manage" in current_user.permission_codes
-        or "tower.manage" in current_user.permission_codes
-    )
-    return compute_tower_terrain_metrics(
-        db,
-        payload=payload,
-        actor_user_id=current_user.user.id,
-        can_persist=can_persist,
-    )
-
-
-@router.get("/stats/compare-synthetic", response_model=LightningSyntheticCompareResponse)
-def get_lightning_synthetic_compare(
-    min_lat: float | None = Query(default=None),
-    max_lat: float | None = Query(default=None),
-    min_lon: float | None = Query(default=None),
-    max_lon: float | None = Query(default=None),
-    region_id: str | None = Query(default=None),
-    city: str | None = Query(default=None),
-    location_tag: str | None = Query(default=None),
-    grid_size_km: float = Query(default=1.0, gt=0.05, le=100),
-    years: float | None = Query(default=None, gt=0),
-    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
-    db: Session = Depends(get_db),
-) -> LightningSyntheticCompareResponse:
-    return compare_measured_and_synthetic_distribution(
-        db,
-        min_lat=min_lat,
-        max_lat=max_lat,
-        min_lon=min_lon,
-        max_lon=max_lon,
-        region_id=region_id,
-        city=city,
-        location_tag=location_tag,
-        grid_size_km=grid_size_km,
-        years=years,
-    )
-
-
-@router.get("/reports/distribution", response_model=LightningDistributionReportResponse)
-def get_lightning_distribution_report(
-    period: str = Query(default="week", pattern="^(week|month)$"),
-    anchor_time: datetime | None = Query(default=None),
-    min_lat: float | None = Query(default=None),
-    max_lat: float | None = Query(default=None),
-    min_lon: float | None = Query(default=None),
-    max_lon: float | None = Query(default=None),
-    region_id: str | None = Query(default=None),
-    city: str | None = Query(default=None),
-    location_tag: str | None = Query(default=None),
-    is_synthetic: bool | None = Query(default=None),
-    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
-    db: Session = Depends(get_db),
-) -> LightningDistributionReportResponse:
-    return build_lightning_distribution_report(
-        db,
-        period=period,
-        anchor_time=anchor_time,
-        min_lat=min_lat,
-        max_lat=max_lat,
-        min_lon=min_lon,
-        max_lon=max_lon,
-        region_id=region_id,
-        city=city,
-        location_tag=location_tag,
-        is_synthetic=is_synthetic,
-    )

@@ -4,53 +4,75 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..core.database import Base
 from .base import utcnow
 
 
-class LightningDistributionPoint(Base):
-    """地闪密度/雷电流分布点。
+class LightningDistribution(Base):
+    """雷电流地闪密度一次导入的「批次 + 统计结果 + 图片引用」记录。
 
-    与 LightningCurrentEvent（雷电流波形）分离的独立表，
-    仅存储来自地闪密度导入的单点数据（纬/经/电流值），
-    不包含波形采样或波形特征参数。
+    取代旧的 LightningImportBatch（分布导入部分）与 LightningDistributionPoint：
+    - 原始上传文件与生成的密度图均存 MinIO，DB 只存对象 Key；
+    - 落雷明细不再入库，事件明细展示逻辑全部移除；
+    - 密度计算改为直接读取 MinIO 上的原始文件解析。
     """
 
-    __tablename__ = "lightning_distribution_point"
+    __tablename__ = "lightning_distribution"
     __table_args__ = (
-        Index("idx_ldp_event_id", "event_id"),
-        Index("idx_ldp_event_time", "event_time"),
-        Index("idx_ldp_region", "region_id"),
-        Index("idx_ldp_location_tag", "location_tag"),
-        Index("idx_ldp_polarity", "polarity"),
-        Index("idx_ldp_peak_abs", "peak_abs_current_ka"),
-        Index("idx_ldp_synthetic", "is_synthetic"),
-        Index("idx_ldp_coord", "latitude", "longitude"),
+        Index("idx_ld_region", "region_id"),
+        Index("idx_ld_location_tag", "location_tag"),
+        Index("idx_ld_city", "city"),
+        Index("idx_ld_line_id", "line_id"),
+        Index("idx_ld_status", "status"),
+        Index("idx_ld_create_date", "create_date"),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: uuid4().hex)
-    event_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    source_file_name: Mapped[str | None] = mapped_column(String(255))
-    event_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    region_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    location_tag: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    event_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    line_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    peak_current_ka: Mapped[float | None] = mapped_column(Float)
-    peak_abs_current_ka: Mapped[float | None] = mapped_column(Float)
-    polarity: Mapped[str] = mapped_column(String(16), default="unknown", index=True)
+    source_file_name: Mapped[str] = mapped_column(String(255), default="upload")
+    source_object_key: Mapped[str] = mapped_column(String(512), default="")
+    import_type: Mapped[str] = mapped_column(String(32), default="distribution")
 
-    region_id: Mapped[str | None] = mapped_column(String(64), index=True)
-    location_tag: Mapped[str | None] = mapped_column(String(255), index=True)
-    city: Mapped[str | None] = mapped_column(String(128), index=True)
-    longitude: Mapped[float | None] = mapped_column(Float)
-    latitude: Mapped[float | None] = mapped_column(Float)
+    # ---- 状态机 ----
+    status: Mapped[str] = mapped_column(String(32), default="pending")  # pending|processing|completed|failed
+    stage: Mapped[str] = mapped_column(String(32), default="parsing")   # parsing|validating|statistics|rendering
+    progress: Mapped[int] = mapped_column(Integer, default=0)           # 0-100
+    task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    feature_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    notes: Mapped[str | None] = mapped_column(Text)
+    # ---- 元数据（校验/解析结果）----
+    total_lines: Mapped[int] = mapped_column(Integer, default=0)
+    valid_count: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, default=0)
+    warning_count: Mapped[int] = mapped_column(Integer, default=0)
+    warnings: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
+    # ---- 统计结果（页面展示）----
+    area_km2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    data_years: Mapped[float | None] = mapped_column(Float, nullable=True)
+    grid_size_km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    overall_ng: Mapped[float | None] = mapped_column(Float, nullable=True)  # Ng（次/km²/年）
+    max_abs_current: Mapped[float | None] = mapped_column(Float, nullable=True)
+    avg_abs_current: Mapped[float | None] = mapped_column(Float, nullable=True)
+    positive_count: Mapped[int] = mapped_column(Integer, default=0)
+    negative_count: Mapped[int] = mapped_column(Integer, default=0)
+    unknown_count: Mapped[int] = mapped_column(Integer, default=0)
+    stats_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)  # 冗余的完整统计
+
+    # ---- 图片（MinIO）----
+    image_object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    thumbnail_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    # ---- 审计 ----
+    create_user: Mapped[str | None] = mapped_column(String(64), nullable=True)
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
-    create_user: Mapped[str | None] = mapped_column(String(64), index=True)
     update_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    update_user: Mapped[str | None] = mapped_column(String(64), index=True)
+    update_user: Mapped[str | None] = mapped_column(String(64), nullable=True)

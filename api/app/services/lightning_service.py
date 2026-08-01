@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..core.database import SessionLocal
 
 from ..models.base import utcnow
-from ..models.lightning_distribution import LightningDistributionPoint
+from ..models.lightning_distribution import LightningDistribution
 from ..models.lightning_event import LightningCurrentEvent
 from ..models.lightning_sample import LightningCurrentSample
 from ..models.line import Line
@@ -27,36 +27,25 @@ from ..schemas.lightning import (
     LightningCurrentEventUpdateRequest,
     LightningCurrentPreparationRequest,
     LightningCurrentPreparationResponse,
-    LightningDistributionEventBrief,
-    LightningDistributionGridCell,
     LightningDistributionImportResponse,
-    LightningDistributionScatterPoint,
-    LightningDistributionStatsResponse,
-    LightningDistributionSummary,
+    LightningDistributionRecord,
+    LightningDistributionListResponse,
+    LightningDistributionStatusResponse,
+    LightningDistributionImageResponse,
     LightningDensityPreparationRequest,
     LightningDensityPreparationResponse,
-    LightningDistributionReportResponse,
     LightningCurrentExceedancePoint,
     LightningCurrentExceedanceResponse,
     LightningCurrentImportResponse,
-    LightningPolarityStats,
     LightningCurrentSampleItem,
     LightningCurrentSampleListResponse,
     LightningPolarity,
-    LightningSourceStats,
-    LightningSyntheticCompareResponse,
-    LightningSyntheticDatasetStats,
-    LightningTowerBufferEventItem,
-    LightningTowerBufferStatsResponse,
-    LightningTowerTerrainComputeRequest,
-    LightningTowerTerrainComputeResponse,
-    LightningTowerTerrainMetrics,
+    LightningFillDensityRequest,
+    LightningFillDensityResponse,
 )
 from ..schemas.lightning_import import (
     LightningImportBatchSummary,
     LightningImportBatchListResponse,
-    LightningImportBatchEventItem,
-    LightningImportBatchEventsResponse,
 )
 from .line_preparation_service import record_line_preparation_source, summarize_line_preparation
 from .line_service import serialize_line
@@ -77,7 +66,6 @@ STANDARD_WAVE_SHAPES: tuple[tuple[str, float, float], ...] = (
 TOKEN_SPLIT_PATTERN = re.compile(r"[,\t; ]+")
 DEGREE_TO_KM = 111.32
 TERRAIN_ALGORITHM_VERSION = "horn_3x3.v1"
-
 
 def recommend_radius_km(voltage_kv: int | None) -> float:
     """
@@ -108,13 +96,11 @@ def recommend_radius_km(voltage_kv: int | None) -> float:
     else:
         return 2.0
 
-
 @dataclass
 class ParsedSeries:
     currents_ka: list[float]
     time_us: list[float] | None
     warnings: list[str]
-
 
 @dataclass
 class WaveFeatures:
@@ -128,7 +114,6 @@ class WaveFeatures:
     polarity: LightningPolarity
     stroke_count: int
     stroke_peaks_json: list[dict[str, Any]]
-
 
 def serialize_lightning_event(event: LightningCurrentEvent) -> LightningCurrentEventSummary:
     return LightningCurrentEventSummary(
@@ -169,7 +154,6 @@ def serialize_lightning_event(event: LightningCurrentEvent) -> LightningCurrentE
         update_user=event.update_user,
     )
 
-
 def serialize_lightning_sample(sample: LightningCurrentSample) -> LightningCurrentSampleItem:
     return LightningCurrentSampleItem(
         id=sample.id,
@@ -179,10 +163,8 @@ def serialize_lightning_sample(sample: LightningCurrentSample) -> LightningCurre
         current_ka=sample.current_ka,
     )
 
-
 def get_lightning_event_by_id(db: Session, event_id: str) -> LightningCurrentEvent | None:
     return db.execute(select(LightningCurrentEvent).where(LightningCurrentEvent.id == event_id)).scalar_one_or_none()
-
 
 def get_lightning_event_by_event_id(db: Session, event_id: str) -> LightningCurrentEvent | None:
     normalized = _normalize_str(event_id)
@@ -191,7 +173,6 @@ def get_lightning_event_by_event_id(db: Session, event_id: str) -> LightningCurr
     return db.execute(
         select(LightningCurrentEvent).where(func.lower(LightningCurrentEvent.event_id) == normalized.lower())
     ).scalar_one_or_none()
-
 
 def list_lightning_events(
     db: Session,
@@ -256,7 +237,6 @@ def list_lightning_events(
         offset=offset,
     )
 
-
 def update_lightning_event(
     db: Session,
     event_id: str,
@@ -314,7 +294,6 @@ def update_lightning_event(
     _publish_lightning_change("lightning.updated", {"action": "updated", "event_id": saved.id})
     return serialize_lightning_event(saved)
 
-
 def delete_lightning_event(db: Session, event_id: str) -> bool:
     event = get_lightning_event_by_id(db, event_id)
     if not event:
@@ -324,7 +303,6 @@ def delete_lightning_event(db: Session, event_id: str) -> bool:
     db.commit()
     _publish_lightning_change("lightning.deleted", {"action": "deleted", "event_id": event_id})
     return True
-
 
 def list_lightning_samples(
     db: Session,
@@ -353,7 +331,6 @@ def list_lightning_samples(
         limit=limit,
         offset=offset,
     )
-
 
 def import_lightning_event_from_file(
     db: Session,
@@ -473,7 +450,6 @@ def import_lightning_event_from_file(
         warnings=warnings,
     )
 
-
 def import_lightning_current_async(
     db: Session,
     *,
@@ -574,7 +550,6 @@ def import_lightning_current_async(
         task_id=str(_task.id),
         batch_id=_batch.id,
     )
-
 
 def execute_current_import_from_path(
     *,
@@ -724,915 +699,6 @@ def execute_current_import_from_path(
         except OSError:
             pass
 
-
-
-
-
-def import_lightning_distribution_from_file(
-    db: Session,
-    *,
-    file: UploadFile,
-    actor_user_id: str,
-    event_year: int | None,
-    region_id: str | None,
-    location_tag: str | None,
-    city: str | None,
-    is_synthetic: bool,
-    notes: str | None,
-    line_id: str | None = None,
-) -> LightningDistributionImportResponse:
-    content = file.file.read()
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
-
-    # Create an import batch record immediately with status="pending"
-    from ..models.lightning_import_batch import LightningImportBatch
-    from uuid import uuid4 as _uuid4
-    _now = utcnow()
-    _batch = LightningImportBatch(
-        id=_uuid4().hex,
-        source_file_name=_normalize_str(str(file.filename or "upload")),
-        import_type="distribution",
-        status="pending",
-        region_id=_normalize_str(region_id),
-        location_tag=_normalize_str(location_tag),
-        city=_normalize_str(city),
-        event_year=event_year,
-        is_synthetic=bool(is_synthetic),
-        notes=_normalize_str(notes),
-        line_id=line_id,
-        create_user=actor_user_id,
-        create_date=_now,
-        update_date=_now,
-    )
-    db.add(_batch)
-    db.commit()
-
-    # Save file to shared temp volume for async processing
-    import os as _os
-    _temp_dir = "/app/data/temp/lightning-distribution"
-    _os.makedirs(_temp_dir, exist_ok=True)
-    _temp_path = f"{_temp_dir}/{_uuid4().hex}_{_normalize_str(str(file.filename or 'upload'))}"
-    with open(_temp_path, "wb") as _f:
-        _f.write(content)
-
-    # Queue Celery task for async processing
-    from ..core.celery_app import celery_app as _celery_app
-    _task = _celery_app.send_task(
-        "app.tasks.lightning_tasks.import_lightning_distribution_job",
-        kwargs=dict(
-            batch_id=_batch.id,
-            file_path=_temp_path,
-            source_file_name=_normalize_str(file.filename),
-            actor_user_id=actor_user_id,
-            event_year=event_year,
-            region_id=_normalize_str(region_id),
-            location_tag=_normalize_str(location_tag),
-            city=_normalize_str(city),
-            notes=_normalize_str(notes),
-            is_synthetic=bool(is_synthetic),
-            line_id=line_id,
-        ),
-        queue="celery",
-    )
-    # Link task_id to batch
-    _batch.task_id = str(_task.id)
-    _batch.status = "processing"
-    db.commit()
-
-    return LightningDistributionImportResponse(
-        imported_count=0,
-        skipped_count=0,
-        warning_count=0,
-        warnings=[],
-        line_id=line_id,
-        task_id=str(_task.id),
-        batch_id=_batch.id,
-    )
-
-
-def execute_distribution_import_from_path(
-    *,
-    file_path: str,
-    source_file_name: str | None,
-    actor_user_id: str,
-    event_year: int | None,
-    region_id: str | None,
-    location_tag: str | None,
-    city: str | None,
-    notes: str | None,
-    is_synthetic: bool,
-    line_id: str | None = None,
-) -> dict[str, Any]:
-    """从文件路径读取雷电分布数据并执行导入。由 Celery task 或直接调用。"""
-    db: Session = SessionLocal()
-    try:
-        with open(file_path, "rb") as _f:
-            content = _f.read()
-        text = _decode_text_bytes(content)
-        parsed_event_time = datetime(event_year, 1, 1) if event_year is not None else None
-
-        rows_to_insert: list[dict[str, Any]] = []
-        inserted_count = 0
-        skipped_count = 0
-        warnings: list[str] = []
-        now = utcnow()
-
-        insert_stmt = insert(LightningDistributionPoint)
-        for line_no, raw_line in enumerate(text.splitlines(), start=1):
-            if inserted_count + skipped_count >= MAX_DISTRIBUTION_ROWS:
-                break
-
-            parsed = _parse_distribution_line(raw_line)
-            if not parsed:
-                stripped = raw_line.strip()
-                if stripped and len(warnings) < 50:
-                    warnings.append(f'第 {line_no} 行无法解析为"纬度 经度 电流"，已跳过')
-                skipped_count += 1
-                continue
-
-            latitude, longitude, current_ka = parsed
-            if not (-90.0 <= latitude <= 90.0 and -180.0 <= longitude <= 180.0):
-                skipped_count += 1
-                if len(warnings) < 50:
-                    warnings.append(f"第 {line_no} 行坐标越界（lat={latitude}, lon={longitude}），已跳过")
-                continue
-
-            if math.isclose(current_ka, 0.0, abs_tol=1e-12):
-                polarity: str = "unknown"
-            else:
-                polarity = "positive" if current_ka > 0 else "negative"
-
-            event_id = _generate_distribution_event_id()
-            rows_to_insert.append(
-                {
-                    "id": uuid4().hex,
-                    "event_id": event_id,
-                    "source_file_name": source_file_name,
-                    "event_time": parsed_event_time,
-                    "peak_current_ka": current_ka,
-                    "peak_abs_current_ka": abs(current_ka),
-                    "polarity": polarity,
-                    "region_id": region_id,
-                    "location_tag": location_tag,
-                    "city": city,
-                    "longitude": longitude,
-                    "latitude": latitude,
-                    "is_synthetic": bool(is_synthetic),
-                    "feature_json": {"source": "distribution-import", "line_no": line_no},
-                    "notes": notes,
-                    "create_user": actor_user_id,
-                    "update_user": actor_user_id,
-                    "create_date": now,
-                    "update_date": now,
-                }
-            )
-            inserted_count += 1
-
-        # Batch insert in chunks
-        for start in range(0, len(rows_to_insert), INSERT_CHUNK_SIZE):
-            end = min(start + INSERT_CHUNK_SIZE, len(rows_to_insert))
-            db.execute(insert_stmt, rows_to_insert[start:end])
-
-        db.commit()
-
-        _publish_lightning_change(
-            "lightning.created",
-            {"message": f"导入地闪分布数据：{source_file_name}（{inserted_count} 条记录）"},
-        )
-
-        return {
-            "imported_count": inserted_count,
-            "skipped_count": skipped_count,
-            "warning_count": len(warnings),
-            "warnings": warnings[:50],
-            "line_id": line_id,
-        }
-
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
-        # Clean up temp file
-        import os as _os2
-        try:
-            _os2.remove(file_path)
-        except OSError:
-            pass
-
-
-
-
-def trigger_ground_flash_density_computation(
-    db: Session,
-    *,
-    line_id: str,
-    region_id: str | None = None,
-    is_synthetic: bool | None = None,
-    actor_user_id: str | None = None,
-) -> LightningComputeDensityResponse:
-    from ..tasks.lightning_tasks import compute_ground_flash_density_job
-
-    task = compute_ground_flash_density_job.delay(
-        line_id=line_id,
-        region_id=region_id,
-        is_synthetic=is_synthetic,
-        actor_user_id=actor_user_id,
-    )
-
-    return LightningComputeDensityResponse(
-        task_id=task.id,
-        status="submitted",
-    )
-
-
-def get_lightning_distribution_stats(
-    db: Session,
-    *,
-    min_lat: float | None,
-    max_lat: float | None,
-    min_lon: float | None,
-    max_lon: float | None,
-    region_id: str | None,
-    city: str | None,
-    location_tag: str | None,
-    polarity: str | None,
-    is_synthetic: bool | None,
-    grid_size_km: float,
-    years: float | None,
-    grid_limit: int,
-    scatter_limit: int,
-    thresholds_ka: list[float] | None,
-) -> LightningDistributionStatsResponse:
-    filters = _build_distribution_filters(
-        min_lat=min_lat,
-        max_lat=max_lat,
-        min_lon=min_lon,
-        max_lon=max_lon,
-        region_id=region_id,
-        city=city,
-        location_tag=location_tag,
-        polarity=polarity,
-        is_synthetic=is_synthetic,
-    )
-
-    summary_row = db.execute(
-        select(
-            func.count().label("total_records"),
-            func.min(LightningDistributionPoint.latitude).label("min_lat"),
-            func.max(LightningDistributionPoint.latitude).label("max_lat"),
-            func.min(LightningDistributionPoint.longitude).label("min_lon"),
-            func.max(LightningDistributionPoint.longitude).label("max_lon"),
-            func.max(LightningDistributionPoint.peak_abs_current_ka).label("max_abs"),
-            func.avg(LightningDistributionPoint.peak_abs_current_ka).label("avg_abs"),
-            func.sum(case((LightningDistributionPoint.polarity == "positive", 1), else_=0)).label("positive_count"),
-            func.sum(case((LightningDistributionPoint.polarity == "negative", 1), else_=0)).label("negative_count"),
-            func.sum(case((LightningDistributionPoint.polarity == "mixed", 1), else_=0)).label("mixed_count"),
-            func.sum(case((LightningDistributionPoint.polarity == "unknown", 1), else_=0)).label("unknown_count"),
-            func.sum(case((LightningDistributionPoint.is_synthetic.is_(True), 1), else_=0)).label("synthetic_count"),
-        ).where(*filters)
-    ).one()
-
-    total_records = int(summary_row.total_records or 0)
-    if total_records == 0:
-        return LightningDistributionStatsResponse(
-            summary=LightningDistributionSummary(
-                total_records=0,
-                area_km2=0.0,
-                data_years=years or 1.0,
-                grid_size_km=grid_size_km,
-                overall_ng_per_km2_year=0.0,
-                max_abs_current_ka=None,
-                avg_abs_current_ka=None,
-            ),
-            polarity=LightningPolarityStats(),
-            sources=LightningSourceStats(),
-            grid_cells=[],
-            scatter_points=[],
-            p_curve=[],
-        )
-
-    min_lat_value = float(summary_row.min_lat)
-    max_lat_value = float(summary_row.max_lat)
-    min_lon_value = float(summary_row.min_lon)
-    max_lon_value = float(summary_row.max_lon)
-    center_lat = (min_lat_value + max_lat_value) / 2.0
-    km_per_lon = _safe_km_per_lon(center_lat)
-
-    width_km = max((max_lon_value - min_lon_value) * km_per_lon, grid_size_km)
-    height_km = max((max_lat_value - min_lat_value) * DEGREE_TO_KM, grid_size_km)
-    area_km2 = max(width_km * height_km, grid_size_km * grid_size_km)
-    data_years = years if years is not None else _infer_data_years(db, filters)
-    data_years = max(data_years, 1e-6)
-    overall_ng = total_records / (area_km2 * data_years)
-
-    positive_count = int(summary_row.positive_count or 0)
-    negative_count = int(summary_row.negative_count or 0)
-    mixed_count = int(summary_row.mixed_count or 0)
-    unknown_count = int(summary_row.unknown_count or 0)
-    synthetic_count = int(summary_row.synthetic_count or 0)
-
-    cell_x_expr = func.floor(((LightningDistributionPoint.longitude - min_lon_value) * km_per_lon) / grid_size_km)
-    cell_y_expr = func.floor(((LightningDistributionPoint.latitude - min_lat_value) * DEGREE_TO_KM) / grid_size_km)
-    grid_rows = db.execute(
-        select(
-            cell_x_expr.label("cell_x"),
-            cell_y_expr.label("cell_y"),
-            func.count().label("strike_count"),
-            func.max(LightningDistributionPoint.peak_abs_current_ka).label("i_max"),
-            func.avg(LightningDistributionPoint.peak_abs_current_ka).label("i_avg"),
-            func.sum(case((LightningDistributionPoint.polarity == "positive", 1), else_=0)).label("positive_count"),
-        )
-        .where(*filters)
-        .group_by(cell_x_expr, cell_y_expr)
-        .order_by(func.count().desc())
-        .limit(grid_limit)
-    ).all()
-
-    grid_cells: list[LightningDistributionGridCell] = []
-    for row in grid_rows:
-        grid_x = int(float(row.cell_x))
-        grid_y = int(float(row.cell_y))
-        x0_km = grid_x * grid_size_km
-        x1_km = (grid_x + 1) * grid_size_km
-        y0_km = grid_y * grid_size_km
-        y1_km = (grid_y + 1) * grid_size_km
-
-        cell_min_lat = min_lat_value + y0_km / DEGREE_TO_KM
-        cell_max_lat = min_lat_value + y1_km / DEGREE_TO_KM
-        cell_center_lat = (cell_min_lat + cell_max_lat) / 2.0
-        cell_km_per_lon = _safe_km_per_lon(cell_center_lat)
-        cell_min_lon = min_lon_value + x0_km / cell_km_per_lon
-        cell_max_lon = min_lon_value + x1_km / cell_km_per_lon
-        cell_center_lon = (cell_min_lon + cell_max_lon) / 2.0
-
-        strike_count = int(row.strike_count or 0)
-        positive_in_cell = int(row.positive_count or 0)
-        grid_cells.append(
-            LightningDistributionGridCell(
-                grid_x=grid_x,
-                grid_y=grid_y,
-                min_lat=cell_min_lat,
-                max_lat=cell_max_lat,
-                min_lon=cell_min_lon,
-                max_lon=cell_max_lon,
-                center_lat=cell_center_lat,
-                center_lon=cell_center_lon,
-                strike_count=strike_count,
-                ng_per_km2_year=strike_count / (grid_size_km * grid_size_km * data_years),
-                i_max_ka=float(row.i_max) if row.i_max is not None else None,
-                i_avg_ka=float(row.i_avg) if row.i_avg is not None else None,
-                positive_ratio=(positive_in_cell / strike_count) if strike_count > 0 else 0.0,
-            )
-        )
-
-    scatter_rows = db.execute(
-        select(
-            LightningDistributionPoint.id,
-            LightningDistributionPoint.event_id,
-            LightningDistributionPoint.longitude,
-            LightningDistributionPoint.latitude,
-            LightningDistributionPoint.peak_current_ka,
-            LightningDistributionPoint.peak_abs_current_ka,
-            LightningDistributionPoint.polarity,
-            LightningDistributionPoint.region_id,
-            LightningDistributionPoint.city,
-            LightningDistributionPoint.location_tag,
-            LightningDistributionPoint.event_time,
-        )
-        .where(*filters)
-        .order_by(
-            LightningDistributionPoint.peak_abs_current_ka.desc(),
-            LightningDistributionPoint.update_date.desc(),
-            LightningDistributionPoint.id.desc(),
-        )
-        .limit(scatter_limit)
-    ).all()
-    scatter_points = [
-        LightningDistributionScatterPoint(
-            id=str(row.id),
-            event_id=str(row.event_id),
-            longitude=float(row.longitude),
-            latitude=float(row.latitude),
-            current_ka=float(row.peak_current_ka) if row.peak_current_ka is not None else None,
-            abs_current_ka=float(row.peak_abs_current_ka) if row.peak_abs_current_ka is not None else None,
-            polarity=str(row.polarity),  # type: ignore[arg-type]
-            region_id=row.region_id,
-            city=row.city,
-            location_tag=row.location_tag,
-            event_time=row.event_time,
-        )
-        for row in scatter_rows
-    ]
-
-    p_curve = _build_p_curve_with_filters(
-        db,
-        filters=filters,
-        total_events=total_records,
-        max_peak=float(summary_row.max_abs) if summary_row.max_abs is not None else 0.0,
-        thresholds_ka=thresholds_ka,
-    )
-
-    return LightningDistributionStatsResponse(
-        summary=LightningDistributionSummary(
-            total_records=total_records,
-            area_km2=area_km2,
-            data_years=data_years,
-            grid_size_km=grid_size_km,
-            overall_ng_per_km2_year=overall_ng,
-            max_abs_current_ka=float(summary_row.max_abs) if summary_row.max_abs is not None else None,
-            avg_abs_current_ka=float(summary_row.avg_abs) if summary_row.avg_abs is not None else None,
-        ),
-        polarity=LightningPolarityStats(
-            positive_count=positive_count,
-            negative_count=negative_count,
-            mixed_count=mixed_count,
-            unknown_count=unknown_count,
-            positive_ratio=(positive_count / total_records) if total_records > 0 else 0.0,
-            negative_ratio=(negative_count / total_records) if total_records > 0 else 0.0,
-        ),
-        sources=LightningSourceStats(
-            measured_count=total_records - synthetic_count,
-            synthetic_count=synthetic_count,
-        ),
-        grid_cells=grid_cells,
-        scatter_points=scatter_points,
-        p_curve=p_curve,
-    )
-
-
-def get_tower_buffer_stats(
-    db: Session,
-    *,
-    tower_id: str | None,
-    longitude: float | None,
-    latitude: float | None,
-    radius_km: float,
-    design_current_ka: float,
-    years: float | None,
-    region_id: str | None,
-    is_synthetic: bool | None,
-    include_events_limit: int,
-) -> LightningTowerBufferStatsResponse:
-    if radius_km <= 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="radius_km 必须大于 0")
-    if design_current_ka <= 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="design_current_ka 必须大于 0")
-
-    tower: LineTower | None = None
-    center_lon: float
-    center_lat: float
-    if tower_id:
-        tower = db.execute(select(LineTower).where(LineTower.id == tower_id)).scalar_one_or_none()
-        if not tower:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="杆塔不存在")
-        if tower.longitude is None or tower.latitude is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该杆塔缺少经纬度，无法执行缓冲区分析")
-        center_lon = float(tower.longitude)
-        center_lat = float(tower.latitude)
-    else:
-        if longitude is None or latitude is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请提供 tower_id 或经纬度坐标")
-        center_lon = float(longitude)
-        center_lat = float(latitude)
-
-    lat_delta = radius_km / DEGREE_TO_KM
-    lon_delta = radius_km / _safe_km_per_lon(center_lat)
-    filters = _build_distribution_filters(
-        min_lat=center_lat - lat_delta,
-        max_lat=center_lat + lat_delta,
-        min_lon=center_lon - lon_delta,
-        max_lon=center_lon + lon_delta,
-        region_id=region_id,
-        city=None,
-        location_tag=None,
-        polarity=None,
-        is_synthetic=is_synthetic,
-    )
-
-    candidate_rows = db.execute(
-        select(
-            LightningDistributionPoint.id,
-            LightningDistributionPoint.event_id,
-            LightningDistributionPoint.longitude,
-            LightningDistributionPoint.latitude,
-            LightningDistributionPoint.peak_current_ka,
-            LightningDistributionPoint.peak_abs_current_ka,
-            LightningDistributionPoint.polarity,
-            LightningDistributionPoint.event_time,
-            LightningDistributionPoint.location_tag,
-            LightningDistributionPoint.city,
-        ).where(*filters)
-    ).all()
-
-    events: list[LightningTowerBufferEventItem] = []
-    positive_count = 0
-    max_abs = 0.0
-    sum_abs = 0.0
-    exceed_count = 0
-    event_timestamps: list[datetime] = []
-    for row in candidate_rows:
-        if row.longitude is None or row.latitude is None:
-            continue
-        distance = _haversine_km(center_lat, center_lon, float(row.latitude), float(row.longitude))
-        if distance > radius_km:
-            continue
-        abs_current = float(row.peak_abs_current_ka) if row.peak_abs_current_ka is not None else 0.0
-        if str(row.polarity) == "positive":
-            positive_count += 1
-        if abs_current > max_abs:
-            max_abs = abs_current
-        sum_abs += abs_current
-        if abs_current >= design_current_ka:
-            exceed_count += 1
-        if row.event_time is not None:
-            event_timestamps.append(row.event_time)
-
-        events.append(
-            LightningTowerBufferEventItem(
-                id=str(row.id),
-                event_id=str(row.event_id),
-                longitude=float(row.longitude),
-                latitude=float(row.latitude),
-                current_ka=float(row.peak_current_ka) if row.peak_current_ka is not None else None,
-                abs_current_ka=abs_current,
-                polarity=str(row.polarity),  # type: ignore[arg-type]
-                event_time=row.event_time,
-                location_tag=row.location_tag,
-                city=row.city,
-                distance_km=distance,
-            )
-        )
-
-    strike_count = len(events)
-    avg_abs = (sum_abs / strike_count) if strike_count > 0 else None
-    data_years = years if years is not None else _resolve_data_years_from_timestamps(event_timestamps)
-    data_years = max(data_years, 1e-6)
-    area_km2 = math.pi * (radius_km ** 2)
-    ng = strike_count / (area_km2 * data_years) if strike_count > 0 else 0.0
-    positive_ratio = (positive_count / strike_count) if strike_count > 0 else 0.0
-    terrain_metrics = _build_tower_terrain_metrics_from_tower(tower)
-    terrain_exposure = (
-        terrain_metrics.terrain_exposure_index
-        if terrain_metrics is not None and terrain_metrics.terrain_exposure_index is not None
-        else 0.0
-    )
-    ng_for_risk = ng * (1.0 + 0.25 * max(0.0, min(1.0, terrain_exposure)))
-    risk_level = _derive_tower_risk_level(
-        strike_count=strike_count,
-        exceed_design_count=exceed_count,
-        max_abs_current_ka=max_abs if strike_count > 0 else None,
-        design_current_ka=design_current_ka,
-        ng_per_km2_year=ng_for_risk,
-    )
-    recommended_action = _tower_risk_recommendation(risk_level)
-    if terrain_metrics is not None and terrain_exposure >= 0.7:
-        recommended_action = f"{recommended_action} 地形暴露指数较高，建议同步复核边坡防护与接地体布置。"
-
-    sorted_events = sorted(events, key=lambda item: ((item.abs_current_ka or 0.0), -item.distance_km), reverse=True)
-    return LightningTowerBufferStatsResponse(
-        tower_id=tower.id if tower else None,
-        tower_no=tower.tower_no if tower else None,
-        line_id=tower.line_id if tower else None,
-        center_longitude=center_lon,
-        center_latitude=center_lat,
-        radius_km=radius_km,
-        design_current_ka=design_current_ka,
-        strike_count=strike_count,
-        exceed_design_count=exceed_count,
-        max_abs_current_ka=(max_abs if strike_count > 0 else None),
-        avg_abs_current_ka=avg_abs,
-        ng_per_km2_year=ng,
-        positive_ratio=positive_ratio,
-        risk_level=risk_level,
-        recommended_action=recommended_action,
-        events=sorted_events[:include_events_limit],
-        terrain_metrics=terrain_metrics,
-    )
-
-
-def compute_tower_terrain_metrics(
-    db: Session,
-    *,
-    payload: LightningTowerTerrainComputeRequest,
-    actor_user_id: str,
-    can_persist: bool,
-) -> LightningTowerTerrainComputeResponse:
-    warnings: list[str] = []
-    tower: LineTower | None = None
-
-    if payload.tower_id:
-        tower = db.execute(select(LineTower).where(LineTower.id == payload.tower_id)).scalar_one_or_none()
-        if not tower:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="杆塔不存在")
-
-    center_lon = payload.longitude if payload.longitude is not None else (float(tower.longitude) if tower and tower.longitude is not None else None)
-    center_lat = payload.latitude if payload.latitude is not None else (float(tower.latitude) if tower and tower.latitude is not None else None)
-    if center_lon is None or center_lat is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少中心经纬度，请传入 tower_id 或经纬度")
-
-    z = payload.dem_grid_m
-    cell_size_m = float(payload.cell_size_m)
-    dem_resolution_m = float(payload.dem_resolution_m) if payload.dem_resolution_m is not None else cell_size_m
-
-    dz_dx, dz_dy = _compute_horn_gradient(z, cell_size_m=cell_size_m)
-    slope_rad = math.atan(math.sqrt(dz_dx * dz_dx + dz_dy * dz_dy))
-    slope_deg = math.degrees(slope_rad)
-    aspect_deg = _compute_aspect_deg(dz_dx, dz_dy)
-    relief_m_50 = max(max(row) for row in z) - min(min(row) for row in z)
-
-    neighbor_slopes = _compute_neighbor_slopes(z, cell_size_m=cell_size_m)
-    slope_mean_deg = (sum(neighbor_slopes) / len(neighbor_slopes)) if neighbor_slopes else None
-    slope_p95_deg = _percentile(neighbor_slopes, 0.95) if neighbor_slopes else None
-    slope_max_deg = max(neighbor_slopes) if neighbor_slopes else None
-
-    line_azimuth_deg = _infer_tower_line_azimuth_deg(db, tower) if tower else None
-    slope_along_line_deg: float | None = None
-    slope_cross_line_deg: float | None = None
-    if line_azimuth_deg is not None:
-        slope_along_line_deg = math.degrees(math.atan(_directional_gradient(dz_dx, dz_dy, line_azimuth_deg)))
-        slope_cross_line_deg = math.degrees(math.atan(_directional_gradient(dz_dx, dz_dy, (line_azimuth_deg + 90.0) % 360.0)))
-    elif tower is not None and tower.line_id:
-        warnings.append("未找到可用相邻杆塔坐标，无法推导线路方向纵坡/横坡")
-
-    windward_factor: float | None = None
-    if payload.wind_direction_deg is not None and aspect_deg is not None:
-        diff = _angle_difference_deg(aspect_deg, float(payload.wind_direction_deg))
-        windward_factor = max(0.0, math.cos(math.radians(diff)))
-
-    terrain_exposure_index = min(
-        1.0,
-        max(0.0, slope_deg / 45.0) * ((0.6 + 0.4 * windward_factor) if windward_factor is not None else 1.0),
-    )
-
-    quality_score, quality_level = _evaluate_terrain_quality(
-        dem_resolution_m=dem_resolution_m,
-        search_radius_m=float(payload.search_radius_m),
-        warnings=warnings,
-    )
-
-    metrics = LightningTowerTerrainMetrics(
-        slope_deg=round(slope_deg, 6),
-        aspect_deg=(round(aspect_deg, 6) if aspect_deg is not None else None),
-        slope_mean_deg=(round(slope_mean_deg, 6) if slope_mean_deg is not None else None),
-        slope_p95_deg=(round(slope_p95_deg, 6) if slope_p95_deg is not None else None),
-        slope_max_deg=(round(slope_max_deg, 6) if slope_max_deg is not None else None),
-        slope_along_line_deg=(round(slope_along_line_deg, 6) if slope_along_line_deg is not None else None),
-        slope_cross_line_deg=(round(slope_cross_line_deg, 6) if slope_cross_line_deg is not None else None),
-        relief_m_50=round(relief_m_50, 6),
-        dem_source=(payload.dem_source or "manual-grid"),
-        dem_resolution_m=round(dem_resolution_m, 6),
-        quality_score=round(quality_score, 2),
-        quality_level=quality_level,
-        terrain_exposure_index=round(terrain_exposure_index, 6),
-        windward_factor=(round(windward_factor, 6) if windward_factor is not None else None),
-        algorithm_version=TERRAIN_ALGORITHM_VERSION,
-        computed_at=utcnow(),
-        land_cover_type=payload.land_cover_type,
-    )
-
-    persisted = False
-    if payload.persist:
-        if tower is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="persist=true 时必须传入 tower_id")
-        if not can_persist:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="缺少 tower.manage/lightning.manage 权限，无法持久化")
-
-        raw_extra = dict(tower.raw_extra_json or {})
-        terrain_payload = metrics.model_dump(mode="json", exclude_none=True)
-        terrain_payload["search_radius_m"] = float(payload.search_radius_m)
-        if line_azimuth_deg is not None:
-            terrain_payload["line_azimuth_deg"] = round(line_azimuth_deg, 6)
-        raw_extra["terrain_metrics"] = terrain_payload
-
-        tower.raw_extra_json = raw_extra
-        if slope_along_line_deg is not None:
-            tower.slope_1 = abs(float(slope_along_line_deg))
-        if slope_cross_line_deg is not None:
-            tower.slope_2 = abs(float(slope_cross_line_deg))
-        if payload.altitude_m is not None:
-            tower.altitude_m = payload.altitude_m
-        tower.update_user = actor_user_id
-        tower.update_date = utcnow()
-        db.commit()
-        persisted = True
-
-    return LightningTowerTerrainComputeResponse(
-        tower_id=tower.id if tower else None,
-        tower_no=tower.tower_no if tower else None,
-        line_id=tower.line_id if tower else None,
-        center_longitude=float(center_lon),
-        center_latitude=float(center_lat),
-        method="horn_3x3",
-        persisted=persisted,
-        terrain_metrics=metrics,
-        warnings=warnings,
-    )
-
-
-def compare_measured_and_synthetic_distribution(
-    db: Session,
-    *,
-    min_lat: float | None,
-    max_lat: float | None,
-    min_lon: float | None,
-    max_lon: float | None,
-    region_id: str | None,
-    city: str | None,
-    location_tag: str | None,
-    grid_size_km: float,
-    years: float | None,
-) -> LightningSyntheticCompareResponse:
-    base_filters = _build_distribution_filters(
-        min_lat=min_lat,
-        max_lat=max_lat,
-        min_lon=min_lon,
-        max_lon=max_lon,
-        region_id=region_id,
-        city=city,
-        location_tag=location_tag,
-        polarity=None,
-        is_synthetic=None,
-    )
-
-    extent_row = db.execute(
-        select(
-            func.min(LightningDistributionPoint.latitude).label("min_lat"),
-            func.max(LightningDistributionPoint.latitude).label("max_lat"),
-            func.min(LightningDistributionPoint.longitude).label("min_lon"),
-            func.max(LightningDistributionPoint.longitude).label("max_lon"),
-        ).where(*base_filters)
-    ).one()
-
-    if extent_row.min_lat is None or extent_row.max_lat is None or extent_row.min_lon is None or extent_row.max_lon is None:
-        empty_stats = LightningSyntheticDatasetStats(count=0)
-        return LightningSyntheticCompareResponse(
-            grid_size_km=grid_size_km,
-            data_years=years or 1.0,
-            measured=empty_stats,
-            synthetic=empty_stats,
-            grid_cosine_similarity=None,
-            note="当前筛选条件下没有可对比的数据",
-        )
-
-    min_lat_value = float(extent_row.min_lat)
-    max_lat_value = float(extent_row.max_lat)
-    min_lon_value = float(extent_row.min_lon)
-    max_lon_value = float(extent_row.max_lon)
-    center_lat = (min_lat_value + max_lat_value) / 2.0
-    km_per_lon = _safe_km_per_lon(center_lat)
-    width_km = max((max_lon_value - min_lon_value) * km_per_lon, grid_size_km)
-    height_km = max((max_lat_value - min_lat_value) * DEGREE_TO_KM, grid_size_km)
-    area_km2 = max(width_km * height_km, grid_size_km * grid_size_km)
-    data_years = years if years is not None else _infer_data_years(db, base_filters)
-    data_years = max(data_years, 1e-6)
-
-    measured_filters = [*base_filters, LightningDistributionPoint.is_synthetic.is_(False)]
-    synthetic_filters = [*base_filters, LightningDistributionPoint.is_synthetic.is_(True)]
-    measured = _aggregate_dataset_stats(db, measured_filters, area_km2=area_km2, data_years=data_years)
-    synthetic = _aggregate_dataset_stats(db, synthetic_filters, area_km2=area_km2, data_years=data_years)
-
-    similarity = _compute_grid_cosine_similarity(
-        db,
-        measured_filters=measured_filters,
-        synthetic_filters=synthetic_filters,
-        min_lat=min_lat_value,
-        min_lon=min_lon_value,
-        km_per_lon=km_per_lon,
-        grid_size_km=grid_size_km,
-    )
-    note = None
-    if measured.count == 0 or synthetic.count == 0:
-        note = "实测或合成数据为空，无法计算网格相似度"
-
-    return LightningSyntheticCompareResponse(
-        grid_size_km=grid_size_km,
-        data_years=data_years,
-        measured=measured,
-        synthetic=synthetic,
-        grid_cosine_similarity=similarity,
-        note=note,
-    )
-
-
-def build_lightning_distribution_report(
-    db: Session,
-    *,
-    period: str,
-    anchor_time: datetime | None,
-    min_lat: float | None,
-    max_lat: float | None,
-    min_lon: float | None,
-    max_lon: float | None,
-    region_id: str | None,
-    city: str | None,
-    location_tag: str | None,
-    is_synthetic: bool | None,
-) -> LightningDistributionReportResponse:
-    now = anchor_time or utcnow()
-    if period == "month":
-        days = 30
-    else:
-        period = "week"
-        days = 7
-    start_time = now - timedelta(days=days)
-
-    filters = _build_distribution_filters(
-        min_lat=min_lat,
-        max_lat=max_lat,
-        min_lon=min_lon,
-        max_lon=max_lon,
-        region_id=region_id,
-        city=city,
-        location_tag=location_tag,
-        polarity=None,
-        is_synthetic=is_synthetic,
-    )
-    event_ts_expr = func.coalesce(LightningDistributionPoint.event_time, LightningDistributionPoint.create_date)
-    filters.append(and_(event_ts_expr >= start_time, event_ts_expr <= now))
-
-    summary_row = db.execute(
-        select(
-            func.count().label("count"),
-            func.max(LightningDistributionPoint.peak_abs_current_ka).label("max_abs"),
-            func.avg(LightningDistributionPoint.peak_abs_current_ka).label("avg_abs"),
-            func.sum(case((LightningDistributionPoint.polarity == "positive", 1), else_=0)).label("positive_count"),
-            func.min(LightningDistributionPoint.latitude).label("min_lat"),
-            func.max(LightningDistributionPoint.latitude).label("max_lat"),
-            func.min(LightningDistributionPoint.longitude).label("min_lon"),
-            func.max(LightningDistributionPoint.longitude).label("max_lon"),
-        ).where(*filters)
-    ).one()
-
-    strike_count = int(summary_row.count or 0)
-    area_km2 = 1.0
-    if (
-        summary_row.min_lat is not None
-        and summary_row.max_lat is not None
-        and summary_row.min_lon is not None
-        and summary_row.max_lon is not None
-    ):
-        center_lat = (float(summary_row.min_lat) + float(summary_row.max_lat)) / 2.0
-        km_per_lon = _safe_km_per_lon(center_lat)
-        width_km = max((float(summary_row.max_lon) - float(summary_row.min_lon)) * km_per_lon, 1.0)
-        height_km = max((float(summary_row.max_lat) - float(summary_row.min_lat)) * DEGREE_TO_KM, 1.0)
-        area_km2 = width_km * height_km
-
-    data_years = max(days / 365.25, 1e-6)
-    ng = strike_count / (area_km2 * data_years) if strike_count > 0 else 0.0
-
-    most_severe_row = db.execute(
-        select(
-            LightningDistributionPoint.id,
-            LightningDistributionPoint.event_id,
-            LightningDistributionPoint.longitude,
-            LightningDistributionPoint.latitude,
-            LightningDistributionPoint.peak_current_ka,
-            LightningDistributionPoint.peak_abs_current_ka,
-            LightningDistributionPoint.polarity,
-            LightningDistributionPoint.event_time,
-            LightningDistributionPoint.location_tag,
-            LightningDistributionPoint.city,
-        )
-        .where(*filters)
-        .order_by(
-            LightningDistributionPoint.peak_abs_current_ka.desc(),
-            event_ts_expr.desc(),
-            LightningDistributionPoint.id.desc(),
-        )
-        .limit(1)
-    ).one_or_none()
-
-    severe_event: LightningDistributionEventBrief | None = None
-    if most_severe_row is not None:
-        severe_event = LightningDistributionEventBrief(
-            id=str(most_severe_row.id),
-            event_id=str(most_severe_row.event_id),
-            longitude=float(most_severe_row.longitude) if most_severe_row.longitude is not None else None,
-            latitude=float(most_severe_row.latitude) if most_severe_row.latitude is not None else None,
-            current_ka=float(most_severe_row.peak_current_ka) if most_severe_row.peak_current_ka is not None else None,
-            abs_current_ka=float(most_severe_row.peak_abs_current_ka) if most_severe_row.peak_abs_current_ka is not None else None,
-            polarity=str(most_severe_row.polarity),  # type: ignore[arg-type]
-            event_time=most_severe_row.event_time,
-            location_tag=most_severe_row.location_tag,
-            city=most_severe_row.city,
-        )
-
-    positive_count = int(summary_row.positive_count or 0)
-    return LightningDistributionReportResponse(
-        period=period,  # type: ignore[arg-type]
-        start_time=start_time,
-        end_time=now,
-        strike_count=strike_count,
-        max_abs_current_ka=float(summary_row.max_abs) if summary_row.max_abs is not None else None,
-        avg_abs_current_ka=float(summary_row.avg_abs) if summary_row.avg_abs is not None else None,
-        positive_ratio=(positive_count / strike_count) if strike_count > 0 else 0.0,
-        ng_per_km2_year=ng,
-        most_severe_event=severe_event,
-    )
-
-
 def get_peak_exceedance_curve(
     db: Session,
     *,
@@ -1684,7 +750,6 @@ def get_peak_exceedance_curve(
         )
 
     return LightningCurrentExceedanceResponse(total_events=total, thresholds=points)
-
 
 def prepare_line_lightning_current(
     db: Session,
@@ -1803,338 +868,9 @@ def prepare_line_lightning_current(
         warnings=warnings,
     )
 
-
-def prepare_line_lightning_density(
-    db: Session,
-    payload: LightningDensityPreparationRequest,
-    *,
-    actor_user_id: str,
-) -> LightningDensityPreparationResponse:
-    line = db.execute(select(Line).where(Line.id == payload.line_id)).scalar_one_or_none()
-    if not line:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="线路不存在")
-
-    # 当radius_km未指定时，根据电压等级自动推荐半径
-    if payload.radius_km is None:
-        actual_radius_km = recommend_radius_km(line.voltage_kv)
-    else:
-        actual_radius_km = payload.radius_km
-
-    towers = db.execute(
-        select(LineTower)
-        .where(LineTower.line_id == line.id)
-        .order_by(LineTower.seq_no.asc(), LineTower.id.asc())
-    ).scalars().all()
-    if not towers:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前线路没有可回填的杆塔数据")
-
-    geo_towers = [tower for tower in towers if tower.longitude is not None and tower.latitude is not None]
-    if not geo_towers:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前线路缺少杆塔经纬度，无法计算地闪密度")
-
-    lat_delta = actual_radius_km / DEGREE_TO_KM
-    lon_deltas = [
-        actual_radius_km / _safe_km_per_lon(float(tower.latitude))
-        for tower in geo_towers
-        if tower.latitude is not None
-    ]
-    lon_delta = max(lon_deltas) if lon_deltas else lat_delta
-    min_lat = min(float(tower.latitude) for tower in geo_towers) - lat_delta
-    max_lat = max(float(tower.latitude) for tower in geo_towers) + lat_delta
-    min_lon = min(float(tower.longitude) for tower in geo_towers) - lon_delta
-    max_lon = max(float(tower.longitude) for tower in geo_towers) + lon_delta
-
-    filters = _build_distribution_filters(
-        min_lat=min_lat,
-        max_lat=max_lat,
-        min_lon=min_lon,
-        max_lon=max_lon,
-        region_id=payload.region_id,
-        city=None,
-        location_tag=None,
-        polarity=None,
-        is_synthetic=payload.is_synthetic,
-    )
-    candidate_rows = db.execute(
-        select(
-            LightningDistributionPoint.longitude,
-            LightningDistributionPoint.latitude,
-            LightningDistributionPoint.event_time,
-        ).where(*filters)
-    ).all()
-    if not candidate_rows:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未找到可用于地闪密度计算的雷击分布数据")
-
-    now = utcnow()
-    area_km2 = math.pi * (actual_radius_km ** 2)
-    updated_tower_count = 0
-    missing_geo_count = 0
-    density_values: list[float] = []
-    all_event_times = [row.event_time for row in candidate_rows if row.event_time is not None]
-    source_years = payload.years if payload.years is not None else _resolve_data_years_from_timestamps(all_event_times)
-    warnings: list[str] = []
-
-    for tower in towers:
-        if tower.longitude is None or tower.latitude is None:
-            missing_geo_count += 1
-            continue
-
-        tower_times: list[datetime] = []
-        strike_count = 0
-        for row in candidate_rows:
-            if row.longitude is None or row.latitude is None:
-                continue
-            distance_km = _haversine_km(
-                float(tower.latitude),
-                float(tower.longitude),
-                float(row.latitude),
-                float(row.longitude),
-            )
-            if distance_km > actual_radius_km:
-                continue
-            strike_count += 1
-            if row.event_time is not None:
-                tower_times.append(row.event_time)
-
-        tower_years = payload.years if payload.years is not None else _resolve_data_years_from_timestamps(tower_times)
-        tower_years = max(tower_years, 1e-6)
-        density = strike_count / (area_km2 * tower_years) if strike_count > 0 else 0.0
-        tower.lightning_density = round(density, 6)
-        tower.update_date = now
-        tower.update_user = actor_user_id
-        raw_extra = dict(tower.raw_extra_json or {})
-        raw_extra["lightning_density"] = {
-            "line_id": line.id,
-            "line_code": line.code,
-            "radius_km": actual_radius_km,
-            "data_years": round(tower_years, 6),
-            "strike_count": strike_count,
-            "region_id": _normalize_str(payload.region_id),
-            "is_synthetic": payload.is_synthetic,
-            "prepared_at": now.isoformat(),
-        }
-        tower.raw_extra_json = raw_extra
-        density_values.append(float(tower.lightning_density))
-        updated_tower_count += 1
-
-    if missing_geo_count > 0:
-        warnings.append(f"{missing_geo_count} 座杆塔缺少经纬度，未能回填地闪密度")
-
-    line.update_date = now
-    line.update_user = actor_user_id
-    record_line_preparation_source(
-        line,
-        component="lightning_density",
-        payload={
-            "prepared_at": now.isoformat(),
-            "prepared_by_user_id": actor_user_id,
-            "region_id": _normalize_str(payload.region_id),
-            "is_synthetic": payload.is_synthetic,
-            "radius_km": actual_radius_km,
-            "data_years": round(source_years, 6),
-            "updated_tower_count": updated_tower_count,
-            "missing_geo_count": missing_geo_count,
-            "avg_density": round(sum(density_values) / len(density_values), 6) if density_values else None,
-            "min_density": round(min(density_values), 6) if density_values else None,
-            "max_density": round(max(density_values), 6) if density_values else None,
-        },
-    )
-    db.commit()
-
-    preparation_json = summarize_line_preparation(db, line, tower_count=len(towers))
-    _publish_line_change(
-        "power-lines.lightning-density.prepared",
-        {"action": "lightning_density_prepared", "line_id": line.id},
-    )
-    return LightningDensityPreparationResponse(
-        line=serialize_line(line, tower_count=len(towers), preparation_json=preparation_json),
-        updated_tower_count=updated_tower_count,
-        missing_geo_count=missing_geo_count,
-        radius_km=actual_radius_km,
-        data_years=round(source_years, 6),
-        avg_density=round(sum(density_values) / len(density_values), 6) if density_values else None,
-        min_density=round(min(density_values), 6) if density_values else None,
-        max_density=round(max(density_values), 6) if density_values else None,
-        warning_count=len(warnings),
-        warnings=warnings,
-    )
-
-
-def _build_distribution_filters(
-    *,
-    min_lat: float | None,
-    max_lat: float | None,
-    min_lon: float | None,
-    max_lon: float | None,
-    region_id: str | None,
-    city: str | None,
-    location_tag: str | None,
-    polarity: str | None,
-    is_synthetic: bool | None,
-) -> list[Any]:
-    filters: list[Any] = [
-        LightningDistributionPoint.latitude.is_not(None),
-        LightningDistributionPoint.longitude.is_not(None),
-        LightningDistributionPoint.peak_abs_current_ka.is_not(None),
-    ]
-    if min_lat is not None:
-        filters.append(LightningDistributionPoint.latitude >= min_lat)
-    if max_lat is not None:
-        filters.append(LightningDistributionPoint.latitude <= max_lat)
-    if min_lon is not None:
-        filters.append(LightningDistributionPoint.longitude >= min_lon)
-    if max_lon is not None:
-        filters.append(LightningDistributionPoint.longitude <= max_lon)
-
-    normalized_region = _normalize_str(region_id)
-    if normalized_region:
-        filters.append(LightningDistributionPoint.region_id == normalized_region)
-
-    normalized_city = _normalize_str(city)
-    if normalized_city:
-        filters.append(func.lower(LightningDistributionPoint.city) == normalized_city.lower())
-
-    normalized_location = _normalize_str(location_tag)
-    if normalized_location:
-        filters.append(LightningDistributionPoint.location_tag.ilike(f"%{normalized_location}%"))
-
-    normalized_polarity = _normalize_str(polarity)
-    if normalized_polarity:
-        filters.append(LightningDistributionPoint.polarity == normalized_polarity.lower())
-
-    if is_synthetic is not None:
-        filters.append(LightningDistributionPoint.is_synthetic == is_synthetic)
-
-    return filters
-
-
-def _build_p_curve_with_filters(
-    db: Session,
-    *,
-    filters: list[Any],
-    total_events: int,
-    max_peak: float,
-    thresholds_ka: list[float] | None,
-) -> list[LightningCurrentExceedancePoint]:
-    if total_events <= 0:
-        return []
-    manual_thresholds = sorted({float(value) for value in (thresholds_ka or []) if value > 0})
-    if manual_thresholds:
-        thresholds = manual_thresholds
-    else:
-        default_points = 12
-        step = max(1.0, round(max_peak / max(default_points, 1), 3))
-        thresholds = [round(step * idx, 3) for idx in range(1, default_points + 1)]
-
-    points: list[LightningCurrentExceedancePoint] = []
-    for threshold in thresholds:
-        exceed_count = int(
-            db.scalar(
-                select(func.count()).select_from(LightningDistributionPoint).where(
-                    *filters,
-                    LightningDistributionPoint.peak_abs_current_ka >= threshold,
-                )
-            )
-            or 0
-        )
-        points.append(
-            LightningCurrentExceedancePoint(
-                threshold_ka=threshold,
-                exceedance_probability=(exceed_count / total_events) if total_events > 0 else 0.0,
-                exceedance_count=exceed_count,
-            )
-        )
-    return points
-
-
-def _aggregate_dataset_stats(
-    db: Session,
-    filters: list[Any],
-    *,
-    area_km2: float,
-    data_years: float,
-) -> LightningSyntheticDatasetStats:
-    row = db.execute(
-        select(
-            func.count().label("count"),
-            func.max(LightningDistributionPoint.peak_abs_current_ka).label("max_abs"),
-            func.avg(LightningDistributionPoint.peak_abs_current_ka).label("avg_abs"),
-            func.sum(case((LightningDistributionPoint.polarity == "positive", 1), else_=0)).label("positive_count"),
-        ).where(*filters)
-    ).one()
-    count = int(row.count or 0)
-    positive_count = int(row.positive_count or 0)
-    ng = count / (area_km2 * data_years) if count > 0 else 0.0
-    return LightningSyntheticDatasetStats(
-        count=count,
-        max_abs_current_ka=float(row.max_abs) if row.max_abs is not None else None,
-        avg_abs_current_ka=float(row.avg_abs) if row.avg_abs is not None else None,
-        positive_ratio=(positive_count / count) if count > 0 else 0.0,
-        ng_per_km2_year=ng,
-    )
-
-
-def _compute_grid_cosine_similarity(
-    db: Session,
-    *,
-    measured_filters: list[Any],
-    synthetic_filters: list[Any],
-    min_lat: float,
-    min_lon: float,
-    km_per_lon: float,
-    grid_size_km: float,
-) -> float | None:
-    cell_x_expr = func.floor(((LightningDistributionPoint.longitude - min_lon) * km_per_lon) / grid_size_km)
-    cell_y_expr = func.floor(((LightningDistributionPoint.latitude - min_lat) * DEGREE_TO_KM) / grid_size_km)
-    measured_rows = db.execute(
-        select(cell_x_expr.label("x"), cell_y_expr.label("y"), func.count().label("c"))
-        .where(*measured_filters)
-        .group_by(cell_x_expr, cell_y_expr)
-    ).all()
-    synthetic_rows = db.execute(
-        select(cell_x_expr.label("x"), cell_y_expr.label("y"), func.count().label("c"))
-        .where(*synthetic_filters)
-        .group_by(cell_x_expr, cell_y_expr)
-    ).all()
-
-    if not measured_rows or not synthetic_rows:
-        return None
-
-    measured_map = {(int(float(item.x)), int(float(item.y))): float(item.c) for item in measured_rows}
-    synthetic_map = {(int(float(item.x)), int(float(item.y))): float(item.c) for item in synthetic_rows}
-
-    all_keys = set(measured_map.keys()) | set(synthetic_map.keys())
-    dot = sum(measured_map.get(key, 0.0) * synthetic_map.get(key, 0.0) for key in all_keys)
-    norm_m = math.sqrt(sum(value * value for value in measured_map.values()))
-    norm_s = math.sqrt(sum(value * value for value in synthetic_map.values()))
-    if norm_m <= 0 or norm_s <= 0:
-        return None
-    return max(0.0, min(1.0, dot / (norm_m * norm_s)))
-
-
-def _parse_distribution_line(raw_line: str) -> tuple[float, float, float] | None:
-    stripped = raw_line.strip()
-    if not stripped:
-        return None
-    tokens = [token for token in TOKEN_SPLIT_PATTERN.split(stripped) if token]
-    if len(tokens) < 3:
-        return None
-    values: list[float] = []
-    for token in tokens:
-        parsed = _parse_float(token)
-        if parsed is not None:
-            values.append(parsed)
-        if len(values) >= 3:
-            break
-    if len(values) < 3:
-        return None
-    return (values[0], values[1], values[2])
-
-
 def _safe_km_per_lon(latitude: float) -> float:
     factor = abs(math.cos(math.radians(latitude)))
     return max(DEGREE_TO_KM * factor, 1e-6)
-
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     radius_km = 6371.0
@@ -2148,270 +884,6 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     )
     c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(max(1.0 - a, 0.0)))
     return radius_km * c
-
-
-def _resolve_data_years_from_timestamps(values: list[datetime]) -> float:
-    if len(values) < 2:
-        return 1.0
-    minimum = min(values)
-    maximum = max(values)
-    delta_days = (maximum - minimum).total_seconds() / 86400.0
-    return max(delta_days / 365.25, 1.0)
-
-
-def _infer_data_years(db: Session, filters: list[Any]) -> float:
-    row = db.execute(
-        select(
-            func.min(LightningDistributionPoint.event_time).label("min_time"),
-            func.max(LightningDistributionPoint.event_time).label("max_time"),
-        ).where(*filters, LightningDistributionPoint.event_time.is_not(None))
-    ).one()
-    if row.min_time is None or row.max_time is None:
-        return 1.0
-    delta_days = (row.max_time - row.min_time).total_seconds() / 86400.0
-    return max(delta_days / 365.25, 1.0)
-
-
-def _build_tower_terrain_metrics_from_tower(tower: LineTower | None) -> LightningTowerTerrainMetrics | None:
-    if tower is None:
-        return None
-
-    raw_extra = tower.raw_extra_json or {}
-    terrain_payload = raw_extra.get("terrain_metrics") if isinstance(raw_extra, dict) else None
-    if isinstance(terrain_payload, dict):
-        try:
-            return LightningTowerTerrainMetrics.model_validate(terrain_payload)
-        except Exception:
-            pass
-
-    slope_along = float(tower.slope_1) if tower.slope_1 is not None else None
-    slope_cross = float(tower.slope_2) if tower.slope_2 is not None else None
-    if slope_along is None and slope_cross is None:
-        return None
-
-    slope_candidates = [abs(value) for value in (slope_along, slope_cross) if value is not None]
-    slope_deg = max(slope_candidates) if slope_candidates else None
-    terrain_exposure = min(1.0, (slope_deg / 45.0)) if slope_deg is not None else None
-    return LightningTowerTerrainMetrics(
-        slope_deg=slope_deg,
-        slope_max_deg=slope_deg,
-        slope_along_line_deg=slope_along,
-        slope_cross_line_deg=slope_cross,
-        terrain_exposure_index=terrain_exposure,
-        algorithm_version="tower-legacy",
-    )
-
-
-def _compute_horn_gradient(grid_m: list[list[float]], *, cell_size_m: float) -> tuple[float, float]:
-    if len(grid_m) != 3 or any(len(row) != 3 for row in grid_m):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="DEM 网格必须是 3x3")
-    if cell_size_m <= 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cell_size_m 必须大于 0")
-
-    z1, z2, z3 = float(grid_m[0][0]), float(grid_m[0][1]), float(grid_m[0][2])
-    z4, z5, z6 = float(grid_m[1][0]), float(grid_m[1][1]), float(grid_m[1][2])
-    z7, z8, z9 = float(grid_m[2][0]), float(grid_m[2][1]), float(grid_m[2][2])
-
-    dz_dx = ((z3 + 2.0 * z6 + z9) - (z1 + 2.0 * z4 + z7)) / (8.0 * cell_size_m)
-    dz_dy = ((z1 + 2.0 * z2 + z3) - (z7 + 2.0 * z8 + z9)) / (8.0 * cell_size_m)
-    return dz_dx, dz_dy
-
-
-def _compute_aspect_deg(dz_dx: float, dz_dy: float) -> float | None:
-    if math.isclose(dz_dx, 0.0, abs_tol=1e-12) and math.isclose(dz_dy, 0.0, abs_tol=1e-12):
-        return None
-    downslope_east = -dz_dx
-    downslope_north = -dz_dy
-    return (math.degrees(math.atan2(downslope_east, downslope_north)) + 360.0) % 360.0
-
-
-def _compute_neighbor_slopes(grid_m: list[list[float]], *, cell_size_m: float) -> list[float]:
-    center = float(grid_m[1][1])
-    slopes: list[float] = []
-    for row in range(3):
-        for col in range(3):
-            if row == 1 and col == 1:
-                continue
-            delta_h = float(grid_m[row][col]) - center
-            distance = cell_size_m * math.sqrt(float((row - 1) ** 2 + (col - 1) ** 2))
-            if distance <= 0:
-                continue
-            slopes.append(math.degrees(math.atan(abs(delta_h) / distance)))
-    return slopes
-
-
-def _percentile(values: list[float], quantile: float) -> float:
-    if not values:
-        return 0.0
-    if quantile <= 0:
-        return min(values)
-    if quantile >= 1:
-        return max(values)
-
-    sorted_values = sorted(values)
-    position = (len(sorted_values) - 1) * quantile
-    lower = int(math.floor(position))
-    upper = int(math.ceil(position))
-    if lower == upper:
-        return float(sorted_values[lower])
-    lower_value = float(sorted_values[lower])
-    upper_value = float(sorted_values[upper])
-    weight = position - lower
-    return lower_value * (1.0 - weight) + upper_value * weight
-
-
-def _infer_tower_line_azimuth_deg(db: Session, tower: LineTower | None) -> float | None:
-    if (
-        tower is None
-        or tower.line_id is None
-        or tower.seq_no is None
-        or tower.longitude is None
-        or tower.latitude is None
-    ):
-        return None
-
-    rows = db.execute(
-        select(LineTower.seq_no, LineTower.longitude, LineTower.latitude)
-        .where(
-            LineTower.line_id == tower.line_id,
-            LineTower.longitude.is_not(None),
-            LineTower.latitude.is_not(None),
-        )
-        .order_by(LineTower.seq_no.asc())
-    ).all()
-    if not rows:
-        return None
-
-    previous: tuple[float, float] | None = None
-    next_point: tuple[float, float] | None = None
-    for row in rows:
-        seq_no = int(row.seq_no)
-        point = (float(row.longitude), float(row.latitude))
-        if seq_no < tower.seq_no:
-            previous = point
-            continue
-        if seq_no > tower.seq_no:
-            next_point = point
-            break
-
-    if previous is not None and next_point is not None:
-        start_lon, start_lat = previous
-        end_lon, end_lat = next_point
-    elif next_point is not None:
-        start_lon = float(tower.longitude)
-        start_lat = float(tower.latitude)
-        end_lon, end_lat = next_point
-    elif previous is not None:
-        start_lon, start_lat = previous
-        end_lon = float(tower.longitude)
-        end_lat = float(tower.latitude)
-    else:
-        return None
-
-    if math.isclose(start_lon, end_lon, abs_tol=1e-12) and math.isclose(start_lat, end_lat, abs_tol=1e-12):
-        return None
-
-    start_lat_rad = math.radians(start_lat)
-    end_lat_rad = math.radians(end_lat)
-    delta_lon_rad = math.radians(end_lon - start_lon)
-    x = math.sin(delta_lon_rad) * math.cos(end_lat_rad)
-    y = (
-        math.cos(start_lat_rad) * math.sin(end_lat_rad)
-        - math.sin(start_lat_rad) * math.cos(end_lat_rad) * math.cos(delta_lon_rad)
-    )
-    if math.isclose(x, 0.0, abs_tol=1e-12) and math.isclose(y, 0.0, abs_tol=1e-12):
-        return None
-    return (math.degrees(math.atan2(x, y)) + 360.0) % 360.0
-
-
-def _directional_gradient(dz_dx: float, dz_dy: float, azimuth_deg: float) -> float:
-    azimuth_rad = math.radians(azimuth_deg % 360.0)
-    direction_east = math.sin(azimuth_rad)
-    direction_north = math.cos(azimuth_rad)
-    return dz_dx * direction_east + dz_dy * direction_north
-
-
-def _angle_difference_deg(angle_1_deg: float, angle_2_deg: float) -> float:
-    return abs((angle_1_deg - angle_2_deg + 180.0) % 360.0 - 180.0)
-
-
-def _evaluate_terrain_quality(
-    *,
-    dem_resolution_m: float,
-    search_radius_m: float,
-    warnings: list[str],
-) -> tuple[float, str]:
-    score = 100.0
-
-    def add_warning(message: str) -> None:
-        if message not in warnings:
-            warnings.append(message)
-
-    if dem_resolution_m <= 5.0:
-        score -= 0.0
-    elif dem_resolution_m <= 10.0:
-        score -= 5.0
-    elif dem_resolution_m <= 12.5:
-        score -= 10.0
-    elif dem_resolution_m <= 30.0:
-        score -= 25.0
-        add_warning("DEM 分辨率大于 12.5m，微地形倾角结果可能偏平滑。")
-    elif dem_resolution_m <= 90.0:
-        score -= 45.0
-        add_warning("DEM 分辨率较低（30-90m），建议使用 10m 及以上数据复核。")
-    else:
-        score -= 60.0
-        add_warning("DEM 分辨率超过 90m，当前结果仅可用于粗略评估。")
-
-    if search_radius_m < 30.0:
-        score -= 15.0
-        add_warning("地形检索半径过小（<30m），建议提高到 50m 左右。")
-    elif search_radius_m < 50.0:
-        score -= 8.0
-    elif search_radius_m > 300.0:
-        score -= 10.0
-        add_warning("地形检索半径较大（>300m），局部坡度可能被稀释。")
-    elif search_radius_m > 150.0:
-        score -= 5.0
-
-    score = max(0.0, min(100.0, score))
-    if score >= 80.0:
-        quality_level = "HIGH"
-    elif score >= 60.0:
-        quality_level = "MEDIUM"
-    else:
-        quality_level = "LOW"
-    return score, quality_level
-
-
-def _derive_tower_risk_level(
-    *,
-    strike_count: int,
-    exceed_design_count: int,
-    max_abs_current_ka: float | None,
-    design_current_ka: float,
-    ng_per_km2_year: float,
-) -> str:
-    if strike_count <= 0 or max_abs_current_ka is None:
-        return "LOW"
-    if exceed_design_count >= 3 or max_abs_current_ka >= design_current_ka * 1.5 or ng_per_km2_year >= 8.0:
-        return "HIGH"
-    if exceed_design_count >= 1 or max_abs_current_ka >= design_current_ka or ng_per_km2_year >= 4.0:
-        return "MEDIUM"
-    return "LOW"
-
-
-def _tower_risk_recommendation(risk_level: str) -> str:
-    if risk_level == "HIGH":
-        return "建议立即复核绝缘配置与避雷器参数，并安排现场巡检。"
-    if risk_level == "MEDIUM":
-        return "建议纳入近期巡检计划，核查接地与线路防雷参数。"
-    return "当前风险可控，建议按常规周期继续监测。"
-
-
-def _generate_distribution_event_id() -> str:
-    return f"LD-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex}"
-
 
 def _parse_current_series(text: str) -> ParsedSeries:
     rows: list[tuple[float | None, float]] = []
@@ -2452,7 +924,6 @@ def _parse_current_series(text: str) -> ParsedSeries:
 
     return ParsedSeries(currents_ka=currents, time_us=time_axis, warnings=warnings)
 
-
 def _parse_two_numbers(tokens: list[str]) -> tuple[float, float] | None:
     if len(tokens) < 2:
         return None
@@ -2462,14 +933,12 @@ def _parse_two_numbers(tokens: list[str]) -> tuple[float, float] | None:
         return None
     return (first, second)
 
-
 def _parse_last_number(tokens: list[str]) -> float | None:
     for token in reversed(tokens):
         parsed = _parse_float(token)
         if parsed is not None:
             return parsed
     return None
-
 
 def _build_time_axis(
     raw_time_us: list[float] | None,
@@ -2507,7 +976,6 @@ def _build_time_axis(
     axis = [float(idx) * interval for idx in range(sample_count)]
     fs = 1_000_000.0 / interval if interval > 0 else None
     return axis, interval, fs, warnings
-
 
 def _extract_wave_features(currents_ka: list[float], time_axis_us: list[float], sample_interval_us: float) -> WaveFeatures:
     sample_count = len(currents_ka)
@@ -2586,7 +1054,6 @@ def _extract_wave_features(currents_ka: list[float], time_axis_us: list[float], 
         stroke_peaks_json=stroke_peaks,
     )
 
-
 def _compute_max_steepness(aligned: list[float], time_axis_us: list[float], peak_idx: int) -> float | None:
     max_slope: float | None = None
     for idx in range(1, peak_idx + 1):
@@ -2597,7 +1064,6 @@ def _compute_max_steepness(aligned: list[float], time_axis_us: list[float], peak
         if max_slope is None or slope > max_slope:
             max_slope = slope
     return max_slope
-
 
 def _find_up_crossing_time(
     time_axis_us: list[float],
@@ -2622,7 +1088,6 @@ def _find_up_crossing_time(
             )
     return None
 
-
 def _find_down_crossing_time(
     time_axis_us: list[float],
     signal: list[float],
@@ -2646,13 +1111,11 @@ def _find_down_crossing_time(
             )
     return None
 
-
 def _interpolate_time(x1: float, x2: float, y1: float, y2: float, target: float) -> float:
     if math.isclose(y1, y2):
         return x2
     ratio = (target - y1) / (y2 - y1)
     return x1 + ratio * (x2 - x1)
-
 
 def _compute_action_integral(currents_ka: list[float], time_axis_us: list[float], *, fallback_interval: float) -> float:
     if len(currents_ka) < 2:
@@ -2667,7 +1130,6 @@ def _compute_action_integral(currents_ka: list[float], time_axis_us: list[float]
         total += average_i2 * dt
     return total
 
-
 def _classify_wave_shape(t1_us: float | None, t2_us: float | None) -> str | None:
     if t1_us is None or t2_us is None or t1_us <= 0 or t2_us <= 0:
         return None
@@ -2680,7 +1142,6 @@ def _classify_wave_shape(t1_us: float | None, t2_us: float | None) -> str | None
             best_name = name
             best_score = score
     return best_name
-
 
 def _detect_multiple_strokes(
     *,
@@ -2725,7 +1186,6 @@ def _detect_multiple_strokes(
         for order, idx in enumerate(limited)
     ]
 
-
 def _decode_text_bytes(content: bytes) -> str:
     for encoding in TEXT_ENCODINGS:
         try:
@@ -2733,7 +1193,6 @@ def _decode_text_bytes(content: bytes) -> str:
         except UnicodeDecodeError:
             continue
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件编码不受支持")
-
 
 def _parse_float(value: Any) -> float | None:
     if value is None:
@@ -2745,7 +1204,6 @@ def _parse_float(value: Any) -> float | None:
         return float(normalized)
     except ValueError:
         return None
-
 
 def _fit_line_current_parameters(values: list[float]) -> tuple[float, float, float, float, list[str]]:
     cleaned = sorted(abs(float(item)) for item in values)
@@ -2823,7 +1281,6 @@ def _fit_line_current_parameters(values: list[float]) -> tuple[float, float, flo
 
     return round(current_a, 3), round(current_b, 3), round(peak_max, 3), round(peak_min, 3), warnings
 
-
 def _normalize_str(value: Any) -> str | None:
     if value is None:
         return None
@@ -2831,7 +1288,6 @@ def _normalize_str(value: Any) -> str | None:
     if not normalized:
         return None
     return normalized
-
 
 def _median(values: list[float]) -> float:
     if not values:
@@ -2843,11 +1299,9 @@ def _median(values: list[float]) -> float:
         return float(sorted_values[mid])
     return float((sorted_values[mid - 1] + sorted_values[mid]) / 2.0)
 
-
 def _generate_event_id() -> str:
     now = datetime.now().strftime("%Y%m%d%H%M%S")
     return f"LC-{now}-{uuid4().hex[:6]}"
-
 
 def _publish_line_change(event_name: str, payload: dict[str, Any]) -> None:
     _fire_and_forget(
@@ -2860,7 +1314,6 @@ def _publish_line_change(event_name: str, payload: dict[str, Any]) -> None:
         )
     )
 
-
 def _publish_lightning_change(event_name: str, payload: dict[str, Any]) -> None:
     _fire_and_forget(
         publish_topic(
@@ -2872,14 +1325,12 @@ def _publish_lightning_change(event_name: str, payload: dict[str, Any]) -> None:
         )
     )
 
-
 def _fire_and_forget(coro: object) -> None:
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
     loop.create_task(coro)
-
 
 def _query_batch_groups(
     db: Session,
@@ -2981,6 +1432,455 @@ def _query_batch_groups(
     return total, items
 
 
+# ---------------------------------------------------------------------------
+# 地闪分布（LightningDistribution）服务函数
+# ---------------------------------------------------------------------------
+def _serialize_distribution(dist: LightningDistribution) -> LightningDistributionRecord:
+    """把 LightningDistribution ORM 对象序列化为 schema。"""
+    return LightningDistributionRecord(
+        id=dist.id,
+        region_id=dist.region_id,
+        location_tag=dist.location_tag,
+        city=dist.city,
+        event_year=dist.event_year,
+        line_id=dist.line_id,
+        source_file_name=dist.source_file_name,
+        source_object_key=dist.source_object_key,
+        import_type=dist.import_type,
+        status=dist.status,
+        stage=dist.stage,
+        progress=dist.progress,
+        task_id=dist.task_id,
+        error_message=dist.error_message,
+        total_lines=dist.total_lines,
+        valid_count=dist.valid_count,
+        skipped_count=dist.skipped_count,
+        warning_count=dist.warning_count,
+        warnings=dist.warnings,
+        area_km2=dist.area_km2,
+        data_years=dist.data_years,
+        grid_size_km=dist.grid_size_km,
+        overall_ng=dist.overall_ng,
+        max_abs_current=dist.max_abs_current,
+        avg_abs_current=dist.avg_abs_current,
+        positive_count=dist.positive_count,
+        negative_count=dist.negative_count,
+        unknown_count=dist.unknown_count,
+        stats_json=dist.stats_json,
+        has_image=bool(dist.image_object_key),
+        create_user=dist.create_user,
+        create_date=dist.create_date,
+        update_date=dist.update_date,
+        update_user=dist.update_user,
+    )
+
+
+def import_lightning_distribution_from_file(
+    db: Session,
+    *,
+    file: UploadFile,
+    actor_user_id: str,
+    event_year: int | None,
+    region_id: str | None,
+    location_tag: str | None,
+    city: str | None,
+    notes: str | None,
+    line_id: str | None = None,
+) -> LightningDistributionImportResponse:
+    """上传文件 → 立即 put_object 到 MinIO → 建 LightningDistribution(pending) → 派发 Celery。"""
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
+
+    from ..services.minio_storage import build_source_key, put_object
+    from uuid import uuid4 as _uuid4
+
+    source_file_name = _normalize_str(str(file.filename or "upload")) or "upload"
+    source_key = build_source_key(source_file_name)
+    put_object(source_key, content, content_type="text/plain")
+
+    _now = utcnow()
+    dist = LightningDistribution(
+        id=_uuid4().hex,
+        source_file_name=source_file_name,
+        source_object_key=source_key,
+        import_type="distribution",
+        status="pending",
+        stage="parsing",
+        progress=0,
+        region_id=_normalize_str(region_id),
+        location_tag=_normalize_str(location_tag),
+        city=_normalize_str(city),
+        event_year=event_year,
+        line_id=line_id,
+        grid_size_km=1.0,
+        create_user=actor_user_id,
+        create_date=_now,
+        update_date=_now,
+    )
+    db.add(dist)
+    db.commit()
+
+    from ..core.celery_app import celery_app as _celery_app
+    _task = _celery_app.send_task(
+        "app.tasks.lightning_tasks.import_lightning_distribution_job",
+        kwargs=dict(
+            distribution_id=dist.id,
+            actor_user_id=actor_user_id,
+        ),
+        queue="celery",
+    )
+    dist.task_id = str(_task.id)
+    dist.status = "processing"
+    db.commit()
+
+    return LightningDistributionImportResponse(
+        distribution_id=dist.id,
+        task_id=str(_task.id),
+        status="processing",
+    )
+
+
+def list_lightning_distributions(
+    db: Session,
+    *,
+    keyword: str | None = None,
+    region_id: str | None = None,
+    city: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> LightningDistributionListResponse:
+    """列出地闪分布记录（元数据 + 状态 + 统计）。"""
+    filters: list[Any] = []
+    if keyword:
+        keyword_pattern = f"%{keyword}%"
+        filters.append(
+            or_(
+                LightningDistribution.source_file_name.ilike(keyword_pattern),
+                LightningDistribution.location_tag.ilike(keyword_pattern),
+                LightningDistribution.city.ilike(keyword_pattern),
+            )
+        )
+    if region_id:
+        filters.append(LightningDistribution.region_id == region_id)
+    if city:
+        normalized_city = _normalize_str(city)
+        if normalized_city:
+            filters.append(func.lower(LightningDistribution.city) == normalized_city.lower())
+
+    total = db.execute(
+        select(func.count()).select_from(LightningDistribution).where(*filters)
+    ).scalar() or 0
+    rows = db.execute(
+        select(LightningDistribution)
+        .where(*filters)
+        .order_by(LightningDistribution.create_date.desc(), LightningDistribution.id.desc())
+        .limit(limit)
+        .offset(offset)
+    ).scalars().all()
+
+    return LightningDistributionListResponse(
+        items=[_serialize_distribution(d) for d in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def get_lightning_distribution_by_id(db: Session, distribution_id: str) -> LightningDistribution | None:
+    return db.execute(
+        select(LightningDistribution).where(LightningDistribution.id == distribution_id)
+    ).scalar_one_or_none()
+
+
+def get_lightning_distribution_detail(
+    db: Session,
+    distribution_id: str,
+) -> LightningDistributionRecord:
+    """单条详情（含统计，不含事件明细）。"""
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
+    return _serialize_distribution(dist)
+
+
+def get_lightning_distribution_status(
+    db: Session,
+    distribution_id: str,
+) -> LightningDistributionStatusResponse:
+    """轮询任务进度（status/stage/progress）。"""
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
+    return LightningDistributionStatusResponse(
+        distribution_id=dist.id,
+        status=dist.status,
+        stage=dist.stage,
+        progress=dist.progress,
+        error_message=dist.error_message,
+        record=_serialize_distribution(dist),
+    )
+
+
+def get_lightning_distribution_image_url(
+    db: Session,
+    distribution_id: str,
+) -> LightningDistributionImageResponse:
+    """返回密度图 MinIO 预签名 URL（供前端 <img> 直接展示）。"""
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
+    if not dist.image_object_key:
+        return LightningDistributionImageResponse(distribution_id=dist.id, image_url=None)
+    from ..services.minio_storage import presigned_url
+    image_url = presigned_url(dist.image_object_key, expires=3600)
+    return LightningDistributionImageResponse(distribution_id=dist.id, image_url=image_url)
+
+
+def retry_lightning_distribution(
+    db: Session,
+    distribution_id: str,
+    actor_user_id: str,
+) -> LightningDistributionImportResponse:
+    """失败重试：重置状态并重新派发导入任务。"""
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
+    dist.status = "pending"
+    dist.stage = "parsing"
+    dist.progress = 0
+    dist.error_message = None
+    dist.update_user = actor_user_id
+    db.commit()
+
+    from ..core.celery_app import celery_app as _celery_app
+    _task = _celery_app.send_task(
+        "app.tasks.lightning_tasks.import_lightning_distribution_job",
+        kwargs=dict(distribution_id=dist.id, actor_user_id=actor_user_id),
+        queue="celery",
+    )
+    dist.task_id = str(_task.id)
+    dist.status = "processing"
+    db.commit()
+
+    return LightningDistributionImportResponse(
+        distribution_id=dist.id,
+        task_id=str(_task.id),
+        status="processing",
+    )
+
+
+def delete_lightning_distribution(db: Session, distribution_id: str) -> dict[str, bool]:
+    """删除地闪分布记录，并同步删除 MinIO 上的原始文件与密度图对象。"""
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist:
+        return {"success": False}
+    from ..services import minio_storage
+    for key in (dist.source_object_key, dist.image_object_key, dist.thumbnail_key):
+        if key:
+            try:
+                minio_storage.delete_object(key)
+            except Exception:
+                pass
+    db.delete(dist)
+    db.commit()
+    _publish_lightning_change(
+        "lightning.deleted",
+        {"event_id": distribution_id, "message": f"删除地闪分布记录：{dist.source_file_name}"},
+    )
+    return {"success": True}
+
+
+def trigger_line_density_fill(
+    db: Session,
+    payload: LightningFillDensityRequest,
+    *,
+    actor_user_id: str | None,
+) -> LightningFillDensityResponse:
+    """线路地闪密度回填：派发 fill_line_lightning_density_job。"""
+    from ..tasks.lightning_tasks import fill_line_lightning_density_job
+    task = fill_line_lightning_density_job.delay(
+        line_id=payload.line_id,
+        region_id=payload.region_id,
+        years=payload.years,
+        radius_km=payload.radius_km,
+        actor_user_id=actor_user_id,
+    )
+    return LightningFillDensityResponse(task_id=task.id, status="submitted")
+
+
+# ---------------------------------------------------------------------------
+# 线路密度回填（同步版，/prepare-density 使用）
+# ---------------------------------------------------------------------------
+def prepare_line_lightning_density(
+    db: Session,
+    payload: LightningDensityPreparationRequest,
+    *,
+    actor_user_id: str,
+) -> LightningDensityPreparationResponse:
+    line = db.execute(select(Line).where(Line.id == payload.line_id)).scalar_one_or_none()
+    if not line:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="线路不存在")
+
+    # 当radius_km未指定时，根据电压等级自动推荐半径
+    if payload.radius_km is None:
+        actual_radius_km = recommend_radius_km(line.voltage_kv)
+    else:
+        actual_radius_km = payload.radius_km
+
+    towers = db.execute(
+        select(LineTower)
+        .where(LineTower.line_id == line.id)
+        .order_by(LineTower.seq_no.asc(), LineTower.id.asc())
+    ).scalars().all()
+    if not towers:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前线路没有可回填的杆塔数据")
+
+    geo_towers = [tower for tower in towers if tower.longitude is not None and tower.latitude is not None]
+    if not geo_towers:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前线路缺少杆塔经纬度，无法计算地闪密度")
+
+    # 数据来源：线路关联的最新 LightningDistribution + MinIO 原始文件（不再读明细点表）
+    dist = db.execute(
+        select(LightningDistribution)
+        .where(
+            LightningDistribution.line_id == line.id,
+            LightningDistribution.status == "completed",
+        )
+        .order_by(LightningDistribution.create_date.desc())
+    ).scalars().first()
+    if not dist or not dist.source_object_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="未找到可用于地闪密度计算的地闪分布数据（请先导入并关联线路）",
+        )
+
+    from ..services import lightning_statistics
+    from ..services import minio_storage
+    content = minio_storage.get_object(dist.source_object_key)
+    text = lightning_statistics.decode_text_bytes(content)
+    all_strikes = lightning_statistics.parse_distribution_content(text)
+
+    lat_delta = actual_radius_km / DEGREE_TO_KM
+    lon_deltas = [
+        actual_radius_km / _safe_km_per_lon(float(tower.latitude))
+        for tower in geo_towers
+        if tower.latitude is not None
+    ]
+    lon_delta = max(lon_deltas) if lon_deltas else lat_delta
+    min_lat = min(float(tower.latitude) for tower in geo_towers) - lat_delta
+    max_lat = max(float(tower.latitude) for tower in geo_towers) + lat_delta
+    min_lon = min(float(tower.longitude) for tower in geo_towers) - lon_delta
+    max_lon = max(float(tower.longitude) for tower in geo_towers) + lon_delta
+
+    candidate_rows = [
+        {
+            "latitude": float(s["lat"]),
+            "longitude": float(s["lon"]),
+        }
+        for s in all_strikes
+        if (
+            s["lat"] is not None
+            and s["lon"] is not None
+            and min_lat <= float(s["lat"]) <= max_lat
+            and min_lon <= float(s["lon"]) <= max_lon
+        )
+    ]
+    if not candidate_rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未找到可用于地闪密度计算的雷击分布数据")
+
+    now = utcnow()
+    area_km2 = math.pi * (actual_radius_km ** 2)
+    updated_tower_count = 0
+    missing_geo_count = 0
+    density_values: list[float] = []
+    source_years = payload.years if payload.years is not None else float(dist.data_years or 1.0)
+    warnings: list[str] = []
+
+    for tower in towers:
+        if tower.longitude is None or tower.latitude is None:
+            missing_geo_count += 1
+            continue
+
+        strike_count = 0
+        for row in candidate_rows:
+            if row["longitude"] is None or row["latitude"] is None:
+                continue
+            distance_km = _haversine_km(
+                float(tower.latitude),
+                float(tower.longitude),
+                float(row["latitude"]),
+                float(row["longitude"]),
+            )
+            if distance_km > actual_radius_km:
+                continue
+            strike_count += 1
+
+        tower_years = max(source_years, 1e-6)
+        density = strike_count / (area_km2 * tower_years) if strike_count > 0 else 0.0
+        tower.lightning_density = round(density, 6)
+        tower.update_date = now
+        tower.update_user = actor_user_id
+        raw_extra = dict(tower.raw_extra_json or {})
+        raw_extra["lightning_density"] = {
+            "line_id": line.id,
+            "line_code": line.code,
+            "radius_km": actual_radius_km,
+            "data_years": round(tower_years, 6),
+            "strike_count": strike_count,
+            "region_id": _normalize_str(payload.region_id),
+            "prepared_at": now.isoformat(),
+            "source_distribution_id": dist.id,
+        }
+        tower.raw_extra_json = raw_extra
+        density_values.append(float(tower.lightning_density))
+        updated_tower_count += 1
+
+    if missing_geo_count > 0:
+        warnings.append(f"{missing_geo_count} 座杆塔缺少经纬度，未能回填地闪密度")
+
+    line.update_date = now
+    line.update_user = actor_user_id
+    record_line_preparation_source(
+        line,
+        component="lightning_density",
+        payload={
+            "prepared_at": now.isoformat(),
+            "prepared_by_user_id": actor_user_id,
+            "region_id": _normalize_str(payload.region_id),
+            "radius_km": actual_radius_km,
+            "data_years": round(source_years, 6),
+            "updated_tower_count": updated_tower_count,
+            "missing_geo_count": missing_geo_count,
+            "avg_density": round(sum(density_values) / len(density_values), 6) if density_values else None,
+            "min_density": round(min(density_values), 6) if density_values else None,
+            "max_density": round(max(density_values), 6) if density_values else None,
+        },
+    )
+    db.commit()
+
+    preparation_json = summarize_line_preparation(db, line, tower_count=len(towers))
+    _publish_line_change(
+        "power-lines.lightning-density.prepared",
+        {"action": "lightning_density_prepared", "line_id": line.id},
+    )
+    return LightningDensityPreparationResponse(
+        line=serialize_line(line, tower_count=len(towers), preparation_json=preparation_json),
+        updated_tower_count=updated_tower_count,
+        missing_geo_count=missing_geo_count,
+        radius_km=actual_radius_km,
+        data_years=round(source_years, 6),
+        avg_density=round(sum(density_values) / len(density_values), 6) if density_values else None,
+        min_density=round(min(density_values), 6) if density_values else None,
+        max_density=round(max(density_values), 6) if density_values else None,
+        warning_count=len(warnings),
+        warnings=warnings,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 文件导入批次列表（仅波形，distribution 已迁移至 /distributions）
+# ---------------------------------------------------------------------------
 def list_lightning_import_batches(
     db: Session,
     *,
@@ -2992,31 +1892,22 @@ def list_lightning_import_batches(
 ) -> LightningImportBatchListResponse:
     """
     列出文件导入批次记录，按导入时间分组。
-    同时查询波形事件表（LightningCurrentEvent）和地闪分布表（LightningDistributionPoint）。
-    可通过 import_type 参数限定查询范围：
-    - "waveform"：仅查询雷电流波形导入批次
-    - "distribution"：仅查询地闪分布导入批次
-    - None（默认）：查询全部
+    地闪分布导入已迁移至 /distributions 系列（LightningDistribution 表），
+    本接口仅服务雷电流波形导入（LightningCurrentEvent + LightningImportBatch）。
     """
     waveform_items = []
-    distribution_items = []
 
-    # 查询波形导入批次
     if import_type is None or import_type == "waveform":
         _, waveform_items = _query_batch_groups(
             db, LightningCurrentEvent,
-            keyword=keyword, region_id=region_id, limit=1000, offset=0,
-        )
-    # 查询地闪分布导入批次
-    if import_type is None or import_type == "distribution":
-        _, distribution_items = _query_batch_groups(
-            db, LightningDistributionPoint,
             keyword=keyword, region_id=region_id, limit=1000, offset=0,
         )
 
     # 从 LightningImportBatch 表查询正在处理或待处理的导入记录
     from ..models.lightning_import_batch import LightningImportBatch as ImportBatchModel
     batch_filters = [ImportBatchModel.status.in_(["pending", "processing", "failed"])]
+    if import_type and import_type != "waveform":
+        batch_filters.append(ImportBatchModel.import_type == import_type)
     if keyword:
         batch_filters.append(ImportBatchModel.source_file_name.ilike(f"%{keyword}%"))
     if region_id:
@@ -3045,7 +1936,7 @@ def list_lightning_import_batches(
             )
         )
 
-    all_items = batch_items + waveform_items + distribution_items
+    all_items = batch_items + waveform_items
     all_items.sort(key=lambda x: x.import_time or datetime.min, reverse=True)
     total = len(all_items)
     paginated = all_items[offset:offset + limit]
@@ -3056,230 +1947,3 @@ def list_lightning_import_batches(
         limit=limit,
         offset=offset,
     )
-
-
-def _query_batch_events_from_model(
-    db: Session,
-    model: type,
-    *,
-    source_file_name: str | None,
-    import_time: datetime,
-    region_id: str | None,
-    location_tag: str | None,
-    city: str | None,
-) -> list[LightningImportBatchEventItem]:
-    """Query batch events from a single model table."""
-    time_tolerance = timedelta(seconds=5)
-    filters = [
-        model.create_date >= import_time - time_tolerance,
-        model.create_date <= import_time + time_tolerance,
-    ]
-
-    if source_file_name:
-        filters.append(model.source_file_name == source_file_name)
-    else:
-        filters.append(model.source_file_name.is_(None))
-
-    if region_id:
-        filters.append(model.region_id == region_id)
-    else:
-        filters.append(model.region_id.is_(None))
-
-    if location_tag:
-        filters.append(model.location_tag == location_tag)
-    else:
-        filters.append(model.location_tag.is_(None))
-
-    if city:
-        filters.append(model.city == city)
-    else:
-        filters.append(model.city.is_(None))
-
-    query = select(model).where(*filters).order_by(model.event_time)
-    events_db = db.execute(query).scalars().all()
-
-    return [
-        LightningImportBatchEventItem(
-            id=event.id,
-            event_id=event.event_id,
-            longitude=event.longitude,
-            latitude=event.latitude,
-            current_ka=event.peak_current_ka,
-            abs_current_ka=event.peak_abs_current_ka,
-            polarity=event.polarity,
-            event_time=event.event_time,
-        )
-        for event in events_db
-    ]
-
-
-def get_lightning_import_batch_events(
-    db: Session,
-    *,
-    source_file_name: str | None,
-    import_time: datetime,
-    region_id: str | None,
-    location_tag: str | None,
-    city: str | None,
-    import_type: str | None = None,
-) -> LightningImportBatchEventsResponse:
-    """
-    获取某个导入批次的所有事件。
-    同时查询波形事件表（LightningCurrentEvent）和地闪分布表（LightningDistributionPoint）。
-    可通过 import_type 参数限定查询范围：
-    - "waveform"：仅查询雷电流波形事件
-    - "distribution"：仅查询地闪分布事件
-    - None（默认）：查询全部
-    """
-    import hashlib
-
-    batch_key_str = "|".join([
-        source_file_name or "",
-        import_time.isoformat(),
-        region_id or "",
-        location_tag or "",
-        city or "",
-    ])
-    batch_id = hashlib.md5(batch_key_str.encode()).hexdigest()[:16]
-
-    waveform_events = []
-    distribution_events = []
-
-    if import_type is None or import_type == "waveform":
-        waveform_events = _query_batch_events_from_model(
-            db, LightningCurrentEvent,
-            source_file_name=source_file_name,
-            import_time=import_time,
-            region_id=region_id,
-            location_tag=location_tag,
-            city=city,
-        )
-    if import_type is None or import_type == "distribution":
-        distribution_events = _query_batch_events_from_model(
-            db, LightningDistributionPoint,
-            source_file_name=source_file_name,
-            import_time=import_time,
-            region_id=region_id,
-            location_tag=location_tag,
-            city=city,
-        )
-
-    all_events = waveform_events + distribution_events
-    all_events.sort(key=lambda x: x.event_time or datetime.min)
-
-    return LightningImportBatchEventsResponse(
-        batch_id=batch_id,
-        source_file_name=source_file_name,
-        import_time=import_time,
-        events=all_events,
-        total=len(all_events),
-    )
-
-
-def delete_lightning_import_batch(
-    db: Session,
-    *,
-    source_file_name: str | None,
-    import_time: datetime,
-    region_id: str | None,
-    location_tag: str | None,
-    city: str | None,
-    import_type: str | None = None,
-) -> dict[str, bool | int]:
-    """
-    删除某个导入批次的所有事件记录。
-    同时删除 LightningImportBatch 表记录，
-    以及波形事件表（LightningCurrentEvent）和地闪分布表（LightningDistributionPoint）中的记录。
-    可通过 import_type 参数限定删除范围：
-    - "waveform"：仅删除雷电流波形导入批次
-    - "distribution"：仅删除地闪分布导入批次
-    - None（默认）：全部删除
-    """
-    import hashlib
-
-    batch_key_str = "|".join([
-        source_file_name or "",
-        import_time.isoformat(),
-        region_id or "",
-        location_tag or "",
-        city or "",
-    ])
-    batch_id = hashlib.md5(batch_key_str.encode()).hexdigest()[:16]
-
-    total_deleted = 0
-
-    # 1. Delete LightningImportBatch record (handles pending/processing/failed batches)
-    from ..models.lightning_import_batch import LightningImportBatch as ImportBatchModel
-    batch_records = db.execute(
-        select(ImportBatchModel).where(
-            ImportBatchModel.source_file_name == source_file_name,
-            ImportBatchModel.create_date >= import_time - timedelta(seconds=60),
-            ImportBatchModel.create_date <= import_time + timedelta(seconds=60),
-        )
-    ).scalars().all()
-    for br in batch_records:
-        db.delete(br)
-    total_deleted += len(batch_records)
-
-    # 2. Delete data records, filtered by import_type
-    models_to_delete = []
-    if import_type is None or import_type == "waveform":
-        models_to_delete.append(LightningCurrentEvent)
-    if import_type is None or import_type == "distribution":
-        models_to_delete.append(LightningDistributionPoint)
-
-    # Use a generous time window to accommodate Celery async import delays
-    time_tolerance = timedelta(seconds=60)
-    for model in models_to_delete:
-        filters = [
-            model.create_date >= import_time - time_tolerance,
-            model.create_date <= import_time + time_tolerance,
-        ]
-        if source_file_name:
-            filters.append(model.source_file_name == source_file_name)
-        else:
-            filters.append(model.source_file_name.is_(None))
-        if region_id:
-            filters.append(model.region_id == region_id)
-        elif region_id is None:
-            # region_id is None: match both NULL and empty string
-            filters.append(
-                or_(model.region_id.is_(None), model.region_id == "")
-            )
-        if location_tag:
-            filters.append(model.location_tag == location_tag)
-        elif location_tag is None:
-            filters.append(
-                or_(model.location_tag.is_(None), model.location_tag == "")
-            )
-        if city:
-            filters.append(model.city == city)
-        elif city is None:
-            filters.append(
-                or_(model.city.is_(None), model.city == "")
-            )
-
-        # 批量删除（按主键分块提交），避免逐行 db.delete() 产生海量单行 DELETE，
-        # 也避免超大单事务长时间锁表/锁索引。
-        while True:
-            subq = select(model.id).where(*filters).limit(DELETE_CHUNK_SIZE)
-            result = db.execute(
-                sa_delete(model).where(model.id.in_(subq)),
-                execution_options={"synchronize_session": False},
-            )
-            deleted = result.rowcount or 0
-            db.commit()
-            total_deleted += deleted
-            if deleted < DELETE_CHUNK_SIZE:
-                break
-
-    if total_deleted == 0:
-        return {"success": False, "deleted_count": 0}
-
-    db.commit()
-    _publish_lightning_change(
-        "lightning.deleted",
-        {"event_id": batch_id, "message": f"{source_file_name or 'unknown'} (batch {batch_id})"},
-    )
-
-    return {"success": True, "deleted_count": total_deleted}
