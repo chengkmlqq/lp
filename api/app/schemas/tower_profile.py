@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .line import TowerCircuitSummary
+
 
 class TowerProfileDetail(BaseModel):
     id: str | None = None
@@ -35,7 +37,9 @@ class TowerProfileDetail(BaseModel):
     current_type: str | None = None
     current_head_time_us: float | None = None
     current_tail_time_us: float | None = None
-    geometry_layers_json: dict[str, Any] = Field(default_factory=dict)
+    cause_analysis: str | None = None
+    mitigation_recommendation: str | None = None
+    circuits: list[TowerCircuitSummary] = Field(default_factory=list)
     extra_profile_json: dict[str, Any] = Field(default_factory=dict)
     create_date: datetime | None = None
     create_user: str | None = None
@@ -64,5 +68,7 @@ class TowerProfileUpsertRequest(BaseModel):
     current_type: str | None = Field(default=None, max_length=32)
     current_head_time_us: float | None = None
     current_tail_time_us: float | None = None
-    geometry_layers_json: dict[str, Any] = Field(default_factory=dict)
+    cause_analysis: str | None = None
+    mitigation_recommendation: str | None = None
+    circuits: list[TowerCircuitSummary] = Field(default_factory=list)
     extra_profile_json: dict[str, Any] = Field(default_factory=dict)

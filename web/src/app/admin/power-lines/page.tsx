@@ -43,6 +43,7 @@ import type {
   LineTowerImportResponse,
   LineTowerListResponse,
   LineTowerSummary,
+  TowerCircuitSummary,
   TowerModelSummary,
   TowerProfileDetail,
   LightningCurrentEventSummary,
@@ -112,6 +113,8 @@ type TowerProfileFormValues = {
   current_type: string;
   current_head_time_us: number | null;
   current_tail_time_us: number | null;
+  cause_analysis: string;
+  mitigation_recommendation: string;
   geometry_layers_json: string;
   extra_profile_json: string;
 };
@@ -225,6 +228,8 @@ const EMPTY_TOWER_PROFILE_FORM: TowerProfileFormValues = {
   current_type: "",
   current_head_time_us: null,
   current_tail_time_us: null,
+  cause_analysis: "",
+  mitigation_recommendation: "",
   geometry_layers_json: "{}",
   extra_profile_json: "{}",
 };
@@ -250,6 +255,65 @@ function parseJsonObjectText(value: string, label: string): Record<string, unkno
     throw new Error(`${label} 需要是 JSON 对象`);
   }
   return parsed as Record<string, unknown>;
+}
+const CIRCUIT_KEY_BY_NO: Record<number, TowerCircuitKey> = { 1: "I", 2: "II", 3: "III", 4: "IV" };
+const CIRCUIT_NO_BY_KEY: Record<TowerCircuitKey, number> = { I: 1, II: 2, III: 3, IV: 4 };
+function circuitsToGeometryLayers(circuits: TowerCircuitSummary[]): Record<string, unknown> {
+  const geometry: Record<string, unknown> = {};
+  circuits.forEach((circuit) => {
+    const circuitKey = CIRCUIT_KEY_BY_NO[circuit.circuit_no];
+    if (!circuitKey) {
+      return;
+    }
+    geometry[circuitKey] = {
+      phase_spacing_m: {
+        upper: circuit.spacing_upper_m,
+        middle: circuit.spacing_middle_m,
+        lower: circuit.spacing_lower_m,
+      },
+      phase_height_m: {
+        upper: circuit.height_upper_m,
+        middle: circuit.height_middle_m,
+        lower: circuit.height_lower_m,
+      },
+    };
+  });
+  return geometry;
+}
+function geometryLayersToCircuits(geometry: Record<string, unknown>): TowerCircuitSummary[] {
+  const circuits: TowerCircuitSummary[] = [];
+  Object.entries(CIRCUIT_NO_BY_KEY).forEach(([circuitKey, circuitNo]) => {
+    const rawCircuit = asObjectRecord(geometry[circuitKey]);
+    if (!rawCircuit) {
+      return;
+    }
+    const spacing = asObjectRecord(rawCircuit.phase_spacing_m) ?? {};
+    const height = asObjectRecord(rawCircuit.phase_height_m) ?? {};
+    const hasValue = [
+      spacing.upper,
+      spacing.middle,
+      spacing.lower,
+      height.upper,
+      height.middle,
+      height.lower,
+    ].some((item) => toGeometryNumber(item) !== null);
+    if (!hasValue) {
+      return;
+    }
+    circuits.push({
+      id: null,
+      tower_id: null,
+      circuit_no: circuitNo,
+      phase_sequence: null,
+      spacing_upper_m: toGeometryNumber(spacing.upper),
+      spacing_middle_m: toGeometryNumber(spacing.middle),
+      spacing_lower_m: toGeometryNumber(spacing.lower),
+      height_upper_m: toGeometryNumber(height.upper),
+      height_middle_m: toGeometryNumber(height.middle),
+      height_lower_m: toGeometryNumber(height.lower),
+    });
+  });
+  return circuits;
 }
 type TowerTopologyKind = "single" | "double" | "quad" | "dc";
 type TowerCircuitKey = "I" | "II" | "III" | "IV";
@@ -799,7 +863,9 @@ export default function AdminPowerLinesPage() {
       current_type: profile.current_type ?? "",
       current_head_time_us: profile.current_head_time_us ?? null,
       current_tail_time_us: profile.current_tail_time_us ?? null,
-      geometry_layers_json: formatJsonText(profile.geometry_layers_json),
+      cause_analysis: profile.cause_analysis ?? "",
+      mitigation_recommendation: profile.mitigation_recommendation ?? "",
+      geometry_layers_json: formatJsonText(circuitsToGeometryLayers(profile.circuits ?? [])),
       extra_profile_json: formatJsonText(profile.extra_profile_json),
     });
   }, [towerProfileForm, towerProfileQuery.data]);
@@ -1110,6 +1176,7 @@ export default function AdminPowerLinesPage() {
       }
       const geometryLayers = parseJsonObjectText(values.geometry_layers_json, "回路几何 JSON");
       const extraProfile = parseJsonObjectText(values.extra_profile_json, "额外字段 JSON");
+      const circuits = geometryLayersToCircuits(geometryLayers);
       const response = await fetchWithAuth(`/api/v1/tower-profiles/${editingTowerProfileTower.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -1134,7 +1201,9 @@ export default function AdminPowerLinesPage() {
           current_type: (values.current_type ?? "").trim() || null,
           current_head_time_us: values.current_head_time_us ?? null,
           current_tail_time_us: values.current_tail_time_us ?? null,
-          geometry_layers_json: geometryLayers,
+          cause_analysis: (values.cause_analysis ?? "").trim() || null,
+          mitigation_recommendation: (values.mitigation_recommendation ?? "").trim() || null,
+          circuits,
           extra_profile_json: extraProfile,
         }),
       });
@@ -2228,6 +2297,18 @@ export default function AdminPowerLinesPage() {
               }]}
             >
               <Input.TextArea rows={12} spellCheck={false} readOnly={towerProfileGeometryEditorMode === "structured"} />
+            </Form.Item>
+            <Form.Item
+              name="cause_analysis"
+              label="原因分析"
+            >
+              <Input.TextArea rows={4} spellCheck={false} placeholder="如：接地电阻偏高、保护角裕度不足" />
+            </Form.Item>
+            <Form.Item
+              name="mitigation_recommendation"
+              label="措施推荐"
+            >
+              <Input.TextArea rows={4} spellCheck={false} placeholder="如：建议补充关键相避雷器并复核安装位置" />
             </Form.Item>
             <Form.Item
               name="extra_profile_json"

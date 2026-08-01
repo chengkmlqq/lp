@@ -18,6 +18,9 @@ from ..models.base import utcnow
 from ..models.fl_analysis import FlAnalysisJob, FlAnalysisRun, FlAnalysisTowerResult, FlAnalysisTowerSnapshot
 from ..models.line import Line
 from ..models.line_tower import LineTower
+from ..models.tower_analysis import TowerAnalysis
+from ..models.tower_circuit import TowerCircuit
+from ..models.tower_lightning_result import TowerLightningResult
 from ..models.tower_profile import TowerProfile
 from ..models.user import User
 from ..schemas.fl_analysis import (
@@ -429,7 +432,7 @@ def execute_job(job_id: str) -> None:
                 altitude_m=tower.altitude_m,
                 terrain=tower.terrain,
                 base_tower_json=_build_base_tower_json(tower, job.line),
-                profile_json=_build_profile_json(profile),
+                profile_json=_build_profile_json(profile, tower),
                 create_date=utcnow(),
             )
             db.add(snapshot)
@@ -573,6 +576,12 @@ def execute_job(job_id: str) -> None:
                 tower.risk_level = graded["risk_level"]
                 tower.update_date = utcnow()
                 tower.update_user = job.update_user or job.create_user
+                _upsert_tower_lightning_result_from_graded(
+                    db,
+                    tower=tower,
+                    graded=graded,
+                    actor_user_id=job.update_user or job.create_user,
+                )
 
         run.snapshot_tower_count = snapshot_count
         run.result_tower_count = result_count
@@ -1214,16 +1223,116 @@ def _build_base_tower_json(tower: LineTower, line: Line | None) -> dict[str, Any
         "slope_1": tower.slope_1,
         "slope_2": tower.slope_2,
         "risk_level": tower.risk_level,
-        "circuit_geometry_json": tower.circuit_geometry_json or {},
-        "lightning_result_json": tower.lightning_result_json or {},
+        "circuit_geometry_json": _build_legacy_geometry_from_circuits(tower.circuits),
+        "lightning_result_json": _build_legacy_lightning_result(tower.lightning_result),
         "raw_extra_json": tower.raw_extra_json or {},
     }
 
 
-def _build_profile_json(profile: TowerProfile | None) -> dict[str, Any]:
-    if profile is None:
+def _upsert_tower_lightning_result_from_graded(
+    db: Session,
+    *,
+    tower: LineTower,
+    graded: dict[str, Any],
+    actor_user_id: str,
+) -> None:
+    """将计算引擎输出的雷电结果写回 tower_lightning_result 子表。"""
+    now = utcnow()
+    result = tower.lightning_result
+    if result is None:
+        result = TowerLightningResult(
+            tower_id=tower.id,
+            create_date=now,
+            update_date=now,
+        )
+        tower.lightning_result = result
+    result.counterstroke_indicator = _as_int_or_none(graded.get("stroke_mode") or graded.get("counterstroke_indicator"))
+    result.counterstroke_withstand_ka = _as_float_or_none(
+        graded.get("counterstrike_withstand_ka") or graded.get("counterstroke_withstand_ka")
+    )
+    result.counterstroke_trip_rate = _as_float_or_none(
+        graded.get("counterstrike_trip_rate") or graded.get("counterstroke_trip_rate")
+    )
+    result.shielding_withstand_ka = _as_float_or_none(
+        graded.get("shielding_withstand_ka")
+    )
+    result.shielding_trip_rate = _as_float_or_none(
+        graded.get("shielding_trip_rate")
+    )
+    result.angle_deg = _as_float_or_none(graded.get("angle_deg"))
+    result.current_a_ka = _as_float_or_none(graded.get("current_a"))
+    result.current_b_ka = _as_float_or_none(graded.get("current_b"))
+    result.risk_level = _normalize_risk_level_text(graded.get("risk_level"))
+    result.update_date = now
+
+
+def _as_int_or_none(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_float_or_none(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_risk_level_text(value: Any) -> str | None:
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    return text
+
+
+def _build_legacy_geometry_from_circuits(circuits: list[TowerCircuit]) -> dict[str, Any]:
+    circuit_key_by_no = {1: "I", 2: "II", 3: "III", 4: "IV"}
+    result: dict[str, Any] = {}
+    for circuit in circuits:
+        circuit_key = circuit_key_by_no.get(circuit.circuit_no)
+        if circuit_key is None:
+            continue
+        result[circuit_key] = {
+            "phase_spacing_m": {
+                "upper": circuit.spacing_upper_m,
+                "middle": circuit.spacing_middle_m,
+                "lower": circuit.spacing_lower_m,
+            },
+            "phase_height_m": {
+                "upper": circuit.height_upper_m,
+                "middle": circuit.height_middle_m,
+                "lower": circuit.height_lower_m,
+            },
+        }
+    return result
+
+
+def _build_legacy_lightning_result(item: TowerLightningResult | None) -> dict[str, Any]:
+    if item is None:
         return {}
     return {
+        "counterstroke_indicator": item.counterstroke_indicator,
+        "counterstroke_withstand_ka": item.counterstroke_withstand_ka,
+        "counterstroke_trip_rate": item.counterstroke_trip_rate,
+        "shielding_withstand_ka": item.shielding_withstand_ka,
+        "shielding_trip_rate": item.shielding_trip_rate,
+        "angle_deg": item.angle_deg,
+        "current_a": item.current_a_ka,
+        "current_b": item.current_b_ka,
+        "risk_level": item.risk_level,
+    }
+
+
+def _build_profile_json(profile: TowerProfile | None, tower: LineTower | None = None) -> dict[str, Any]:
+    if profile is None:
+        return {}
+    result = {
         "phase_sequence_1": profile.phase_sequence_1,
         "phase_sequence_2": profile.phase_sequence_2,
         "phase_sequence_3": profile.phase_sequence_3,
@@ -1244,9 +1353,15 @@ def _build_profile_json(profile: TowerProfile | None) -> dict[str, Any]:
         "current_type": profile.current_type,
         "current_head_time_us": profile.current_head_time_us,
         "current_tail_time_us": profile.current_tail_time_us,
-        "geometry_layers_json": profile.geometry_layers_json or {},
         "extra_profile_json": profile.extra_profile_json or {},
     }
+    if tower is not None:
+        result["geometry_layers_json"] = _build_legacy_geometry_from_circuits(tower.circuits)
+        analysis = tower.analysis
+        if analysis is not None:
+            result["cause_analysis"] = analysis.cause_analysis
+            result["mitigation_recommendation"] = analysis.mitigation_recommendation
+    return result
 
 
 def _grade_snapshot_payload(payload: dict[str, Any]) -> dict[str, Any]:

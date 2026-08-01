@@ -9,6 +9,9 @@ from app.core.database import Base
 from app.models.fl_analysis import FlAnalysisJob, FlAnalysisRun, FlAnalysisTowerResult, FlAnalysisTowerSnapshot
 from app.models.line import Line
 from app.models.line_tower import LineTower
+from app.models.tower_analysis import TowerAnalysis
+from app.models.tower_circuit import TowerCircuit
+from app.models.tower_lightning_result import TowerLightningResult
 from app.models.tower_profile import TowerProfile
 from app.schemas.fl_analysis import FlAnalysisJobCreateRequest
 from app.services import fl_analysis_service
@@ -22,6 +25,9 @@ def _build_sessionmaker():
             Line.__table__,
             LineTower.__table__,
             TowerProfile.__table__,
+            TowerCircuit.__table__,
+            TowerLightningResult.__table__,
+            TowerAnalysis.__table__,
             FlAnalysisJob.__table__,
             FlAnalysisRun.__table__,
             FlAnalysisTowerSnapshot.__table__,
@@ -132,21 +138,23 @@ def _seed_job_chain(session: Session) -> dict[str, object]:
         span_small_m=280.0,
         slope_1=5.0,
         slope_2=3.0,
-        circuit_geometry_json={
-            "I": {
-                "phase_spacing_m": {"upper": 9.0, "middle": 4.5, "lower": 8.5},
-                "phase_height_m": {"upper": 29.0, "middle": 31.0, "lower": 25.0},
-            },
-            "lightning_wire": {
-                "left_mid_distance_m": 8.0,
-                "right_mid_distance_m": 8.0,
-                "height_m": 38.0,
-            },
-            "insulator_length_mm": 4200.0,
-        },
-        lightning_result_json={},
     )
     session.add(tower)
+    session.flush()
+
+    session.add(
+        TowerCircuit(
+            tower_id=tower.id,
+            circuit_no=1,
+            phase_sequence="ABC",
+            spacing_upper_m=9.0,
+            spacing_middle_m=4.5,
+            spacing_lower_m=8.5,
+            height_upper_m=29.0,
+            height_middle_m=31.0,
+            height_lower_m=25.0,
+        )
+    )
     session.flush()
 
     profile = TowerProfile(

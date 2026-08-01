@@ -13,7 +13,6 @@ from .base import utcnow
 if TYPE_CHECKING:
     from .line_tower import LineTower
 
-
 class TowerProfile(Base):
     __tablename__ = "tower_profile"
     __table_args__ = (
@@ -53,7 +52,6 @@ class TowerProfile(Base):
     current_type: Mapped[str | None] = mapped_column(String(32), index=True)
     current_head_time_us: Mapped[float | None] = mapped_column(Float)
     current_tail_time_us: Mapped[float | None] = mapped_column(Float)
-    geometry_layers_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     extra_profile_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)

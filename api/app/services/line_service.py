@@ -17,6 +17,9 @@ from sqlalchemy.orm import Session
 from ..models.base import utcnow
 from ..models.line import Line
 from ..models.line_tower import LineTower
+from ..models.tower_analysis import TowerAnalysis
+from ..models.tower_circuit import TowerCircuit
+from ..models.tower_lightning_result import TowerLightningResult
 from ..models.tower_model import TowerModel
 from ..models.tower_profile import TowerProfile
 from ..schemas.line import (
@@ -29,6 +32,9 @@ from ..schemas.line import (
     LineTowerSummary,
     LineTowerUpdateRequest,
     LineUpdateRequest,
+    TowerAnalysisSummary,
+    TowerCircuitSummary,
+    TowerLightningResultSummary,
 )
 from .line_preparation_service import summarize_line_preparation, summarize_line_preparations
 from .push_service import publish_topic
@@ -94,13 +100,54 @@ def serialize_line_tower(item: LineTower) -> LineTowerSummary:
         slope_1=item.slope_1,
         slope_2=item.slope_2,
         risk_level=item.risk_level,
-        circuit_geometry_json=item.circuit_geometry_json or {},
-        lightning_result_json=item.lightning_result_json or {},
+        circuits=[_serialize_circuit(circuit) for circuit in item.circuits],
+        lightning_result=_serialize_lightning_result(item.lightning_result) if item.lightning_result else None,
+        analysis=_serialize_tower_analysis(item.analysis) if item.analysis else None,
         raw_extra_json=item.raw_extra_json or {},
         create_date=item.create_date,
         create_user=item.create_user,
         update_date=item.update_date,
         update_user=item.update_user,
+    )
+
+
+def _serialize_circuit(circuit: TowerCircuit) -> TowerCircuitSummary:
+    return TowerCircuitSummary(
+        id=circuit.id,
+        tower_id=circuit.tower_id,
+        circuit_no=circuit.circuit_no,
+        phase_sequence=circuit.phase_sequence,
+        spacing_upper_m=circuit.spacing_upper_m,
+        spacing_middle_m=circuit.spacing_middle_m,
+        spacing_lower_m=circuit.spacing_lower_m,
+        height_upper_m=circuit.height_upper_m,
+        height_middle_m=circuit.height_middle_m,
+        height_lower_m=circuit.height_lower_m,
+    )
+
+
+def _serialize_lightning_result(item: TowerLightningResult) -> TowerLightningResultSummary:
+    return TowerLightningResultSummary(
+        id=item.id,
+        tower_id=item.tower_id,
+        counterstroke_indicator=item.counterstroke_indicator,
+        counterstroke_withstand_ka=item.counterstroke_withstand_ka,
+        counterstroke_trip_rate=item.counterstroke_trip_rate,
+        shielding_withstand_ka=item.shielding_withstand_ka,
+        shielding_trip_rate=item.shielding_trip_rate,
+        angle_deg=item.angle_deg,
+        current_a_ka=item.current_a_ka,
+        current_b_ka=item.current_b_ka,
+        risk_level=item.risk_level,
+    )
+
+
+def _serialize_tower_analysis(item: TowerAnalysis) -> TowerAnalysisSummary:
+    return TowerAnalysisSummary(
+        id=item.id,
+        tower_id=item.tower_id,
+        cause_analysis=item.cause_analysis,
+        mitigation_recommendation=item.mitigation_recommendation,
     )
 
 
@@ -318,8 +365,6 @@ def create_line_tower(
         slope_1=_pick_optional_value(payload.slope_1, model_defaults.get("slope_1") if model_defaults else None),
         slope_2=_pick_optional_value(payload.slope_2, model_defaults.get("slope_2") if model_defaults else None),
         risk_level=_pick_optional_value(_normalize_str(payload.risk_level), model_defaults.get("risk_level") if model_defaults else None),
-        circuit_geometry_json=_pick_dict_value(payload.circuit_geometry_json, _extract_model_default_dict(model_defaults, "circuit_geometry_json")),
-        lightning_result_json=_pick_dict_value(payload.lightning_result_json, _extract_model_default_dict(model_defaults, "lightning_result_json")),
         raw_extra_json=payload.raw_extra_json or {},
         create_user=actor_user_id,
         update_user=actor_user_id,
@@ -327,6 +372,10 @@ def create_line_tower(
         update_date=now,
     )
     db.add(item)
+    db.flush()
+    _apply_circuit_payload(item, payload.circuits, actor_user_id=actor_user_id)
+    _apply_lightning_result_payload(item, payload.lightning_result, actor_user_id=actor_user_id)
+    _apply_analysis_payload(item, payload.analysis, actor_user_id=actor_user_id)
     db.commit()
 
     saved = get_line_tower_by_id(db, item.id)
@@ -391,10 +440,12 @@ def update_line_tower(
         if field in update_data:
             setattr(tower, field, _normalize_str(update_data[field]))
 
-    if "circuit_geometry_json" in update_data and update_data["circuit_geometry_json"] is not None:
-        tower.circuit_geometry_json = dict(update_data["circuit_geometry_json"])
-    if "lightning_result_json" in update_data and update_data["lightning_result_json"] is not None:
-        tower.lightning_result_json = dict(update_data["lightning_result_json"])
+    if "circuits" in update_data and update_data["circuits"] is not None:
+        _apply_circuit_payload(tower, update_data["circuits"], actor_user_id=actor_user_id)
+    if "lightning_result" in update_data and update_data["lightning_result"] is not None:
+        _apply_lightning_result_payload(tower, update_data["lightning_result"], actor_user_id=actor_user_id)
+    if "analysis" in update_data and update_data["analysis"] is not None:
+        _apply_analysis_payload(tower, update_data["analysis"], actor_user_id=actor_user_id)
     if "raw_extra_json" in update_data and update_data["raw_extra_json"] is not None:
         tower.raw_extra_json = dict(update_data["raw_extra_json"])
 
@@ -517,13 +568,29 @@ def import_line_towers_from_csv(
         tower.slope_1 = _pick_optional_value(_parse_float(row.get("地面倾角1")), model_defaults.get("slope_1") if model_defaults else None)
         tower.slope_2 = _pick_optional_value(_parse_float(row.get("地面倾角2")), model_defaults.get("slope_2") if model_defaults else None)
         tower.risk_level = _pick_optional_value(_normalize_str(row.get("雷击风险等级")), model_defaults.get("risk_level") if model_defaults else None)
-        tower.circuit_geometry_json = _pick_dict_value(_build_circuit_geometry(row), _extract_model_default_dict(model_defaults, "circuit_geometry_json"))
-        tower.lightning_result_json = _pick_dict_value(_build_lightning_result(row), _extract_model_default_dict(model_defaults, "lightning_result_json"))
         tower.raw_extra_json = _extract_extra_values(row, extra_headers)
         tower.update_user = actor_user_id
         tower.update_date = utcnow()
         db.flush()
         _upsert_tower_profile_from_legacy_row(
+            db,
+            tower=tower,
+            row=row,
+            actor_user_id=actor_user_id,
+        )
+        _upsert_tower_circuits_from_legacy_row(
+            db,
+            tower=tower,
+            row=row,
+            actor_user_id=actor_user_id,
+        )
+        _upsert_lightning_result_from_legacy_row(
+            db,
+            tower=tower,
+            row=row,
+            actor_user_id=actor_user_id,
+        )
+        _upsert_tower_analysis_from_legacy_row(
             db,
             tower=tower,
             row=row,
@@ -588,7 +655,6 @@ def export_line_towers_to_csv(db: Session, *, line: Line) -> tuple[str, bytes]:
             else []
         )
     }
-
     headers = [
         "线路编号",
         "序号",
@@ -664,6 +730,10 @@ def export_line_towers_to_csv(db: Session, *, line: Line) -> tuple[str, bytes]:
 
     for tower in towers:
         profile = profile_map.get(tower.id)
+        circuit_by_no = {item.circuit_no: item for item in tower.circuits}
+        circuit_geometry = _build_circuit_geometry_from_children(tower.circuits)
+        lightning_result = tower.lightning_result
+        analysis = tower.analysis
         writer.writerow(
             [
                 line.code,
@@ -675,90 +745,63 @@ def export_line_towers_to_csv(db: Session, *, line: Line) -> tuple[str, bytes]:
                 tower.tower_type or "",
                 _to_csv_number(tower.longitude),
                 _to_csv_number(tower.latitude),
-                _normalize_str(_pick_export_value(profile.phase_sequence_1 if profile else None, _safe_dict(line.phase_sequence_json).get("I"))) or "",
-                _normalize_str(_pick_export_value(profile.phase_sequence_2 if profile else None, _safe_dict(line.phase_sequence_json).get("II"))) or "",
-                _normalize_str(_pick_export_value(profile.phase_sequence_3 if profile else None, _safe_dict(line.phase_sequence_json).get("III"))) or "",
-                _normalize_str(_pick_export_value(profile.phase_sequence_4 if profile else None, _safe_dict(line.phase_sequence_json).get("IV"))) or "",
+                _normalize_str(_pick_export_value(circuit_by_no.get(1).phase_sequence if circuit_by_no.get(1) else None, profile.phase_sequence_1 if profile else None, _safe_dict(line.phase_sequence_json).get("I"))) or "",
+                _normalize_str(_pick_export_value(circuit_by_no.get(2).phase_sequence if circuit_by_no.get(2) else None, profile.phase_sequence_2 if profile else None, _safe_dict(line.phase_sequence_json).get("II"))) or "",
+                _normalize_str(_pick_export_value(circuit_by_no.get(3).phase_sequence if circuit_by_no.get(3) else None, profile.phase_sequence_3 if profile else None, _safe_dict(line.phase_sequence_json).get("III"))) or "",
+                _normalize_str(_pick_export_value(circuit_by_no.get(4).phase_sequence if circuit_by_no.get(4) else None, profile.phase_sequence_4 if profile else None, _safe_dict(line.phase_sequence_json).get("IV"))) or "",
                 _normalize_str(_pick_export_value(profile.arrester_a if profile else None, _safe_dict(line.arrester_install_json).get("A"))) or "",
                 _normalize_str(_pick_export_value(profile.arrester_b if profile else None, _safe_dict(line.arrester_install_json).get("B"))) or "",
                 _normalize_str(_pick_export_value(profile.arrester_c if profile else None, _safe_dict(line.arrester_install_json).get("C"))) or "",
                 _to_csv_number(tower.ground_resistance_ohm),
-                _to_csv_number(
-                    _pick_export_float(
-                        profile.protection_angle_left_deg if profile else None,
-                        _read_nested_value(profile.geometry_layers_json if profile else None, "lightning_wire", "left_mid_distance_m"),
-                        _read_nested_value(tower.circuit_geometry_json, "lightning_wire", "left_mid_distance_m"),
-                    )
-                ),
-                _to_csv_number(
-                    _pick_export_float(
-                        profile.protection_angle_right_deg if profile else None,
-                        _read_nested_value(profile.geometry_layers_json if profile else None, "lightning_wire", "right_mid_distance_m"),
-                        _read_nested_value(tower.circuit_geometry_json, "lightning_wire", "right_mid_distance_m"),
-                    )
-                ),
-                _to_csv_number(
-                    _pick_export_float(
-                        profile.shield_wire_height_m if profile else None,
-                        _read_nested_value(profile.geometry_layers_json if profile else None, "lightning_wire", "height_m"),
-                        _read_nested_value(tower.circuit_geometry_json, "lightning_wire", "height_m"),
-                    )
-                ),
-                _to_csv_number(
-                    _pick_export_float(
-                        profile.insulator_length_m if profile else None,
-                        _read_nested_value(profile.geometry_layers_json if profile else None, "insulator_length_mm"),
-                        _read_nested_value(tower.circuit_geometry_json, "insulator_length_mm"),
-                    )
-                ),
-                _to_csv_number(
-                    _pick_export_float(
-                        profile.call_height_m if profile else None,
-                        _read_nested_value(profile.geometry_layers_json if profile else None, "tower_height_m"),
-                        _read_nested_value(tower.circuit_geometry_json, "tower_height_m"),
-                    )
-                ),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "I", "phase_spacing_m", "upper"), _read_nested_value(tower.circuit_geometry_json, "I", "phase_spacing_m", "upper"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "I", "phase_spacing_m", "middle"), _read_nested_value(tower.circuit_geometry_json, "I", "phase_spacing_m", "middle"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "I", "phase_spacing_m", "lower"), _read_nested_value(tower.circuit_geometry_json, "I", "phase_spacing_m", "lower"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "I", "phase_height_m", "upper"), _read_nested_value(tower.circuit_geometry_json, "I", "phase_height_m", "upper"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "I", "phase_height_m", "middle"), _read_nested_value(tower.circuit_geometry_json, "I", "phase_height_m", "middle"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "I", "phase_height_m", "lower"), _read_nested_value(tower.circuit_geometry_json, "I", "phase_height_m", "lower"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "II", "phase_spacing_m", "upper"), _read_nested_value(tower.circuit_geometry_json, "II", "phase_spacing_m", "upper"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "II", "phase_spacing_m", "middle"), _read_nested_value(tower.circuit_geometry_json, "II", "phase_spacing_m", "middle"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "II", "phase_spacing_m", "lower"), _read_nested_value(tower.circuit_geometry_json, "II", "phase_spacing_m", "lower"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "II", "phase_height_m", "upper"), _read_nested_value(tower.circuit_geometry_json, "II", "phase_height_m", "upper"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "II", "phase_height_m", "middle"), _read_nested_value(tower.circuit_geometry_json, "II", "phase_height_m", "middle"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "II", "phase_height_m", "lower"), _read_nested_value(tower.circuit_geometry_json, "II", "phase_height_m", "lower"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "III", "phase_spacing_m", "upper"), _read_nested_value(tower.circuit_geometry_json, "III", "phase_spacing_m", "upper"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "III", "phase_spacing_m", "middle"), _read_nested_value(tower.circuit_geometry_json, "III", "phase_spacing_m", "middle"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "III", "phase_spacing_m", "lower"), _read_nested_value(tower.circuit_geometry_json, "III", "phase_spacing_m", "lower"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "III", "phase_height_m", "upper"), _read_nested_value(tower.circuit_geometry_json, "III", "phase_height_m", "upper"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "III", "phase_height_m", "middle"), _read_nested_value(tower.circuit_geometry_json, "III", "phase_height_m", "middle"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "III", "phase_height_m", "lower"), _read_nested_value(tower.circuit_geometry_json, "III", "phase_height_m", "lower"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "IV", "phase_spacing_m", "upper"), _read_nested_value(tower.circuit_geometry_json, "IV", "phase_spacing_m", "upper"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "IV", "phase_spacing_m", "middle"), _read_nested_value(tower.circuit_geometry_json, "IV", "phase_spacing_m", "middle"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "IV", "phase_spacing_m", "lower"), _read_nested_value(tower.circuit_geometry_json, "IV", "phase_spacing_m", "lower"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "IV", "phase_height_m", "upper"), _read_nested_value(tower.circuit_geometry_json, "IV", "phase_height_m", "upper"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "IV", "phase_height_m", "middle"), _read_nested_value(tower.circuit_geometry_json, "IV", "phase_height_m", "middle"))),
-                _to_csv_number(_pick_export_float(_read_nested_value(profile.geometry_layers_json if profile else None, "IV", "phase_height_m", "lower"), _read_nested_value(tower.circuit_geometry_json, "IV", "phase_height_m", "lower"))),
+                _to_csv_number(_pick_export_float(profile.protection_angle_left_deg if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "left_mid_distance_m"))),
+                _to_csv_number(_pick_export_float(profile.protection_angle_right_deg if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "right_mid_distance_m"))),
+                _to_csv_number(_pick_export_float(profile.shield_wire_height_m if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "height_m"))),
+                _to_csv_number(_pick_export_float(profile.insulator_length_m if profile else None, _read_nested_value(circuit_geometry, "insulator_length_mm"))),
+                _to_csv_number(_pick_export_float(profile.call_height_m if profile else None, _read_nested_value(circuit_geometry, "tower_height_m"))),
+                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_spacing_m", "upper")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_spacing_m", "middle")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_spacing_m", "lower")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_height_m", "upper")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_height_m", "middle")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_height_m", "lower")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_spacing_m", "upper")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_spacing_m", "middle")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_spacing_m", "lower")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_height_m", "upper")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_height_m", "middle")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_height_m", "lower")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_spacing_m", "upper")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_spacing_m", "middle")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_spacing_m", "lower")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_height_m", "upper")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_height_m", "middle")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_height_m", "lower")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_spacing_m", "upper")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_spacing_m", "middle")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_spacing_m", "lower")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_height_m", "upper")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_height_m", "middle")),
+                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_height_m", "lower")),
                 _to_csv_number(tower.span_small_m),
                 _to_csv_number(tower.span_large_m),
                 _to_csv_number(
                     _pick_export_float(
                         profile.angle_deg if profile else None,
+                        lightning_result.angle_deg if lightning_result else None,
                         _safe_dict(line.lightning_param_json).get("电角度"),
                     )
                 ),
                 _to_csv_number(
                     _pick_export_float(
                         profile.current_a if profile else None,
+                        lightning_result.current_a_ka if lightning_result else None,
                         _safe_dict(line.lightning_param_json).get("雷电流幅值a"),
                     )
                 ),
                 _to_csv_number(
                     _pick_export_float(
                         profile.current_b if profile else None,
+                        lightning_result.current_b_ka if lightning_result else None,
                         _safe_dict(line.lightning_param_json).get("雷电流幅值b"),
                     )
                 ),
@@ -768,15 +811,15 @@ def export_line_towers_to_csv(db: Session, *, line: Line) -> tuple[str, bytes]:
                 tower.terrain or "",
                 _to_csv_number(tower.lightning_density),
                 _normalize_str(_pick_export_value(profile.structure_kind if profile else None, tower.tower_type)) or "",
-                _normalize_str(_pick_export_value(profile.stroke_mode if profile else None, _safe_dict(tower.lightning_result_json).get("counterstroke_indicator"))) or "",
-                _to_csv_number(_pick_export_float(_safe_dict(tower.lightning_result_json).get("counterstroke_withstand_ka"))),
-                _to_csv_number(_pick_export_float(_safe_dict(tower.lightning_result_json).get("counterstroke_trip_rate"))),
-                _to_csv_number(_pick_export_float(_safe_dict(tower.lightning_result_json).get("shielding_withstand_ka"))),
-                _to_csv_number(_pick_export_float(_safe_dict(tower.lightning_result_json).get("shielding_trip_rate"))),
-                _normalize_str(_pick_export_value(tower.risk_level, _safe_dict(tower.lightning_result_json).get("risk_level"))) or "",
-                _json_dumps_compact(tower.circuit_geometry_json or {}),
-                _json_dumps_compact(tower.lightning_result_json or {}),
-                _json_dumps_compact(tower.raw_extra_json or {}),
+                _normalize_str(_pick_export_value(profile.stroke_mode if profile else None, str(lightning_result.counterstroke_indicator) if lightning_result and lightning_result.counterstroke_indicator is not None else None)) or "",
+                _to_csv_number(lightning_result.counterstroke_withstand_ka if lightning_result else None),
+                _to_csv_number(lightning_result.counterstroke_trip_rate if lightning_result else None),
+                _to_csv_number(lightning_result.shielding_withstand_ka if lightning_result else None),
+                _to_csv_number(lightning_result.shielding_trip_rate if lightning_result else None),
+                _normalize_str(_pick_export_value(tower.risk_level, lightning_result.risk_level if lightning_result else None)) or "",
+                _json_dumps_compact(circuit_geometry or {}),
+                _json_dumps_compact(_build_lightning_result_dict(lightning_result)),
+                _json_dumps_compact(_build_analysis_dict(analysis) if analysis else {}),
             ]
         )
 
@@ -913,6 +956,53 @@ def _apply_line_metadata_from_csv(
     line.update_date = utcnow()
 
 
+def _build_circuit_geometry_from_children(circuits: list[TowerCircuit]) -> dict[str, Any]:
+    circuit_key_by_no = {1: "I", 2: "II", 3: "III", 4: "IV"}
+    result: dict[str, Any] = {}
+    for circuit in circuits:
+        circuit_key = circuit_key_by_no.get(circuit.circuit_no)
+        if circuit_key is None:
+            continue
+        result[circuit_key] = {
+            "phase_spacing_m": {
+                "upper": circuit.spacing_upper_m,
+                "middle": circuit.spacing_middle_m,
+                "lower": circuit.spacing_lower_m,
+            },
+            "phase_height_m": {
+                "upper": circuit.height_upper_m,
+                "middle": circuit.height_middle_m,
+                "lower": circuit.height_lower_m,
+            },
+        }
+    return result
+
+
+def _build_lightning_result_dict(item: TowerLightningResult | None) -> dict[str, Any]:
+    if item is None:
+        return {}
+    return {
+        "counterstroke_indicator": item.counterstroke_indicator,
+        "counterstroke_withstand_ka": item.counterstroke_withstand_ka,
+        "counterstroke_trip_rate": item.counterstroke_trip_rate,
+        "shielding_withstand_ka": item.shielding_withstand_ka,
+        "shielding_trip_rate": item.shielding_trip_rate,
+        "angle_deg": item.angle_deg,
+        "current_a_ka": item.current_a_ka,
+        "current_b_ka": item.current_b_ka,
+        "risk_level": item.risk_level,
+    }
+
+
+def _build_analysis_dict(item: TowerAnalysis | None) -> dict[str, Any]:
+    if item is None:
+        return {}
+    return {
+        "cause_analysis": item.cause_analysis,
+        "mitigation_recommendation": item.mitigation_recommendation,
+    }
+
+
 def _build_circuit_geometry(row: dict[str, str]) -> dict[str, Any]:
     def value(key: str) -> float | None:
         return _parse_float(row.get(key))
@@ -1006,7 +1096,6 @@ def _upsert_tower_profile_from_legacy_row(
         )
         db.add(profile)
 
-    geometry_layers = _build_circuit_geometry(row)
     extra_profile_json = dict(profile.extra_profile_json or {})
 
     profile.phase_sequence_1 = _pick_optional_value(_normalize_str(row.get("I回相序")), profile.phase_sequence_1)
@@ -1026,7 +1115,6 @@ def _upsert_tower_profile_from_legacy_row(
     profile.current_b = _pick_optional_value(_parse_float(row.get("雷电流幅值b")), profile.current_b)
     profile.structure_kind = _pick_optional_value(_normalize_str(row.get("直线或耐张杆塔")), profile.structure_kind)
     profile.stroke_mode = _pick_optional_value(_normalize_str(row.get("绕击反击")), profile.stroke_mode)
-    profile.geometry_layers_json = _pick_dict_value(geometry_layers, profile.geometry_layers_json or {})
 
     cause_analysis = _normalize_str(row.get("原因分析"))
     mitigation_recommendation = _normalize_str(row.get("措施推荐"))
@@ -1037,6 +1125,223 @@ def _upsert_tower_profile_from_legacy_row(
     profile.extra_profile_json = extra_profile_json
     profile.update_date = now
     profile.update_user = actor_user_id
+
+
+def _upsert_tower_circuits_from_legacy_row(
+    db: Session,
+    *,
+    tower: LineTower,
+    row: dict[str, str],
+    actor_user_id: str,
+) -> None:
+    geometry = _build_circuit_geometry(row)
+    existing = db.execute(select(TowerCircuit).where(TowerCircuit.tower_id == tower.id)).scalars().all()
+    existing_by_no = {item.circuit_no: item for item in existing}
+    now = utcnow()
+    circuit_no_by_key = {"I": 1, "II": 2, "III": 3, "IV": 4}
+    for circuit_key in ("I", "II", "III", "IV"):
+        layer = geometry.get(circuit_key)
+        if not isinstance(layer, dict):
+            continue
+        spacing = layer.get("phase_spacing_m") if isinstance(layer.get("phase_spacing_m"), dict) else {}
+        height = layer.get("phase_height_m") if isinstance(layer.get("phase_height_m"), dict) else {}
+        has_value = any(
+            _parse_float(item) is not None
+            for item in (
+                spacing.get("upper"),
+                spacing.get("middle"),
+                spacing.get("lower"),
+                height.get("upper"),
+                height.get("middle"),
+                height.get("lower"),
+            )
+        )
+        circuit_no = circuit_no_by_key[circuit_key]
+        phase_sequence = _normalize_str(row.get(f"{circuit_key}回相序"))
+        if not has_value and not phase_sequence:
+            continue
+        circuit = existing_by_no.get(circuit_no)
+        if circuit is None:
+            circuit = TowerCircuit(
+                tower_id=tower.id,
+                circuit_no=circuit_no,
+                create_date=now,
+                update_date=now,
+            )
+            db.add(circuit)
+        circuit.phase_sequence = phase_sequence
+        circuit.spacing_upper_m = _parse_float(spacing.get("upper"))
+        circuit.spacing_middle_m = _parse_float(spacing.get("middle"))
+        circuit.spacing_lower_m = _parse_float(spacing.get("lower"))
+        circuit.height_upper_m = _parse_float(height.get("upper"))
+        circuit.height_middle_m = _parse_float(height.get("middle"))
+        circuit.height_lower_m = _parse_float(height.get("lower"))
+        circuit.update_date = now
+
+
+def _upsert_lightning_result_from_legacy_row(
+    db: Session,
+    *,
+    tower: LineTower,
+    row: dict[str, str],
+    actor_user_id: str,
+) -> None:
+    result = _build_lightning_result(row)
+    has_value = any(
+        value is not None
+        for value in (
+            result.get("counterstroke_indicator"),
+            result.get("counterstroke_withstand_ka"),
+            result.get("counterstroke_trip_rate"),
+            result.get("shielding_withstand_ka"),
+            result.get("shielding_trip_rate"),
+            result.get("risk_level"),
+        )
+    )
+    now = utcnow()
+    if not has_value:
+        return
+    existing = db.execute(select(TowerLightningResult).where(TowerLightningResult.tower_id == tower.id)).scalar_one_or_none()
+    if existing is None:
+        existing = TowerLightningResult(
+            tower_id=tower.id,
+            create_date=now,
+            update_date=now,
+        )
+        db.add(existing)
+    existing.counterstroke_indicator = result.get("counterstroke_indicator")
+    existing.counterstroke_withstand_ka = result.get("counterstroke_withstand_ka")
+    existing.counterstroke_trip_rate = result.get("counterstroke_trip_rate")
+    existing.shielding_withstand_ka = result.get("shielding_withstand_ka")
+    existing.shielding_trip_rate = result.get("shielding_trip_rate")
+    existing.risk_level = result.get("risk_level")
+    existing.update_date = now
+
+
+def _upsert_tower_analysis_from_legacy_row(
+    db: Session,
+    *,
+    tower: LineTower,
+    row: dict[str, str],
+    actor_user_id: str,
+) -> None:
+    cause_analysis = _normalize_str(row.get("原因分析"))
+    mitigation_recommendation = _normalize_str(row.get("措施推荐"))
+    if cause_analysis is None and mitigation_recommendation is None:
+        return
+    now = utcnow()
+    existing = db.execute(select(TowerAnalysis).where(TowerAnalysis.tower_id == tower.id)).scalar_one_or_none()
+    if existing is None:
+        existing = TowerAnalysis(
+            tower_id=tower.id,
+            create_date=now,
+            update_date=now,
+        )
+        db.add(existing)
+    existing.cause_analysis = cause_analysis
+    existing.mitigation_recommendation = mitigation_recommendation
+    existing.update_date = now
+
+
+def _apply_circuit_payload(tower: LineTower, circuits: list[Any], *, actor_user_id: str) -> None:
+    now = utcnow()
+    existing_by_no: dict[int, TowerCircuit] = {}
+    for item in tower.circuits:
+        existing_by_no[item.circuit_no] = item
+    seen: set[int] = set()
+    for raw in circuits:
+        circuit_no = int(getattr(raw, "circuit_no", None) or (raw.get("circuit_no") if isinstance(raw, dict) else None) or 0)
+        if circuit_no <= 0:
+            continue
+        seen.add(circuit_no)
+        circuit = existing_by_no.get(circuit_no)
+        if circuit is None:
+            circuit = TowerCircuit(
+                tower_id=tower.id,
+                circuit_no=circuit_no,
+                create_date=now,
+                update_date=now,
+            )
+            tower.circuits.append(circuit)
+        circuit.phase_sequence = _payload_value(raw, "phase_sequence")
+        circuit.spacing_upper_m = _payload_number(raw, "spacing_upper_m")
+        circuit.spacing_middle_m = _payload_number(raw, "spacing_middle_m")
+        circuit.spacing_lower_m = _payload_number(raw, "spacing_lower_m")
+        circuit.height_upper_m = _payload_number(raw, "height_upper_m")
+        circuit.height_middle_m = _payload_number(raw, "height_middle_m")
+        circuit.height_lower_m = _payload_number(raw, "height_lower_m")
+        circuit.update_date = now
+    for circuit_no in list(existing_by_no):
+        if circuit_no not in seen:
+            db_remove = existing_by_no[circuit_no]
+            tower.circuits.remove(db_remove)
+
+
+def _apply_lightning_result_payload(tower: LineTower, payload: Any, *, actor_user_id: str) -> None:
+    now = utcnow()
+    if payload is None:
+        return
+    result = tower.lightning_result
+    if result is None:
+        result = TowerLightningResult(
+            tower_id=tower.id,
+            create_date=now,
+            update_date=now,
+        )
+        tower.lightning_result = result
+    result.counterstroke_indicator = _payload_int(payload, "counterstroke_indicator")
+    result.counterstroke_withstand_ka = _payload_number(payload, "counterstroke_withstand_ka")
+    result.counterstroke_trip_rate = _payload_number(payload, "counterstroke_trip_rate")
+    result.shielding_withstand_ka = _payload_number(payload, "shielding_withstand_ka")
+    result.shielding_trip_rate = _payload_number(payload, "shielding_trip_rate")
+    result.angle_deg = _payload_number(payload, "angle_deg")
+    result.current_a_ka = _payload_number(payload, "current_a_ka")
+    result.current_b_ka = _payload_number(payload, "current_b_ka")
+    result.risk_level = _payload_value(payload, "risk_level")
+    result.update_date = now
+
+
+def _apply_analysis_payload(tower: LineTower, payload: Any, *, actor_user_id: str) -> None:
+    now = utcnow()
+    if payload is None:
+        return
+    analysis = tower.analysis
+    if analysis is None:
+        analysis = TowerAnalysis(
+            tower_id=tower.id,
+            create_date=now,
+            update_date=now,
+        )
+        tower.analysis = analysis
+    analysis.cause_analysis = _payload_value(payload, "cause_analysis")
+    analysis.mitigation_recommendation = _payload_value(payload, "mitigation_recommendation")
+    analysis.update_date = now
+
+
+def _payload_value(payload: Any, key: str) -> Any:
+    if isinstance(payload, dict):
+        return payload.get(key)
+    return getattr(payload, key, None)
+
+
+def _payload_number(payload: Any, key: str) -> float | None:
+    value = _payload_value(payload, key)
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _payload_int(payload: Any, key: str) -> int | None:
+    value = _payload_value(payload, key)
+    if value is None or value == "":
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _extract_extra_values(row: dict[str, str], extra_headers: list[str]) -> dict[str, Any]:
@@ -1181,18 +1486,6 @@ def _has_meaningful_dict_data(value: dict[str, Any] | None) -> bool:
             continue
         return True
     return False
-
-
-def _extract_model_default_dict(defaults: dict[str, Any] | None, key: str) -> dict[str, Any]:
-    if not defaults:
-        return {}
-    raw_json = defaults.get("raw_json")
-    if not isinstance(raw_json, dict):
-        return {}
-    candidate = raw_json.get(key)
-    if isinstance(candidate, dict):
-        return candidate
-    return {}
 
 
 def _load_tower_model_defaults(db: Session, model_code: str | None) -> dict[str, Any] | None:

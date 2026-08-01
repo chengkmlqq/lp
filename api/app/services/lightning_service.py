@@ -796,7 +796,6 @@ def prepare_line_lightning_current(
         if profile is None:
             profile = TowerProfile(
                 tower_id=tower.id,
-                geometry_layers_json={},
                 extra_profile_json={},
                 create_date=now,
                 create_user=actor_user_id,

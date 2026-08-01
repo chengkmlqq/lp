@@ -10,6 +10,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.database import Base
 from app.models.line import Line
 from app.models.line_tower import LineTower
+from app.models.tower_analysis import TowerAnalysis
+from app.models.tower_circuit import TowerCircuit
+from app.models.tower_lightning_result import TowerLightningResult
 from app.models.tower_profile import TowerProfile
 from app.schemas.line import LineCreateRequest
 from app.services import line_service
@@ -17,7 +20,17 @@ from app.services import line_service
 
 def _build_session() -> Session:
     engine = create_engine("sqlite+pysqlite:///:memory:")
-    Base.metadata.create_all(bind=engine, tables=[Line.__table__, LineTower.__table__, TowerProfile.__table__])
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            Line.__table__,
+            LineTower.__table__,
+            TowerProfile.__table__,
+            TowerCircuit.__table__,
+            TowerLightningResult.__table__,
+            TowerAnalysis.__table__,
+        ],
+    )
     testing_session = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
     return testing_session()
 
@@ -146,32 +159,56 @@ def test_export_line_towers_to_csv_includes_legacy_professional_columns() -> Non
             slope_1=1.5,
             slope_2=2.5,
             risk_level="高",
-            circuit_geometry_json={
-                "I": {
-                    "phase_spacing_m": {"upper": 4.4, "middle": 3.3, "lower": 2.2},
-                    "phase_height_m": {"upper": 30.0, "middle": 28.0, "lower": 26.0},
-                },
-                "III": {
-                    "phase_spacing_m": {"upper": 9.1, "middle": 8.2, "lower": 7.3},
-                    "phase_height_m": {"upper": 35.0, "middle": 34.0, "lower": 33.0},
-                },
-                "lightning_wire": {
-                    "left_mid_distance_m": 7.7,
-                    "right_mid_distance_m": 8.8,
-                    "height_m": 39.0,
-                },
-                "insulator_length_mm": 4000.0,
-                "tower_height_m": 38.0,
-            },
-            lightning_result_json={
-                "counterstroke_withstand_ka": 45.0,
-                "counterstroke_trip_rate": 0.6,
-                "shielding_withstand_ka": 52.0,
-                "shielding_trip_rate": 0.3,
-                "risk_level": "高",
-            },
         )
         session.add(tower)
+        session.flush()
+
+        session.add_all(
+            [
+                TowerCircuit(
+                    tower_id=tower.id,
+                    circuit_no=1,
+                    phase_sequence="ACB",
+                    spacing_upper_m=5.1,
+                    spacing_middle_m=4.2,
+                    spacing_lower_m=3.3,
+                    height_upper_m=31.0,
+                    height_middle_m=29.0,
+                    height_lower_m=27.0,
+                ),
+                TowerCircuit(
+                    tower_id=tower.id,
+                    circuit_no=2,
+                    phase_sequence="BAC",
+                    spacing_upper_m=6.1,
+                    spacing_middle_m=5.2,
+                    spacing_lower_m=4.3,
+                    height_upper_m=32.0,
+                    height_middle_m=30.0,
+                    height_lower_m=28.0,
+                ),
+                TowerCircuit(
+                    tower_id=tower.id,
+                    circuit_no=3,
+                    spacing_upper_m=9.1,
+                    spacing_middle_m=8.2,
+                    spacing_lower_m=7.3,
+                    height_upper_m=35.0,
+                    height_middle_m=34.0,
+                    height_lower_m=33.0,
+                ),
+            ]
+        )
+        session.add(
+            TowerLightningResult(
+                tower_id=tower.id,
+                counterstroke_withstand_ka=45.0,
+                counterstroke_trip_rate=0.6,
+                shielding_withstand_ka=52.0,
+                shielding_trip_rate=0.3,
+                risk_level="高",
+            )
+        )
         session.flush()
 
         session.add(
@@ -192,16 +229,6 @@ def test_export_line_towers_to_csv_includes_legacy_professional_columns() -> Non
                 current_b=2.6,
                 structure_kind="耐张杆塔",
                 stroke_mode="反击",
-                geometry_layers_json={
-                    "I": {
-                        "phase_spacing_m": {"upper": 5.1, "middle": 4.2, "lower": 3.3},
-                        "phase_height_m": {"upper": 31.0, "middle": 29.0, "lower": 27.0},
-                    },
-                    "II": {
-                        "phase_spacing_m": {"upper": 6.1, "middle": 5.2, "lower": 4.3},
-                        "phase_height_m": {"upper": 32.0, "middle": 30.0, "lower": 28.0},
-                    },
-                },
             )
         )
         session.commit()

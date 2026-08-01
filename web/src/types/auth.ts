@@ -624,6 +624,40 @@ export type LineListResponse = {
   total: number;
 };
 
+export type TowerCircuitSummary = {
+  id: string | null;
+  tower_id: string | null;
+  circuit_no: number;
+  phase_sequence: string | null;
+  spacing_upper_m: number | null;
+  spacing_middle_m: number | null;
+  spacing_lower_m: number | null;
+  height_upper_m: number | null;
+  height_middle_m: number | null;
+  height_lower_m: number | null;
+};
+
+export type TowerLightningResultSummary = {
+  id: string | null;
+  tower_id: string | null;
+  counterstroke_indicator: number | null;
+  counterstroke_withstand_ka: number | null;
+  counterstroke_trip_rate: number | null;
+  shielding_withstand_ka: number | null;
+  shielding_trip_rate: number | null;
+  angle_deg: number | null;
+  current_a_ka: number | null;
+  current_b_ka: number | null;
+  risk_level: string | null;
+};
+
+export type TowerAnalysisSummary = {
+  id: string | null;
+  tower_id: string | null;
+  cause_analysis: string | null;
+  mitigation_recommendation: string | null;
+};
+
 export type LineTowerSummary = {
   id: string;
   line_id: string;
@@ -642,8 +676,9 @@ export type LineTowerSummary = {
   slope_1: number | null;
   slope_2: number | null;
   risk_level: string | null;
-  circuit_geometry_json: Record<string, unknown>;
-  lightning_result_json: Record<string, unknown>;
+  circuits: TowerCircuitSummary[];
+  lightning_result: TowerLightningResultSummary | null;
+  analysis: TowerAnalysisSummary | null;
   raw_extra_json: Record<string, unknown>;
   create_date: string;
   create_user: string | null;
@@ -694,7 +729,9 @@ export type TowerProfileDetail = {
   current_type: string | null;
   current_head_time_us: number | null;
   current_tail_time_us: number | null;
-  geometry_layers_json: Record<string, unknown>;
+  cause_analysis: string | null;
+  mitigation_recommendation: string | null;
+  circuits: TowerCircuitSummary[];
   extra_profile_json: Record<string, unknown>;
   create_date: string | null;
   create_user: string | null;

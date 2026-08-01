@@ -5,6 +5,41 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+
+class TowerCircuitSummary(BaseModel):
+    id: str | None = None
+    tower_id: str | None = None
+    circuit_no: int
+    phase_sequence: str | None = None
+    spacing_upper_m: float | None = None
+    spacing_middle_m: float | None = None
+    spacing_lower_m: float | None = None
+    height_upper_m: float | None = None
+    height_middle_m: float | None = None
+    height_lower_m: float | None = None
+
+
+class TowerLightningResultSummary(BaseModel):
+    id: str | None = None
+    tower_id: str | None = None
+    counterstroke_indicator: int | None = None
+    counterstroke_withstand_ka: float | None = None
+    counterstroke_trip_rate: float | None = None
+    shielding_withstand_ka: float | None = None
+    shielding_trip_rate: float | None = None
+    angle_deg: float | None = None
+    current_a_ka: float | None = None
+    current_b_ka: float | None = None
+    risk_level: str | None = None
+
+
+class TowerAnalysisSummary(BaseModel):
+    id: str | None = None
+    tower_id: str | None = None
+    cause_analysis: str | None = None
+    mitigation_recommendation: str | None = None
+
+
 class LineSummary(BaseModel):
     id: str
     code: str
@@ -61,8 +96,9 @@ class LineTowerSummary(BaseModel):
     slope_1: float | None = None
     slope_2: float | None = None
     risk_level: str | None = None
-    circuit_geometry_json: dict[str, Any] = Field(default_factory=dict)
-    lightning_result_json: dict[str, Any] = Field(default_factory=dict)
+    circuits: list[TowerCircuitSummary] = Field(default_factory=list)
+    lightning_result: TowerLightningResultSummary | None = None
+    analysis: TowerAnalysisSummary | None = None
     raw_extra_json: dict[str, Any] = Field(default_factory=dict)
     create_date: datetime
     create_user: str | None = None
@@ -91,8 +127,9 @@ class LineTowerCreateRequest(BaseModel):
     slope_1: float | None = None
     slope_2: float | None = None
     risk_level: str | None = Field(default=None, max_length=32)
-    circuit_geometry_json: dict[str, Any] = Field(default_factory=dict)
-    lightning_result_json: dict[str, Any] = Field(default_factory=dict)
+    circuits: list[TowerCircuitSummary] = Field(default_factory=list)
+    lightning_result: TowerLightningResultSummary | None = None
+    analysis: TowerAnalysisSummary | None = None
     raw_extra_json: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -112,8 +149,9 @@ class LineTowerUpdateRequest(BaseModel):
     slope_1: float | None = None
     slope_2: float | None = None
     risk_level: str | None = Field(default=None, max_length=32)
-    circuit_geometry_json: dict[str, Any] | None = None
-    lightning_result_json: dict[str, Any] | None = None
+    circuits: list[TowerCircuitSummary] | None = None
+    lightning_result: TowerLightningResultSummary | None = None
+    analysis: TowerAnalysisSummary | None = None
     raw_extra_json: dict[str, Any] | None = None
 
 

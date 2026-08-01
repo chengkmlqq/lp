@@ -5,10 +5,12 @@ from sqlalchemy.orm import Session
 
 from ..models.base import utcnow
 from ..models.line_tower import LineTower
+from ..models.tower_analysis import TowerAnalysis
+from ..models.tower_circuit import TowerCircuit
 from ..models.tower_profile import TowerProfile
 from ..models.user import User
+from ..schemas.line import TowerCircuitSummary
 from ..schemas.tower_profile import TowerProfileDetail, TowerProfileUpsertRequest
-from .tower_topology import normalize_profile_geometry_layers
 
 
 def get_tower_by_id(db: Session, tower_id: str) -> LineTower | None:
@@ -49,12 +51,29 @@ def serialize_tower_profile(tower: LineTower, profile: TowerProfile | None) -> T
         current_type=profile.current_type if profile else None,
         current_head_time_us=profile.current_head_time_us if profile else None,
         current_tail_time_us=profile.current_tail_time_us if profile else None,
-        geometry_layers_json=(profile.geometry_layers_json or {}) if profile else {},
+        cause_analysis=tower.analysis.cause_analysis if tower.analysis else None,
+        mitigation_recommendation=tower.analysis.mitigation_recommendation if tower.analysis else None,
+        circuits=[_serialize_circuit(circuit) for circuit in tower.circuits],
         extra_profile_json=(profile.extra_profile_json or {}) if profile else {},
         create_date=profile.create_date if profile else None,
         create_user=profile.create_user if profile else None,
         update_date=profile.update_date if profile else None,
         update_user=profile.update_user if profile else None,
+    )
+
+
+def _serialize_circuit(circuit: TowerCircuit) -> TowerCircuitSummary:
+    return TowerCircuitSummary(
+        id=circuit.id,
+        tower_id=circuit.tower_id,
+        circuit_no=circuit.circuit_no,
+        phase_sequence=circuit.phase_sequence,
+        spacing_upper_m=circuit.spacing_upper_m,
+        spacing_middle_m=circuit.spacing_middle_m,
+        spacing_lower_m=circuit.spacing_lower_m,
+        height_upper_m=circuit.height_upper_m,
+        height_middle_m=circuit.height_middle_m,
+        height_lower_m=circuit.height_lower_m,
     )
 
 
@@ -109,16 +128,22 @@ def upsert_tower_profile(
     profile.current_type = payload.current_type
     profile.current_head_time_us = payload.current_head_time_us
     profile.current_tail_time_us = payload.current_tail_time_us
-    profile.geometry_layers_json = normalize_profile_geometry_layers(
-        payload.geometry_layers_json or {},
-        tower_model=tower.tower_model,
-        tower_type=tower.tower_type,
-        structure_kind=payload.structure_kind,
-        shield_wire_height_m=payload.shield_wire_height_m,
-        insulator_length_m=payload.insulator_length_m,
-        call_height_m=payload.call_height_m,
-    )
     profile.extra_profile_json = payload.extra_profile_json or {}
+
+    analysis = tower.analysis
+    if analysis is None:
+        analysis = TowerAnalysis(
+            tower_id=tower.id,
+            create_date=now,
+            update_date=now,
+        )
+        tower.analysis = analysis
+    analysis.cause_analysis = payload.cause_analysis
+    analysis.mitigation_recommendation = payload.mitigation_recommendation
+    analysis.update_date = now
+
+    _upsert_circuits(db, tower=tower, circuits=payload.circuits, actor_user_id=actor.id, now=now)
+
     profile.update_date = now
     profile.update_user = actor.id
     db.commit()
@@ -127,3 +152,49 @@ def upsert_tower_profile(
     if saved is None:
         return None
     return serialize_tower_profile(tower, saved)
+
+
+def _upsert_circuits(
+    db: Session,
+    *,
+    tower: LineTower,
+    circuits: list[TowerCircuitSummary],
+    actor_user_id: str,
+    now: Any,
+) -> None:
+    existing_by_no: dict[int, TowerCircuit] = {item.circuit_no: item for item in tower.circuits}
+    seen: set[int] = set()
+    for raw in circuits:
+        circuit_no = int(getattr(raw, "circuit_no", 0) or 0)
+        if circuit_no <= 0:
+            continue
+        seen.add(circuit_no)
+        circuit = existing_by_no.get(circuit_no)
+        if circuit is None:
+            circuit = TowerCircuit(
+                tower_id=tower.id,
+                circuit_no=circuit_no,
+                create_date=now,
+                update_date=now,
+            )
+            tower.circuits.append(circuit)
+        circuit.phase_sequence = getattr(raw, "phase_sequence", None)
+        circuit.spacing_upper_m = _coerce_float(getattr(raw, "spacing_upper_m", None))
+        circuit.spacing_middle_m = _coerce_float(getattr(raw, "spacing_middle_m", None))
+        circuit.spacing_lower_m = _coerce_float(getattr(raw, "spacing_lower_m", None))
+        circuit.height_upper_m = _coerce_float(getattr(raw, "height_upper_m", None))
+        circuit.height_middle_m = _coerce_float(getattr(raw, "height_middle_m", None))
+        circuit.height_lower_m = _coerce_float(getattr(raw, "height_lower_m", None))
+        circuit.update_date = now
+    for circuit_no in list(existing_by_no):
+        if circuit_no not in seen:
+            tower.circuits.remove(existing_by_no[circuit_no])
+
+
+def _coerce_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

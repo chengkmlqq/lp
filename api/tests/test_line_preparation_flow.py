@@ -12,6 +12,9 @@ from app.models.fl_analysis import FlAnalysisJob
 from app.models.lightning_event import LightningCurrentEvent
 from app.models.line import Line
 from app.models.line_tower import LineTower
+from app.models.tower_analysis import TowerAnalysis
+from app.models.tower_circuit import TowerCircuit
+from app.models.tower_lightning_result import TowerLightningResult
 from app.models.tower_profile import TowerProfile
 from app.schemas.fl_analysis import FlAnalysisJobCreateRequest
 from app.schemas.lightning import LightningCurrentPreparationRequest
@@ -26,6 +29,9 @@ def _build_session() -> Session:
             Line.__table__,
             LineTower.__table__,
             TowerProfile.__table__,
+            TowerCircuit.__table__,
+            TowerLightningResult.__table__,
+            TowerAnalysis.__table__,
             LightningCurrentEvent.__table__,
             FlAnalysisJob.__table__,
         ],

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.database import Base
@@ -12,6 +12,9 @@ from .base import utcnow
 
 if TYPE_CHECKING:
     from .line import Line
+    from .tower_analysis import TowerAnalysis
+    from .tower_circuit import TowerCircuit
+    from .tower_lightning_result import TowerLightningResult
     from .tower_profile import TowerProfile
 
 
@@ -51,8 +54,6 @@ class LineTower(Base):
     slope_1: Mapped[float | None] = mapped_column(Float)
     slope_2: Mapped[float | None] = mapped_column(Float)
     risk_level: Mapped[str | None] = mapped_column(String(32), index=True)
-    circuit_geometry_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    lightning_result_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     raw_extra_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)
@@ -66,6 +67,29 @@ class LineTower(Base):
     line: Mapped[Line] = relationship("Line", back_populates="towers", lazy="selectin")
     profile: Mapped[TowerProfile | None] = relationship(
         "TowerProfile",
+        back_populates="tower",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        uselist=False,
+    )
+    circuits: Mapped[list[TowerCircuit]] = relationship(
+        "TowerCircuit",
+        back_populates="tower",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="TowerCircuit.circuit_no.asc()",
+    )
+    lightning_result: Mapped[TowerLightningResult | None] = relationship(
+        "TowerLightningResult",
+        back_populates="tower",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        uselist=False,
+    )
+    analysis: Mapped[TowerAnalysis | None] = relationship(
+        "TowerAnalysis",
         back_populates="tower",
         lazy="selectin",
         cascade="all, delete-orphan",

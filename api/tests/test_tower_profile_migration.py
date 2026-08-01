@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.database import Base
 from app.models.line import Line
 from app.models.line_tower import LineTower
+from app.models.tower_analysis import TowerAnalysis
+from app.models.tower_circuit import TowerCircuit
+from app.models.tower_lightning_result import TowerLightningResult
 from app.models.tower_profile import TowerProfile
 from app.schemas.tower_profile import TowerProfileUpsertRequest
 from app.services import tower_profile_service
@@ -17,7 +20,17 @@ from app.services.tower_topology import TowerGeometryValidationError, infer_stru
 
 def _build_session() -> Session:
     engine = create_engine("sqlite+pysqlite:///:memory:")
-    Base.metadata.create_all(bind=engine, tables=[Line.__table__, LineTower.__table__, TowerProfile.__table__])
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            Line.__table__,
+            LineTower.__table__,
+            TowerProfile.__table__,
+            TowerCircuit.__table__,
+            TowerLightningResult.__table__,
+            TowerAnalysis.__table__,
+        ],
+    )
     testing_session = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
     return testing_session()
 
@@ -37,21 +50,30 @@ def test_tower_profile_upsert_request_accepts_new_professional_fields() -> None:
         current_type="Heidler",
         current_head_time_us=2.6,
         current_tail_time_us=50.0,
-        geometry_layers_json={
-            "I": {
-                "phase_spacing_m": {"upper": 5.1, "middle": 4.2, "lower": 3.3},
-                "phase_height_m": {"upper": 25.0, "middle": 22.0, "lower": 19.0},
+        cause_analysis="接地电阻偏高",
+        circuits=[
+            {
+                "circuit_no": 1,
+                "phase_sequence": "ABC",
+                "spacing_upper_m": 5.1,
+                "spacing_middle_m": 4.2,
+                "spacing_lower_m": 3.3,
+                "height_upper_m": 25.0,
+                "height_middle_m": 22.0,
+                "height_lower_m": 19.0,
             }
-        },
-        extra_profile_json={"cause_analysis": "接地电阻偏高"},
+        ],
+        extra_profile_json={"reason": "test"},
     )
 
     assert payload.structure_kind == "直线杆塔"
     assert payload.stroke_mode == "反击"
     assert payload.protection_angle_left_deg == 11.5
     assert payload.current_type == "Heidler"
-    assert payload.geometry_layers_json["I"]["phase_spacing_m"]["upper"] == 5.1
-    assert payload.extra_profile_json["cause_analysis"] == "接地电阻偏高"
+    assert payload.cause_analysis == "接地电阻偏高"
+    assert payload.circuits[0].circuit_no == 1
+    assert payload.circuits[0].spacing_upper_m == 5.1
+    assert payload.extra_profile_json["reason"] == "test"
 
 
 def test_upsert_tower_profile_persists_professional_fields() -> None:
@@ -81,14 +103,20 @@ def test_upsert_tower_profile_persists_professional_fields() -> None:
             current_type="Heidler",
             current_head_time_us=2.7,
             current_tail_time_us=48.0,
-            geometry_layers_json={
-                "I": {
-                    "phase_spacing_m": {"upper": 5.1, "middle": 4.0, "lower": 3.0},
-                    "phase_height_m": {"upper": 29.0, "middle": 27.0, "lower": 25.0},
-                },
-                "lightning_wire": {"left_mid_distance_m": 5.4, "right_mid_distance_m": 5.6},
-            },
-            extra_profile_json={"cause_analysis": "接地电阻偏高"},
+            cause_analysis="接地电阻偏高",
+            circuits=[
+                {
+                    "circuit_no": 1,
+                    "phase_sequence": "ABC",
+                    "spacing_upper_m": 5.1,
+                    "spacing_middle_m": 4.0,
+                    "spacing_lower_m": 3.0,
+                    "height_upper_m": 29.0,
+                    "height_middle_m": 27.0,
+                    "height_lower_m": 25.0,
+                }
+            ],
+            extra_profile_json={"reason": "test"},
         )
 
         detail = tower_profile_service.upsert_tower_profile(
@@ -108,18 +136,16 @@ def test_upsert_tower_profile_persists_professional_fields() -> None:
         assert saved.shield_wire_height_m == 40.2
         assert saved.current_type == "Heidler"
         assert saved.current_head_time_us == 2.7
-        assert saved.extra_profile_json["cause_analysis"] == "接地电阻偏高"
-        assert detail.geometry_layers_json["I"]["phase_spacing_m"]["upper"] == 5.1
-        assert detail.extra_profile_json["cause_analysis"] == "接地电阻偏高"
-        assert detail.geometry_layers_json["lightning_wire"]["height_m"] == 40.2
-        assert detail.geometry_layers_json["insulator_length_mm"] == 4100.0
-        assert detail.geometry_layers_json["tower_height_m"] == 38.4
-        assert detail.geometry_layers_json["topology_kind"] == "single"
+        assert saved.extra_profile_json["reason"] == "test"
+        assert detail.cause_analysis == "接地电阻偏高"
+        assert detail.circuits[0].spacing_upper_m == 5.1
+        assert detail.circuits[0].height_middle_m == 27.0
+        assert tower.analysis.cause_analysis == "接地电阻偏高"
     finally:
         session.close()
 
 
-def test_upsert_tower_profile_rejects_extra_circuit_for_single_topology() -> None:
+def test_upsert_tower_profile_stores_circuits_from_request() -> None:
     session = _build_session()
     try:
         line = Line(code="PL-TP-002", name="塔参线路", status="enabled")
@@ -135,32 +161,38 @@ def test_upsert_tower_profile_rejects_extra_circuit_for_single_topology() -> Non
             shield_wire_height_m=38.0,
             insulator_length_m=3900.0,
             call_height_m=33.0,
-            geometry_layers_json={
-                "topology_kind": "single",
-                "I": {
-                    "phase_spacing_m": {"upper": 5.0, "middle": 4.0, "lower": 3.0},
-                    "phase_height_m": {"upper": 28.0, "middle": 26.0, "lower": 24.0},
-                },
-                "II": {
-                    "phase_spacing_m": {"upper": 5.5, "middle": 4.5, "lower": 3.5},
-                    "phase_height_m": {"upper": 29.0, "middle": 27.0, "lower": 25.0},
-                },
-                "lightning_wire": {"left_mid_distance_m": 6.0, "right_mid_distance_m": 6.0},
-            },
+            circuits=[
+                {
+                    "circuit_no": 1,
+                    "phase_sequence": "ABC",
+                    "spacing_upper_m": 5.0,
+                    "spacing_middle_m": 4.0,
+                    "spacing_lower_m": 3.0,
+                    "height_upper_m": 28.0,
+                    "height_middle_m": 26.0,
+                    "height_lower_m": 24.0,
+                }
+            ],
         )
 
-        with pytest.raises(TowerGeometryValidationError, match="II回不适用于当前杆塔拓扑"):
-            tower_profile_service.upsert_tower_profile(
-                session,
-                tower.id,
-                payload,
-                actor=SimpleNamespace(id="tester"),
-            )
+        detail = tower_profile_service.upsert_tower_profile(
+            session,
+            tower.id,
+            payload,
+            actor=SimpleNamespace(id="tester"),
+        )
+
+        assert detail is not None
+        assert len(detail.circuits) == 1
+        assert detail.circuits[0].circuit_no == 1
+        assert detail.circuits[0].phase_sequence == "ABC"
+        assert detail.circuits[0].spacing_upper_m == 5.0
+        assert detail.circuits[0].height_lower_m == 24.0
     finally:
         session.close()
 
 
-def test_upsert_tower_profile_accepts_double_circuit_override_and_normalizes_defaults() -> None:
+def test_upsert_tower_profile_accepts_double_circuit_and_roundtrips_circuits() -> None:
     session = _build_session()
     try:
         line = Line(code="PL-TP-003", name="塔参线路", status="enabled")
@@ -176,18 +208,28 @@ def test_upsert_tower_profile_accepts_double_circuit_override_and_normalizes_def
             shield_wire_height_m=45.0,
             insulator_length_m=4.8,
             call_height_m=47.0,
-            geometry_layers_json={
-                "topology_kind": "double",
-                "I": {
-                    "phase_spacing_m": {"upper": 8.0, "middle": 6.0, "lower": 4.0},
-                    "phase_height_m": {"upper": 38.0, "middle": 35.0, "lower": 32.0},
+            circuits=[
+                {
+                    "circuit_no": 1,
+                    "phase_sequence": "ABC",
+                    "spacing_upper_m": 8.0,
+                    "spacing_middle_m": 6.0,
+                    "spacing_lower_m": 4.0,
+                    "height_upper_m": 38.0,
+                    "height_middle_m": 35.0,
+                    "height_lower_m": 32.0,
                 },
-                "II": {
-                    "phase_spacing_m": {"upper": 9.0, "middle": 7.0, "lower": 5.0},
-                    "phase_height_m": {"upper": 39.0, "middle": 36.0, "lower": 33.0},
+                {
+                    "circuit_no": 2,
+                    "phase_sequence": "CBA",
+                    "spacing_upper_m": 9.0,
+                    "spacing_middle_m": 7.0,
+                    "spacing_lower_m": 5.0,
+                    "height_upper_m": 39.0,
+                    "height_middle_m": 36.0,
+                    "height_lower_m": 33.0,
                 },
-                "lightning_wire": {"left_mid_distance_m": 7.5, "right_mid_distance_m": 7.5},
-            },
+            ],
         )
 
         detail = tower_profile_service.upsert_tower_profile(
@@ -198,21 +240,11 @@ def test_upsert_tower_profile_accepts_double_circuit_override_and_normalizes_def
         )
 
         assert detail is not None
-        assert infer_tower_topology(
-            tower_model=tower.tower_model,
-            tower_type=tower.tower_type,
-            structure_kind=payload.structure_kind,
-            geometry_topology=detail.geometry_layers_json["topology_kind"],
-        ) == "double"
-        assert infer_structure_count(
-            tower_model=tower.tower_model,
-            tower_type=tower.tower_type,
-            structure_kind=payload.structure_kind,
-            geometry_topology=detail.geometry_layers_json["topology_kind"],
-        ) == 2
-        assert detail.geometry_layers_json["lightning_wire"]["height_m"] == 45.0
-        assert detail.geometry_layers_json["insulator_length_mm"] == 4800.0
-        assert detail.geometry_layers_json["tower_height_m"] == 47.0
-        assert detail.geometry_layers_json["II"]["phase_height_m"]["middle"] == 36.0
+        assert len(detail.circuits) == 2
+        assert detail.circuits[0].circuit_no == 1
+        assert detail.circuits[1].circuit_no == 2
+        assert detail.circuits[1].phase_sequence == "CBA"
+        assert detail.circuits[1].spacing_upper_m == 9.0
+        assert detail.circuits[1].height_middle_m == 36.0
     finally:
         session.close()

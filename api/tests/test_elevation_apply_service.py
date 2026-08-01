@@ -10,6 +10,9 @@ from app.core.database import Base
 from app.models.elevation import ElevationApplyJob, ElevationFileRecord
 from app.models.line import Line
 from app.models.line_tower import LineTower
+from app.models.tower_analysis import TowerAnalysis
+from app.models.tower_circuit import TowerCircuit
+from app.models.tower_lightning_result import TowerLightningResult
 from app.models.tower_profile import TowerProfile
 from app.schemas.elevation import ElevationApplyJobCreateRequest
 from app.services import elevation_service
@@ -27,6 +30,9 @@ def _build_session_factory() -> sessionmaker[Session]:
             Line.__table__,
             LineTower.__table__,
             TowerProfile.__table__,
+            TowerCircuit.__table__,
+            TowerLightningResult.__table__,
+            TowerAnalysis.__table__,
             ElevationFileRecord.__table__,
             ElevationApplyJob.__table__,
         ],
