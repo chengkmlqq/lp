@@ -3,9 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from celery import signals
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..core.database import SessionLocal
 from ..core.task_log_capture import TaskLogCapture
+from ..models.base import utcnow
 from ..models.task_history import TaskHistory
 from ..services.task_log_service import (
     TaskLogServiceError,
@@ -37,37 +39,55 @@ def _upsert_task(
     error: str | None = None,
     log_path: str | None = None,
 ) -> None:
-    """Create or update a task record in the DB."""
+    """Create or update a task record atomically.
+
+    Uses PostgreSQL ``INSERT ... ON CONFLICT (task_id) DO UPDATE`` so that the
+    publish signal (PENDING, written in the producer process) and the execution
+    signals (STARTED / SUCCESS / FAILURE, written in the worker process) can
+    race on the same ``task_id`` without one hitting a UniqueViolation.
+
+    Only columns explicitly provided (non-None) are written; ``None`` leaves an
+    existing value untouched, preserving the previous partial-update semantics.
+    ``update_date`` is always refreshed on update, mirroring the ORM onupdate.
+    """
+    values: dict[str, object] = {"task_id": task_id}
+    if name is not None:
+        values["name"] = name
+    if state is not None:
+        values["state"] = state
+    if worker is not None:
+        values["worker"] = worker
+    if queue_name is not None:
+        values["queue_name"] = queue_name
+    if retries is not None:
+        values["retries"] = retries
+    if eta is not None:
+        values["eta"] = eta
+    if started_at is not None:
+        values["started_at"] = started_at
+    if done_at is not None:
+        values["done_at"] = done_at
+    if runtime_seconds is not None:
+        values["runtime_seconds"] = runtime_seconds
+    if error is not None:
+        values["error"] = error
+    if log_path is not None:
+        values["log_path"] = log_path
+
+    update_columns: dict[str, object] = {
+        key: value for key, value in values.items() if key != "task_id"
+    }
+    update_columns["update_date"] = utcnow()
+
+    insert_stmt = pg_insert(TaskHistory).values(**values)
+    insert_stmt = insert_stmt.on_conflict_do_update(
+        index_elements=[TaskHistory.task_id],
+        set_=update_columns,
+    )
+
     db = SessionLocal()
     try:
-        record = db.query(TaskHistory).filter(TaskHistory.task_id == task_id).first()
-        if record is None:
-            record = TaskHistory(task_id=task_id)
-            db.add(record)
-
-        if name is not None:
-            record.name = name
-        if state is not None:
-            record.state = state
-        if worker is not None:
-            record.worker = worker
-        if queue_name is not None:
-            record.queue_name = queue_name
-        if retries is not None:
-            record.retries = retries
-        if eta is not None:
-            record.eta = eta
-        if started_at is not None:
-            record.started_at = started_at
-        if done_at is not None:
-            record.done_at = done_at
-        if runtime_seconds is not None:
-            record.runtime_seconds = runtime_seconds
-        if error is not None:
-            record.error = error
-        if log_path is not None:
-            record.log_path = log_path
-
+        db.execute(insert_stmt)
         db.commit()
     finally:
         db.close()

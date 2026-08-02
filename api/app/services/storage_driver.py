@@ -120,7 +120,12 @@ class VfsStorageDriver:
         base_root = Path(root_dir).expanduser().resolve()
         mount_root = normalize_virtual_path(mount_root_path)
         full_root = (base_root / mount_root.lstrip("/")).resolve()
-        full_root.mkdir(parents=True, exist_ok=True)
+        try:
+            full_root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise StorageDriverError(
+                f"VFS mount directory unavailable: {full_root}: {exc}"
+            ) from exc
 
         self._base_root = base_root
         self._root = full_root
@@ -133,20 +138,28 @@ class VfsStorageDriver:
         if not target.is_dir():
             raise StorageInvalidPathError(f"Path is not a directory: {normalized}")
 
-        children = sorted(target.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))
+        try:
+            children = sorted(target.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))
+        except OSError as exc:
+            raise StorageDriverError(f"VFS list failed for {normalized}: {exc}") from exc
+
         result: list[StorageObject] = []
         for child in children:
-            stat_info = child.stat()
+            try:
+                stat_info = child.stat()
+                is_dir = child.is_dir()
+            except OSError as exc:
+                raise StorageDriverError(f"VFS stat failed for {child}: {exc}") from exc
             child_path = self._to_virtual_path(child)
             modified_at = datetime.fromtimestamp(stat_info.st_mtime, tz=timezone.utc)
-            mime_type = None if child.is_dir() else mimetypes.guess_type(child.name)[0]
+            mime_type = None if is_dir else mimetypes.guess_type(child.name)[0]
             result.append(
                 StorageObject(
                     path=child_path,
                     parent_path=normalized,
                     name=child.name,
-                    is_dir=child.is_dir(),
-                    size=0 if child.is_dir() else int(stat_info.st_size),
+                    is_dir=is_dir,
+                    size=0 if is_dir else int(stat_info.st_size),
                     modified_at=modified_at,
                     mime_type=mime_type,
                     storage_key=child_path.lstrip("/"),
@@ -157,7 +170,10 @@ class VfsStorageDriver:
     def ensure_directory(self, path: str) -> None:
         normalized = normalize_virtual_path(path)
         target = self._resolve_target(normalized)
-        target.mkdir(parents=True, exist_ok=True)
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise StorageDriverError(f"VFS create directory failed for {normalized}: {exc}") from exc
 
     def delete_path(self, path: str, *, is_dir: bool, recursive: bool) -> None:
         normalized = normalize_virtual_path(path)
@@ -168,18 +184,23 @@ class VfsStorageDriver:
         if not target.exists():
             raise StoragePathNotFoundError(f"Path not found: {normalized}")
 
-        if is_dir:
-            if not target.is_dir():
-                raise StorageInvalidPathError(f"Path is not a directory: {normalized}")
-            if recursive:
-                shutil.rmtree(target)
+        try:
+            if is_dir:
+                if not target.is_dir():
+                    raise StorageInvalidPathError(f"Path is not a directory: {normalized}")
+                if recursive:
+                    shutil.rmtree(target)
+                    return
+                target.rmdir()
                 return
-            target.rmdir()
-            return
 
-        if target.is_dir():
-            raise StorageInvalidPathError(f"Path is a directory: {normalized}")
-        target.unlink()
+            if target.is_dir():
+                raise StorageInvalidPathError(f"Path is a directory: {normalized}")
+            target.unlink()
+        except StorageInvalidPathError:
+            raise
+        except OSError as exc:
+            raise StorageDriverError(f"VFS delete failed for {normalized}: {exc}") from exc
 
     def rename_path(self, path: str, *, is_dir: bool, new_name: str) -> str:
         source = normalize_virtual_path(path)
@@ -203,7 +224,10 @@ class VfsStorageDriver:
         if target_target.exists():
             raise StorageDriverError(f"Path already exists: {target_path}")
 
-        source_target.rename(target_target)
+        try:
+            source_target.rename(target_target)
+        except OSError as exc:
+            raise StorageDriverError(f"VFS rename failed for {source}: {exc}") from exc
         return target_path
 
     def move_path(self, path: str, *, is_dir: bool, target_parent_path: str, new_name: str | None) -> str:
@@ -236,7 +260,10 @@ class VfsStorageDriver:
         if target_target.exists():
             raise StorageDriverError(f"Path already exists: {target_path}")
 
-        source_target.rename(target_target)
+        try:
+            source_target.rename(target_target)
+        except OSError as exc:
+            raise StorageDriverError(f"VFS move failed for {source}: {exc}") from exc
         return target_path
 
     def write_file(self, path: str, *, content: bytes, content_type: str | None = None) -> StorageObject:
@@ -253,11 +280,14 @@ class VfsStorageDriver:
         if target.exists() and target.is_dir():
             raise StorageInvalidPathError(f"Path is a directory: {normalized}")
 
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with target.open("wb") as output:
-            output.write(content)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("wb") as output:
+                output.write(content)
+            stat_info = target.stat()
+        except OSError as exc:
+            raise StorageDriverError(f"VFS write failed for {normalized}: {exc}") from exc
 
-        stat_info = target.stat()
         modified_at = datetime.fromtimestamp(stat_info.st_mtime, tz=timezone.utc)
 
         return StorageObject(
@@ -279,7 +309,11 @@ class VfsStorageDriver:
         if target.is_dir():
             raise StorageInvalidPathError(f"Path is a directory: {normalized}")
 
-        content = target.read_bytes()
+        try:
+            content = target.read_bytes()
+        except OSError as exc:
+            raise StorageDriverError(f"VFS read failed for {normalized}: {exc}") from exc
+
         return StorageReadResult(
             path=normalized,
             name=target.name,

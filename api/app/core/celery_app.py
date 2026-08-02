@@ -33,9 +33,16 @@ celery_app.conf.update(
             "schedule": 60.0,
         },
     },
+    # Redis broker 默认 visibility_timeout=3600s，重任务（如雷电分布导入约 106 分钟）
+    # 超过 1 小时会被 Redis 重新投递，导致同一任务被两个 worker 并行执行。
+    # 调大到 21600s（6 小时）覆盖最长任务耗时，避免超时重投造成双副本并行。
+    broker_transport_options={"visibility_timeout": 21600},
     enable_utc=True,
     result_serializer="json",
     task_acks_late=True,
+    # worker 异常退出时任务消息被 reject 而非 ack，配合 acks_late 让消息及时回到队列
+    # 由其他 worker 继续处理，而不是依赖 Redis visibility_timeout 的漫长等待。
+    task_reject_on_worker_lost=True,
     task_serializer="json",
     task_track_started=True,
     timezone=settings.celery_timezone,

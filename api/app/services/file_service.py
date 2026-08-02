@@ -572,6 +572,8 @@ def _build_driver_or_400(mount: FileStorageMount):
         return build_storage_driver(mount.backend, mount)
     except StorageNotConfiguredError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except StorageDriverError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
 def _sync_directory_index(

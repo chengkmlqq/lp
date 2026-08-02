@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
@@ -7,7 +8,9 @@ from typing import Any
 from sqlalchemy import desc
 
 from ..core.database import SessionLocal
+from ..models.base import utcnow
 from ..models.task_history import TaskHistory
+from ..schemas.flower_monitor import FlowerWorkersOverviewResponse
 from ..schemas.task_monitor import (
     TaskMonitorBucketItem,
     TaskMonitorOverviewResponse,
@@ -38,74 +41,107 @@ STATE_PRIORITY = {
     "PENDING": 7,
 }
 
+logger = logging.getLogger(__name__)
+
 
 def _load_db_task_history(*, limit: int) -> list[TaskMonitorTaskItem]:
-    """Load all task records from PostgreSQL (primary data source for persistence across restarts)."""
-    db = SessionLocal()
+    """Load task records from PostgreSQL. Returns empty list on DB errors."""
     try:
-        records = (
-            db.query(TaskHistory)
-            .order_by(desc(TaskHistory.create_date))
-            .limit(limit)
-            .all()
-        )
-        return [
-            TaskMonitorTaskItem(
-                task_id=r.task_id,
-                name=r.name or "",
-                state=r.state,
-                queue_name=r.queue_name,
-                worker=r.worker,
-                retries=r.retries,
-                eta=r.eta,
-                started_at=r.started_at,
-                done_at=r.done_at,
-                runtime_seconds=r.runtime_seconds,
-                error=r.error,
+        db = SessionLocal()
+        try:
+            records = (
+                db.query(TaskHistory)
+                .order_by(desc(TaskHistory.create_date))
+                .limit(limit)
+                .all()
             )
-            for r in records
-        ]
-    finally:
-        db.close()
+            return [
+                TaskMonitorTaskItem(
+                    task_id=r.task_id,
+                    name=r.name or "",
+                    state=r.state,
+                    queue_name=r.queue_name,
+                    worker=r.worker,
+                    retries=r.retries,
+                    eta=r.eta,
+                    started_at=r.started_at,
+                    done_at=r.done_at,
+                    runtime_seconds=r.runtime_seconds,
+                    error=r.error,
+                )
+                for r in records
+            ]
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Failed to load task history from database")
+        return []
+
+
+def _safe_workers_overview() -> FlowerWorkersOverviewResponse | None:
+    """Fetch Flower workers overview; returns None on any error."""
+    try:
+        return build_workers_overview(force_refresh=False)
+    except Exception:
+        logger.exception("Failed to fetch workers overview from Flower")
+        return None
+
+
+def _safe_worker_task_overview(
+    worker_name: str,
+    *,
+    recent_limit: int,
+) -> list[TaskMonitorTaskItem]:
+    """Fetch per-worker Flower tasks; returns empty list on any error."""
+    try:
+        worker_tasks = build_worker_task_overview(
+            worker=worker_name,
+            force_refresh=False,
+            recent_limit=max(recent_limit, 1),
+        )
+        items: list[TaskMonitorTaskItem] = []
+        items.extend(_convert_flower_tasks(worker_tasks.active_tasks, source_state="STARTED"))
+        items.extend(_convert_flower_tasks(worker_tasks.reserved_tasks, source_state="RECEIVED"))
+        items.extend(_convert_flower_tasks(worker_tasks.scheduled_tasks, source_state="SCHEDULED"))
+        items.extend(_convert_flower_tasks(worker_tasks.recent_tasks, source_state=None))
+        return items
+    except Exception:
+        logger.exception("Failed to fetch task overview from Flower for worker %s", worker_name)
+        return []
 
 
 def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskMonitorOverviewResponse:
-    workers_overview = build_workers_overview(force_refresh=False)
+    workers_overview = _safe_workers_overview()
     task_items: list[TaskMonitorTaskItem] = []
     queue_runtime_counts: dict[str, dict[str, int]] = {}
     queue_consumer_counts: dict[str, int] = {}
 
-    for worker in workers_overview.workers:
-        queue_names = worker.queue_names
-        for queue_name in queue_names:
-            queue_consumer_counts[queue_name] = queue_consumer_counts.get(queue_name, 0) + 1
-            queue_runtime_counts.setdefault(
-                queue_name,
-                {"active": 0, "reserved": 0, "scheduled": 0},
+    if workers_overview is not None:
+        for worker in workers_overview.workers:
+            queue_names = worker.queue_names
+            for queue_name in queue_names:
+                queue_consumer_counts[queue_name] = queue_consumer_counts.get(queue_name, 0) + 1
+                queue_runtime_counts.setdefault(
+                    queue_name,
+                    {"active": 0, "reserved": 0, "scheduled": 0},
+                )
+
+            worker_tasks = _safe_worker_task_overview(
+                worker.worker,
+                recent_limit=max(history_limit, 1),
             )
+            task_items.extend(worker_tasks)
 
-        worker_tasks = build_worker_task_overview(
-            worker=worker.worker,
-            force_refresh=False,
-            recent_limit=max(history_limit, 1),
-        )
-        task_items.extend(_convert_flower_tasks(worker_tasks.active_tasks, source_state="STARTED"))
-        task_items.extend(_convert_flower_tasks(worker_tasks.reserved_tasks, source_state="RECEIVED"))
-        task_items.extend(_convert_flower_tasks(worker_tasks.scheduled_tasks, source_state="SCHEDULED"))
-        task_items.extend(_convert_flower_tasks(worker_tasks.recent_tasks, source_state=None))
-
-        for task in worker_tasks.active_tasks:
-            if task.queue_name:
-                queue_runtime_counts.setdefault(task.queue_name, {"active": 0, "reserved": 0, "scheduled": 0})
-                queue_runtime_counts[task.queue_name]["active"] += 1
-        for task in worker_tasks.reserved_tasks:
-            if task.queue_name:
-                queue_runtime_counts.setdefault(task.queue_name, {"active": 0, "reserved": 0, "scheduled": 0})
-                queue_runtime_counts[task.queue_name]["reserved"] += 1
-        for task in worker_tasks.scheduled_tasks:
-            if task.queue_name:
-                queue_runtime_counts.setdefault(task.queue_name, {"active": 0, "reserved": 0, "scheduled": 0})
-                queue_runtime_counts[task.queue_name]["scheduled"] += 1
+            for task in worker_tasks:
+                if task.state == "STARTED" and task.queue_name:
+                    queue_runtime_counts.setdefault(task.queue_name, {"active": 0, "reserved": 0, "scheduled": 0})
+                    queue_runtime_counts[task.queue_name]["active"] += 1
+                elif task.state == "RECEIVED" and task.queue_name:
+                    queue_runtime_counts.setdefault(task.queue_name, {"active": 0, "reserved": 0, "scheduled": 0})
+                    queue_runtime_counts[task.queue_name]["reserved"] += 1
+                elif task.state == "SCHEDULED" and task.queue_name:
+                    queue_runtime_counts.setdefault(task.queue_name, {"active": 0, "reserved": 0, "scheduled": 0})
+                    queue_runtime_counts[task.queue_name]["scheduled"] += 1
 
     # Load all task history from database first (primary source)
     db_tasks = _load_db_task_history(limit=max(task_limit, history_limit))
@@ -167,11 +203,11 @@ def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskM
     )
 
     return TaskMonitorOverviewResponse(
-        generated_at=workers_overview.generated_at,
+        generated_at=workers_overview.generated_at if workers_overview is not None else utcnow(),
         broker_url="flower",
         result_backend="flower",
-        workers_online=workers_overview.summary.online,
-        worker_concurrency_total=sum(item.concurrency for item in workers_overview.workers),
+        workers_online=workers_overview.summary.online if workers_overview is not None else 0,
+        worker_concurrency_total=sum(item.concurrency for item in workers_overview.workers) if workers_overview is not None else 0,
         queue_pending_total=sum(item.pending_count for item in queues),
         task_state_buckets=_build_state_buckets(all_tasks_by_id.values()),
         workers=[
@@ -187,7 +223,7 @@ def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskM
                 "reserved_count": worker.reserved_count,
                 "scheduled_count": worker.scheduled_count,
             }
-            for worker in workers_overview.workers
+            for worker in (workers_overview.workers if workers_overview is not None else [])
         ],
         queues=queues,
         tasks=all_tasks[:task_limit],

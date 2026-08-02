@@ -42,6 +42,7 @@ import { useAuth } from "@/components/auth-provider";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { readApiError, getApiBaseUrl } from "@/lib/api";
 import { normalizeAppRoutePath } from "@/lib/app-route-path";
+import { findFirstMenuPath } from "@/lib/menu-tree-path";
 import type { MenuTreeItem, SystemMessageListResponse, SystemMessageSummary } from "@/types/auth";
 import { useThemeAppearance } from "@/components/ui-antd";
 import { withBasePath } from "@/lib/base-path";
@@ -232,6 +233,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   const menuTree = menusQuery.data ?? emptyMenuTree;
   const menuItems = useMemo(() => buildMenuItems(menuTree), [menuTree]);
+  const firstMenuPath = useMemo(() => findFirstMenuPath(menuTree), [menuTree]);
   const activeMenuState = useMemo(() => findActiveMenuState(menuTree, pathname), [menuTree, pathname]);
   const routeAllowed = useMemo(() => {
     if (pathname === "/admin") {
@@ -454,7 +456,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         )}
 
         <Link
-          href="/dashboard"
+          href={firstMenuPath ?? "/dashboard"}
           className="ml-2 flex items-center gap-2 text-inherit no-underline md:ml-0"
         >
           <img

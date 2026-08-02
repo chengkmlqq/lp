@@ -610,6 +610,7 @@ def init_db() -> None:
         rbac,
         scheduled_task,
         system_param,
+        task_history,
         tower_analysis,
         tower_circuit,
         tower_lightning_result,

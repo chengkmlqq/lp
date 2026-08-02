@@ -135,6 +135,11 @@ def _upload_log(task_id: str, log_parts: list[str]) -> None:
     max_retries=2,
     default_retry_delay=30,
     acks_late=True,
+    # 该重任务处理 128.7 万条数据约耗时 106 分钟（约 6360s），
+    # 设置软限制 2 小时（触发 SoftTimeLimitExceeded）、硬限制 3 小时，
+    # 作为 visibility_timeout 之外的第二层兜底，避免超长任务失控。
+    soft_time_limit=7200,
+    time_limit=10800,
 )
 def import_lightning_distribution_job(
     self,
