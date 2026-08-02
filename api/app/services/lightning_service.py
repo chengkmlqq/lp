@@ -1074,6 +1074,10 @@ def _fire_and_forget(coro: object) -> None:
 # ---------------------------------------------------------------------------
 def _serialize_distribution(dist: LightningDistribution) -> LightningDistributionRecord:
     """把 LightningDistribution ORM 对象序列化为 schema。"""
+    # 兜底剥离 grid_cells（历史数据或再次引入时防御），防止列表接口响应体过大。
+    _stats_json = dist.stats_json
+    if isinstance(_stats_json, dict) and "grid_cells" in _stats_json:
+        _stats_json = {k: v for k, v in _stats_json.items() if k != "grid_cells"}
     return LightningDistributionRecord(
         id=dist.id,
         region_id=dist.region_id,
@@ -1103,7 +1107,7 @@ def _serialize_distribution(dist: LightningDistribution) -> LightningDistributio
         positive_count=dist.positive_count,
         negative_count=dist.negative_count,
         unknown_count=dist.unknown_count,
-        stats_json=dist.stats_json,
+        stats_json=_stats_json,
         has_image=bool(dist.image_object_key),
         create_user=dist.create_user,
         create_date=dist.create_date,

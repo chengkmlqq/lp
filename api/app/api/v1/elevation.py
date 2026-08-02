@@ -196,6 +196,21 @@ def get_elevation_file_record_terrain_tile_endpoint(
     return Response(content=content, media_type="application/octet-stream")
 
 
+@router.post("/jobs/apply-line", response_model=ElevationApplyJobCreateResponse)
+def apply_elevation_job_to_line(
+    payload: ElevationApplyJobCreateRequest,
+    current_user: CurrentUser = Depends(require_permission("elevation.manage")),
+    db: Session = Depends(get_db),
+) -> ElevationApplyJobCreateResponse:
+    """将高程数据回填到线路杆塔，创建异步回填任务。
+
+    前端 elevation-records 与 power-lines 页面的回填弹窗调用本接口。
+    服务层 create_apply_job 完成全部校验（线路 404 / file_record_id 必填 400 /
+    模式 400 / 线路无杆塔 400）并派发 Celery 任务。
+    """
+    return create_apply_job(db, payload, actor=current_user.user)
+
+
 # ============================================================================
 # Legacy Dataset API (backed by ElevationFileRecord)
 # ============================================================================

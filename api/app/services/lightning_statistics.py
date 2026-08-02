@@ -145,14 +145,20 @@ def compute_statistics(
     grid_size_km: float,
     data_years: float | None = None,
     event_times: list[datetime | None] | None = None,
+    include_grid_cells: bool = False,
 ) -> dict[str, Any]:
     """基于内存中的落雷集合计算统计结果（纯函数，不查库）。
 
     返回 dict 包含：
       total_records / area_km2 / data_years / overall_ng /
       max_abs_current / avg_abs_current / positive_count / negative_count /
-      unknown_count / grid_cells（网格列表）
+      unknown_count / grid_cells（网格列表，仅 include_grid_cells=True 时构建）
+
+    include_grid_cells：grid_cells 是纯内部网格聚合明细，20 万格时构建约 185MB，
+    且无 API/前端消费者（导入任务与列表接口都不持久化/返回它），密度图由
+    render_density_image 独立从落点重聚合。故默认关闭，避免无谓的内存与序列化开销。
     """
+    grid_cells: list[dict[str, Any]] = []
     total = len(strikes)
     if total == 0:
         return {
@@ -165,7 +171,7 @@ def compute_statistics(
             "positive_count": 0,
             "negative_count": 0,
             "unknown_count": 0,
-            "grid_cells": [],
+            "grid_cells": grid_cells,
         }
 
     lats = [float(s[STRIKE_LAT]) for s in strikes]
@@ -225,6 +231,41 @@ def compute_statistics(
         if s.get(STRIKE_POLARITY) == "positive":
             cell_positive[key] = cell_positive.get(key, 0) + 1
 
+    grid_cells = _build_grid_cells(
+        cell_counts,
+        cell_imax,
+        cell_positive,
+        min_lat=min_lat,
+        min_lon=min_lon,
+        grid_size_km=grid_size_km,
+        years=years,
+    ) if include_grid_cells else []
+
+    return {
+        "total_records": total,
+        "area_km2": area_km2,
+        "data_years": years,
+        "overall_ng": overall_ng,
+        "max_abs_current": max_abs,
+        "avg_abs_current": avg_abs,
+        "positive_count": positive_count,
+        "negative_count": negative_count,
+        "unknown_count": unknown_count,
+        "grid_cells": grid_cells,
+    }
+
+
+def _build_grid_cells(
+    cell_counts: dict[tuple[int, int], int],
+    cell_imax: dict[tuple[int, int], float],
+    cell_positive: dict[tuple[int, int], int],
+    *,
+    min_lat: float,
+    min_lon: float,
+    grid_size_km: float,
+    years: float,
+) -> list[dict[str, Any]]:
+    """把网格聚合结果展开成 grid_cells 明细列表（按 strike_count 降序）。"""
     grid_cells: list[dict[str, Any]] = []
     for (cell_x, cell_y), count in cell_counts.items():
         x0_km = cell_x * grid_size_km
@@ -257,24 +298,45 @@ def compute_statistics(
         )
 
     grid_cells.sort(key=lambda cell: cell["strike_count"], reverse=True)
-
-    return {
-        "total_records": total,
-        "area_km2": area_km2,
-        "data_years": years,
-        "overall_ng": overall_ng,
-        "max_abs_current": max_abs,
-        "avg_abs_current": avg_abs,
-        "positive_count": positive_count,
-        "negative_count": negative_count,
-        "unknown_count": unknown_count,
-        "grid_cells": grid_cells,
-    }
+    return grid_cells
 
 
 # ---------------------------------------------------------------------------
 # 密度图渲染
 # ---------------------------------------------------------------------------
+def build_density_matrix(
+    cell_counts: dict[tuple[int, int], int],
+) -> Any:
+    """把网格聚合结果填充为二维密度矩阵（numpy 数组），返回 None 表示无网格数据。
+
+    矩阵原点：(min_x, min_y)，即 cell 坐标减去网格最小横/纵坐标后的下标。
+    通过显式 `import numpy` 独立可用，方便在未安装 matplotlib 的环境中做性能回归测试。
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+
+    if not cell_counts:
+        return None
+
+    # min/max 在循环外一次性计算，复用为矩阵填充的偏移基值，
+    # 避免在每个 cell 内重复调用（否则整体复杂度为 O(n²)，128 万网格时耗时数小时）。
+    xs = [key[0] for key in cell_counts]
+    ys = [key[1] for key in cell_counts]
+    base_x = min(xs)
+    base_y = min(ys)
+    width_cells = max(xs) - base_x + 1
+    height_cells = max(ys) - base_y + 1
+    width_cells = max(width_cells, 1)
+    height_cells = max(height_cells, 1)
+
+    matrix = np.zeros((height_cells, width_cells), dtype=float)
+    for (cell_x, cell_y), count in cell_counts.items():
+        matrix[cell_y - base_y, cell_x - base_x] = count
+    return matrix
+
+
 def render_density_image(
     strikes: list[dict[str, Any]],
     *,
@@ -290,7 +352,6 @@ def render_density_image(
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        import numpy as np
     except ImportError:
         return b""
 
@@ -313,19 +374,9 @@ def render_density_image(
         key = (cell_x, cell_y)
         cell_counts[key] = cell_counts.get(key, 0) + 1
 
-    xs = [key[0] for key in cell_counts]
-    ys = [key[1] for key in cell_counts]
-    if not xs:
+    matrix = build_density_matrix(cell_counts)
+    if matrix is None:
         return b""
-
-    width_cells = max(xs) - min(xs) + 1
-    height_cells = max(ys) - min(ys) + 1
-    width_cells = max(width_cells, 1)
-    height_cells = max(height_cells, 1)
-
-    matrix = np.zeros((height_cells, width_cells), dtype=float)
-    for (cell_x, cell_y), count in cell_counts.items():
-        matrix[cell_y - min(ys), cell_x - min(xs)] = count
 
     fig, ax = plt.subplots(figsize=(10, 8))
     image = ax.imshow(

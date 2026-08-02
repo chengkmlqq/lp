@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import io
 import mimetypes
 import zipfile
@@ -27,9 +26,6 @@ from ..schemas.elevation import (
     ElevationFileRecordTerrainBuildResponse,
     ElevationFileRecordUpdateRequest,
     ElevationFileRecordUploadResponse,
-    ElevationPreviewCell,
-    ElevationPreviewDiagnostics,
-    ElevationPreviewPoint,
 )
 from .elevation_service import (
     ELEVATION_FILE_EXT_FORMAT_MAP,
@@ -38,7 +34,6 @@ from .elevation_service import (
     RASTER_FILE_FORMATS,
     TERRAIN_SUPPORTED_DATASET_FORMATS,
     _build_raster_preview,
-    _decode_csv_bytes,
     _default_terrain_status_for_format,
     _normalize_str,
     _publish_elevation_change,
@@ -47,7 +42,6 @@ from .elevation_service import (
     _resolve_dataset_mount_code,
     _resolve_file_record_terrain_dir,
     _delete_virtual_directory_if_exists,
-    _sample_preview_points_from_csv,
 
     join_virtual_path,
 )
@@ -380,7 +374,7 @@ def _create_file_records_from_zip(
                     continue
 
                 # Determine file format
-                file_format = ELEVATION_FILE_EXT_FORMAT_MAP.get(suffix, "csv")
+                file_format = ELEVATION_FILE_EXT_FORMAT_MAP[suffix]
 
                 file_size = len(data)
 
@@ -744,72 +738,7 @@ def preview_file_record(
     preview_limit = max(1, min(max_points, 5000))
     file_format = item.file_format
 
-    if file_format == "csv":
-        # Load CSV points - need to adapt _load_dataset_points to work with file records
-        # For now, create a temporary dataset-like object
-        from ..services.elevation_service import ElevationSamplePoint
-        mount = _require_mount(db, item.mount_code)
-        driver = _build_driver_or_400(mount)
-        try:
-            read_result = driver.read_file(item.file_path)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"文件不存在: {item.file_path}"
-            ) from exc
-
-        text = _decode_csv_bytes(read_result.content)
-        rows = list(csv.DictReader(io.StringIO(text)))
-        if not rows:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件为空")
-
-        points: list[ElevationSamplePoint] = []
-        warnings: list[str] = []
-        for index, row in enumerate(rows, start=2):
-            from ..services.elevation_service import _pick_float
-            lon = _pick_float(row, ["longitude", "lon", "lng", "经度"])
-            lat = _pick_float(row, ["latitude", "lat", "纬度"])
-            altitude = _pick_float(row, ["altitude_m", "altitude", "elevation", "dem", "海拔m", "高程"])
-            if lon is None or lat is None or altitude is None:
-                warnings.append(f"第 {index} 行缺少经纬度或高程，已忽略")
-                continue
-            if lon < -180 or lon > 180 or lat < -90 or lat > 90:
-                warnings.append(f"第 {index} 行经纬度越界，已忽略")
-                continue
-            points.append(ElevationSamplePoint(lon=lon, lat=lat, altitude_m=altitude))
-
-        if not points:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件没有有效样本点")
-
-        sampled = _sample_preview_points_from_csv(points=points, limit=preview_limit)
-        return ElevationFileRecordPreviewResponse(
-            record=serialize_file_record(item),
-            preview_mode="point_cloud",
-            total_points=len(points),
-            sampled_points=len(sampled),
-            points=[ElevationPreviewPoint(longitude=point.lon, latitude=point.lat, altitude_m=point.altitude_m) for point in sampled],
-            cells=[],
-            diagnostics=ElevationPreviewDiagnostics(
-                source_crs="EPSG:4326",
-                source_bounds_min_x=min(point.lon for point in points),
-                source_bounds_max_x=max(point.lon for point in points),
-                source_bounds_min_y=min(point.lat for point in points),
-                source_bounds_max_y=max(point.lat for point in points),
-                wgs84_bounds_min_lon=min(point.lon for point in points),
-                wgs84_bounds_max_lon=max(point.lon for point in points),
-                wgs84_bounds_min_lat=min(point.lat for point in points),
-                wgs84_bounds_max_lat=max(point.lat for point in points),
-                raster_width=None,
-                raster_height=None,
-                target_samples=preview_limit,
-                sampling_step=max(1, len(points) // max(1, len(sampled))) if sampled else None,
-                scanned_candidates=len(points),
-                valid_preview_count=len(sampled),
-            ),
-            warnings=warnings,
-        )
-
-    elif file_format in RASTER_FILE_FORMATS:
+    if file_format in RASTER_FILE_FORMATS:
         result = _build_raster_preview(db, record=item, limit=preview_limit)
 
         return ElevationFileRecordPreviewResponse(

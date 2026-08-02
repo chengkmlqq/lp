@@ -912,10 +912,6 @@ body {
   align-items: baseline;
 }
 
-.admin-workers-table-anchor .ant-table-body {
-  min-height: var(--admin-workers-table-body-min-height, 180px);
-}
-
 .admin-workers-page-card {
   display: flex;
   flex: 1;
@@ -953,6 +949,17 @@ body {
   justify-content: center;
 }
 
+.admin-workers-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.admin-workers-card-grid-item {
+  min-width: 0;
+}
+
 .admin-workers-worker-card {
   height: 100%;
   border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary));
@@ -965,6 +972,10 @@ body {
   box-shadow: 0 8px 18px color-mix(in srgb, var(--fquiz-theme-text-primary) 8%, transparent);
 }
 
+.admin-workers-worker-card--offline {
+  opacity: 0.72;
+}
+
 .admin-workers-worker-card > .ant-card-head {
   min-height: 44px;
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
@@ -975,11 +986,69 @@ body {
   padding-block: 14px;
 }
 
-.admin-workers-worker-card-field {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
+.admin-workers-worker-card-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.admin-workers-worker-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 12%, transparent);
+  color: var(--fquiz-theme-primary);
+}
+
+.admin-workers-worker-card-icon.is-offline {
+  background: var(--ant-color-fill-secondary);
+  color: var(--ant-color-text-quaternary);
+}
+
+.admin-workers-worker-card-status {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ant-color-text-tertiary);
+  background: var(--ant-color-fill-secondary);
+  border: 1px solid var(--ant-color-border);
+}
+
+.admin-workers-worker-card-status.is-online {
+  color: #389e0d;
+  background: #f6ffed;
+  border-color: #d9f7be;
+}
+
+.admin-workers-worker-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  align-items: baseline;
+  min-height: 30px;
+}
+
+.admin-workers-worker-card-row--divider {
+  border-top: 1px solid var(--ant-color-border-secondary);
+  margin-top: 2px;
+  padding-top: 8px;
+}
+
+.admin-workers-worker-card-heartbeat {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+
+.admin-workers-card-summary {
+  flex-shrink: 0;
+  padding: 4px 2px 0;
 }
 
 .admin-task-monitor-table-anchor .ant-table-body {

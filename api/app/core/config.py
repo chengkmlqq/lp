@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     task_log_max_buffer_lines: int = 100_000          # 单任务内存缓冲上限（超限丢最旧行并计数）
     task_log_redis_key_prefix: str = "task_log"       # key 前缀（task_log:{task_id}）
     task_log_sse_heartbeat_seconds: int = 15          # SSE 心跳间隔（配置项，XREAD BLOCK 用之）
+    task_log_capture_level: str = "INFO"              # 日志捕获最低级别（root handler setLevel，默认 INFO 及以上）
+    task_log_noisy_logger_prefixes: str = (           # 噪音 logger 前缀（逗号分隔），其级别被提升到 WARNING 不入任务日志
+        "botocore,urllib3,s3transfer,boto3,celery.worker.strategy"
+    )
 
     wine_binary_path: str = "wine"
     wine_allowed_root: str = "./data/wine"

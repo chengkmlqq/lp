@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import csv
 import io
 import json
 import math
@@ -44,8 +43,6 @@ from .storage_driver import StorageDriverError, StorageInvalidPathError, Storage
 
 ELEVATION_TOPIC = "admin.elevation"
 POWER_LINES_TOPIC = "admin.power-lines"
-CSV_ENCODINGS = ("utf-8-sig", "utf-8", "gbk", "latin-1")
-CSV_IMPORT_TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "gbk", "latin-1")
 NEAREST_MATCH_MAX_DISTANCE_M = 2000.0
 ELEVATION_FILE_EXT_FORMAT_MAP = {
     ".tif": "tif",
@@ -83,13 +80,6 @@ GDEM_FILENAME_PATTERNS = [
     r"ASTGTM2_[NS]\d{2}[EW]\d{3}_dem\.tiff?",      # GDEM V2
 ]
 GDEM_DEFAULT_RESOLUTION_M = 30.0
-
-
-@dataclass
-class ElevationSamplePoint:
-    lon: float
-    lat: float
-    altitude_m: float
 
 
 @dataclass
@@ -484,27 +474,12 @@ def execute_apply_job(job_id: str, actor_user_id: str | None = None) -> None:
             return
 
         file_format = _resolve_elevation_file_format(elevation_source)
-        if file_format == "csv":
-            points, warnings = _load_dataset_points(db, elevation_source)
-            stats = _apply_points_to_line_towers(
-                db,
-                line_id=line.id,
-                elevation_source=elevation_source,
-                mode=job.mode,
-                points=points,
-            )
-        elif file_format in RASTER_FILE_FORMATS:
-            stats, warnings = _apply_raster_to_line_towers(
-                db,
-                line_id=line.id,
-                elevation_source=elevation_source,
-                mode=job.mode,
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"不支持的高程文件格式: {file_format}",
-            )
+        stats, warnings = _apply_raster_to_line_towers(
+            db,
+            line_id=line.id,
+            elevation_source=elevation_source,
+            mode=job.mode,
+        )
 
         warning_note = "; ".join(warnings[:5]) if warnings else None
         job.updated_tower_count = stats["updated_tower_count"]
@@ -627,194 +602,6 @@ def _read_upload_content(upload: UploadFile) -> bytes:
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"上传文件为空：{name}")
     return content
-
-
-def _load_dataset_points(
-    db: Session,
-    record: ElevationFileRecord,
-) -> tuple[list[ElevationSamplePoint], list[str]]:
-    mount = _require_mount(db, record.mount_code)
-    driver = _build_driver_or_400(mount)
-    try:
-        read_result = driver.read_file(record.file_path)
-    except StoragePathNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"高程数据文件不存在: {record.file_path}") from exc
-    except StorageInvalidPathError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    text = _decode_csv_bytes(read_result.content)
-    rows = list(csv.DictReader(io.StringIO(text)))
-    if not rows:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="高程数据文件为空")
-
-    points: list[ElevationSamplePoint] = []
-    warnings: list[str] = []
-    for index, row in enumerate(rows, start=2):
-        lon = _pick_float(row, ["longitude", "lon", "lng", "经度"])
-        lat = _pick_float(row, ["latitude", "lat", "纬度"])
-        altitude = _pick_float(row, ["altitude_m", "altitude", "elevation", "dem", "海拔m", "高程"])
-        if lon is None or lat is None or altitude is None:
-            warnings.append(f"第 {index} 行缺少经纬度或高程，已忽略")
-            continue
-        if lon < -180 or lon > 180 or lat < -90 or lat > 90:
-            warnings.append(f"第 {index} 行经纬度越界，已忽略")
-            continue
-        points.append(ElevationSamplePoint(lon=lon, lat=lat, altitude_m=altitude))
-
-    if not points:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="高程数据文件没有有效样本点")
-    return points, warnings
-
-
-def _compute_dataset_stats(points: list[ElevationSamplePoint]) -> dict[str, float | int]:
-    lon_values = [item.lon for item in points]
-    lat_values = [item.lat for item in points]
-    return {
-        "sample_count": len(points),
-        "bbox_min_lon": min(lon_values),
-        "bbox_max_lon": max(lon_values),
-        "bbox_min_lat": min(lat_values),
-        "bbox_max_lat": max(lat_values),
-    }
-
-
-def _sample_preview_points_from_csv(
-    *,
-    points: list[ElevationSamplePoint],
-    limit: int,
-) -> list[ElevationSamplePoint]:
-    if len(points) <= limit:
-        return points
-    if limit <= 1:
-        return [points[0]]
-    step = max(1, len(points) // limit)
-    sampled = points[::step]
-    if len(sampled) > limit:
-        sampled = sampled[:limit]
-    return sampled
-
-
-def _apply_points_to_line_towers(
-    db: Session,
-    *,
-    line_id: str,
-    elevation_source: ElevationFileRecord,
-    mode: str,
-    points: list[ElevationSamplePoint],
-) -> dict[str, int]:
-    towers = db.execute(
-        select(LineTower)
-        .where(LineTower.line_id == line_id)
-        .order_by(LineTower.seq_no.asc(), LineTower.id.asc())
-    ).scalars().all()
-
-    updated_tower_count = 0
-    skipped_tower_count = 0
-    missing_geo_count = 0
-    unmatched_count = 0
-    point_sampler = _build_points_sampler(points)
-
-    for index, tower in enumerate(towers):
-        if tower.longitude is None or tower.latitude is None:
-            missing_geo_count += 1
-            continue
-
-        skip_altitude_update = mode == "fill_null_only" and tower.altitude_m is not None
-        skip_slope_update = mode == "fill_null_only" and tower.slope_1 is not None and tower.slope_2 is not None
-        if skip_altitude_update and skip_slope_update:
-            skipped_tower_count += 1
-            continue
-
-        match = _find_nearest_point(
-            lon=float(tower.longitude),
-            lat=float(tower.latitude),
-            points=points,
-        )
-        if match is None:
-            unmatched_count += 1
-            continue
-
-        altitude, distance_m = match
-        if distance_m > NEAREST_MATCH_MAX_DISTANCE_M:
-            unmatched_count += 1
-            continue
-
-        changed = False
-        sampled_altitude = round(float(altitude), 3)
-        if not skip_altitude_update:
-            tower.altitude_m = sampled_altitude
-            changed = True
-
-        slope_pair = _compute_tower_slope_pair(
-            towers=towers,
-            tower_index=index,
-            center_altitude=sampled_altitude,
-            sample_altitude=point_sampler,
-        )
-        if slope_pair is not None and not skip_slope_update:
-            tower.slope_1 = round(slope_pair[0], 3)
-            tower.slope_2 = round(slope_pair[1], 3)
-            changed = True
-
-        raw_extra = dict(tower.raw_extra_json or {})
-        raw_extra["elevation"] = {
-            **_elevation_source_metadata(elevation_source),
-            "sample_method": "nearest",
-            "sample_distance_m": round(distance_m, 3),
-            "sample_distance_source": "computed",
-            "sampled_at": utcnow().isoformat(),
-        }
-        tower.raw_extra_json = raw_extra
-        tower.update_date = utcnow()
-        if changed:
-            updated_tower_count += 1
-        else:
-            skipped_tower_count += 1
-
-    db.commit()
-    return {
-        "updated_tower_count": updated_tower_count,
-        "skipped_tower_count": skipped_tower_count,
-        "missing_geo_count": missing_geo_count,
-        "unmatched_count": unmatched_count,
-    }
-
-
-def _find_nearest_point(
-    *,
-    lon: float,
-    lat: float,
-    points: list[ElevationSamplePoint],
-) -> tuple[float, float] | None:
-    best_altitude: float | None = None
-    best_distance: float | None = None
-
-    for point in points:
-        distance = _haversine_distance_m(
-            lon_a=lon,
-            lat_a=lat,
-            lon_b=point.lon,
-            lat_b=point.lat,
-        )
-        if best_distance is None or distance < best_distance:
-            best_distance = distance
-            best_altitude = point.altitude_m
-
-    if best_altitude is None or best_distance is None:
-        return None
-    return best_altitude, best_distance
-
-
-def _build_points_sampler(points: list[ElevationSamplePoint]):
-    def sample(lon: float, lat: float) -> float | None:
-        match = _find_nearest_point(lon=lon, lat=lat, points=points)
-        if match is None:
-            return None
-        altitude, distance_m = match
-        if distance_m > NEAREST_MATCH_MAX_DISTANCE_M:
-            return None
-        return float(altitude)
-
-    return sample
 
 
 def _build_raster_sampler(*, rasterio: Any, src: Any, src_crs: Any, band_nodata: Any):
@@ -942,30 +729,6 @@ def _offset_longitude(*, lon: float, latitude: float, offset_m: float) -> float:
 
 def _offset_latitude(*, lat: float, offset_m: float) -> float:
     return lat + offset_m / 111_320.0
-
-
-def _haversine_distance_m(
-    *,
-    lon_a: float,
-    lat_a: float,
-    lon_b: float,
-    lat_b: float,
-) -> float:
-    import math
-
-    r = 6371000.0
-    lon1 = math.radians(lon_a)
-    lat1 = math.radians(lat_a)
-    lon2 = math.radians(lon_b)
-    lat2 = math.radians(lat_b)
-    d_lon = lon2 - lon1
-    d_lat = lat2 - lat1
-
-    h = (
-        math.sin(d_lat / 2) ** 2
-        + math.cos(lat1) * math.cos(lat2) * math.sin(d_lon / 2) ** 2
-    )
-    return 2 * r * math.asin(min(1.0, math.sqrt(h)))
 
 
 def _detect_file_format(file_path: str) -> str:
@@ -1100,24 +863,6 @@ def _is_finite_number(value: float) -> bool:
 
 def _is_point_within_bounds(*, x: float, y: float, left: float, right: float, bottom: float, top: float) -> bool:
     return left <= x <= right and bottom <= y <= top
-
-
-def _pick_float(row: dict[str, Any], keys: list[str]) -> float | None:
-    for key in keys:
-        value = row.get(key)
-        number = _parse_float(value)
-        if number is not None:
-            return number
-    return None
-
-
-def _decode_csv_bytes(content: bytes) -> str:
-    for encoding in CSV_ENCODINGS:
-        try:
-            return content.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV 编码不受支持")
 
 
 def _compute_raster_wgs84_bounds(*, rasterio: Any, src: Any) -> dict[str, float]:
@@ -2190,49 +1935,6 @@ def _normalize_str(value: Any) -> str | None:
     return text or None
 
 
-def _parse_float(value: Any) -> float | None:
-    text = _normalize_str(value)
-    if text is None:
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        return None
-
-
-def _decode_text_bytes_for_import(content: bytes) -> str:
-    for encoding in CSV_IMPORT_TEXT_ENCODINGS:
-        try:
-            return content.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV 编码不受支持")
-
-
-def _pick_csv_value(row: dict[str, Any], keys: list[str]) -> str | None:
-    normalized_keys = {str(key).strip(): key for key in row.keys()}
-    for key in keys:
-        actual_key = normalized_keys.get(key)
-        if actual_key is None:
-            continue
-        value = _normalize_str(row.get(actual_key))
-        if value is not None:
-            return value
-    return None
-
-
-def _parse_csv_optional_positive_float(value: str | None) -> float | None:
-    if value is None:
-        return None
-    try:
-        number = float(value)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"无效分辨率：{value}") from exc
-    if number <= 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"分辨率必须大于 0：{value}")
-    return number
-
-
 def _publish_elevation_change(event_name: str, payload: dict[str, Any]) -> None:
     _fire_and_forget(
         publish_topic(
@@ -2335,35 +2037,7 @@ def execute_file_record_analysis_job(*, record_id: str, actor_user_id: str | Non
             ) from exc
 
         # Analyze based on file format
-        if item.file_format == "csv":
-            text = _decode_csv_bytes(read_result.content)
-            import csv
-            import io
-            rows = list(csv.DictReader(io.StringIO(text)))
-            if not rows:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件为空")
-
-            points: list[ElevationSamplePoint] = []
-            for index, row in enumerate(rows, start=2):
-                lon = _pick_float(row, ["longitude", "lon", "lng", "经度"])
-                lat = _pick_float(row, ["latitude", "lat", "纬度"])
-                altitude = _pick_float(row, ["altitude_m", "altitude", "elevation", "dem", "海拔m", "高程"])
-                if lon is None or lat is None or altitude is None:
-                    continue
-                if lon < -180 or lon > 180 or lat < -90 or lat > 90:
-                    continue
-                points.append(ElevationSamplePoint(lon=lon, lat=lat, altitude_m=altitude))
-
-            if not points:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件没有有效样本点")
-
-            item.sample_count = len(points)
-            item.bbox_min_lon = min(p.lon for p in points)
-            item.bbox_max_lon = max(p.lon for p in points)
-            item.bbox_min_lat = min(p.lat for p in points)
-            item.bbox_max_lat = max(p.lat for p in points)
-
-        elif item.file_format in RASTER_FILE_FORMATS:
+        if item.file_format in RASTER_FILE_FORMATS:
             _require_rasterio_available()
             import tempfile
             import os

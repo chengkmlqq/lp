@@ -40,11 +40,11 @@ def _build_session_factory() -> sessionmaker[Session]:
     return sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
 
 
-def _make_record(session: Session, *, file_name: str = "record.csv") -> ElevationFileRecord:
+def _make_record(session: Session, *, file_name: str = "record.tif") -> ElevationFileRecord:
     record = ElevationFileRecord(
         file_name=file_name,
         file_path=f"/elevation/records/ab/cd/{file_name}",
-        file_format="csv",
+        file_format="tif",
         file_size=32,
         mount_code="default",
         status="active",
@@ -97,9 +97,9 @@ def test_create_apply_job_accepts_file_record_id(monkeypatch) -> None:
     try:
         line = Line(code="L-APPLY-003", name="文件记录回填线路", voltage_kv=220, lightning_param_json={})
         record = ElevationFileRecord(
-            file_name="record.csv",
-            file_path="/elevation/records/ab/cd/record.csv",
-            file_format="csv",
+            file_name="record.tif",
+            file_path="/elevation/records/ab/cd/record.tif",
+            file_format="tif",
             file_size=32,
             mount_code="default",
             status="active",
@@ -132,7 +132,7 @@ def test_create_apply_job_accepts_file_record_id(monkeypatch) -> None:
         assert saved_job.file_record_id == record.id
         assert saved_job.task_id == "celery-task-file-record"
         assert response.job.file_record_id == record.id
-        assert response.job.file_record_name == "record.csv"
+        assert response.job.file_record_name == "record.tif"
     finally:
         session.close()
 
@@ -168,17 +168,15 @@ def test_execute_apply_job_uses_saved_actor_for_preparation_source(monkeypatch) 
         session.add(job)
         session.commit()
 
-        points = [
-            elevation_service.ElevationSamplePoint(
-                lon=120.0,
-                lat=30.0 + distance_m * meter_to_lat,
-                altitude_m=100.0 + distance_m * 0.12,
-            )
-            for distance_m in range(0, 1251, 50)
-        ]
+        def _fake_apply_raster(db, *, line_id, elevation_source, mode):
+            ts = db.execute(select(LineTower).where(LineTower.line_id == line_id)).scalars().all()
+            for t in ts:
+                t.altitude_m = 120.0
+            db.commit()
+            return ({"updated_tower_count": len(ts), "skipped_tower_count": 0, "missing_geo_count": 0, "unmatched_count": 0}, [])
 
         monkeypatch.setattr(elevation_service, "SessionLocal", testing_session)
-        monkeypatch.setattr(elevation_service, "_load_dataset_points", lambda *_args, **_kwargs: (points, []))
+        monkeypatch.setattr(elevation_service, "_apply_raster_to_line_towers", _fake_apply_raster)
         monkeypatch.setattr(elevation_service, "_publish_elevation_change", lambda *args, **kwargs: None)
         monkeypatch.setattr(elevation_service, "_publish_line_change", lambda *args, **kwargs: None)
 
@@ -214,9 +212,9 @@ def test_execute_apply_job_uses_file_record_source(monkeypatch) -> None:
     try:
         line = Line(code="L-APPLY-004", name="文件记录高程回填线路", voltage_kv=110, lightning_param_json={})
         record = ElevationFileRecord(
-            file_name="record.csv",
-            file_path="/elevation/records/ab/cd/record.csv",
-            file_format="csv",
+            file_name="record.tif",
+            file_path="/elevation/records/ab/cd/record.tif",
+            file_format="tif",
             file_size=32,
             mount_code="default",
             status="active",
@@ -246,17 +244,15 @@ def test_execute_apply_job_uses_file_record_source(monkeypatch) -> None:
         session.add(job)
         session.commit()
 
-        points = [
-            elevation_service.ElevationSamplePoint(
-                lon=120.0,
-                lat=30.0 + distance_m * meter_to_lat,
-                altitude_m=100.0 + distance_m * 0.12,
-            )
-            for distance_m in range(0, 1251, 50)
-        ]
+        def _fake_apply_raster(db, *, line_id, elevation_source, mode):
+            ts = db.execute(select(LineTower).where(LineTower.line_id == line_id)).scalars().all()
+            for t in ts:
+                t.altitude_m = 120.0
+            db.commit()
+            return ({"updated_tower_count": len(ts), "skipped_tower_count": 0, "missing_geo_count": 0, "unmatched_count": 0}, [])
 
         monkeypatch.setattr(elevation_service, "SessionLocal", testing_session)
-        monkeypatch.setattr(elevation_service, "_load_dataset_points", lambda *_args, **_kwargs: (points, []))
+        monkeypatch.setattr(elevation_service, "_apply_raster_to_line_towers", _fake_apply_raster)
         monkeypatch.setattr(elevation_service, "_publish_elevation_change", lambda *args, **kwargs: None)
         monkeypatch.setattr(elevation_service, "_publish_line_change", lambda *args, **kwargs: None)
 
@@ -279,7 +275,7 @@ def test_execute_apply_job_uses_file_record_source(monkeypatch) -> None:
             source = saved_line.lightning_param_json["preparation_sources"]["ground_slope"]
             assert source["prepared_by_user_id"] == "tester"
             assert source["file_record_id"] == record.id
-            assert source["file_record_name"] == "record.csv"
+            assert source["file_record_name"] == "record.tif"
             assert source["job_id"] == job.id
         finally:
             verification_session.close()

@@ -3,6 +3,8 @@ Unit tests for TaskLogCapture (task real-time log collector).
 """
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from app.core.task_log_capture import TaskLogCapture, _TaskLogBuffer, _current_buffer
@@ -193,3 +195,205 @@ class TestFlushAll:
         assert "f-1" not in TaskLogCapture._registry
         assert "f-2" in TaskLogCapture._registry
         TaskLogCapture.stop("f-2")
+
+
+class TestWriteDrivenFlush:
+    """P0：写入驱动的时间闸门 —— write() 末尾触发 maybe_flush()，任务运行中即有增量入 Redis。"""
+
+    def test_write_triggers_maybe_flush_after_interval(self):
+        buf = _TaskLogBuffer("p0-1")
+        sent: list[list[str]] = []
+
+        from app.services import task_log_service
+        original = task_log_service.append_task_log_lines
+        task_log_service.append_task_log_lines = lambda task_id, lines: sent.append(list(lines))
+        try:
+            # 首行写入：距上次 flush（构造时）超过间隔，应立即 flush
+            buf._flush_interval = -1  # 强制超时，确保首次写入即 flush
+            buf.write("line1\n")
+            assert sent == [["line1"]], sent
+
+            # 追加行：间隔未到时不 flush
+            buf._last_flush_ts = _monotonic_now() + 100  # 人为推迟上次 flush 时间
+            buf._flush_interval = 3.0
+            buf.write("line2\n")
+            assert sent == [["line1"]], sent  # 未触发
+
+            # 间隔已到：再次 flush 增量
+            buf._last_flush_ts = _monotonic_now() - 10
+            buf.write("line3\n")
+            assert sent == [["line1"], ["line2", "line3"]], sent
+        finally:
+            task_log_service.append_task_log_lines = original
+        buf.close()
+
+    def test_write_flush_failure_silently_degrades(self):
+        buf = _TaskLogBuffer("p0-2")
+        buf._flush_interval = -1
+
+        from app.services import task_log_service
+        original = task_log_service.append_task_log_lines
+        task_log_service.append_task_log_lines = lambda task_id, lines: (_ for _ in ()).throw(RuntimeError("redis down"))
+        try:
+            buf.write("hello\n")  # 不应抛异常，Redis 不可用静默降级
+            assert buf.snapshot() == "hello"
+        finally:
+            task_log_service.append_task_log_lines = original
+        buf.close()
+
+
+def _monotonic_now():
+    import time
+    return time.monotonic()
+
+
+class TestDedup:
+    """P1：同一条 Celery 日志只被捕获一次（方案 B —— root handler 跳过经 StreamHandler 的日志）。"""
+
+    def test_capture_handler_skips_streamhandler_lines(self):
+        from app.core.task_log_capture import _record_handled_by_console_handler
+
+        import io
+        import sys
+
+        root = logging.getLogger()
+        record = logging.LogRecord(
+            name="app.test_capture",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="celery boundary log",
+            args=(),
+            exc_info=None,
+        )
+
+        # 1) 指向 sys.stderr 的 StreamHandler（Celery 场景）→ 控制台输出，应跳过（由 _TeeIO 捕获）
+        stderr_handler = logging.StreamHandler(sys.stderr)
+        root.addHandler(stderr_handler)
+        try:
+            assert _record_handled_by_console_handler(record) is True
+        finally:
+            root.removeHandler(stderr_handler)
+
+        # 2) 指向 StringIO 的 StreamHandler（如 pytest LogCaptureHandler）→ 非控制台，不应跳过
+        stringio_handler = logging.StreamHandler(io.StringIO())
+        root.addHandler(stringio_handler)
+        try:
+            assert _record_handled_by_console_handler(record) is False
+        finally:
+            root.removeHandler(stringio_handler)
+
+        # 3) FileHandler 不算“控制台输出”，不应被跳过
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".log") as tmp:
+            file_handler = logging.FileHandler(tmp.name)
+            root.addHandler(file_handler)
+            try:
+                assert _record_handled_by_console_handler(record) is False
+            finally:
+                file_handler.close()
+                root.removeHandler(file_handler)
+
+    def test_capture_handler_skips_noisy_loggers(self):
+        from app.core.task_log_capture import _CaptureHandler, _is_noisy_record
+
+        noisy = logging.LogRecord(
+            name="botocore.client", level=logging.INFO, pathname=__file__,
+            lineno=1, msg="noise", args=(), exc_info=None,
+        )
+        assert _is_noisy_record(noisy) is True
+
+        clean = logging.LogRecord(
+            name="app.my_business", level=logging.INFO, pathname=__file__,
+            lineno=1, msg="business", args=(), exc_info=None,
+        )
+        assert _is_noisy_record(clean) is False
+
+    def test_capture_handler_level_filtering(self):
+        """P2：root handler setLevel 取配置（默认 INFO），DEBUG 不入缓冲。
+
+        级别闸门由 ``logging.Logger.callHandlers`` 施加（``record.levelno >= handler.level``），
+        因此这里用真实 logger 触发（而非直接调 emit/handle），以验证级别过滤生效。
+        """
+        from app.core.task_log_capture import _CaptureHandler
+        from app.core.config import get_settings
+
+        handler = _CaptureHandler()
+        handler.setLevel(logging.getLevelName(get_settings().task_log_capture_level))
+
+        TaskLogCapture.start("p2-1")
+        buffer = TaskLogCapture.get("p2-1")
+        from celery._state import _task_stack, push_current_task
+        class _FakeTask:
+            class request:
+                id = "p2-1"
+        t = _FakeTask()
+        push_current_task(t)
+        try:
+            # 独立的 logger：只挂这个 capture handler，隔离 pytest 的 root 捕获 handler
+            lg = logging.getLogger("p2-test-logger")
+            lg.handlers = []
+            lg.setLevel(logging.DEBUG)
+            lg.propagate = False
+            lg.addHandler(handler)
+            try:
+                lg.debug("debug line")
+                lg.info("info line")
+            finally:
+                lg.removeHandler(handler)
+            snapshot = buffer.snapshot()
+            assert "debug line" not in snapshot
+            assert "info line" in snapshot
+        finally:
+            _task_stack.pop()
+            TaskLogCapture.stop("p2-1")
+
+
+class TestCrashFallbackFlush:
+    """P3：beat 兜底 flush_all 后，活跃缓冲增量可读（模拟崩溃前已 flush 的部分）。"""
+
+    def test_flush_all_flushes_active_buffers(self):
+        TaskLogCapture.start("crash-1")
+        buf = TaskLogCapture.get("crash-1")
+        buf._flush_interval = 9999  # 阻止写入驱动 flush
+        sent: list[list[str]] = []
+
+        from app.services import task_log_service
+        original = task_log_service.append_task_log_lines
+        task_log_service.append_task_log_lines = lambda task_id, lines: sent.append(list(lines))
+        try:
+            buf.write("line-a\nline-b")
+            sent.clear()
+            count = TaskLogCapture.flush_all()
+            assert count == 1
+            assert sent == [["line-a", "line-b"]], sent
+        finally:
+            task_log_service.append_task_log_lines = original
+        TaskLogCapture.stop("crash-1")
+
+
+class TestInstallProcessGate:
+    """P4：install() 只在 worker 进程安装；API / beat 进程不替换 stdout/stderr。"""
+
+    def test_should_install_with_worker_env(self, monkeypatch):
+        import app.core.task_log_capture as tlc
+        monkeypatch.setenv("PROCESS_TYPE", "worker")
+        assert tlc._should_install() is True
+
+    def test_should_not_install_with_api_env(self, monkeypatch):
+        import app.core.task_log_capture as tlc
+        monkeypatch.setenv("PROCESS_TYPE", "api")
+        assert tlc._should_install() is False
+
+    def test_should_install_by_worker_argv(self, monkeypatch):
+        import app.core.task_log_capture as tlc
+        monkeypatch.delenv("PROCESS_TYPE", raising=False)
+        monkeypatch.setattr("sys.argv", ["celery", "-A", "app.core.celery_app.celery_app", "worker", "--loglevel=INFO"])
+        assert tlc._should_install() is True
+
+    def test_should_not_install_for_api_argv(self, monkeypatch):
+        import app.core.task_log_capture as tlc
+        monkeypatch.delenv("PROCESS_TYPE", raising=False)
+        monkeypatch.setattr("sys.argv", ["uvicorn", "app.main:app", "--port", "8000"])
+        assert tlc._should_install() is False
+

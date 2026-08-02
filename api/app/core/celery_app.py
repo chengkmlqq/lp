@@ -32,6 +32,10 @@ celery_app.conf.update(
             "task": "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks",
             "schedule": 60.0,
         },
+        "flush-task-log-buffers": {
+            "task": "app.tasks.worker_registry_tasks.flush_task_log_buffers",
+            "schedule": 30.0,
+        },
     },
     # Redis broker 默认 visibility_timeout=3600s，重任务（如雷电分布导入约 106 分钟）
     # 超过 1 小时会被 Redis 重新投递，导致同一任务被两个 worker 并行执行。

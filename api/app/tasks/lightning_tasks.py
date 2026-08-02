@@ -213,6 +213,10 @@ def import_lightning_distribution_job(
             strikes,
             grid_size_km=float(dist.grid_size_km or 1.0),
             data_years=1.0,
+            # grid_cells 是纯内部计算的网格聚合明细（20 万格可占约 185MB），
+            # 无 API/前端消费者，密度图由 render_density_image 从落点独立重聚合，
+            # 故统计阶段不构建，避免巨大瞬时内存与序列化开销。
+            include_grid_cells=False,
         )
         dist.area_km2 = stats["area_km2"]
         dist.data_years = stats["data_years"]
@@ -222,7 +226,7 @@ def import_lightning_distribution_job(
         dist.positive_count = stats["positive_count"]
         dist.negative_count = stats["negative_count"]
         dist.unknown_count = stats["unknown_count"]
-        dist.stats_json = stats
+        dist.stats_json = {k: v for k, v in stats.items() if k != "grid_cells"}
         dist.progress = 75
         db.commit()
         _append_log(log_parts, task_id, 

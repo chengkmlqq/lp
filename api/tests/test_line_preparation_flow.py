@@ -18,7 +18,7 @@ from app.models.tower_lightning_result import TowerLightningResult
 from app.models.tower_profile import TowerProfile
 from app.schemas.fl_analysis import FlAnalysisJobCreateRequest
 from app.schemas.lightning import LightningCurrentPreparationRequest
-from app.services import elevation_service, fl_analysis_service, lightning_service
+from app.services import fl_analysis_service, lightning_service
 
 
 def _build_session() -> Session:
@@ -157,48 +157,5 @@ def test_fl_analysis_create_job_rejects_unprepared_line(monkeypatch) -> None:
         assert "雷电流幅值" in str(captured.value.detail)
         assert "地闪密度" in str(captured.value.detail)
         assert "地面倾角" in str(captured.value.detail)
-    finally:
-        session.close()
-
-
-def test_apply_points_to_line_towers_computes_ground_slopes() -> None:
-    session = _build_session()
-    try:
-        line = Line(code="L-003", name="高程线路", voltage_kv=110, lightning_param_json={})
-        session.add(line)
-        session.flush()
-
-        meter_to_lat = 1 / 111_320.0
-        session.add_all(
-            [
-                LineTower(line_id=line.id, seq_no=1, tower_no="P1", longitude=120.0, latitude=30.0 + 300 * meter_to_lat),
-                LineTower(line_id=line.id, seq_no=2, tower_no="P2", longitude=120.0, latitude=30.0 + 600 * meter_to_lat),
-                LineTower(line_id=line.id, seq_no=3, tower_no="P3", longitude=120.0, latitude=30.0 + 900 * meter_to_lat),
-            ]
-        )
-        session.commit()
-
-        points = [
-            elevation_service.ElevationSamplePoint(
-                lon=120.0,
-                lat=30.0 + distance_m * meter_to_lat,
-                altitude_m=100.0 + distance_m * 0.12,
-            )
-            for distance_m in range(0, 1251, 50)
-        ]
-
-        stats = elevation_service._apply_points_to_line_towers(
-            session,
-            line_id=line.id,
-            elevation_source=SimpleNamespace(id="ds-1", code="DEM-001"),
-            mode="overwrite_all",
-            points=points,
-        )
-
-        towers = session.execute(select(LineTower).where(LineTower.line_id == line.id).order_by(LineTower.seq_no.asc())).scalars().all()
-        assert stats["updated_tower_count"] == 3
-        assert all(tower.altitude_m is not None for tower in towers)
-        assert towers[1].slope_1 is not None
-        assert towers[1].slope_2 is not None
     finally:
         session.close()

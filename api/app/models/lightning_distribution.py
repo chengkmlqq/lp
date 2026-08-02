@@ -65,7 +65,7 @@ class LightningDistribution(Base):
     positive_count: Mapped[int] = mapped_column(Integer, default=0)
     negative_count: Mapped[int] = mapped_column(Integer, default=0)
     unknown_count: Mapped[int] = mapped_column(Integer, default=0)
-    stats_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)  # 冗余的完整统计
+    stats_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)  # 冗余的完整统计（不含 grid_cells，避免响应体过大）
 
     # ---- 图片（MinIO）----
     image_object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)

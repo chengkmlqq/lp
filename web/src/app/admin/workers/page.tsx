@@ -2,33 +2,29 @@
 
 import Link from "next/link";
 import dayjs from "dayjs";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ComponentType, RefAttributes } from "react";
+import { useCallback, useMemo, useState } from "react";
+import type { ComponentType, RefAttributes } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Button,
   Card,
-  Col,
   Drawer,
   Empty,
   Form,
   Input,
-  Row,
   Select,
   Space,
   Spin,
-  Switch,
   Table,
   Tag,
   Typography,
   type CardProps,
   type TableColumnsType,
 } from "antd";
-import { EyeOutlined, SearchOutlined } from "@ant-design/icons";
+import { ClusterOutlined, EyeOutlined, SearchOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
-import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { readApiError } from "@/lib/api";
 import { getTaskDisplayName } from "@/lib/celery-task-display";
@@ -38,16 +34,13 @@ import {
   getQueueDisplayName,
   getTaskSourceDisplay,
   getTaskStateDisplay,
-  normalizeQueueNames,
 } from "@/lib/task-monitor-display";
 
 const { Text } = Typography;
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 const DEFAULT_RECENT_LIMIT = 100;
-const WORKERS_TABLE_MIN_SCROLL_Y = 180;
-const WORKERS_TABLE_VIEWPORT_GAP = 40;
-const WORKERS_TABLE_FALLBACK_RESERVE = 220;
+const WORKERS_CARD_LIMIT = 12;
 
 type WorkerMonitorWorkerItem = {
   worker: string;
@@ -127,25 +120,6 @@ function renderTaskSourceTag(source: string) {
   return <Tag color={display.color}>{display.label}</Tag>;
 }
 
-function renderWorkerStatusTag(status: string) {
-  return (status || "").toUpperCase() === "ONLINE" ? <Tag color="green">在线</Tag> : <Tag color="default">离线</Tag>;
-}
-
-function renderQueueTags(queueNames: string[]) {
-  const normalized = normalizeQueueNames(queueNames);
-  return normalized.length > 0 ? (
-    <Space wrap size={[4, 4]}>
-      {normalized.map((queueName) => (
-        <Tag key={queueName} color="blue" bordered={false}>
-          {getQueueDisplayName(queueName)}
-        </Tag>
-      ))}
-    </Space>
-  ) : (
-    <Typography.Text type="secondary">-</Typography.Text>
-  );
-}
-
 function containsText(source: string | null | undefined, keyword: string): boolean {
   if (!keyword) {
     return true;
@@ -162,16 +136,12 @@ function parseStatusFilter(value: string | undefined): "online" | "offline" | un
 
 export default function AdminWorkersPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
-  const isMobile = useMobileDetection();
   const canRead = hasPermission("celery.read") || hasPermission("celery.manage");
 
   const [workerKeyword, setWorkerKeyword] = useState("");
   const [pendingWorkerKeyword, setPendingWorkerKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<"online" | "offline" | undefined>(undefined);
   const [selectedWorker, setSelectedWorker] = useState<string | null>(null);
-  const [tableScrollY, setTableScrollY] = useState(WORKERS_TABLE_MIN_SCROLL_Y);
-  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
-  const viewMode: "table" | "card" = isMobile ? "card" : "table";
 
   const overviewQuery = useQuery({
     queryKey: ["worker-monitor-overview"],
@@ -214,92 +184,6 @@ export default function AdminWorkersPage() {
     refetchInterval: false,
     staleTime: 15_000,
   });
-
-  const workerColumns = useMemo<TableColumnsType<WorkerMonitorWorkerItem>>(
-    () => [
-      {
-        title: "执行节点",
-        dataIndex: "worker",
-        key: "worker",
-        width: 220,
-        ellipsis: {
-          showTitle: false,
-        },
-        render: (value: string) => (
-          <Typography.Text ellipsis={{ tooltip: value || "-" }}>
-            {value || "-"}
-          </Typography.Text>
-        ),
-      },
-      {
-        title: "状态",
-        dataIndex: "status",
-        key: "status",
-        width: 90,
-        align: "center",
-        render: (value: string) => renderWorkerStatusTag(value),
-      },
-      {
-        title: "队列",
-        dataIndex: "queue_names",
-        key: "queue_names",
-        width: 180,
-        render: (value: string[]) => renderQueueTags(value),
-      },
-      {
-        title: "并发",
-        dataIndex: "concurrency",
-        key: "concurrency",
-        width: 70,
-        align: "center",
-      },
-      {
-        title: "预取",
-        dataIndex: "prefetch_count",
-        key: "prefetch_count",
-        width: 70,
-        align: "center",
-        render: () => 1,
-      },
-      {
-        title: "任务统计",
-        key: "runtime_counts",
-        width: 130,
-        render: (_: unknown, record) => `${record.active_count}/${record.reserved_count}/${record.scheduled_count}`,
-      },
-      {
-        title: "累计处理",
-        dataIndex: "processed_count",
-        key: "processed_count",
-        width: 100,
-      },
-      {
-        title: "注册任务",
-        dataIndex: "registered_count",
-        key: "registered_count",
-        width: 100,
-      },
-      {
-        title: "最近心跳",
-        dataIndex: "last_heartbeat_at",
-        key: "last_heartbeat_at",
-        width: 170,
-        render: (value: string | null) => formatDateTime(value),
-      },
-      {
-        title: "操作",
-        key: "action",
-        width: 110,
-        fixed: "right",
-        render: (_: unknown, record) => (
-          <Button size="small" icon={<EyeOutlined />} onClick={() => setSelectedWorker(record.worker)}>
-            任务
-          </Button>
-        ),
-      },
-    ],
-    [],
-  );
 
   const taskColumns = useMemo<TableColumnsType<WorkerMonitorTaskItem>>(
     () => [
@@ -433,19 +317,21 @@ export default function AdminWorkersPage() {
 
   const filteredWorkers = useMemo(() => {
     const rows = overviewQuery.data?.workers || [];
-    return rows.filter((item) => {
-      const online = (item.status || "").toUpperCase() === "ONLINE";
-      if (statusFilter === "online" && !online) {
-        return false;
-      }
-      if (statusFilter === "offline" && online) {
-        return false;
-      }
-      if (!containsText(item.worker, workerKeyword.trim())) {
-        return false;
-      }
-      return true;
-    });
+    return rows
+      .filter((item) => {
+        const online = (item.status || "").toUpperCase() === "ONLINE";
+        if (statusFilter === "online" && !online) {
+          return false;
+        }
+        if (statusFilter === "offline" && online) {
+          return false;
+        }
+        if (!containsText(item.worker, workerKeyword.trim())) {
+          return false;
+        }
+        return true;
+      })
+      .slice(0, WORKERS_CARD_LIMIT);
   }, [overviewQuery.data?.workers, statusFilter, workerKeyword]);
 
   const overviewErrorMessage = overviewQuery.error instanceof Error
@@ -458,74 +344,6 @@ export default function AdminWorkersPage() {
   useToastFeedback({
     errorMessage: overviewErrorMessage || taskErrorMessage,
   });
-
-  const updateTableScrollY = useCallback(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const anchor = tableScrollAnchorRef.current;
-    if (!anchor) {
-      return;
-    }
-
-    const anchorTop = anchor.getBoundingClientRect().top;
-    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
-    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
-
-    let nextHeight = Math.floor(window.innerHeight - anchorTop - WORKERS_TABLE_FALLBACK_RESERVE);
-    if (tableWrapper) {
-      const wrapperRect = tableWrapper.getBoundingClientRect();
-      const bodyHeight = tableBody?.getBoundingClientRect().height ?? WORKERS_TABLE_MIN_SCROLL_Y;
-      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
-      const topGap = Math.max(0, wrapperRect.top - anchorTop);
-      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - WORKERS_TABLE_VIEWPORT_GAP);
-    }
-
-    const clampedHeight = Math.max(WORKERS_TABLE_MIN_SCROLL_Y, nextHeight);
-    setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.requestAnimationFrame(updateTableScrollY);
-  }, [filteredWorkers.length, overviewErrorMessage, overviewQuery.isFetching, updateTableScrollY, viewMode]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const onViewportChange = () => {
-      window.requestAnimationFrame(updateTableScrollY);
-    };
-
-    window.addEventListener("resize", onViewportChange);
-    return () => {
-      window.removeEventListener("resize", onViewportChange);
-    };
-  }, [updateTableScrollY]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const anchor = tableScrollAnchorRef.current;
-    if (!anchor) {
-      return;
-    }
-
-    const resizeObserver = new ResizeObserver(() => {
-      window.requestAnimationFrame(updateTableScrollY);
-    });
-    resizeObserver.observe(anchor);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [updateTableScrollY]);
 
   if (initializing) {
     return <AdminPageLoading tip="初始化中..." minHeightClassName="min-h-[280px]" />;
@@ -562,56 +380,65 @@ export default function AdminWorkersPage() {
   const overview = overviewQuery.data;
   const taskOverview = workerTasksQuery.data;
 
-  const renderWorkerCard = (workerItem: WorkerMonitorWorkerItem) => (
-    <AntCard
-      key={workerItem.worker}
-      className="admin-workers-worker-card"
-      size="small"
-      title={
-        <Space className="min-w-0" size={8}>
-          <Typography.Text strong ellipsis={{ tooltip: workerItem.worker }}>
-            {workerItem.worker}
-          </Typography.Text>
-          {renderWorkerStatusTag(workerItem.status)}
+  const renderWorkerCard = (workerItem: WorkerMonitorWorkerItem) => {
+    const online = (workerItem.status || "").toUpperCase() === "ONLINE";
+    const idle = online && workerItem.active_count === 0;
+    return (
+      <AntCard
+        key={workerItem.worker}
+        className={`admin-workers-worker-card${online ? "" : " admin-workers-worker-card--offline"}`}
+        size="small"
+        title={
+          <Space className="admin-workers-worker-card-title" size={8}>
+            <span className={`admin-workers-worker-card-icon${online ? "" : " is-offline"}`}>
+              <ClusterOutlined />
+            </span>
+            <Typography.Text strong ellipsis={{ tooltip: workerItem.worker }}>
+              {workerItem.worker}
+            </Typography.Text>
+            <span className={`admin-workers-worker-card-status${online ? " is-online" : ""}`}>
+              {online ? "在线" : "离线"}
+            </span>
+          </Space>
+        }
+      >
+        <Space direction="vertical" size={0} style={{ width: "100%" }}>
+          <div className="admin-workers-worker-card-row">
+            <Typography.Text type="secondary">运行中任务</Typography.Text>
+            <Typography.Text strong>{workerItem.active_count}</Typography.Text>
+          </div>
+          <div className="admin-workers-worker-card-row">
+            <Typography.Text type="secondary">已处理任务</Typography.Text>
+            <Typography.Text strong>{workerItem.processed_count}</Typography.Text>
+          </div>
+          <div className="admin-workers-worker-card-row">
+            <Typography.Text type="secondary">空闲状态</Typography.Text>
+            <Tag color={idle ? "green" : "default"} bordered={false}>
+              {idle ? "空闲" : "忙碌"}
+            </Tag>
+          </div>
+          <div className="admin-workers-worker-card-row admin-workers-worker-card-row--divider">
+            <Typography.Text type="secondary">心跳时间</Typography.Text>
+            <Typography.Text className="admin-workers-worker-card-heartbeat">
+              {formatDateTime(workerItem.last_heartbeat_at)}
+            </Typography.Text>
+          </div>
+          <div className="admin-workers-worker-card-row admin-workers-worker-card-row--divider">
+            <Typography.Text type="secondary">注册任务</Typography.Text>
+            <Typography.Text>{workerItem.registered_count}</Typography.Text>
+          </div>
+          <Button
+            block
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => setSelectedWorker(workerItem.worker)}
+          >
+            查看运行中任务
+          </Button>
         </Space>
-      }
-      extra={
-        <Button
-          type="text"
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={() => setSelectedWorker(workerItem.worker)}
-        />
-      }
-    >
-      <Space direction="vertical" size={10} style={{ width: "100%" }}>
-        <div className="admin-workers-worker-card-field">
-          <Typography.Text type="secondary">队列</Typography.Text>
-          {renderQueueTags(workerItem.queue_names)}
-        </div>
-        <div className="admin-workers-worker-card-field">
-          <Typography.Text type="secondary">并发/预取</Typography.Text>
-          <Typography.Text>{workerItem.concurrency}/1</Typography.Text>
-        </div>
-        <div className="admin-workers-worker-card-field">
-          <Typography.Text type="secondary">任务</Typography.Text>
-          <Typography.Text>{workerItem.active_count}/{workerItem.reserved_count}/{workerItem.scheduled_count}</Typography.Text>
-        </div>
-        <div className="admin-workers-worker-card-field">
-          <Typography.Text type="secondary">累计处理</Typography.Text>
-          <Typography.Text>{workerItem.processed_count}</Typography.Text>
-        </div>
-        <div className="admin-workers-worker-card-field">
-          <Typography.Text type="secondary">注册任务</Typography.Text>
-          <Typography.Text>{workerItem.registered_count}</Typography.Text>
-        </div>
-        <div className="admin-workers-worker-card-field">
-          <Typography.Text type="secondary">最近心跳</Typography.Text>
-          <Typography.Text>{formatDateTime(workerItem.last_heartbeat_at)}</Typography.Text>
-        </div>
-      </Space>
-    </AntCard>
-  );
+      </AntCard>
+    );
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -619,142 +446,72 @@ export default function AdminWorkersPage() {
         className="admin-workers-page-card"
         title="Worker监控"
       >
-        {viewMode === "card" ? (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="执行节点" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按节点名称筛选"
-                  value={pendingWorkerKeyword}
-                  onChange={(event) => setPendingWorkerKeyword(event.target.value)}
-                  onPressEnter={handleWorkerSearch}
-                />
-              </Form.Item>
+        <div className="admin-filter-bar">
+          <Form layout="inline">
+            <Form.Item label="执行节点" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Input
+                allowClear
+                placeholder="按节点名称筛选"
+                value={pendingWorkerKeyword}
+                onChange={(event) => setPendingWorkerKeyword(event.target.value)}
+                onPressEnter={handleWorkerSearch}
+              />
+            </Form.Item>
 
-              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Select
-                  allowClear
-                  value={statusFilter}
-                  onChange={(value) => setStatusFilter(parseStatusFilter(value))}
-                  options={[
-                    { label: "在线", value: "online" },
-                    { label: "离线", value: "offline" },
-                  ]}
-                />
-              </Form.Item>
+            <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Select
+                allowClear
+                value={statusFilter}
+                onChange={(value) => setStatusFilter(parseStatusFilter(value))}
+                options={[
+                  { label: "在线", value: "online" },
+                  { label: "离线", value: "offline" },
+                ]}
+              />
+            </Form.Item>
 
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={handleWorkerSearch}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        ) : (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="执行节点" className="admin-filter-keyword-item">
-                <Input
-                  allowClear
-                  placeholder="按节点名称筛选"
-                  value={pendingWorkerKeyword}
-                  onChange={(event) => setPendingWorkerKeyword(event.target.value)}
-                  onPressEnter={handleWorkerSearch}
-                />
-              </Form.Item>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button
+                htmlType="button"
+                icon={<SearchOutlined />}
+                onClick={handleWorkerSearch}
+                className="admin-search-btn"
+              >
+                查询
+              </Button>
+            </Form.Item>
+          </Form>
+        </div>
 
-              <Form.Item label="状态" className="admin-filter-keyword-item">
-                <Select
-                  allowClear
-                  value={statusFilter}
-                  onChange={(value) => setStatusFilter(parseStatusFilter(value))}
-                  options={[
-                    { label: "在线", value: "online" },
-                    { label: "离线", value: "offline" },
-                  ]}
-                />
-              </Form.Item>
-
-              <Form.Item>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={handleWorkerSearch}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        )}
-
-        {viewMode === "table" ? (
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-workers-table-anchor"
-            style={{ "--admin-workers-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<WorkerMonitorWorkerItem>
-              rowKey={(record) => record.worker}
-              columns={workerColumns}
-              dataSource={filteredWorkers}
-              loading={{
-                spinning: overviewQuery.isFetching,
-                indicator: <Spin />,
-              }}
-              tableLayout="fixed"
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: (total) => `共 ${total} 条`,
-                hideOnSinglePage: false,
-                style: { marginBottom: 0 },
-              }}
-              locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="未找到符合筛选条件的执行节点。"
-                  />
-                ),
-              }}
-              scroll={{ x: 1300, y: tableScrollY }}
-            />
-          </div>
-        ) : (
-          <div className="admin-workers-card-view">
-            {overviewQuery.isLoading && filteredWorkers.length === 0 ? (
-              <div className="admin-workers-card-view-state">
-                <Spin tip="加载中..." />
+        <div className="admin-workers-card-view">
+          {overviewQuery.isLoading && filteredWorkers.length === 0 ? (
+            <div className="admin-workers-card-view-state">
+              <Spin tip="加载中..." />
+            </div>
+          ) : filteredWorkers.length === 0 ? (
+            <div className="admin-workers-card-view-state">
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="未找到符合筛选条件的执行节点。"
+              />
+            </div>
+          ) : (
+            <div className="admin-workers-card-view-content">
+              <div className="admin-workers-card-grid">
+                {filteredWorkers.map((workerItem) => (
+                  <div key={workerItem.worker} className="admin-workers-card-grid-item">
+                    {renderWorkerCard(workerItem)}
+                  </div>
+                ))}
               </div>
-            ) : filteredWorkers.length === 0 ? (
-              <div className="admin-workers-card-view-state">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的执行节点。"
-                />
-              </div>
-            ) : (
-              <div className="admin-workers-card-view-content">
-                <Row gutter={[12, 12]}>
-                  {filteredWorkers.map((workerItem) => (
-                    <Col key={workerItem.worker} xs={24} sm={24} md={12} lg={8} xl={6}>
-                      {renderWorkerCard(workerItem)}
-                    </Col>
-                  ))}
-                </Row>
-              </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
+        <div className="admin-workers-card-summary">
+          <Text type="secondary">
+            共 {overview?.summary.total ?? 0} 个 Worker · {overview?.summary.online ?? 0} 在线
+          </Text>
+        </div>
       </AntCard>
 
       <Drawer

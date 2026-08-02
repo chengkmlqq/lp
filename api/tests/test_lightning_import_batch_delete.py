@@ -94,3 +94,27 @@ def test_serialize_distribution_record() -> None:
         assert record.negative_count == 2
     finally:
         session.close()
+
+
+def test_serialize_distribution_strips_historical_grid_cells() -> None:
+    """列表序列化兜底剥离 stats_json 中的 grid_cells（防历史数据/再次引入）。"""
+    session = _build_session()
+    try:
+        dist = _add_distribution(session, status="completed")
+        dist.overall_ng = 2.0
+        dist.stats_json = {
+            "total_records": 100,
+            "area_km2": 25.0,
+            "overall_ng": 2.0,
+            "grid_cells": [{"grid_x": 0, "grid_y": 0, "strike_count": 99}],
+        }
+        session.commit()
+
+        record = lightning_service._serialize_distribution(dist)
+
+        assert record.stats_json is not None
+        assert "grid_cells" not in record.stats_json
+        assert record.stats_json["total_records"] == 100
+        assert record.stats_json["overall_ng"] == 2.0
+    finally:
+        session.close()
