@@ -1,6 +1,8 @@
 export type DimensionItem = {
   id: string;
   dimension_type: string;
+  type_id: string | null;
+  type_name: string | null;
   code: string;
   name: string;
   parent_id: string | null;

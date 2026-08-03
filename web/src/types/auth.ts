@@ -94,6 +94,17 @@ export type ParamCategoryTreeItem = {
   children: ParamCategoryTreeItem[];
 };
 
+export type DimensionTypeTreeItem = {
+  id: string;
+  code: string;
+  name: string;
+  parent_id: string | null;
+  description: string | null;
+  is_enabled: boolean;
+  sort_order: number;
+  children: DimensionTypeTreeItem[];
+};
+
 export type SystemParamSummary = {
   id: number;
   param_key: string;

@@ -31,6 +31,7 @@ def get_dimension_item_list(
     offset: int = Query(default=0, ge=0),
     keyword: str | None = Query(default=None),
     dimension_type: str | None = Query(default=None),
+    type_id: str | None = Query(default=None),
     enabled: bool | None = Query(default=None),
     _: CurrentUser = Depends(require_any_permission("dimension.read", "dimension.manage")),
     db: Session = Depends(get_db),
@@ -41,6 +42,7 @@ def get_dimension_item_list(
         offset=offset,
         keyword=keyword,
         dimension_type=dimension_type,
+        type_id=type_id,
         enabled=enabled,
     )
 
@@ -48,10 +50,11 @@ def get_dimension_item_list(
 @router.get("/tree", response_model=list[DimensionItemTreeNode])
 def get_dimension_item_tree(
     dimension_type: str | None = Query(default=None),
+    type_id: str | None = Query(default=None),
     _: CurrentUser = Depends(require_any_permission("dimension.read", "dimension.manage")),
     db: Session = Depends(get_db),
 ) -> list[DimensionItemTreeNode]:
-    return get_dimension_tree(db, dimension_type=dimension_type)
+    return get_dimension_tree(db, dimension_type=dimension_type, type_id=type_id)
 
 
 @router.post("", response_model=DimensionItemSummary)

@@ -6,6 +6,7 @@ from .v1.ai_chat import router as ai_chat_router
 from .v1.atp_assets import router as atp_assets_router
 from .v1.auth import router as auth_router
 from .v1.avatar import router as avatar_router
+from .v1.dimension_types import router as dimension_types_router
 from .v1.dimensions import router as dimensions_router
 from .v1.documents import router as documents_router
 from .v1.elevation import router as elevation_router
@@ -38,6 +39,7 @@ v1_router.include_router(admin_files_router)
 v1_router.include_router(ai_chat_router)
 v1_router.include_router(atp_assets_router)
 v1_router.include_router(dimensions_router)
+v1_router.include_router(dimension_types_router)
 v1_router.include_router(documents_router)
 v1_router.include_router(task_monitor_router)
 v1_router.include_router(task_logs_router)

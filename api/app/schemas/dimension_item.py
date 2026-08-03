@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 class DimensionItemSummary(BaseModel):
     id: str
     dimension_type: str
+    type_id: str | None = None
+    type_name: str | None = None
     code: str
     name: str
     parent_id: str | None = None
@@ -23,6 +25,8 @@ class DimensionItemSummary(BaseModel):
 class DimensionItemTreeNode(BaseModel):
     id: str
     dimension_type: str
+    type_id: str | None = None
+    type_name: str | None = None
     code: str
     name: str
     parent_id: str | None = None
@@ -42,7 +46,8 @@ class DimensionItemListResponse(BaseModel):
 
 
 class DimensionItemCreateRequest(BaseModel):
-    dimension_type: str = Field(min_length=1, max_length=64)
+    dimension_type: str | None = Field(default=None, max_length=64)
+    type_id: str | None = None
     code: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=255)
     parent_id: str | None = None
@@ -52,6 +57,8 @@ class DimensionItemCreateRequest(BaseModel):
 
 
 class DimensionItemUpdateRequest(BaseModel):
+    dimension_type: str | None = Field(default=None, max_length=64)
+    type_id: str | None = None
     code: str | None = Field(default=None, min_length=1, max_length=128)
     name: str | None = Field(default=None, min_length=1, max_length=255)
     parent_id: str | None = None
