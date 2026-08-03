@@ -42,7 +42,6 @@ import type {
   LightningAmplitudeRecord,
   LightningAmplitudeListResponse,
   LightningAmplitudeImportResponse,
-  LightningAmplitudeStatusResponse,
   LightningCurrentExceedanceResponse,
   LightningPolarity,
 } from "@/types/auth";
@@ -116,8 +115,6 @@ export default function AdminLightningCurrentsPage() {
   const [exceedanceModalOpen, setExceedanceModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedRecordForModal, setSelectedRecordForModal] = useState<LightningAmplitudeRecord | null>(null);
-  const [activeImportId, setActiveImportId] = useState<string | null>(null);
-  const [importWsProgress, setImportWsProgress] = useState<number | null>(null);
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -158,31 +155,6 @@ export default function AdminLightningCurrentsPage() {
   });
 
   const records = useMemo(() => recordsQuery.data?.items ?? [], [recordsQuery.data?.items]);
-
-  // ---- 导入任务进度轮询 ----
-  const importStatusPath = activeImportId
-    ? `/api/v1/lightning-currents/amplitudes/${activeImportId}/status`
-    : null;
-  const importStatusQuery = useQuery({
-    queryKey: [importStatusPath],
-    enabled: !!importStatusPath,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      if (status === "completed" || status === "failed") return false;
-      return 5000;
-    },
-    queryFn: async () => {
-      if (!importStatusPath) return null;
-      const response = await fetchWithAuth(importStatusPath);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LightningAmplitudeStatusResponse;
-    },
-  });
-
-  const activeRecord = importStatusQuery.data?.record ?? null;
-  const activeStatus = importStatusQuery.data?.status;
 
   const exceedancePath = `/api/v1/lightning-currents/stats/exceedance`;
 
@@ -230,14 +202,10 @@ export default function AdminLightningCurrentsPage() {
         peak_abs_current_ka?: number;
       };
       if (name === "amplitude.import_started") {
-        if (payload?.amplitude_id) setActiveImportId(payload.amplitude_id);
-        setImportWsProgress(payload?.progress ?? null);
+        void refreshAll();
       } else if (name === "amplitude.import_progress") {
-        setImportWsProgress(payload?.progress ?? null);
         void refreshAll();
       } else if (name === "amplitude.import_completed") {
-        setActiveImportId(null);
-        setImportWsProgress(null);
         setSuccess(
           payload?.sample_count != null
             ? `导入完成：采样点 ${payload.sample_count} 个，峰值 ${formatNumber(payload.peak_abs_current_ka, 2)}kA`
@@ -245,8 +213,6 @@ export default function AdminLightningCurrentsPage() {
         );
         void refreshAll();
       } else if (name === "amplitude.import_failed") {
-        setActiveImportId(null);
-        setImportWsProgress(null);
         setError(payload?.error || "导入失败，请在列表中对失败记录执行重试");
         void refreshAll();
       } else {
@@ -390,26 +356,7 @@ export default function AdminLightningCurrentsPage() {
     };
   }, [updateTableScrollY, viewMode]);
 
-  // 导入任务完成/失败时的反馈
-  useEffect(() => {
-    if (!activeImportId) return;
-    if (activeStatus === "completed") {
-      if (activeRecord) {
-        setSuccess(
-          `导入完成：采样点 ${activeRecord.sample_count} 个，峰值 ${formatNumber(activeRecord.peak_abs_current_ka, 2)}kA`,
-        );
-      } else {
-        setSuccess("导入完成");
-      }
-      setActiveImportId(null);
-    } else if (activeStatus === "failed") {
-      setError(activeRecord?.error_message || "导入失败，请在列表中对失败记录执行重试");
-      setActiveImportId(null);
-    }
-  }, [activeStatus, activeImportId, activeRecord]);
-
-  // 导入中弹窗展示进度
-  const importProgressModalOpen = !!activeImportId && (activeStatus === "processing" || activeStatus === "pending");
+  // 导入中进度直接通过订阅消息 + 表格“状态”列展示，不弹进度条轮询弹窗
 
   const importMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -444,8 +391,6 @@ export default function AdminLightningCurrentsPage() {
     onSuccess: async (payload) => {
       setError("");
       setSuccess(`导入任务已提交（任务ID: ${payload.task_id}），正在后台处理`);
-      setActiveImportId(payload.amplitude_id);
-      setImportWsProgress(null);
       setImportModalOpen(false);
       importForm.resetFields();
       setSelectedFile(null);
@@ -494,7 +439,6 @@ export default function AdminLightningCurrentsPage() {
     onSuccess: async (payload) => {
       setError("");
       setSuccess(`重试任务已提交（任务ID: ${payload.task_id}）`);
-      setActiveImportId(payload.amplitude_id);
       await refreshAll();
     },
     onError: (candidate) => {
@@ -1220,21 +1164,6 @@ export default function AdminLightningCurrentsPage() {
             )}
           </Space>
         )}
-      </Modal>
-
-      <Modal
-        title="导入处理中"
-        open={importProgressModalOpen}
-        footer={null}
-        closable={false}
-        width={420}
-      >
-        <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Typography.Text>
-            正在解析文件并提取波形特征…
-          </Typography.Text>
-          <Progress percent={importWsProgress ?? activeRecord?.progress ?? 0} status={activeStatus === "failed" ? "exception" : "active"} />
-        </Space>
       </Modal>
     </div>
   );

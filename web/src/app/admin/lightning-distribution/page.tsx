@@ -70,13 +70,6 @@ const STATUS_META: Record<string, { color: string; label: string }> = {
   failed: { color: "error", label: "失败" },
 };
 
-const STAGE_META: Record<string, string> = {
-  parsing: "解析中",
-  validating: "校验中",
-  statistics: "统计中",
-  rendering: "出图中",
-};
-
 const LIGHTNING_TABLE_MIN_SCROLL_Y = 180;
 const LIGHTNING_TABLE_VIEWPORT_GAP = 40;
 const LIGHTNING_TABLE_FALLBACK_RESERVE = 220;
@@ -120,7 +113,6 @@ export default function AdminLightningDistributionPage() {
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [activeImportId, setActiveImportId] = useState<string | null>(null);
-  const [importProgress, setImportProgress] = useState<{ stage: string; progress: number } | null>(null);
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
@@ -207,16 +199,14 @@ export default function AdminLightningDistributionPage() {
       };
       if (name === "distribution.import_started") {
         if (payload?.distribution_id) setActiveImportId(payload.distribution_id);
-        setImportProgress({ stage: payload?.stage ?? "", progress: payload?.progress ?? 0 });
+        void refreshAll();
       } else if (name === "distribution.import_progress") {
-        setImportProgress({ stage: payload?.stage ?? "", progress: payload?.progress ?? 0 });
+        void refreshAll();
       } else if (name === "distribution.import_completed") {
         setActiveImportId(null);
-        setImportProgress(null);
         void refreshAll();
       } else if (name === "distribution.import_failed") {
         setActiveImportId(null);
-        setImportProgress(null);
         setError(payload?.error || "分布导入失败，请查看记录详情后重试");
         void refreshAll();
       }
@@ -280,9 +270,6 @@ export default function AdminLightningDistributionPage() {
       setActiveImportId(null);
     }
   }, [activeStatus, activeImportId, activeRecord]);
-
-  // 导入中弹窗展示进度
-  const importProgressModalOpen = !!activeImportId && (activeStatus === "processing" || activeStatus === "pending");
 
   // ---- 删除 ----
   const deleteMutation = useMutation({
@@ -778,27 +765,6 @@ export default function AdminLightningDistributionPage() {
           form={fillForm}
         />
       )}
-
-      <Modal
-        title="导入处理中"
-        open={importProgressModalOpen}
-        footer={null}
-        closable={false}
-        width={420}
-      >
-        <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Typography.Text>
-            正在
-            {importProgress?.stage && STAGE_META[importProgress.stage]
-              ? STAGE_META[importProgress.stage]
-              : activeRecord ? (STAGE_META[activeRecord.stage] ?? activeRecord.stage) : "解析"}文件…
-          </Typography.Text>
-          <Progress
-            percent={importProgress?.progress ?? activeRecord?.progress ?? 0}
-            status={activeStatus === "failed" ? "exception" : "active"}
-          />
-        </Space>
-      </Modal>
     </div>
   );
 }
