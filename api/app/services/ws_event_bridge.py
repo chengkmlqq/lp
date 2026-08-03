@@ -117,7 +117,7 @@ async def ws_event_forwarder() -> None:
 
     last_id = "0"
     while True:
-        messages = _read_ws_events(last_id, block_ms=1000)
+        messages = await asyncio.to_thread(_read_ws_events, last_id, 1000)
         if not messages:
             continue
         for message in messages:
