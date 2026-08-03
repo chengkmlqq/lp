@@ -25,7 +25,7 @@ import {
 import { MoreOutlined, EditOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode, type RefAttributes } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -62,6 +62,11 @@ function statusLabel(status: string): string {
   if (status === "active") return "启用";
   if (status === "disabled") return "禁用";
   return status || "-";
+}
+
+// 状态过滤下拉的选中项/选项以 Tag 展示，颜色与表格状态列保持一致
+function statusTag(value: unknown): ReactNode {
+  return <Tag color={value === "active" ? "green" : "red"}>{statusLabel(String(value ?? ""))}</Tag>;
 }
 
 const USERS_TABLE_MIN_SCROLL_Y = 180;
@@ -864,6 +869,12 @@ export default function AdminUsersPage() {
             onClick: () => openAssignRolesModal(row),
           },
           {
+            key: "reset-password",
+            label: "重置密码",
+            disabled: rowBusy,
+            onClick: () => openResetPasswordModal(row),
+          },
+          {
             key: "toggle-status",
             label: row.status === "active" ? "禁用" : "启用",
             disabled: rowBusy || row.id === user?.id,
@@ -875,12 +886,6 @@ export default function AdminUsersPage() {
               const nextStatus: "active" | "disabled" = row.status === "active" ? "disabled" : "active";
               updateUserProfileMutation.mutate({ userId: row.id, payload: { status: nextStatus } });
             },
-          },
-          {
-            key: "reset-password",
-            label: "重置密码",
-            disabled: rowBusy,
-            onClick: () => openResetPasswordModal(row),
           },
         ];
 
@@ -947,6 +952,12 @@ export default function AdminUsersPage() {
         onClick: () => openAssignRolesModal(userItem),
       },
       {
+        key: "reset-password",
+        label: "重置密码",
+        disabled: rowBusy,
+        onClick: () => openResetPasswordModal(userItem),
+      },
+      {
         key: "toggle-status",
         label: userItem.status === "active" ? "禁用" : "启用",
         disabled: rowBusy || userItem.id === user?.id,
@@ -958,12 +969,6 @@ export default function AdminUsersPage() {
           const nextStatus: "active" | "disabled" = userItem.status === "active" ? "disabled" : "active";
           updateUserProfileMutation.mutate({ userId: userItem.id, payload: { status: nextStatus } });
         },
-      },
-      {
-        key: "reset-password",
-        label: "重置密码",
-        disabled: rowBusy,
-        onClick: () => openResetPasswordModal(userItem),
       },
     ];
 
@@ -1119,6 +1124,8 @@ export default function AdminUsersPage() {
                     { value: "active", label: "已启用" },
                     { value: "disabled", label: "已禁用" },
                   ]}
+                  labelRender={(props) => statusTag(props.value)}
+                  optionRender={(option) => statusTag(option.value)}
                   onChange={(value) => {
                     setStatusFilter(value);
                     setPagination((prev) => ({ ...prev, current: 1 }));

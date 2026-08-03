@@ -31,7 +31,6 @@ from ..schemas.lightning import (
     LightningDistributionRecord,
     LightningDistributionListResponse,
     LightningDistributionStatusResponse,
-    LightningDistributionImageResponse,
     LightningDensityPreparationRequest,
     LightningDensityPreparationResponse,
     LightningCurrentExceedancePoint,
@@ -44,7 +43,8 @@ from .line_preparation_service import record_line_preparation_source, summarize_
 from .line_service import serialize_line
 from .push_service import publish_topic
 
-LIGHTNING_TOPIC = "admin.lightning-currents"
+LIGHTNING_DISTRIBUTION_TOPIC = "admin.lightning-distribution"
+LIGHTNING_AMPLITUDE_TOPIC = "admin.lightning-amplitude"
 POWER_LINES_TOPIC = "admin.power-lines"
 TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "gbk", "latin-1")
 MAX_SAMPLES = 2_000_000
@@ -388,6 +388,8 @@ def delete_lightning_amplitude(db: Session, amplitude_id: str) -> dict[str, bool
     _publish_lightning_change(
         "lightning.deleted",
         {"event_id": amp.id, "message": f"删除雷电流幅值记录：{amp.source_file_name}"},
+        topic=LIGHTNING_AMPLITUDE_TOPIC,
+        requires_refetch=["/api/v1/lightning-currents/amplitudes"],
     )
     return {"success": True}
 
@@ -1050,13 +1052,18 @@ def _publish_line_change(event_name: str, payload: dict[str, Any]) -> None:
         )
     )
 
-def _publish_lightning_change(event_name: str, payload: dict[str, Any]) -> None:
+def _publish_lightning_change(event_name: str, payload: dict[str, Any], topic: str = LIGHTNING_DISTRIBUTION_TOPIC, requires_refetch: list[str] | None = None) -> None:
+    if requires_refetch is None:
+        if topic == LIGHTNING_AMPLITUDE_TOPIC:
+            requires_refetch = ["/api/v1/lightning-currents/amplitudes"]
+        else:
+            requires_refetch = ["/api/v1/lightning-currents/distributions"]
     _fire_and_forget(
         publish_topic(
-            LIGHTNING_TOPIC,
+            topic,
             name=event_name,
             payload=payload,
-            requires_refetch=["/api/v1/lightning-currents"],
+            requires_refetch=requires_refetch,
             dedupe_key=f"{event_name}:{payload.get('event_id', 'unknown')}",
         )
     )
@@ -1065,8 +1072,13 @@ def _fire_and_forget(coro: object) -> None:
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
+        # 无运行中的事件循环（例如 Celery worker 同步线程），直接同步执行协程。
+        try:
+            asyncio.run(coro)  # type: ignore[arg-type]
+        except Exception:
+            pass
         return
-    loop.create_task(coro)
+    loop.create_task(coro)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -1263,19 +1275,23 @@ def get_lightning_distribution_status(
     )
 
 
-def get_lightning_distribution_image_url(
+def get_lightning_distribution_image_content(
     db: Session,
     distribution_id: str,
-) -> LightningDistributionImageResponse:
-    """返回密度图 MinIO 预签名 URL（供前端 <img> 直接展示）。"""
+) -> tuple[bytes | None, str | None]:
+    """从 MinIO 读取密度图图片二进制，返回 (content, media_type)。
+
+    不直接暴露 MinIO 内网预签名地址，改由 LP 服务代理返回图片字节，
+    供浏览器经 LP 服务加载。无图时 content 为 None。
+    """
     dist = get_lightning_distribution_by_id(db, distribution_id)
     if not dist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
     if not dist.image_object_key:
-        return LightningDistributionImageResponse(distribution_id=dist.id, image_url=None)
-    from ..services.minio_storage import presigned_url
-    image_url = presigned_url(dist.image_object_key, expires=3600)
-    return LightningDistributionImageResponse(distribution_id=dist.id, image_url=image_url)
+        return None, None
+    from ..services import minio_storage
+    content = minio_storage.get_object(dist.image_object_key)
+    return content, "image/png"
 
 
 def retry_lightning_distribution(
@@ -1328,6 +1344,8 @@ def delete_lightning_distribution(db: Session, distribution_id: str) -> dict[str
     _publish_lightning_change(
         "lightning.deleted",
         {"event_id": distribution_id, "message": f"删除地闪分布记录：{dist.source_file_name}"},
+        topic=LIGHTNING_DISTRIBUTION_TOPIC,
+        requires_refetch=["/api/v1/lightning-currents/distributions"],
     )
     return {"success": True}
 

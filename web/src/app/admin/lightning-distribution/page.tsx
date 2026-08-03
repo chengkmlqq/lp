@@ -20,14 +20,15 @@ import {
   Spin,
   Table,
   Tag,
+  Tooltip,
   Typography,
   Upload,
   type CardProps,
   type MenuProps,
 } from "antd";
-import { MoreOutlined, SearchOutlined } from "@ant-design/icons";
+import { MoreOutlined, QuestionCircleOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useMemo, useState, type ComponentType, type RefAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type RefAttributes } from "react";
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
@@ -41,7 +42,6 @@ import type {
   LightningDistributionRecord,
   LightningDistributionListResponse,
   LightningDistributionStatusResponse,
-  LightningDistributionImageResponse,
   LightningFillDensityResponse,
   LineSummary,
   LineListResponse,
@@ -77,6 +77,24 @@ const STAGE_META: Record<string, string> = {
   rendering: "出图中",
 };
 
+const LIGHTNING_TABLE_MIN_SCROLL_Y = 180;
+const LIGHTNING_TABLE_VIEWPORT_GAP = 40;
+const LIGHTNING_TABLE_FALLBACK_RESERVE = 220;
+
+const FIELD_HELP_TOOLTIPS = {
+  overallNg: "地闪密度：区域内单位面积、单位时间内的落雷次数，即有效落雷数 ÷（面积 km² × 统计年数），单位为 次/(km²·年)。数值越高表示该区域雷击活动越频繁。",
+  maxCurrent: "区域内落雷电流绝对值的最大值（kA），反映该区域最强一次雷击的电流强度。",
+  avgCurrent: "区域内落雷电流绝对值的平均值（kA），反映该区域雷击电流的总体强度水平。",
+} as const;
+
+function FieldHelpTooltip({ content }: { content: string }) {
+  return (
+    <Tooltip title={content}>
+      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px", marginLeft: 4 }} />
+    </Tooltip>
+  );
+}
+
 function formatNumber(value: number | null | undefined, digits = 3): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "-";
@@ -102,6 +120,9 @@ export default function AdminLightningDistributionPage() {
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [activeImportId, setActiveImportId] = useState<string | null>(null);
+  const [importProgress, setImportProgress] = useState<{ stage: string; progress: number } | null>(null);
+  const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
   const canManage = hasPermission("lightning.manage");
@@ -119,7 +140,7 @@ export default function AdminLightningDistributionPage() {
   const distributionsQuery = useQuery({
     queryKey: [distributionsPath],
     enabled: !!user && canRead,
-    refetchInterval: 5000,
+    refetchInterval: false,
     queryFn: async () => {
       const response = await fetchWithAuth(distributionsPath);
       if (!response.ok) {
@@ -142,7 +163,7 @@ export default function AdminLightningDistributionPage() {
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       if (status === "completed" || status === "failed") return false;
-      return 2000;
+      return 5000;
     },
     queryFn: async () => {
       if (!importStatusPath) return null;
@@ -174,9 +195,31 @@ export default function AdminLightningDistributionPage() {
   }, [queryClient]);
 
   useTopicSubscription(
-    "admin.lightning-currents",
-    useCallback(() => {
-      void refreshAll();
+    "admin.lightning-distribution",
+    useCallback((event) => {
+      const name = event.name;
+      const payload = event.payload as {
+        distribution_id?: string;
+        stage?: string;
+        progress?: number;
+        status?: string;
+        error?: string;
+      };
+      if (name === "distribution.import_started") {
+        if (payload?.distribution_id) setActiveImportId(payload.distribution_id);
+        setImportProgress({ stage: payload?.stage ?? "", progress: payload?.progress ?? 0 });
+      } else if (name === "distribution.import_progress") {
+        setImportProgress({ stage: payload?.stage ?? "", progress: payload?.progress ?? 0 });
+      } else if (name === "distribution.import_completed") {
+        setActiveImportId(null);
+        setImportProgress(null);
+        void refreshAll();
+      } else if (name === "distribution.import_failed") {
+        setActiveImportId(null);
+        setImportProgress(null);
+        setError(payload?.error || "分布导入失败，请查看记录详情后重试");
+        void refreshAll();
+      }
     }, [refreshAll]),
   );
 
@@ -299,32 +342,83 @@ export default function AdminLightningDistributionPage() {
     void queryClient.refetchQueries({ queryKey: [distributionsPath] });
   };
 
+  // ---- 表格高度自适应（参考用户管理页）----
+  const updateTableScrollY = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+
+    const anchorTop = anchor.getBoundingClientRect().top;
+    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
+    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
+
+    let nextHeight = Math.floor(window.innerHeight - anchorTop - LIGHTNING_TABLE_FALLBACK_RESERVE);
+    if (tableWrapper) {
+      const wrapperRect = tableWrapper.getBoundingClientRect();
+      const bodyHeight = tableBody?.getBoundingClientRect().height ?? LIGHTNING_TABLE_MIN_SCROLL_Y;
+      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
+      const topGap = Math.max(0, wrapperRect.top - anchorTop);
+      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - LIGHTNING_TABLE_VIEWPORT_GAP);
+    }
+
+    const clampedHeight = Math.max(LIGHTNING_TABLE_MIN_SCROLL_Y, nextHeight);
+    setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.requestAnimationFrame(updateTableScrollY);
+  }, [records.length, distributionsQuery.isFetching, updateTableScrollY]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const onViewportChange = () => {
+      window.requestAnimationFrame(updateTableScrollY);
+    };
+
+    window.addEventListener("resize", onViewportChange);
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+    };
+  }, [updateTableScrollY]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(updateTableScrollY);
+    });
+    resizeObserver.observe(anchor);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [updateTableScrollY]);
+
   // ---- 表格列 ----
   const columns = useMemo<ColumnsType<LightningDistributionRecord>>(
     () => [
-      {
-        title: "城市",
-        dataIndex: "city",
-        width: 110,
-        render: (value: string | null) => value || "-",
-      },
-      {
-        title: "地点标签",
-        dataIndex: "location_tag",
-        width: 130,
-        render: (value: string | null) => value || "-",
-      },
       {
         title: "文件名",
         dataIndex: "source_file_name",
         width: 200,
         render: (value: string) => value || "-",
-      },
-      {
-        title: "年份",
-        dataIndex: "event_year",
-        width: 70,
-        render: (value: number | null) => value ?? "-",
       },
       {
         title: "导入时间",
@@ -355,32 +449,47 @@ export default function AdminLightningDistributionPage() {
         render: (value: number) => value,
       },
       {
-        title: "整体Ng",
+        title: (
+          <span>
+            整体Ng
+            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.overallNg} />
+          </span>
+        ),
         dataIndex: "overall_ng",
-        width: 90,
+        width: 130,
         render: (value: number | null) => formatNumber(value, 4),
       },
       {
-        title: "最大电流(kA)",
+        title: (
+          <span>
+            最大电流(kA)
+            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.maxCurrent} />
+          </span>
+        ),
         dataIndex: "max_abs_current",
-        width: 110,
+        width: 130,
         render: (value: number | null) => formatNumber(value, 2),
       },
       {
-        title: "平均电流(kA)",
+        title: (
+          <span>
+            平均电流(kA)
+            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
+          </span>
+        ),
         dataIndex: "avg_abs_current",
-        width: 110,
+        width: 130,
         render: (value: number | null) => formatNumber(value, 2),
       },
       {
         title: "操作",
         key: "actions",
-        width: canManage ? 220 : 160,
+        width: canManage ? 120 : 80,
         fixed: "right",
         render: (_: unknown, row) => (
           <Space wrap>
             <Button size="small" onClick={() => openImageModal(row)}>
-              看图
+              详情
             </Button>
             {canManage && (
               <Button
@@ -412,7 +521,7 @@ export default function AdminLightningDistributionPage() {
     const dropdownItems: MenuProps["items"] = [
       {
         key: "image",
-        label: "查看密度图",
+        label: "详情",
         onClick: () => openImageModal(record),
       },
       ...(canManage
@@ -475,13 +584,28 @@ export default function AdminLightningDistributionPage() {
             <Typography.Text>{record.valid_count}</Typography.Text>
           </div>
           <div className="admin-lightning-distribution-batch-card-field">
-            <Typography.Text type="secondary">整体 Ng</Typography.Text>
+            <Typography.Text type="secondary">
+              整体 Ng
+              <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.overallNg} />
+            </Typography.Text>
             <Typography.Text>{formatNumber(record.overall_ng, 4)}</Typography.Text>
           </div>
           <div className="admin-lightning-distribution-batch-card-field">
-            <Typography.Text type="secondary">电流范围</Typography.Text>
+            <Typography.Text type="secondary">
+              最大电流
+              <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.maxCurrent} />
+            </Typography.Text>
             <Typography.Text>
-              {formatNumber(record.max_abs_current, 2)} kA (最大)
+              {formatNumber(record.max_abs_current, 2)} kA
+            </Typography.Text>
+          </div>
+          <div className="admin-lightning-distribution-batch-card-field">
+            <Typography.Text type="secondary">
+              平均电流
+              <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
+            </Typography.Text>
+            <Typography.Text>
+              {formatNumber(record.avg_abs_current, 2)} kA
             </Typography.Text>
           </div>
           {record.status === "processing" && (
@@ -591,28 +715,34 @@ export default function AdminLightningDistributionPage() {
             )}
           </div>
         ) : (
-          <Table<LightningDistributionRecord>
-            rowKey="id"
-            columns={columns}
-            dataSource={records}
-            loading={distributionsQuery.isFetching}
-            tableLayout="fixed"
-            pagination={{
-              pageSize: 20,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50, 100],
-              showTotal: (total) => `共 ${records.length} 条`,
-            }}
-            scroll={{ x: 1300 }}
-            locale={{
-              emptyText: (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的地闪分布记录。"
-                />
-              ),
-            }}
-          />
+          <div
+            ref={tableScrollAnchorRef}
+            className="admin-lightning-distribution-table-anchor"
+            style={{ "--admin-lightning-distribution-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+          >
+            <Table<LightningDistributionRecord>
+              rowKey="id"
+              columns={columns}
+              dataSource={records}
+              loading={distributionsQuery.isFetching}
+              tableLayout="fixed"
+              pagination={{
+                pageSize: 20,
+                showSizeChanger: true,
+                pageSizeOptions: [10, 20, 50, 100],
+                showTotal: (total) => `共 ${records.length} 条`,
+              }}
+              scroll={{ x: 1000, y: tableScrollY }}
+              locale={{
+                emptyText: (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="未找到符合筛选条件的地闪分布记录。"
+                  />
+                ),
+              }}
+            />
+          </div>
         )}
       </AntCard>
 
@@ -658,9 +788,15 @@ export default function AdminLightningDistributionPage() {
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Typography.Text>
-            正在{activeRecord ? STAGE_META[activeRecord.stage] ?? activeRecord.stage : "解析"}文件…
+            正在
+            {importProgress?.stage && STAGE_META[importProgress.stage]
+              ? STAGE_META[importProgress.stage]
+              : activeRecord ? (STAGE_META[activeRecord.stage] ?? activeRecord.stage) : "解析"}文件…
           </Typography.Text>
-          <Progress percent={activeRecord?.progress ?? 0} status={activeStatus === "failed" ? "exception" : "active"} />
+          <Progress
+            percent={importProgress?.progress ?? activeRecord?.progress ?? 0}
+            status={activeStatus === "failed" ? "exception" : "active"}
+          />
         </Space>
       </Modal>
     </div>
@@ -690,14 +826,14 @@ function ImportModal({
   const [lineSearchText, setLineSearchText] = useState("");
 
   const linesQuery = useQuery({
-    queryKey: ["/api/v1/power-lines", lineSearchText],
+    queryKey: ["/api/v1/lines", lineSearchText],
     enabled: open,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", "200");
       params.set("offset", "0");
       if (lineSearchText.trim()) params.set("keyword", lineSearchText.trim());
-      const response = await fetchWithAuth(`/api/v1/power-lines?${params.toString()}`);
+      const response = await fetchWithAuth(`/api/v1/lines?${params.toString()}`);
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
@@ -813,11 +949,19 @@ function ImageViewModal({
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return (await response.json()) as LightningDistributionImageResponse;
+      const blob = await response.blob();
+      if (blob.size === 0) return null;
+      return URL.createObjectURL(blob);
     },
   });
 
-  const imageUrl = imageQuery.data?.image_url ?? null;
+  useEffect(() => {
+    const objectUrl = imageQuery.data;
+    if (!objectUrl) return;
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [imageQuery.data]);
+
+  const imageUrl = imageQuery.data ?? null;
 
   return (
     <Modal
@@ -837,9 +981,24 @@ function ImageViewModal({
             <Descriptions.Item label="有效点数">{record.valid_count}</Descriptions.Item>
             <Descriptions.Item label="面积(km²)">{formatNumber(record.area_km2, 3)}</Descriptions.Item>
             <Descriptions.Item label="统计年限">{formatNumber(record.data_years, 3)}</Descriptions.Item>
-            <Descriptions.Item label="整体 Ng">{formatNumber(record.overall_ng, 4)}</Descriptions.Item>
-            <Descriptions.Item label="Imax(kA)">{formatNumber(record.max_abs_current, 2)}</Descriptions.Item>
-            <Descriptions.Item label="Iavg(kA)">{formatNumber(record.avg_abs_current, 2)}</Descriptions.Item>
+            <Descriptions.Item label={
+              <span>
+                整体 Ng
+                <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.overallNg} />
+              </span>
+            }>{formatNumber(record.overall_ng, 4)}</Descriptions.Item>
+            <Descriptions.Item label={
+              <span>
+                Imax(kA)
+                <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.maxCurrent} />
+              </span>
+            }>{formatNumber(record.max_abs_current, 2)}</Descriptions.Item>
+            <Descriptions.Item label={
+              <span>
+                Iavg(kA)
+                <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
+              </span>
+            }>{formatNumber(record.avg_abs_current, 2)}</Descriptions.Item>
             <Descriptions.Item label="正极数量">{record.positive_count}</Descriptions.Item>
             <Descriptions.Item label="负极数量">{record.negative_count}</Descriptions.Item>
             <Descriptions.Item label="未知极性">{record.unknown_count}</Descriptions.Item>
@@ -881,14 +1040,14 @@ function FillDensityModal({
   const [error, setError] = useState("");
 
   const linesQuery = useQuery({
-    queryKey: ["/api/v1/power-lines", lineSearchText],
+    queryKey: ["/api/v1/lines", lineSearchText],
     enabled: open,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", "200");
       params.set("offset", "0");
       if (lineSearchText.trim()) params.set("keyword", lineSearchText.trim());
-      const response = await fetchWithAuth(`/api/v1/power-lines?${params.toString()}`);
+      const response = await fetchWithAuth(`/api/v1/lines?${params.toString()}`);
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }

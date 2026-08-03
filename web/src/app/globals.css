@@ -1234,46 +1234,22 @@ body {
    system-params 布局样式 (redesigned)
    ====================================== */
 
-/* ---- Page wrapper & card ---- */
-.admin-system-params-page-wrapper {
+/* ---- Page card (mirrors .admin-menus-page-card) ---- */
+.admin-system-params-page-card {
+  display: flex;
   flex: 1;
   min-height: 0;
-  display: flex;
   flex-direction: column;
+  border-radius: 8px;
 }
 
-.admin-system-params-page-card {
-  flex: 1;
+.admin-system-params-page-card > .ant-card-body {
   display: flex;
+  min-height: 0;
+  flex: 1;
   flex-direction: column;
   overflow: hidden;
-  background: var(--ant-color-bg-container);
-  border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 8px;
-  margin: 0;
-}
-
-/* ---- Page header ---- */
-.admin-system-params-page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px var(--space-4, 16px);
-  flex-shrink: 0;
-}
-
-.admin-system-params-page-title {
-  font-family: var(--font-display, "Plus Jakarta Sans", "Ant Sans", "Alibaba PuHuiTi", Inter, Arial, sans-serif);
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.018em;
-  margin: 0;
-}
-
-.admin-system-params-page-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2, 8px);
+  padding: 0;
 }
 
 /* ---- Page body (two-column) ---- */
@@ -1283,7 +1259,8 @@ body {
   display: flex;
   gap: 0;
   overflow: hidden;
-  padding: 0 var(--space-2, 8px) var(--space-2, 8px);
+  padding: 0 8px 8px;
+  padding-top: 8px;
 }
 
 /* ---- Category sider card ---- */
@@ -1448,38 +1425,19 @@ body {
   height: 48px;
 }
 
-/* ---- Right panel ---- */
-.admin-system-params-right-panel {
-  display: flex;
+/* ---- Right panel (mirrors .admin-menus-main) ---- */
+.admin-system-params-main {
   flex: 1;
-  min-height: 0;
   min-width: 0;
+  display: flex;
   flex-direction: column;
-  margin-left: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
-/* ---- Table ---- */
+/* ---- Table (mirrors .admin-menus-table-anchor: rely on antd default opaque fixed-column backgrounds) ---- */
 .admin-system-params-table-anchor .ant-table-body {
   min-height: var(--admin-system-params-table-body-min-height, 180px);
-}
-
-.admin-system-params-table-anchor .ant-table-thead > tr > th {
-  background: color-mix(in srgb, var(--ant-color-primary) 6%, transparent) !important;
-  font-weight: 600;
-  font-size: 12px;
-  color: var(--ant-color-text);
-  border-bottom: 1px solid var(--ant-color-border-secondary);
-  padding: 9px 16px;
-}
-
-.admin-system-params-table-anchor .ant-table-tbody > tr > td {
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--ant-color-border-secondary);
-  font-size: 14px;
-}
-
-.admin-system-params-table-anchor .ant-table-tbody > tr:hover > td {
-  background: color-mix(in srgb, var(--ant-color-text) 4%, transparent) !important;
 }
 
 /* ---- Card view ---- */
@@ -1534,44 +1492,7 @@ body {
   align-items: baseline;
 }
 
-/* ---- Responsive ---- */
-@media (max-width: 1024px) {
-  .admin-system-params-page-card {
-    margin: 0;
-  }
-
-  .admin-system-params-page-body {
-    padding: 0 var(--space-3, 12px) var(--space-3, 12px);
-  }
-
-  .admin-system-params-right-panel {
-    margin-left: 8px;
-  }
-}
-
 @media (max-width: 768px) {
-  .admin-system-params-page-card {
-    margin: 0;
-  }
-
-  .admin-system-params-page-header {
-    padding: var(--space-3, 12px) var(--space-4, 16px) 0;
-  }
-
-  .admin-system-params-page-body {
-    flex-direction: column;
-    gap: var(--space-2, 8px);
-    padding: 0 var(--space-2, 8px) var(--space-2, 8px);
-  }
-
-  .admin-system-params-resize-handle {
-    display: none;
-  }
-
-  .admin-system-params-right-panel {
-    margin-left: 0;
-  }
-
   .admin-filter-bar {
     flex-direction: column;
     align-items: stretch;
@@ -3303,19 +3224,4 @@ body {
   color: var(--ant-color-primary) !important;
   border-color: var(--ant-color-primary) !important;
   background: color-mix(in srgb, var(--ant-color-primary) 20%, transparent) !important;
-}
-
-/* Fix: operation column header transparency */
-.admin-system-params-table-anchor .ant-table-cell-fix-right,
-.admin-system-params-table-anchor .ant-table-cell-fix-right-last {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-system-params-table-anchor .ant-table-cell-fix-right.ant-table-cell-fix-header {
-  background: color-mix(in srgb, var(--ant-color-primary) 6%, transparent) !important;
-}
-
-/* Fix: operation column z-index to prevent overlap */
-.admin-system-params-table-anchor .ant-table-cell-fix-right {
-  z-index: 2;
 }

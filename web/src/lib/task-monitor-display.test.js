@@ -47,3 +47,8 @@ test("getTaskDisplayName hides internal task paths behind chinese labels", () =>
   assert.equal(getTaskDisplayName("app.tasks.atp_asset_tasks.process_release_archive_upload"), "ATP 版本归档处理");
   assert.equal(getTaskDisplayName("app.tasks.unknown_tasks.custom_job"), "未识别任务");
 });
+
+test("getTaskDisplayName labels LP-206 newly registered tasks", () => {
+  assert.equal(getTaskDisplayName("app.tasks.lightning_tasks.fill_line_lightning_density_job"), "线路地闪密度回填");
+  assert.equal(getTaskDisplayName("app.tasks.worker_registry_tasks.flush_task_log_buffers"), "任务日志缓冲落库");
+});

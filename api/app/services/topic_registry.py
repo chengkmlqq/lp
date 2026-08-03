@@ -29,6 +29,8 @@ TOPIC_RULES: dict[str, TopicRule] = {
     "admin.atp-assets": TopicRule(any_permission_codes={"atp.read", "atp.run", "atp.manage"}),
     "admin.audit_logs": TopicRule(any_permission_codes={"menu.read", "menu.manage"}),
     "admin.scheduled-tasks": TopicRule(any_permission_codes={"celery.read", "celery.manage"}),
+    "admin.lightning-distribution": TopicRule(any_permission_codes={"lightning.read", "lightning.manage"}),
+    "admin.lightning-amplitude": TopicRule(any_permission_codes={"lightning.read", "lightning.manage"}),
 }
 
 

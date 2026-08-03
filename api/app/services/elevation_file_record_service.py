@@ -341,6 +341,7 @@ def _create_file_records_from_zip(
     """Extract ZIP file and create file records for each contained elevation data file."""
     warnings: list[str] = []
     created_records: list[ElevationFileRecord] = []
+    storage_failures: list[str] = []
 
     try:
         with zipfile.ZipFile(io.BytesIO(zip_content)) as archive:
@@ -393,7 +394,7 @@ def _create_file_records_from_zip(
                         content_type=mimetypes.guess_type(member_name)[0],
                     )
                 except Exception as exc:
-                    warnings.append(f"压缩包条目 {member_name} 存储失败: {exc}")
+                    storage_failures.append(f"压缩包条目 {member_name} 存储失败: {exc}")
                     continue
 
                 # Create database record
@@ -425,6 +426,20 @@ def _create_file_records_from_zip(
         ) from exc
 
     if not created_records:
+        if storage_failures:
+            # ZIP contained valid elevation files but none could be stored
+            # (e.g. S3 SignatureDoesNotMatch). Surface the storage reason up
+            # front instead of the misleading "no valid elevation file found".
+            detail = (
+                "ZIP 中已找到合法高程数据文件，但全部存储失败，请检查存储后端配置"
+                + "：" + "；".join(storage_failures[:10])
+            )
+            if len(storage_failures) > 10:
+                detail += f"（共 {len(storage_failures)} 条存储失败，仅显示前 10 条）"
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=detail,
+            )
         detail = "ZIP 文件中没有找到有效的高程数据文件"
         if warnings:
             detail += "：" + "；".join(warnings[:10])

@@ -366,6 +366,9 @@ class S3StorageDriver:
             config=client_config,
         )
         self._bucket = bucket
+        self._endpoint_url = _coerce_non_empty_string(config.get("endpoint_url"))
+        self._region_name = _coerce_non_empty_string(config.get("region_name"))
+        self._access_key_id = _coerce_non_empty_string(config.get("access_key_id"))
         self._root_prefix = _normalize_s3_prefix(mount_root_path)
         self._should_write_directory_markers = bool(config.get("write_directory_markers", False))
 
@@ -528,7 +531,8 @@ class S3StorageDriver:
         try:
             self._client.put_object(**put_kwargs)
         except Exception as exc:  # pragma: no cover - provider specific errors
-            raise StorageDriverError(f"S3 upload failed: {exc}") from exc
+            detail = self._describe_s3_write_failure(exc)
+            raise StorageDriverError(f"S3 upload failed: {detail}") from exc
 
         return StorageObject(
             path=normalized,
@@ -698,6 +702,27 @@ class S3StorageDriver:
                 Bucket=self._bucket,
                 Delete={"Objects": [{"Key": key} for key in chunk], "Quiet": True},
             )
+
+    def _describe_s3_write_failure(self, exc: Exception) -> str:
+        """Build a diagnostic message for an S3 put_object failure.
+
+        Includes bucket / endpoint / region / key-prefix alongside the raw
+        exception so config mismatches (common cause of SignatureDoesNotMatch)
+        are easier to root-cause. Never leaks the secret access key.
+        """
+        parts: list[str] = [str(exc)]
+        parts.append(f"bucket={self._bucket!r}")
+        if self._endpoint_url:
+            parts.append(f"endpoint={self._endpoint_url}")
+        if self._region_name:
+            parts.append(f"region={self._region_name}")
+        # Redact: surface only a short prefix of the access key id for eyeballing.
+        if self._access_key_id:
+            prefix = self._access_key_id[:4]
+            parts.append(f"access_key_id_prefix=****{prefix}")
+        if self._root_prefix:
+            parts.append(f"key_prefix={self._root_prefix!r}")
+        return " | ".join(parts)
 
     def _key_for_path(self, normalized_path: str) -> str:
         relative = normalized_path.strip("/")

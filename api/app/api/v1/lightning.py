@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
@@ -19,7 +20,6 @@ from ...schemas.lightning import (
     LightningDistributionRecord,
     LightningDistributionListResponse,
     LightningDistributionStatusResponse,
-    LightningDistributionImageResponse,
     LightningDensityPreparationRequest,
     LightningDensityPreparationResponse,
     LightningFillDensityRequest,
@@ -31,7 +31,7 @@ from ...services.lightning_service import (
     get_lightning_amplitude_detail,
     get_lightning_amplitude_status,
     get_lightning_distribution_detail,
-    get_lightning_distribution_image_url,
+    get_lightning_distribution_image_content,
     get_lightning_distribution_status,
     get_peak_exceedance_curve,
     import_lightning_amplitude_from_file,
@@ -275,13 +275,16 @@ def get_lightning_distribution_status_endpoint(
     return get_lightning_distribution_status(db, distribution_id)
 
 
-@router.get("/distributions/{distribution_id}/image", response_model=LightningDistributionImageResponse)
+@router.get("/distributions/{distribution_id}/image")
 def get_lightning_distribution_image_endpoint(
     distribution_id: str,
     _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
     db: Session = Depends(get_db),
-) -> LightningDistributionImageResponse:
-    return get_lightning_distribution_image_url(db, distribution_id)
+) -> StreamingResponse:
+    content, media_type = get_lightning_distribution_image_content(db, distribution_id)
+    if content is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="密度图不存在")
+    return StreamingResponse(iter([content]), media_type=media_type or "image/png")
 
 
 @router.post("/distributions/{distribution_id}/retry", response_model=LightningDistributionImportResponse)

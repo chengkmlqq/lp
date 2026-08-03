@@ -797,7 +797,7 @@ export default function AdminSystemParamsPage() {
       baseColumns.push({
         title: "操作",
         key: "actions",
-        width: 220,
+        width: 180,
         fixed: "right",
         render: (_, record) => {
           const deleteLoading = deletingId === record.id;
@@ -972,60 +972,58 @@ export default function AdminSystemParamsPage() {
   }
 
   return (
-    <div className="admin-system-params-page-wrapper">
-      <div className="admin-system-params-page-card">
-        {/* ===== Page Header ===== */}
-        <div className="admin-system-params-page-header">
-          <h2 className="admin-system-params-page-title">系统参数管理</h2>
-          <div className="admin-system-params-page-actions">
-            <Space>
-              {canManage && (
-                <Button type="primary" onClick={startCreate}>
-                  <PlusOutlined /> 新建参数
-                </Button>
-              )}
-              {canManage && selectedCategoryId !== null ? (
-                <Space>
-                  {(() => {
-                    const findCat = (items: ParamCategoryTreeItem[], id: number): ParamCategoryTreeItem | null => {
-                      for (const item of items) {
-                        if (item.id === id) return item;
-                        if (item.children) {
-                          const found = findCat(item.children, id);
-                          if (found) return found;
-                        }
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AntCard
+        className="admin-system-params-page-card"
+        title="系统参数管理"
+        extra={
+          <Space>
+            {canManage && (
+              <Button type="primary" onClick={startCreate}>
+                <PlusOutlined /> 新建参数
+              </Button>
+            )}
+            {canManage && selectedCategoryId !== null ? (
+              <Space>
+                {(() => {
+                  const findCat = (items: ParamCategoryTreeItem[], id: number): ParamCategoryTreeItem | null => {
+                    for (const item of items) {
+                      if (item.id === id) return item;
+                      if (item.children) {
+                        const found = findCat(item.children, id);
+                        if (found) return found;
                       }
-                      return null;
-                    };
-                    const currentCat = findCat(categoryTreeQuery.data ?? [], selectedCategoryId);
-                    return currentCat ? (
-                      <>
-                        <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
-                          编辑分类
-                        </Button>
-                        <Button size="small" danger
-                          onClick={() => {
-                            Modal.confirm({
-                              title: "删除分类",
-                              content: `确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`,
-                              okText: "删除",
-                              cancelText: "取消",
-                              okButtonProps: { danger: true },
-                              onOk: () => deleteCategoryMutation.mutate(currentCat.id),
-                            });
-                          }}
-                        >
-                          删除分类
-                        </Button>
-                      </>
-                    ) : null;
-                  })()}
-                </Space>
-              ) : null}
-            </Space>
-          </div>
-        </div>
-
+                    }
+                    return null;
+                  };
+                  const currentCat = findCat(categoryTreeQuery.data ?? [], selectedCategoryId);
+                  return currentCat ? (
+                    <>
+                      <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
+                        编辑分类
+                      </Button>
+                      <Button size="small" danger
+                        onClick={() => {
+                          Modal.confirm({
+                            title: "删除分类",
+                            content: `确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`,
+                            okText: "删除",
+                            cancelText: "取消",
+                            okButtonProps: { danger: true },
+                            onOk: () => deleteCategoryMutation.mutate(currentCat.id),
+                          });
+                        }}
+                      >
+                        删除分类
+                      </Button>
+                    </>
+                  ) : null;
+                })()}
+              </Space>
+            ) : null}
+          </Space>
+        }
+      >
         {/* ===== Body Area: Two-column layout ===== */}
         <div ref={containerRef} className="admin-system-params-page-body">
         {/* Category Sidebar */}
@@ -1098,16 +1096,7 @@ export default function AdminSystemParamsPage() {
         {/* Right Panel: filter + table/card-view */}
         <div
           ref={isMobile ? pageCardRef : undefined}
-          className="admin-system-params-right-panel"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            display: "flex",
-            flexDirection: "column",
-            overflowX: "hidden",
-            overflowY: "auto",
-            background: "var(--ant-color-bg-container)",
-          }}
+          className="admin-system-params-main"
         >
           <div className="admin-filter-bar">
             <Form layout="inline">
@@ -1149,7 +1138,7 @@ export default function AdminSystemParamsPage() {
             <div
               ref={tableScrollAnchorRef}
               className="admin-system-params-table-anchor"
-              style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", "--admin-system-params-table-body-min-height": `${tableScrollY}px` } as React.CSSProperties}
+              style={{ "--admin-system-params-table-body-min-height": `${tableScrollY}px` } as React.CSSProperties}
             >
               <Table<SystemParamSummary>
                 rowKey="id"
@@ -1170,7 +1159,7 @@ export default function AdminSystemParamsPage() {
                     setPagination({ current: page, pageSize });
                   },
                 }}
-                scroll={{ x: 1400, y: tableScrollY }}
+                scroll={{ y: tableScrollY }}
                 locale={{
                   emptyText: (
                     <Empty
@@ -1337,7 +1326,7 @@ export default function AdminSystemParamsPage() {
           </Modal>
         )}
       </div>
-    </div>
+      </AntCard>
     </div>
   );
 }

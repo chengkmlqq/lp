@@ -918,6 +918,16 @@ def _seed_file_storage(
                     backend_category.overwritten += 1
                 else:
                     backend_category.unchanged += 1
+            elif code == "files.s3.default":
+                # The auto-managed S3 default backend must stay in sync with the
+                # current deployment env. If MINIO_* vars changed after the first
+                # seed, stale DB config would cause S3 SignatureDoesNotMatch on
+                # upload. Reconcile only the known managed S3 fields so we don't
+                # clobber user edits to other backends / mounts.
+                if _reconcile_s3_default_config(backend, normalized_config):
+                    backend_category.updated += 1
+                else:
+                    backend_category.unchanged += 1
             else:
                 backend_category.unchanged += 1
 
@@ -984,6 +994,39 @@ def _apply_backend_defaults(
     backend.status = status
     backend.is_default = is_default
     backend.config_json = config_json
+    return changed
+
+
+# Fields of the auto-managed default S3 backend that are reconciled from env on
+# every seed. Secret access key is included so a rotated credential is applied
+# automatically; it is stored in DB config_json (existing behavior).
+_S3_DEFAULT_MANAGED_CONFIG_KEYS = (
+    "bucket",
+    "region_name",
+    "endpoint_url",
+    "access_key_id",
+    "secret_access_key",
+)
+
+
+def _reconcile_s3_default_config(
+    backend: FileStorageBackend,
+    desired_config: dict[str, object],
+) -> bool:
+    """Bring the S3 default backend's managed fields in line with env.
+
+    Only touches the managed S3 keys; leaves other config/user data intact.
+    Returns True if any field was actually changed.
+    """
+    current = backend.config_json if isinstance(backend.config_json, dict) else {}
+    changed = False
+    for key in _S3_DEFAULT_MANAGED_CONFIG_KEYS:
+        desired = desired_config.get(key)
+        if current.get(key) != desired:
+            current[key] = desired
+            changed = True
+    if changed:
+        backend.config_json = current
     return changed
 
 

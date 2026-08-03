@@ -14,6 +14,50 @@ from ..models.line import Line
 from ..models.line_tower import LineTower
 from ..models.lightning_amplitude import LightningAmplitude
 from ..models.lightning_distribution import LightningDistribution
+from ..services.lightning_service import (
+    LIGHTNING_AMPLITUDE_TOPIC,
+    LIGHTNING_DISTRIBUTION_TOPIC,
+)
+
+
+# ---------------------------------------------------------------------------
+# WebSocket 事件推送辅助
+#
+# Celery worker 与 FastAPI(Web) 进程分离，WS 连接持有在 Web 进程内存的
+# ws_connection_manager 中；worker 直接调用 publish_topic() 会投递到 worker
+# 自己进程内空的连接管理器，消息被静默丢弃。因此统一走 Redis Stream 事件桥
+# （ws_event_bridge），由 Web 进程转发给对应 topic 的订阅者。
+# ---------------------------------------------------------------------------
+def _publish_distribution_event(event_name: str, payload: dict[str, Any]) -> None:
+    """向 admin.lightning-distribution 主题推送地闪密度导入事件（经 Redis 桥）。"""
+    try:
+        from ..services.ws_event_bridge import publish_ws_event_from_worker
+
+        publish_ws_event_from_worker(
+            LIGHTNING_DISTRIBUTION_TOPIC,
+            name=event_name,
+            payload=payload,
+            requires_refetch=["/api/v1/lightning-currents/distributions"],
+            dedupe_key=f"{event_name}:{payload.get('distribution_id', 'unknown')}",
+        )
+    except Exception:
+        pass
+
+
+def _publish_amplitude_event(event_name: str, payload: dict[str, Any]) -> None:
+    """向 admin.lightning-amplitude 主题推送雷电流幅值导入事件（经 Redis 桥）。"""
+    try:
+        from ..services.ws_event_bridge import publish_ws_event_from_worker
+
+        publish_ws_event_from_worker(
+            LIGHTNING_AMPLITUDE_TOPIC,
+            name=event_name,
+            payload=payload,
+            requires_refetch=["/api/v1/lightning-currents/amplitudes"],
+            dedupe_key=f"{event_name}:{payload.get('amplitude_id', 'unknown')}",
+        )
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +225,12 @@ def import_lightning_distribution_job(
         dist.task_id = task_id
         db.commit()
         _append_log(log_parts, task_id, f"[{task_id}] source_object_key={dist.source_object_key}")
+        _publish_distribution_event("distribution.import_started", {
+            "distribution_id": dist.id,
+            "status": dist.status,
+            "stage": dist.stage,
+            "progress": dist.progress,
+        })
 
         # ---- 2. 从 MinIO 下载原始文件 ----
         content = minio_storage.get_object(dist.source_object_key)
@@ -191,6 +241,11 @@ def import_lightning_distribution_job(
         dist.stage = "validating"
         dist.progress = 20
         db.commit()
+        _publish_distribution_event("distribution.import_progress", {
+            "distribution_id": dist.id,
+            "stage": "validating",
+            "progress": 20,
+        })
         warnings: list[str] = []
         strikes = lightning_statistics.parse_distribution_content(text, warnings=warnings)
         skipped_count = max(total_lines - len(strikes), 0)
@@ -203,7 +258,12 @@ def import_lightning_distribution_job(
         dist.stage = "statistics"
         dist.progress = 50
         db.commit()
-        _append_log(log_parts, task_id, 
+        _publish_distribution_event("distribution.import_progress", {
+            "distribution_id": dist.id,
+            "stage": "statistics",
+            "progress": 50,
+        })
+        _append_log(log_parts, task_id,
             f"[{task_id}] Parsed {len(strikes)} strikes, skipped={skipped_count}, "
             f"warnings={len(warnings)}"
         )
@@ -229,7 +289,12 @@ def import_lightning_distribution_job(
         dist.stats_json = {k: v for k, v in stats.items() if k != "grid_cells"}
         dist.progress = 75
         db.commit()
-        _append_log(log_parts, task_id, 
+        _publish_distribution_event("distribution.import_progress", {
+            "distribution_id": dist.id,
+            "stage": "rendering",
+            "progress": 75,
+        })
+        _append_log(log_parts, task_id,
             f"[{task_id}] Stats: area={stats['area_km2']:.3f}km², "
             f"Ng={stats['overall_ng']:.4f}"
         )
@@ -253,6 +318,16 @@ def import_lightning_distribution_job(
         dist.status = "completed"
         dist.progress = 100
         db.commit()
+        _publish_distribution_event("distribution.import_completed", {
+            "distribution_id": dist.id,
+            "status": "completed",
+            "overall_ng": dist.overall_ng,
+            "area_km2": dist.area_km2,
+            "has_image": bool(dist.image_object_key),
+            "valid_count": len(strikes),
+            "skipped_count": skipped_count,
+            "warning_count": len(warnings),
+        })
 
         _upload_log(task_id, log_parts)
         return {
@@ -278,6 +353,10 @@ def import_lightning_distribution_job(
                 dist.status = "failed"
                 dist.error_message = str(exc)
                 db.commit()
+                _publish_distribution_event("distribution.import_failed", {
+                    "distribution_id": dist.id,
+                    "error": str(exc),
+                })
         except Exception:
             db.rollback()
         raise
@@ -570,6 +649,11 @@ def import_lightning_amplitude_job(
         amp.task_id = task_id
         db.commit()
         _append_log(log_parts, task_id, f"[{task_id}] source_object_key={amp.source_object_key}")
+        _publish_amplitude_event("amplitude.import_started", {
+            "amplitude_id": amp.id,
+            "status": amp.status,
+            "progress": amp.progress,
+        })
 
         # ---- 2. 从 MinIO 下载原始文件 ----
         content = minio_storage.get_object(amp.source_object_key)
@@ -584,6 +668,10 @@ def import_lightning_amplitude_job(
 
         amp.progress = 30
         db.commit()
+        _publish_amplitude_event("amplitude.import_progress", {
+            "amplitude_id": amp.id,
+            "progress": 30,
+        })
         _append_log(log_parts, task_id,
             f"[{task_id}] Parsed {len(parsed.currents_ka)} samples, "
             f"warnings={len(parsed.warnings)}"
@@ -601,6 +689,10 @@ def import_lightning_amplitude_job(
         features = _extract_wave_features(parsed.currents_ka, time_axis_us, inferred_interval_us)
         amp.progress = 70
         db.commit()
+        _publish_amplitude_event("amplitude.import_progress", {
+            "amplitude_id": amp.id,
+            "progress": 70,
+        })
 
         # ---- 6. 统计回写 ----
         if not amp.event_id:
@@ -635,11 +727,14 @@ def import_lightning_amplitude_job(
 
         # ---- 7. 发布通知 ----
         try:
-            from ..services.lightning_service import _publish_lightning_change
-            _publish_lightning_change(
-                "lightning.created",
-                {"event_id": amp.id, "message": f"雷电流幅值导入完成：{amp.source_file_name}"},
-            )
+            _publish_amplitude_event("amplitude.import_completed", {
+                "amplitude_id": amp.id,
+                "status": "completed",
+                "sample_count": amp.sample_count,
+                "peak_abs_current_ka": amp.peak_abs_current_ka,
+                "wave_shape": amp.wave_shape,
+                "source_file_name": amp.source_file_name,
+            })
         except Exception:
             pass
 
@@ -667,6 +762,10 @@ def import_lightning_amplitude_job(
                 amp.error_message = str(exc)
                 amp.update_user = actor_user_id
                 db.commit()
+                _publish_amplitude_event("amplitude.import_failed", {
+                    "amplitude_id": amp.id,
+                    "error": str(exc),
+                })
         except Exception:
             db.rollback()
         raise

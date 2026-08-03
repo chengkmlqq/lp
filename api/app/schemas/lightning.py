@@ -164,11 +164,6 @@ class LightningDistributionStatusResponse(BaseModel):
     record: LightningDistributionRecord | None = None
 
 
-class LightningDistributionImageResponse(BaseModel):
-    distribution_id: str
-    image_url: str | None = None
-
-
 # ---------------------------------------------------------------------------
 # 线路回填（prepare / fill）
 # ---------------------------------------------------------------------------

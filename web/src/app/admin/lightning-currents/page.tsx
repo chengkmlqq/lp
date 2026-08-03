@@ -117,6 +117,7 @@ export default function AdminLightningCurrentsPage() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedRecordForModal, setSelectedRecordForModal] = useState<LightningAmplitudeRecord | null>(null);
   const [activeImportId, setActiveImportId] = useState<string | null>(null);
+  const [importWsProgress, setImportWsProgress] = useState<number | null>(null);
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -146,7 +147,7 @@ export default function AdminLightningCurrentsPage() {
   const recordsQuery = useQuery({
     queryKey: [listPath],
     enabled: !!user && canRead,
-    refetchInterval: 5000,
+    refetchInterval: false,
     queryFn: async () => {
       const response = await fetchWithAuth(listPath);
       if (!response.ok) {
@@ -168,7 +169,7 @@ export default function AdminLightningCurrentsPage() {
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       if (status === "completed" || status === "failed") return false;
-      return 2000;
+      return 5000;
     },
     queryFn: async () => {
       if (!importStatusPath) return null;
@@ -217,9 +218,40 @@ export default function AdminLightningCurrentsPage() {
   }, [queryClient]);
 
   useTopicSubscription(
-    "admin.lightning-currents",
-    useCallback(() => {
-      void refreshAll();
+    "admin.lightning-amplitude",
+    useCallback((event) => {
+      const name = event.name;
+      const payload = event.payload as {
+        amplitude_id?: string;
+        progress?: number;
+        status?: string;
+        error?: string;
+        sample_count?: number;
+        peak_abs_current_ka?: number;
+      };
+      if (name === "amplitude.import_started") {
+        if (payload?.amplitude_id) setActiveImportId(payload.amplitude_id);
+        setImportWsProgress(payload?.progress ?? null);
+      } else if (name === "amplitude.import_progress") {
+        setImportWsProgress(payload?.progress ?? null);
+        void refreshAll();
+      } else if (name === "amplitude.import_completed") {
+        setActiveImportId(null);
+        setImportWsProgress(null);
+        setSuccess(
+          payload?.sample_count != null
+            ? `导入完成：采样点 ${payload.sample_count} 个，峰值 ${formatNumber(payload.peak_abs_current_ka, 2)}kA`
+            : "导入完成",
+        );
+        void refreshAll();
+      } else if (name === "amplitude.import_failed") {
+        setActiveImportId(null);
+        setImportWsProgress(null);
+        setError(payload?.error || "导入失败，请在列表中对失败记录执行重试");
+        void refreshAll();
+      } else {
+        void refreshAll();
+      }
     }, [refreshAll]),
   );
 
@@ -413,6 +445,7 @@ export default function AdminLightningCurrentsPage() {
       setError("");
       setSuccess(`导入任务已提交（任务ID: ${payload.task_id}），正在后台处理`);
       setActiveImportId(payload.amplitude_id);
+      setImportWsProgress(null);
       setImportModalOpen(false);
       importForm.resetFields();
       setSelectedFile(null);
@@ -1200,7 +1233,7 @@ export default function AdminLightningCurrentsPage() {
           <Typography.Text>
             正在解析文件并提取波形特征…
           </Typography.Text>
-          <Progress percent={activeRecord?.progress ?? 0} status={activeStatus === "failed" ? "exception" : "active"} />
+          <Progress percent={importWsProgress ?? activeRecord?.progress ?? 0} status={activeStatus === "failed" ? "exception" : "active"} />
         </Space>
       </Modal>
     </div>

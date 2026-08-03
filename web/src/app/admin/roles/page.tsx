@@ -498,7 +498,8 @@ export default function AdminRolesPage() {
       {
         title: "菜单",
         dataIndex: "menu_ids",
-        width: 300,
+        // 不设置固定宽度：在 tableLayout="fixed" 下作为弹性列吸收表格富余宽度，
+        // 使「角色编码」「角色名称」「操作」等固定宽度列不随窗口缩放而变化。
         render: (value: string[]) => {
           if (value.length === 0) {
             return <Typography.Text type="secondary">未绑定菜单</Typography.Text>;
@@ -528,7 +529,7 @@ export default function AdminRolesPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-        width: 140,
+        width: 180,
         render: (_, role) => {
           const isDeleting = deletingRoleId === role.id;
           const isSaving = savingRoleId === role.id;
@@ -940,7 +941,7 @@ export default function AdminRolesPage() {
 
       {canManage && (
         <Modal
-          title={editingRole ? `编辑角色：${editingRole.name}（${editingRole.code}）` : "新建角色"}
+          title={editingRole ? `编辑角色：${editingRole.name}` : "新建角色"}
           open={dialogOpen}
           destroyOnHidden
           okText={editingRole ? "保存修改" : "创建角色"}

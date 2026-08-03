@@ -1307,11 +1307,6 @@ export type LightningDistributionStatusResponse = {
   record: LightningDistributionRecord | null;
 };
 
-export type LightningDistributionImageResponse = {
-  distribution_id: string;
-  image_url: string | null;
-};
-
 export type LightningFillDensityRequest = {
   line_id: string;
   region_id?: string | null;
