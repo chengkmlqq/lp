@@ -1448,8 +1448,8 @@ body {
 }
 
 .admin-system-params-table-anchor .ant-table-pagination {
-  /* LP-226: 顶部 margin 12px，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 !important;
+  /* LP-226: 顶部 margin 12px、底部 margin 0，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
 }
 
 /* ---- Card view ---- */

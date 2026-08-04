@@ -60,7 +60,7 @@ const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLD
 const PARAM_TABLE_MIN_SCROLL_Y = 180;
 const PARAM_TABLE_VIEWPORT_GAP = 40;
 const PARAM_TABLE_FALLBACK_RESERVE = 232;
-const PARAM_TABLE_EXTRA_HEIGHT = 28;
+const PARAM_TABLE_EXTRA_HEIGHT = -16;
 
 function paramStatusLabel(status: SystemParamSummary["status"]): string {
   if (status === "enabled") return "启用";
