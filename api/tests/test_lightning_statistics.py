@@ -75,7 +75,31 @@ def test_compute_statistics_persistent_stats_do_not_include_grid_cells() -> None
         "positive_count",
         "negative_count",
         "unknown_count",
+        "bbox",
     }
+
+
+def test_compute_statistics_bbox_reflects_strike_extents() -> None:
+    """stats_json 新增的 bbox 反映落雷经纬度范围（含端点）。"""
+    strikes = [
+        {"lat": 30.0, "lon": 120.0, "current_ka": 10.0, "polarity": "positive"},
+        {"lat": 30.05, "lon": 120.07, "current_ka": -5.0, "polarity": "negative"},
+        {"lat": 29.98, "lon": 120.02, "current_ka": 0.0, "polarity": "unknown"},
+    ]
+    stats = lightning_statistics.compute_statistics(strikes, grid_size_km=1.0, data_years=1.0)
+
+    assert stats["bbox"] == {
+        "min_lat": 29.98,
+        "max_lat": 30.05,
+        "min_lon": 120.0,
+        "max_lon": 120.07,
+    }
+
+
+def test_compute_statistics_bbox_none_when_empty() -> None:
+    """空落雷集合 bbox 为 None，避免前端误用无效范围。"""
+    stats = lightning_statistics.compute_statistics([], grid_size_km=1.0, data_years=1.0)
+    assert stats["bbox"] is None
 
 
 def test_compute_statistics_empty() -> None:

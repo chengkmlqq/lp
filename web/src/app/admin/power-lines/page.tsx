@@ -26,6 +26,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { useDimensionOptions } from "@/hooks/use-dimension-options";
 import { PowerLineCesiumMap } from "@/components/power-line-cesium-map";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -587,6 +588,7 @@ function terrainStatusLabel(status: ElevationDatasetSummary["terrain_status"]): 
 export default function AdminPowerLinesPage() {
   const { user, initializing, fetchWithAuth, getAccessToken, hasPermission } = useAuth();
   const queryClient = useQueryClient();
+  const { optionMap: topologyDimensionOptions } = useDimensionOptions({ tower_topology_kind: "tower_topology_kind" });
   const { message: messageApi } = App.useApp();
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const panelScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -801,6 +803,18 @@ export default function AdminPowerLinesPage() {
     ],
   );
   const towerProfileTopologySpec = TOWER_TOPOLOGY_SPECS[towerProfileTopology];
+  // 专用编辑器拓扑类型：优先取维度管理数据（仅保留已知枚举值），加载失败/未 seed 时回退硬编码选项
+  const towerTopologyKindOptions = useMemo<Array<{ label: string; value: TowerTopologyKind }>>(() => {
+    const dimensionItems = topologyDimensionOptions.tower_topology_kind ?? [];
+    if (dimensionItems.length === 0) {
+      return TOWER_TOPOLOGY_KIND_OPTIONS;
+    }
+    return dimensionItems.flatMap((item) =>
+      (TOWER_TOPOLOGY_KIND_OPTIONS.some((option) => option.value === item.value)
+        ? [{ label: item.label, value: item.value as TowerTopologyKind }]
+        : []),
+    );
+  }, [topologyDimensionOptions]);
   const updateTowerProfileGeometryText = useCallback(
     (updater: (current: Record<string, unknown>) => Record<string, unknown>) => {
       let currentGeometry: Record<string, unknown> = {};
@@ -2149,7 +2163,7 @@ export default function AdminPowerLinesPage() {
                 <Typography.Text strong>专用编辑器类型</Typography.Text>
                 <Segmented<TowerTopologyKind>
                   block
-                  options={TOWER_TOPOLOGY_KIND_OPTIONS}
+                  options={towerTopologyKindOptions}
                   value={towerProfileTopology}
                   onChange={(value) => {
                     handleTowerProfileTopologyChange(value);

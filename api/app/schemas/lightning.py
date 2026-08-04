@@ -166,7 +166,7 @@ class LightningDistributionStatusResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# 线路回填（prepare / fill）
+# 线路密度计算（prepare）
 # ---------------------------------------------------------------------------
 class LightningCurrentPreparationRequest(BaseModel):
     line_id: str = Field(min_length=1, max_length=64)
@@ -206,19 +206,6 @@ class LightningDensityPreparationResponse(BaseModel):
     max_density: float | None = None
     warning_count: int = 0
     warnings: list[str] = Field(default_factory=list)
-
-
-class LightningFillDensityRequest(BaseModel):
-    """线路地闪密度回填请求。"""
-    line_id: str = Field(min_length=1, max_length=64)
-    region_id: str | None = Field(default=None, max_length=64)
-    years: float | None = Field(default=None, gt=0)
-    radius_km: float | None = Field(default=None, gt=0.05, le=50.0)
-
-
-class LightningFillDensityResponse(BaseModel):
-    task_id: str
-    status: str = "submitted"
 
 
 # ---------------------------------------------------------------------------

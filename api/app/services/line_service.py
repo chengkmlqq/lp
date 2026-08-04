@@ -155,6 +155,7 @@ def list_lines(
     db: Session,
     *,
     keyword: str | None,
+    bbox: tuple[float, float, float, float] | None = None,
 ) -> LineListResponse:
     stmt = select(Line)
     total_stmt = select(func.count()).select_from(Line)
@@ -165,6 +166,25 @@ def list_lines(
         predicate = or_(Line.code.ilike(like), Line.name.ilike(like))
         stmt = stmt.where(predicate)
         total_stmt = total_stmt.where(predicate)
+
+    # bbox 过滤：仅保留杆塔经纬度范围与给定 bbox（min_lat,min_lon,max_lat,max_lon）
+    # 有矩形重叠的线路（包含端点，max(min) <= min(max)）。与绘图任务的 bbox 裁剪判定一致。
+    if bbox is not None:
+        min_lat, min_lon, max_lat, max_lon = bbox
+        tower_overlap = (
+            select(LineTower.line_id)
+            .where(
+                LineTower.longitude.isnot(None),
+                LineTower.latitude.isnot(None),
+                LineTower.longitude <= max_lon,
+                LineTower.longitude >= min_lon,
+                LineTower.latitude <= max_lat,
+                LineTower.latitude >= min_lat,
+            )
+            .distinct()
+        )
+        stmt = stmt.where(Line.id.in_(tower_overlap))
+        total_stmt = total_stmt.where(Line.id.in_(tower_overlap))
 
     total = int(db.scalar(total_stmt) or 0)
     items = db.execute(stmt.order_by(Line.update_date.desc(), Line.code.asc())).scalars().all()

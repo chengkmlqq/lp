@@ -40,10 +40,33 @@ router = APIRouter(prefix="/lines", tags=["lines"], dependencies=[Depends(requir
 @router.get("", response_model=LineListResponse)
 def get_line_list(
     keyword: str | None = Query(default=None),
+    bbox: str | None = Query(default=None),
     _: CurrentUser = Depends(require_any_permission("line.read", "line.manage", "tower.read", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> LineListResponse:
-    return list_lines(db, keyword=keyword)
+    parsed_bbox = _parse_bbox(bbox)
+    return list_lines(db, keyword=keyword, bbox=parsed_bbox)
+
+
+def _parse_bbox(bbox: str | None) -> tuple[float, float, float, float] | None:
+    """解析 `min_lat,min_lon,max_lat,max_lon` 形式的 bbox 查询参数。
+
+    格式非法时返回 None（缺省行为，不误伤调用方）。
+    """
+    if not bbox:
+        return None
+    parts = bbox.split(",")
+    if len(parts) != 4:
+        return None
+    try:
+        min_lat, min_lon, max_lat, max_lon = (float(p) for p in parts)
+    except ValueError:
+        return None
+    if not (-90 <= min_lat <= 90 and -90 <= max_lat <= 90):
+        return None
+    if not (-180 <= min_lon <= 180 and -180 <= max_lon <= 180):
+        return None
+    return min_lat, min_lon, max_lat, max_lon
 
 
 @router.post("", response_model=LineSummary)

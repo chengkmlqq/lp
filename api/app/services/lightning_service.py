@@ -36,8 +36,6 @@ from ..schemas.lightning import (
     LightningCurrentExceedancePoint,
     LightningCurrentExceedanceResponse,
     LightningPolarity,
-    LightningFillDensityRequest,
-    LightningFillDensityResponse,
     LightningLpDrawRequest,
     LightningLpDrawResponse,
 )
@@ -1364,24 +1362,6 @@ def delete_lightning_distribution(db: Session, distribution_id: str) -> dict[str
         requires_refetch=["/api/v1/lightning-currents/distributions"],
     )
     return {"success": True}
-
-
-def trigger_line_density_fill(
-    db: Session,
-    payload: LightningFillDensityRequest,
-    *,
-    actor_user_id: str | None,
-) -> LightningFillDensityResponse:
-    """线路地闪密度回填：派发 fill_line_lightning_density_job。"""
-    from ..tasks.lightning_tasks import fill_line_lightning_density_job
-    task = fill_line_lightning_density_job.delay(
-        line_id=payload.line_id,
-        region_id=payload.region_id,
-        years=payload.years,
-        radius_km=payload.radius_km,
-        actor_user_id=actor_user_id,
-    )
-    return LightningFillDensityResponse(task_id=task.id, status="submitted")
 
 
 def trigger_lp_density_draw(

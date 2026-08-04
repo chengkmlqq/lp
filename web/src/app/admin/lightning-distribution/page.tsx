@@ -29,7 +29,7 @@ import {
 } from "antd";
 import { MoreOutlined, QuestionCircleOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type RefAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefAttributes } from "react";
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
@@ -43,7 +43,6 @@ import type {
   LightningDistributionRecord,
   LightningDistributionListResponse,
   LightningDistributionStatusResponse,
-  LightningFillDensityResponse,
   LightningLpDrawResponse,
   LineSummary,
   LineListResponse,
@@ -106,6 +105,22 @@ function formatDateTime(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+function truncateFileName(name: string, maxLength = 20): string {
+  if (!name) {
+    return "未命名";
+  }
+  return name.length > maxLength ? `${name.slice(0, maxLength)}…` : name;
+}
+
+type DetailTabItem = {
+  key: string;
+  label: ReactNode;
+  closable: boolean;
+  children: ReactNode;
+};
+
+const LIST_TAB_KEY = "list";
+
 export default function AdminLightningDistributionPage() {
   const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
   const queryClient = useQueryClient();
@@ -116,11 +131,9 @@ export default function AdminLightningDistributionPage() {
   const [success, setSuccess] = useState("");
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedForImage, setSelectedForImage] = useState<LightningDistributionRecord | null>(null);
-  const [imageModalOpen, setImageModalOpen] = useState(false);
-  const [fillModalOpen, setFillModalOpen] = useState(false);
   const [lpDrawRow, setLpDrawRow] = useState<LightningDistributionRecord | null>(null);
-  const [fillForm] = Form.useForm<{ line_id: string | null; region_id: string; years: number | null; radius_km: number | null }>();
+  const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -321,10 +334,44 @@ export default function AdminLightningDistributionPage() {
     },
   });
 
-  const openImageModal = (record: LightningDistributionRecord) => {
-    setSelectedForImage(record);
-    setImageModalOpen(true);
-  };
+  const openDetail = useCallback((record: LightningDistributionRecord) => {
+    const key = record.id;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      const meta = STATUS_META[record.status] ?? { color: "default", label: record.status };
+      return [
+        ...previous,
+        {
+          key,
+          label: (
+            <Space size={6}>
+              <span>{truncateFileName(record.source_file_name)}</span>
+              <Tag color={meta.color}>{meta.label}</Tag>
+            </Space>
+          ),
+          closable: true,
+          children: <DistributionDetailView record={record} fetchWithAuth={fetchWithAuth} />,
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, [fetchWithAuth]);
+
+  const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
+    if (action !== "remove") {
+      return;
+    }
+    const key = String(targetKey);
+    const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
+    const next = detailTabs.filter((tab) => tab.key !== key);
+    setDetailTabs(next);
+    if (activeTabKey === key) {
+      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+      setActiveTabKey(fallback);
+    }
+  }, [detailTabs, activeTabKey]);
 
   const openLpDrawModal = (record: LightningDistributionRecord) => {
     setLpDrawRow(record);
@@ -498,7 +545,7 @@ export default function AdminLightningDistributionPage() {
         fixed: "right",
         render: (_: unknown, row) => (
           <Space wrap>
-            <Button size="small" onClick={() => openImageModal(row)}>
+            <Button size="small" onClick={() => openDetail(row)}>
               详情
             </Button>
             {canManage && (
@@ -529,7 +576,7 @@ export default function AdminLightningDistributionPage() {
         ),
       },
     ],
-    [canManage, deleteMutation],
+    [canManage, deleteMutation, openDetail],
   );
 
   const renderRecordCard = (record: LightningDistributionRecord) => {
@@ -537,7 +584,7 @@ export default function AdminLightningDistributionPage() {
       {
         key: "image",
         label: "详情",
-        onClick: () => openImageModal(record),
+        onClick: () => openDetail(record),
       },
       ...(canManage
         ? [
@@ -674,97 +721,112 @@ export default function AdminLightningDistributionPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        className="admin-lightning-distribution-page-card"
-        title="地闪密度统计"
-        extra={
-          <Space>
-            {canManage && (
-              <Button onClick={() => setFillModalOpen(true)}>线路密度填充</Button>
-            )}
-            {canManage && (
-              <Button type="primary" onClick={() => setImportModalOpen(true)}>
-                导入
-              </Button>
-            )}
-          </Space>
-        }
-      >
-        <div className="admin-filter-bar">
-          <Form layout="inline">
-            <Form.Item label="关键词" className="admin-filter-keyword-item">
-              <Input
-                allowClear
-                placeholder="按地点/标签/文件名筛选"
-                value={keywordInput}
-                onChange={(event) => setKeywordInput(event.target.value)}
-                onPressEnter={handleSearch}
-              />
-            </Form.Item>
-            <Form.Item>
-              <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
-                查询
-              </Button>
-            </Form.Item>
-          </Form>
-        </div>
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        onEdit={handleTabsEdit}
+        className="admin-lightning-distribution-tabs"
+        items={[
+          {
+            key: LIST_TAB_KEY,
+            label: "列表视图",
+            closable: false,
+            children: (
+              <AntCard
+                className="admin-lightning-distribution-page-card"
+                title="地闪密度统计"
+                extra={
+                  <Space>
+                    {canManage && (
+                      <Button type="primary" onClick={() => setImportModalOpen(true)}>
+                        导入
+                      </Button>
+                    )}
+                  </Space>
+                }
+              >
+                <div className="admin-filter-bar">
+                  <Form layout="inline">
+                    <Form.Item label="关键词" className="admin-filter-keyword-item">
+                      <Input
+                        allowClear
+                        placeholder="按地点/标签/文件名筛选"
+                        value={keywordInput}
+                        onChange={(event) => setKeywordInput(event.target.value)}
+                        onPressEnter={handleSearch}
+                      />
+                    </Form.Item>
+                    <Form.Item>
+                      <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
+                        查询
+                      </Button>
+                    </Form.Item>
+                  </Form>
+                </div>
 
-        {isMobile ? (
-          <div className="admin-lightning-distribution-card-view">
-            {distributionsQuery.isLoading && records.length === 0 ? (
-              <div className="admin-lightning-distribution-card-view-state">
-                <Spin tip="加载中..." />
-              </div>
-            ) : records.length === 0 ? (
-              <div className="admin-lightning-distribution-card-view-state">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的地闪分布记录。"
-                />
-              </div>
-            ) : (
-              <div className="admin-lightning-distribution-card-view-content">
-                <Row gutter={[12, 12]}>
-                  {records.map((record) => (
-                    <Col key={record.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                      {renderRecordCard(record)}
-                    </Col>
-                  ))}
-                </Row>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-lightning-distribution-table-anchor"
-            style={{ "--admin-lightning-distribution-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<LightningDistributionRecord>
-              rowKey="id"
-              columns={columns}
-              dataSource={records}
-              loading={distributionsQuery.isFetching}
-              tableLayout="fixed"
-              pagination={{
-                pageSize: 20,
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: (total) => `共 ${records.length} 条`,
-              }}
-              scroll={{ x: 1000, y: tableScrollY }}
-              locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="未找到符合筛选条件的地闪分布记录。"
-                  />
-                ),
-              }}
-            />
-          </div>
-        )}
-      </AntCard>
+                {isMobile ? (
+                  <div className="admin-lightning-distribution-card-view">
+                    {distributionsQuery.isLoading && records.length === 0 ? (
+                      <div className="admin-lightning-distribution-card-view-state">
+                        <Spin tip="加载中..." />
+                      </div>
+                    ) : records.length === 0 ? (
+                      <div className="admin-lightning-distribution-card-view-state">
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="未找到符合筛选条件的地闪分布记录。"
+                        />
+                      </div>
+                    ) : (
+                      <div className="admin-lightning-distribution-card-view-content">
+                        <Row gutter={[12, 12]}>
+                          {records.map((record) => (
+                            <Col key={record.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                              {renderRecordCard(record)}
+                            </Col>
+                          ))}
+                        </Row>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    ref={tableScrollAnchorRef}
+                    className="admin-lightning-distribution-table-anchor"
+                    style={{ "--admin-lightning-distribution-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                  >
+                    <Table<LightningDistributionRecord>
+                      rowKey="id"
+                      columns={columns}
+                      dataSource={records}
+                      loading={distributionsQuery.isFetching}
+                      tableLayout="fixed"
+                      pagination={{
+                        pageSize: 20,
+                        showSizeChanger: true,
+                        pageSizeOptions: [10, 20, 50, 100],
+                        showTotal: (total) => `共 ${records.length} 条`,
+                      }}
+                      scroll={{ x: 1000, y: tableScrollY }}
+                      locale={{
+                        emptyText: (
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description="未找到符合筛选条件的地闪分布记录。"
+                          />
+                        ),
+                      }}
+                    />
+                  </div>
+                )}
+              </AntCard>
+            ),
+          },
+          ...detailTabs,
+        ]}
+      />
 
       <ImportModal
         open={importModalOpen}
@@ -776,28 +838,6 @@ export default function AdminLightningDistributionPage() {
         loading={importMutation.isPending}
         onConfirm={handleImportConfirm}
       />
-
-      <ImageViewModal
-        record={selectedForImage}
-        open={imageModalOpen}
-        onClose={() => {
-          setImageModalOpen(false);
-          setSelectedForImage(null);
-        }}
-        fetchWithAuth={fetchWithAuth}
-      />
-
-      {canManage && (
-        <FillDensityModal
-          open={fillModalOpen}
-          onClose={() => {
-            setFillModalOpen(false);
-            fillForm.resetFields();
-          }}
-          fetchWithAuth={fetchWithAuth}
-          form={fillForm}
-        />
-      )}
 
       {canManage && (
         <DrawLpModal
@@ -937,22 +977,16 @@ function ImportModal({
   );
 }
 
-function ImageViewModal({
+function DistributionDetailView({
   record,
-  open,
-  onClose,
   fetchWithAuth,
 }: {
-  record: LightningDistributionRecord | null;
-  open: boolean;
-  onClose: () => void;
+  record: LightningDistributionRecord;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
 }) {
   const imageQuery = useQuery({
-    queryKey: ["/api/v1/lightning-currents/distributions", record?.id, "image"],
-    enabled: open && !!record,
+    queryKey: ["/api/v1/lightning-currents/distributions", record.id, "image"],
     queryFn: async () => {
-      if (!record) return null;
       const response = await fetchWithAuth(`/api/v1/lightning-currents/distributions/${record.id}/image`);
       if (!response.ok) {
         throw new Error(await readApiError(response));
@@ -964,10 +998,9 @@ function ImageViewModal({
   });
 
   const lpImageQuery = useQuery({
-    queryKey: ["/api/v1/lightning-currents/distributions", record?.id, "lp-image"],
-    enabled: open && !!record && !!record.has_lp_image,
+    queryKey: ["/api/v1/lightning-currents/distributions", record.id, "lp-image"],
+    enabled: !!record.has_lp_image,
     queryFn: async () => {
-      if (!record) return null;
       const response = await fetchWithAuth(`/api/v1/lightning-currents/distributions/${record.id}/lp-image`);
       if (!response.ok) {
         throw new Error(await readApiError(response));
@@ -993,214 +1026,87 @@ function ImageViewModal({
   const imageUrl = imageQuery.data ?? null;
 
   return (
-    <Modal
-      title={record ? `密度图 - ${record.source_file_name || "未命名"}` : "密度图"}
-      open={open}
-      onCancel={onClose}
-      footer={null}
-      width={900}
-      destroyOnClose
-    >
-      {record && (
-        <Space direction="vertical" size={16} className="w-full">
-          <Descriptions bordered size="small" column={3}>
-            <Descriptions.Item label="城市">{record.city || "-"}</Descriptions.Item>
-            <Descriptions.Item label="地点标签">{record.location_tag || "-"}</Descriptions.Item>
-            <Descriptions.Item label="年份">{record.event_year ?? "-"}</Descriptions.Item>
-            <Descriptions.Item label="有效点数">{record.valid_count}</Descriptions.Item>
-            <Descriptions.Item label="面积(km²)">{formatNumber(record.area_km2, 3)}</Descriptions.Item>
-            <Descriptions.Item label="统计年限">{formatNumber(record.data_years, 3)}</Descriptions.Item>
-            <Descriptions.Item label={
-              <span>
-                整体 Ng
-                <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.overallNg} />
-              </span>
-            }>{formatNumber(record.overall_ng, 4)}</Descriptions.Item>
-            <Descriptions.Item label={
-              <span>
-                Imax(kA)
-                <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.maxCurrent} />
-              </span>
-            }>{formatNumber(record.max_abs_current, 2)}</Descriptions.Item>
-            <Descriptions.Item label={
-              <span>
-                Iavg(kA)
-                <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
-              </span>
-            }>{formatNumber(record.avg_abs_current, 2)}</Descriptions.Item>
-            <Descriptions.Item label="正极数量">{record.positive_count}</Descriptions.Item>
-            <Descriptions.Item label="负极数量">{record.negative_count}</Descriptions.Item>
-            <Descriptions.Item label="未知极性">{record.unknown_count}</Descriptions.Item>
-          </Descriptions>
+    <Space direction="vertical" size={16} className="w-full">
+      <Descriptions bordered size="small" column={3}>
+        <Descriptions.Item label="城市">{record.city || "-"}</Descriptions.Item>
+        <Descriptions.Item label="地点标签">{record.location_tag || "-"}</Descriptions.Item>
+        <Descriptions.Item label="年份">{record.event_year ?? "-"}</Descriptions.Item>
+        <Descriptions.Item label="有效点数">{record.valid_count}</Descriptions.Item>
+        <Descriptions.Item label="面积(km²)">{formatNumber(record.area_km2, 3)}</Descriptions.Item>
+        <Descriptions.Item label="统计年限">{formatNumber(record.data_years, 3)}</Descriptions.Item>
+        <Descriptions.Item label={
+          <span>
+            整体 Ng
+            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.overallNg} />
+          </span>
+        }>{formatNumber(record.overall_ng, 4)}</Descriptions.Item>
+        <Descriptions.Item label={
+          <span>
+            Imax(kA)
+            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.maxCurrent} />
+          </span>
+        }>{formatNumber(record.max_abs_current, 2)}</Descriptions.Item>
+        <Descriptions.Item label={
+          <span>
+            Iavg(kA)
+            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
+          </span>
+        }>{formatNumber(record.avg_abs_current, 2)}</Descriptions.Item>
+        <Descriptions.Item label="正极数量">{record.positive_count}</Descriptions.Item>
+        <Descriptions.Item label="负极数量">{record.negative_count}</Descriptions.Item>
+        <Descriptions.Item label="未知极性">{record.unknown_count}</Descriptions.Item>
+      </Descriptions>
 
-          <Tabs
-            defaultActiveKey="grid"
-            items={[
-              {
-                key: "grid",
-                label: "均匀网格图",
-                children: (
-                  <div style={{ textAlign: "center", minHeight: 200 }}>
-                    {imageQuery.isLoading ? (
-                      <Spin tip="加载图片中..." />
-                    ) : imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={imageUrl}
-                        alt="地闪密度图"
-                        style={{ maxWidth: "100%", border: "1px solid #f0f0f0", borderRadius: 6 }}
-                      />
-                    ) : (
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无密度图（导入失败或仍在处理中）" />
-                    )}
-                  </div>
-                ),
-              },
-              ...(record.has_lp_image
-                ? [
-                    {
-                      key: "lp",
-                      label: "LP 分区图",
-                      children: (
-                        <div style={{ textAlign: "center", minHeight: 200 }}>
-                          {lpImageQuery.isLoading ? (
-                            <Spin tip="加载 LP 分区图中..." />
-                          ) : lpImageQuery.data ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={lpImageQuery.data}
-                              alt="LP 分区密度图"
-                              style={{ maxWidth: "100%", border: "1px solid #f0f0f0", borderRadius: 6 }}
-                            />
-                          ) : (
-                            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 LP 分区图" />
-                          )}
-                        </div>
-                      ),
-                    },
-                  ]
-                : []),
-            ]}
-          />
-        </Space>
-      )}
-    </Modal>
-  );
-}
-
-function FillDensityModal({
-  open,
-  onClose,
-  fetchWithAuth,
-  form,
-}: {
-  open: boolean;
-  onClose: () => void;
-  fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
-  form: ReturnType<typeof Form.useForm<{ line_id: string | null; region_id: string; years: number | null; radius_km: number | null }>>[0];
-}) {
-  const [lineSearchText, setLineSearchText] = useState("");
-  const [success, setSuccess] = useState("");
-  const [error, setError] = useState("");
-
-  const linesQuery = useQuery({
-    queryKey: ["/api/v1/lines", lineSearchText],
-    enabled: open,
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      params.set("limit", "200");
-      params.set("offset", "0");
-      if (lineSearchText.trim()) params.set("keyword", lineSearchText.trim());
-      const response = await fetchWithAuth(`/api/v1/lines?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LineListResponse;
-    },
-  });
-
-  const lineOptions = useMemo(() => {
-    const items = linesQuery.data?.items ?? [];
-    return items.map((line: LineSummary) => ({
-      label: `${line.code} - ${line.name}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`,
-      value: line.id,
-    }));
-  }, [linesQuery.data]);
-
-  const fillMutation = useMutation({
-    mutationFn: async () => {
-      const values = form.getFieldsValue(true);
-      if (!values.line_id) {
-        throw new Error("请先选择线路");
-      }
-      const body: Record<string, unknown> = { line_id: values.line_id };
-      if (values.region_id?.trim()) body.region_id = values.region_id.trim();
-      if (values.years) body.years = values.years;
-      if (values.radius_km) body.radius_km = values.radius_km;
-      const response = await fetchWithAuth("/api/v1/lightning-currents/fill-density", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LightningFillDensityResponse;
-    },
-    onSuccess: (payload) => {
-      setError("");
-      setSuccess(`线路密度回填任务已提交（任务ID: ${payload.task_id}）。完成后请在线路管理页面刷新查看杆塔密度。`);
-    },
-    onError: (candidate) => {
-      setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "回填任务提交失败");
-    },
-  });
-
-  return (
-    <Modal
-      title="线路密度填充"
-      open={open}
-      onCancel={onClose}
-      footer={null}
-      width={560}
-      destroyOnClose
-    >
-      <Form form={form} layout="vertical">
-        <Form.Item name="line_id" label="选择线路" rules={[{ required: true, message: "请选择线路" }]}>
-          <Select
-            showSearch
-            placeholder="选择线路（按该线路关联的地闪分布计算）"
-            filterOption={false}
-            onSearch={setLineSearchText}
-            notFoundContent={linesQuery.isLoading ? <Spin size="small" /> : undefined}
-            options={lineOptions}
-          />
-        </Form.Item>
-        <div className="grid gap-3 md:grid-cols-3">
-          <Form.Item name="region_id" label="区域标识">
-            <Input placeholder="可选" />
-          </Form.Item>
-          <Form.Item name="years" label="统计年数">
-            <InputNumber className="w-full" min={0.1} step={0.5} placeholder="默认取分布记录" />
-          </Form.Item>
-          <Form.Item name="radius_km" label="缓冲半径(km)">
-            <InputNumber className="w-full" min={0.05} max={50} step={0.5} placeholder="默认按电压等级" />
-          </Form.Item>
-        </div>
-      </Form>
-      <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
-        <Button
-          type="primary"
-          loading={fillMutation.isPending}
-          onClick={() => fillMutation.mutate()}
-        >
-          提交回填
-        </Button>
-      </div>
-      {success && <Typography.Paragraph type="success" style={{ marginTop: 12 }}>{success}</Typography.Paragraph>}
-      {error && <Typography.Paragraph type="danger" style={{ marginTop: 12 }}>{error}</Typography.Paragraph>}
-    </Modal>
+      <Tabs
+        defaultActiveKey="grid"
+        items={[
+          {
+            key: "grid",
+            label: "均匀网格图",
+            children: (
+              <div style={{ textAlign: "center", minHeight: 200 }}>
+                {imageQuery.isLoading ? (
+                  <Spin tip="加载图片中..." />
+                ) : imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={imageUrl}
+                    alt="地闪密度图"
+                    style={{ maxWidth: "100%", border: "1px solid #f0f0f0", borderRadius: 6 }}
+                  />
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无密度图（导入失败或仍在处理中）" />
+                )}
+              </div>
+            ),
+          },
+          ...(record.has_lp_image
+            ? [
+                {
+                  key: "lp",
+                  label: "LP 分区图",
+                  children: (
+                    <div style={{ textAlign: "center", minHeight: 200 }}>
+                      {lpImageQuery.isLoading ? (
+                        <Spin tip="加载 LP 分区图中..." />
+                      ) : lpImageQuery.data ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={lpImageQuery.data}
+                          alt="LP 分区密度图"
+                          style={{ maxWidth: "100%", border: "1px solid #f0f0f0", borderRadius: 6 }}
+                        />
+                      ) : (
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 LP 分区图" />
+                      )}
+                    </div>
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
+    </Space>
   );
 }
 
@@ -1215,19 +1121,53 @@ function DrawLpModal({
   onClose: () => void;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
 }) {
+  return (
+    <Modal title="绘制 LP 分区地闪密度图" open={open} onCancel={onClose} footer={null} width={560} destroyOnClose>
+      {/* key 随分布记录变化强制重挂载，避免残留上一分布选中的线路 / 提交结果 */}
+      <DrawLpBody key={data?.id ?? "empty"} open={open} data={data} fetchWithAuth={fetchWithAuth} />
+    </Modal>
+  );
+}
+
+function DrawLpBody({
+  open,
+  data,
+  fetchWithAuth,
+}: {
+  open: boolean;
+  data: LightningDistributionRecord | null;
+  fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
+}) {
   const [lineSearchText, setLineSearchText] = useState("");
   const [lineId, setLineId] = useState<string | null>(null);
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
 
+  // 当前分布记录 stats_json 中的落雷经纬度范围；历史记录可能无 bbox（降级为不传 bbox 参数）。
+  const bboxParam = useMemo(() => {
+    const bbox = data?.stats_json?.bbox;
+    if (!bbox || typeof bbox !== "object") return null;
+    const { min_lat, max_lat, min_lon, max_lon } = bbox as Record<string, unknown>;
+    if (
+      typeof min_lat !== "number" ||
+      typeof max_lat !== "number" ||
+      typeof min_lon !== "number" ||
+      typeof max_lon !== "number"
+    ) {
+      return null;
+    }
+    return `${min_lat},${min_lon},${max_lat},${max_lon}`;
+  }, [data?.stats_json]);
+
   const linesQuery = useQuery({
-    queryKey: ["/api/v1/lines", lineSearchText],
+    queryKey: ["/api/v1/lines", lineSearchText, bboxParam],
     enabled: open,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", "200");
       params.set("offset", "0");
       if (lineSearchText.trim()) params.set("keyword", lineSearchText.trim());
+      if (bboxParam) params.set("bbox", bboxParam);
       const resp = await fetchWithAuth(`/api/v1/lines?${params.toString()}`);
       if (!resp.ok) throw new Error(await readApiError(resp));
       return (await resp.json()) as LineListResponse;
@@ -1264,15 +1204,29 @@ function DrawLpModal({
   });
 
   return (
-    <Modal title="绘制 LP 分区地闪密度图" open={open} onCancel={onClose} footer={null} width={560} destroyOnClose>
+    <>
       <Form layout="vertical">
-        <Form.Item label="选择线路" required>
+        <Form.Item
+          required
+          label={(
+            <Space size={4}>
+              选择线路
+              <Tooltip title="仅展示与当前地闪密度数据区域有重叠的线路；未覆盖区域的线路绘图无有效数据，故不展示">
+                <QuestionCircleOutlined style={{ color: "var(--ant-color-text-quaternary)" }} />
+              </Tooltip>
+            </Space>
+          )}
+        >
           <Select
             showSearch
             placeholder="选择线路（按该线路杆塔分组绘图）"
             filterOption={false}
             onSearch={setLineSearchText}
-            notFoundContent={linesQuery.isLoading ? <Spin size="small" /> : undefined}
+            notFoundContent={
+              linesQuery.isLoading
+                ? <Spin size="small" />
+                : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无可用线路" />
+            }
             value={lineId}
             onChange={setLineId}
             options={lineOptions}
@@ -1286,6 +1240,6 @@ function DrawLpModal({
       </div>
       {success && <Typography.Paragraph type="success" style={{ marginTop: 12 }}>{success}</Typography.Paragraph>}
       {error && <Typography.Paragraph type="danger" style={{ marginTop: 12 }}>{error}</Typography.Paragraph>}
-    </Modal>
+    </>
   );
 }

@@ -29,7 +29,8 @@ import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { readApiError } from "@/lib/api";
-import type { AtpAssetListResponse, AtpAssetSummary, AtpAssetFileListResponse } from "@/types/auth";
+import type { AtpAssetListResponse, AtpAssetSummary, AtpAssetFileListResponse, DimensionTypeTreeItem } from "@/types/auth";
+import type { DimensionItemListResponse } from "@/types/dimension";
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
@@ -79,77 +80,24 @@ function generateCode(): string {
   return `atp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
-const DEFAULT_VOLTAGE_LEVELS = [
-  { label: "35kV", value: "35" },
-  { label: "66kV", value: "66" },
-  { label: "110kV", value: "110" },
-  { label: "220kV", value: "220" },
-  { label: "330kV", value: "330" },
-  { label: "500kV", value: "500" },
-  { label: "750kV", value: "750" },
-  { label: "800kV", value: "800" },
-  { label: "1000kV", value: "1000" },
-];
+// ATP 页面字段名 → 维度管理类型 code 的映射
+// 注意：scene_type 的类型 code 为 scenario，arrester_config 的类型 code 为 arrester_combination
+const ATP_DIMENSION_FIELD_TO_TYPE_CODE: Record<string, string> = {
+  voltage_level: "voltage_level",
+  tower_type: "tower_type",
+  scene_type: "scenario",
+  arrester_config: "arrester_combination",
+};
 
-const DEFAULT_TOWER_TYPES = [
-  { label: "干字塔", value: "ganzi" },
-  { label: "鼓型塔", value: "guxing" },
-  { label: "鼓型双回路塔", value: "guxingd" },
-  { label: "酒杯塔", value: "jiubei" },
-  { label: "猫头塔", value: "maotou" },
-  { label: "上字塔", value: "shangzi" },
-  { label: "四回路塔", value: "sihuita" },
-  { label: "直流V型塔", value: "vzhiliu" },
-  { label: "直流塔", value: "zhiliu" },
-];
+const ATP_DIMENSION_FIELDS = ["voltage_level", "tower_type", "scene_type", "arrester_config"] as const;
+type AtpDimensionField = (typeof ATP_DIMENSION_FIELDS)[number];
 
-const DEFAULT_SCENE_TYPES = [
-  { label: "反击", value: "fanji" },
-  { label: "绕击1", value: "raoji1" },
-  { label: "绕击2", value: "raoji2" },
-  { label: "绕击3", value: "raoji3" },
-];
-
-const DEFAULT_ARRESTER_CONFIGS = [
-  { label: "M1", value: "M1" },
-  { label: "M2", value: "M2" },
-  { label: "M3", value: "M3" },
-  { label: "M12", value: "M12" },
-  { label: "M13", value: "M13" },
-  { label: "M23", value: "M23" },
-  { label: "M123", value: "M123" },
-  { label: "noM", value: "noM" },
-];
-
-function buildDimensionOptions(items: AtpAssetSummary[], picker: (item: AtpAssetSummary) => string | null, defaults: Array<{ label: string; value: string }>): Array<{ label: string; value: string }> {
-  const values = new Set<string>();
-  const optionsMap = new Map<string, string>();
-
-  for (const defaultOption of defaults) {
-    values.add(defaultOption.value);
-    optionsMap.set(defaultOption.value, defaultOption.label);
-  }
-
-  for (const item of items) {
-    const value = picker(item)?.trim();
-    if (!value) {
-      continue;
-    }
-    values.add(value);
-    if (!optionsMap.has(value)) {
-      optionsMap.set(value, value);
-    }
-  }
-
-  return Array.from(values)
-    .sort((left, right) => left.localeCompare(right, "zh-CN"))
-    .map((value) => ({ label: optionsMap.get(value) || value, value }));
+function flattenTypeNodes(types: DimensionTypeTreeItem[]): DimensionTypeTreeItem[] {
+  return types.flatMap((t) => [t, ...flattenTypeNodes(t.children)]);
 }
 
-function formatDimensionValue(value: string | null, defaults: Array<{ label: string; value: string }>): string {
-  if (!value) return "-";
-  const option = defaults.find((opt) => opt.value === value);
-  return option ? option.label : value;
+function findDimensionTypeByCode(types: DimensionTypeTreeItem[], code: string): DimensionTypeTreeItem | undefined {
+  return flattenTypeNodes(types).find((t) => t.code === code);
 }
 
 const ATP_TABLE_MIN_SCROLL_Y = 180;
@@ -317,7 +265,97 @@ export default function AtpModelsPage() {
   };
 
   const assetItems = useMemo(() => assetsQuery.data?.items ?? [], [assetsQuery.data?.items]);
-  const voltageLevelOptions = useMemo(() => buildDimensionOptions(assetItems, (item) => item.voltage_level, DEFAULT_VOLTAGE_LEVELS), [assetItems]);
+
+  // ===== 维度管理数据源（替代硬编码 DEFAULT_* 常量）=====
+  // 1. 获取维度类型树（types/tree），解析出四个类型 id
+  const dimensionTypesQuery = useQuery({
+    queryKey: ["/api/v1/dimensions/types/tree"],
+    enabled: Boolean(user && canRead),
+    queryFn: async () => {
+      const response = await fetchWithAuth("/api/v1/dimensions/types/tree");
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as DimensionTypeTreeItem[];
+    },
+  });
+
+  // 2. 按类型 code 找到对应的类型 id（不存在时留空，页面回退为空选项）
+  const dimensionTypeIds = useMemo(() => {
+    const types = dimensionTypesQuery.data ?? [];
+    const result: Partial<Record<AtpDimensionField, string | undefined>> = {};
+    for (const field of ATP_DIMENSION_FIELDS) {
+      const typeCode = ATP_DIMENSION_FIELD_TO_TYPE_CODE[field];
+      result[field] = findDimensionTypeByCode(types, typeCode)?.id;
+    }
+    return result;
+  }, [dimensionTypesQuery.data]);
+
+  // 3. 每个类型各 fetch 一次启用的维度项（code → value，name → label）
+  const dimensionItemsQueries = useQueries({
+    queries: ATP_DIMENSION_FIELDS.map((field) => {
+      const typeId = dimensionTypeIds[field];
+      return {
+        queryKey: ["/api/v1/dimensions", { type_id: typeId, enabled: true }],
+        enabled: Boolean(user && canRead && typeId),
+        queryFn: async () => {
+          const params = new URLSearchParams();
+          params.set("type_id", typeId!);
+          params.set("enabled", "true");
+          params.set("limit", "200");
+          const response = await fetchWithAuth(`/api/v1/dimensions?${params.toString()}`);
+          if (!response.ok) {
+            throw new Error(await readApiError(response));
+          }
+          return (await response.json()) as DimensionItemListResponse;
+        },
+      };
+    }),
+  });
+
+  // 4. 维度项缓存：typeCode → (code → { label, value })，供 Select options 与 formatDimensionValue 使用
+  const dimensionOptionMap = useMemo(() => {
+    const map: Record<AtpDimensionField, Array<{ label: string; value: string }>> = {
+      voltage_level: [],
+      tower_type: [],
+      scene_type: [],
+      arrester_config: [],
+    };
+    dimensionItemsQueries.forEach((query, index) => {
+      const field = ATP_DIMENSION_FIELDS[index];
+      const items = query.data?.items ?? [];
+      map[field] = items
+        .map((item) => ({ label: item.name, value: item.code }))
+        .sort((left, right) => left.label.localeCompare(right.label, "zh-CN"));
+    });
+    return map;
+  }, [dimensionItemsQueries]);
+
+  const dimensionLabelMap = useMemo(() => {
+    const map: Record<AtpDimensionField, Map<string, string>> = {
+      voltage_level: new Map(),
+      tower_type: new Map(),
+      scene_type: new Map(),
+      arrester_config: new Map(),
+    };
+    dimensionItemsQueries.forEach((query, index) => {
+      const field = ATP_DIMENSION_FIELDS[index];
+      for (const item of query.data?.items ?? []) {
+        map[field].set(item.code, item.name);
+      }
+    });
+    return map;
+  }, [dimensionItemsQueries]);
+
+  const formatDimensionValue = useCallback((value: string | null, field: AtpDimensionField): string => {
+    if (!value) return "-";
+    return dimensionLabelMap[field].get(value) ?? value;
+  }, [dimensionLabelMap]);
+
+  const voltageLevelOptions = dimensionOptionMap.voltage_level;
+  const towerTypeOptions = dimensionOptionMap.tower_type;
+  const sceneTypeOptions = dimensionOptionMap.scene_type;
+  const arresterConfigOptions = dimensionOptionMap.arrester_config;
 
   // File view mode needs ALL assets to build the dimension tree correctly.
   // The paginated query only fetches 20 items which may all be from one voltage level.
@@ -352,9 +390,6 @@ export default function AtpModelsPage() {
     () => fileViewAssetsQuery.data?.items ?? assetItems,
     [fileViewAssetsQuery.data?.items, assetItems],
   );
-  const towerTypeOptions = useMemo(() => buildDimensionOptions(assetItems, (item) => item.tower_type, DEFAULT_TOWER_TYPES), [assetItems]);
-  const sceneTypeOptions = useMemo(() => buildDimensionOptions(assetItems, (item) => item.scene_type, DEFAULT_SCENE_TYPES), [assetItems]);
-  const arresterConfigOptions = useMemo(() => buildDimensionOptions(assetItems, (item) => item.arrester_config, DEFAULT_ARRESTER_CONFIGS), [assetItems]);
   const assetTotal = assetsQuery.data?.total ?? 0;
   const queryError = assetsQuery.error instanceof Error ? assetsQuery.error.message : "";
   const anyError = error || queryError;
@@ -491,25 +526,25 @@ export default function AtpModelsPage() {
         title: "电压等级",
         dataIndex: "voltage_level",
         width: 120,
-        render: (value: string | null) => formatDimensionValue(value, DEFAULT_VOLTAGE_LEVELS),
+        render: (value: string | null) => formatDimensionValue(value, "voltage_level"),
       },
       {
         title: "塔型",
         dataIndex: "tower_type",
         width: 120,
-        render: (value: string | null) => formatDimensionValue(value, DEFAULT_TOWER_TYPES),
+        render: (value: string | null) => formatDimensionValue(value, "tower_type"),
       },
       {
         title: "场景",
         dataIndex: "scene_type",
         width: 120,
-        render: (value: string | null) => formatDimensionValue(value, DEFAULT_SCENE_TYPES),
+        render: (value: string | null) => formatDimensionValue(value, "scene_type"),
       },
       {
         title: "避雷器组合",
         dataIndex: "arrester_config",
         width: 120,
-        render: (value: string | null) => formatDimensionValue(value, DEFAULT_ARRESTER_CONFIGS),
+        render: (value: string | null) => formatDimensionValue(value, "arrester_config"),
       },
       {
         title: "更新时间",
@@ -545,7 +580,7 @@ export default function AtpModelsPage() {
         },
       },
     ],
-    [canManage, deleteMutation],
+    [canManage, deleteMutation, formatDimensionValue],
   );
 
   type FileViewItem = {
@@ -607,7 +642,7 @@ export default function AtpModelsPage() {
         .map((voltage) => ({
           type: "folder" as const,
           name: voltage,
-          displayName: formatDimensionValue(voltage, DEFAULT_VOLTAGE_LEVELS),
+          displayName: formatDimensionValue(voltage, "voltage_level"),
           value: voltage,
         }));
     }
@@ -626,7 +661,7 @@ export default function AtpModelsPage() {
         .map((tower) => ({
           type: "folder" as const,
           name: tower,
-          displayName: formatDimensionValue(tower, DEFAULT_TOWER_TYPES),
+          displayName: formatDimensionValue(tower, "tower_type"),
           value: tower,
         }));
     }
@@ -650,7 +685,7 @@ export default function AtpModelsPage() {
         .map((scene) => ({
           type: "folder" as const,
           name: scene,
-          displayName: formatDimensionValue(scene, DEFAULT_SCENE_TYPES),
+          displayName: formatDimensionValue(scene, "scene_type"),
           value: scene,
         }));
     }
@@ -676,7 +711,7 @@ export default function AtpModelsPage() {
         .map((arrester) => ({
           type: "folder" as const,
           name: arrester,
-          displayName: formatDimensionValue(arrester, DEFAULT_ARRESTER_CONFIGS),
+          displayName: formatDimensionValue(arrester, "arrester_config"),
           value: arrester,
         }));
     }
@@ -760,7 +795,7 @@ export default function AtpModelsPage() {
     }
 
     return [];
-  }, [assetItems, fileViewPath, matchingAssets, filesQueries]);
+  }, [assetItems, fileViewPath, matchingAssets, filesQueries, formatDimensionValue]);
 
   const handleFileViewItemClick = (item: FileViewItem) => {
     if (item.type === "folder") {
@@ -777,10 +812,10 @@ export default function AtpModelsPage() {
   };
 
   const getBreadcrumbLabel = (index: number): string => {
-    if (index === 0) return formatDimensionValue(fileViewPath[0], DEFAULT_VOLTAGE_LEVELS);
-    if (index === 1) return formatDimensionValue(fileViewPath[1], DEFAULT_TOWER_TYPES);
-    if (index === 2) return formatDimensionValue(fileViewPath[2], DEFAULT_SCENE_TYPES);
-    if (index === 3) return formatDimensionValue(fileViewPath[3], DEFAULT_ARRESTER_CONFIGS);
+    if (index === 0) return formatDimensionValue(fileViewPath[0], "voltage_level");
+    if (index === 1) return formatDimensionValue(fileViewPath[1], "tower_type");
+    if (index === 2) return formatDimensionValue(fileViewPath[2], "scene_type");
+    if (index === 3) return formatDimensionValue(fileViewPath[3], "arrester_config");
     if (index >= 4) {
       return fileViewPath[index];
     }
@@ -825,19 +860,19 @@ export default function AtpModelsPage() {
         <Space direction="vertical" size={10} style={{ width: "100%" }}>
           <div className="admin-atp-models-model-card-field">
             <Typography.Text type="secondary">电压等级</Typography.Text>
-            <Typography.Text>{formatDimensionValue(item.voltage_level, DEFAULT_VOLTAGE_LEVELS)}</Typography.Text>
+            <Typography.Text>{formatDimensionValue(item.voltage_level, "voltage_level")}</Typography.Text>
           </div>
           <div className="admin-atp-models-model-card-field">
             <Typography.Text type="secondary">塔型</Typography.Text>
-            <Typography.Text>{formatDimensionValue(item.tower_type, DEFAULT_TOWER_TYPES)}</Typography.Text>
+            <Typography.Text>{formatDimensionValue(item.tower_type, "tower_type")}</Typography.Text>
           </div>
           <div className="admin-atp-models-model-card-field">
             <Typography.Text type="secondary">场景</Typography.Text>
-            <Typography.Text>{formatDimensionValue(item.scene_type, DEFAULT_SCENE_TYPES)}</Typography.Text>
+            <Typography.Text>{formatDimensionValue(item.scene_type, "scene_type")}</Typography.Text>
           </div>
           <div className="admin-atp-models-model-card-field">
             <Typography.Text type="secondary">避雷器组合</Typography.Text>
-            <Typography.Text>{formatDimensionValue(item.arrester_config, DEFAULT_ARRESTER_CONFIGS)}</Typography.Text>
+            <Typography.Text>{formatDimensionValue(item.arrester_config, "arrester_config")}</Typography.Text>
           </div>
           <div className="admin-atp-models-model-card-field">
             <Typography.Text type="secondary">更新时间</Typography.Text>

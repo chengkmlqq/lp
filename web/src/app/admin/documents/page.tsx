@@ -13,6 +13,7 @@ import {
   Modal,
   Row,
   Select,
+  Skeleton,
   Space,
   Spin,
   Table,
@@ -27,7 +28,7 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
 import type { DataNode } from "antd/es/tree";
 
 import { useAuth } from "@/components/auth-provider";
@@ -66,7 +67,9 @@ type DocumentFormValues = {
 
 const DOCUMENTS_TABLE_MIN_SCROLL_Y = 180;
 const DOCUMENTS_TABLE_VIEWPORT_GAP = 40;
-const DOCUMENTS_TABLE_FALLBACK_RESERVE = 220;
+// LP-230: 与系统参数管理页保持一致（FALLBACK_RESERVE=232 + EXTRA_HEIGHT=14，等效净预留 218px）
+const DOCUMENTS_TABLE_FALLBACK_RESERVE = 232;
+const DOCUMENTS_TABLE_EXTRA_HEIGHT = 14;
 
 export default function AdminDocumentsPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
@@ -93,6 +96,39 @@ export default function AdminDocumentsPage() {
   const [cardViewPage, setCardViewPage] = useState(1);
   const [allLoadedDocuments, setAllLoadedDocuments] = useState<Document[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // LP-230: 与系统参数/维度管理页一致的左侧栏拖拽宽度
+  const [leftPanelWidth, setLeftPanelWidth] = useState(240);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const isResizing = useRef(false);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setLeftPanelWidth(Math.max(180, Math.min(600, e.clientX - rect.left)));
+    };
+    const handleMouseUp = () => {
+      if (isResizing.current) {
+        isResizing.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   const [chapterForm] = Form.useForm<ChapterFormValues>();
   const [documentForm] = Form.useForm<DocumentFormValues>();
@@ -430,7 +466,7 @@ export default function AdminDocumentsPage() {
       nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - DOCUMENTS_TABLE_VIEWPORT_GAP);
     }
 
-    const clampedHeight = Math.max(DOCUMENTS_TABLE_MIN_SCROLL_Y, nextHeight);
+    const clampedHeight = Math.max(DOCUMENTS_TABLE_MIN_SCROLL_Y, nextHeight + DOCUMENTS_TABLE_EXTRA_HEIGHT);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);
 
@@ -604,7 +640,7 @@ export default function AdminDocumentsPage() {
     return (
       <AntCard
         key={doc.id}
-        className="admin-documents-document-card"
+        className="admin-system-params-param-card"
         size="small"
         title={
           <Space className="min-w-0" size={8}>
@@ -648,12 +684,12 @@ export default function AdminDocumentsPage() {
         }
       >
         <Space direction="vertical" size={10} style={{ width: "100%" }}>
-          <div className="admin-documents-document-card-field">
+          <div className="admin-system-params-param-card-field">
             <Typography.Text type="secondary">排序</Typography.Text>
             <Typography.Text>{doc.sort_order}</Typography.Text>
           </div>
           {doc.content && (
-            <div className="admin-documents-document-card-field">
+            <div className="admin-system-params-param-card-field">
               <Typography.Text type="secondary">内容</Typography.Text>
               <Typography.Text ellipsis={{ tooltip: doc.content }}>
                 {doc.content.substring(0, 100)}
@@ -665,6 +701,20 @@ export default function AdminDocumentsPage() {
       </AntCard>
     );
   };
+
+  const skeletonMenu = (
+    <div className="admin-system-params-skeleton-menu">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className="admin-system-params-skeleton-item"
+          style={i % 3 === 0 ? {} : { paddingLeft: 20 }}
+        >
+          <Skeleton.Input active size="small" block style={{ width: `${50 + (i % 3) * 15}%` }} />
+        </div>
+      ))}
+    </div>
+  );
 
   if (initializing) {
     return (
@@ -705,7 +755,7 @@ export default function AdminDocumentsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AntCard
-        className="admin-documents-page-card"
+        className="admin-system-params-page-card"
         title="文档管理"
         extra={
           canManage && (
@@ -719,61 +769,68 @@ export default function AdminDocumentsPage() {
           )
         }
       >
-        <div className="admin-documents-page-body">
-          {/* Left: Tree */}
-          <div className="admin-documents-sider">
-            <AntCard
-              title="章节目录"
-              className="admin-documents-tree-card"
-              extra={
-                canManage && (
-                  <Button
-                    type="primary"
-                    size="small"
-                    icon={<PlusOutlined />}
-                    onClick={handleCreateChapter}
-                  >
-                    新建
-                  </Button>
-                )
-              }
-              bodyStyle={{ flex: 1, overflow: "auto" }}
+        {/* ===== Body Area: Two-column layout ===== */}
+        <div ref={containerRef} className="admin-system-params-page-body">
+          {/* Chapter sidebar (hidden on mobile) */}
+          {!isMobile && (
+            <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
+              <AntCard
+                title="章节目录"
+                className="admin-system-params-sider-card"
+                style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
+                bodyStyle={{ flex: 1, overflow: "auto", padding: 0 }}
+                actions={canManage ? [
+                  <Button type="text" key="add-chapter" onClick={handleCreateChapter} style={{ width: "100%", color: "var(--ant-color-primary)" }}>
+                    <PlusOutlined /> 新建章节
+                  </Button>,
+                ] : undefined}
+              >
+                {treeLoading ? (
+                  skeletonMenu
+                ) : treeData && treeData.length > 0 ? (
+                  <div className="admin-system-params-sider-menu">
+                    <Tree
+                      showLine
+                      defaultExpandAll
+                      expandedKeys={expandedKeys}
+                      onExpand={(keys) => setExpandedKeys(keys)}
+                      treeData={convertToTreeData(treeData)}
+                      onSelect={(keys) => {
+                        if (keys.length > 0) {
+                          const key = keys[0] as string;
+                          if (key.startsWith("chapter-")) {
+                            const id = parseInt(key.replace("chapter-", ""), 10);
+                            setSelectedChapterId(id);
+                          }
+                        } else {
+                          setSelectedChapterId(null);
+                        }
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="admin-system-params-sider-empty">
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="未找到符合筛选条件的章节。"
+                    />
+                  </div>
+                )}
+              </AntCard>
+            </div>
+          )}
+          {!isMobile && (
+            <div
+              className="admin-system-params-resize-handle"
+              onMouseDown={handleResizeStart}
             >
-              {treeLoading ? (
-                <div style={{ textAlign: "center", padding: "24px" }}>
-                  <Spin />
-                </div>
-              ) : treeData && treeData.length > 0 ? (
-                <Tree
-                  showLine
-                  defaultExpandAll
-                  expandedKeys={expandedKeys}
-                  onExpand={(keys) => setExpandedKeys(keys)}
-                  treeData={convertToTreeData(treeData)}
-                  onSelect={(keys) => {
-                    if (keys.length > 0) {
-                      const key = keys[0] as string;
-                      if (key.startsWith("chapter-")) {
-                        const id = parseInt(key.replace("chapter-", ""), 10);
-                        setSelectedChapterId(id);
-                      }
-                    } else {
-                      setSelectedChapterId(null);
-                    }
-                  }}
-                />
-              ) : (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的章节。"
-                />
-              )}
-            </AntCard>
-          </div>
-          {/* Right: Table */}
+              <div className="admin-system-params-resize-handle-line" />
+            </div>
+          )}
+          {/* Right Panel: filter + table/card view */}
           <div
             ref={isMobile ? pageCardRef : undefined}
-            className="admin-documents-main"
+            className="admin-system-params-main"
           >
             {viewMode === "card" ? (
               <div className="admin-filter-bar">
@@ -869,8 +926,8 @@ export default function AdminDocumentsPage() {
             {viewMode === "table" ? (
               <div
                 ref={tableScrollAnchorRef}
-                className="admin-documents-table-anchor"
-                style={{ "--admin-documents-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                className="admin-system-params-table-anchor"
+                style={{ "--admin-system-params-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
               >
                 <Table<Document>
                   rowKey="id"
@@ -903,20 +960,20 @@ export default function AdminDocumentsPage() {
                 />
               </div>
             ) : (
-              <div className="admin-documents-card-view">
+              <div className="admin-system-params-card-view">
                 {documentsLoading && allLoadedDocuments.length === 0 ? (
-                  <div className="admin-documents-card-view-state">
+                  <div className="admin-system-params-card-view-state">
                     <Spin tip="加载中..." />
                   </div>
                 ) : allLoadedDocuments.length === 0 ? (
-                  <div className="admin-documents-card-view-state">
+                  <div className="admin-system-params-card-view-state">
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
                       description="未找到符合筛选条件的文档。"
                     />
                   </div>
                 ) : (
-                  <div className="admin-documents-card-view-content">
+                  <div className="admin-system-params-card-view-content">
                     <Row gutter={[12, 12]}>
                       {allLoadedDocuments.map((doc) => (
                         <Col key={doc.id} xs={24} sm={24} md={12} lg={8} xl={6}>

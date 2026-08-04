@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+# 枚举 code 来源：migrations/seed_fl_analysis_dimensions.sql（dimension_type = tower_topology_kind）
+# 迁移后前端「专用编辑器类型」下拉选已改为从维度管理 API 读取；此处保留 Literal 作为校验兜底 + 向后兼容。
 TowerTopologyKind = Literal["single", "double", "quad", "dc"]
 
 _TOPOLOGY_KIND_ALIASES: dict[str, TowerTopologyKind] = {

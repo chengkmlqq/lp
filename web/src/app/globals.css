@@ -1556,6 +1556,29 @@ body {
   }
 }
 
+.admin-scheduled-tasks-page-card {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin-scheduled-tasks-page-card > .ant-card-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
+  padding: 12px !important;
+}
+
+.admin-scheduled-tasks-page-card .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
+}
+
 .admin-scheduled-tasks-table-anchor .ant-table-body {
   min-height: var(--admin-scheduled-tasks-table-body-min-height, 180px);
 }
@@ -2238,6 +2261,36 @@ body {
   display: flex;
   flex: 1;
   min-height: 0;
+  flex-direction: column;
+}
+
+/* LP-235: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
+   内部列表 Tab 的 Card 才能延续原有 flex 自适应滚动布局 */
+.admin-lightning-distribution-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin-lightning-distribution-tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-lightning-distribution-tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-lightning-distribution-tabs .ant-tabs-tabpane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
   flex-direction: column;
 }
 

@@ -22,8 +22,6 @@ from ...schemas.lightning import (
     LightningDistributionStatusResponse,
     LightningDensityPreparationRequest,
     LightningDensityPreparationResponse,
-    LightningFillDensityRequest,
-    LightningFillDensityResponse,
     LightningLpDrawRequest,
     LightningLpDrawResponse,
 )
@@ -45,7 +43,6 @@ from ...services.lightning_service import (
     prepare_line_lightning_density,
     retry_lightning_amplitude,
     retry_lightning_distribution,
-    trigger_line_density_fill,
     trigger_lp_density_draw,
 )
 
@@ -319,15 +316,6 @@ def get_lightning_distribution_detail_endpoint(
     db: Session = Depends(get_db),
 ) -> LightningDistributionRecord:
     return get_lightning_distribution_detail(db, distribution_id)
-
-
-@router.post("/fill-density", response_model=LightningFillDensityResponse)
-def trigger_line_lightning_density_fill(
-    payload: LightningFillDensityRequest,
-    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
-    db: Session = Depends(get_db),
-) -> LightningFillDensityResponse:
-    return trigger_line_density_fill(db, payload, actor_user_id=current_user.user.id)
 
 
 # ---------------------------------------------------------------------------

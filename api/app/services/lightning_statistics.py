@@ -152,7 +152,8 @@ def compute_statistics(
     返回 dict 包含：
       total_records / area_km2 / data_years / overall_ng /
       max_abs_current / avg_abs_current / positive_count / negative_count /
-      unknown_count / grid_cells（网格列表，仅 include_grid_cells=True 时构建）
+      unknown_count / bbox（落雷经纬度范围 {min_lat, max_lat, min_lon, max_lon}）/
+      grid_cells（网格列表，仅 include_grid_cells=True 时构建）
 
     include_grid_cells：grid_cells 是纯内部网格聚合明细，20 万格时构建约 185MB，
     且无 API/前端消费者（导入任务与列表接口都不持久化/返回它），密度图由
@@ -171,6 +172,7 @@ def compute_statistics(
             "positive_count": 0,
             "negative_count": 0,
             "unknown_count": 0,
+            "bbox": None,
             "grid_cells": grid_cells,
         }
 
@@ -251,6 +253,12 @@ def compute_statistics(
         "positive_count": positive_count,
         "negative_count": negative_count,
         "unknown_count": unknown_count,
+        "bbox": {
+            "min_lat": min_lat,
+            "max_lat": max_lat,
+            "min_lon": min_lon,
+            "max_lon": max_lon,
+        },
         "grid_cells": grid_cells,
     }
 

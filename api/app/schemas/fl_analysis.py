@@ -6,6 +6,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+# 以下枚举 code 来源：migrations/seed_fl_analysis_dimensions.sql（dimension_type + dimension_item）
+# 迁移后前端下拉选已改为从维度管理 API 读取；此处保留 Literal 作为 API 入参校验兜底 + 向后兼容，
+# 值变更需与维度管理中的 dimension_item.code 保持一致。
 FlAnalysisJobType = Literal["normal", "tongtiao", "risk", "mitigation", "report", "scenario"]
 FlAnalysisJobStatus = Literal["pending", "queued", "running", "blocked", "success", "failed"]
 FlAnalysisRunStatus = Literal["pending", "running", "blocked", "success", "failed"]

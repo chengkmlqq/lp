@@ -50,7 +50,9 @@ class LineContractTest(unittest.TestCase):
         self.assertNotIn("status_filter", arg_names)
 
         source = ast.unparse(function)
-        self.assertIn("return list_lines(db, keyword=keyword)", source)
+        # status 过滤已移除；bbox 为可选过滤参数（缺省向后兼容）。
+        self.assertIn("list_lines(db,", source)
+        self.assertIn("bbox=parsed_bbox", source)
 
     def test_line_service_drops_removed_fields_from_public_contract(self) -> None:
         module = _load_module(SERVICE_FILE)

@@ -20,6 +20,30 @@ import {
   readOptionalString,
   type CreateJobFormValues,
 } from "./types";
+import { useFlDimensionOptions, type FlDimensionOption } from "./use-fl-dimensions";
+
+// 硬编码回退选项（维度管理 API 加载失败时兜底，避免页面功能中断）
+// 与 migrations/seed_fl_analysis_dimensions.sql 中维度值 code/name 对齐
+const JOB_TYPE_FALLBACK_OPTIONS: FlDimensionOption[] = [
+  { value: "normal", label: "普通计算" },
+  { value: "tongtiao", label: "同跳计算" },
+  { value: "risk", label: "风险评估" },
+];
+const CURRENT_WAVEFORM_FALLBACK_OPTIONS: FlDimensionOption[] = [
+  { value: "heidler", label: "Heidler" },
+  { value: "double_slope", label: "双斜角" },
+  { value: "double_exponential", label: "双指数" },
+];
+const FLASHOVER_METHOD_FALLBACK_OPTIONS: FlDimensionOption[] = [
+  { value: "guideline", label: "规程法" },
+  { value: "intersection", label: "相交法" },
+  { value: "leader_development", label: "先导发展法" },
+];
+const ALTITUDE_CORRECTION_FALLBACK_OPTIONS: FlDimensionOption[] = [
+  { value: "none", label: "无" },
+  { value: "formula1", label: "推荐公式1" },
+  { value: "formula2", label: "推荐公式2" },
+];
 
 type CreateJobFormProps = {
   form: FormInstance<CreateJobFormValues>;
@@ -49,6 +73,18 @@ export function CreateJobForm({
   onSubmit,
 }: CreateJobFormProps) {
   const selectedLinePreparation = readLinePreparation(selectedLine);
+  const { optionMap, isLoading: dimensionsLoading } = useFlDimensionOptions();
+  // 维度管理 API 返回启用项；加载失败时回退到静态选项
+  const jobTypeOptions = optionMap.job_type.length > 0 ? optionMap.job_type : JOB_TYPE_FALLBACK_OPTIONS;
+  const currentWaveformOptions = optionMap.current_waveform.length > 0
+    ? optionMap.current_waveform
+    : CURRENT_WAVEFORM_FALLBACK_OPTIONS;
+  const flashoverMethodOptions = optionMap.flashover_method.length > 0
+    ? optionMap.flashover_method
+    : FLASHOVER_METHOD_FALLBACK_OPTIONS;
+  const altitudeCorrectionOptions = optionMap.altitude_correction.length > 0
+    ? optionMap.altitude_correction
+    : ALTITUDE_CORRECTION_FALLBACK_OPTIONS;
 
   return (
     <Form<CreateJobFormValues>
@@ -67,11 +103,8 @@ export function CreateJobForm({
 
       <Form.Item name="job_type" label="任务类型" rules={[{ required: true, message: "请选择任务类型" }]}>
         <Select
-          options={[
-            { value: "normal", label: "普通计算" },
-            { value: "tongtiao", label: "同跳计算" },
-            { value: "risk", label: "风险评估" },
-          ]}
+          loading={dimensionsLoading}
+          options={jobTypeOptions}
         />
       </Form.Item>
 
@@ -165,29 +198,20 @@ export function CreateJobForm({
           <div className="grid gap-3 md:grid-cols-2">
             <Form.Item name="current_waveform" label="雷电流波形">
               <Select
-                options={[
-                  { value: "heidler", label: "Heidler" },
-                  { value: "double_slope", label: "双斜角" },
-                  { value: "double_exponential", label: "双指数" },
-                ]}
+                loading={dimensionsLoading}
+                options={currentWaveformOptions}
               />
             </Form.Item>
             <Form.Item name="flashover_method" label="闪络判据">
               <Select
-                options={[
-                  { value: "guideline", label: "规程法" },
-                  { value: "intersection", label: "相交法" },
-                  { value: "leader_development", label: "先导发展法" },
-                ]}
+                loading={dimensionsLoading}
+                options={flashoverMethodOptions}
               />
             </Form.Item>
             <Form.Item name="altitude_correction" label="海拔修正">
               <Select
-                options={[
-                  { value: "none", label: "无" },
-                  { value: "formula1", label: "推荐公式1" },
-                  { value: "formula2", label: "推荐公式2" },
-                ]}
+                loading={dimensionsLoading}
+                options={altitudeCorrectionOptions}
               />
             </Form.Item>
             <Form.Item name="induced_voltage_formula" label="感应电压公式">

@@ -377,3 +377,83 @@ def _expected_km_per_0_01_deg_at_30() -> float:
     from app.services.line_service import _haversine_km
 
     return _haversine_km(30.0, 120.0, 30.0, 120.01)
+
+
+def test_list_lines_bbox_filters_lines_with_overlapping_towers(monkeypatch) -> None:
+    """bbox 过滤：仅保留杆塔经纬度与 bbox 有矩形重叠的线路（含端点）。"""
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        inside = Line(code="PL-IN-001", name="内部线路", voltage_kv=220, status="enabled")
+        boundary = Line(code="PL-BD-001", name="边界线路", voltage_kv=220, status="enabled")
+        outside = Line(code="PL-OU-001", name="外部线路", voltage_kv=220, status="enabled")
+        session.add_all([inside, boundary, outside])
+        session.flush()
+
+        session.add_all(
+            [
+                # 含端点：max(min_lat)<=min(max_lat)：30.0 落在 [30.0, 31.0] 内 → 保留
+                LineTower(line_id=inside.id, seq_no=1, tower_no="I001", longitude=120.0, latitude=30.0),
+                # 恰好压在 bbox 边界（经度 121.0、纬度 31.0）→ 保留
+                LineTower(line_id=boundary.id, seq_no=1, tower_no="B001", longitude=121.0, latitude=31.0),
+                # 超出 bbox（纬度 40）→ 排除
+                LineTower(line_id=outside.id, seq_no=1, tower_no="O001", longitude=121.0, latitude=40.0),
+            ]
+        )
+        session.commit()
+
+        # bbox: min_lat=30.0, min_lon=120.0, max_lat=31.0, max_lon=121.0
+        response = line_service.list_lines(session, keyword=None, bbox=(30.0, 120.0, 31.0, 121.0))
+
+        codes = sorted(item.code for item in response.items)
+        assert codes == ["PL-BD-001", "PL-IN-001"]
+        assert response.total == 2
+    finally:
+        session.close()
+
+
+def test_list_lines_bbox_none_returns_all_lines(monkeypatch) -> None:
+    """bbox 缺省（None）时行为不变，返回全部线路（向后兼容）。"""
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        line_a = Line(code="PL-A-001", name="线路A", status="enabled")
+        line_b = Line(code="PL-B-001", name="线路B", status="enabled")
+        session.add_all([line_a, line_b])
+        session.flush()
+        session.add_all(
+            [
+                LineTower(line_id=line_a.id, seq_no=1, tower_no="A001", longitude=120.0, latitude=30.0),
+                LineTower(line_id=line_b.id, seq_no=1, tower_no="B001"),  # 无坐标
+            ]
+        )
+        session.commit()
+
+        response = line_service.list_lines(session, keyword=None)
+
+        assert response.total == 2
+        assert len(response.items) == 2
+    finally:
+        session.close()
+
+
+def test_list_lines_bbox_ignores_towers_without_coordinates(monkeypatch) -> None:
+    """无经纬度的杆塔不参与重叠判定，不会导致线路被错误保留或误伤。"""
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        no_coord_line = Line(code="PL-NC-001", name="无坐标线路", status="enabled")
+        session.add(no_coord_line)
+        session.flush()
+        session.add(LineTower(line_id=no_coord_line.id, seq_no=1, tower_no="N001"))
+        session.commit()
+
+        response = line_service.list_lines(session, keyword=None, bbox=(0.0, 0.0, 10.0, 10.0))
+
+        assert response.total == 0
+        assert response.items == []
+    finally:
+        session.close()

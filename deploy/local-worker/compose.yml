@@ -55,8 +55,6 @@ services:
       WINE_MAX_TIMEOUT_SECONDS: 1800
       FLOWER_API_BASE_URL: http://223.109.142.84:5555
       FLOWER_API_TIMEOUT_SECONDS: 10
-      UNPACK_SECRET_KEY: mR9rPYmTymyBlvHIqAlYQiKDFscsMbK4bG5LTeOS5yc
-      LP_API_BASE_URL: http://223.109.142.84:8000
     extra_hosts:
       - "minio:223.109.142.84"
     volumes:

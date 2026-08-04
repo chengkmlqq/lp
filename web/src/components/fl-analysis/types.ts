@@ -164,6 +164,25 @@ export function formatAltitudeCorrection(value: string | null | undefined): stri
   return value || "-";
 }
 
+/**
+ * 优先用维度管理 labelMap 显示 code → name，未命中时回退到静态格式化。
+ * 维度数据加载失败 / 值未维护时返回原始 code（同现有 fallback 行为）。
+ */
+export function formatDimensionValue(
+  value: string | null | undefined,
+  labelMap: Map<string, string> | undefined,
+  fallback: (v: string | null | undefined) => string,
+): string {
+  if (!value) {
+    return "-";
+  }
+  const mapped = labelMap?.get(value);
+  if (mapped) {
+    return mapped;
+  }
+  return fallback(value);
+}
+
 export function formatInducedVoltageFormula(value: string | null | undefined): string {
   if (value === "formula1") return "公式1";
   if (value === "formula2") return "公式2";

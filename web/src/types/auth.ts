@@ -1319,18 +1319,6 @@ export type LightningDistributionStatusResponse = {
   record: LightningDistributionRecord | null;
 };
 
-export type LightningFillDensityRequest = {
-  line_id: string;
-  region_id?: string | null;
-  years?: number | null;
-  radius_km?: number | null;
-};
-
-export type LightningFillDensityResponse = {
-  task_id: string;
-  status: string;
-};
-
 export type LightningLpDrawResponse = {
   task_id: string;
   status: string;

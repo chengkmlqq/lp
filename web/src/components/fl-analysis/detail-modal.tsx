@@ -12,6 +12,7 @@ import type {
 import {
   formatAltitudeCorrection,
   formatCurrentWaveform,
+  formatDimensionValue,
   formatExternalAdapter,
   formatFlashoverMethod,
   formatInducedVoltageFormula,
@@ -38,6 +39,7 @@ import {
   type ReasonDetail,
   type ScanPoint,
 } from "./types";
+import { useFlDimensionOptions } from "./use-fl-dimensions";
 
 const reasonDetailColumns: ColumnsType<ReasonDetail> = [
   { title: "因子", dataIndex: "label", width: 180 },
@@ -173,6 +175,7 @@ export function DetailModal({
   selectedJobDetail,
   onClose,
 }: DetailModalProps) {
+  const { labelMap } = useFlDimensionOptions();
   const detailResultObject = readObject(detailRow?.result_json);
   const reasonDetails = readReasonDetails(detailRow);
   const mitigationActions = readMitigationActions(detailRow);
@@ -216,9 +219,9 @@ export function DetailModal({
                     : "-"}
                 </Descriptions.Item>
                 <Descriptions.Item label="扫描点数">{String(detailWorkflow.scan_point_count ?? "-")}</Descriptions.Item>
-                <Descriptions.Item label="雷电流波形">{formatCurrentWaveform(detailWorkflow.current_waveform)}</Descriptions.Item>
-                <Descriptions.Item label="闪络判据">{formatFlashoverMethod(detailWorkflow.flashover_method)}</Descriptions.Item>
-                <Descriptions.Item label="海拔修正">{formatAltitudeCorrection(detailWorkflow.altitude_correction)}</Descriptions.Item>
+                <Descriptions.Item label="雷电流波形">{formatDimensionValue(detailWorkflow.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
+                <Descriptions.Item label="闪络判据">{formatDimensionValue(detailWorkflow.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
+                <Descriptions.Item label="海拔修正">{formatDimensionValue(detailWorkflow.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
                 <Descriptions.Item label="感应电压公式">{formatInducedVoltageFormula(detailWorkflow.induced_voltage_formula)}</Descriptions.Item>
                 <Descriptions.Item label="波头范围">{formatRangeSummary(detailWorkflow.head_time_range_us)}</Descriptions.Item>
                 <Descriptions.Item label="波尾范围">{formatRangeSummary(detailWorkflow.tail_time_range_us)}</Descriptions.Item>
