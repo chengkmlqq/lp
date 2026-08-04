@@ -64,6 +64,7 @@ const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLD
 const TABLE_MIN_SCROLL_Y = 180;
 const TABLE_VIEWPORT_GAP = 40;
 const TABLE_FALLBACK_RESERVE = 220;
+const TABLE_EXTRA_HEIGHT = 15;
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
@@ -116,6 +117,7 @@ export default function AdminScheduledTasksPage() {
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
   const [runningId, setRunningId] = useState<number | null>(null);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const pageCardRef = useRef<HTMLDivElement | null>(null);
 
   const canRead = hasPermission("celery.read") || hasPermission("celery.manage");
   const canManage = hasPermission("celery.manage");
@@ -385,7 +387,7 @@ export default function AdminScheduledTasksPage() {
       nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - TABLE_VIEWPORT_GAP);
     }
 
-    const clampedHeight = Math.max(TABLE_MIN_SCROLL_Y, nextHeight);
+    const clampedHeight = Math.max(TABLE_MIN_SCROLL_Y, nextHeight + TABLE_EXTRA_HEIGHT);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);
 
@@ -465,10 +467,11 @@ export default function AdminScheduledTasksPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col space-y-6">
+    <div className="flex min-h-0 flex-1 flex-col">
       <AntCard
+        ref={pageCardRef}
+        className="admin-scheduled-tasks-page-card"
         title="定时任务管理"
-        style={{ height: '100%' }}
         extra={(
           <Space>
             {listQuery.isFetching && <Spin size="small" />}
