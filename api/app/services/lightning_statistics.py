@@ -337,20 +337,45 @@ def build_density_matrix(
     return matrix
 
 
+def _configure_chinese_font() -> None:
+    """配置 matplotlib 中文字体（幂等，多次调用安全）。
+
+    font.sans-serif 列表含多个候选中文字体，matplotlib 按序回退到第一个可用字体。
+    必须在 pyplot 首次使用前调用。
+    """
+    import matplotlib
+
+    matplotlib.rcParams["font.sans-serif"] = [
+        "SimHei",
+        "Noto Sans CJK SC",
+        "WenQuanYi Zen Hei",
+        "Microsoft YaHei",
+        "PingFang SC",
+        "Source Han Sans SC",
+        "AR PL UMing CN",
+        "DejaVu Sans",
+    ]
+    matplotlib.rcParams["axes.unicode_minus"] = False
+
+
 def render_density_image(
     strikes: list[dict[str, Any]],
     *,
     grid_size_km: float,
+    data_years: float = 1.0,
     title: str | None = None,
 ) -> bytes:
     """用 matplotlib 渲染地闪密度图（网格热力图），返回 PNG 字节。
 
+    地闪密度 Ng = count / (grid_size_km² × data_years)，单位：次/(km²·年)。
+    坐标轴显示经纬度刻度，图中附统计摘要信息。
     matplotlib 不可用时返回 b""（调用方降级为无图）。
     """
     try:
         import matplotlib
 
         matplotlib.use("Agg")
+        _configure_chinese_font()
         import matplotlib.pyplot as plt
     except ImportError:
         return b""
@@ -366,6 +391,7 @@ def render_density_image(
     max_lon = max(lons)
     center_lat = (min_lat + max_lat) / 2.0
     km_per_lon = safe_km_per_lon(center_lat)
+    years = max(float(data_years), 1e-6)
 
     cell_counts: dict[tuple[int, int], int] = {}
     for s in strikes:
@@ -378,18 +404,74 @@ def render_density_image(
     if matrix is None:
         return b""
 
+    # 换算为地闪密度 Ng（次/(km²·年)），替代原始落雷次数
+    grid_area_km2 = grid_size_km * grid_size_km
+    ng_matrix = matrix / (grid_area_km2 * years)
+
+    # 构建经纬度刻度标签
+    xs = [key[0] for key in cell_counts]
+    ys = [key[1] for key in cell_counts]
+    base_x = min(xs)
+    base_y = min(ys)
+    width_cells = max(xs) - base_x + 1
+    height_cells = max(ys) - base_y + 1
+
+    # 经度刻度：网格中心 → 经度
+    lon_ticks = []
+    lon_labels = []
+    for i in range(width_cells):
+        if width_cells <= 10 or i % max(width_cells // 6, 1) == 0:
+            km_from_min = (base_x + i + 0.5) * grid_size_km
+            lon_val = min_lon + km_from_min / km_per_lon
+            lon_ticks.append(i)
+            lon_labels.append(f"{lon_val:.2f}")
+
+    # 纬度刻度：网格中心 → 纬度
+    lat_ticks = []
+    lat_labels = []
+    for i in range(height_cells):
+        if height_cells <= 10 or i % max(height_cells // 6, 1) == 0:
+            km_from_min = (base_y + i + 0.5) * grid_size_km
+            lat_val = min_lat + km_from_min / DEGREE_TO_KM
+            lat_ticks.append(i)
+            lat_labels.append(f"{lat_val:.2f}")
+
     fig, ax = plt.subplots(figsize=(10, 8))
     image = ax.imshow(
-        matrix,
+        ng_matrix,
         origin="lower",
         aspect="auto",
         cmap="YlOrRd",
         interpolation="nearest",
     )
-    ax.set_xlabel("经度方向网格")
-    ax.set_ylabel("纬度方向网格")
+    ax.set_xlabel("经度 (°E)")
+    ax.set_ylabel("纬度 (°N)")
     ax.set_title(title or "雷电流地闪密度分布")
-    fig.colorbar(image, ax=ax, label="落雷次数")
+    ax.set_xticks(lon_ticks)
+    ax.set_xticklabels(lon_labels, fontsize=8)
+    ax.set_yticks(lat_ticks)
+    ax.set_yticklabels(lat_labels, fontsize=8)
+
+    cbar = fig.colorbar(image, ax=ax)
+    cbar.set_label("地闪密度 Ng (次/(km²·年))")
+
+    # 图内统计摘要信息
+    total_strikes = len(strikes)
+    area_km2 = grid_area_km2 * max(width_cells, 1) * max(height_cells, 1)
+    overall_ng = ng_matrix.sum() * 0  # avoid recomputation
+    overall_ng = total_strikes / (area_km2 * years) if area_km2 > 0 and years > 0 else 0.0
+    stats_text = (
+        f"总落雷数: {total_strikes}\n"
+        f"数据年数: {years:.1f}年\n"
+        f"整体Ng: {overall_ng:.4f} 次/(km²·年)"
+    )
+    ax.text(
+        0.02, 0.98, stats_text,
+        transform=ax.transAxes,
+        fontsize=8,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    )
 
     plt.tight_layout()
     buf = io.BytesIO()

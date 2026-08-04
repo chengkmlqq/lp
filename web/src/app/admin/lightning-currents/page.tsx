@@ -42,7 +42,6 @@ import type {
   LightningAmplitudeRecord,
   LightningAmplitudeListResponse,
   LightningAmplitudeImportResponse,
-  LightningCurrentExceedanceResponse,
   LightningPolarity,
 } from "@/types/auth";
 import { CHINESE_CITIES, type CityOption } from "@/data/chinese-cities";
@@ -112,7 +111,6 @@ export default function AdminLightningCurrentsPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [exceedanceModalOpen, setExceedanceModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedRecordForModal, setSelectedRecordForModal] = useState<LightningAmplitudeRecord | null>(null);
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
@@ -156,25 +154,10 @@ export default function AdminLightningCurrentsPage() {
 
   const records = useMemo(() => recordsQuery.data?.items ?? [], [recordsQuery.data?.items]);
 
-  const exceedancePath = `/api/v1/lightning-currents/stats/exceedance`;
-
-  const exceedanceQuery = useQuery({
-    queryKey: [exceedancePath],
-    enabled: !!user && canRead && exceedanceModalOpen,
-    queryFn: async () => {
-      const response = await fetchWithAuth(exceedancePath);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LightningCurrentExceedanceResponse;
-    },
-  });
-
   const listError = recordsQuery.error instanceof Error ? recordsQuery.error.message : "";
-  const statsError = exceedanceQuery.error instanceof Error ? exceedanceQuery.error.message : "";
 
   useToastFeedback({
-    errorMessage: error || listError || statsError,
+    errorMessage: error || listError,
     successMessage: success,
     clearError: () => setError(""),
     clearSuccess: () => setSuccess(""),
@@ -255,7 +238,7 @@ export default function AdminLightningCurrentsPage() {
       return;
     }
     window.requestAnimationFrame(updateTableScrollY);
-  }, [error, listError, statsError, records.length, recordsQuery.isFetching, updateTableScrollY, viewMode]);
+  }, [error, listError, records.length, recordsQuery.isFetching, updateTableScrollY, viewMode]);
 
   useEffect(() => {
     if (viewMode !== "card" || recordsQuery.isLoading) {
@@ -447,10 +430,6 @@ export default function AdminLightningCurrentsPage() {
     },
   });
 
-  const openExceedanceModal = () => {
-    setExceedanceModalOpen(true);
-  };
-
   const openDetailModal = (record: LightningAmplitudeRecord) => {
     setSelectedRecordForModal(record);
     setDetailModalOpen(true);
@@ -627,47 +606,6 @@ export default function AdminLightningCurrentsPage() {
         width: 220,
         fixed: "right",
         render: (_: unknown, row) => {
-          const moreMenuItems: MenuProps["items"] = [
-            {
-              key: "exceedance",
-              label: "峰值超越概率",
-              onClick: () => openExceedanceModal(),
-            },
-            {
-              type: "divider",
-            },
-            ...(row.status === "failed" && canManage
-              ? [
-                  {
-                    key: "retry",
-                    label: "重试",
-                    onClick: () => retryMutation.mutate(row),
-                  },
-                  {
-                    type: "divider" as const,
-                  },
-                ]
-              : []),
-            {
-              key: "delete",
-              label: "删除",
-              danger: true,
-              disabled: !canManage,
-              onClick: () => {
-                Modal.confirm({
-                  title: "删除记录",
-                  content: `确认删除记录 ${row.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
-                  okText: "删除",
-                  cancelText: "取消",
-                  okButtonProps: { danger: true },
-                  onOk: async () => {
-                    await deleteMutation.mutateAsync(row);
-                  },
-                });
-              },
-            },
-          ];
-
           return (
             <Space wrap>
               <Button
@@ -676,14 +614,36 @@ export default function AdminLightningCurrentsPage() {
               >
                 详情
               </Button>
-              <Dropdown
-                menu={{
-                  items: moreMenuItems,
-                }}
-                trigger={["click"]}
-              >
-                <Button size="small" icon={<MoreOutlined />} />
-              </Dropdown>
+              {row.status === "failed" && canManage && (
+                <Button
+                  size="small"
+                  loading={retryMutation.isPending}
+                  onClick={() => retryMutation.mutate(row)}
+                >
+                  重试
+                </Button>
+              )}
+              {canManage && (
+                <Button
+                  size="small"
+                  danger
+                  loading={deleteMutation.isPending}
+                  onClick={() => {
+                    Modal.confirm({
+                      title: "删除记录",
+                      content: `确认删除记录 ${row.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
+                      okText: "删除",
+                      cancelText: "取消",
+                      okButtonProps: { danger: true },
+                      onOk: async () => {
+                        await deleteMutation.mutateAsync(row);
+                      },
+                    });
+                  }}
+                >
+                  删除
+                </Button>
+              )}
             </Space>
           );
         },
@@ -728,8 +688,6 @@ export default function AdminLightningCurrentsPage() {
       </Card>
     );
   }
-
-  const exceedance = exceedanceQuery.data?.thresholds ?? [];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -938,71 +896,6 @@ export default function AdminLightningCurrentsPage() {
             </Button>
           </div>
         </Form>
-      </Modal>
-
-      <Modal
-        title="峰值超越概率（P 曲线）"
-        open={exceedanceModalOpen}
-        onCancel={() => {
-          setExceedanceModalOpen(false);
-        }}
-        footer={null}
-        width={900}
-        destroyOnClose
-      >
-        {exceedance.length === 0 ? (
-          <Empty description="暂无统计数据（需先导入并完成解析）" />
-        ) : (
-          <Space direction="vertical" size={16} className="w-full">
-            <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={exceedance.map((point) => ({
-                threshold_ka: point.threshold_ka,
-                exceedance_probability_pct: point.exceedance_probability * 100,
-              }))}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="threshold_ka"
-                  label={{ value: "阈值 (kA)", position: "insideBottomRight", offset: -5 }}
-                />
-                <YAxis
-                  label={{ value: "超越概率 (%)", angle: -90, position: "insideLeft", offset: 10 }}
-                  domain={[0, 100]}
-                />
-                <Tooltip
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={(value: any) => [`${Number(value).toFixed(2)}%`, "超越概率"]}
-                  labelFormatter={(label) => `阈值: ${Number(label).toFixed(2)} kA`}
-                />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="exceedance_probability_pct"
-                  stroke="#1890ff"
-                  name="超越概率 (%)"
-                  strokeWidth={2}
-                  dot={{ r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-            <Table
-              rowKey={(row) => `${row.threshold_ka}`}
-              pagination={false}
-              dataSource={exceedance}
-              columns={[
-                { title: "阈值(kA)", dataIndex: "threshold_ka", width: 140, render: (value: number) => formatNumber(value, 2) },
-                {
-                  title: "超越概率",
-                  dataIndex: "exceedance_probability",
-                  width: 140,
-                  render: (value: number) => `${(value * 100).toFixed(2)}%`,
-                },
-                { title: "超越次数", dataIndex: "exceedance_count", width: 140 },
-              ]}
-              size="small"
-              loading={exceedanceQuery.isFetching}
-            />
-          </Space>
-        )}
       </Modal>
 
       <Modal

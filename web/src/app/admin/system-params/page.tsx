@@ -59,12 +59,17 @@ const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLD
 
 const PARAM_TABLE_MIN_SCROLL_Y = 180;
 const PARAM_TABLE_VIEWPORT_GAP = 40;
-const PARAM_TABLE_FALLBACK_RESERVE = 220;
+const PARAM_TABLE_FALLBACK_RESERVE = 232;
 
 function paramStatusLabel(status: SystemParamSummary["status"]): string {
   if (status === "enabled") return "启用";
   if (status === "disabled") return "禁用";
   return status || "-";
+}
+
+// 状态过滤下拉的选中项/选项以 Tag 展示，颜色与表格状态列保持一致
+function statusTag(value: unknown): React.ReactNode {
+  return <Tag color={value === "enabled" ? "green" : "red"}>{paramStatusLabel(value as SystemParamSummary["status"])}</Tag>;
 }
 
 export default function AdminSystemParamsPage() {
@@ -1115,9 +1120,11 @@ export default function AdminSystemParamsPage() {
                   allowClear
                   placeholder="全部"
                   options={[
-                    { value: "enabled", label: "已启用" },
-                    { value: "disabled", label: "已禁用" },
+                    { value: "enabled", label: "启用" },
+                    { value: "disabled", label: "禁用" },
                   ]}
+                  labelRender={(props) => statusTag(props.value)}
+                  optionRender={(option) => statusTag(option.value)}
                   onChange={(value) => setStatusFilterInput(value)}
                 />
               </Form.Item>

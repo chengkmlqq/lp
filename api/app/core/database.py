@@ -581,6 +581,52 @@ def _ensure_user_email_nullable() -> None:
             )
 
 
+def _ensure_dimension_item_type_id_column_compatibility() -> None:
+    """
+    Keep `dimension_item.type_id` column aligned with the current ORM mapping.
+
+    The ORM expects a `type_id` FK column (LP-207: 维度类型管理), but legacy
+    deployments created `dimension_item` before it existed and never ran the
+    `add_dimension_type.sql` migration. Without it, every SELECT on
+    `dimension_item` fails with "column dimension_item.type_id does not exist".
+    """
+    if not database_url.startswith("postgresql"):
+        return
+
+    schema = settings.resolved_db_schema
+    with engine.begin() as connection:
+        db_inspector = inspect(connection)
+        if not db_inspector.has_table("dimension_item", schema=schema):
+            return
+
+        column_names = {
+            column["name"]
+            for column in db_inspector.get_columns("dimension_item", schema=schema)
+        }
+        if "type_id" in column_names:
+            return
+
+        # 依赖 dimension_type 表存在才能建 FK；若该表尚不存在（如首次从旧库升级时，
+        # dimension_type 要等 create_all 创建），则先加无 FK 的列，避免引导失败。
+        if db_inspector.has_table("dimension_type", schema=schema):
+            connection.execute(
+                text(
+                    "ALTER TABLE dimension_item ADD COLUMN IF NOT EXISTS type_id VARCHAR(32) "
+                    "REFERENCES dimension_type(id) ON DELETE RESTRICT"
+                )
+            )
+        else:
+            connection.execute(
+                text("ALTER TABLE dimension_item ADD COLUMN IF NOT EXISTS type_id VARCHAR(32)")
+            )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_dimension_item_type_id ON dimension_item(type_id)")
+        )
+        logger.warning(
+            "Detected missing dimension_item.type_id; added type_id FK column for ORM compatibility.",
+        )
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
@@ -630,4 +676,5 @@ def init_db() -> None:
     _ensure_atp_asset_column_compatibility()
     _ensure_tower_model_column_compatibility()
     _ensure_tower_profile_column_compatibility()
+    _ensure_dimension_item_type_id_column_compatibility()
     Base.metadata.create_all(bind=engine)

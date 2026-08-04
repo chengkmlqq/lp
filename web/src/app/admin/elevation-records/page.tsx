@@ -742,7 +742,7 @@ export default function ElevationRecordsPage() {
         title="高程数据管理"
         extra={
           <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
-            上传文件
+            导入
           </Button>
         }
       >

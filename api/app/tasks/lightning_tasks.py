@@ -305,6 +305,7 @@ def import_lightning_distribution_job(
         png = lightning_statistics.render_density_image(
             strikes,
             grid_size_km=float(dist.grid_size_km or 1.0),
+            data_years=float(dist.data_years or 1.0),
             title=dist.source_file_name,
         )
         if png:

@@ -167,3 +167,46 @@ def test_compute_statistics_default_skips_grid_cells() -> None:
         strikes, grid_size_km=1.0, data_years=1.0, include_grid_cells=True
     )
     assert len(stats_full["grid_cells"]) >= 1
+
+
+def test_configure_chinese_font_no_error() -> None:
+    """中文字体配置函数多次调用不抛异常，且 rcParams 正确设置。"""
+    lightning_statistics._configure_chinese_font()
+    import matplotlib
+
+    assert "SimHei" in matplotlib.rcParams["font.sans-serif"]
+    assert matplotlib.rcParams["axes.unicode_minus"] is False
+    # 幂等：重复调用不会改变配置
+    lightning_statistics._configure_chinese_font()
+    assert matplotlib.rcParams["axes.unicode_minus"] is False
+
+
+def test_render_density_image_with_data_years() -> None:
+    """传入 data_years 后，图片为有效 PNG 且不再产生 CJK 缺字警告。"""
+    import warnings
+
+    strikes = [
+        {"lat": 30.0, "lon": 120.0, "current_ka": 10.0, "polarity": "positive"},
+        {"lat": 30.01, "lon": 120.01, "current_ka": -5.0, "polarity": "negative"},
+        {"lat": 30.02, "lon": 120.02, "current_ka": 3.0, "polarity": "positive"},
+    ]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        png = lightning_statistics.render_density_image(
+            strikes, grid_size_km=1.0, data_years=2.0
+        )
+    assert isinstance(png, bytes)
+    assert len(png) > 100
+    # PNG 签名校验
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_render_density_image_backward_compatible_without_data_years() -> None:
+    """旧调用方式（不传 data_years）向后兼容，正常出图。"""
+    strikes = [
+        {"lat": 30.0, "lon": 120.0, "current_ka": 10.0, "polarity": "positive"},
+        {"lat": 30.01, "lon": 120.01, "current_ka": -5.0, "polarity": "negative"},
+    ]
+    png = lightning_statistics.render_density_image(strikes, grid_size_km=1.0)
+    assert isinstance(png, bytes)
+    assert len(png) > 100

@@ -46,7 +46,7 @@ services:
       MINIO_ENABLED: "true"
       MINIO_ENDPOINT: http://223.109.142.84:7779
       MINIO_ACCESS_KEY: replace_strong_access_key
-      MINIO_SECRET_KEY: 3edcCDE#
+      MINIO_SECRET_KEY: replace_strong_secret_key
       MINIO_BUCKET: lp-files
       MINIO_REGION: us-east-1
       WINE_BINARY_PATH: wine

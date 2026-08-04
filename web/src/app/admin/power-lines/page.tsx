@@ -625,6 +625,8 @@ export default function AdminPowerLinesPage() {
   const [success, setSuccess] = useState("");
   const [panelBodyHeight, setPanelBodyHeight] = useState(POWER_LINES_PANEL_MIN_HEIGHT);
   const [routeLengthMap, setRouteLengthMap] = useState<Record<string, number>>({});
+  // line id whose route length is still being computed by the map (shows placeholder instead of "-")
+  const [routeLengthPendingLineId, setRouteLengthPendingLineId] = useState<string | null>(null);
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   const canLineManage = hasPermission("line.manage");
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
@@ -943,7 +945,9 @@ export default function AdminPowerLinesPage() {
   );
   const selectedLinePreparation = useMemo(() => readLinePreparation(selectedLine), [selectedLine]);
   const handleRouteLengthChange = useCallback((value: number) => {
-    setRouteLengthMap((prev) => ({ ...prev, [selectedLine?.id ?? ""]: value }));
+    const id = selectedLine?.id ?? "";
+    setRouteLengthMap((prev) => ({ ...prev, [id]: value }));
+    setRouteLengthPendingLineId((prev) => (prev === id ? null : prev));
   }, [selectedLine]);
 
   // Compute line bbox from towers for elevation backfill matching
@@ -990,6 +994,8 @@ export default function AdminPowerLinesPage() {
     if (selectedLineId !== effectiveSelectedLineId) {
       const frameId = window.requestAnimationFrame(() => {
         setSelectedLineId(effectiveSelectedLineId);
+        // the newly selected line's route length is being computed by the map
+        setRouteLengthPendingLineId(effectiveSelectedLineId);
       });
       return () => {
         window.cancelAnimationFrame(frameId);
@@ -1428,7 +1434,10 @@ export default function AdminPowerLinesPage() {
   };
   const lineCards = lines.map((line) => {
     const selected = line.id === effectiveSelectedLineId;
-    const displayRouteLengthKm = routeLengthMap[line.id] ?? line.estimated_length_km ?? 0;
+    const routeLengthKm = routeLengthMap[line.id] ?? line.estimated_length_km;
+    // while the selected line's route length is still being computed, show a placeholder
+    // instead of flashing back to "-" (routeLengthMap has no value yet for the new line)
+    const isRouteLengthPending = selected && routeLengthKm == null && routeLengthPendingLineId === line.id;
     return (
       <Card
         key={line.id}
@@ -1437,6 +1446,8 @@ export default function AdminPowerLinesPage() {
         onClick={() => {
           setSelectedLineTouched(true);
           setSelectedLineId(line.id);
+          // mark the clicked line's route length as pending until the map reports it
+          setRouteLengthPendingLineId(line.id);
         }}
         style={selected
           ? {
@@ -1486,7 +1497,7 @@ export default function AdminPowerLinesPage() {
         <Space direction="vertical" size={4} className="w-full">
           <Typography.Text type="secondary">电压等级：{line.voltage_kv ?? "-"} kV</Typography.Text>
           <Typography.Text type="secondary">杆塔总数：{line.tower_count}</Typography.Text>
-          <Typography.Text type="secondary">估算长度：{displayRouteLengthKm > 0 ? `${displayRouteLengthKm.toFixed(2)} km` : "-"}</Typography.Text>
+          <Typography.Text type="secondary">估算长度：{isRouteLengthPending ? "..." : routeLengthKm != null && routeLengthKm > 0 ? `${routeLengthKm.toFixed(2)} km` : "-"}</Typography.Text>
           <Typography.Text type="secondary">
             更新时间：{new Date(line.update_date).toLocaleString()}
           </Typography.Text>

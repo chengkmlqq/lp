@@ -95,6 +95,15 @@ function formatNumber(value: number | null | undefined, digits = 3): string {
   return value.toFixed(digits);
 }
 
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return "-";
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export default function AdminLightningDistributionPage() {
   const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
   const queryClient = useQueryClient();
@@ -411,7 +420,7 @@ export default function AdminLightningDistributionPage() {
         title: "导入时间",
         dataIndex: "create_date",
         width: 170,
-        render: (value: string) => new Date(value).toLocaleString("zh-CN", { hour12: false }),
+        render: (value: string) => formatDateTime(value),
       },
       {
         title: "状态",
@@ -471,7 +480,7 @@ export default function AdminLightningDistributionPage() {
       {
         title: "操作",
         key: "actions",
-        width: canManage ? 120 : 80,
+        width: 220,
         fixed: "right",
         render: (_: unknown, row) => (
           <Space wrap>
@@ -563,7 +572,7 @@ export default function AdminLightningDistributionPage() {
           <div className="admin-lightning-distribution-batch-card-field">
             <Typography.Text type="secondary">导入时间</Typography.Text>
             <Typography.Text>
-              {new Date(record.create_date).toLocaleString("zh-CN", { hour12: false })}
+              {formatDateTime(record.create_date)}
             </Typography.Text>
           </div>
           <div className="admin-lightning-distribution-batch-card-field">

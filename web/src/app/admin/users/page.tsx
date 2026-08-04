@@ -71,7 +71,7 @@ function statusTag(value: unknown): ReactNode {
 
 const USERS_TABLE_MIN_SCROLL_Y = 180;
 const USERS_TABLE_VIEWPORT_GAP = 40;
-const USERS_TABLE_FALLBACK_RESERVE = 220;
+const USERS_TABLE_FALLBACK_RESERVE = 230;
 
 export default function AdminUsersPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
