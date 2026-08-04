@@ -38,6 +38,8 @@ from ..schemas.lightning import (
     LightningPolarity,
     LightningFillDensityRequest,
     LightningFillDensityResponse,
+    LightningLpDrawRequest,
+    LightningLpDrawResponse,
 )
 from .line_preparation_service import record_line_preparation_source, summarize_line_preparation
 from .line_service import serialize_line
@@ -1121,6 +1123,7 @@ def _serialize_distribution(dist: LightningDistribution) -> LightningDistributio
         unknown_count=dist.unknown_count,
         stats_json=_stats_json,
         has_image=bool(dist.image_object_key),
+        has_lp_image=bool(dist.lp_image_object_key is not None),
         create_user=dist.create_user,
         create_date=dist.create_date,
         update_date=dist.update_date,
@@ -1294,6 +1297,19 @@ def get_lightning_distribution_image_content(
     return content, "image/png"
 
 
+def get_lightning_distribution_lp_image_content(
+    db: Session,
+    distribution_id: str,
+) -> tuple[bytes | None, str | None]:
+    """读取 LP 分区图；不存在返回 (None, None)。"""
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist or not dist.lp_image_object_key:
+        return None, None
+    from ..services import minio_storage
+    content = minio_storage.get_object(dist.lp_image_object_key)
+    return content, "image/png"
+
+
 def retry_lightning_distribution(
     db: Session,
     distribution_id: str,
@@ -1333,7 +1349,7 @@ def delete_lightning_distribution(db: Session, distribution_id: str) -> dict[str
     if not dist:
         return {"success": False}
     from ..services import minio_storage
-    for key in (dist.source_object_key, dist.image_object_key, dist.thumbnail_key):
+    for key in (dist.source_object_key, dist.image_object_key, dist.thumbnail_key, dist.lp_image_object_key):
         if key:
             try:
                 minio_storage.delete_object(key)
@@ -1366,6 +1382,26 @@ def trigger_line_density_fill(
         actor_user_id=actor_user_id,
     )
     return LightningFillDensityResponse(task_id=task.id, status="submitted")
+
+
+def trigger_lp_density_draw(
+    db: Session,
+    distribution_id: str,
+    payload: LightningLpDrawRequest,
+    actor_user_id: str | None,
+) -> LightningLpDrawResponse:
+    """派发 LP 分区绘图任务。校验分布存在且 completed。"""
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
+    if dist.status != "completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="仅已完成分布的线路可绘图")
+    from ..tasks.lightning_tasks import render_lp_density_job
+    task = render_lp_density_job.delay(
+        distribution_id=dist.id, line_id=payload.line_id,
+        radius_km=payload.radius_km, actor_user_id=actor_user_id,
+    )
+    return LightningLpDrawResponse(task_id=task.id, status="submitted")
 
 
 # ---------------------------------------------------------------------------

@@ -141,6 +141,7 @@ class LightningDistributionRecord(BaseModel):
     stats_json: dict[str, Any] | None = None
 
     has_image: bool = False
+    has_lp_image: bool = False
 
     create_user: str | None = None
     create_date: datetime
@@ -216,5 +217,19 @@ class LightningFillDensityRequest(BaseModel):
 
 
 class LightningFillDensityResponse(BaseModel):
+    task_id: str
+    status: str = "submitted"
+
+
+# ---------------------------------------------------------------------------
+# LP 桌面端分区密度图（draw-lp）
+# ---------------------------------------------------------------------------
+class LightningLpDrawRequest(BaseModel):
+    """LP 分区密度图绘制请求。"""
+    line_id: str = Field(min_length=1, max_length=64)
+    radius_km: float | None = Field(default=None, gt=0.05, le=50.0)
+
+
+class LightningLpDrawResponse(BaseModel):
     task_id: str
     status: str = "submitted"

@@ -312,6 +312,7 @@ def import_lightning_distribution_job(
             image_key = minio_storage.build_image_key(dist.id)
             minio_storage.put_object(image_key, png, content_type="image/png")
             dist.image_object_key = image_key
+            dist.lp_image_object_key = None  # 重新导入后旧 LP 分区图失效
             _append_log(log_parts, task_id, f"[{task_id}] Image uploaded to {image_key}")
         else:
             _append_log(log_parts, task_id, f"[{task_id}] matplotlib unavailable, skip image rendering")
@@ -585,6 +586,134 @@ def fill_line_lightning_density_job(
         _upload_log(task_id, log_parts)
         raise
 
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# LP 桌面端 Voronoi 分区密度图（异步重绘）
+# ---------------------------------------------------------------------------
+@celery_app.task(
+    name="app.tasks.lightning_tasks.render_lp_density_job",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=30,
+    acks_late=True,
+    soft_time_limit=3600,
+    time_limit=5400,
+)
+def render_lp_density_job(
+    self,
+    distribution_id: str,
+    line_id: str,
+    radius_km: float | None = None,
+    actor_user_id: str | None = None,
+) -> dict[str, Any]:
+    """按 LP 桌面端 Voronoi 分区算法，为指定线路关联的分布绘制分区密度图并传 MinIO。"""
+    task_id = self.request.id
+    log_parts = [f"[{task_id}] Starting LP density draw: dist={distribution_id} line={line_id}"]
+
+    db: Session = SessionLocal()
+    try:
+        from ..services import minio_storage
+        from ..services import lightning_statistics
+
+        dist = db.execute(
+            select(LightningDistribution).where(LightningDistribution.id == distribution_id)
+        ).scalar_one_or_none()
+        if not dist:
+            _upload_log(task_id, log_parts); return {"status": "failed", "error": "distribution not found"}
+        if dist.status != "completed":
+            _upload_log(task_id, log_parts); return {"status": "failed", "error": "distribution not completed"}
+
+        line = db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
+        if not line:
+            _upload_log(task_id, log_parts); return {"status": "failed", "error": "line not found"}
+
+        group_size, radius_km_resolved, _ = _resolve_params_for_voltage(line.voltage_kv)
+        if radius_km is not None:
+            radius_km_resolved = radius_km
+
+        towers = db.execute(
+            select(LineTower).where(LineTower.line_id == line.id)
+            .order_by(LineTower.seq_no.asc(), LineTower.id.asc())
+        ).scalars().all()
+        geo = [t for t in towers if t.longitude is not None and t.latitude is not None]
+        if not geo:
+            _upload_log(task_id, log_parts); return {"status": "failed", "error": "no geo towers"}
+
+        groups = []
+        for i in range(0, len(geo), group_size):
+            chunk = geo[i:i + group_size]
+            groups.append({
+                "group_id": i // group_size,
+                "center_lat": sum(float(t.latitude) for t in chunk) / len(chunk),
+                "center_lon": sum(float(t.longitude) for t in chunk) / len(chunk),
+            })
+
+        content = minio_storage.get_object(dist.source_object_key)
+        text = lightning_statistics.decode_text_bytes(content)
+        all_strikes = lightning_statistics.parse_distribution_content(text)
+        if not all_strikes:
+            _upload_log(task_id, log_parts); return {"status": "failed", "error": "no strikes"}
+
+        # 裁剪到线路包围盒 + radius 缓冲
+        DEG = 111.32
+        import math as _m
+        min_lat = min(g["center_lat"] for g in groups) - radius_km_resolved / DEG
+        max_lat = max(g["center_lat"] for g in groups) + radius_km_resolved / DEG
+        km_per_lon = DEG * _m.cos(_m.radians(groups[0]["center_lat"]))
+        min_lon = min(g["center_lon"] for g in groups) - radius_km_resolved / max(km_per_lon, 1e-9)
+        max_lon = max(g["center_lon"] for g in groups) + radius_km_resolved / max(km_per_lon, 1e-9)
+        strikes = [s for s in all_strikes
+                   if s["lat"] is not None and s["lon"] is not None
+                   and min_lat <= float(s["lat"]) <= max_lat
+                   and min_lon <= float(s["lon"]) <= max_lon]
+        if not strikes:
+            _upload_log(task_id, log_parts); return {"status": "failed", "error": "no strikes in bbox"}
+
+        data_years = max(float(dist.data_years or 1.0), 1e-6)
+        cells = lightning_statistics.compute_lp_voronoi_cells(groups, radius_km_resolved)
+        if not cells:
+            _upload_log(task_id, log_parts); return {"status": "failed", "error": "no voronoi cells"}
+
+        png = lightning_statistics.render_lp_density_image(
+            strikes, cells, data_years=data_years, radius_km=radius_km_resolved, title=line.name,
+        )
+        if not png:
+            _upload_log(task_id, log_parts); return {"status": "failed", "error": "matplotlib unavailable"}
+
+        build_key = f"lightning/dist/lp/{distribution_id}/{task_id}.png"
+        minio_storage.put_object(build_key, png, content_type="image/png")
+        dist.lp_image_object_key = build_key
+        dist.update_user = actor_user_id
+        db.commit()
+        _publish_distribution_event("distribution.lp_draw_completed", {
+            "distribution_id": dist.id, "status": "completed", "has_lp_image": True,
+        })
+        _upload_log(task_id, log_parts)
+        return {"status": "completed", "distribution_id": dist.id}
+
+    except Exception as exc:
+        db.rollback()
+        import traceback
+        _append_log(log_parts, task_id, f"[{task_id}] FAILED: {exc}")
+        _append_log(log_parts, task_id, traceback.format_exc())
+        _upload_log(task_id, log_parts)
+        try:
+            dist = db.execute(
+                select(LightningDistribution).where(LightningDistribution.id == distribution_id)
+            ).scalar_one_or_none()
+            if dist:
+                dist.error_message = str(exc)
+                dist.update_user = actor_user_id
+                db.commit()
+                _publish_distribution_event("distribution.lp_draw_failed", {
+                    "distribution_id": dist.id, "error": str(exc),
+                })
+        except Exception:
+            db.rollback()
+        raise
     finally:
         db.close()
 

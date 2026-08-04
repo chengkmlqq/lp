@@ -627,6 +627,43 @@ def _ensure_dimension_item_type_id_column_compatibility() -> None:
         )
 
 
+def _ensure_lightning_distribution_lp_image_column_compatibility() -> None:
+    """
+    Keep `lightning_distribution.lp_image_object_key` column aligned with the ORM mapping.
+
+    The ORM expects a `lp_image_object_key` column (LP-224: LP 桌面端 Voronoi 分区密度图),
+    but legacy deployments created `lightning_distribution` before it existed and never ran
+    the `012_add_lp_image_object_key.sql` migration. Without it, every SELECT on
+    `lightning_distribution` fails with "column lightning_distribution.lp_image_object_key does not exist".
+    """
+    if not database_url.startswith("postgresql"):
+        return
+
+    schema = settings.resolved_db_schema
+    with engine.begin() as connection:
+        db_inspector = inspect(connection)
+        if not db_inspector.has_table("lightning_distribution", schema=schema):
+            return
+
+        column_names = {
+            column["name"]
+            for column in db_inspector.get_columns("lightning_distribution", schema=schema)
+        }
+        if "lp_image_object_key" in column_names:
+            return
+
+        connection.execute(
+            text(
+                "ALTER TABLE lightning_distribution "
+                "ADD COLUMN IF NOT EXISTS lp_image_object_key VARCHAR(512)"
+            )
+        )
+        logger.warning(
+            "Detected missing lightning_distribution.lp_image_object_key; "
+            "added column for ORM compatibility.",
+        )
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
@@ -677,4 +714,5 @@ def init_db() -> None:
     _ensure_tower_model_column_compatibility()
     _ensure_tower_profile_column_compatibility()
     _ensure_dimension_item_type_id_column_compatibility()
+    _ensure_lightning_distribution_lp_image_column_compatibility()
     Base.metadata.create_all(bind=engine)

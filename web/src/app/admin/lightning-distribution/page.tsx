@@ -19,6 +19,7 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -43,6 +44,7 @@ import type {
   LightningDistributionListResponse,
   LightningDistributionStatusResponse,
   LightningFillDensityResponse,
+  LightningLpDrawResponse,
   LineSummary,
   LineListResponse,
 } from "@/types/auth";
@@ -117,6 +119,7 @@ export default function AdminLightningDistributionPage() {
   const [selectedForImage, setSelectedForImage] = useState<LightningDistributionRecord | null>(null);
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [fillModalOpen, setFillModalOpen] = useState(false);
+  const [lpDrawRow, setLpDrawRow] = useState<LightningDistributionRecord | null>(null);
   const [fillForm] = Form.useForm<{ line_id: string | null; region_id: string; years: number | null; radius_km: number | null }>();
 
   const [keywordInput, setKeywordInput] = useState("");
@@ -218,6 +221,13 @@ export default function AdminLightningDistributionPage() {
         setActiveImportId(null);
         setError(payload?.error || "分布导入失败，请查看记录详情后重试");
         void refreshAll();
+      } else if (name === "distribution.lp_draw_completed") {
+        setError("");
+        setSuccess("LP 分区密度图绘制完成，可在详情弹窗查看。");
+        void refreshAll();
+      } else if (name === "distribution.lp_draw_failed") {
+        setError(payload?.error || "LP 分区密度图绘制失败");
+        void refreshAll();
       }
     }, [refreshAll]),
   );
@@ -314,6 +324,10 @@ export default function AdminLightningDistributionPage() {
   const openImageModal = (record: LightningDistributionRecord) => {
     setSelectedForImage(record);
     setImageModalOpen(true);
+  };
+
+  const openLpDrawModal = (record: LightningDistributionRecord) => {
+    setLpDrawRow(record);
   };
 
   const closeImportModal = () => {
@@ -488,6 +502,11 @@ export default function AdminLightningDistributionPage() {
               详情
             </Button>
             {canManage && (
+              <Button size="small" onClick={() => openLpDrawModal(row)}>
+                绘图
+              </Button>
+            )}
+            {canManage && (
               <Button
                 size="small"
                 danger
@@ -522,6 +541,11 @@ export default function AdminLightningDistributionPage() {
       },
       ...(canManage
         ? [
+            {
+              key: "draw-lp",
+              label: "绘图",
+              onClick: () => openLpDrawModal(record),
+            },
             {
               key: "delete",
               label: "删除",
@@ -774,6 +798,15 @@ export default function AdminLightningDistributionPage() {
           form={fillForm}
         />
       )}
+
+      {canManage && (
+        <DrawLpModal
+          open={!!lpDrawRow}
+          data={lpDrawRow}
+          onClose={() => setLpDrawRow(null)}
+          fetchWithAuth={fetchWithAuth}
+        />
+      )}
     </div>
   );
 }
@@ -930,11 +963,32 @@ function ImageViewModal({
     },
   });
 
+  const lpImageQuery = useQuery({
+    queryKey: ["/api/v1/lightning-currents/distributions", record?.id, "lp-image"],
+    enabled: open && !!record && !!record.has_lp_image,
+    queryFn: async () => {
+      if (!record) return null;
+      const response = await fetchWithAuth(`/api/v1/lightning-currents/distributions/${record.id}/lp-image`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const blob = await response.blob();
+      if (blob.size === 0) return null;
+      return URL.createObjectURL(blob);
+    },
+  });
+
   useEffect(() => {
     const objectUrl = imageQuery.data;
     if (!objectUrl) return;
     return () => URL.revokeObjectURL(objectUrl);
   }, [imageQuery.data]);
+
+  useEffect(() => {
+    const objectUrl = lpImageQuery.data;
+    if (!objectUrl) return;
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [lpImageQuery.data]);
 
   const imageUrl = imageQuery.data ?? null;
 
@@ -979,20 +1033,55 @@ function ImageViewModal({
             <Descriptions.Item label="未知极性">{record.unknown_count}</Descriptions.Item>
           </Descriptions>
 
-          <div style={{ textAlign: "center", minHeight: 200 }}>
-            {imageQuery.isLoading ? (
-              <Spin tip="加载图片中..." />
-            ) : imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={imageUrl}
-                alt="地闪密度图"
-                style={{ maxWidth: "100%", border: "1px solid #f0f0f0", borderRadius: 6 }}
-              />
-            ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无密度图（导入失败或仍在处理中）" />
-            )}
-          </div>
+          <Tabs
+            defaultActiveKey="grid"
+            items={[
+              {
+                key: "grid",
+                label: "均匀网格图",
+                children: (
+                  <div style={{ textAlign: "center", minHeight: 200 }}>
+                    {imageQuery.isLoading ? (
+                      <Spin tip="加载图片中..." />
+                    ) : imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={imageUrl}
+                        alt="地闪密度图"
+                        style={{ maxWidth: "100%", border: "1px solid #f0f0f0", borderRadius: 6 }}
+                      />
+                    ) : (
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无密度图（导入失败或仍在处理中）" />
+                    )}
+                  </div>
+                ),
+              },
+              ...(record.has_lp_image
+                ? [
+                    {
+                      key: "lp",
+                      label: "LP 分区图",
+                      children: (
+                        <div style={{ textAlign: "center", minHeight: 200 }}>
+                          {lpImageQuery.isLoading ? (
+                            <Spin tip="加载 LP 分区图中..." />
+                          ) : lpImageQuery.data ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={lpImageQuery.data}
+                              alt="LP 分区密度图"
+                              style={{ maxWidth: "100%", border: "1px solid #f0f0f0", borderRadius: 6 }}
+                            />
+                          ) : (
+                            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 LP 分区图" />
+                          )}
+                        </div>
+                      ),
+                    },
+                  ]
+                : []),
+            ]}
+          />
         </Space>
       )}
     </Modal>
@@ -1107,6 +1196,92 @@ function FillDensityModal({
           onClick={() => fillMutation.mutate()}
         >
           提交回填
+        </Button>
+      </div>
+      {success && <Typography.Paragraph type="success" style={{ marginTop: 12 }}>{success}</Typography.Paragraph>}
+      {error && <Typography.Paragraph type="danger" style={{ marginTop: 12 }}>{error}</Typography.Paragraph>}
+    </Modal>
+  );
+}
+
+function DrawLpModal({
+  open,
+  data,
+  onClose,
+  fetchWithAuth,
+}: {
+  open: boolean;
+  data: LightningDistributionRecord | null;
+  onClose: () => void;
+  fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
+}) {
+  const [lineSearchText, setLineSearchText] = useState("");
+  const [lineId, setLineId] = useState<string | null>(null);
+  const [success, setSuccess] = useState("");
+  const [error, setError] = useState("");
+
+  const linesQuery = useQuery({
+    queryKey: ["/api/v1/lines", lineSearchText],
+    enabled: open,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("limit", "200");
+      params.set("offset", "0");
+      if (lineSearchText.trim()) params.set("keyword", lineSearchText.trim());
+      const resp = await fetchWithAuth(`/api/v1/lines?${params.toString()}`);
+      if (!resp.ok) throw new Error(await readApiError(resp));
+      return (await resp.json()) as LineListResponse;
+    },
+  });
+
+  const lineOptions = useMemo(() =>
+    (linesQuery.data?.items ?? []).map((l: LineSummary) => ({
+      label: `${l.code} - ${l.name}${l.voltage_kv ? ` (${l.voltage_kv}kV)` : ""}`,
+      value: l.id,
+    })),
+    [linesQuery.data],
+  );
+
+  const drawMutation = useMutation({
+    mutationFn: async () => {
+      if (!lineId) throw new Error("请先选择线路");
+      const body: Record<string, unknown> = { line_id: lineId };
+      const resp = await fetchWithAuth(
+        `/api/v1/lightning-currents/distributions/${data?.id}/draw-lp`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+      );
+      if (!resp.ok) throw new Error(await readApiError(resp));
+      return (await resp.json()) as LightningLpDrawResponse;
+    },
+    onSuccess: (p) => {
+      setError("");
+      setSuccess(`LP 绘图任务已提交（任务ID: ${p.task_id}）。完成后请在详情弹窗查看。`);
+    },
+    onError: (e) => {
+      setSuccess("");
+      setError(e instanceof Error ? e.message : "绘图任务提交失败");
+    },
+  });
+
+  return (
+    <Modal title="绘制 LP 分区地闪密度图" open={open} onCancel={onClose} footer={null} width={560} destroyOnClose>
+      <Form layout="vertical">
+        <Form.Item label="选择线路" required>
+          <Select
+            showSearch
+            placeholder="选择线路（按该线路杆塔分组绘图）"
+            filterOption={false}
+            onSearch={setLineSearchText}
+            notFoundContent={linesQuery.isLoading ? <Spin size="small" /> : undefined}
+            value={lineId}
+            onChange={setLineId}
+            options={lineOptions}
+          />
+        </Form.Item>
+      </Form>
+      <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+        <Button type="primary" loading={drawMutation.isPending} onClick={() => drawMutation.mutate()}>
+          提交绘图
         </Button>
       </div>
       {success && <Typography.Paragraph type="success" style={{ marginTop: 12 }}>{success}</Typography.Paragraph>}

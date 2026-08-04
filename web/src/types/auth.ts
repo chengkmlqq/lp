@@ -1296,6 +1296,7 @@ export type LightningDistributionRecord = {
   unknown_count: number;
   stats_json: Record<string, unknown> | null;
   has_image: boolean;
+  has_lp_image: boolean;
   create_user: string | null;
   create_date: string;
   update_date: string;
@@ -1328,6 +1329,16 @@ export type LightningFillDensityRequest = {
 export type LightningFillDensityResponse = {
   task_id: string;
   status: string;
+};
+
+export type LightningLpDrawResponse = {
+  task_id: string;
+  status: string;
+};
+
+export type LightningLpDrawRequest = {
+  line_id: string;
+  radius_km?: number | null;
 };
 
 export type LightningDensityStatus = "pending" | "running" | "completed" | "failed";

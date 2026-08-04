@@ -695,7 +695,7 @@ export default function AdminSystemParamsPage() {
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong>{param.param_name}</Typography.Text>
-            <Tag color={param.status === "enabled" ? "green" : "default"}>
+            <Tag color={param.status === "enabled" ? "green" : "red"}>
               {paramStatusLabel(param.status)}
             </Tag>
           </Space>
@@ -775,7 +775,7 @@ export default function AdminSystemParamsPage() {
         key: "status",
         width: 120,
         render: (value: SystemParamSummary["status"]) => (
-          <Tag color={value === "enabled" ? "green" : "default"}>
+          <Tag color={value === "enabled" ? "green" : "red"}>
             {paramStatusLabel(value)}
           </Tag>
         ),
@@ -810,15 +810,6 @@ export default function AdminSystemParamsPage() {
           const rowBusy = deleteLoading || statusLoading;
 
           const moreMenuItems: MenuProps["items"] = [
-            {
-              key: "copy-key",
-              label: "复制参数键",
-              disabled: rowBusy,
-              onClick: () => {
-                void navigator.clipboard.writeText(record.param_key);
-                setSuccess(`已复制参数键: ${record.param_key}`);
-              },
-            },
             {
               key: "toggle-status",
               label: record.status === "enabled" ? "禁用" : "启用",
@@ -1053,7 +1044,6 @@ export default function AdminSystemParamsPage() {
                     value={categorySearch}
                     onChange={(e) => setCategorySearch(e.target.value)}
                     allowClear
-                    size="small"
                   />
                 </div>
               )}
@@ -1235,7 +1225,7 @@ export default function AdminSystemParamsPage() {
               onFinish={() => saveMutation.mutate()}
               autoComplete="off"
             >
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4">
                 <Form.Item<FormState>
                   label="参数键"
                   name="param_key"
@@ -1287,7 +1277,6 @@ export default function AdminSystemParamsPage() {
                 </Form.Item>
 
                 <Form.Item<FormState>
-                  className="md:col-span-2"
                   label="参数值"
                   name="param_value"
                   rules={[{ max: 20000, message: "参数值不能超过 20000 位" }]}
@@ -1296,7 +1285,6 @@ export default function AdminSystemParamsPage() {
                 </Form.Item>
 
                 <Form.Item<FormState>
-                  className="md:col-span-2"
                   label="说明"
                   name="description"
                   rules={[{ max: 20000, message: "说明不能超过 20000 位" }]}

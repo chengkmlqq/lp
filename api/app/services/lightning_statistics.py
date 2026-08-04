@@ -478,3 +478,151 @@ def render_density_image(
     fig.savefig(buf, format="png", dpi=150)
     plt.close(fig)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# LP 桌面端 Voronoi 分区密度图
+#
+# 对应反编译的 banjin*.decompiled.py 中「杆塔分组中心 + 中垂线分割」算法：
+# 用 scipy.spatial.Voronoi 做相邻分组中心点的中垂线分区（与 LP 桌面端
+# make_perp_bisector_deg + split 数学等价，但为原生实现、不引入 shapely）。
+# 面积换算契约：area_km2 = abs(area_deg2) * 12321（≈111²）。
+# ---------------------------------------------------------------------------
+def _lp_haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """两点之间的大圆距离（公里）。lightning_statistics 内就地复制，避免跨模块循环依赖。"""
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    )
+    return 2 * 6371.0 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def compute_lp_voronoi_cells(
+    groups: list[dict[str, Any]],
+    radius_km: float,
+    *,
+    padding_deg: float = 0.5,
+) -> list[dict[str, Any]]:
+    """按 LP 桌面端「杆塔分组中心 + 中垂线(Voronoi)分割」生成每个分组的多边形分区。
+
+    返回 [{"group_id", "center_lat", "center_lon", "area_km2", "polygon":[(lon,lat),...]}, ...]。
+    area_km2 = abs(area_deg2) * 12321  （与反编译版一致，1度≈111km）。
+    """
+    from scipy.spatial import Voronoi
+    import numpy as np
+
+    if not groups:
+        return []
+    pts = np.array([[g["center_lon"], g["center_lat"]] for g in groups], dtype=float)
+
+    # 哨兵点：bbox 外 4 个远点，使所有原始 cell 有限（避免 -1 顶点）
+    margin = max(radius_km / 111.0, padding_deg)
+    bb = pts.min(axis=0) - margin, pts.max(axis=0) + margin
+    sentinels = np.array([
+        [bb[0][0], bb[0][1]], [bb[1][0], bb[0][1]],
+        [bb[1][0], bb[1][1]], [bb[0][0], bb[1][1]],
+    ])
+    vor = Voronoi(np.vstack([pts, sentinels]))
+
+    cells = []
+    for i, g in enumerate(groups):
+        region_idx = vor.point_region[i]
+        vert_ids = vor.regions[region_idx]
+        if -1 in vert_ids:
+            continue  # 理论不应发生（有哨兵），防御跳过
+        poly = vor.vertices[vert_ids]  # Nx2 [lon, lat]
+        # 鞋带公式求面积（度²）
+        x, y = poly[:, 0], poly[:, 1]
+        area_deg2 = 0.5 * abs(float(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1))))
+        cells.append({
+            "group_id": g["group_id"],
+            "center_lat": g["center_lat"],
+            "center_lon": g["center_lon"],
+            "area_km2": abs(area_deg2) * 12321,
+            "polygon": [(float(lon), float(lat)) for lon, lat in poly],
+        })
+    return cells
+
+
+def _compute_lp_ng_by_cell(
+    strikes: list[dict[str, Any]],
+    cells: list[dict[str, Any]],
+    data_years: float,
+) -> dict[int, float]:
+    """把每条落雷分配到最近的 cell 中心，Ng = count/(cell.area_km2 * years)。"""
+    from collections import defaultdict
+    if not cells or data_years <= 0:
+        return {}
+    centers = {c["group_id"]: (c["center_lat"], c["center_lon"]) for c in cells}
+    area = {c["group_id"]: max(c["area_km2"], 1e-9) for c in cells}
+    cnt: dict[int, int] = defaultdict(int)
+    for s in strikes:
+        lat, lon = s.get("lat"), s.get("lon")
+        if lat is None or lon is None:
+            continue
+        best = min(centers, key=lambda gid: _lp_haversine_km(lat, lon, centers[gid][0], centers[gid][1]))
+        cnt[best] += 1
+    return {gid: cnt[gid] / (area[gid] * data_years) for gid in cnt}
+
+
+def render_lp_density_image(
+    strikes: list[dict[str, Any]],
+    cells: list[dict[str, Any]],
+    *,
+    data_years: float,
+    radius_km: float,
+    title: str | None = None,
+) -> bytes:
+    """LP 桌面端风格地闪密度分区图：Voronoi cell 按 Ng 着色。matplotlib 不可用返回 b""。"""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        _configure_chinese_font()
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return b""
+    if not cells or not strikes:
+        return b""
+
+    ng_map = _compute_lp_ng_by_cell(strikes, cells, data_years)
+    max_ng = max(ng_map.values(), default=0.0)
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    for c in cells:
+        gid = c["group_id"]
+        ng = ng_map.get(gid, 0.0)
+        norm = (ng / max_ng) if max_ng > 0 else 0.0
+        lons = [p[0] for p in c["polygon"]]
+        lats = [p[1] for p in c["polygon"]]
+        ax.fill(lons, lats, color=plt.cm.YlOrRd(norm), edgecolor="#666666", linewidth=0.8)
+        ax.plot([c["center_lon"]], [c["center_lat"]], "ko", markersize=3)
+
+    ax.set_xlabel("经度 (°E)")
+    ax.set_ylabel("纬度 (°N)")
+    ax.set_title(title or "雷电流地闪密度分布 - 杆塔分区")
+    # 经纬度等比：lon 1度≈111cosφ km（matplotlib ax.set_aspect 数值语义为 dy/dx）
+    ax.set_aspect(1.0 / (111.0 * math.cos(math.radians(cells[0]["center_lat"]))))
+
+    total_strikes = len(strikes)
+    total_area = sum(c["area_km2"] for c in cells)
+    overall_ng = (total_strikes / (total_area * data_years)) if total_area * data_years > 0 else 0.0
+    ax.text(
+        0.02, 0.98,
+        f"总落雷数: {total_strikes}\n数据年数: {data_years:.1f}年\n"
+        f"整体Ng: {overall_ng:.4f} 次/(km²·年)\n分组数: {len(cells)}",
+        transform=ax.transAxes, fontsize=8, verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    )
+
+    sm = matplotlib.cm.ScalarMappable(cmap="YlOrRd")
+    sm.set_array([0, max_ng])
+    cbar = fig.colorbar(sm, ax=ax)
+    cbar.set_label("地闪密度 Ng (次/(km²·年))")
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150)
+    plt.close(fig)
+    return buf.getvalue()

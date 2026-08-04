@@ -24,6 +24,8 @@ from ...schemas.lightning import (
     LightningDensityPreparationResponse,
     LightningFillDensityRequest,
     LightningFillDensityResponse,
+    LightningLpDrawRequest,
+    LightningLpDrawResponse,
 )
 from ...services.lightning_service import (
     delete_lightning_amplitude,
@@ -32,6 +34,7 @@ from ...services.lightning_service import (
     get_lightning_amplitude_status,
     get_lightning_distribution_detail,
     get_lightning_distribution_image_content,
+    get_lightning_distribution_lp_image_content,
     get_lightning_distribution_status,
     get_peak_exceedance_curve,
     import_lightning_amplitude_from_file,
@@ -43,6 +46,7 @@ from ...services.lightning_service import (
     retry_lightning_amplitude,
     retry_lightning_distribution,
     trigger_line_density_fill,
+    trigger_lp_density_draw,
 )
 
 router = APIRouter(
@@ -324,6 +328,31 @@ def trigger_line_lightning_density_fill(
     db: Session = Depends(get_db),
 ) -> LightningFillDensityResponse:
     return trigger_line_density_fill(db, payload, actor_user_id=current_user.user.id)
+
+
+# ---------------------------------------------------------------------------
+# LP 桌面端分区密度图（draw-lp）
+# ---------------------------------------------------------------------------
+@router.post("/distributions/{distribution_id}/draw-lp", response_model=LightningLpDrawResponse)
+def trigger_lp_density_draw_endpoint(
+    distribution_id: str,
+    payload: LightningLpDrawRequest,
+    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningLpDrawResponse:
+    return trigger_lp_density_draw(db, distribution_id, payload, actor_user_id=current_user.user.id)
+
+
+@router.get("/distributions/{distribution_id}/lp-image")
+def get_lightning_distribution_lp_image_endpoint(
+    distribution_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    content, media_type = get_lightning_distribution_lp_image_content(db, distribution_id)
+    if content is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="LP 密度图不存在")
+    return StreamingResponse(iter([content]), media_type=media_type or "image/png")
 
 
 # ---------------------------------------------------------------------------

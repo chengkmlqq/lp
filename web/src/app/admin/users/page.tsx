@@ -72,6 +72,7 @@ function statusTag(value: unknown): ReactNode {
 const USERS_TABLE_MIN_SCROLL_Y = 180;
 const USERS_TABLE_VIEWPORT_GAP = 40;
 const USERS_TABLE_FALLBACK_RESERVE = 230;
+const USERS_TABLE_EXTRA_HEIGHT = 15;
 
 export default function AdminUsersPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
@@ -738,7 +739,7 @@ export default function AdminUsersPage() {
       nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - USERS_TABLE_VIEWPORT_GAP);
     }
 
-    const clampedHeight = Math.max(USERS_TABLE_MIN_SCROLL_Y, nextHeight);
+    const clampedHeight = Math.max(USERS_TABLE_MIN_SCROLL_Y, nextHeight + USERS_TABLE_EXTRA_HEIGHT);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);
 
