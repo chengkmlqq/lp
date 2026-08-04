@@ -424,8 +424,9 @@ body {
   display: flex;
   gap: 0;
   overflow: hidden;
-  padding: 0 8px 8px;
-  padding-top: 8px;
+  /* LP-230: 8px -> 12px，对齐系统参数管理页 .admin-system-params-page-body */
+  padding: 0 12px 12px;
+  padding-top: 12px;
 }
 
 
@@ -560,6 +561,11 @@ body {
   min-height: var(--admin-menus-table-body-min-height, 180px);
 }
 
+.admin-menus-table-anchor .ant-table-pagination {
+  /* LP-230: 顶部 margin 12px、底部 margin 0，对齐系统参数管理页分页 margin */
+  margin: 12px 0 0 !important;
+}
+
 .admin-users-table-anchor .ant-table-body {
   min-height: var(--admin-users-table-body-min-height, 180px);
 }
@@ -632,6 +638,13 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
+  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
+  padding: 12px !important;
+}
+
+.admin-system-messages-page-card .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
 }
 
 .admin-system-messages-table-anchor .ant-table-body {
@@ -768,6 +781,9 @@ body {
   display: flex;
   gap: 0;
   overflow: hidden;
+  /* LP-230: 无 padding -> 12px，对齐系统参数管理页 .admin-system-params-page-body */
+  padding: 0 12px 12px;
+  padding-top: 12px;
 }
 
 .admin-documents-sider {
@@ -817,6 +833,11 @@ body {
 
 .admin-documents-table-anchor .ant-table-body {
   min-height: var(--admin-documents-table-body-min-height, 180px);
+}
+
+.admin-documents-table-anchor .ant-table-pagination {
+  /* LP-230: 顶部 margin 12px、底部 margin 0，对齐系统参数管理页分页 margin */
+  margin: 12px 0 0 !important;
 }
 
 .admin-documents-card-view {
@@ -1076,6 +1097,13 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
+  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
+  padding: 12px !important;
+}
+
+.admin-task-monitor-page-card .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
 }
 
 .admin-task-monitor-card-view {
@@ -1165,6 +1193,13 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
+  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
+  padding: 12px !important;
+}
+
+.admin-roles-page-card .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
 }
 
 .admin-roles-card-view {
@@ -1543,6 +1578,13 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
+  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
+  padding: 12px !important;
+}
+
+.admin-syslog-page-card .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
 }
 
 .admin-syslog-card-view {
@@ -1991,6 +2033,13 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
+  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
+  padding: 12px !important;
+}
+
+.admin-lightning-currents-page-card .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
 }
 
 .admin-lightning-events-card-view {
@@ -2107,6 +2156,13 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
+  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
+  padding: 12px !important;
+}
+
+.admin-elevation-page-card .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
 }
 
 .admin-elevation-card-view {
@@ -2192,6 +2248,13 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
+  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
+  padding: 12px !important;
+}
+
+.admin-lightning-distribution-page-card .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
 }
 
 .admin-lightning-distribution-card-view {
@@ -3105,8 +3168,9 @@ body {
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: auto;
+  /* LP-230: overflow-x/y -> overflow hidden，padding 0，对齐 .admin-system-params-page-card > .ant-card-body */
+  overflow: hidden;
+  padding: 0;
 }
 
 .admin-dimensions-card-view {
