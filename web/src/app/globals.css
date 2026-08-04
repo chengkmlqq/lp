@@ -583,8 +583,8 @@ body {
 }
 
 .admin-users-page-card .ant-table-pagination {
-  /* LP-211: 16px -> 12px，覆盖 antd Table 内置分页默认 margin */
-  margin: 12px 0 !important;
+  /* LP-211: 16px -> 12px，覆盖 antd Table 内置分页默认 margin；底部留白 LP-228 改为 0 */
+  margin: 12px 0 0 !important;
 }
 
 .admin-ai-chat-page-card {
