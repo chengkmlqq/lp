@@ -1267,7 +1267,7 @@ body {
   gap: 0;
   overflow: hidden;
   padding: 0 12px 12px;
-  padding-top: 8px;
+  padding-top: 12px;
 }
 
 /* ---- Category sider card ---- */
@@ -1448,7 +1448,8 @@ body {
 }
 
 .admin-system-params-table-anchor .ant-table-pagination {
-  margin-top: 12px;
+  /* LP-226: 顶部 margin 12px，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 !important;
 }
 
 /* ---- Card view ---- */
