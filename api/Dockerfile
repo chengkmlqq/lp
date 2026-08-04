@@ -24,6 +24,7 @@ RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debi
         wine32:i386 \
         gdal-bin \
         libgdal-dev \
+        fonts-noto-cjk \
         g++ \
         gcc \
     && command -v wine >/dev/null \
@@ -42,6 +43,9 @@ RUN GDAL_VERSION=$(gdal-config --version) \
 RUN python -c "import rasterio; print('rasterio ready:', rasterio.__version__)"
 RUN python -c "from osgeo import gdal; print('GDAL ready:', gdal.__version__)"
 RUN command -v gdal2tiles.py && echo "gdal2tiles.py available"
+
+# Verify CJK fonts installed so matplotlib can render Chinese labels (LP-223)
+RUN python -c "from matplotlib import font_manager; names=[f.name for f in font_manager.fontManager.ttflist if 'CJK' in f.name or 'Noto' in f.name]; print('CJK fonts:', sorted(set(names))); assert any('CJK' in n for n in names), 'No CJK font found'"
 
 # Static assets (tpbig.exe, etc.) are volume-mounted at runtime
 # from deploy/pro-deploy/data/app/wine/

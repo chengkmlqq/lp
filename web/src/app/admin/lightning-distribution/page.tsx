@@ -457,7 +457,7 @@ export default function AdminLightningDistributionPage() {
       },
       {
         title: (
-          <span>
+          <span style={{ whiteSpace: "nowrap" }}>
             最大电流(kA)
             <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.maxCurrent} />
           </span>
@@ -468,7 +468,7 @@ export default function AdminLightningDistributionPage() {
       },
       {
         title: (
-          <span>
+          <span style={{ whiteSpace: "nowrap" }}>
             平均电流(kA)
             <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
           </span>
