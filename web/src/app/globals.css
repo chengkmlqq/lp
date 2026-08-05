@@ -2287,7 +2287,9 @@ body {
   flex-direction: column;
 }
 
-.admin-lightning-distribution-tabs .ant-tabs-tabpane {
+/* LP-243: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏，
+   否则详情 Tab 激活时默认列表页仍残留可见，无法被完整覆盖 */
+.admin-lightning-distribution-tabs .ant-tabs-tabpane-active {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -2308,6 +2310,49 @@ body {
 .admin-lightning-distribution-page-card .ant-table-pagination {
   /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
   margin: 12px 0 0 !important;
+}
+
+/* LP-242: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
+   仅作用于外层主列表 Tabs（editable-card），避免误伤详情弹窗内的 Tabs；
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与 Card 头部连成一条白带 */
+.admin-lightning-distribution-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+.admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-bottom-color: transparent !important;
+}
+
+.admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* 主列表内容 Card 新增 title 后，让 Card 头部底色与用户管理页标题栏一致（默认白底即可） */
+.admin-lightning-distribution-page-card > .ant-card-head {
+  border-bottom-color: var(--ant-color-border-secondary);
+  background: var(--ant-color-bg-container);
+}
+
+/* LP-242 深色模式：主列表 Tab 栏与 Card 头部保持与用户管理页标题栏一致的背景 */
+:root[data-fquiz-theme="dark"] .admin-lightning-distribution-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-lightning-distribution-page-card > .ant-card-head {
+  background: var(--ant-color-bg-container);
 }
 
 .admin-lightning-distribution-card-view {

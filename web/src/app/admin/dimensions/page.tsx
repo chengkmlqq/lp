@@ -52,14 +52,16 @@ function statusLabel(enabled: boolean): string {
   return enabled ? "启用" : "禁用";
 }
 
-function flattenTypeOptions(types: DimensionTypeTreeItem[], level: number = 0): { value: string; label: string }[] {
+function flattenTypeOptions(types: DimensionTypeTreeItem[] | undefined | null, level: number = 0): { value: string; label: string }[] {
+  if (!Array.isArray(types)) return [];
   return types.flatMap((t) => [
     { value: t.id, label: "　".repeat(level) + (t.name || t.code) },
     ...flattenTypeOptions(t.children, level + 1),
   ]);
 }
 
-function findType(types: DimensionTypeTreeItem[], id: string): DimensionTypeTreeItem | null {
+function findType(types: DimensionTypeTreeItem[] | undefined | null, id: string): DimensionTypeTreeItem | null {
+  if (!Array.isArray(types)) return null;
   for (const t of types) {
     if (t.id === id) return t;
     const found = findType(t.children, id);
@@ -155,7 +157,11 @@ export default function AdminDimensionsPage() {
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return (await response.json()) as DimensionTypeTreeItem[];
+      const data = (await response.json()) as unknown;
+      if (!Array.isArray(data)) {
+        throw new Error("维度类型数据格式异常");
+      }
+      return data as DimensionTypeTreeItem[];
     },
   });
 
@@ -163,7 +169,8 @@ export default function AdminDimensionsPage() {
     if (!typeSearch.trim()) return typeTreeQuery.data ?? [];
 
     const searchLower = typeSearch.trim().toLowerCase();
-    const filterTypes = (types: DimensionTypeTreeItem[]): DimensionTypeTreeItem[] => {
+    const filterTypes = (types: DimensionTypeTreeItem[] | undefined | null): DimensionTypeTreeItem[] => {
+      if (!Array.isArray(types)) return [];
       return types.reduce<DimensionTypeTreeItem[]>((acc, t) => {
         const nameMatch = (t.name || t.code).toLowerCase().includes(searchLower);
         const filteredChildren = t.children ? filterTypes(t.children) : [];
@@ -1285,7 +1292,8 @@ function typeName(typeId: string | null, types: DimensionTypeTreeItem[]): string
   return t ? t.name || t.code : "-";
 }
 
-function convertToTypeData(types: DimensionTypeTreeItem[]): DataNode[] {
+function convertToTypeData(types: DimensionTypeTreeItem[] | undefined | null): DataNode[] {
+  if (!Array.isArray(types)) return [];
   return types.map((t) => ({
     key: t.id,
     title: t.name || t.code,

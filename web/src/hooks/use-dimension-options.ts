@@ -8,11 +8,12 @@ import { readApiError } from "@/lib/api";
 import type { DimensionTypeTreeItem } from "@/types/auth";
 import type { DimensionItemListResponse } from "@/types/dimension";
 
-function flattenTypeNodes(types: DimensionTypeTreeItem[]): DimensionTypeTreeItem[] {
+function flattenTypeNodes(types: DimensionTypeTreeItem[] | undefined | null): DimensionTypeTreeItem[] {
+  if (!Array.isArray(types)) return [];
   return types.flatMap((t) => [t, ...flattenTypeNodes(t.children)]);
 }
 
-function findDimensionTypeByCode(types: DimensionTypeTreeItem[], code: string): DimensionTypeTreeItem | undefined {
+function findDimensionTypeByCode(types: DimensionTypeTreeItem[] | undefined | null, code: string): DimensionTypeTreeItem | undefined {
   return flattenTypeNodes(types).find((t) => t.code === code);
 }
 
@@ -39,7 +40,11 @@ export function useDimensionOptions(fields: Record<string, string>) {
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return (await response.json()) as DimensionTypeTreeItem[];
+      const data = (await response.json()) as unknown;
+      if (!Array.isArray(data)) {
+        throw new Error("维度类型数据格式异常");
+      }
+      return data as DimensionTypeTreeItem[];
     },
   });
 
