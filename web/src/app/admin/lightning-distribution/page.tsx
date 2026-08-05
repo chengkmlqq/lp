@@ -541,39 +541,53 @@ export default function AdminLightningDistributionPage() {
       {
         title: "操作",
         key: "actions",
-        width: 220,
+        width: 200,
         fixed: "right",
-        render: (_: unknown, row) => (
-          <Space wrap>
-            <Button size="small" onClick={() => openDetail(row)}>
-              详情
-            </Button>
-            {canManage && (
-              <Button size="small" onClick={() => openLpDrawModal(row)}>
-                绘图
+        render: (_: unknown, row) => {
+          const moreMenuItems: MenuProps["items"] = [
+            ...(canManage
+              ? [
+                  {
+                    key: "draw-lp",
+                    label: "绘图",
+                    onClick: () => openLpDrawModal(row),
+                  },
+                ]
+              : []),
+          ];
+
+          return (
+            <Space wrap>
+              <Button size="small" onClick={() => openDetail(row)}>
+                详情
               </Button>
-            )}
-            {canManage && (
-              <Button
-                size="small"
-                danger
-                loading={deleteMutation.isPending}
-                onClick={() => {
-                  Modal.confirm({
-                    title: "确认删除该地闪分布记录？",
-                    content: "将同时删除 MinIO 上的原始文件与密度图，此操作不可恢复。",
-                    onOk: () => deleteMutation.mutate(row),
-                    okText: "确认删除",
-                    cancelText: "取消",
-                    okButtonProps: { danger: true },
-                  });
-                }}
-              >
-                删除
-              </Button>
-            )}
-          </Space>
-        ),
+              {canManage && (
+                <Button
+                  size="small"
+                  danger
+                  loading={deleteMutation.isPending}
+                  onClick={() => {
+                    Modal.confirm({
+                      title: "确认删除该地闪分布记录？",
+                      content: "将同时删除 MinIO 上的原始文件与密度图，此操作不可恢复。",
+                      onOk: () => deleteMutation.mutate(row),
+                      okText: "确认删除",
+                      cancelText: "取消",
+                      okButtonProps: { danger: true },
+                    });
+                  }}
+                >
+                  删除
+                </Button>
+              )}
+              {moreMenuItems.length > 0 && (
+                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                  <Button size="small" icon={<MoreOutlined />} />
+                </Dropdown>
+              )}
+            </Space>
+          );
+        },
       },
     ],
     [canManage, deleteMutation, openDetail],
@@ -728,24 +742,22 @@ export default function AdminLightningDistributionPage() {
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
         className="admin-lightning-distribution-tabs"
+        tabBarExtraContent={
+          activeTabKey === LIST_TAB_KEY && canManage ? (
+            <Space>
+              <Button type="primary" onClick={() => setImportModalOpen(true)}>
+                导入
+              </Button>
+            </Space>
+          ) : null
+        }
         items={[
           {
             key: LIST_TAB_KEY,
             label: "地闪密度统计",
             closable: false,
             children: (
-              <AntCard
-                className="admin-lightning-distribution-page-card"
-                extra={
-                  <Space>
-                    {canManage && (
-                      <Button type="primary" onClick={() => setImportModalOpen(true)}>
-                        导入
-                      </Button>
-                    )}
-                  </Space>
-                }
-              >
+              <AntCard className="admin-lightning-distribution-page-card">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label="关键词" className="admin-filter-keyword-item">
