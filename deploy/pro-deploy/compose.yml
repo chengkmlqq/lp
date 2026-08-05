@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     restart: unless-stopped
@@ -30,7 +30,7 @@ services:
       - --stop-writes-on-bgsave-error
       - "no"
     ports:
-      - "${REDIS_PORT}:6379"
+      - "127.0.0.1:${REDIS_PORT}:6379"
     volumes:
       - ./data/redis:/data
     restart: unless-stopped
@@ -42,8 +42,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     ports:
-      - "${MINIO_API_PORT}:9000"
-      - "${MINIO_CONSOLE_PORT}:9001"
+      - "127.0.0.1:${MINIO_API_PORT}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT}:9001"
     volumes:
       - ./data/minio:/data
     restart: unless-stopped
@@ -169,7 +169,7 @@ services:
       CELERY_TIMEZONE: ${CELERY_TIMEZONE}
       FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH:-admin:change_me}
     ports:
-      - "${FLOWER_PORT}:5555"
+      - "127.0.0.1:${FLOWER_PORT}:5555"
     restart: unless-stopped
 
   web:
