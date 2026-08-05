@@ -731,12 +731,11 @@ export default function AdminLightningDistributionPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: "列表视图",
+            label: "地闪密度统计",
             closable: false,
             children: (
               <AntCard
                 className="admin-lightning-distribution-page-card"
-                title="地闪密度统计"
                 extra={
                   <Space>
                     {canManage && (

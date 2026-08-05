@@ -1158,6 +1158,34 @@ export type AtpAssetRunListResponse = {
   total: number;
 };
 
+export type AtpTopologyNode = {
+  id: string;
+  label: string;
+  node_type: string;
+  params: Record<string, unknown>;
+};
+
+export type AtpTopologyEdge = {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  edge_type: string;
+};
+
+export type AtpTopology = {
+  nodes: AtpTopologyNode[];
+  edges: AtpTopologyEdge[];
+  parameters: Record<string, number>;
+  metadata: Record<string, unknown>;
+};
+
+export type AtpTopologyResponse = {
+  asset_id: string;
+  release_id: string | null;
+  topology: AtpTopology;
+};
+
 export type LightningPolarity = "positive" | "negative" | "mixed" | "unknown";
 
 export type LightningAmplitudeRecord = {

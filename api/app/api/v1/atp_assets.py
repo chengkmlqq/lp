@@ -20,6 +20,7 @@ from ...schemas.atp_asset import (
     AtpAssetRunRequest,
     AtpAssetUpdateRequest,
     AtpEngineStatusResponse,
+    AtpTopologyResponse,
 )
 from ...services.atp_asset_service import (
     activate_release,
@@ -28,6 +29,7 @@ from ...services.atp_asset_service import (
     create_release_from_archive,
     delete_asset,
     get_asset_by_id,
+    get_asset_topology,
     get_engine_status,
     get_release_by_id,
     get_run_detail,
@@ -279,6 +281,15 @@ def get_atp_asset_files(
     db: Session = Depends(get_db),
 ) -> AtpAssetFileListResponse:
     return list_asset_files(db, asset_id=asset_id)
+
+
+@router.get("/assets/{asset_id}/topology", response_model=AtpTopologyResponse)
+def get_atp_asset_topology(
+    asset_id: str,
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpTopologyResponse:
+    return get_asset_topology(db, asset_id=asset_id)
 
 
 @router.get("/releases/{release_id}/runs", response_model=AtpAssetRunListResponse)

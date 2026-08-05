@@ -44,7 +44,12 @@ from ..schemas.atp_asset import (
     AtpAssetSummary,
     AtpAssetUpdateRequest,
     AtpEngineStatusResponse,
+    AtpTopology,
+    AtpTopologyEdge,
+    AtpTopologyNode,
+    AtpTopologyResponse,
 )
+from .atp_topology_parser import parse_atp_topology_from_bytes
 from .legacy_atp_adapter import build_legacy_atp_status_checks
 from .push_service import publish_topic
 from .wine_probe import probe_wine_binary
@@ -1556,6 +1561,53 @@ def list_asset_files(db: Session, *, asset_id: str) -> AtpAssetFileListResponse:
         storage_root_path=storage_root_path,
         items=merged_items,
         total=len(merged_items),
+    )
+
+
+def get_asset_topology(db: Session, *, asset_id: str) -> AtpTopologyResponse:
+    """读取 ATP 模型入口文件并解析电路拓扑。
+
+    查找 active release（无则取 releases[0]），读取 ``entry_file``（默认 work.atp）
+    的原始字节，交给 ``atp_topology_parser`` 解析，返回拓扑数据。
+
+    无 release、文件缺失或内容无法解析时抛出 404/502 HTTP 异常。
+    """
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+
+    # active release 优先，否则回退到第一个 release
+    release = next((item for item in asset.releases if item.is_active), None)
+    if release is None and asset.releases:
+        release = asset.releases[0]
+    if release is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No release found for asset")
+
+    entry_file = _normalize_relative_path(release.entry_file) or "work.atp"
+    entry_path = normalize_virtual_path(f"{release.storage_root_path.rstrip('/')}/{entry_file}")
+
+    mount = _resolve_mount(db, release.storage_mount_code)
+    driver = _build_driver_or_400(mount)
+    try:
+        result = driver.read_file(entry_path)
+    except StoragePathNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Entry file not found: {entry_file}") from exc
+    except StorageDriverError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    topology = parse_atp_topology_from_bytes(result.content)
+    if not topology.nodes:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No topology found in ATP file")
+
+    return AtpTopologyResponse(
+        asset_id=asset.id,
+        release_id=release.id,
+        topology=AtpTopology(
+            nodes=[AtpTopologyNode(id=n.id, label=n.label, node_type=n.node_type, params=n.params) for n in topology.nodes],
+            edges=[AtpTopologyEdge(id=e.id, source=e.source, target=e.target, label=e.label, edge_type=e.edge_type) for e in topology.edges],
+            parameters=topology.parameters,
+            metadata=topology.metadata,
+        ),
     )
 
 

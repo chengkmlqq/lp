@@ -20,9 +20,10 @@ import {
   Upload,
   type CardProps,
 } from "antd";
-import { UploadOutlined, FolderOutlined, FileOutlined, TableOutlined, FolderOpenOutlined, HomeOutlined, DeleteOutlined, SearchOutlined } from "@ant-design/icons";
+import { UploadOutlined, FolderOutlined, FileOutlined, TableOutlined, FolderOpenOutlined, HomeOutlined, DeleteOutlined, SearchOutlined, EyeOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
+import { useRouter } from "next/navigation";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
@@ -105,6 +106,7 @@ const ATP_TABLE_VIEWPORT_GAP = 40;
 const ATP_TABLE_FALLBACK_RESERVE = 220;
 
 export default function AtpModelsPage() {
+  const router = useRouter();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<AssetFormValues>();
@@ -556,26 +558,31 @@ export default function AtpModelsPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-        width: 100,
+        width: 160,
         render: (_, item) => {
           const deleteLoading = deleteMutation.isPending;
           const rowBusy = deleteLoading;
 
           return (
-            <Button danger size="small" icon={<DeleteOutlined />} loading={deleteLoading} disabled={!canManage || rowBusy}
-              onClick={() => {
-                Modal.confirm({
-                  title: "删除模型",
-                  content: "这会同时删除其文件与运行记录。",
-                  okText: "删除",
-                  cancelText: "取消",
-                  okButtonProps: { danger: true, loading: deleteLoading },
-                  onOk: () => deleteMutation.mutate(item.id),
-                });
-              }}
-            >
-              删除
-            </Button>
+            <Space size={4}>
+              <Button size="small" icon={<EyeOutlined />} type="link" onClick={() => router.push(`/admin/atp-models/${item.id}`)}>
+                详情
+              </Button>
+              <Button danger size="small" icon={<DeleteOutlined />} loading={deleteLoading} disabled={!canManage || rowBusy}
+                onClick={() => {
+                  Modal.confirm({
+                    title: "删除模型",
+                    content: "这会同时删除其文件与运行记录。",
+                    okText: "删除",
+                    cancelText: "取消",
+                    okButtonProps: { danger: true, loading: deleteLoading },
+                    onOk: () => deleteMutation.mutate(item.id),
+                  });
+                }}
+              >
+                删除
+              </Button>
+            </Space>
           );
         },
       },
@@ -837,24 +844,29 @@ export default function AtpModelsPage() {
           </Typography.Text>
         }
         extra={
-          <Button
-            danger
-            size="small"
-            disabled={!canManage || rowBusy}
-            loading={deleteLoading}
-            onClick={() => {
-              Modal.confirm({
-                title: "删除模型",
-                content: "这会同时删除其文件与运行记录。",
-                okText: "删除",
-                cancelText: "取消",
-                okButtonProps: { danger: true },
-                onOk: () => deleteMutation.mutate(item.id),
-              });
-            }}
-          >
-            删除
-          </Button>
+          <Space size={4}>
+            <Button size="small" icon={<EyeOutlined />} onClick={() => router.push(`/admin/atp-models/${item.id}`)}>
+              详情
+            </Button>
+            <Button
+              danger
+              size="small"
+              disabled={!canManage || rowBusy}
+              loading={deleteLoading}
+              onClick={() => {
+                Modal.confirm({
+                  title: "删除模型",
+                  content: "这会同时删除其文件与运行记录。",
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true },
+                  onOk: () => deleteMutation.mutate(item.id),
+                });
+              }}
+            >
+              删除
+            </Button>
+          </Space>
         }
       >
         <Space direction="vertical" size={10} style={{ width: "100%" }}>
