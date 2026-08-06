@@ -742,23 +742,20 @@ export default function AdminLightningDistributionPage() {
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
         className="admin-lightning-distribution-tabs"
+        tabBarExtraContent={
+          canManage ? (
+            <Button type="primary" onClick={() => setImportModalOpen(true)}>
+              导入
+            </Button>
+          ) : null
+        }
         items={[
           {
             key: LIST_TAB_KEY,
             label: "地闪密度统计",
             closable: false,
             children: (
-              <AntCard
-                className="admin-lightning-distribution-page-card"
-                title="地闪密度统计"
-                extra={
-                  canManage ? (
-                    <Button type="primary" onClick={() => setImportModalOpen(true)}>
-                      导入
-                    </Button>
-                  ) : null
-                }
-              >
+              <div className="admin-lightning-distribution-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label="关键词" className="admin-filter-keyword-item">
@@ -833,7 +830,7 @@ export default function AdminLightningDistributionPage() {
                     />
                   </div>
                 )}
-              </AntCard>
+              </div>
             ),
           },
           ...detailTabs,

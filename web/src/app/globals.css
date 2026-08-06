@@ -2257,11 +2257,15 @@ body {
   min-height: var(--admin-lightning-distribution-table-body-min-height, 180px);
 }
 
-.admin-lightning-distribution-page-card {
+/* LP-245: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin-lightning-distribution-list-pane {
   display: flex;
-  flex: 1;
   min-height: 0;
+  flex: 1;
   flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
 }
 
 /* LP-235: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
@@ -2296,18 +2300,7 @@ body {
   flex-direction: column;
 }
 
-.admin-lightning-distribution-page-card > .ant-card-body {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: auto;
-  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
-  padding: 12px !important;
-}
-
-.admin-lightning-distribution-page-card .ant-table-pagination {
+.admin-lightning-distribution-tabs .ant-table-pagination {
   /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
   margin: 12px 0 0 !important;
 }
@@ -2336,12 +2329,6 @@ body {
   color: var(--ant-color-text-secondary);
 }
 
-/* 主列表内容 Card 新增 title 后，让 Card 头部底色与用户管理页标题栏一致（默认白底即可） */
-.admin-lightning-distribution-page-card > .ant-card-head {
-  border-bottom-color: var(--ant-color-border-secondary);
-  background: var(--ant-color-bg-container);
-}
-
 /* LP-242 深色模式：主列表 Tab 栏与 Card 头部保持与用户管理页标题栏一致的背景 */
 :root[data-fquiz-theme="dark"] .admin-lightning-distribution-tabs > .ant-tabs-nav {
   background: var(--ant-color-bg-container);
@@ -2349,10 +2336,6 @@ body {
 
 :root[data-fquiz-theme="dark"] .admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab {
   background: var(--ant-color-bg-container) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-page-card > .ant-card-head {
-  background: var(--ant-color-bg-container);
 }
 
 .admin-lightning-distribution-card-view {

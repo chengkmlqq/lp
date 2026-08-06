@@ -18,6 +18,7 @@ import {
   type RouteSegment,
   type TowerGeoPoint,
 } from "@/lib/power-line-route";
+import { resolveTiandituUrl, useTiandituConfig } from "@/hooks/use-tianditu-config";
 import type { ElevationDatasetSummary, LineTowerSummary } from "@/types/auth";
 
 type PowerLineCesiumMapProps = {
@@ -121,6 +122,8 @@ export function PowerLineCesiumMap({
   const [pointerInfo, setPointerInfo] = useState("");
   const [colorByRisk, setColorByRisk] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
+  const tianditu = useTiandituConfig();
+  const tiandituEnabled = tianditu.config.enabled;
   const terrainRenderState = useMemo(
     () => (terrainDataset ? getElevationTerrainRenderState(terrainDataset) : "fallback"),
     [terrainDataset],
@@ -405,6 +408,57 @@ export function PowerLineCesiumMap({
     });
     return () => cancelAnimationFrame(raf);
   }, [ready]);
+
+  // 天地图底图叠加：启用且已配置 Key 时加载底图 + 注记层，其余情况维持深色背景兜底。
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const Cesium = cesiumRef.current;
+    const cfg = tianditu.config;
+    if (!ready || !viewer || !Cesium || !tiandituEnabled) {
+      return;
+    }
+
+    const addedLayers: import("cesium").ImageryLayer[] = [];
+
+    const baseUrl = resolveTiandituUrl(cfg.urlTemplate, cfg.baseLayer, cfg.tk);
+    if (baseUrl) {
+      const baseProvider = new Cesium.UrlTemplateImageryProvider({
+        url: baseUrl,
+        subdomains: cfg.subdomains,
+        maximumLevel: cfg.maxLevel,
+        tileWidth: 256,
+        tileHeight: 256,
+        enablePickFeatures: false,
+        credit: "天地图",
+      });
+      addedLayers.push(viewer.imageryLayers.addImageryProvider(baseProvider));
+    }
+
+    // 注记层叠加在底图之上（后添加的在上层）
+    if (cfg.annotationLayer) {
+      const annotationUrl = resolveTiandituUrl(cfg.urlTemplate, cfg.annotationLayer, cfg.tk);
+      if (annotationUrl) {
+        const annotationProvider = new Cesium.UrlTemplateImageryProvider({
+          url: annotationUrl,
+          subdomains: cfg.subdomains,
+          maximumLevel: cfg.maxLevel,
+          tileWidth: 256,
+          tileHeight: 256,
+          enablePickFeatures: false,
+          credit: "天地图",
+        });
+        addedLayers.push(viewer.imageryLayers.addImageryProvider(annotationProvider));
+      }
+    }
+
+    return () => {
+      addedLayers.forEach((layer) => {
+        if (!viewer.isDestroyed()) {
+          viewer.imageryLayers.remove(layer, true);
+        }
+      });
+    };
+  }, [ready, tianditu.config, tiandituEnabled]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
