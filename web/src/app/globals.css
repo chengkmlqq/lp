@@ -2314,11 +2314,16 @@ body {
   background: var(--ant-color-bg-container);
   /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
   margin: 0;
+  /* 去掉选项卡标题栏底部自带的 1px 边框 */
+  border-bottom: none;
 }
 
 .admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab {
   background: var(--ant-color-bg-container) !important;
-  border-bottom-color: transparent !important;
+  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
 }
 
 .admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab-active {
