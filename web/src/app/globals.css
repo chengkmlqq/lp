@@ -2282,6 +2282,8 @@ body {
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
 }
 
 .admin-lightning-distribution-tabs > .ant-tabs-content-holder > .ant-tabs-content {
@@ -2310,6 +2312,8 @@ body {
    选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与 Card 头部连成一条白带 */
 .admin-lightning-distribution-tabs > .ant-tabs-nav {
   background: var(--ant-color-bg-container);
+  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
+  margin: 0;
 }
 
 .admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab {
