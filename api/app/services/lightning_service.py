@@ -1104,6 +1104,7 @@ def _serialize_distribution(dist: LightningDistribution) -> LightningDistributio
         stage=dist.stage,
         progress=dist.progress,
         task_id=dist.task_id,
+        lp_draw_task_id=dist.lp_draw_task_id,
         error_message=dist.error_message,
         total_lines=dist.total_lines,
         valid_count=dist.valid_count,

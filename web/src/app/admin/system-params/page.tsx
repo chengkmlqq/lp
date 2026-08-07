@@ -17,6 +17,7 @@ import {
   Skeleton,
   Spin,
   Space,
+  Tabs,
   Table,
   Tag,
   Tree,
@@ -970,10 +971,12 @@ export default function AdminSystemParamsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        className="admin-system-params-page-card"
-        title="系统参数管理"
-        extra={
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey="list"
+        className="admin-system-params-tabs"
+        tabBarExtraContent={
           <Space>
             {canManage && (
               <Button type="primary" onClick={startCreate}>
@@ -1020,7 +1023,13 @@ export default function AdminSystemParamsPage() {
             ) : null}
           </Space>
         }
-      >
+        items={[
+          {
+            key: "list",
+            label: <span className="admin-system-params-tab-title">系统参数管理</span>,
+            closable: false,
+            children: (
+              <div className="admin-system-params-list-pane">
         {/* ===== Body Area: Two-column layout ===== */}
         <div ref={containerRef} className="admin-system-params-page-body">
         {/* Category Sidebar */}
@@ -1321,8 +1330,12 @@ export default function AdminSystemParamsPage() {
             </Form>
           </Modal>
         )}
-      </div>
-      </AntCard>
+        </div>
+              </div>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

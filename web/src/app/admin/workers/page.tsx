@@ -16,6 +16,7 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
   Typography,
   type CardProps,
@@ -41,6 +42,7 @@ const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLD
 
 const DEFAULT_RECENT_LIMIT = 100;
 const WORKERS_CARD_LIMIT = 12;
+const LIST_TAB_KEY = "list";
 
 type WorkerMonitorWorkerItem = {
   worker: string;
@@ -442,77 +444,89 @@ export default function AdminWorkersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        className="admin-workers-page-card"
-        title="Worker监控"
-      >
-        <div className="admin-filter-bar">
-          <Form layout="inline">
-            <Form.Item label="执行节点" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-              <Input
-                allowClear
-                placeholder="按节点名称筛选"
-                value={pendingWorkerKeyword}
-                onChange={(event) => setPendingWorkerKeyword(event.target.value)}
-                onPressEnter={handleWorkerSearch}
-              />
-            </Form.Item>
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey={LIST_TAB_KEY}
+        className="admin_workers_tabs"
+        items={[
+          {
+            key: LIST_TAB_KEY,
+            label: <span className="admin_workers_tab_title">Worker监控</span>,
+            closable: false,
+            children: (
+              <div className="admin_workers_list_pane">
+                <div className="admin-filter-bar">
+                  <Form layout="inline">
+                    <Form.Item label="执行节点" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Input
+                        allowClear
+                        placeholder="按节点名称筛选"
+                        value={pendingWorkerKeyword}
+                        onChange={(event) => setPendingWorkerKeyword(event.target.value)}
+                        onPressEnter={handleWorkerSearch}
+                      />
+                    </Form.Item>
 
-            <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-              <Select
-                allowClear
-                value={statusFilter}
-                onChange={(value) => setStatusFilter(parseStatusFilter(value))}
-                options={[
-                  { label: "在线", value: "online" },
-                  { label: "离线", value: "offline" },
-                ]}
-              />
-            </Form.Item>
+                    <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Select
+                        allowClear
+                        value={statusFilter}
+                        onChange={(value) => setStatusFilter(parseStatusFilter(value))}
+                        options={[
+                          { label: "在线", value: "online" },
+                          { label: "离线", value: "offline" },
+                        ]}
+                      />
+                    </Form.Item>
 
-            <Form.Item style={{ marginBottom: 0 }}>
-              <Button
-                htmlType="button"
-                icon={<SearchOutlined />}
-                onClick={handleWorkerSearch}
-                className="admin-search-btn"
-              >
-                查询
-              </Button>
-            </Form.Item>
-          </Form>
-        </div>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button
+                        htmlType="button"
+                        icon={<SearchOutlined />}
+                        onClick={handleWorkerSearch}
+                        className="admin-search-btn"
+                      >
+                        查询
+                      </Button>
+                    </Form.Item>
+                  </Form>
+                </div>
 
-        <div className="admin-workers-card-view">
-          {overviewQuery.isLoading && filteredWorkers.length === 0 ? (
-            <div className="admin-workers-card-view-state">
-              <Spin tip="加载中..." />
-            </div>
-          ) : filteredWorkers.length === 0 ? (
-            <div className="admin-workers-card-view-state">
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="未找到符合筛选条件的执行节点。"
-              />
-            </div>
-          ) : (
-            <div className="admin-workers-card-view-content">
-              <div className="admin-workers-card-grid">
-                {filteredWorkers.map((workerItem) => (
-                  <div key={workerItem.worker} className="admin-workers-card-grid-item">
-                    {renderWorkerCard(workerItem)}
-                  </div>
-                ))}
+                <div className="admin-workers-card-view">
+                  {overviewQuery.isLoading && filteredWorkers.length === 0 ? (
+                    <div className="admin-workers-card-view-state">
+                      <Spin tip="加载中..." />
+                    </div>
+                  ) : filteredWorkers.length === 0 ? (
+                    <div className="admin-workers-card-view-state">
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="未找到符合筛选条件的执行节点。"
+                      />
+                    </div>
+                  ) : (
+                    <div className="admin-workers-card-view-content">
+                      <div className="admin-workers-card-grid">
+                        {filteredWorkers.map((workerItem) => (
+                          <div key={workerItem.worker} className="admin-workers-card-grid-item">
+                            {renderWorkerCard(workerItem)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="admin-workers-card-summary">
+                  <Text type="secondary">
+                    共 {overview?.summary.total ?? 0} 个 Worker · {overview?.summary.online ?? 0} 在线
+                  </Text>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-        <div className="admin-workers-card-summary">
-          <Text type="secondary">
-            共 {overview?.summary.total ?? 0} 个 Worker · {overview?.summary.online ?? 0} 在线
-          </Text>
-        </div>
-      </AntCard>
+            ),
+          },
+        ]}
+      />
 
       <Drawer
         title={`执行节点任务明细 - ${selectedWorker || "-"}`}

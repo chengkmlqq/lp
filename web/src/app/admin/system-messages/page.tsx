@@ -16,6 +16,7 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
   Typography,
   type CardProps,
@@ -558,8 +559,7 @@ export default function AdminSystemMessagesPage() {
     const pageCard = pageCardRef.current;
     if (!pageCard) return;
 
-    const cardBody = pageCard.querySelector<HTMLElement>(".ant-card-body");
-    if (!cardBody) return;
+    const cardBody = pageCard as HTMLElement;
 
     const handleScroll = () => {
       if (isLoadingMore || listQuery.isLoading) return;
@@ -801,194 +801,202 @@ export default function AdminSystemMessagesPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        ref={pageCardRef}
-        className="admin-system-messages-page-card"
-        title="消息列表"
-        extra={(
-          <Space>
-            {canManage && (
-              <Button type="primary" onClick={openCreateMessageModal}>
-                发送消息
-              </Button>
-            )}
-          </Space>
-        )}
-      >
-        {listQuery.isError && (
-          <Alert
-            showIcon
-            className="mb-4"
-            type="error"
-            message="系统消息加载失败"
-            description={listQuery.error instanceof Error ? listQuery.error.message : "请检查后端服务。"}
-          />
-        )}
-
-        {!canManage && (
-          <Alert
-            showIcon
-            className="mb-4"
-            type="info"
-            message="当前账号仅可查看和标记自己的系统消息。"
-          />
-        )}
-
-        {viewMode === "card" ? (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="类型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Select<SystemMessageType | undefined>
-                  value={messageTypeFilter}
-                  style={{ minWidth: 150 }}
-                  allowClear
-                  placeholder="全部类型"
-                  options={MESSAGE_TYPE_OPTIONS}
-                  onChange={(value) => {
-                    setMessageTypeFilter(value);
-                    resetCardViewState();
-                  }}
-                />
-              </Form.Item>
-
-              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Select<"read" | "unread" | undefined>
-                  value={readStatus}
-                  style={{ minWidth: 150 }}
-                  allowClear
-                  placeholder="全部状态"
-                  options={[
-                    { label: "已读", value: "read" },
-                    { label: "未读", value: "unread" },
-                  ]}
-                  onChange={(value) => {
-                    setReadStatus(value);
-                    resetCardViewState();
-                  }}
-                />
-              </Form.Item>
-
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />} onClick={refreshMessages} className="admin-search-btn">
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        ) : (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="类型" className="admin-filter-keyword-item">
-                <Select<SystemMessageType | undefined>
-                  value={messageTypeFilter}
-                  allowClear
-                  placeholder="全部类型"
-                  options={MESSAGE_TYPE_OPTIONS}
-                  onChange={(value) => {
-                    setMessageTypeFilter(value);
-                    resetCardViewState();
-                  }}
-                />
-              </Form.Item>
-
-              <Form.Item label="状态" className="admin-filter-keyword-item">
-                <Select<"read" | "unread" | undefined>
-                  value={readStatus}
-                  allowClear
-                  placeholder="全部状态"
-                  options={[
-                    { label: "已读", value: "read" },
-                    { label: "未读", value: "unread" },
-                  ]}
-                  onChange={(value) => {
-                    setReadStatus(value);
-                    resetCardViewState();
-                  }}
-                />
-              </Form.Item>
-
-              <Form.Item>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />} onClick={refreshMessages} className="admin-search-btn">
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        )}
-
-        {viewMode === "table" ? (
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-system-messages-table-anchor"
-            style={{ "--admin-system-messages-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<SystemMessageSummary>
-              rowKey="id"
-              columns={columns}
-              dataSource={messages}
-              loading={listQuery.isFetching}
-              locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="暂无系统消息"
+      <Tabs
+        type="editable-card"
+        hideAdd
+        className="admin_system_messages_tabs"
+        tabBarExtraContent={
+          canManage ? (
+            <Button type="primary" onClick={openCreateMessageModal}>
+              发送消息
+            </Button>
+          ) : null
+        }
+        items={[
+          {
+            key: "list",
+            label: "消息列表",
+            closable: false,
+            children: (
+              <div ref={pageCardRef} className="admin_system_messages_list_pane">
+                {listQuery.isError && (
+                  <Alert
+                    showIcon
+                    className="mb-4"
+                    type="error"
+                    message="系统消息加载失败"
+                    description={listQuery.error instanceof Error ? listQuery.error.message : "请检查后端服务。"}
                   />
-                ),
-              }}
-              pagination={{
-                pageSize: 20,
-                showSizeChanger: true,
-                hideOnSinglePage: false,
-                showTotal: (total) => `共 ${total} 条`,
-                total: listQuery.data?.total ?? 0,
-                style: { marginBottom: 0 },
-              }}
-              scroll={{ x: 1100, y: tableScrollY }}
-            />
-          </div>
-        ) : (
-          <div className="admin-system-messages-card-view">
-            {listQuery.isLoading && allLoadedMessages.length === 0 ? (
-              <div className="admin-system-messages-card-view-state">
-                <Spin tip="加载中..." />
-              </div>
-            ) : allLoadedMessages.length === 0 ? (
-              <div className="admin-system-messages-card-view-state">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="暂无系统消息"
-                />
-              </div>
-            ) : (
-              <div className="admin-system-messages-card-view-content">
-                <Row gutter={[12, 12]}>
-                  {allLoadedMessages.map((item) => (
-                    <Col key={item.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                      {renderMessageCard(item)}
-                    </Col>
-                  ))}
-                </Row>
-                {isLoadingMore && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Spin tip="加载更多..." />
+                )}
+        
+                {!canManage && (
+                  <Alert
+                    showIcon
+                    className="mb-4"
+                    type="info"
+                    message="当前账号仅可查看和标记自己的系统消息。"
+                  />
+                )}
+        
+                {viewMode === "card" ? (
+                  <div className="admin-filter-bar">
+                    <Form layout="inline">
+                      <Form.Item label="类型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                        <Select<SystemMessageType | undefined>
+                          value={messageTypeFilter}
+                          style={{ minWidth: 150 }}
+                          allowClear
+                          placeholder="全部类型"
+                          options={MESSAGE_TYPE_OPTIONS}
+                          onChange={(value) => {
+                            setMessageTypeFilter(value);
+                            resetCardViewState();
+                          }}
+                        />
+                      </Form.Item>
+        
+                      <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                        <Select<"read" | "unread" | undefined>
+                          value={readStatus}
+                          style={{ minWidth: 150 }}
+                          allowClear
+                          placeholder="全部状态"
+                          options={[
+                            { label: "已读", value: "read" },
+                            { label: "未读", value: "unread" },
+                          ]}
+                          onChange={(value) => {
+                            setReadStatus(value);
+                            resetCardViewState();
+                          }}
+                        />
+                      </Form.Item>
+        
+                      <Form.Item style={{ marginBottom: 0 }}>
+                        <Button
+                          htmlType="button"
+                          icon={<SearchOutlined />} onClick={refreshMessages} className="admin-search-btn">
+                          查询
+                        </Button>
+                      </Form.Item>
+                    </Form>
+                  </div>
+                ) : (
+                  <div className="admin-filter-bar">
+                    <Form layout="inline">
+                      <Form.Item label="类型" className="admin-filter-keyword-item">
+                        <Select<SystemMessageType | undefined>
+                          value={messageTypeFilter}
+                          allowClear
+                          placeholder="全部类型"
+                          options={MESSAGE_TYPE_OPTIONS}
+                          onChange={(value) => {
+                            setMessageTypeFilter(value);
+                            resetCardViewState();
+                          }}
+                        />
+                      </Form.Item>
+        
+                      <Form.Item label="状态" className="admin-filter-keyword-item">
+                        <Select<"read" | "unread" | undefined>
+                          value={readStatus}
+                          allowClear
+                          placeholder="全部状态"
+                          options={[
+                            { label: "已读", value: "read" },
+                            { label: "未读", value: "unread" },
+                          ]}
+                          onChange={(value) => {
+                            setReadStatus(value);
+                            resetCardViewState();
+                          }}
+                        />
+                      </Form.Item>
+        
+                      <Form.Item>
+                        <Button
+                          htmlType="button"
+                          icon={<SearchOutlined />} onClick={refreshMessages} className="admin-search-btn">
+                          查询
+                        </Button>
+                      </Form.Item>
+                    </Form>
                   </div>
                 )}
-                {allLoadedMessages.length >= (listQuery.data?.total ?? 0) && allLoadedMessages.length > 0 && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Typography.Text type="secondary">
-                      已加载全部 {allLoadedMessages.length} 条数据
-                    </Typography.Text>
+        
+                {viewMode === "table" ? (
+                  <div
+                    ref={tableScrollAnchorRef}
+                    className="admin-system-messages-table-anchor"
+                    style={{ "--admin-system-messages-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                  >
+                    <Table<SystemMessageSummary>
+                      rowKey="id"
+                      columns={columns}
+                      dataSource={messages}
+                      loading={listQuery.isFetching}
+                      locale={{
+                        emptyText: (
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description="暂无系统消息"
+                          />
+                        ),
+                      }}
+                      pagination={{
+                        pageSize: 20,
+                        showSizeChanger: true,
+                        hideOnSinglePage: false,
+                        showTotal: (total) => `共 ${total} 条`,
+                        total: listQuery.data?.total ?? 0,
+                        style: { marginBottom: 0 },
+                      }}
+                      scroll={{ x: 1100, y: tableScrollY }}
+                    />
+                  </div>
+                ) : (
+                  <div className="admin-system-messages-card-view">
+                    {listQuery.isLoading && allLoadedMessages.length === 0 ? (
+                      <div className="admin-system-messages-card-view-state">
+                        <Spin tip="加载中..." />
+                      </div>
+                    ) : allLoadedMessages.length === 0 ? (
+                      <div className="admin-system-messages-card-view-state">
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="暂无系统消息"
+                        />
+                      </div>
+                    ) : (
+                      <div className="admin-system-messages-card-view-content">
+                        <Row gutter={[12, 12]}>
+                          {allLoadedMessages.map((item) => (
+                            <Col key={item.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                              {renderMessageCard(item)}
+                            </Col>
+                          ))}
+                        </Row>
+                        {isLoadingMore && (
+                          <div style={{ textAlign: "center", padding: "20px 0" }}>
+                            <Spin tip="加载更多..." />
+                          </div>
+                        )}
+                        {allLoadedMessages.length >= (listQuery.data?.total ?? 0) && allLoadedMessages.length > 0 && (
+                          <div style={{ textAlign: "center", padding: "20px 0" }}>
+                            <Typography.Text type="secondary">
+                              已加载全部 {allLoadedMessages.length} 条数据
+                            </Typography.Text>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
-        )}
-      </AntCard>
+            ),
+          },
+        ]}
+      />
 
       <Modal
         title="发送消息"

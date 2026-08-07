@@ -18,6 +18,7 @@ import {
   Spin,
   Space,
   Table,
+  Tabs,
   Tag,
   Tree,
   Typography,
@@ -899,10 +900,12 @@ export default function AdminDimensionsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        className="admin-system-params-page-card"
-        title="维度管理"
-        extra={
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey="list"
+        className="admin_dimensions_tabs"
+        tabBarExtraContent={
           <Space>
             {canManage && (
               <Button type="primary" onClick={openDimensionCreate}>
@@ -934,9 +937,15 @@ export default function AdminDimensionsPage() {
             ) : null}
           </Space>
         }
-      >
+        items={[
+          {
+            key: "list",
+            label: <span className="admin-dimensions-tab-title">维度管理</span>,
+            closable: false,
+            children: (
+              <div className="admin_dimensions_list_pane">
         {/* ===== Body Area: Two-column layout ===== */}
-        <div ref={containerRef} className="admin-system-params-page-body">
+        <div ref={containerRef} className="admin-dimensions-page-body">
           {/* Type sidebar (hidden on mobile) */}
           {!isMobile && (
             <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
@@ -1007,7 +1016,7 @@ export default function AdminDimensionsPage() {
 
           {/* Right Panel: filter + table/card view */}
           <div
-            ref={isMobile ? pageCardRef : undefined}
+            ref={pageCardRef}
             className="admin-system-params-main"
           >
             <div className="admin-filter-bar">
@@ -1281,7 +1290,11 @@ export default function AdminDimensionsPage() {
             </Modal>
           )}
         </div>
-      </AntCard>
+              </div>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

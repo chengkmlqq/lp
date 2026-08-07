@@ -1307,6 +1307,7 @@ export type LightningDistributionRecord = {
   stage: string;
   progress: number;
   task_id: string | null;
+  lp_draw_task_id: string | null;
   error_message: string | null;
   total_lines: number;
   valid_count: number;

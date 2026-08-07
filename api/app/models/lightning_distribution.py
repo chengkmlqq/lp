@@ -46,6 +46,7 @@ class LightningDistribution(Base):
     stage: Mapped[str] = mapped_column(String(32), default="parsing")   # parsing|validating|statistics|rendering
     progress: Mapped[int] = mapped_column(Integer, default=0)           # 0-100
     task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lp_draw_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ---- 元数据（校验/解析结果）----

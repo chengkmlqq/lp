@@ -17,6 +17,7 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
   Tree,
   Typography,
@@ -67,9 +68,9 @@ type DocumentFormValues = {
 
 const DOCUMENTS_TABLE_MIN_SCROLL_Y = 180;
 const DOCUMENTS_TABLE_VIEWPORT_GAP = 40;
-// LP-230: 与系统参数管理页保持一致（FALLBACK_RESERVE=232 + EXTRA_HEIGHT=14，等效净预留 218px）
-const DOCUMENTS_TABLE_FALLBACK_RESERVE = 232;
-const DOCUMENTS_TABLE_EXTRA_HEIGHT = 14;
+// LP-258: 移除外层 Card 改为 Tabs 后锚点位置上移，参照地闪密度（LP-245）与雷电流幅值（LP-246）
+// 统一 FALLBACK_RESERVE=220（去掉 EXTRA_HEIGHT 补量）
+const DOCUMENTS_TABLE_FALLBACK_RESERVE = 220;
 
 export default function AdminDocumentsPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
@@ -466,7 +467,7 @@ export default function AdminDocumentsPage() {
       nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - DOCUMENTS_TABLE_VIEWPORT_GAP);
     }
 
-    const clampedHeight = Math.max(DOCUMENTS_TABLE_MIN_SCROLL_Y, nextHeight + DOCUMENTS_TABLE_EXTRA_HEIGHT);
+    const clampedHeight = Math.max(DOCUMENTS_TABLE_MIN_SCROLL_Y, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);
 
@@ -501,18 +502,17 @@ export default function AdminDocumentsPage() {
   useEffect(() => {
     if (viewMode !== "card") return;
 
-    const pageCard = pageCardRef.current;
-    if (!pageCard) return;
-
-    const cardBody = pageCard.querySelector<HTMLElement>(".ant-card-body");
-    if (!cardBody) return;
+    // LP-258: 外层 AntCard 改为 Tabs 后，.ant-card-body 不再存在；
+    // pageCardRef 挂在 list-pane 滚动容器上，直接以容器自身作为滚动源
+    const listPane = pageCardRef.current;
+    if (!listPane) return;
 
     const handleScroll = () => {
       if (isLoadingMore || documentsLoading) return;
 
-      const scrollTop = cardBody.scrollTop;
-      const scrollHeight = cardBody.scrollHeight;
-      const clientHeight = cardBody.clientHeight;
+      const scrollTop = listPane.scrollTop;
+      const scrollHeight = listPane.scrollHeight;
+      const clientHeight = listPane.clientHeight;
 
       if (scrollTop + clientHeight >= scrollHeight - 100) {
         const total = documentsData?.total ?? 0;
@@ -526,8 +526,8 @@ export default function AdminDocumentsPage() {
       }
     };
 
-    cardBody.addEventListener("scroll", handleScroll);
-    return () => cardBody.removeEventListener("scroll", handleScroll);
+    listPane.addEventListener("scroll", handleScroll);
+    return () => listPane.removeEventListener("scroll", handleScroll);
   }, [viewMode, isLoadingMore, documentsLoading, documentsData?.total, allLoadedDocuments.length]);
 
   useEffect(() => {
@@ -754,10 +754,12 @@ export default function AdminDocumentsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        className="admin-system-params-page-card"
-        title="文档管理"
-        extra={
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey="list"
+        className="admin-documents-tabs"
+        tabBarExtraContent={
           canManage && (
             <Button
               type="primary"
@@ -768,7 +770,13 @@ export default function AdminDocumentsPage() {
             </Button>
           )
         }
-      >
+        items={[
+          {
+            key: "list",
+            label: <span className="admin-documents-tab-title">文档管理</span>,
+            closable: false,
+            children: (
+              <div ref={pageCardRef} className="admin-documents-list-pane">
         {/* ===== Body Area: Two-column layout ===== */}
         <div ref={containerRef} className="admin-system-params-page-body">
           {/* Chapter sidebar (hidden on mobile) */}
@@ -829,7 +837,6 @@ export default function AdminDocumentsPage() {
           )}
           {/* Right Panel: filter + table/card view */}
           <div
-            ref={isMobile ? pageCardRef : undefined}
             className="admin-system-params-main"
           >
             {viewMode === "card" ? (
@@ -999,7 +1006,11 @@ export default function AdminDocumentsPage() {
             )}
           </div>
         </div>
-      </AntCard>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <Modal
         title={editingChapterId ? "编辑章节" : "新建章节"}

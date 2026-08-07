@@ -400,21 +400,101 @@ body {
   min-height: var(--admin-menus-table-body-min-height, 180px);
 }
 
-.admin-menus-page-card {
+/* LP-255: 参照地闪密度页（LP-245），移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin_menus_list_pane {
   display: flex;
-  flex: 1;
   min-height: 0;
+  flex: 1;
   flex-direction: column;
-  border-radius: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
 }
 
-.admin-menus-page-card > .ant-card-body {
+/* LP-255: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
+   内部列表布局才能延续原有 flex 自适应滚动布局 */
+.admin_menus_tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin_menus_tabs > .ant-tabs-content-holder {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  overflow: hidden;
-  padding: 0;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin_menus_tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* LP-255: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 */
+.admin_menus_tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_menus_tabs .ant-table-pagination {
+  /* LP-255: 与地闪密度页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
+}
+
+/* LP-255: 主列表 Tab 栏底色统一为白底（colorBgContainer），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 */
+.admin_menus_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
+  margin: 0;
+  /* 去掉选项卡标题栏底部自带的 1px 边框 */
+  border-bottom: none;
+  /* 标题栏四周内边距 */
+  padding: 12px;
+}
+
+/* 默认选项卡标题样式：参考地闪密度页 Card 标题（粗体 16px 标题色） */
+.admin-menus-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin_menus_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin_menus_tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin_menus_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin_menus_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* LP-255 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
+:root[data-fquiz-theme="dark"] .admin_menus_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin_menus_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
 }
 
 /* ---- Menus page two-column body ---- */
@@ -424,9 +504,8 @@ body {
   display: flex;
   gap: 0;
   overflow: hidden;
-  /* LP-230: 8px -> 12px，对齐系统参数管理页 .admin-system-params-page-body */
-  padding: 0 12px 12px;
-  padding-top: 12px;
+  /* LP-255: 外层 Card 已移除，由 .admin_menus_list_pane 提供 12px padding，此处置 0 避免叠加 */
+  padding: 0;
 }
 
 
@@ -570,27 +649,100 @@ body {
   min-height: var(--admin-users-table-body-min-height, 180px);
 }
 
-.admin-users-page-card {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-users-page-card > .ant-card-body {
+/* LP-253: 用户管理页去外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin_users_list_pane {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  /* LP-211: 24px -> 12px，覆盖 antd Card 默认 padding */
-  padding: 12px !important;
+  padding: 12px;
 }
 
-.admin-users-page-card .ant-table-pagination {
-  /* LP-211: 16px -> 12px，覆盖 antd Table 内置分页默认 margin；底部留白 LP-228 改为 0 */
+/* LP-253: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
+   内部列表 Tab 才能延续原有 flex 自适应滚动布局 */
+.admin_users_tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin_users_tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin_users_tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_users_tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_users_tabs .ant-table-pagination {
+  /* 与改造前 .admin-users-page-card .ant-table-pagination 一致 */
   margin: 12px 0 0 !important;
+}
+
+/* LP-253: 用户管理 Tab 栏底色统一为 colorBgContainer 白底；
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
+.admin_users_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
+  margin: 0;
+  /* 去掉选项卡标题栏底部自带的 1px 边框 */
+  border-bottom: none;
+  /* 标题栏四周内边距 */
+  padding: 12px;
+}
+
+/* 默认选项卡标题样式：粗体 16px 标题色，与改造前 Card 标题一致 */
+.admin_users_tab_title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin_users_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin_users_tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin_users_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin_users_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* LP-253 深色模式：Tab 栏与内容区保持 colorBgContainer 一致的背景 */
+:root[data-fquiz-theme="dark"] .admin_users_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin_users_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
 }
 
 .admin-ai-chat-page-card {
@@ -608,47 +760,93 @@ body {
   overflow: hidden;
 }
 
-.admin-atp-models-page-card {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
+.admin-system-messages-table-anchor .ant-table-body {
+  min-height: var(--admin-system-messages-table-body-min-height, 180px);
 }
 
-.admin-atp-models-page-card > .ant-card-body {
+/* LP-257: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin_system_messages_list_pane {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
+  padding: 12px;
 }
 
-.admin-system-messages-page-card {
+/* LP-257: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
+   内部列表 Tab 的列表才能延续原有 flex 自适应滚动布局 */
+.admin_system_messages_tabs {
   display: flex;
   flex: 1;
   min-height: 0;
   flex-direction: column;
 }
 
-.admin-system-messages-page-card > .ant-card-body {
+.admin_system_messages_tabs > .ant-tabs-content-holder {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: auto;
-  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
-  padding: 12px !important;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
 }
 
-.admin-system-messages-page-card .ant-table-pagination {
+.admin_system_messages_tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_system_messages_tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_system_messages_tabs .ant-table-pagination {
   /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
   margin: 12px 0 0 !important;
 }
 
-.admin-system-messages-table-anchor .ant-table-body {
-  min-height: var(--admin-system-messages-table-body-min-height, 180px);
+/* LP-257: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
+.admin_system_messages_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+.admin_system_messages_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin_system_messages_tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin_system_messages_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin_system_messages_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* LP-257 深色模式：主列表 Tab 栏与内容区保持一致的背景 */
+:root[data-fquiz-theme="dark"] .admin_system_messages_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin_system_messages_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
 }
 
 .admin-system-messages-card-view {
@@ -890,6 +1088,103 @@ body {
   align-items: baseline;
 }
 
+/* LP-258: 文档管理页移除外层 Card 改为 editable-card Tabs 后，
+   用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin-documents-list-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+/* LP-258: 页面外层改为 editable-card Tabs，让 Tabs 容器/内容区撑满高度 */
+.admin-documents-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin-documents-tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin-documents-tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* LP-258: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 */
+.admin-documents-tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-documents-tabs .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
+}
+
+/* LP-258: 主列表 Tab 栏底色统一为 colorBgContainer 白底，
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 */
+.admin-documents-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
+  margin: 0;
+  /* 去掉选项卡标题栏底部自带的 1px 边框 */
+  border-bottom: none;
+  /* 标题栏四周内边距 */
+  padding: 12px;
+}
+
+/* 默认选项卡标题样式：参考地闪密度/雷电流幅值页面标题（粗体 16px 标题色） */
+.admin-documents-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin-documents-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin-documents-tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-documents-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin-documents-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* LP-258 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
+:root[data-fquiz-theme="dark"] .admin-documents-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin-documents-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+}
+
 .admin-menus-card-view {
   display: flex;
   min-height: 0;
@@ -938,22 +1233,6 @@ body {
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
-}
-
-.admin-workers-page-card {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-workers-page-card > .ant-card-body {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: auto;
 }
 
 .admin-workers-card-view {
@@ -1079,31 +1358,192 @@ body {
   padding: 4px 2px 0;
 }
 
-.admin-task-monitor-table-anchor .ant-table-body {
-  min-height: var(--admin-task-monitor-table-body-min-height, 180px);
-}
-
-.admin-task-monitor-page-card {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-task-monitor-page-card > .ant-card-body {
+/* LP-251: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin_workers_list_pane {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
-  padding: 12px !important;
+  padding: 12px;
 }
 
-.admin-task-monitor-page-card .ant-table-pagination {
+/* LP-251: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
+   内部 Worker 卡片列表才能延续原有 flex 自适应滚动布局 */
+.admin_workers_tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin_workers_tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin_workers_tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_workers_tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_workers_tabs .ant-table-pagination {
   /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
   margin: 12px 0 0 !important;
+}
+
+/* LP-251: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
+.admin_workers_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+/* 默认选项卡标题样式：参考地闪密度/任务监控页面（粗体 16px 标题色） */
+.admin_workers_tab_title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin_workers_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin_workers_tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin_workers_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin_workers_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* LP-251 深色模式：主列表 Tab 栏与内容区保持一致的背景 */
+:root[data-fquiz-theme="dark"] .admin_workers_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin_workers_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-task-monitor-table-anchor .ant-table-body {
+  min-height: var(--admin-task-monitor-table-body-min-height, 180px);
+}
+
+/* LP-250: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin_task_monitor_list_pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+/* LP-250: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
+   内部列表 Tab 的列表才能延续原有 flex 自适应滚动布局 */
+.admin_task_monitor_tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin_task_monitor_tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin_task_monitor_tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_task_monitor_tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_task_monitor_tabs .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
+}
+
+/* LP-250: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
+.admin_task_monitor_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+/* 默认选项卡标题样式：参考地闪密度/系统消息页面（粗体 16px 标题色） */
+.admin_task_monitor_tab_title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin_task_monitor_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin_task_monitor_tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin_task_monitor_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin_task_monitor_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* LP-250 深色模式：主列表 Tab 栏与内容区保持一致的背景 */
+:root[data-fquiz-theme="dark"] .admin_task_monitor_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin_task_monitor_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
 }
 
 .admin-task-monitor-card-view {
@@ -1179,27 +1619,79 @@ body {
   min-height: var(--admin-roles-table-body-min-height, 180px);
 }
 
-.admin-roles-page-card {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-roles-page-card > .ant-card-body {
+/* LP-254: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin_roles_list_pane {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
-  padding: 12px !important;
+  padding: 12px;
 }
 
-.admin-roles-page-card .ant-table-pagination {
+/* LP-254: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度 */
+.admin_roles_tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin_roles_tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin_roles_tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_roles_tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_roles_tabs .ant-table-pagination {
   /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
   margin: 12px 0 0 !important;
+}
+
+/* LP-254: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底） */
+.admin_roles_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+.admin_roles_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin_roles_tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+/* LP-254 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
+:root[data-fquiz-theme="dark"] .admin_roles_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin_roles_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
 }
 
 .admin-roles-card-view {
@@ -1276,22 +1768,100 @@ body {
    system-params 布局样式 (redesigned)
    ====================================== */
 
-/* ---- Page card (mirrors .admin-menus-page-card) ---- */
-.admin-system-params-page-card {
+/* LP-256: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin-system-params-list-pane {
   display: flex;
-  flex: 1;
   min-height: 0;
+  flex: 1;
   flex-direction: column;
-  border-radius: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
 }
 
-.admin-system-params-page-card > .ant-card-body {
+/* LP-256: 页面外层改为 editable-card Tabs，让 Tabs 容器/内容区撑满高度 */
+.admin-system-params-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin-system-params-tabs > .ant-tabs-content-holder {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  overflow: hidden;
-  padding: 0;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin-system-params-tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* LP-256: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 */
+.admin-system-params-tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-system-params-tabs .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
+}
+
+/* LP-256: 主列表 Tab 栏底色统一为 colorBgContainer 白底，
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 */
+.admin-system-params-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
+  margin: 0;
+  /* 去掉选项卡标题栏底部自带的 1px 边框 */
+  border-bottom: none;
+  /* 标题栏四周内边距 */
+  padding: 12px;
+}
+
+/* 默认选项卡标题样式：参考地闪密度/雷电流幅值页面标题（粗体 16px 标题色） */
+.admin-system-params-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin-system-params-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin-system-params-tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-system-params-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin-system-params-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* LP-256 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
+:root[data-fquiz-theme="dark"] .admin-system-params-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin-system-params-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
 }
 
 /* ---- Page body (two-column) ---- */
@@ -1303,6 +1873,12 @@ body {
   overflow: hidden;
   padding: 0 12px 12px;
   padding-top: 12px;
+}
+
+/* LP-256: 外层 Card 已移除，由 .admin-system-params-list-pane 提供 12px padding，此处置 0 避免叠加。
+   仅作用于 system-params 自身（文档页仍复用本 class 且无独立 list-pane 前缀，不受影响） */
+.admin-system-params-list-pane .admin-system-params-page-body {
+  padding: 0;
 }
 
 /* ---- Category sider card ---- */
@@ -1556,27 +2132,96 @@ body {
   }
 }
 
-.admin-scheduled-tasks-page-card {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-scheduled-tasks-page-card > .ant-card-body {
+/* LP-260: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin_scheduled_tasks_list_pane {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
-  padding: 12px !important;
+  padding: 12px;
 }
 
-.admin-scheduled-tasks-page-card .ant-table-pagination {
+/* LP-260: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
+   内部列表 Tab 的列表才能延续原有 flex 自适应滚动布局 */
+.admin_scheduled_tasks_tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin_scheduled_tasks_tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin_scheduled_tasks_tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_scheduled_tasks_tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_scheduled_tasks_tabs .ant-table-pagination {
   /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
   margin: 12px 0 0 !important;
+}
+
+/* LP-260: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
+.admin_scheduled_tasks_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+/* 默认选项卡标题样式：参考地闪密度/系统消息页面（粗体 16px 标题色） */
+.admin_scheduled_tasks_tab_title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin_scheduled_tasks_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin_scheduled_tasks_tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin_scheduled_tasks_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin_scheduled_tasks_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* LP-260 深色模式：主列表 Tab 栏与内容区保持一致的背景 */
+:root[data-fquiz-theme="dark"] .admin_scheduled_tasks_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin_scheduled_tasks_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
 }
 
 .admin-scheduled-tasks-table-anchor .ant-table-body {
@@ -1587,27 +2232,79 @@ body {
   min-height: var(--admin-syslog-table-body-min-height, 180px);
 }
 
-.admin-syslog-page-card {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-syslog-page-card > .ant-card-body {
+/* LP-252: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin_syslog_list_pane {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
-  padding: 12px !important;
+  padding: 12px;
 }
 
-.admin-syslog-page-card .ant-table-pagination {
+/* LP-252: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度 */
+.admin_syslog_tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin_syslog_tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin_syslog_tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_syslog_tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_syslog_tabs .ant-table-pagination {
   /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
   margin: 12px 0 0 !important;
+}
+
+/* LP-252: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底） */
+.admin_syslog_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+.admin_syslog_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin_syslog_tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+/* LP-252 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
+:root[data-fquiz-theme="dark"] .admin_syslog_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin_syslog_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
 }
 
 .admin-syslog-card-view {
@@ -1799,20 +2496,88 @@ body {
   align-items: baseline;
 }
 
-.admin-atp-models-page-card {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-atp-models-page-card > .ant-card-body {
+/* LP-248: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin_atp_models_list_pane {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
+  padding: 12px;
+}
+
+/* LP-248: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
+   内部列表 Tab 的列表才能延续原有 flex 自适应滚动布局 */
+.admin_atp_models_tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin_atp_models_tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin_atp_models_tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_atp_models_tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_atp_models_tabs .ant-table-pagination {
+  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
+}
+
+/* LP-248: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底） */
+.admin_atp_models_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+.admin_atp_models_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin_atp_models_tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin_atp_models_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin_atp_models_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* LP-248 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
+:root[data-fquiz-theme="dark"] .admin_atp_models_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin_atp_models_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
 }
 
 .admin-wine-runner-page-card {
@@ -2196,7 +2961,7 @@ body {
 }
 
 /* Task-monitor filter form: allow wrapping on narrow width */
-.admin-task-monitor-page-card .ant-form-inline {
+.admin_task_monitor_list_pane .ant-form-inline {
   flex-wrap: wrap;
 }
 
@@ -2233,27 +2998,102 @@ body {
   min-height: var(--admin-elevation-table-body-min-height, 180px);
 }
 
-.admin-elevation-page-card {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-elevation-page-card > .ant-card-body {
+/* LP-249: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin_elevation_list_pane {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  /* LP-229: 24px -> 12px，覆盖 antd Card 默认 padding，与用户管理页一致 */
-  padding: 12px !important;
+  padding: 12px;
 }
 
-.admin-elevation-page-card .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+/* LP-249: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
+   内部列表 Tab 的 Card 才能延续原有 flex 自适应滚动布局 */
+.admin_elevation_tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin_elevation_tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin_elevation_tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 */
+.admin_elevation_tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_elevation_tabs .ant-table-pagination {
+  /* 覆盖 antd Table 内置分页默认 margin（16px 0），与用户管理页一致 */
   margin: 12px 0 0 !important;
+}
+
+/* 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
+   仅作用于外层主列表 Tabs（editable-card），避免误伤详情弹窗内的 Tabs；
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
+.admin_elevation_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
+  margin: 0;
+  /* 去掉选项卡标题栏底部自带的 1px 边框 */
+  border-bottom: none;
+  /* 标题栏四周内边距 */
+  padding: 12px;
+}
+
+/* 默认选项卡标题样式：粗体 16px 标题色 */
+.admin_elevation_tab_title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin_elevation_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin_elevation_tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin_elevation_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin_elevation_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* 深色模式：主列表 Tab 栏与内容区保持与用户管理页标题栏一致的背景 */
+:root[data-fquiz-theme="dark"] .admin_elevation_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin_elevation_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
 }
 
 .admin-elevation-card-view {
@@ -2386,6 +3226,13 @@ body {
   border-bottom: none;
   /* 标题栏四周内边距 */
   padding: 12px;
+}
+
+/* 默认选项卡标题样式：参考雷电流幅值页面 Card 标题（粗体 16px 标题色） */
+.admin-lightning-distribution-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
 }
 
 .admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab {
@@ -3316,20 +4163,110 @@ body {
   min-height: var(--admin-dimensions-table-body-min-height, 180px);
 }
 
-.admin-dimensions-page-card {
+/* LP-259: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin_dimensions_list_pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+/* LP-259: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度 */
+.admin_dimensions_tabs {
   display: flex;
   flex: 1;
   min-height: 0;
   flex-direction: column;
 }
 
-.admin-dimensions-page-card > .ant-card-body {
+.admin_dimensions_tabs > .ant-tabs-content-holder {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  /* LP-230: overflow-x/y -> overflow hidden，padding 0，对齐 .admin-system-params-page-card > .ant-card-body */
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin_dimensions_tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* LP-259: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 */
+.admin_dimensions_tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin_dimensions_tabs .ant-table-pagination {
+  /* LP-259: 与地闪密度页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
+}
+
+/* LP-259: 主列表 Tab 栏底色统一为白底（colorBgContainer），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 */
+.admin_dimensions_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
+  margin: 0;
+  /* 去掉选项卡标题栏底部自带的 1px 边框 */
+  border-bottom: none;
+  /* 标题栏四周内边距 */
+  padding: 12px;
+}
+
+/* 默认选项卡标题样式：参考地闪密度页 Card 标题（粗体 16px 标题色） */
+.admin-dimensions-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin_dimensions_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin_dimensions_tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin_dimensions_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin_dimensions_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* LP-259 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
+:root[data-fquiz-theme="dark"] .admin_dimensions_tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin_dimensions_tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+}
+
+/* ---- Dimensions page two-column body ---- */
+.admin-dimensions-page-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0;
   overflow: hidden;
+  /* LP-259: 外层 Card 已移除，由 .admin_dimensions_list_pane 提供 12px padding，此处置 0 避免叠加 */
   padding: 0;
 }
 

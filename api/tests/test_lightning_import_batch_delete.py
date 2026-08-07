@@ -79,6 +79,7 @@ def test_serialize_distribution_record() -> None:
         dist.positive_count = 8
         dist.negative_count = 2
         dist.image_object_key = "lightning/distribution/image/x.png"
+        dist.lp_draw_task_id = "ab9f-task-id"
         session.commit()
 
         record = lightning_service._serialize_distribution(dist)
@@ -92,6 +93,7 @@ def test_serialize_distribution_record() -> None:
         assert record.overall_ng == 1.5
         assert record.positive_count == 8
         assert record.negative_count == 2
+        assert record.lp_draw_task_id == "ab9f-task-id"
     finally:
         session.close()
 

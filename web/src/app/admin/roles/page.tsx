@@ -17,6 +17,7 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   TreeSelect,
   Typography,
   type CardProps,
@@ -454,18 +455,17 @@ export default function AdminRolesPage() {
   useEffect(() => {
     if (viewMode !== "card") return;
 
-    const pageCard = pageCardRef.current;
-    if (!pageCard) return;
-
-    const cardBody = pageCard.querySelector<HTMLElement>(".ant-card-body");
-    if (!cardBody) return;
+    // pageCardRef 已迁到 list-pane 容器（admin_roles_list_pane），
+    // 该容器自身即 overflow-y:auto 滚动容器，直接使用即可
+    const scrollContainer = pageCardRef.current;
+    if (!scrollContainer) return;
 
     const handleScroll = () => {
       if (isLoadingMore || rolesQuery.isLoading) return;
 
-      const scrollTop = cardBody.scrollTop;
-      const scrollHeight = cardBody.scrollHeight;
-      const clientHeight = cardBody.clientHeight;
+      const scrollTop = scrollContainer.scrollTop;
+      const scrollHeight = scrollContainer.scrollHeight;
+      const clientHeight = scrollContainer.clientHeight;
 
       if (scrollTop + clientHeight >= scrollHeight - 100) {
         const total = rolesQuery.data?.roles_total ?? 0;
@@ -479,8 +479,8 @@ export default function AdminRolesPage() {
       }
     };
 
-    cardBody.addEventListener("scroll", handleScroll);
-    return () => cardBody.removeEventListener("scroll", handleScroll);
+    scrollContainer.addEventListener("scroll", handleScroll);
+    return () => scrollContainer.removeEventListener("scroll", handleScroll);
   }, [viewMode, isLoadingMore, rolesQuery.isLoading, rolesQuery.data?.roles_total, allLoadedRoles.length]);
 
   const columns = useMemo<ColumnsType<RoleItem>>(() => {
@@ -802,142 +802,153 @@ export default function AdminRolesPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        ref={pageCardRef}
-        className="admin-roles-page-card"
-        title="角色管理"
-        extra={
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey="list"
+        className="admin_roles_tabs"
+        tabBarExtraContent={
           canManage ? (
             <Button type="primary" onClick={startCreate}>
               新建角色
             </Button>
           ) : null
         }
-      >
-        {viewMode === "card" ? (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按角色编码/名称/菜单搜索"
-                  value={keywordInput}
-                  onChange={(event) => handleKeywordChange(event.target.value)}
-                  onPressEnter={handleSearch}
-                />
-              </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  icon={<SearchOutlined />}
-                  onClick={handleSearch}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        ) : (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按角色编码/名称/菜单搜索"
-                  value={keywordInput}
-                  onChange={(event) => handleKeywordChange(event.target.value)}
-                  onPressEnter={handleSearch}
-                />
-              </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={handleSearch}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        )}
+        items={[
+          {
+            key: "list",
+            label: "角色管理",
+            closable: false,
+            children: (
+              <div ref={pageCardRef} className="admin_roles_list_pane">
+                {viewMode === "card" ? (
+                  <div className="admin-filter-bar">
+                    <Form layout="inline">
+                      <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                        <Input
+                          allowClear
+                          placeholder="按角色编码/名称/菜单搜索"
+                          value={keywordInput}
+                          onChange={(event) => handleKeywordChange(event.target.value)}
+                          onPressEnter={handleSearch}
+                        />
+                      </Form.Item>
+                      <Form.Item style={{ marginBottom: 0 }}>
+                        <Button
+                          icon={<SearchOutlined />}
+                          onClick={handleSearch}
+                          className="admin-search-btn"
+                        >
+                          查询
+                        </Button>
+                      </Form.Item>
+                    </Form>
+                  </div>
+                ) : (
+                  <div className="admin-filter-bar">
+                    <Form layout="inline">
+                      <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                        <Input
+                          allowClear
+                          placeholder="按角色编码/名称/菜单搜索"
+                          value={keywordInput}
+                          onChange={(event) => handleKeywordChange(event.target.value)}
+                          onPressEnter={handleSearch}
+                        />
+                      </Form.Item>
+                      <Form.Item style={{ marginBottom: 0 }}>
+                        <Button
+                          htmlType="button"
+                          icon={<SearchOutlined />}
+                          onClick={handleSearch}
+                          className="admin-search-btn"
+                        >
+                          查询
+                        </Button>
+                      </Form.Item>
+                    </Form>
+                  </div>
+                )}
 
-        {viewMode === "table" ? (
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-roles-table-anchor"
-            style={{ "--admin-roles-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<RoleItem>
-              rowKey="id"
-              columns={columns}
-              dataSource={roles}
-              loading={rolesQuery.isLoading}
-              tableLayout="fixed"
-              scroll={{ y: tableScrollY }}
-              pagination={{
-                current: paginationCurrent,
-                pageSize: paginationPageSize,
-                total: Math.max(rolesQuery.data?.roles_total ?? 0, 1),
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: () => `共 ${rolesQuery.data?.roles_total ?? 0} 条`,
-                hideOnSinglePage: false,
-                style: { marginBottom: 0 },
-                onChange: (page, pageSize) => {
-                  setPagination({ current: page, pageSize });
-                },
-              }}
-              locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="未找到符合筛选条件的角色。"
-                  />
-                ),
-              }}
-            />
-          </div>
-        ) : (
-          <div className="admin-roles-card-view">
-            {rolesQuery.isLoading && allLoadedRoles.length === 0 ? (
-              <div className="admin-roles-card-view-state">
-                <Spin tip="加载中..." />
-              </div>
-            ) : allLoadedRoles.length === 0 ? (
-              <div className="admin-roles-card-view-state">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的角色。"
-                />
-              </div>
-            ) : (
-              <div className="admin-roles-card-view-content">
-                <Row gutter={[12, 12]}>
-                  {allLoadedRoles.map((role) => (
-                    <Col key={role.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                      {renderRoleCard(role)}
-                    </Col>
-                  ))}
-                </Row>
-                {isLoadingMore && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Spin tip="加载更多..." />
+                {viewMode === "table" ? (
+                  <div
+                    ref={tableScrollAnchorRef}
+                    className="admin-roles-table-anchor"
+                    style={{ "--admin-roles-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                  >
+                    <Table<RoleItem>
+                      rowKey="id"
+                      columns={columns}
+                      dataSource={roles}
+                      loading={rolesQuery.isLoading}
+                      tableLayout="fixed"
+                      scroll={{ y: tableScrollY }}
+                      pagination={{
+                        current: paginationCurrent,
+                        pageSize: paginationPageSize,
+                        total: Math.max(rolesQuery.data?.roles_total ?? 0, 1),
+                        showSizeChanger: true,
+                        pageSizeOptions: [10, 20, 50, 100],
+                        showTotal: () => `共 ${rolesQuery.data?.roles_total ?? 0} 条`,
+                        hideOnSinglePage: false,
+                        style: { marginBottom: 0 },
+                        onChange: (page, pageSize) => {
+                          setPagination({ current: page, pageSize });
+                        },
+                      }}
+                      locale={{
+                        emptyText: (
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description="未找到符合筛选条件的角色。"
+                          />
+                        ),
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="admin-roles-card-view">
+                    {rolesQuery.isLoading && allLoadedRoles.length === 0 ? (
+                      <div className="admin-roles-card-view-state">
+                        <Spin tip="加载中..." />
+                      </div>
+                    ) : allLoadedRoles.length === 0 ? (
+                      <div className="admin-roles-card-view-state">
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="未找到符合筛选条件的角色。"
+                        />
+                      </div>
+                    ) : (
+                      <div className="admin-roles-card-view-content">
+                        <Row gutter={[12, 12]}>
+                          {allLoadedRoles.map((role) => (
+                            <Col key={role.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                              {renderRoleCard(role)}
+                            </Col>
+                          ))}
+                        </Row>
+                        {isLoadingMore && (
+                          <div style={{ textAlign: "center", padding: "20px 0" }}>
+                            <Spin tip="加载更多..." />
+                          </div>
+                        )}
+                        {allLoadedRoles.length >= (rolesQuery.data?.roles_total ?? 0) && allLoadedRoles.length > 0 && (
+                          <div style={{ textAlign: "center", padding: "20px 0" }}>
+                            <Typography.Text type="secondary">
+                              已加载全部 {allLoadedRoles.length} 条数据
+                            </Typography.Text>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
-                {allLoadedRoles.length >= (rolesQuery.data?.roles_total ?? 0) && allLoadedRoles.length > 0 && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Typography.Text type="secondary">
-                      已加载全部 {allLoadedRoles.length} 条数据
-                    </Typography.Text>
-                  </div>
-                )}
               </div>
-            )}
-          </div>
-        )}
-      </AntCard>
+            ),
+          },
+        ]}
+      />
 
       {canManage && (
         <Modal

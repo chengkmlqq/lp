@@ -339,6 +339,9 @@ def render_lp_density_job(
             _upload_log(task_id, log_parts); return {"status": "failed", "error": "distribution not found"}
         if dist.status != "completed":
             _upload_log(task_id, log_parts); return {"status": "failed", "error": "distribution not completed"}
+        # 持久化绘图任务 task_id，供刷新页面后追溯绘图日志（LP-261）
+        dist.lp_draw_task_id = task_id
+        db.commit()
 
         line = db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
         if not line:
@@ -420,6 +423,7 @@ def render_lp_density_job(
             ).scalar_one_or_none()
             if dist:
                 dist.error_message = str(exc)
+                dist.lp_draw_task_id = task_id
                 dist.update_user = actor_user_id
                 db.commit()
                 _publish_distribution_event("distribution.lp_draw_failed", {

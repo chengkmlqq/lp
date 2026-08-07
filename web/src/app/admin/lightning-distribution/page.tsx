@@ -34,6 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 import { useAuth } from "@/components/auth-provider";
+import { TaskLogViewerModal } from "@/components/task-log-viewer";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -47,6 +48,7 @@ import type {
   LineSummary,
   LineListResponse,
 } from "@/types/auth";
+import { CHINESE_CITIES, type CityOption } from "@/data/chinese-cities";
 
 type ImportFormValues = {
   event_year: number;
@@ -141,8 +143,23 @@ export default function AdminLightningDistributionPage() {
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
+  // ---- 任务日志弹窗 ----
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
+  const [logModalTitle, setLogModalTitle] = useState("任务执行日志");
+
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
   const canManage = hasPermission("lightning.manage");
+  const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
+
+  const openLogViewer = (taskId: string | null | undefined, label: string, fileName: string) => {
+    if (!taskId || !canReadLogs) {
+      return;
+    }
+    setLogModalTaskId(taskId);
+    setLogModalTitle(`${label} - ${fileName}`);
+    setLogModalOpen(true);
+  };
 
   // ---- 地闪分布列表 ----
   const trimmedKeyword = searchKeyword.trim();
@@ -276,6 +293,13 @@ export default function AdminLightningDistributionPage() {
       setImportModalOpen(false);
       importForm.resetFields();
       setSelectedFile(null);
+      // 自动打开导入任务日志弹窗（有 celery 权限时）
+      if (canReadLogs && payload.task_id) {
+        const fileName = selectedFile?.name || "导入";
+        setLogModalTaskId(payload.task_id);
+        setLogModalTitle(`导入日志 - ${fileName}`);
+        setLogModalOpen(true);
+      }
       await refreshAll();
     },
     onError: (candidate) => {
@@ -352,12 +376,19 @@ export default function AdminLightningDistributionPage() {
             </Space>
           ),
           closable: true,
-          children: <DistributionDetailView record={record} fetchWithAuth={fetchWithAuth} />,
+          children: (
+            <DistributionDetailView
+              record={record}
+              fetchWithAuth={fetchWithAuth}
+              canReadLogs={canReadLogs}
+              onOpenLog={openLogViewer}
+            />
+          ),
         },
       ];
     });
     setActiveTabKey(key);
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, canReadLogs, openLogViewer]);
 
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
@@ -541,7 +572,7 @@ export default function AdminLightningDistributionPage() {
       {
         title: "操作",
         key: "actions",
-        width: 200,
+        width: 320,
         fixed: "right",
         render: (_: unknown, row) => {
           const moreMenuItems: MenuProps["items"] = [
@@ -561,6 +592,22 @@ export default function AdminLightningDistributionPage() {
               <Button size="small" onClick={() => openDetail(row)}>
                 详情
               </Button>
+              {canReadLogs && row.task_id && (
+                <Button
+                  size="small"
+                  onClick={() => openLogViewer(row.task_id, "导入日志", row.source_file_name)}
+                >
+                  导入日志
+                </Button>
+              )}
+              {canReadLogs && row.lp_draw_task_id && (
+                <Button
+                  size="small"
+                  onClick={() => openLogViewer(row.lp_draw_task_id, "绘图日志", row.source_file_name)}
+                >
+                  绘图日志
+                </Button>
+              )}
               {canManage && (
                 <Button
                   size="small"
@@ -590,7 +637,7 @@ export default function AdminLightningDistributionPage() {
         },
       },
     ],
-    [canManage, deleteMutation, openDetail],
+    [canManage, deleteMutation, openDetail, openLogViewer, canReadLogs],
   );
 
   const renderRecordCard = (record: LightningDistributionRecord) => {
@@ -600,6 +647,24 @@ export default function AdminLightningDistributionPage() {
         label: "详情",
         onClick: () => openDetail(record),
       },
+      ...(canReadLogs && record.task_id
+        ? [
+            {
+              key: "import-log",
+              label: "导入日志",
+              onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
+            },
+          ]
+        : []),
+      ...(canReadLogs && record.lp_draw_task_id
+        ? [
+            {
+              key: "draw-log",
+              label: "绘图日志",
+              onClick: () => openLogViewer(record.lp_draw_task_id, "绘图日志", record.source_file_name),
+            },
+          ]
+        : []),
       ...(canManage
         ? [
             {
@@ -752,7 +817,7 @@ export default function AdminLightningDistributionPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: "地闪密度统计",
+            label: <span className="admin-lightning-distribution-tab-title">地闪密度统计</span>,
             closable: false,
             children: (
               <div className="admin-lightning-distribution-list-pane">
@@ -854,8 +919,22 @@ export default function AdminLightningDistributionPage() {
           data={lpDrawRow}
           onClose={() => setLpDrawRow(null)}
           fetchWithAuth={fetchWithAuth}
+          onSubmitted={(taskId, fileName) => {
+            if (canReadLogs && taskId) {
+              setLogModalTaskId(taskId);
+              setLogModalTitle(`绘图日志 - ${fileName}`);
+              setLogModalOpen(true);
+            }
+          }}
         />
       )}
+
+      <TaskLogViewerModal
+        taskId={logModalTaskId}
+        title={logModalTitle}
+        open={logModalOpen}
+        onClose={() => setLogModalOpen(false)}
+      />
     </div>
   );
 }
@@ -917,11 +996,30 @@ function ImportModal({
     >
       <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={initialValues}>
         <div className="grid gap-3 md:grid-cols-2">
-          <Form.Item name="city" label="城市/区域" rules={[{ required: true, message: "请填写城市/区域" }]}>
-            <Input placeholder="例如 上海" />
+          <Form.Item name="city" label="城市" rules={[{ required: true, message: "请选择城市" }]}>
+            <Select
+              showSearch
+              allowClear
+              placeholder="请搜索选择城市"
+              filterOption={(input, option) => {
+                const keyword = input.toLowerCase().trim();
+                const data = option?.["data-data"] as CityOption | undefined;
+                if (!data) return false;
+                return (
+                  data.label.includes(input)
+                  || data.pinyin.includes(keyword)
+                  || data.initials.includes(keyword)
+                );
+              }}
+              options={CHINESE_CITIES.map((item) => ({
+                label: item.label,
+                value: item.label,
+                "data-data": item,
+              }))}
+            />
           </Form.Item>
-          <Form.Item name="region_id" label="区域标识" rules={[{ required: true, message: "请填写区域标识" }]}>
-            <Input placeholder="例如 SH-001" />
+          <Form.Item name="region_id" label="事件发生地点" rules={[{ required: true, message: "请填写事件发生地点" }]}>
+            <Input placeholder="例如 XX变电站、XX区域（闪电事件发生地点）" />
           </Form.Item>
           <Form.Item name="event_year" label="数据年份" rules={[{ required: true, message: "请填写年份" }]}>
             <InputNumber className="w-full" min={1900} max={2100} />
@@ -989,9 +1087,13 @@ function ImportModal({
 function DistributionDetailView({
   record,
   fetchWithAuth,
+  canReadLogs,
+  onOpenLog,
 }: {
   record: LightningDistributionRecord;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
+  canReadLogs: boolean;
+  onOpenLog: (taskId: string | null | undefined, label: string, fileName: string) => void;
 }) {
   const imageQuery = useQuery({
     queryKey: ["/api/v1/lightning-currents/distributions", record.id, "image"],
@@ -1113,6 +1215,31 @@ function DistributionDetailView({
                 },
               ]
             : []),
+          ...(canReadLogs && (record.task_id || record.lp_draw_task_id)
+            ? [
+                {
+                  key: "logs",
+                  label: "处理日志",
+                  children: (
+                    <Space direction="vertical" size={12} style={{ width: "100%", minHeight: 120 }}>
+                      {record.task_id && (
+                        <Button onClick={() => onOpenLog(record.task_id, "导入日志", record.source_file_name)}>
+                          查看导入日志
+                        </Button>
+                      )}
+                      {record.lp_draw_task_id && (
+                        <Button onClick={() => onOpenLog(record.lp_draw_task_id, "绘图日志", record.source_file_name)}>
+                          查看绘图日志
+                        </Button>
+                      )}
+                      {!record.task_id && !record.lp_draw_task_id && (
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可查看的处理日志" />
+                      )}
+                    </Space>
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
     </Space>
@@ -1124,16 +1251,18 @@ function DrawLpModal({
   data,
   onClose,
   fetchWithAuth,
+  onSubmitted,
 }: {
   open: boolean;
   data: LightningDistributionRecord | null;
   onClose: () => void;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
+  onSubmitted: (taskId: string, fileName: string) => void;
 }) {
   return (
     <Modal title="绘制 LP 分区地闪密度图" open={open} onCancel={onClose} footer={null} width={560} destroyOnClose>
       {/* key 随分布记录变化强制重挂载，避免残留上一分布选中的线路 / 提交结果 */}
-      <DrawLpBody key={data?.id ?? "empty"} open={open} data={data} fetchWithAuth={fetchWithAuth} />
+      <DrawLpBody key={data?.id ?? "empty"} open={open} data={data} fetchWithAuth={fetchWithAuth} onSubmitted={onSubmitted} />
     </Modal>
   );
 }
@@ -1142,10 +1271,12 @@ function DrawLpBody({
   open,
   data,
   fetchWithAuth,
+  onSubmitted,
 }: {
   open: boolean;
   data: LightningDistributionRecord | null;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
+  onSubmitted: (taskId: string, fileName: string) => void;
 }) {
   const [lineSearchText, setLineSearchText] = useState("");
   const [lineId, setLineId] = useState<string | null>(null);
@@ -1205,6 +1336,7 @@ function DrawLpBody({
     onSuccess: (p) => {
       setError("");
       setSuccess(`LP 绘图任务已提交（任务ID: ${p.task_id}）。完成后请在详情弹窗查看。`);
+      onSubmitted(p.task_id, data?.source_file_name || "绘图");
     },
     onError: (e) => {
       setSuccess("");

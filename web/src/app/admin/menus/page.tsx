@@ -17,6 +17,7 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
   Tree,
   Typography,
@@ -381,8 +382,9 @@ export default function AdminMenusPage() {
     const pageCard = pageCardRef.current;
     if (!pageCard) return;
 
-    const cardBody = pageCard.querySelector<HTMLElement>(".ant-card-body");
-    if (!cardBody) return;
+    // LP-255: 外层 Card 已移除，滚动容器为 .admin-menus-main（overflow-y: auto）本身；
+    // 不再通过 .ant-card-body 选择器定位（该选择器会误匹配到菜单卡片 body）
+    const cardBody = pageCard;
 
     const handleScroll = () => {
       if (isLoadingMore || menusQuery.isLoading) return;
@@ -864,18 +866,26 @@ export default function AdminMenusPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        className="admin-menus-page-card"
-        title="菜单管理"
-        extra={
+      <Tabs
+        type="editable-card"
+        hideAdd
+        defaultActiveKey="list"
+        className="admin_menus_tabs"
+        tabBarExtraContent={
           canManage ? (
             <Button type="primary" onClick={startCreate}>
               新建菜单
             </Button>
           ) : null
         }
-      >
-        <div ref={containerRef} className="admin-menus-page-body">
+        items={[
+          {
+            key: "list",
+            label: <span className="admin-menus-tab-title">菜单管理</span>,
+            closable: false,
+            children: (
+              <div className="admin_menus_list_pane">
+                <div ref={containerRef} className="admin-menus-page-body">
           {/* Left: Tree panel with keyword filter */}
           {!isMobile ? (
             <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
@@ -1088,7 +1098,11 @@ export default function AdminMenusPage() {
             )}
           </div>
         </div>
-      </AntCard>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <Modal
         title={editingMenu ? `编辑菜单：${editingMenu.name}（${editingMenu.id}）` : editingMenuId ? "编辑菜单" : "新建菜单"}

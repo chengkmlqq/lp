@@ -16,6 +16,7 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
   Typography,
   Upload,
@@ -71,7 +72,7 @@ function statusTag(value: unknown): ReactNode {
 
 const USERS_TABLE_MIN_SCROLL_Y = 180;
 const USERS_TABLE_VIEWPORT_GAP = 40;
-const USERS_TABLE_FALLBACK_RESERVE = 230;
+const USERS_TABLE_FALLBACK_RESERVE = 220;
 const USERS_TABLE_EXTRA_HEIGHT = 15;
 
 export default function AdminUsersPage() {
@@ -691,15 +692,12 @@ export default function AdminUsersPage() {
     const pageCard = pageCardRef.current;
     if (!pageCard) return;
 
-    const cardBody = pageCard.querySelector<HTMLElement>(".ant-card-body");
-    if (!cardBody) return;
-
     const handleScroll = () => {
       if (isLoadingMore || usersQuery.isLoading) return;
 
-      const scrollTop = cardBody.scrollTop;
-      const scrollHeight = cardBody.scrollHeight;
-      const clientHeight = cardBody.clientHeight;
+      const scrollTop = pageCard.scrollTop;
+      const scrollHeight = pageCard.scrollHeight;
+      const clientHeight = pageCard.clientHeight;
 
       if (scrollTop + clientHeight >= scrollHeight - 100) {
         const total = usersQuery.data?.total ?? 0;
@@ -713,8 +711,8 @@ export default function AdminUsersPage() {
       }
     };
 
-    cardBody.addEventListener("scroll", handleScroll);
-    return () => cardBody.removeEventListener("scroll", handleScroll);
+    pageCard.addEventListener("scroll", handleScroll);
+    return () => pageCard.removeEventListener("scroll", handleScroll);
   }, [viewMode, isLoadingMore, usersQuery.isLoading, usersQuery.data?.total, allLoadedUsers.length]);
 
   const updateTableScrollY = useCallback(() => {
@@ -1069,162 +1067,173 @@ export default function AdminUsersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        ref={pageCardRef}
-        className="admin-users-page-card"
-        title="用户管理"
-        extra={(
+      <Tabs
+        type="editable-card"
+        hideAdd
+        defaultActiveKey="list"
+        className="admin_users_tabs"
+        tabBarExtraContent={
           <Button type="primary" onClick={openCreateUserModal}>
             新建用户
           </Button>
-        )}
-      >
-        {viewMode === "card" ? (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按用户 ID/邮箱/用户名搜索"
-                  value={keywordInput}
-                  onChange={(event) => handleKeywordChange(event.target.value)}
-                  onPressEnter={handleSearch}
-                />
-              </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={handleSearch}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        ) : (
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="按用户 ID/邮箱/用户名搜索"
-                  value={keywordInput}
-                  onChange={(event) => handleKeywordChange(event.target.value)}
-                  onPressEnter={handleSearch}
-                />
-              </Form.Item>
-
-              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Select<"active" | "disabled">
-                  value={statusFilter}
-                  allowClear
-                  placeholder="全部"
-                  options={[
-                    { value: "active", label: "已启用" },
-                    { value: "disabled", label: "已禁用" },
-                  ]}
-                  labelRender={(props) => statusTag(props.value)}
-                  optionRender={(option) => statusTag(option.value)}
-                  onChange={(value) => {
-                    setStatusFilter(value);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedUsers([]);
-                  }}
-                />
-              </Form.Item>
-
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={handleSearch}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-        )}
-
-        {viewMode === "table" ? (
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-users-table-anchor"
-            style={{ "--admin-users-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<UserPublic>
-              rowKey="id"
-              dataSource={users}
-              columns={columns}
-              loading={usersQuery.isLoading || rolesQuery.isLoading}
-              tableLayout="fixed"
-              pagination={{
-                current: pagination.current,
-                pageSize: pagination.pageSize,
-                total: Math.max(usersQuery.data?.total ?? 0, 1),
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: () => `共 ${usersQuery.data?.total ?? 0} 条`,
-                hideOnSinglePage: false,
-                style: { marginBottom: 0 },
-                onChange: (page, pageSize) => {
-                  setPagination({ current: page, pageSize });
-                },
-              }}
-              scroll={{ y: tableScrollY }}
-              locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="未找到符合筛选条件的用户。"
-                  />
-                ),
-              }}
-            />
-          </div>
-        ) : (
-          <div className="admin-users-card-view">
-            {usersQuery.isLoading && allLoadedUsers.length === 0 ? (
-              <div className="admin-users-card-view-state">
-                <Spin tip="加载中..." />
+        }
+        items={[
+          {
+            key: "list",
+            label: <span className="admin_users_tab_title">用户管理</span>,
+            closable: false,
+            children: (
+              <div ref={pageCardRef} className="admin_users_list_pane">
+            {viewMode === "card" ? (
+              <div className="admin-filter-bar">
+                <Form layout="inline">
+                  <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Input
+                      allowClear
+                      placeholder="按用户 ID/邮箱/用户名搜索"
+                      value={keywordInput}
+                      onChange={(event) => handleKeywordChange(event.target.value)}
+                      onPressEnter={handleSearch}
+                    />
+                  </Form.Item>
+                  <Form.Item style={{ marginBottom: 0 }}>
+                    <Button
+                      htmlType="button"
+                      icon={<SearchOutlined />}
+                      onClick={handleSearch}
+                      className="admin-search-btn"
+                    >
+                      查询
+                    </Button>
+                  </Form.Item>
+                </Form>
               </div>
-            ) : allLoadedUsers.length === 0 ? (
-              <div className="admin-users-card-view-state">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的用户。"
+            ) : (
+              <div className="admin-filter-bar">
+                <Form layout="inline">
+                  <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Input
+                      allowClear
+                      placeholder="按用户 ID/邮箱/用户名搜索"
+                      value={keywordInput}
+                      onChange={(event) => handleKeywordChange(event.target.value)}
+                      onPressEnter={handleSearch}
+                    />
+                  </Form.Item>
+    
+                  <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Select<"active" | "disabled">
+                      value={statusFilter}
+                      allowClear
+                      placeholder="全部"
+                      options={[
+                        { value: "active", label: "已启用" },
+                        { value: "disabled", label: "已禁用" },
+                      ]}
+                      labelRender={(props) => statusTag(props.value)}
+                      optionRender={(option) => statusTag(option.value)}
+                      onChange={(value) => {
+                        setStatusFilter(value);
+                        setPagination((prev) => ({ ...prev, current: 1 }));
+                        setCardViewPage(1);
+                        setAllLoadedUsers([]);
+                      }}
+                    />
+                  </Form.Item>
+    
+                  <Form.Item style={{ marginBottom: 0 }}>
+                    <Button
+                      htmlType="button"
+                      icon={<SearchOutlined />}
+                      onClick={handleSearch}
+                      className="admin-search-btn"
+                    >
+                      查询
+                    </Button>
+                  </Form.Item>
+                </Form>
+              </div>
+            )}
+    
+            {viewMode === "table" ? (
+              <div
+                ref={tableScrollAnchorRef}
+                className="admin-users-table-anchor"
+                style={{ "--admin-users-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+              >
+                <Table<UserPublic>
+                  rowKey="id"
+                  dataSource={users}
+                  columns={columns}
+                  loading={usersQuery.isLoading || rolesQuery.isLoading}
+                  tableLayout="fixed"
+                  pagination={{
+                    current: pagination.current,
+                    pageSize: pagination.pageSize,
+                    total: Math.max(usersQuery.data?.total ?? 0, 1),
+                    showSizeChanger: true,
+                    pageSizeOptions: [10, 20, 50, 100],
+                    showTotal: () => `共 ${usersQuery.data?.total ?? 0} 条`,
+                    hideOnSinglePage: false,
+                    style: { marginBottom: 0 },
+                    onChange: (page, pageSize) => {
+                      setPagination({ current: page, pageSize });
+                    },
+                  }}
+                  scroll={{ y: tableScrollY }}
+                  locale={{
+                    emptyText: (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="未找到符合筛选条件的用户。"
+                      />
+                    ),
+                  }}
                 />
               </div>
             ) : (
-              <div className="admin-users-card-view-content">
-                <Row gutter={[12, 12]}>
-                  {allLoadedUsers.map((userItem) => (
-                    <Col key={userItem.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                      {renderUserCard(userItem)}
-                    </Col>
-                  ))}
-                </Row>
-                {isLoadingMore && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Spin tip="加载更多..." />
+              <div className="admin-users-card-view">
+                {usersQuery.isLoading && allLoadedUsers.length === 0 ? (
+                  <div className="admin-users-card-view-state">
+                    <Spin tip="加载中..." />
                   </div>
-                )}
-                {allLoadedUsers.length >= (usersQuery.data?.total ?? 0) && allLoadedUsers.length > 0 && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Typography.Text type="secondary">
-                      已加载全部 {allLoadedUsers.length} 条数据
-                    </Typography.Text>
+                ) : allLoadedUsers.length === 0 ? (
+                  <div className="admin-users-card-view-state">
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="未找到符合筛选条件的用户。"
+                    />
+                  </div>
+                ) : (
+                  <div className="admin-users-card-view-content">
+                    <Row gutter={[12, 12]}>
+                      {allLoadedUsers.map((userItem) => (
+                        <Col key={userItem.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                          {renderUserCard(userItem)}
+                        </Col>
+                      ))}
+                    </Row>
+                    {isLoadingMore && (
+                      <div style={{ textAlign: "center", padding: "20px 0" }}>
+                        <Spin tip="加载更多..." />
+                      </div>
+                    )}
+                    {allLoadedUsers.length >= (usersQuery.data?.total ?? 0) && allLoadedUsers.length > 0 && (
+                      <div style={{ textAlign: "center", padding: "20px 0" }}>
+                        <Typography.Text type="secondary">
+                          已加载全部 {allLoadedUsers.length} 条数据
+                        </Typography.Text>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
-          </div>
-        )}
-      </AntCard>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <Modal
         title="新增用户"

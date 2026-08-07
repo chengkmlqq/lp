@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Button,
-  Card,
   Empty,
   Form,
   Input,
@@ -16,13 +15,12 @@ import {
   Spin,
   Switch,
   Table,
+  Tabs,
   Tag,
   Typography,
-  type CardProps,
   type TableColumnsType,
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
-import type { ComponentType, RefAttributes } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -59,7 +57,7 @@ const TIMEZONE_OPTIONS = [
   { label: "UTC", value: "UTC" },
 ] as const;
 
-const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
+const LIST_TAB_KEY = "list";
 
 const TABLE_MIN_SCROLL_Y = 180;
 const TABLE_VIEWPORT_GAP = 40;
@@ -117,7 +115,6 @@ export default function AdminScheduledTasksPage() {
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
   const [runningId, setRunningId] = useState<number | null>(null);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
-  const pageCardRef = useRef<HTMLDivElement | null>(null);
 
   const canRead = hasPermission("celery.read") || hasPermission("celery.manage");
   const canManage = hasPermission("celery.manage");
@@ -468,74 +465,80 @@ export default function AdminScheduledTasksPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        ref={pageCardRef}
-        className="admin-scheduled-tasks-page-card"
-        title="定时任务管理"
-        extra={(
-          <Space>
-            {listQuery.isFetching && <Spin size="small" />}
-          </Space>
-        )}
-      >
-        <div className="admin-filter-bar">
-          <Form layout="inline">
-            <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-              <Input
-                value={keyword}
-                allowClear
-                onChange={(event) => setKeyword(event.currentTarget.value)}
-                placeholder="按任务键/名称/Cron 筛选"
-                onPressEnter={() => void refreshList()}
-              />
-            </Form.Item>
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey={LIST_TAB_KEY}
+        className="admin_scheduled_tasks_tabs"
+        items={[
+          {
+            key: LIST_TAB_KEY,
+            label: <span className="admin_scheduled_tasks_tab_title">定时任务管理</span>,
+            closable: false,
+            children: (
+              <div className="admin_scheduled_tasks_list_pane">
+                <div className="admin-filter-bar">
+                  <Form layout="inline">
+                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Input
+                        value={keyword}
+                        allowClear
+                        onChange={(event) => setKeyword(event.currentTarget.value)}
+                        placeholder="按任务键/名称/Cron 筛选"
+                        onPressEnter={() => void refreshList()}
+                      />
+                    </Form.Item>
 
-            <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-              <Select<StatusFilter>
-                value={statusFilter}
-                options={[...STATUS_FILTER_OPTIONS]}
-                onChange={(value) => setStatusFilter(value)}
-              />
-            </Form.Item>
+                    <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Select<StatusFilter>
+                        value={statusFilter}
+                        options={[...STATUS_FILTER_OPTIONS]}
+                        onChange={(value) => setStatusFilter(value)}
+                      />
+                    </Form.Item>
 
-            <Form.Item style={{ marginBottom: 0 }}>
-              <Button
-                htmlType="button"
-                icon={<SearchOutlined />}
-                onClick={() => void refreshList()}
-                className="admin-search-btn"
-              >
-                查询
-              </Button>
-            </Form.Item>
-          </Form>
-        </div>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button
+                        htmlType="button"
+                        icon={<SearchOutlined />}
+                        onClick={() => void refreshList()}
+                        className="admin-search-btn"
+                      >
+                        查询
+                      </Button>
+                    </Form.Item>
+                  </Form>
+                </div>
 
-        <div
-          ref={tableScrollAnchorRef}
-          className="admin-scheduled-tasks-table-anchor"
-          style={{ "--admin-scheduled-tasks-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-        >
-          <Table<ScheduledTaskSummary>
-            rowKey="id"
-            loading={listQuery.isFetching}
-            dataSource={items}
-            columns={columns}
-            scroll={{ x: 1480, y: tableScrollY }}
-            pagination={{
-              pageSize: 20,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50, 100],
-              showTotal: (total) => `共 ${total} 条`,
-              hideOnSinglePage: false,
-              style: { marginBottom: 0 },
-            }}
-            locale={{
-              emptyText: <Empty description="暂无定时任务。" image={Empty.PRESENTED_IMAGE_SIMPLE} />,
-            }}
-          />
-        </div>
-      </AntCard>
+                <div
+                  ref={tableScrollAnchorRef}
+                  className="admin-scheduled-tasks-table-anchor"
+                  style={{ "--admin-scheduled-tasks-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                >
+                  <Table<ScheduledTaskSummary>
+                    rowKey="id"
+                    loading={listQuery.isFetching}
+                    dataSource={items}
+                    columns={columns}
+                    scroll={{ x: 1480, y: tableScrollY }}
+                    pagination={{
+                      pageSize: 20,
+                      showSizeChanger: true,
+                      pageSizeOptions: [10, 20, 50, 100],
+                      showTotal: (total) => `共 ${total} 条`,
+                      hideOnSinglePage: false,
+                      style: { marginBottom: 0 },
+                    }}
+                    locale={{
+                      emptyText: <Empty description="暂无定时任务。" image={Empty.PRESENTED_IMAGE_SIMPLE} />,
+                    }}
+                  />
+                </div>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       {canManage ? (
         <Modal

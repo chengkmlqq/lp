@@ -16,8 +16,8 @@ import {
   Row,
   Space,
   Spin,
-  Switch,
   Table,
+  Tabs,
   Tag,
   Typography,
   type CardProps,
@@ -626,10 +626,7 @@ export default function AdminTaskMonitorPage() {
       return;
     }
 
-    const cardBody = pageCard.querySelector<HTMLElement>(".ant-card-body");
-    if (!cardBody) {
-      return;
-    }
+    const cardBody = pageCard as HTMLElement;
 
     const handleScroll = () => {
       if (isLoadingMore || allTasksQuery.isLoading) {
@@ -832,11 +829,18 @@ export default function AdminTaskMonitorPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        ref={pageCardRef}
-        className="admin-task-monitor-page-card"
-        title="任务监控"
-      >
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey="list"
+        className="admin_task_monitor_tabs"
+        items={[
+          {
+            key: "list",
+            label: <span className="admin_task_monitor_tab_title">任务监控</span>,
+            closable: false,
+            children: (
+              <div ref={pageCardRef} className="admin_task_monitor_list_pane">
         {viewMode === "card" ? (
           <div className="admin-filter-bar">
             <Form layout="inline">
@@ -980,7 +984,11 @@ export default function AdminTaskMonitorPage() {
             )}
           </div>
         ) : null}
-      </AntCard>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <Modal
         title={`任务执行日志 - ${logModalTaskId}`}

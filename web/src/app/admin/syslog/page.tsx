@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Card, Col, Empty, Form, Input, Row, Select, Space, Spin, Table, Tag, Typography, type CardProps } from "antd";
+import { Button, Card, Col, Empty, Form, Input, Row, Select, Space, Spin, Table, Tabs, Tag, Typography, type CardProps } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { CSSProperties, ComponentType, RefAttributes } from "react";
@@ -230,18 +230,17 @@ export default function AdminSyslogPage() {
   useEffect(() => {
     if (viewMode !== "card") return;
 
-    const pageCard = pageCardRef.current;
-    if (!pageCard) return;
-
-    const cardBody = pageCard.querySelector<HTMLElement>(".ant-card-body");
-    if (!cardBody) return;
+    // LP-252: pageCardRef 已迁到 list-pane 容器（admin_syslog_list_pane），
+    // 该容器自身即 overflow-y:auto 滚动容器，直接使用即可
+    const scrollContainer = pageCardRef.current;
+    if (!scrollContainer) return;
 
     const handleScroll = () => {
       if (isLoadingMore || logsQuery.isLoading) return;
 
-      const scrollTop = cardBody.scrollTop;
-      const scrollHeight = cardBody.scrollHeight;
-      const clientHeight = cardBody.clientHeight;
+      const scrollTop = scrollContainer.scrollTop;
+      const scrollHeight = scrollContainer.scrollHeight;
+      const clientHeight = scrollContainer.clientHeight;
 
       if (scrollTop + clientHeight >= scrollHeight - 100) {
         const loadedCount = allLoadedLogs.length;
@@ -254,8 +253,8 @@ export default function AdminSyslogPage() {
       }
     };
 
-    cardBody.addEventListener("scroll", handleScroll);
-    return () => cardBody.removeEventListener("scroll", handleScroll);
+    scrollContainer.addEventListener("scroll", handleScroll);
+    return () => scrollContainer.removeEventListener("scroll", handleScroll);
   }, [viewMode, isLoadingMore, logsQuery.isLoading, total, allLoadedLogs.length, pageSize]);
 
   // Reset card view state when filters change
@@ -511,84 +510,95 @@ export default function AdminSyslogPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        ref={pageCardRef}
-        className="admin-syslog-page-card"
-        title="系统日志"
-      >
-        {filterBar}
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey="list"
+        className="admin_syslog_tabs"
+        items={[
+          {
+            key: "list",
+            label: "系统日志",
+            closable: false,
+            children: (
+              <div ref={pageCardRef} className="admin_syslog_list_pane">
+                {filterBar}
 
-        {viewMode === "table" ? (
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-syslog-table-anchor"
-            style={{ "--admin-syslog-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<AuditLogItem>
-              rowKey={(record) => String(record.id)}
-              columns={columns}
-              dataSource={logs}
-              loading={logsQuery.isLoading}
-              tableLayout="fixed"
-              pagination={{
-                current: currentPage,
-                pageSize,
-                total: Math.max(total, 1),
-                onChange: (page, nextPageSize) => {
-                  setPageSize(nextPageSize);
-                  setOffset((page - 1) * nextPageSize);
-                },
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: () => `共 ${total} 条`,
-                hideOnSinglePage: false,
-                style: { marginBottom: 0 },
-              }}
-              locale={{
-                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的日志记录。" />,
-              }}
-              scroll={{ y: tableScrollY }}
-            />
-          </div>
-        ) : (
-          <div className="admin-syslog-card-view">
-            {logsQuery.isLoading && allLoadedLogs.length === 0 ? (
-              <div className="admin-syslog-card-view-state">
-                <Spin tip="加载中..." />
-              </div>
-            ) : allLoadedLogs.length === 0 ? (
-              <div className="admin-syslog-card-view-state">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的日志记录。"
-                />
-              </div>
-            ) : (
-              <div className="admin-syslog-card-view-content">
-                <Row gutter={[12, 12]}>
-                  {allLoadedLogs.map((log) => (
-                    <Col key={log.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                      {renderLogCard(log)}
-                    </Col>
-                  ))}
-                </Row>
-                {isLoadingMore && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Spin tip="加载更多..." />
+                {viewMode === "table" ? (
+                  <div
+                    ref={tableScrollAnchorRef}
+                    className="admin-syslog-table-anchor"
+                    style={{ "--admin-syslog-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                  >
+                    <Table<AuditLogItem>
+                      rowKey={(record) => String(record.id)}
+                      columns={columns}
+                      dataSource={logs}
+                      loading={logsQuery.isLoading}
+                      tableLayout="fixed"
+                      pagination={{
+                        current: currentPage,
+                        pageSize,
+                        total: Math.max(total, 1),
+                        onChange: (page, nextPageSize) => {
+                          setPageSize(nextPageSize);
+                          setOffset((page - 1) * nextPageSize);
+                        },
+                        showSizeChanger: true,
+                        pageSizeOptions: [10, 20, 50, 100],
+                        showTotal: () => `共 ${total} 条`,
+                        hideOnSinglePage: false,
+                        style: { marginBottom: 0 },
+                      }}
+                      locale={{
+                        emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的日志记录。" />,
+                      }}
+                      scroll={{ y: tableScrollY }}
+                    />
+                  </div>
+                ) : (
+                  <div className="admin-syslog-card-view">
+                    {logsQuery.isLoading && allLoadedLogs.length === 0 ? (
+                      <div className="admin-syslog-card-view-state">
+                        <Spin tip="加载中..." />
+                      </div>
+                    ) : allLoadedLogs.length === 0 ? (
+                      <div className="admin-syslog-card-view-state">
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="未找到符合筛选条件的日志记录。"
+                        />
+                      </div>
+                    ) : (
+                      <div className="admin-syslog-card-view-content">
+                        <Row gutter={[12, 12]}>
+                          {allLoadedLogs.map((log) => (
+                            <Col key={log.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                              {renderLogCard(log)}
+                            </Col>
+                          ))}
+                        </Row>
+                        {isLoadingMore && (
+                          <div style={{ textAlign: "center", padding: "20px 0" }}>
+                            <Spin tip="加载更多..." />
+                          </div>
+                        )}
+                        {allLoadedLogs.length >= total && allLoadedLogs.length > 0 && (
+                          <div style={{ textAlign: "center", padding: "20px 0" }}>
+                            <Typography.Text type="secondary">
+                              已加载全部 {allLoadedLogs.length} 条数据
+                            </Typography.Text>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
-                {allLoadedLogs.length >= total && allLoadedLogs.length > 0 && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Typography.Text type="secondary">
-                      已加载全部 {allLoadedLogs.length} 条数据
-                    </Typography.Text>
-                  </div>
-                )}
               </div>
-            )}
-          </div>
-        )}
-      </AntCard>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

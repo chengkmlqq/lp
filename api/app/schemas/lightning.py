@@ -121,6 +121,7 @@ class LightningDistributionRecord(BaseModel):
     stage: str = "parsing"    # parsing|validating|statistics|rendering
     progress: int = 0
     task_id: str | None = None
+    lp_draw_task_id: str | None = None
     error_message: str | None = None
 
     total_lines: int = 0
