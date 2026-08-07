@@ -2316,6 +2316,8 @@ body {
   margin: 0;
   /* 去掉选项卡标题栏底部自带的 1px 边框 */
   border-bottom: none;
+  /* 标题栏四周内边距 */
+  padding: 12px;
 }
 
 .admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab {
