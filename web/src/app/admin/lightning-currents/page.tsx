@@ -19,6 +19,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Tooltip as AntTooltip,
   Typography,
@@ -29,7 +30,7 @@ import {
 import { MoreOutlined, QuestionCircleOutlined, SearchOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefAttributes } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 import { useAuth } from "@/components/auth-provider";
@@ -47,6 +48,15 @@ import type {
 import { CHINESE_CITIES, type CityOption } from "@/data/chinese-cities";
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
+
+type DetailTabItem = {
+  key: string;
+  label: ReactNode;
+  closable: boolean;
+  children: ReactNode;
+};
+
+const LIST_TAB_KEY = "list";
 
 type ImportFormValues = {
   sample_interval_us: number;
@@ -96,6 +106,13 @@ function formatPolarity(polarity: LightningPolarity): string {
   return "未知";
 }
 
+function truncateFileName(name: string, maxLength = 20): string {
+  if (!name) {
+    return "未命名";
+  }
+  return name.length > maxLength ? `${name.slice(0, maxLength)}…` : name;
+}
+
 const LIGHTNING_TABLE_MIN_SCROLL_Y = 180;
 const LIGHTNING_TABLE_VIEWPORT_GAP = 40;
 const LIGHTNING_TABLE_FALLBACK_RESERVE = 220;
@@ -111,8 +128,8 @@ export default function AdminLightningCurrentsPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [selectedRecordForModal, setSelectedRecordForModal] = useState<LightningAmplitudeRecord | null>(null);
+  const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -269,18 +286,17 @@ export default function AdminLightningCurrentsPage() {
   useEffect(() => {
     if (viewMode !== "card") return;
 
-    const pageCard = pageCardRef.current;
-    if (!pageCard) return;
-
-    const cardBody = pageCard.querySelector<HTMLElement>(".ant-card-body");
-    if (!cardBody) return;
+    // 卡片视图滚动加载：外层 AntCard 改为 Tabs 后，pageCardRef 挂在 list-pane 滚动容器上，
+    // 直接以容器自身作为滚动源（替代原 .ant-card-body）
+    const listPane = pageCardRef.current;
+    if (!listPane) return;
 
     const handleScroll = () => {
       if (isLoadingMore || recordsQuery.isLoading) return;
 
-      const scrollTop = cardBody.scrollTop;
-      const scrollHeight = cardBody.scrollHeight;
-      const clientHeight = cardBody.clientHeight;
+      const scrollTop = listPane.scrollTop;
+      const scrollHeight = listPane.scrollHeight;
+      const clientHeight = listPane.clientHeight;
 
       if (scrollTop + clientHeight >= scrollHeight - 100) {
         const total = recordsQuery.data?.total ?? 0;
@@ -294,8 +310,8 @@ export default function AdminLightningCurrentsPage() {
       }
     };
 
-    cardBody.addEventListener("scroll", handleScroll);
-    return () => cardBody.removeEventListener("scroll", handleScroll);
+    listPane.addEventListener("scroll", handleScroll);
+    return () => listPane.removeEventListener("scroll", handleScroll);
   }, [viewMode, isLoadingMore, recordsQuery.isLoading, recordsQuery.data?.total, allLoadedRecords.length]);
 
   useEffect(() => {
@@ -430,10 +446,51 @@ export default function AdminLightningCurrentsPage() {
     },
   });
 
-  const openDetailModal = (record: LightningAmplitudeRecord) => {
-    setSelectedRecordForModal(record);
-    setDetailModalOpen(true);
-  };
+  const openDetail = useCallback((record: LightningAmplitudeRecord) => {
+    const key = record.id;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      const meta = STATUS_META[record.status] ?? { color: "default", label: record.status };
+      return [
+        ...previous,
+        {
+          key,
+          label: (
+            <Space size={6}>
+              <span>{truncateFileName(record.source_file_name)}</span>
+              <Tag color={meta.color}>{meta.label}</Tag>
+            </Space>
+          ),
+          closable: true,
+          children: (
+            <AmplitudeDetailView
+              record={record}
+              canManage={canManage}
+              onRetry={(recordToRetry) => retryMutation.mutate(recordToRetry)}
+              retryLoading={retryMutation.isPending}
+            />
+          ),
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, [canManage, retryMutation]);
+
+  const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
+    if (action !== "remove") {
+      return;
+    }
+    const key = String(targetKey);
+    const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
+    const next = detailTabs.filter((tab) => tab.key !== key);
+    setDetailTabs(next);
+    if (activeTabKey === key) {
+      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+      setActiveTabKey(fallback);
+    }
+  }, [detailTabs, activeTabKey]);
 
   const handleKeywordChange = (value: string) => {
     setKeywordInput(value);
@@ -452,7 +509,7 @@ export default function AdminLightningCurrentsPage() {
       {
         key: "detail",
         label: "详情",
-        onClick: () => openDetailModal(record),
+        onClick: () => openDetail(record),
       },
       {
         type: "divider",
@@ -610,7 +667,7 @@ export default function AdminLightningCurrentsPage() {
             <Space wrap>
               <Button
                 size="small"
-                onClick={() => openDetailModal(row)}
+                onClick={() => openDetail(row)}
               >
                 详情
               </Button>
@@ -649,7 +706,7 @@ export default function AdminLightningCurrentsPage() {
         },
       },
     ],
-    [canManage, deleteMutation, retryMutation],
+    [canManage, deleteMutation, retryMutation, openDetail],
   );
 
   if (initializing) {
@@ -691,18 +748,27 @@ export default function AdminLightningCurrentsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AntCard
-        ref={pageCardRef}
-        className="admin-lightning-currents-page-card"
-        title="雷电流幅值统计"
-        extra={
-          canManage && (
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        onEdit={handleTabsEdit}
+        className="admin-lightning-currents-tabs"
+        tabBarExtraContent={
+          canManage ? (
             <Button type="primary" onClick={() => setImportModalOpen(true)}>
               导入
             </Button>
-          )
+          ) : null
         }
-      >
+        items={[
+          {
+            key: LIST_TAB_KEY,
+            label: "雷电流幅值统计",
+            closable: false,
+            children: (
+              <div ref={pageCardRef} className="admin-lightning-currents-list-pane">
         <div className="admin-filter-bar">
           <Form layout="inline">
             <Form.Item label="关键词" className="admin-filter-keyword-item">
@@ -795,7 +861,12 @@ export default function AdminLightningCurrentsPage() {
             )}
           </div>
         )}
-      </AntCard>
+              </div>
+            ),
+          },
+          ...detailTabs,
+        ]}
+      />
 
       <Modal
         title="导入雷电流幅值数据"
@@ -898,166 +969,167 @@ export default function AdminLightningCurrentsPage() {
         </Form>
       </Modal>
 
-      <Modal
-        title={selectedRecordForModal ? `记录详情 - ${selectedRecordForModal.event_id ?? selectedRecordForModal.source_file_name}` : "记录详情"}
-        open={detailModalOpen}
-        onCancel={() => {
-          setDetailModalOpen(false);
-          setSelectedRecordForModal(null);
-        }}
-        footer={null}
-        width={900}
-        destroyOnClose
-      >
-        {selectedRecordForModal && (
-          <Space direction="vertical" size={16} className="w-full">
-            <div>
-              <Typography.Title level={5}>基本信息</Typography.Title>
-              <Descriptions bordered size="small" column={2}>
-                <Descriptions.Item label="状态">
-                  {(() => {
-                    const meta = STATUS_META[selectedRecordForModal.status] ?? { color: "default", label: selectedRecordForModal.status };
-                    return <Tag color={meta.color}>{meta.label}</Tag>;
-                  })()}
-                </Descriptions.Item>
-                <Descriptions.Item label="事件编号">{formatNullable(selectedRecordForModal.event_id)}</Descriptions.Item>
-                <Descriptions.Item label="城市">{formatNullable(selectedRecordForModal.city)}</Descriptions.Item>
-                <Descriptions.Item label="事件发生地点">{formatNullable(selectedRecordForModal.location_tag)}</Descriptions.Item>
-                <Descriptions.Item label="传感器">{formatNullable(selectedRecordForModal.sensor_model)}</Descriptions.Item>
-                <Descriptions.Item label="安装位置">{formatNullable(selectedRecordForModal.install_position)}</Descriptions.Item>
-                <Descriptions.Item label="发生时间">{formatNullable(selectedRecordForModal.event_time)}</Descriptions.Item>
-                <Descriptions.Item label="采样点数">{selectedRecordForModal.sample_count}</Descriptions.Item>
-                <Descriptions.Item label="采样间隔(us)">{formatNumber(selectedRecordForModal.sample_interval_us, 6)}</Descriptions.Item>
-                <Descriptions.Item label="海拔(m)">{formatNullable(selectedRecordForModal.altitude_m)}</Descriptions.Item>
-                <Descriptions.Item label="气压(hPa)">{formatNullable(selectedRecordForModal.pressure_hpa)}</Descriptions.Item>
-                <Descriptions.Item label="湿度(%)">{formatNullable(selectedRecordForModal.humidity_percent)}</Descriptions.Item>
-              </Descriptions>
-            </div>
-
-            <div>
-              <Typography.Title level={5}>波形特征参数</Typography.Title>
-              <Descriptions bordered size="small" column={2}>
-                <Descriptions.Item label={
-                  <span>
-                    峰值电流(kA){" "}
-                    <AntTooltip title="波形序列中绝对值最大的电流值（kA），代表该次雷击的最强瞬间。是衡量雷击强度的核心指标。">
-                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                    </AntTooltip>
-                  </span>
-                }>
-                  {formatNumber(selectedRecordForModal.peak_current_ka, 3)}
-                </Descriptions.Item>
-                <Descriptions.Item label="绝对峰值(kA)">{formatNumber(selectedRecordForModal.peak_abs_current_ka, 3)}</Descriptions.Item>
-                <Descriptions.Item label={
-                  <span>
-                    波形分类{" "}
-                    <AntTooltip title="将实际波形的波前时间（T1）和半峰值时间（T2）与 IEC 标准波形模板匹配，归入最接近的分类：10/350（T1=10μs, T2=350μs，典型直击雷波形）、8/20（T1=8μs, T2=20μs，典型感应雷/测试波形）、1.2/50（T1=1.2μs, T2=50μs，典型操作冲击波形）。">
-                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                    </AntTooltip>
-                  </span>
-                }>
-                  {formatNullable(selectedRecordForModal.wave_shape)}
-                </Descriptions.Item>
-                <Descriptions.Item label={
-                  <span>
-                    极性{" "}
-                    <AntTooltip title="雷电流的主导方向。自然界约 90% 为负极性雷击，正极性雷击虽少但峰值更大、危害更强。正极性：正峰值大于负峰值；负极性：负峰值大于正峰值；混合：正负峰值相近。">
-                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                    </AntTooltip>
-                  </span>
-                }>
-                  {formatPolarity(selectedRecordForModal.polarity)}
-                </Descriptions.Item>
-                <Descriptions.Item label={
-                  <span>
-                    波前时间 T1(us){" "}
-                    <AntTooltip title="电流从峰值的 10% 上升到 90% 所需时间的 1.25 倍（μs），反映雷电流上升的陡度。">
-                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                    </AntTooltip>
-                  </span>
-                }>
-                  {formatNumber(selectedRecordForModal.wavefront_time_t1_us, 3)}
-                </Descriptions.Item>
-                <Descriptions.Item label={
-                  <span>
-                    半峰值时间 T2(us){" "}
-                    <AntTooltip title="从虚拟零点到电流下降到峰值 50% 的时间（μs），反映脉冲宽度。">
-                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                    </AntTooltip>
-                  </span>
-                }>
-                  {formatNumber(selectedRecordForModal.half_value_time_t2_us, 3)}
-                </Descriptions.Item>
-                <Descriptions.Item label={
-                  <span>
-                    陡度(kA/us){" "}
-                    <AntTooltip title="波形中电流变化率的最大值（kA/μs），影响感应过电压的大小。">
-                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                    </AntTooltip>
-                  </span>
-                }>
-                  {formatNumber(selectedRecordForModal.steepness_ka_per_us, 6)}
-                </Descriptions.Item>
-                <Descriptions.Item label={
-                  <span>
-                    I²t 作用积分(J/Ω){" "}
-                    <AntTooltip title="电流平方对时间的积分（J/Ω），衡量雷电流的热效应能量。">
-                      <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
-                    </AntTooltip>
-                  </span>
-                }>
-                  {formatNumber(selectedRecordForModal.action_integral_j_ohm, 3)}
-                </Descriptions.Item>
-              </Descriptions>
-            </div>
-
-            {selectedRecordForModal.stroke_peaks_json && selectedRecordForModal.stroke_peaks_json.length > 0 && (
-              <div>
-                <Typography.Title level={5}>多回击峰值分布</Typography.Title>
-                <Descriptions bordered size="small" column={1} style={{ marginBottom: 12 }}>
-                  <Descriptions.Item label="回击数">{selectedRecordForModal.stroke_count}</Descriptions.Item>
-                </Descriptions>
-                <ResponsiveContainer width="100%" height={250}>
-                  <LineChart data={selectedRecordForModal.stroke_peaks_json.map((peak: Record<string, unknown>, idx: number) => ({
-                    index: idx + 1,
-                    time_us: Number(peak.time_us) || 0,
-                    current_ka: Number(peak.current_ka) || 0,
-                  }))}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="index" label={{ value: "回击序号", position: "insideBottomRight", offset: -5 }} />
-                    <YAxis label={{ value: "峰值电流 (kA)", angle: -90, position: "insideLeft", offset: 10 }} />
-                    <Tooltip
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      formatter={(value: any, name?: string | number) => {
-                        if (name === "current_ka") return [formatNumber(Number(value), 3), "峰值电流 (kA)"];
-                        if (name === "time_us") return [formatNumber(Number(value), 2), "时间 (μs)"];
-                        return [value, name];
-                      }}
-                      labelFormatter={(label) => `回击 ${label}`}
-                    />
-                    <Legend />
-                    <Line type="monotone" dataKey="current_ka" stroke="#1890ff" name="峰值电流 (kA)" strokeWidth={2} dot={{ r: 4 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {selectedRecordForModal.status === "failed" && (
-              <div>
-                <Typography.Title level={5}>失败原因</Typography.Title>
-                <Typography.Paragraph type="danger">
-                  {selectedRecordForModal.error_message || "未知错误"}
-                </Typography.Paragraph>
-                {canManage && (
-                  <Button danger loading={retryMutation.isPending} onClick={() => retryMutation.mutate(selectedRecordForModal)}>
-                    重试
-                  </Button>
-                )}
-              </div>
-            )}
-          </Space>
-        )}
-      </Modal>
     </div>
+  );
+}
+
+function AmplitudeDetailView({
+  record,
+  canManage,
+  onRetry,
+  retryLoading,
+}: {
+  record: LightningAmplitudeRecord;
+  canManage: boolean;
+  onRetry: (record: LightningAmplitudeRecord) => void;
+  retryLoading: boolean;
+}) {
+  return (
+    <Space direction="vertical" size={16} className="w-full">
+      <div>
+        <Typography.Title level={5}>基本信息</Typography.Title>
+        <Descriptions bordered size="small" column={2}>
+          <Descriptions.Item label="状态">
+            {(() => {
+              const meta = STATUS_META[record.status] ?? { color: "default", label: record.status };
+              return <Tag color={meta.color}>{meta.label}</Tag>;
+            })()}
+          </Descriptions.Item>
+          <Descriptions.Item label="事件编号">{formatNullable(record.event_id)}</Descriptions.Item>
+          <Descriptions.Item label="城市">{formatNullable(record.city)}</Descriptions.Item>
+          <Descriptions.Item label="事件发生地点">{formatNullable(record.location_tag)}</Descriptions.Item>
+          <Descriptions.Item label="传感器">{formatNullable(record.sensor_model)}</Descriptions.Item>
+          <Descriptions.Item label="安装位置">{formatNullable(record.install_position)}</Descriptions.Item>
+          <Descriptions.Item label="发生时间">{formatNullable(record.event_time)}</Descriptions.Item>
+          <Descriptions.Item label="采样点数">{record.sample_count}</Descriptions.Item>
+          <Descriptions.Item label="采样间隔(us)">{formatNumber(record.sample_interval_us, 6)}</Descriptions.Item>
+          <Descriptions.Item label="海拔(m)">{formatNullable(record.altitude_m)}</Descriptions.Item>
+          <Descriptions.Item label="气压(hPa)">{formatNullable(record.pressure_hpa)}</Descriptions.Item>
+          <Descriptions.Item label="湿度(%)">{formatNullable(record.humidity_percent)}</Descriptions.Item>
+        </Descriptions>
+      </div>
+
+      <div>
+        <Typography.Title level={5}>波形特征参数</Typography.Title>
+        <Descriptions bordered size="small" column={2}>
+          <Descriptions.Item label={
+            <span>
+              峰值电流(kA){" "}
+              <AntTooltip title="波形序列中绝对值最大的电流值（kA），代表该次雷击的最强瞬间。是衡量雷击强度的核心指标。">
+                <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
+              </AntTooltip>
+            </span>
+          }>
+            {formatNumber(record.peak_current_ka, 3)}
+          </Descriptions.Item>
+          <Descriptions.Item label="绝对峰值(kA)">{formatNumber(record.peak_abs_current_ka, 3)}</Descriptions.Item>
+          <Descriptions.Item label={
+            <span>
+              波形分类{" "}
+              <AntTooltip title="将实际波形的波前时间（T1）和半峰值时间（T2）与 IEC 标准波形模板匹配，归入最接近的分类：10/350（T1=10μs, T2=350μs，典型直击雷波形）、8/20（T1=8μs, T2=20μs，典型感应雷/测试波形）、1.2/50（T1=1.2μs, T2=50μs，典型操作冲击波形）。">
+                <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
+              </AntTooltip>
+            </span>
+          }>
+            {formatNullable(record.wave_shape)}
+          </Descriptions.Item>
+          <Descriptions.Item label={
+            <span>
+              极性{" "}
+              <AntTooltip title="雷电流的主导方向。自然界约 90% 为负极性雷击，正极性雷击虽少但峰值更大、危害更强。正极性：正峰值大于负峰值；负极性：负峰值大于正峰值；混合：正负峰值相近。">
+                <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
+              </AntTooltip>
+            </span>
+          }>
+            {formatPolarity(record.polarity)}
+          </Descriptions.Item>
+          <Descriptions.Item label={
+            <span>
+              波前时间 T1(us){" "}
+              <AntTooltip title="电流从峰值的 10% 上升到 90% 所需时间的 1.25 倍（μs），反映雷电流上升的陡度。">
+                <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
+              </AntTooltip>
+            </span>
+          }>
+            {formatNumber(record.wavefront_time_t1_us, 3)}
+          </Descriptions.Item>
+          <Descriptions.Item label={
+            <span>
+              半峰值时间 T2(us){" "}
+              <AntTooltip title="从虚拟零点到电流下降到峰值 50% 的时间（μs），反映脉冲宽度。">
+                <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
+              </AntTooltip>
+            </span>
+          }>
+            {formatNumber(record.half_value_time_t2_us, 3)}
+          </Descriptions.Item>
+          <Descriptions.Item label={
+            <span>
+              陡度(kA/us){" "}
+              <AntTooltip title="波形中电流变化率的最大值（kA/μs），影响感应过电压的大小。">
+                <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
+              </AntTooltip>
+            </span>
+          }>
+            {formatNumber(record.steepness_ka_per_us, 6)}
+          </Descriptions.Item>
+          <Descriptions.Item label={
+            <span>
+              I²t 作用积分(J/Ω){" "}
+              <AntTooltip title="电流平方对时间的积分（J/Ω），衡量雷电流的热效应能量。">
+                <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
+              </AntTooltip>
+            </span>
+          }>
+            {formatNumber(record.action_integral_j_ohm, 3)}
+          </Descriptions.Item>
+        </Descriptions>
+      </div>
+
+      {record.stroke_peaks_json && record.stroke_peaks_json.length > 0 && (
+        <div>
+          <Typography.Title level={5}>多回击峰值分布</Typography.Title>
+          <Descriptions bordered size="small" column={1} style={{ marginBottom: 12 }}>
+            <Descriptions.Item label="回击数">{record.stroke_count}</Descriptions.Item>
+          </Descriptions>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={record.stroke_peaks_json.map((peak: Record<string, unknown>, idx: number) => ({
+              index: idx + 1,
+              time_us: Number(peak.time_us) || 0,
+              current_ka: Number(peak.current_ka) || 0,
+            }))}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="index" label={{ value: "回击序号", position: "insideBottomRight", offset: -5 }} />
+              <YAxis label={{ value: "峰值电流 (kA)", angle: -90, position: "insideLeft", offset: 10 }} />
+              <Tooltip
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                formatter={(value: any, name?: string | number) => {
+                  if (name === "current_ka") return [formatNumber(Number(value), 3), "峰值电流 (kA)"];
+                  if (name === "time_us") return [formatNumber(Number(value), 2), "时间 (μs)"];
+                  return [value, name];
+                }}
+                labelFormatter={(label) => `回击 ${label}`}
+              />
+              <Legend />
+              <Line type="monotone" dataKey="current_ka" stroke="#1890ff" name="峰值电流 (kA)" strokeWidth={2} dot={{ r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {record.status === "failed" && (
+        <div>
+          <Typography.Title level={5}>失败原因</Typography.Title>
+          <Typography.Paragraph type="danger">
+            {record.error_message || "未知错误"}
+          </Typography.Paragraph>
+          {canManage && (
+            <Button danger loading={retryLoading} onClick={() => onRetry(record)}>
+              重试
+            </Button>
+          )}
+        </div>
+      )}
+    </Space>
   );
 }
