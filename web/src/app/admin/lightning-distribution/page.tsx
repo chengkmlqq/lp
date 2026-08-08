@@ -174,7 +174,13 @@ export default function AdminLightningDistributionPage() {
   const distributionsQuery = useQuery({
     queryKey: [distributionsPath],
     enabled: !!user && canRead,
-    refetchInterval: false,
+    // 列表不再单点依赖 WebSocket：存在 pending/processing 记录时按 ~5s 轮询，
+    // 保证 WS 断开/403 时进度也能推进到最终态；全部完成后停止轮询。
+    refetchInterval: (query) => {
+      const items = (query.state.data as LightningDistributionListResponse | undefined)?.items ?? [];
+      const hasActive = items.some((row) => row.status === "pending" || row.status === "processing");
+      return hasActive ? 5000 : false;
+    },
     queryFn: async () => {
       const response = await fetchWithAuth(distributionsPath);
       if (!response.ok) {
