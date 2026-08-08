@@ -35,6 +35,7 @@ from ..schemas.line import (
     TowerAnalysisSummary,
     TowerCircuitSummary,
     TowerLightningResultSummary,
+    TowerProfileLightningCurrentSummary,
 )
 from .line_preparation_service import summarize_line_preparation, summarize_line_preparations
 from .push_service import publish_topic
@@ -82,6 +83,13 @@ def serialize_line(
 
 
 def serialize_line_tower(item: LineTower) -> LineTowerSummary:
+    profile = item.profile
+    prep_data: dict[str, Any] = {}
+    if profile is not None:
+        extra = profile.extra_profile_json or {}
+        raw_prep = extra.get("lightning_current_preparation")
+        if isinstance(raw_prep, dict):
+            prep_data = dict(raw_prep)
     return LineTowerSummary(
         id=item.id,
         line_id=item.line_id,
@@ -104,6 +112,21 @@ def serialize_line_tower(item: LineTower) -> LineTowerSummary:
         lightning_result=_serialize_lightning_result(item.lightning_result) if item.lightning_result else None,
         analysis=_serialize_tower_analysis(item.analysis) if item.analysis else None,
         raw_extra_json=item.raw_extra_json or {},
+        current_type=profile.current_type if profile else None,
+        current_a=profile.current_a if profile else None,
+        current_b=profile.current_b if profile else None,
+        lightning_current_preparation=TowerProfileLightningCurrentSummary(
+            line_id=_optional_str(prep_data.get("line_id")),
+            line_code=_optional_str(prep_data.get("line_code")),
+            current_a=_optional_float(prep_data.get("current_a")),
+            current_b=_optional_float(prep_data.get("current_b")),
+            peak_max=_optional_float(prep_data.get("peak_max")),
+            peak_min=_optional_float(prep_data.get("peak_min")),
+            sampled_event_count=_optional_int(prep_data.get("sampled_event_count")),
+            region_id=_optional_str(prep_data.get("region_id")),
+            is_synthetic=bool(prep_data.get("is_synthetic", False)),
+            prepared_at=_optional_str(prep_data.get("prepared_at")),
+        ) if prep_data else None,
         create_date=item.create_date,
         create_user=item.create_user,
         update_date=item.update_date,
@@ -1411,6 +1434,36 @@ def _parse_int(value: Any) -> int | None:
         return int(float(normalized))
     except ValueError:
         return None
+
+
+def _optional_str(value: Any) -> str | None:
+    """JSON 值 → str | None（数字、字符串均安全）。"""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text
+
+
+def _optional_float(value: Any) -> float | None:
+    """JSON 值 → float | None（数字或数字字符串）。"""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_int(value: Any) -> int:
+    """JSON 值 → int（非法或缺省返回 0）。"""
+    if value is None or value == "":
+        return 0
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _json_dumps_compact(payload: dict[str, Any]) -> str:

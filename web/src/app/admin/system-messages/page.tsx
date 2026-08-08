@@ -736,10 +736,31 @@ export default function AdminSystemMessagesPage() {
     {
       title: "操作",
       key: "actions",
-      width: 190,
+      width: 200,
       fixed: "right",
       render: (_, item) => {
         const isDeleting = deletingMessageId === item.id;
+
+        const moreMenuItems: MenuProps["items"] = canManage
+          ? [
+              {
+                key: "delete",
+                label: "删除",
+                danger: true,
+                disabled: isDeleting,
+                onClick: () => {
+                  Modal.confirm({
+                    title: "删除系统消息",
+                    content: `确认删除系统消息「${item.title}」吗？`,
+                    okText: "删除",
+                    cancelText: "取消",
+                    okButtonProps: { danger: true, loading: isDeleting },
+                    onOk: () => deleteMutation.mutate(item.id),
+                  });
+                },
+              },
+            ]
+          : [];
 
         return (
           <Space size="small">
@@ -755,21 +776,10 @@ export default function AdminSystemMessagesPage() {
             >
               标记已读
             </Button>
-            {canManage && (
-              <Button danger disabled={isDeleting} loading={isDeleting} size="small" type="link"
-                onClick={() => {
-                  Modal.confirm({
-                    title: "删除系统消息",
-                    content: `确认删除系统消息「${item.title}」吗？`,
-                    okText: "删除",
-                    cancelText: "取消",
-                    okButtonProps: { danger: true, loading: isDeleting },
-                    onOk: () => deleteMutation.mutate(item.id),
-                  });
-                }}
-              >
-                删除
-              </Button>
+            {moreMenuItems.length > 0 && (
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button type="link" size="small" disabled={isDeleting} icon={<MoreOutlined />} />
+              </Dropdown>
             )}
           </Space>
         );

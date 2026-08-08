@@ -11,6 +11,7 @@ from app.core.database import Base
 from app.models.fl_analysis import FlAnalysisJob
 from app.models.lightning_amplitude import LightningAmplitude
 from app.models.line import Line
+from app.models.line_amplitude_backfill import LineAmplitudeBackfill
 from app.models.line_tower import LineTower
 from app.models.tower_analysis import TowerAnalysis
 from app.models.tower_circuit import TowerCircuit
@@ -33,6 +34,7 @@ def _build_session() -> Session:
             TowerLightningResult.__table__,
             TowerAnalysis.__table__,
             LightningAmplitude.__table__,
+            LineAmplitudeBackfill.__table__,
             FlAnalysisJob.__table__,
         ],
     )
@@ -101,6 +103,18 @@ def test_prepare_line_lightning_current_backfills_profiles_and_line_state(monkey
         assert response.line.preparation_json["lightning_current"]["ready"] is True
         assert session.get(Line, line.id).lightning_param_json["雷电流幅值a"] == response.current_a
         assert session.get(Line, line.id).lightning_param_json["雷电流幅值b"] == response.current_b
+
+        # LP-265：回填关联表应记录本次实际用到的 amplitude_ids（幂等）
+        backfill_rows = session.execute(
+            select(LineAmplitudeBackfill).where(LineAmplitudeBackfill.line_id == line.id)
+        ).scalars().all()
+        assert len(backfill_rows) == 3
+        assert {row.amplitude_id for row in backfill_rows} == {
+            amp_id for amp_id in session.execute(select(LightningAmplitude.id)).scalars().all()
+        }
+        assert all(row.current_a == response.current_a for row in backfill_rows)
+        assert all(row.sampled_event_count == response.sampled_event_count for row in backfill_rows)
+        assert all(row.prepared_by_user_id == "tester" for row in backfill_rows)
     finally:
         session.close()
 

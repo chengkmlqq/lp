@@ -73,6 +73,7 @@ class LightningAmplitudeRecord(BaseModel):
     is_synthetic: bool = False
     feature_json: dict[str, Any] = Field(default_factory=dict)
     notes: str | None = None
+    backfill_line_count: int = 0
 
     create_user: str | None = None
     create_date: datetime
@@ -85,6 +86,26 @@ class LightningAmplitudeListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class LightningAmplitudeBackfillLine(BaseModel):
+    """一条雷电流幅值记录被某线路回填使用的摘要（回填线路小窗行）。"""
+
+    line_id: str
+    line_code: str | None = None
+    line_name: str | None = None
+    voltage_kv: int | None = None
+    prepared_at: datetime | None = None
+    current_a: float | None = None
+    current_b: float | None = None
+    peak_max: float | None = None
+    peak_min: float | None = None
+    sampled_event_count: int = 0
+
+
+class LightningAmplitudeBackfillLineListResponse(BaseModel):
+    items: list[LightningAmplitudeBackfillLine]
+    total: int
 
 
 class LightningAmplitudeStatusResponse(BaseModel):

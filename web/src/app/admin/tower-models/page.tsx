@@ -18,6 +18,7 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
   Typography,
   type CardProps,
@@ -56,6 +57,12 @@ type TowerModelFormValues = {
   tower_type: string;
   description: string;
   sort_order: number;
+  default_ground_resistance_ohm: number | null;
+  default_lightning_density: number | null;
+  default_span_small_m: number | null;
+  default_span_large_m: number | null;
+  default_slope_1: number | null;
+  default_slope_2: number | null;
 };
 
 const EMPTY_FORM: TowerModelFormValues = {
@@ -64,6 +71,12 @@ const EMPTY_FORM: TowerModelFormValues = {
   tower_type: "",
   description: "",
   sort_order: 0,
+  default_ground_resistance_ohm: null,
+  default_lightning_density: null,
+  default_span_small_m: null,
+  default_span_large_m: null,
+  default_slope_1: null,
+  default_slope_2: null,
 };
 
 const TOWER_MODEL_TABLE_MIN_SCROLL_Y = 180;
@@ -79,6 +92,12 @@ function toEditValues(item: TowerModelSummary): TowerModelFormValues {
     tower_type: item.tower_type ?? "",
     description: item.description ?? "",
     sort_order: item.sort_order,
+    default_ground_resistance_ohm: item.default_ground_resistance_ohm ?? null,
+    default_lightning_density: item.default_lightning_density ?? null,
+    default_span_small_m: item.default_span_small_m ?? null,
+    default_span_large_m: item.default_span_large_m ?? null,
+    default_slope_1: item.default_slope_1 ?? null,
+    default_slope_2: item.default_slope_2 ?? null,
   };
 }
 
@@ -89,6 +108,12 @@ function buildPayload(values: TowerModelFormValues): Record<string, unknown> {
     tower_type: values.tower_type.trim() || null,
     description: values.description.trim() || null,
     sort_order: values.sort_order ?? 0,
+    default_ground_resistance_ohm: values.default_ground_resistance_ohm ?? null,
+    default_lightning_density: values.default_lightning_density ?? null,
+    default_span_small_m: values.default_span_small_m ?? null,
+    default_span_large_m: values.default_span_large_m ?? null,
+    default_slope_1: values.default_slope_1 ?? null,
+    default_slope_2: values.default_slope_2 ?? null,
   };
 }
 
@@ -979,29 +1004,88 @@ export default function AdminTowerModelsPage() {
         }}
       >
         <Form<TowerModelFormValues> form={form} layout="vertical" initialValues={EMPTY_FORM}>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Form.Item name="code" label="模型编码" rules={[{ required: true, message: "请输入模型编码" }]}>
-              <Input disabled={!!editingModel} />
-            </Form.Item>
-            <Form.Item name="name" label="模型名称" rules={[{ required: true, message: "请输入模型名称" }]}>
-              <Input />
-            </Form.Item>
-            <Form.Item name="tower_type" label="塔型">
-              <Select
-                allowClear
-                options={[
-                  { value: "直线", label: "直线" },
-                  { value: "耐张", label: "耐张" },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item name="sort_order" label="排序">
-              <InputNumber min={0} max={1_000_000} className="w-full" />
-            </Form.Item>
-          </div>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea rows={3} />
-          </Form.Item>
+          <Tabs
+            className="admin-tower-models-modal-tabs"
+            items={[
+              {
+                key: "basic",
+                label: "基本信息",
+                children: (
+                  <>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Form.Item name="code" label="模型编码" rules={[{ required: true, message: "请输入模型编码" }]}>
+                        <Input disabled={!!editingModel} />
+                      </Form.Item>
+                      <Form.Item name="name" label="模型名称" rules={[{ required: true, message: "请输入模型名称" }]}>
+                        <Input />
+                      </Form.Item>
+                      <Form.Item name="tower_type" label="塔型">
+                        <Select
+                          allowClear
+                          options={[
+                            { value: "直线", label: "直线" },
+                            { value: "耐张", label: "耐张" },
+                          ]}
+                        />
+                      </Form.Item>
+                      <Form.Item name="sort_order" label="排序">
+                        <InputNumber min={0} max={1_000_000} className="w-full" />
+                      </Form.Item>
+                    </div>
+                    <Form.Item name="description" label="描述">
+                      <Input.TextArea rows={3} />
+                    </Form.Item>
+                  </>
+                ),
+              },
+              {
+                key: "defaults",
+                label: "默认参数",
+                children: (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Form.Item
+                      name="default_ground_resistance_ohm"
+                      label="接地电阻（Ω）"
+                      tooltip="杆塔默认接地电阻，用于雷击特性计算。"
+                    >
+                      <InputNumber min={0} max={10000} step={0.1} className="w-full" />
+                    </Form.Item>
+                    <Form.Item
+                      name="default_lightning_density"
+                      label="地闪密度（次/km²·年）"
+                      tooltip="杆塔默认地闪密度（Ng）。"
+                    >
+                      <InputNumber min={0} max={1000} step={0.1} className="w-full" />
+                    </Form.Item>
+                    <Form.Item
+                      name="default_span_small_m"
+                      label="小号侧档距（m）"
+                    >
+                      <InputNumber min={0} max={100000} className="w-full" />
+                    </Form.Item>
+                    <Form.Item
+                      name="default_span_large_m"
+                      label="大号侧档距（m）"
+                    >
+                      <InputNumber min={0} max={100000} className="w-full" />
+                    </Form.Item>
+                    <Form.Item
+                      name="default_slope_1"
+                      label="地面倾角 1（°）"
+                    >
+                      <InputNumber min={-90} max={90} step={0.1} className="w-full" />
+                    </Form.Item>
+                    <Form.Item
+                      name="default_slope_2"
+                      label="地面倾角 2（°）"
+                    >
+                      <InputNumber min={-90} max={90} step={0.1} className="w-full" />
+                    </Form.Item>
+                  </div>
+                ),
+              },
+            ]}
+          />
         </Form>
       </Modal>
 

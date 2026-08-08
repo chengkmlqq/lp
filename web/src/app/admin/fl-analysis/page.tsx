@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -8,14 +8,17 @@ import {
   Form,
   Modal,
   Space,
+  Tabs,
+  Tag,
   Typography,
   message,
 } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
+import { TaskLogViewerModal } from "@/components/task-log-viewer";
 import { CreateJobForm } from "@/components/fl-analysis/create-job-form";
-import { DetailModal } from "@/components/fl-analysis/detail-modal";
+import { TowerDetailView } from "@/components/fl-analysis/detail-modal";
 import { JobDetailPanel } from "@/components/fl-analysis/job-detail-panel";
 import { JobListCard } from "@/components/fl-analysis/job-card-list";
 import { MitigationModal } from "@/components/fl-analysis/mitigation-modal";
@@ -25,10 +28,13 @@ import { ScenarioModal } from "@/components/fl-analysis/scenario-modal";
 import {
   CREATE_JOB_DEFAULTS,
   formatJobType,
+  formatRiskLevel,
   mitigationMode,
   readDownloadFilename,
+  riskColor,
   waveformJobType,
   type CreateJobFormValues,
+  type DetailTabItem,
   type MitigationFormValues,
   type ReportFormValues,
   type ScenarioFormValues,
@@ -44,16 +50,23 @@ import type {
   LineListResponse,
 } from "@/types/auth";
 
+/** 结果列表固定主 Tab（不可关闭），详情 Tab 依次追加在其后 */
+const LIST_TAB_KEY = "list";
+
 export default function AdminFlAnalysisPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [detailRow, setDetailRow] = useState<FlAnalysisTowerResultSummary | null>(null);
   const [mitigationModalOpen, setMitigationModalOpen] = useState(false);
   const [scenarioModalOpen, setScenarioModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
+  // ---- 任务日志弹窗（LP-274：与详情 Tab 同位展示）----
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
+  const [logModalTitle, setLogModalTitle] = useState("任务执行日志");
   const [selectedMitigationTowerIds, setSelectedMitigationTowerIds] = useState<string[]>([]);
   const [selectedScenarioTowerIds, setSelectedScenarioTowerIds] = useState<string[]>([]);
   const [selectedReportTowerIds, setSelectedReportTowerIds] = useState<string[]>([]);
@@ -69,6 +82,16 @@ export default function AdminFlAnalysisPage() {
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage") || hasPermission("tower.manage");
   const canReadAtp = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
+  const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
+
+  const openLogViewer = useCallback((taskId: string | null | undefined, label: string, title: string) => {
+    if (!taskId || !canReadLogs) {
+      return;
+    }
+    setLogModalTaskId(taskId);
+    setLogModalTitle(`${label} - ${title}`);
+    setLogModalOpen(true);
+  }, [canReadLogs]);
 
   const linesQuery = useQuery({
     queryKey: ["/api/v1/lines"],
@@ -309,7 +332,7 @@ export default function AdminFlAnalysisPage() {
     mutationFn: async (values: CreateJobFormValues) => createAndStartJob(buildCreateJobPayload(values)),
     onSuccess: async (job) => {
       await invalidateFlAnalysisQueries();
-      setSelectedJobId(job.id);
+      selectJob(job.id);
       setCreateModalOpen(false);
       messageApi.success(`${formatJobType(job.job_type, mitigationMode(job))}任务已创建并启动`);
       createJobForm.setFieldsValue({ job_name: "" });
@@ -364,7 +387,7 @@ export default function AdminFlAnalysisPage() {
     onSuccess: async (job) => {
       await invalidateFlAnalysisQueries();
       setMitigationModalOpen(false);
-      setSelectedJobId(job.id);
+      selectJob(job.id);
       messageApi.success("措施推荐任务已创建并启动");
     },
     onError: (error) => {
@@ -401,7 +424,7 @@ export default function AdminFlAnalysisPage() {
     onSuccess: async (job) => {
       await invalidateFlAnalysisQueries();
       setScenarioModalOpen(false);
-      setSelectedJobId(job.id);
+      selectJob(job.id);
       messageApi.success("加装避雷器复算任务已创建并启动");
     },
     onError: (error) => {
@@ -434,7 +457,7 @@ export default function AdminFlAnalysisPage() {
     onSuccess: async (job) => {
       await invalidateFlAnalysisQueries();
       setReportModalOpen(false);
-      setSelectedJobId(job.id);
+      selectJob(job.id);
       messageApi.success("报告任务已创建并启动");
     },
     onError: (error) => {
@@ -512,6 +535,74 @@ export default function AdminFlAnalysisPage() {
     && selectedJob?.status === "success"
     && towerRows.length > 0;
 
+  // ---- LP-274: 动态详情选项卡 ----
+  // 点击「查看详情」时新增/激活对应杆塔详情 Tab；以结果唯一标识 row.id 去重，
+  // 同一杆塔反复点击不会叠加重复 Tab，便于多开对比。
+  const openDetail = useCallback((row: FlAnalysisTowerResultSummary) => {
+    const tabKey = row.id;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === tabKey)) {
+        return previous;
+      }
+      const riskLabel = (
+        <Tag color={riskColor(row.risk_level)}>{formatRiskLevel(row.risk_level)}</Tag>
+      );
+      return [
+        ...previous,
+        {
+          key: tabKey,
+          label: (
+            <Space size={6}>
+              <span>{row.tower_no}</span>
+              {riskLabel}
+            </Space>
+          ),
+          closable: true,
+          // children 在 openDetail 时以当前 selectedJob/selectedJobDetail 快照构建，
+          // 避免后续切换任务时旧 Tab 指向新任务的数据。
+          children: (
+            <TowerDetailView
+              detailRow={row}
+              selectedJob={selectedJob}
+              selectedJobDetail={selectedJobDetail}
+              canReadLogs={canReadLogs}
+              onOpenLog={openLogViewer}
+            />
+          ),
+        } satisfies DetailTabItem,
+      ];
+    });
+    setActiveTabKey(tabKey);
+  }, [selectedJob, selectedJobDetail, canReadLogs, openLogViewer]);
+
+  // 关闭 Tab：移除对应 tab，关闭的是当前激活 Tab 时按相邻回退规则切换 activeKey
+  //（优先左邻，其次最左，兜底回列表主 Tab），与地闪密度统计页一致。
+  const handleTabsEdit = useCallback((
+    targetKey: ReactMouseEvent | ReactKeyboardEvent | string,
+    action: "add" | "remove",
+  ) => {
+    if (action !== "remove") {
+      return;
+    }
+    const key = String(targetKey);
+    const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
+    const next = detailTabs.filter((tab) => tab.key !== key);
+    setDetailTabs(next);
+    if (activeTabKey === key) {
+      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+      setActiveTabKey(fallback);
+    }
+  }, [detailTabs, activeTabKey]);
+
+  // 切换任务（selectedJob）时清空旧任务的详情 Tab 并回退到列表主 Tab。
+  // 详情 Tab 内容在 openDetail 时按当时的 selectedJob/selectedJobDetail 快照构建，
+  // 若不清理，旧任务的详情与当前任务结果表并存会语义混乱。
+  const selectJob = useCallback((jobId: string | null) => {
+    setSelectedJobId(jobId);
+    setDetailTabs([]);
+    setActiveTabKey(LIST_TAB_KEY);
+  }, []);
+
   if (!initializing && !user) {
     return <Alert type="warning" showIcon message="请先登录后查看防雷分析结果。" />;
   }
@@ -555,7 +646,7 @@ export default function AdminFlAnalysisPage() {
           jobs={jobs}
           selectedJobId={selectedJobCardId}
           loading={jobsQuery.isLoading}
-          onSelect={setSelectedJobId}
+          onSelect={selectJob}
         />
 
         {selectedJob ? (
@@ -600,19 +691,34 @@ export default function AdminFlAnalysisPage() {
               />
             </Card>
 
-            <Card>
-              <ResultTable
-                selectedJob={selectedJob}
-                selectedWaveformJobType={selectedWaveformJobType}
-                rows={towerRows}
-                loading={towerResultsQuery.isLoading}
-                error={towerResultsQuery.error}
-                onOpenDetail={(row) => {
-                  setDetailRow(row);
-                  setDetailModalOpen(true);
-                }}
-              />
-            </Card>
+            <Tabs
+              type="editable-card"
+              hideAdd
+              activeKey={activeTabKey}
+              onChange={setActiveTabKey}
+              onEdit={handleTabsEdit}
+              className="admin-fl-analysis-tabs"
+              items={[
+                {
+                  key: LIST_TAB_KEY,
+                  label: <span className="admin-fl-analysis-tab-title">分级结果</span>,
+                  closable: false,
+                  children: (
+                    <div className="admin-fl-analysis-list-pane">
+                      <ResultTable
+                        selectedJob={selectedJob}
+                        selectedWaveformJobType={selectedWaveformJobType}
+                        rows={towerRows}
+                        loading={towerResultsQuery.isLoading}
+                        error={towerResultsQuery.error}
+                        onOpenDetail={openDetail}
+                      />
+                    </div>
+                  ),
+                },
+                ...detailTabs,
+              ]}
+            />
           </>
         ) : null}
       </Space>
@@ -649,17 +755,6 @@ export default function AdminFlAnalysisPage() {
           }}
         />
       </Modal>
-
-      <DetailModal
-        open={detailModalOpen}
-        detailRow={detailRow}
-        selectedJob={selectedJob}
-        selectedJobDetail={selectedJobDetail}
-        onClose={() => {
-          setDetailModalOpen(false);
-          setDetailRow(null);
-        }}
-      />
 
       <MitigationModal
         open={mitigationModalOpen}
@@ -708,6 +803,13 @@ export default function AdminFlAnalysisPage() {
         onCancel={() => {
           setReportModalOpen(false);
         }}
+      />
+
+      <TaskLogViewerModal
+        taskId={logModalTaskId}
+        title={logModalTitle}
+        open={logModalOpen}
+        onClose={() => setLogModalOpen(false)}
       />
     </>
   );

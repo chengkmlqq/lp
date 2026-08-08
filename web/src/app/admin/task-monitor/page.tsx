@@ -476,7 +476,7 @@ export default function AdminTaskMonitorPage() {
       {
         title: "操作",
         key: "actions",
-        width: 100,
+        width: 200,
         fixed: "right",
         render: (_: unknown, record: TaskTableRow) => (
           <Space size={4}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   Alert,
@@ -13,6 +13,7 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
   Typography,
   message,
@@ -78,13 +79,22 @@ function resultTagColor(status: FaultRecurrenceAnalyzeResponse["result"]["status
   return "blue";
 }
 
+type DetailTabItem = {
+  key: string;
+  label: ReactNode;
+  closable: boolean;
+  children: ReactNode;
+};
+
 
 export default function AdminFaultRecurrencePage() {
   const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
   const [form] = Form.useForm<FaultRecurrenceFormValues>();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const tabSeqRef = useRef(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [result, setResult] = useState<FaultRecurrenceAnalyzeResponse | null>(null);
+  const [resultTabs, setResultTabs] = useState<DetailTabItem[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>("");
   const [error, setError] = useState("");
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -121,42 +131,33 @@ export default function AdminFaultRecurrencePage() {
       return (await response.json()) as FaultRecurrenceAnalyzeResponse;
     },
     onSuccess: (payload) => {
-      setResult(payload);
+      const tabKey = `result-${++tabSeqRef.current}`;
+      setResultTabs((previous) => [
+        ...previous,
+        {
+          key: tabKey,
+          label: (
+            <Space size={6}>
+              <span>{payload.source_file_name || "复现结果"}</span>
+              <Tag color={resultTagColor(payload.result.status)}>
+                {payload.result.status === "no_need" ? "No need" : "已匹配"}
+              </Tag>
+            </Space>
+          ),
+          closable: true,
+          children: (
+            <FaultRecurrenceResultView result={payload} />
+          ),
+        },
+      ]);
+      setActiveTabKey(tabKey);
       setError("");
       messageApi.success("故障复现计算完成");
     },
     onError: (mutationError) => {
-      setResult(null);
       setError(mutationError instanceof Error ? mutationError.message : "故障复现计算失败");
     },
   });
-
-  const columns: ColumnsType<FaultRecurrenceDataPoint> = [
-    {
-      title: "波头时间 / μs",
-      dataIndex: "head_time_us",
-      render: (value: number) => formatNumber(value, 4),
-      width: 140,
-    },
-    {
-      title: "波尾时间 / μs",
-      dataIndex: "tail_time_us",
-      render: (value: number) => formatNumber(value, 4),
-      width: 140,
-    },
-    {
-      title: "反击耐雷水平 / kA",
-      dataIndex: "counterstroke_withstand_ka",
-      render: (value: number) => formatNumber(value, 4),
-      width: 180,
-    },
-    {
-      title: "绕击耐雷水平 / kA",
-      dataIndex: "shielding_withstand_ka",
-      render: (value: number) => formatNumber(value, 4),
-      width: 180,
-    },
-  ];
 
   const handleAnalyze = async () => {
     if (!selectedFile) {
@@ -171,15 +172,27 @@ export default function AdminFaultRecurrencePage() {
     const nextFile = event.target.files?.[0] ?? null;
     setSelectedFile(nextFile);
     setError("");
-    if (nextFile) {
-      setResult(null);
-    }
     event.target.value = "";
+  };
+
+  const handleTabsEdit = (targetKey: React.MouseEvent | React.KeyboardEvent | string, action: "add" | "remove") => {
+    if (action !== "remove") {
+      return;
+    }
+    const key = String(targetKey);
+    const removedIndex = resultTabs.findIndex((tab) => tab.key === key);
+    const next = resultTabs.filter((tab) => tab.key !== key);
+    setResultTabs(next);
+    if (activeTabKey === key) {
+      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? "";
+      setActiveTabKey(fallback);
+    }
   };
 
   const handleReset = () => {
     setError("");
-    setResult(null);
+    setResultTabs([]);
+    setActiveTabKey("");
   };
 
   if (initializing) {
@@ -302,9 +315,65 @@ export default function AdminFaultRecurrencePage() {
         ) : null}
 
         <Card title="复现结果" className="surface-card">
-          {!result ? (
+          {resultTabs.length === 0 ? (
             <Empty description="选择基础数据文件并执行一次复现计算后，将在这里展示结果。" />
           ) : (
+            <Tabs
+              type="editable-card"
+              hideAdd
+              activeKey={activeTabKey}
+              onChange={setActiveTabKey}
+              onEdit={handleTabsEdit}
+              className="admin-fault-recurrence-result-tabs"
+              items={resultTabs}
+            />
+          )}
+        </Card>
+      </Space>
+    </>
+  );
+}
+
+function FaultRecurrenceResultView({
+  result,
+}: {
+  result: FaultRecurrenceAnalyzeResponse;
+}) {
+  const columns: ColumnsType<FaultRecurrenceDataPoint> = [
+    {
+      title: "波头时间 / μs",
+      dataIndex: "head_time_us",
+      render: (value: number) => formatNumber(value, 4),
+      width: 140,
+    },
+    {
+      title: "波尾时间 / μs",
+      dataIndex: "tail_time_us",
+      render: (value: number) => formatNumber(value, 4),
+      width: 140,
+    },
+    {
+      title: "反击耐雷水平 / kA",
+      dataIndex: "counterstroke_withstand_ka",
+      render: (value: number) => formatNumber(value, 4),
+      width: 180,
+    },
+    {
+      title: "绕击耐雷水平 / kA",
+      dataIndex: "shielding_withstand_ka",
+      render: (value: number) => formatNumber(value, 4),
+      width: 180,
+    },
+  ];
+
+  return (
+    <Tabs
+      defaultActiveKey="overview"
+      items={[
+        {
+          key: "overview",
+          label: "结果概览",
+          children: (
             <Space direction="vertical" size={16} className="w-full">
               <Descriptions bordered column={{ xs: 1, sm: 1, md: 2, lg: 3 }}>
                 <Descriptions.Item label="结果状态">
@@ -374,21 +443,24 @@ export default function AdminFaultRecurrencePage() {
                 />
               ) : null}
             </Space>
-          )}
-        </Card>
-
-        {result ? (
-          <Card title={`基础数据预览 (${result.point_count} 条)`} className="surface-card">
-            <Table<FaultRecurrenceDataPoint>
-              rowKey={(record, index) => `${record.head_time_us}-${record.tail_time_us}-${index ?? 0}`}
-              columns={columns}
-              dataSource={result.data_points}
-              pagination={{ pageSize: 10, hideOnSinglePage: false }}
-              scroll={{ x: 720 }}
-            />
-          </Card>
-        ) : null}
-      </Space>
-    </>
+          ),
+        },
+        {
+          key: "detail",
+          label: "详细数据",
+          children: (
+            <Card title={`基础数据预览 (${result.point_count} 条)`} className="surface-card">
+              <Table<FaultRecurrenceDataPoint>
+                rowKey={(record, index) => `${record.head_time_us}-${record.tail_time_us}-${index ?? 0}`}
+                columns={columns}
+                dataSource={result.data_points}
+                pagination={{ pageSize: 10, hideOnSinglePage: false }}
+                scroll={{ x: 720 }}
+              />
+            </Card>
+          ),
+        },
+      ]}
+    />
   );
 }

@@ -15,6 +15,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Typography,
   type MenuProps,
@@ -206,6 +207,24 @@ const EMPTY_TOWER_FORM: TowerFormValues = {
   slope_1: null,
   slope_2: null,
   risk_level: "",
+};
+// 杆塔编辑表单字段所属 Tab 映射，用于校验失败时自动切换到对应 Tab 引导用户定位
+const TOWER_FIELD_TAB_KEY: Record<string, string> = {
+  seq_no: "basic",
+  tower_no: "basic",
+  tower_model: "basic",
+  tower_type: "basic",
+  ground_resistance_ohm: "electrical",
+  lightning_density: "electrical",
+  longitude: "geometry",
+  latitude: "geometry",
+  altitude_m: "geometry",
+  terrain: "geometry",
+  span_small_m: "geometry",
+  span_large_m: "geometry",
+  slope_1: "geometry",
+  slope_2: "geometry",
+  risk_level: "extended",
 };
 const EMPTY_TOWER_PROFILE_FORM: TowerProfileFormValues = {
   structure_kind: "",
@@ -613,6 +632,8 @@ export default function AdminPowerLinesPage() {
   const [towerProfileGeometryEditorMode, setTowerProfileGeometryEditorMode] = useState<TowerProfileGeometryEditorMode>("structured");
   const [editingLine, setEditingLine] = useState<LineSummary | null>(null);
   const [editingTower, setEditingTower] = useState<LineTowerSummary | null>(null);
+  // 杆塔编辑 Modal 内部的 Tabs（基本信息 / 电气参数 / 几何参数 / 扩展数据）当前激活 Tab
+  const [towerActiveTabKey, setTowerActiveTabKey] = useState("basic");
   const [editingTowerProfileTower, setEditingTowerProfileTower] = useState<LineTowerSummary | null>(null);
   const [towerViewMode, setTowerViewMode] = useState<"table" | "map">("map");
   const [selectedTerrainDatasetId, setSelectedTerrainDatasetId] = useState<string | null | undefined>(undefined);
@@ -1407,6 +1428,7 @@ export default function AdminPowerLinesPage() {
   const openCreateTowerModal = () => {
     setEditingTower(null);
     towerForm.setFieldsValue(EMPTY_TOWER_FORM);
+    setTowerActiveTabKey("basic");
     setTowerModalOpen(true);
     if (towerModels.length > 0) {
       const preferred = towerModels[0]?.code;
@@ -1435,6 +1457,7 @@ export default function AdminPowerLinesPage() {
       slope_2: item.slope_2,
       risk_level: item.risk_level ?? "",
     });
+    setTowerActiveTabKey("basic");
     setTowerModalOpen(true);
   };
   const openTowerProfileModal = (item: LineTowerSummary) => {
@@ -1567,15 +1590,14 @@ export default function AdminPowerLinesPage() {
     {
       title: "操作",
       key: "actions",
-      width: 120,
+      width: 200,
       fixed: "right",
       render: (_: unknown, row) => {
         const moreMenuItems: MenuProps["items"] = [
           {
-            key: "delete",
-            label: "删除",
-            danger: true,
-            disabled: deleteTowerMutation.isPending,
+            key: "tower-profile",
+            label: "专业参数",
+            onClick: () => openTowerProfileModal(row),
           },
         ];
         return (
@@ -1586,31 +1608,29 @@ export default function AdminPowerLinesPage() {
               </Button>
             )}
             {canTowerManage && (
-              <Button size="small" onClick={() => openTowerProfileModal(row)}>
-                专业参数
+              <Button
+                danger
+                size="small"
+                loading={deleteTowerMutation.isPending}
+                disabled={deleteTowerMutation.isPending}
+                onClick={() => {
+                  Modal.confirm({
+                    title: "删除杆塔",
+                    content: `确认删除杆塔 ${row.tower_no} 吗？`,
+                    okText: "删除",
+                    cancelText: "取消",
+                    okButtonProps: { danger: true },
+                    onOk: async () => {
+                      await deleteTowerMutation.mutateAsync(row.id);
+                    },
+                  });
+                }}
+              >
+                删除
               </Button>
             )}
             {canTowerManage && (
-              <Dropdown
-                menu={{
-                  items: moreMenuItems,
-                  onClick: ({ key }) => {
-                    if (key === "delete") {
-                      Modal.confirm({
-                        title: "删除杆塔",
-                        content: `确认删除杆塔 ${row.tower_no} 吗？`,
-                        okText: "删除",
-                        cancelText: "取消",
-                        okButtonProps: { danger: true },
-                        onOk: async () => {
-                          await deleteTowerMutation.mutateAsync(row.id);
-                        },
-                      });
-                    }
-                  },
-                }}
-                trigger={["click"]}
-              >
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" icon={<MoreOutlined />} />
               </Dropdown>
             )}
@@ -1993,75 +2013,128 @@ export default function AdminPowerLinesPage() {
           setTowerModalOpen(false);
         }}
         onOk={async () => {
-          const values = await towerForm.validateFields();
-          saveTowerMutation.mutate(values);
+          try {
+            const values = await towerForm.validateFields();
+            saveTowerMutation.mutate(values);
+          } catch (error) {
+            // 校验失败时自动切换到首个错误字段所在的 Tab，引导用户定位
+            if (error && typeof error === "object" && "errorFields" in error) {
+              const errorFields = (error as { errorFields?: { name?: Array<string | number> }[] }).errorFields;
+              const firstField = errorFields?.[0]?.name?.[0];
+              if (typeof firstField === "string" && TOWER_FIELD_TAB_KEY[firstField]) {
+                setTowerActiveTabKey(TOWER_FIELD_TAB_KEY[firstField]);
+              }
+            }
+          }
         }}
       >
         <Form<TowerFormValues> form={towerForm} layout="vertical" initialValues={EMPTY_TOWER_FORM}>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Form.Item name="seq_no" label="序号" rules={[{ required: true, message: "请输入序号" }]}>
-              <InputNumber min={1} max={1000000} className="w-full" />
-            </Form.Item>
-            <Form.Item name="tower_no" label="塔号" rules={[{ required: true, message: "请输入塔号" }]}>
-              <Input />
-            </Form.Item>
-            <Form.Item name="tower_model" label="杆塔模型">
-              <Select
-                showSearch
-                allowClear
-                loading={towerModelOptionsQuery.isFetching}
-                options={towerModelOptions}
-                placeholder="请选择杆塔模型"
-                onChange={(value) => {
-                  applyTowerModelDefaults(value);
-                }}
-                filterOption={(input, option) =>
-                  String(option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-              />
-            </Form.Item>
-            <Form.Item name="tower_type" label="塔型">
-              <Select
-                options={[
-                  { value: "", label: "未设置" },
-                  { value: "直线", label: "直线" },
-                  { value: "耐张", label: "耐张" },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item name="longitude" label="经度">
-              <InputNumber className="w-full" precision={8} />
-            </Form.Item>
-            <Form.Item name="latitude" label="纬度">
-              <InputNumber className="w-full" precision={8} />
-            </Form.Item>
-            <Form.Item name="altitude_m" label="海拔(m)">
-              <InputNumber className="w-full" precision={4} />
-            </Form.Item>
-            <Form.Item name="terrain" label="地形">
-              <Input />
-            </Form.Item>
-            <Form.Item name="ground_resistance_ohm" label="接地电阻(Ω)">
-              <InputNumber className="w-full" precision={4} />
-            </Form.Item>
-            <Form.Item name="lightning_density" label="地闪密度">
-              <InputNumber className="w-full" precision={8} />
-            </Form.Item>
-            <Form.Item name="span_small_m" label="小号侧档距(m)">
-              <InputNumber className="w-full" precision={4} />
-            </Form.Item>
-            <Form.Item name="span_large_m" label="大号侧档距(m)">
-              <InputNumber className="w-full" precision={4} />
-            </Form.Item>
-            <Form.Item name="slope_1" label="地面倾角1">
-              <InputNumber className="w-full" precision={8} />
-            </Form.Item>
-            <Form.Item name="slope_2" label="地面倾角2">
-              <InputNumber className="w-full" precision={8} />
-            </Form.Item>
-            <Form.Item name="risk_level" label="风险等级">
-              <Input />
-            </Form.Item>
-          </div>
+          <Tabs
+            type="editable-card"
+            hideAdd
+            activeKey={towerActiveTabKey}
+            onChange={setTowerActiveTabKey}
+            items={[
+              {
+                key: "basic",
+                label: "基本信息",
+                forceRender: true,
+                children: (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Form.Item name="seq_no" label="序号" rules={[{ required: true, message: "请输入序号" }]}>
+                      <InputNumber min={1} max={1000000} className="w-full" />
+                    </Form.Item>
+                    <Form.Item name="tower_no" label="塔号" rules={[{ required: true, message: "请输入塔号" }]}>
+                      <Input />
+                    </Form.Item>
+                    <Form.Item name="tower_model" label="杆塔模型">
+                      <Select
+                        showSearch
+                        allowClear
+                        loading={towerModelOptionsQuery.isFetching}
+                        options={towerModelOptions}
+                        placeholder="请选择杆塔模型"
+                        onChange={(value) => {
+                          applyTowerModelDefaults(value);
+                        }}
+                        filterOption={(input, option) =>
+                          String(option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+                      />
+                    </Form.Item>
+                    <Form.Item name="tower_type" label="塔型">
+                      <Select
+                        options={[
+                          { value: "", label: "未设置" },
+                          { value: "直线", label: "直线" },
+                          { value: "耐张", label: "耐张" },
+                        ]}
+                      />
+                    </Form.Item>
+                  </div>
+                ),
+              },
+              {
+                key: "electrical",
+                label: "电气参数",
+                forceRender: true,
+                children: (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Form.Item name="ground_resistance_ohm" label="接地电阻(Ω)">
+                      <InputNumber className="w-full" precision={4} />
+                    </Form.Item>
+                    <Form.Item name="lightning_density" label="地闪密度">
+                      <InputNumber className="w-full" precision={8} />
+                    </Form.Item>
+                  </div>
+                ),
+              },
+              {
+                key: "geometry",
+                label: "几何参数",
+                forceRender: true,
+                children: (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Form.Item name="longitude" label="经度">
+                      <InputNumber className="w-full" precision={8} />
+                    </Form.Item>
+                    <Form.Item name="latitude" label="纬度">
+                      <InputNumber className="w-full" precision={8} />
+                    </Form.Item>
+                    <Form.Item name="altitude_m" label="海拔(m)">
+                      <InputNumber className="w-full" precision={4} />
+                    </Form.Item>
+                    <Form.Item name="terrain" label="地形">
+                      <Input />
+                    </Form.Item>
+                    <Form.Item name="span_small_m" label="小号侧档距(m)">
+                      <InputNumber className="w-full" precision={4} />
+                    </Form.Item>
+                    <Form.Item name="span_large_m" label="大号侧档距(m)">
+                      <InputNumber className="w-full" precision={4} />
+                    </Form.Item>
+                    <Form.Item name="slope_1" label="地面倾角1">
+                      <InputNumber className="w-full" precision={8} />
+                    </Form.Item>
+                    <Form.Item name="slope_2" label="地面倾角2">
+                      <InputNumber className="w-full" precision={8} />
+                    </Form.Item>
+                  </div>
+                ),
+              },
+              {
+                key: "extended",
+                label: "扩展数据",
+                forceRender: true,
+                children: (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Form.Item name="risk_level" label="风险等级">
+                      <Input />
+                    </Form.Item>
+                  </div>
+                ),
+              },
+            ]}
+          />
         </Form>
       </Modal>
       <Modal

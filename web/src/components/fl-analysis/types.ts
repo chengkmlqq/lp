@@ -3,6 +3,19 @@ import type {
   FlAnalysisJobSummary,
   FlAnalysisTowerResultSummary,
 } from "@/types/auth";
+import type { ReactNode } from "react";
+
+/**
+ * 动态详情选项卡项（LP-274）。
+ * key 用杆塔唯一标识去重，label 含塔号 + 风险等级 Tag，closable 允许关闭，
+ * 与地闪密度统计页的 detailTabs 模式保持一致。
+ */
+export type DetailTabItem = {
+  key: string;
+  label: ReactNode;
+  closable: boolean;
+  children: ReactNode;
+};
 
 export type CreateJobFormValues = {
   job_name: string;

@@ -703,13 +703,13 @@ export default function AdminFilesPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-        width: 280,
+        width: 200,
         render: (_value, item) => {
           const menuItems: MenuProps["items"] = [
             {
-              key: "rename",
-              label: "重命名",
-              icon: <EditOutlined />,
+              key: "move",
+              label: "移动",
+              icon: <DragOutlined />,
               disabled: operationBusy,
             },
             {
@@ -743,11 +743,11 @@ export default function AdminFilesPage() {
                   color="gray"
                   size="small"
                   variant="soft"
-                  onClick={() => startMove(item)}
-                  icon={<DragOutlined />}
+                  onClick={() => startRename(item)}
+                  icon={<EditOutlined />}
                   disabled={operationBusy}
                 >
-                  移动
+                  重命名
                 </Button>
               )}
 
@@ -756,8 +756,8 @@ export default function AdminFilesPage() {
                   menu={{
                     items: menuItems,
                     onClick: ({ key }) => {
-                      if (key === "rename") {
-                        startRename(item);
+                      if (key === "move") {
+                        startMove(item);
                         return;
                       }
                       if (key === "delete") {

@@ -16,11 +16,14 @@ from ..core.database import SessionLocal
 
 from ..models.base import utcnow
 from ..models.lightning_amplitude import LightningAmplitude
+from ..models.line_amplitude_backfill import LineAmplitudeBackfill
 from ..models.lightning_distribution import LightningDistribution
 from ..models.line import Line
 from ..models.line_tower import LineTower
 from ..models.tower_profile import TowerProfile
 from ..schemas.lightning import (
+    LightningAmplitudeBackfillLine,
+    LightningAmplitudeBackfillLineListResponse,
     LightningAmplitudeImportResponse,
     LightningAmplitudeRecord,
     LightningAmplitudeListResponse,
@@ -110,7 +113,7 @@ class WaveFeatures:
 # ---------------------------------------------------------------------------
 # 雷电流幅值（LightningAmplitude）服务函数
 # ---------------------------------------------------------------------------
-def _serialize_amplitude(amp: LightningAmplitude) -> LightningAmplitudeRecord:
+def _serialize_amplitude(amp: LightningAmplitude, *, backfill_line_count: int = 0) -> LightningAmplitudeRecord:
     """把 LightningAmplitude ORM 对象序列化为 schema。"""
     return LightningAmplitudeRecord(
         id=amp.id,
@@ -149,6 +152,7 @@ def _serialize_amplitude(amp: LightningAmplitude) -> LightningAmplitudeRecord:
         is_synthetic=amp.is_synthetic,
         feature_json=amp.feature_json or {},
         notes=amp.notes,
+        backfill_line_count=backfill_line_count,
         create_user=amp.create_user,
         create_date=amp.create_date,
         update_date=amp.update_date,
@@ -301,8 +305,22 @@ def list_lightning_amplitudes(
         .offset(offset)
     ).scalars().all()
 
+    # 回填关联线路数：按 amplitude_id 分组统计关联表行数（避免 N+1）
+    amplitude_ids = [item.id for item in rows]
+    backfill_counts: dict[str, int] = {}
+    if amplitude_ids:
+        count_rows = db.execute(
+            select(LineAmplitudeBackfill.amplitude_id, func.count())
+            .where(LineAmplitudeBackfill.amplitude_id.in_(amplitude_ids))
+            .group_by(LineAmplitudeBackfill.amplitude_id)
+        ).all()
+        backfill_counts = {str(amp_id): int(count or 0) for amp_id, count in count_rows}
+
     return LightningAmplitudeListResponse(
-        items=[_serialize_amplitude(a) for a in rows],
+        items=[
+            _serialize_amplitude(a, backfill_line_count=int(backfill_counts.get(a.id, 0)))
+            for a in rows
+        ],
         total=total,
         limit=limit,
         offset=offset,
@@ -335,6 +353,45 @@ def get_lightning_amplitude_status(
         error_message=amp.error_message,
         record=_serialize_amplitude(amp),
     )
+
+
+def get_backfill_lines_for_amplitude(
+    db: Session,
+    amplitude_id: str,
+) -> LightningAmplitudeBackfillLineListResponse:
+    """查询一条雷电流幅值记录被哪些线路回填使用过（回填线路小窗）。
+
+    反查路径：`line_amplitude_backfill` WHERE amplitude_id = ? JOIN power_line，
+    按 prepared_at 倒序（最近一次回填在前）。
+    """
+    amp = get_lightning_amplitude_by_id(db, amplitude_id)
+    if not amp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流幅值记录不存在")
+
+    rows = db.execute(
+        select(LineAmplitudeBackfill)
+        .where(LineAmplitudeBackfill.amplitude_id == amplitude_id)
+        .order_by(LineAmplitudeBackfill.prepared_at.desc(), LineAmplitudeBackfill.create_date.desc())
+    ).scalars().all()
+
+    items: list[LightningAmplitudeBackfillLine] = []
+    for row in rows:
+        line = row.line
+        items.append(
+            LightningAmplitudeBackfillLine(
+                line_id=row.line_id,
+                line_code=line.code if line else None,
+                line_name=line.name if line else None,
+                voltage_kv=line.voltage_kv if line else None,
+                prepared_at=row.prepared_at,
+                current_a=row.current_a,
+                current_b=row.current_b,
+                peak_max=row.peak_max,
+                peak_min=row.peak_min,
+                sampled_event_count=row.sampled_event_count,
+            )
+        )
+    return LightningAmplitudeBackfillLineListResponse(items=items, total=len(items))
 
 
 def retry_lightning_amplitude(
@@ -500,6 +557,7 @@ def prepare_line_lightning_current(
 
     from ..services import minio_storage
     peaks: list[float] = []
+    used_amplitude_ids: list[str] = []
     for amp in amplitudes:
         try:
             content = minio_storage.get_object(amp.source_object_key)
@@ -521,6 +579,7 @@ def prepare_line_lightning_current(
         peak_abs = max(abs(float(value)) for value in parsed.currents_ka)
         if peak_abs > 0:
             peaks.append(peak_abs)
+            used_amplitude_ids.append(amp.id)
 
     if not peaks:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未找到可用于线路雷电流拟合的幅值样本")
@@ -588,6 +647,39 @@ def prepare_line_lightning_current(
             "peak_min": peak_min,
         },
     )
+
+    # 记录本次回填实际用到的 amplitude ↔ line 关联（幂等 upsert：已存在则覆盖为本次为准）
+    if used_amplitude_ids:
+        existing_backfills = db.execute(
+            select(LineAmplitudeBackfill).where(
+                LineAmplitudeBackfill.line_id == line.id,
+                LineAmplitudeBackfill.amplitude_id.in_(used_amplitude_ids),
+            )
+        ).scalars().all()
+        backfill_by_amplitude = {item.amplitude_id: item for item in existing_backfills}
+        for amplitude_id in used_amplitude_ids:
+            backfill = backfill_by_amplitude.get(amplitude_id)
+            if backfill is None:
+                backfill = LineAmplitudeBackfill(
+                    line_id=line.id,
+                    amplitude_id=amplitude_id,
+                    create_user=actor_user_id,
+                    create_date=now,
+                    update_user=actor_user_id,
+                )
+                db.add(backfill)
+                backfill_by_amplitude[amplitude_id] = backfill
+            backfill.prepared_at = now
+            backfill.prepared_by_user_id = actor_user_id
+            backfill.sampled_event_count = len(peaks)
+            backfill.current_a = current_a
+            backfill.current_b = current_b
+            backfill.peak_max = peak_max
+            backfill.peak_min = peak_min
+            backfill.region_id = normalized_region
+            backfill.is_synthetic = bool(payload.is_synthetic)
+            backfill.update_date = now
+            backfill.update_user = actor_user_id
     db.commit()
 
     preparation_json = summarize_line_preparation(db, line, tower_count=len(towers))

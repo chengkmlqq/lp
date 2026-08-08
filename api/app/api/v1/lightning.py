@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
 from ...schemas.lightning import (
+    LightningAmplitudeBackfillLineListResponse,
     LightningAmplitudeImportResponse,
     LightningAmplitudeRecord,
     LightningAmplitudeListResponse,
@@ -30,6 +31,7 @@ from ...schemas.lightning import (
 from ...services.lightning_service import (
     delete_lightning_amplitude,
     delete_lightning_distribution,
+    get_backfill_lines_for_amplitude,
     get_lightning_amplitude_detail,
     get_lightning_amplitude_status,
     get_lightning_distribution_detail,
@@ -108,6 +110,16 @@ def get_lightning_amplitude_detail_endpoint(
     db: Session = Depends(get_db),
 ) -> LightningAmplitudeRecord:
     return get_lightning_amplitude_detail(db, amplitude_id)
+
+
+@router.get("/amplitudes/{amplitude_id}/backfill-lines", response_model=LightningAmplitudeBackfillLineListResponse)
+def get_lightning_amplitude_backfill_lines_endpoint(
+    amplitude_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningAmplitudeBackfillLineListResponse:
+    """回填线路小窗：展示该幅值被哪些线路的回填使用过（按 prepared_at 倒序）。"""
+    return get_backfill_lines_for_amplitude(db, amplitude_id)
 
 
 @router.get("/amplitudes/{amplitude_id}/status", response_model=LightningAmplitudeStatusResponse)

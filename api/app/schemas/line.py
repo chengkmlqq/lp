@@ -78,6 +78,21 @@ class LineUpdateRequest(BaseModel):
     lightning_param_json: dict[str, Any] | None = None
 
 
+class TowerProfileLightningCurrentSummary(BaseModel):
+    """TowerProfile 中「雷电流幅值回填」数据（extra_profile_json.lightning_current_preparation）。"""
+
+    line_id: str | None = None
+    line_code: str | None = None
+    current_a: float | None = None
+    current_b: float | None = None
+    peak_max: float | None = None
+    peak_min: float | None = None
+    sampled_event_count: int = 0
+    region_id: str | None = None
+    is_synthetic: bool = False
+    prepared_at: str | None = None
+
+
 class LineTowerSummary(BaseModel):
     id: str
     line_id: str
@@ -100,6 +115,10 @@ class LineTowerSummary(BaseModel):
     lightning_result: TowerLightningResultSummary | None = None
     analysis: TowerAnalysisSummary | None = None
     raw_extra_json: dict[str, Any] = Field(default_factory=dict)
+    current_type: str | None = None
+    current_a: float | None = None
+    current_b: float | None = None
+    lightning_current_preparation: TowerProfileLightningCurrentSummary | None = None
     create_date: datetime
     create_user: str | None = None
     update_date: datetime

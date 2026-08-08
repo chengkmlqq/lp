@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
 from app.models.lightning_amplitude import LightningAmplitude
+from app.models.line_amplitude_backfill import LineAmplitudeBackfill
 from app.services import lightning_service
 
 
@@ -13,7 +14,7 @@ def _build_session() -> Session:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(
         bind=engine,
-        tables=[LightningAmplitude.__table__],
+        tables=[LightningAmplitude.__table__, LineAmplitudeBackfill.__table__],
     )
     testing_session = sessionmaker(
         bind=engine,

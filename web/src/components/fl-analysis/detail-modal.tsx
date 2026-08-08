@@ -1,7 +1,8 @@
 "use client";
 
-import { Descriptions, Empty, Modal, Space, Table, Tag, Typography } from "antd";
+import { Button, Descriptions, Empty, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import type { ReactNode } from "react";
 
 import type {
   FlAnalysisJobDetail,
@@ -16,8 +17,10 @@ import {
   formatExternalAdapter,
   formatFlashoverMethod,
   formatInducedVoltageFormula,
+  formatJobType,
   formatRangeSummary,
   formatRiskLevel,
+  mitigationMode,
   readCurrentRisk,
   readCurrentScore,
   readMitigationActions,
@@ -160,23 +163,27 @@ const multiPhaseColumns: ColumnsType<MultiPhaseResult> = [
   },
 ];
 
-type DetailModalProps = {
-  open: boolean;
-  detailRow: FlAnalysisTowerResultSummary | null;
-  selectedJob: FlAnalysisJobSummary | null;
-  selectedJobDetail: FlAnalysisJobDetail | null;
-  onClose: () => void;
-};
-
-export function DetailModal({
-  open,
+/**
+ * 杆塔详情内容组件（LP-274）。
+ * 由原 DetailModal 的展示主体抽出，作为动态选项卡（Tabs editable-card）各 Tab 的 children
+ * 直接渲染，不再依赖 Modal 承载。Job 维度信息（任务名、任务类型）随 detailRow 一并展示，
+ * 便于多任务对比时区分来源。
+ */
+export function TowerDetailView({
   detailRow,
   selectedJob,
   selectedJobDetail,
-  onClose,
-}: DetailModalProps) {
+  canReadLogs,
+  onOpenLog,
+}: {
+  detailRow: FlAnalysisTowerResultSummary;
+  selectedJob: FlAnalysisJobSummary | null;
+  selectedJobDetail: FlAnalysisJobDetail | null;
+  canReadLogs?: boolean;
+  onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
+}): ReactNode {
   const { labelMap } = useFlDimensionOptions();
-  const detailResultObject = readObject(detailRow?.result_json);
+  const detailResultObject = readObject(detailRow.result_json);
   const reasonDetails = readReasonDetails(detailRow);
   const mitigationActions = readMitigationActions(detailRow);
   const scanPoints = readScanPoints(detailRow);
@@ -188,167 +195,174 @@ export function DetailModal({
   const detailExternalExecution = readObject(detailResultObject.external_execution);
 
   return (
-    <Modal
-      title={detailRow ? `${selectedJob?.job_type === "mitigation" ? "高风险原因" : "计算详情"} - ${detailRow.tower_no}` : "计算详情"}
-      open={open}
-      onCancel={onClose}
-      footer={null}
-      width={980}
-    >
-      {!detailRow ? (
-        <Empty description="暂无杆塔详情" />
-      ) : (
-        <Space direction="vertical" size={16} className="flex w-full">
-          <Descriptions bordered size="small" column={2}>
-            <Descriptions.Item label="当前结论">{detailRow.summary_text || "-"}</Descriptions.Item>
-            <Descriptions.Item label={selectedJob?.job_type === "mitigation" ? "预期风险/风险等级" : "风险等级"}>
-              <Tag color={riskColor(detailRow.risk_level)}>{formatRiskLevel(detailRow.risk_level)}</Tag>
+    <Space direction="vertical" size={16} className="flex w-full">
+      <Space className="flex w-full" style={{ justifyContent: "space-between" }} align="center">
+        <Typography.Text type="secondary" style={{ marginBottom: 0 }}>
+          任务：{selectedJob?.job_name || selectedJob?.line_name || selectedJob?.line_code || "-"
+            }（{selectedJob ? formatJobType(selectedJob.job_type, mitigationMode(selectedJob)) : "-"}）
+        </Typography.Text>
+        {canReadLogs && onOpenLog ? (
+          <Button
+            size="small"
+            disabled={!selectedJob?.task_id}
+            onClick={() => onOpenLog(
+              selectedJob?.task_id,
+              "任务执行日志",
+              selectedJob?.job_name || selectedJob?.line_name || selectedJob?.line_code || "防雷任务",
+            )}
+          >
+            查看日志
+          </Button>
+        ) : null}
+      </Space>
+      <Descriptions bordered size="small" column={2}>
+        <Descriptions.Item label="当前结论">{detailRow.summary_text || "-"}</Descriptions.Item>
+        <Descriptions.Item label={selectedJob?.job_type === "mitigation" ? "预期风险/风险等级" : "风险等级"}>
+          <Tag color={riskColor(detailRow.risk_level)}>{formatRiskLevel(detailRow.risk_level)}</Tag>
+        </Descriptions.Item>
+        {selectedJob?.job_type === "mitigation" ? (
+          <>
+            <Descriptions.Item label="当前风险">
+              <Tag color={riskColor(readCurrentRisk(detailRow))}>{formatRiskLevel(readCurrentRisk(detailRow))}</Tag>
             </Descriptions.Item>
-            {selectedJob?.job_type === "mitigation" ? (
+            <Descriptions.Item label="改造结论">{readString(detailResultObject, "recommendation_result")}</Descriptions.Item>
+          </>
+        ) : selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
+          <>
+            <Descriptions.Item label="最不利点(μs)">
+              {typeof detailSelectedCase.head_time_us === "number" && typeof detailSelectedCase.tail_time_us === "number"
+                ? `${detailSelectedCase.head_time_us}/${detailSelectedCase.tail_time_us}`
+                : "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="扫描点数">{String(detailWorkflow.scan_point_count ?? "-")}</Descriptions.Item>
+            <Descriptions.Item label="雷电流波形">{formatDimensionValue(detailWorkflow.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
+            <Descriptions.Item label="闪络判据">{formatDimensionValue(detailWorkflow.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
+            <Descriptions.Item label="海拔修正">{formatDimensionValue(detailWorkflow.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
+            <Descriptions.Item label="感应电压公式">{formatInducedVoltageFormula(detailWorkflow.induced_voltage_formula)}</Descriptions.Item>
+            <Descriptions.Item label="波头范围">{formatRangeSummary(detailWorkflow.head_time_range_us)}</Descriptions.Item>
+            <Descriptions.Item label="波尾范围">{formatRangeSummary(detailWorkflow.tail_time_range_us)}</Descriptions.Item>
+            <Descriptions.Item label="执行适配器">
+              {formatExternalAdapter(readOptionalString(detailExternalExecution, "adapter"))}
+            </Descriptions.Item>
+            <Descriptions.Item label="ATP模型">
+              {readOptionalString(detailExternalExecution, "model_name") || readOptionalString(detailExternalExecution, "model_code") || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="模型版本">
+              {typeof readOptionalNumber(detailExternalExecution, "version_no") === "number"
+                ? `v${readOptionalNumber(detailExternalExecution, "version_no")}`
+                : "-"}
+            </Descriptions.Item>
+            {selectedJobDetailWaveformType === "tongtiao" ? (
               <>
-                <Descriptions.Item label="当前风险">
-                  <Tag color={riskColor(readCurrentRisk(detailRow))}>{formatRiskLevel(readCurrentRisk(detailRow))}</Tag>
-                </Descriptions.Item>
-                <Descriptions.Item label="改造结论">{readString(detailResultObject, "recommendation_result")}</Descriptions.Item>
-              </>
-            ) : selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
-              <>
-                <Descriptions.Item label="最不利点(μs)">
-                  {typeof detailSelectedCase.head_time_us === "number" && typeof detailSelectedCase.tail_time_us === "number"
-                    ? `${detailSelectedCase.head_time_us}/${detailSelectedCase.tail_time_us}`
-                    : "-"}
-                </Descriptions.Item>
-                <Descriptions.Item label="扫描点数">{String(detailWorkflow.scan_point_count ?? "-")}</Descriptions.Item>
-                <Descriptions.Item label="雷电流波形">{formatDimensionValue(detailWorkflow.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
-                <Descriptions.Item label="闪络判据">{formatDimensionValue(detailWorkflow.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
-                <Descriptions.Item label="海拔修正">{formatDimensionValue(detailWorkflow.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
-                <Descriptions.Item label="感应电压公式">{formatInducedVoltageFormula(detailWorkflow.induced_voltage_formula)}</Descriptions.Item>
-                <Descriptions.Item label="波头范围">{formatRangeSummary(detailWorkflow.head_time_range_us)}</Descriptions.Item>
-                <Descriptions.Item label="波尾范围">{formatRangeSummary(detailWorkflow.tail_time_range_us)}</Descriptions.Item>
-                <Descriptions.Item label="执行适配器">
-                  {formatExternalAdapter(readOptionalString(detailExternalExecution, "adapter"))}
-                </Descriptions.Item>
-                <Descriptions.Item label="ATP模型">
-                  {readOptionalString(detailExternalExecution, "model_name") || readOptionalString(detailExternalExecution, "model_code") || "-"}
-                </Descriptions.Item>
-                <Descriptions.Item label="模型版本">
-                  {typeof readOptionalNumber(detailExternalExecution, "version_no") === "number"
-                    ? `v${readOptionalNumber(detailExternalExecution, "version_no")}`
-                    : "-"}
-                </Descriptions.Item>
-                {selectedJobDetailWaveformType === "tongtiao" ? (
-                  <>
-                    <Descriptions.Item label="主导相组">{readOptionalString(detailResultObject, "dominant_phase_set") ?? "-"}</Descriptions.Item>
-                    <Descriptions.Item label="闪络相">{readOptionalString(detailResultObject, "flashover_phase") ?? "-"}</Descriptions.Item>
-                  </>
-                ) : null}
+                <Descriptions.Item label="主导相组">{readOptionalString(detailResultObject, "dominant_phase_set") ?? "-"}</Descriptions.Item>
+                <Descriptions.Item label="闪络相">{readOptionalString(detailResultObject, "flashover_phase") ?? "-"}</Descriptions.Item>
               </>
             ) : null}
-            <Descriptions.Item label="原因分析" span={2}>
-              {readString(detailResultObject, "cause_analysis")}
-            </Descriptions.Item>
-            <Descriptions.Item label="措施建议" span={2}>
-              {readString(detailResultObject, "mitigation_recommendation")}
-            </Descriptions.Item>
-            <Descriptions.Item label="当前得分">
-              {selectedJob?.job_type === "mitigation"
-                ? String(readCurrentScore(detailRow) ?? "-")
-                : String(readOptionalNumber(detailResultObject, "score") ?? "-")}
-            </Descriptions.Item>
-            <Descriptions.Item label="预期得分/得分">
-              {selectedJob?.job_type === "mitigation"
-                ? String(readOptionalNumber(detailResultObject, "expected_score") ?? "-")
-                : String(readOptionalNumber(detailResultObject, "score") ?? "-")}
-            </Descriptions.Item>
-          </Descriptions>
+          </>
+        ) : null}
+        <Descriptions.Item label="原因分析" span={2}>
+          {readString(detailResultObject, "cause_analysis")}
+        </Descriptions.Item>
+        <Descriptions.Item label="措施建议" span={2}>
+          {readString(detailResultObject, "mitigation_recommendation")}
+        </Descriptions.Item>
+        <Descriptions.Item label="当前得分">
+          {selectedJob?.job_type === "mitigation"
+            ? String(readCurrentScore(detailRow) ?? "-")
+            : String(readOptionalNumber(detailResultObject, "score") ?? "-")}
+        </Descriptions.Item>
+        <Descriptions.Item label="预期得分/得分">
+          {selectedJob?.job_type === "mitigation"
+            ? String(readOptionalNumber(detailResultObject, "expected_score") ?? "-")
+            : String(readOptionalNumber(detailResultObject, "score") ?? "-")}
+        </Descriptions.Item>
+      </Descriptions>
 
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            原因细项
-          </Typography.Title>
-          {reasonDetails.length === 0 ? (
-            <Empty description="暂无细项分级" />
-          ) : (
-            <Table<ReasonDetail>
-              rowKey="code"
-              columns={reasonDetailColumns}
-              dataSource={reasonDetails}
-              pagination={false}
-              size="small"
-            />
-          )}
-
-          {selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
-            <>
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                波形扫描
-              </Typography.Title>
-              {scanPoints.length === 0 ? (
-                <Empty description="当前结果未生成扫描点" />
-              ) : (
-                <Table<ScanPoint>
-                  rowKey={(row) => `${row.head_time_us ?? "-"}-${row.tail_time_us ?? "-"}`}
-                  columns={scanPointColumns}
-                  dataSource={scanPoints}
-                  pagination={false}
-                  size="small"
-                  scroll={{ x: 1000 }}
-                />
-              )}
-            </>
-          ) : null}
-
-          {selectedJobDetailWaveformType === "tongtiao" ? (
-            <>
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                相别结果
-              </Typography.Title>
-              {phaseResults.length === 0 ? (
-                <Empty description="当前结果未生成相别结果" />
-              ) : (
-                <Table<PhaseResult>
-                  rowKey="phase"
-                  columns={phaseResultColumns}
-                  dataSource={phaseResults}
-                  pagination={false}
-                  size="small"
-                  scroll={{ x: 1200 }}
-                />
-              )}
-
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                多相结果
-              </Typography.Title>
-              {multiPhaseResults.length === 0 ? (
-                <Empty description="当前结果未生成多相结果" />
-              ) : (
-                <Table<MultiPhaseResult>
-                  rowKey="label"
-                  columns={multiPhaseColumns}
-                  dataSource={multiPhaseResults}
-                  pagination={false}
-                  size="small"
-                  scroll={{ x: 900 }}
-                />
-              )}
-            </>
-          ) : null}
-
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            改造动作
-          </Typography.Title>
-          {mitigationActions.length === 0 ? (
-            <Empty description="当前结果未生成改造动作" />
-          ) : (
-            <Table<MitigationAction>
-              rowKey="code"
-              columns={mitigationActionColumns}
-              dataSource={mitigationActions}
-              pagination={false}
-              size="small"
-            />
-          )}
-        </Space>
+      <Typography.Title level={5} style={{ margin: 0 }}>
+        原因细项
+      </Typography.Title>
+      {reasonDetails.length === 0 ? (
+        <Empty description="暂无细项分级" />
+      ) : (
+        <Table<ReasonDetail>
+          rowKey="code"
+          columns={reasonDetailColumns}
+          dataSource={reasonDetails}
+          pagination={false}
+          size="small"
+        />
       )}
-    </Modal>
+
+      {selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
+        <>
+          <Typography.Title level={5} style={{ margin: 0 }}>
+            波形扫描
+          </Typography.Title>
+          {scanPoints.length === 0 ? (
+            <Empty description="当前结果未生成扫描点" />
+          ) : (
+            <Table<ScanPoint>
+              rowKey={(row) => `${row.head_time_us ?? "-"}-${row.tail_time_us ?? "-"}`}
+              columns={scanPointColumns}
+              dataSource={scanPoints}
+              pagination={false}
+              size="small"
+              scroll={{ x: 1000 }}
+            />
+          )}
+        </>
+      ) : null}
+
+      {selectedJobDetailWaveformType === "tongtiao" ? (
+        <>
+          <Typography.Title level={5} style={{ margin: 0 }}>
+            相别结果
+          </Typography.Title>
+          {phaseResults.length === 0 ? (
+            <Empty description="当前结果未生成相别结果" />
+          ) : (
+            <Table<PhaseResult>
+              rowKey="phase"
+              columns={phaseResultColumns}
+              dataSource={phaseResults}
+              pagination={false}
+              size="small"
+              scroll={{ x: 1200 }}
+            />
+          )}
+
+          <Typography.Title level={5} style={{ margin: 0 }}>
+            多相结果
+          </Typography.Title>
+          {multiPhaseResults.length === 0 ? (
+            <Empty description="当前结果未生成多相结果" />
+          ) : (
+            <Table<MultiPhaseResult>
+              rowKey="label"
+              columns={multiPhaseColumns}
+              dataSource={multiPhaseResults}
+              pagination={false}
+              size="small"
+              scroll={{ x: 900 }}
+            />
+          )}
+        </>
+      ) : null}
+
+      <Typography.Title level={5} style={{ margin: 0 }}>
+        改造动作
+      </Typography.Title>
+      {mitigationActions.length === 0 ? (
+        <Empty description="当前结果未生成改造动作" />
+      ) : (
+        <Table<MitigationAction>
+          rowKey="code"
+          columns={mitigationActionColumns}
+          dataSource={mitigationActions}
+          pagination={false}
+          size="small"
+        />
+      )}
+    </Space>
   );
 }

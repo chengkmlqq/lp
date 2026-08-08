@@ -685,6 +685,19 @@ export type TowerAnalysisSummary = {
   mitigation_recommendation: string | null;
 };
 
+export type TowerProfileLightningCurrentSummary = {
+  line_id: string | null;
+  line_code: string | null;
+  current_a: number | null;
+  current_b: number | null;
+  peak_max: number | null;
+  peak_min: number | null;
+  sampled_event_count: number;
+  region_id: string | null;
+  is_synthetic: boolean;
+  prepared_at: string | null;
+};
+
 export type LineTowerSummary = {
   id: string;
   line_id: string;
@@ -707,6 +720,10 @@ export type LineTowerSummary = {
   lightning_result: TowerLightningResultSummary | null;
   analysis: TowerAnalysisSummary | null;
   raw_extra_json: Record<string, unknown>;
+  current_type: string | null;
+  current_a: number | null;
+  current_b: number | null;
+  lightning_current_preparation: TowerProfileLightningCurrentSummary | null;
   create_date: string;
   create_user: string | null;
   update_date: string;
@@ -1241,10 +1258,29 @@ export type LightningAmplitudeRecord = {
   is_synthetic: boolean;
   feature_json: Record<string, unknown>;
   notes: string | null;
+  backfill_line_count: number;
   create_date: string;
   create_user: string | null;
   update_date: string;
   update_user: string | null;
+};
+
+export type LightningAmplitudeBackfillLine = {
+  line_id: string;
+  line_code: string | null;
+  line_name: string | null;
+  voltage_kv: number | null;
+  prepared_at: string | null;
+  current_a: number | null;
+  current_b: number | null;
+  peak_max: number | null;
+  peak_min: number | null;
+  sampled_event_count: number;
+};
+
+export type LightningAmplitudeBackfillLineListResponse = {
+  items: LightningAmplitudeBackfillLine[];
+  total: number;
 };
 
 export type LightningAmplitudeListResponse = {

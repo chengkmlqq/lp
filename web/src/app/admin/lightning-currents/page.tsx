@@ -35,6 +35,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { LightningTowerView } from "@/components/lightning-tower-view";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -43,6 +44,10 @@ import type {
   LightningAmplitudeRecord,
   LightningAmplitudeListResponse,
   LightningAmplitudeImportResponse,
+  LightningAmplitudeBackfillLine,
+  LightningAmplitudeBackfillLineListResponse,
+  LineListResponse,
+  LineSummary,
   LightningPolarity,
 } from "@/types/auth";
 import { CHINESE_CITIES, type CityOption } from "@/data/chinese-cities";
@@ -99,6 +104,18 @@ function formatNumber(value: number | null | undefined, digits = 3): string {
   return value.toFixed(digits);
 }
 
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) {
+    return "-";
+  }
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return "-";
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function formatPolarity(polarity: LightningPolarity): string {
   if (polarity === "positive") return "正极性";
   if (polarity === "negative") return "负极性";
@@ -130,6 +147,10 @@ export default function AdminLightningCurrentsPage() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
+  const [backfillLinesOpen, setBackfillLinesOpen] = useState(false);
+  const [backfillLinesRecord, setBackfillLinesRecord] = useState<LightningAmplitudeRecord | null>(null);
+  const [linePickerOpen, setLinePickerOpen] = useState(false);
+  const [linePickerLineId, setLinePickerLineId] = useState<string | null>(null);
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -478,6 +499,64 @@ export default function AdminLightningCurrentsPage() {
     setActiveTabKey(key);
   }, [canManage, retryMutation]);
 
+  // 回填线路小窗查询
+  const backfillLinesQuery = useQuery<LightningAmplitudeBackfillLineListResponse>({
+    queryKey: ["lightning-currents", backfillLinesRecord?.id, "backfill-lines"],
+    enabled: !!backfillLinesRecord,
+    queryFn: async () => {
+      const response = await fetchWithAuth(
+        `/api/v1/lightning-currents/amplitudes/${backfillLinesRecord?.id}/backfill-lines`,
+      );
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LightningAmplitudeBackfillLineListResponse;
+    },
+  });
+
+  const openBackfillLines = (record: LightningAmplitudeRecord) => {
+    setBackfillLinesRecord(record);
+    setBackfillLinesOpen(true);
+  };
+
+  // 线路选择（杆塔列表 Tab 用）：复用现有线路列表接口
+  const linesQuery = useQuery<LineListResponse>({
+    queryKey: ["lines"],
+    enabled: linePickerOpen,
+    queryFn: async () => {
+      const response = await fetchWithAuth(`/api/v1/lines?limit=1000`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LineListResponse;
+    },
+  });
+
+  // 打开杆塔列表 Tab（key 用 line-{lineId} 去重，可同时打开多条线路的 Tab）
+  const openTowerTab = useCallback((lineId: string) => {
+    const key = `line-${lineId}`;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: (
+            <Space size={6}>
+              <span>杆塔列表</span>
+              <Tag color="blue">回填数据</Tag>
+            </Space>
+          ),
+          closable: true,
+          children: <LightningTowerView lineId={lineId} fetchWithAuth={fetchWithAuth} />,
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, [fetchWithAuth]);
+
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
       return;
@@ -587,6 +666,20 @@ export default function AdminLightningCurrentsPage() {
             <Typography.Text type="secondary">采样点数</Typography.Text>
             <Typography.Text>{record.sample_count}</Typography.Text>
           </div>
+          <div className="admin-lightning-events-card-field">
+            <Typography.Text type="secondary">回填关联线路数</Typography.Text>
+            {(() => {
+              const count = record.backfill_line_count ?? 0;
+              if (count === 0) {
+                return <Typography.Text type="secondary">-</Typography.Text>;
+              }
+              return (
+                <Button type="link" size="small" style={{ padding: 0 }} onClick={() => openBackfillLines(record)}>
+                  {count} 条
+                </Button>
+              );
+            })()}
+          </div>
           {record.status === "processing" && (
             <Progress percent={record.progress} size="small" />
           )}
@@ -658,11 +751,49 @@ export default function AdminLightningCurrentsPage() {
         },
       },
       {
+        title: "回填关联线路数",
+        dataIndex: "backfill_line_count",
+        key: "backfill_line_count",
+        width: 130,
+        render: (_: unknown, row) => {
+          const count = row.backfill_line_count ?? 0;
+          if (count === 0) {
+            return <Typography.Text type="secondary">-</Typography.Text>;
+          }
+          return (
+            <Button type="link" size="small" style={{ padding: 0 }} onClick={() => openBackfillLines(row)}>
+              {count} 条
+            </Button>
+          );
+        },
+      },
+      {
         title: "操作",
         key: "actions",
-        width: 220,
+        width: 200,
         fixed: "right",
         render: (_: unknown, row) => {
+          // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/删除），其余条件操作收进 ⋯ 三点下拉
+          const moreMenuItems: MenuProps["items"] = [
+            {
+              key: "towers",
+              label: "杆塔列表",
+              onClick: () => {
+                setLinePickerLineId(null);
+                setLinePickerOpen(true);
+              },
+            },
+            ...(row.status === "failed" && canManage
+              ? [
+                  {
+                    key: "retry",
+                    label: "重试",
+                    disabled: retryMutation.isPending,
+                    onClick: () => retryMutation.mutate(row),
+                  },
+                ]
+              : []),
+          ];
           return (
             <Space wrap>
               <Button
@@ -671,15 +802,6 @@ export default function AdminLightningCurrentsPage() {
               >
                 详情
               </Button>
-              {row.status === "failed" && canManage && (
-                <Button
-                  size="small"
-                  loading={retryMutation.isPending}
-                  onClick={() => retryMutation.mutate(row)}
-                >
-                  重试
-                </Button>
-              )}
               {canManage && (
                 <Button
                   size="small"
@@ -701,12 +823,15 @@ export default function AdminLightningCurrentsPage() {
                   删除
                 </Button>
               )}
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button size="small" icon={<MoreOutlined />} />
+              </Dropdown>
             </Space>
           );
         },
       },
     ],
-    [canManage, deleteMutation, retryMutation, openDetail],
+    [canManage, deleteMutation, retryMutation, openDetail, openBackfillLines],
   );
 
   if (initializing) {
@@ -967,6 +1092,133 @@ export default function AdminLightningCurrentsPage() {
             </Button>
           </div>
         </Form>
+      </Modal>
+
+      {/* 回填线路小窗 */}
+      <Modal
+        title={backfillLinesRecord ? `回填线路 - ${backfillLinesRecord.source_file_name}` : "回填线路"}
+        open={backfillLinesOpen}
+        onCancel={() => {
+          setBackfillLinesOpen(false);
+          setBackfillLinesRecord(null);
+        }}
+        footer={null}
+        width={640}
+      >
+        <Table<LightningAmplitudeBackfillLine>
+          rowKey="line_id"
+          size="small"
+          loading={backfillLinesQuery.isFetching}
+          dataSource={backfillLinesQuery.data?.items ?? []}
+          tableLayout="fixed"
+          pagination={false}
+          scroll={{ y: 320 }}
+          columns={[
+            {
+              title: "线路编号",
+              dataIndex: "line_code",
+              key: "line_code",
+              width: 120,
+              render: (value: string | null) => value || "-",
+            },
+            {
+              title: "线路名称",
+              dataIndex: "line_name",
+              key: "line_name",
+              width: 150,
+              ellipsis: true,
+              render: (value: string | null) => value || "-",
+            },
+            {
+              title: "电压(kV)",
+              dataIndex: "voltage_kv",
+              key: "voltage_kv",
+              width: 90,
+              render: (value: number | null) => (value == null ? "-" : value),
+            },
+            {
+              title: "current_a",
+              dataIndex: "current_a",
+              key: "current_a",
+              width: 90,
+              render: (value: number | null) => formatNumber(value, 3),
+            },
+            {
+              title: "current_b",
+              dataIndex: "current_b",
+              key: "current_b",
+              width: 90,
+              render: (value: number | null) => formatNumber(value, 3),
+            },
+            {
+              title: "峰值max(kA)",
+              dataIndex: "peak_max",
+              key: "peak_max",
+              width: 100,
+              render: (value: number | null) => formatNumber(value, 3),
+            },
+            {
+              title: "峰值min(kA)",
+              dataIndex: "peak_min",
+              key: "peak_min",
+              width: 100,
+              render: (value: number | null) => formatNumber(value, 3),
+            },
+            {
+              title: "采样数",
+              dataIndex: "sampled_event_count",
+              key: "sampled_event_count",
+              width: 70,
+              render: (value: number) => value ?? 0,
+            },
+            {
+              title: "回填时间",
+              dataIndex: "prepared_at",
+              key: "prepared_at",
+              width: 150,
+              render: (value: string | null) => formatDateTime(value),
+            },
+          ]}
+          locale={{
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="该幅值尚未被任何线路回填使用"
+              />
+            ),
+          }}
+        />
+      </Modal>
+
+      {/* 杆塔列表：选择线路后打开动态 Tab */}
+      <Modal
+        title="选择线路查看杆塔列表"
+        open={linePickerOpen}
+        onCancel={() => setLinePickerOpen(false)}
+        onOk={() => {
+          if (linePickerLineId) {
+            openTowerTab(linePickerLineId);
+            setLinePickerOpen(false);
+            setLinePickerLineId(null);
+          }
+        }}
+        okText="打开杆塔列表"
+        okButtonProps={{ disabled: !linePickerLineId }}
+        width={480}
+      >
+        <Select
+          style={{ width: "100%" }}
+          showSearch
+          optionFilterProp="label"
+          placeholder="搜索并选择线路"
+          value={linePickerLineId ?? undefined}
+          onChange={(value) => setLinePickerLineId(value)}
+          loading={linesQuery.isFetching}
+          options={(linesQuery.data?.items ?? []).map((line: LineSummary) => ({
+            label: `${line.code} - ${line.name}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`,
+            value: line.id,
+          }))}
+        />
       </Modal>
 
     </div>

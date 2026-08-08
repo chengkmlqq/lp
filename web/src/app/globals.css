@@ -2442,6 +2442,16 @@ body {
   align-items: baseline;
 }
 
+/* LP-278: 编辑/新建模型 Modal 内部分组为 Tabs（基本信息 / 默认参数），
+   与全系统“内容较多时使用动态选项卡”交互规范保持一致 */
+.admin-tower-models-modal-tabs .ant-tabs-nav {
+  margin: 0 0 12px;
+}
+
+.admin-tower-models-modal-tabs .ant-tabs-tabpane {
+  min-height: 220px;
+}
+
 .admin-atp-models-table-anchor .ant-table-body {
   min-height: var(--admin-atp-models-table-body-min-height, 180px);
 }
@@ -3262,6 +3272,87 @@ body {
 
 :root[data-fquiz-theme="dark"] .admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab {
   background: var(--ant-color-bg-container) !important;
+}
+
+/* LP-274: 防雷分析页详情从大尺寸 Modal 改造为动态选项卡（editable-card）。
+   复用地闪密度统计页的 Tabs 布局约定：列表主 Tab 撑满高度、详情 Tab 平铺在 tabBar 后，
+   Tab 栏与 Card 头部连成一条白带。 */
+.admin-fl-analysis-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin-fl-analysis-tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  background: var(--ant-color-bg-container);
+}
+
+.admin-fl-analysis-tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-fl-analysis-tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-fl-analysis-tabs .ant-table-pagination {
+  margin: 12px 0 0 !important;
+}
+
+.admin-fl-analysis-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+.admin-fl-analysis-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+:root[data-fquiz-theme="dark"] .admin-fl-analysis-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+}
+
+/* LP-274: 结果列表区容器，在 Tab 内容区内提供内边距 */
+.admin-fl-analysis-list-pane {
+  padding: 12px;
 }
 
 .admin-lightning-distribution-card-view {
