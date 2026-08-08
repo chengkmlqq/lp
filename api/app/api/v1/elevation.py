@@ -12,6 +12,7 @@ from ...schemas.elevation import (
     ElevationApplyJobListResponse,
     ElevationApplyJobSummary,
     ElevationDatasetListResponse,
+    ElevationLinkedLineListResponse,
     ElevationTerrainLayerResponse,
     ElevationFileRecordAnalyzeResponse,
     ElevationFileRecordCreateRequest,
@@ -27,6 +28,7 @@ from ...schemas.elevation import (
 from ...services.elevation_service import (
     create_apply_job,
     get_job_by_id,
+    get_linked_lines_for_file_record,
     list_jobs,
     serialize_job,
     get_file_record_analysis_task_status,
@@ -154,6 +156,16 @@ def preview_elevation_file_record(
         record_id=record_id,
         max_points=max_points,
     )
+
+
+@router.get("/records/{record_id}/linked-lines", response_model=ElevationLinkedLineListResponse)
+def get_elevation_file_record_linked_lines(
+    record_id: str,
+    _: CurrentUser = Depends(require_any_permission("elevation.read", "elevation.manage")),
+    db: Session = Depends(get_db),
+) -> ElevationLinkedLineListResponse:
+    """查询高程文件回填过的关联线路列表（含最近一次回填状态/杆塔统计）。"""
+    return get_linked_lines_for_file_record(db, record_id=record_id)
 
 
 @router.get("/records/{record_id}/analysis-status", response_model=ElevationFileRecordTaskStatusResponse)

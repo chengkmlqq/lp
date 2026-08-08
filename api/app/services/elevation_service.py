@@ -27,6 +27,8 @@ from ..schemas.elevation import (
     ElevationFileRecordTaskStatusResponse,
     ElevationFileRecordTerrainTaskStatusResponse,
     ElevationFileRecordPreviewResponse,
+    ElevationLinkedLineListResponse,
+    ElevationLinkedLineSummary,
     ElevationPreviewCell,
     ElevationPreviewDiagnostics,
     ElevationPreviewPoint,
@@ -321,6 +323,55 @@ def get_job_by_id(db: Session, job_id: str) -> ElevationApplyJob | None:
     return db.execute(
         select(ElevationApplyJob).where(ElevationApplyJob.id == job_id)
     ).scalar_one_or_none()
+
+
+def get_linked_lines_for_file_record(
+    db: Session,
+    *,
+    record_id: str,
+) -> ElevationLinkedLineListResponse:
+    """查询一个高程文件回填过的关联线路列表。
+
+    反查路径：`elevation_apply_job` WHERE file_record_id = record_id JOIN power_line。
+    一个文件可能对同一线路多次回填，按 line_id 聚合取最近一条（finished_at 排序），
+    已删除线路因 FK CASCADE 自动不在结果中。
+    """
+    if get_file_record_by_id(db, record_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="高程文件记录不存在")
+
+    jobs = db.execute(
+        select(ElevationApplyJob)
+        .where(ElevationApplyJob.file_record_id == record_id)
+        .order_by(
+            ElevationApplyJob.line_id.asc(),
+            ElevationApplyJob.finished_at.desc().nulls_last(),
+            ElevationApplyJob.create_date.desc(),
+        )
+    ).scalars().all()
+
+    latest_by_line: dict[str, ElevationApplyJob] = {}
+    for job in jobs:
+        if job.line_id not in latest_by_line:
+            latest_by_line[job.line_id] = job
+
+    items: list[ElevationLinkedLineSummary] = []
+    for job in latest_by_line.values():
+        line = job.line
+        items.append(
+            ElevationLinkedLineSummary(
+                line_id=job.line_id,
+                line_code=line.code if line else None,
+                line_name=line.name if line else None,
+                voltage_kv=line.voltage_kv if line else None,
+                apply_status=job.status,
+                tower_count=job.total_tower_count,
+                updated_tower_count=job.updated_tower_count,
+                applied_at=job.finished_at,
+            )
+        )
+
+    items.sort(key=lambda item: (item.applied_at is None, item.applied_at or utcnow()), reverse=True)
+    return ElevationLinkedLineListResponse(items=items, total=len(items))
 
 
 def create_apply_job(

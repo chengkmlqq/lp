@@ -48,7 +48,11 @@ from .elevation_service import (
 from .file_service import _build_driver_or_400
 
 
-def serialize_file_record(item: ElevationFileRecord) -> ElevationFileRecordSummary:
+def serialize_file_record(
+    item: ElevationFileRecord,
+    *,
+    linked_line_count: int = 0,
+) -> ElevationFileRecordSummary:
     return ElevationFileRecordSummary(
         id=item.id,
         file_name=item.file_name,
@@ -59,6 +63,8 @@ def serialize_file_record(item: ElevationFileRecord) -> ElevationFileRecordSumma
         mount_code=item.mount_code,
         resolution_m=item.resolution_m,
         status=item.status,  # type: ignore[arg-type]
+        data_source_type=item.data_source_type,
+        linked_line_count=linked_line_count,
         bbox_min_lon=item.bbox_min_lon,
         bbox_max_lon=item.bbox_max_lon,
         bbox_min_lat=item.bbox_min_lat,
@@ -113,8 +119,26 @@ def list_file_records(
     items = db.execute(
         stmt.order_by(ElevationFileRecord.update_date.desc(), ElevationFileRecord.create_date.desc())
     ).scalars().all()
+
+    if not items:
+        return ElevationFileRecordListResponse(items=[], total=total)
+
+    # 关联线路数：SQL 子查询统计（一对多，一个文件可能对同一线路多次回填，需 DISTINCT）
+    linked_count_sub = (
+        select(
+            ElevationApplyJob.file_record_id,
+            func.count(func.distinct(ElevationApplyJob.line_id)).label("linked_line_count"),
+        )
+        .where(ElevationApplyJob.file_record_id.in_([item.id for item in items]))
+        .group_by(ElevationApplyJob.file_record_id)
+    )
+    linked_counts = dict(db.execute(linked_count_sub).all())
+
     return ElevationFileRecordListResponse(
-        items=[serialize_file_record(item) for item in items],
+        items=[
+            serialize_file_record(item, linked_line_count=int(linked_counts.get(item.id, 0)))
+            for item in items
+        ],
         total=total,
     )
 

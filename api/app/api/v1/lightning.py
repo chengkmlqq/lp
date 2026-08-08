@@ -24,6 +24,8 @@ from ...schemas.lightning import (
     LightningDensityPreparationResponse,
     LightningLpDrawRequest,
     LightningLpDrawResponse,
+    LightningLinkedLineSummary,
+    LightningLinkedLinesResponse,
 )
 from ...services.lightning_service import (
     delete_lightning_amplitude,
@@ -34,6 +36,7 @@ from ...services.lightning_service import (
     get_lightning_distribution_image_content,
     get_lightning_distribution_lp_image_content,
     get_lightning_distribution_status,
+    get_linked_lines_for_distribution,
     get_peak_exceedance_curve,
     import_lightning_amplitude_from_file,
     import_lightning_distribution_from_file,
@@ -316,6 +319,16 @@ def get_lightning_distribution_detail_endpoint(
     db: Session = Depends(get_db),
 ) -> LightningDistributionRecord:
     return get_lightning_distribution_detail(db, distribution_id)
+
+
+@router.get("/distributions/{distribution_id}/linked-lines", response_model=LightningLinkedLinesResponse)
+def get_lightning_distribution_linked_lines_endpoint(
+    distribution_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningLinkedLinesResponse:
+    """反查该分布回填过的线路列表（供「关联线路」小窗与杆塔数据 Tab 使用）。"""
+    return get_linked_lines_for_distribution(db, distribution_id)
 
 
 # ---------------------------------------------------------------------------

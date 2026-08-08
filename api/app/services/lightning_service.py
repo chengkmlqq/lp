@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import cast, func, or_, select, String
 from sqlalchemy.orm import Session
 
 from ..core.database import SessionLocal
@@ -38,6 +38,8 @@ from ..schemas.lightning import (
     LightningPolarity,
     LightningLpDrawRequest,
     LightningLpDrawResponse,
+    LightningLinkedLineSummary,
+    LightningLinkedLinesResponse,
 )
 from .line_preparation_service import record_line_preparation_source, summarize_line_preparation
 from .line_service import serialize_line
@@ -1084,7 +1086,11 @@ def _fire_and_forget(coro: object) -> None:
 # ---------------------------------------------------------------------------
 # 地闪分布（LightningDistribution）服务函数
 # ---------------------------------------------------------------------------
-def _serialize_distribution(dist: LightningDistribution) -> LightningDistributionRecord:
+def _serialize_distribution(
+    dist: LightningDistribution,
+    *,
+    linked_line_count: int | None = None,
+) -> LightningDistributionRecord:
     """把 LightningDistribution ORM 对象序列化为 schema。"""
     # 兜底剥离 grid_cells（历史数据或再次引入时防御），防止列表接口响应体过大。
     _stats_json = dist.stats_json
@@ -1100,6 +1106,7 @@ def _serialize_distribution(dist: LightningDistribution) -> LightningDistributio
         source_file_name=dist.source_file_name,
         source_object_key=dist.source_object_key,
         import_type=dist.import_type,
+        linked_line_count=linked_line_count,
         status=dist.status,
         stage=dist.stage,
         progress=dist.progress,
@@ -1128,6 +1135,132 @@ def _serialize_distribution(dist: LightningDistribution) -> LightningDistributio
         update_date=dist.update_date,
         update_user=dist.update_user,
     )
+
+
+# ---------------------------------------------------------------------------
+# 回填关系反查（关联线路）
+# ---------------------------------------------------------------------------
+def _iter_linked_towers(
+    db: Session,
+    distribution_id: str,
+) -> list[tuple[str, dict[str, Any]]]:
+    """查询所有 `raw_extra_json.lightning_density.source_distribution_id == distribution_id` 的杆塔。
+
+    返回 `(line_id, raw_extra_json)` 轻量元组，避免触发 `selectin` 关系加载
+    （profile/circuits 等字段本函数用不到）。
+
+    `raw_extra_json` 是 SQLAlchemy JSON 列。PostgreSQL 与 SQLite 的 JSON 路径查询语法
+    不同（SQLite 不支持 `.astext` / jsonb 路径），这里采用「SQL 粗筛 + 内存精滤」的
+    跨方言稳妥做法：
+    - 先按 JSON 文本 LIKE 粗筛（仅包含 `source_distribution_id` 与目标 id），两种方言都可用；
+    - 再在 Python 中精确读取 `lightning_density.source_distribution_id` 做等值判断，
+      避免 LIKE 命中同名的其他字段。
+    """
+    if not distribution_id:
+        return []
+    raw_json_text = cast(LineTower.raw_extra_json, String)
+    candidates = db.execute(
+        select(LineTower.id, LineTower.line_id, LineTower.raw_extra_json)
+        .where(
+            raw_json_text.ilike(f"%{distribution_id}%"),
+        )
+    ).all()
+
+    matched: list[tuple[str, dict[str, Any]]] = []
+    for row in candidates:
+        tower_line_id, raw_extra = row[1], row[2]
+        if not tower_line_id:
+            continue
+        extra = raw_extra or {}
+        density = extra.get("lightning_density")
+        if not isinstance(density, dict):
+            continue
+        if density.get("source_distribution_id") == distribution_id:
+            matched.append((tower_line_id, extra))
+    return matched
+
+
+def _collect_linked_lines(
+    towers: list[tuple[str, dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    """按 line_id 聚合杆塔列表，返回 {line_id: {tower_count, prepared_at}}。"""
+    aggregated: dict[str, dict[str, Any]] = {}
+    for line_id, extra in towers:
+        if not line_id:
+            continue
+        bucket = aggregated.get(line_id)
+        if bucket is None:
+            bucket = {
+                "line_id": line_id,
+                "tower_count": 0,
+                "prepared_at": None,
+            }
+            aggregated[line_id] = bucket
+        bucket["tower_count"] += 1
+        next_prepared: str | None = None
+        density = extra.get("lightning_density")
+        if isinstance(density, dict):
+            next_prepared = density.get("prepared_at")
+        if next_prepared:
+            previous = bucket["prepared_at"]
+            if previous is None or next_prepared > previous:
+                bucket["prepared_at"] = next_prepared
+    return aggregated
+
+
+def _linked_lines_with_line_meta(
+    db: Session,
+    aggregated: dict[str, dict[str, Any]],
+) -> list[LightningLinkedLineSummary]:
+    """把按 line_id 聚合的摘要 join Line 元数据，产出响应模型列表。"""
+    if not aggregated:
+        return []
+    line_ids = list(aggregated.keys())
+    line_rows = db.execute(
+        select(Line.id, Line.code, Line.name, Line.voltage_kv).where(Line.id.in_(line_ids))
+    ).all()
+    line_map = {row[0]: row for row in line_rows}
+
+    items: list[LightningLinkedLineSummary] = []
+    for line_id, bucket in aggregated.items():
+        line = line_map.get(line_id)
+        items.append(
+            LightningLinkedLineSummary(
+                line_id=line_id,
+                line_code=line[1] if line else None,
+                line_name=line[2] if line else None,
+                voltage_kv=float(line[3]) if line and line[3] is not None else None,
+                tower_count=bucket["tower_count"],
+                prepared_at=bucket.get("prepared_at"),
+            )
+        )
+    items.sort(key=lambda item: ((item.line_code or "").upper(), item.line_id))
+    return items
+
+
+def get_linked_lines_for_distribution(
+    db: Session,
+    distribution_id: str,
+) -> LightningLinkedLinesResponse:
+    """反查该分布回填过的线路列表，按 line_id 去重聚合。
+
+    返回字段：line_id / line_code / line_name / voltage_kv / tower_count / prepared_at。
+    没有任何杆塔引用时返回空列表（total=0）。
+    """
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
+
+    towers = _iter_linked_towers(db, distribution_id)
+    aggregated = _collect_linked_lines(towers)
+    items = _linked_lines_with_line_meta(db, aggregated)
+    return LightningLinkedLinesResponse(items=items, total=len(items))
+
+
+def get_distribution_linked_line_count(db: Session, distribution_id: str) -> int:
+    """统计单个分布被多少条线路的杆塔引用（列表页展示数量）。"""
+    towers = _iter_linked_towers(db, distribution_id)
+    return len(_collect_linked_lines(towers))
 
 
 def import_lightning_distribution_from_file(
@@ -1234,12 +1367,60 @@ def list_lightning_distributions(
         .offset(offset)
     ).scalars().all()
 
+    # 批量统计每页分布被多少条线路的杆塔引用（linked_line_count）
+    row_ids = [dist.id for dist in rows]
+    linked_counts = _batch_distribution_linked_line_counts(db, row_ids)
+
     return LightningDistributionListResponse(
-        items=[_serialize_distribution(d) for d in rows],
+        items=[
+            _serialize_distribution(dist, linked_line_count=linked_counts.get(dist.id, 0))
+            for dist in rows
+        ],
         total=total,
         limit=limit,
         offset=offset,
     )
+
+
+def _batch_distribution_linked_line_counts(
+    db: Session,
+    distribution_ids: list[str],
+) -> dict[str, int]:
+    """对一批分布 id 统计各自被多少条线路的杆塔引用（linked_line_count）。
+
+    复用 SQL 粗筛 + 内存精滤：先按 JSON 文本 LIKE 缩小候选杆塔集合，
+    再精确匹配 `lightning_density.source_distribution_id`。
+    """
+    if not distribution_ids:
+        return {}
+    distinct_ids = list(dict.fromkeys(distribution_ids))
+    result: dict[str, int] = {distribution_id: 0 for distribution_id in distinct_ids}
+    try:
+        raw_json_text = cast(LineTower.raw_extra_json, String)
+        candidates = db.execute(
+            select(LineTower.id, LineTower.line_id, LineTower.raw_extra_json).where(
+                raw_json_text.ilike("%source_distribution_id%"),
+            )
+        ).all()
+    except Exception:
+        return result
+
+    per_id_lines: dict[str, set[str]] = {distribution_id: set() for distribution_id in distinct_ids}
+    wanted = set(distinct_ids)
+    for row in candidates:
+        tower_line_id, raw_extra = row[1], row[2]
+        if not tower_line_id:
+            continue
+        extra = raw_extra or {}
+        density = extra.get("lightning_density")
+        if not isinstance(density, dict):
+            continue
+        source_id = density.get("source_distribution_id")
+        if source_id in wanted:
+            per_id_lines[source_id].add(tower_line_id)
+    for distribution_id, line_ids in per_id_lines.items():
+        result[distribution_id] = len(line_ids)
+    return result
 
 
 def get_lightning_distribution_by_id(db: Session, distribution_id: str) -> LightningDistribution | None:
@@ -1256,7 +1437,8 @@ def get_lightning_distribution_detail(
     dist = get_lightning_distribution_by_id(db, distribution_id)
     if not dist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
-    return _serialize_distribution(dist)
+    linked_count = get_distribution_linked_line_count(db, distribution_id)
+    return _serialize_distribution(dist, linked_line_count=linked_count)
 
 
 def get_lightning_distribution_status(
@@ -1267,13 +1449,14 @@ def get_lightning_distribution_status(
     dist = get_lightning_distribution_by_id(db, distribution_id)
     if not dist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
+    linked_count = get_distribution_linked_line_count(db, distribution_id)
     return LightningDistributionStatusResponse(
         distribution_id=dist.id,
         status=dist.status,
         stage=dist.stage,
         progress=dist.progress,
         error_message=dist.error_message,
-        record=_serialize_distribution(dist),
+        record=_serialize_distribution(dist, linked_line_count=linked_count),
     )
 
 

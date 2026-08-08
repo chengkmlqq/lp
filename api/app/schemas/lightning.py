@@ -117,6 +117,8 @@ class LightningDistributionRecord(BaseModel):
     source_object_key: str | None = None
     import_type: str = "distribution"
 
+    linked_line_count: int | None = None
+
     status: str = "pending"   # pending|processing|completed|failed
     stage: str = "parsing"    # parsing|validating|statistics|rendering
     progress: int = 0
@@ -221,3 +223,21 @@ class LightningLpDrawRequest(BaseModel):
 class LightningLpDrawResponse(BaseModel):
     task_id: str
     status: str = "submitted"
+
+
+# ---------------------------------------------------------------------------
+# 关联线路反查（回填关系）
+# ---------------------------------------------------------------------------
+class LightningLinkedLineSummary(BaseModel):
+    """一条地闪分布记录回填过的线路摘要。"""
+    line_id: str
+    line_code: str | None = None
+    line_name: str | None = None
+    voltage_kv: float | None = None
+    tower_count: int = 0          # 该线路有多少杆塔引用了此分布数据
+    prepared_at: str | None = None   # 最近一次回填时间
+
+
+class LightningLinkedLinesResponse(BaseModel):
+    items: list[LightningLinkedLineSummary]
+    total: int

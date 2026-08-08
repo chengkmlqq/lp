@@ -1,7 +1,7 @@
 "use client";
 
-import type { ComponentType, CSSProperties, RefAttributes } from "react";
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import type { ComponentType, CSSProperties, ReactNode, RefAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -34,6 +34,7 @@ import type { ColumnsType } from "antd/es/table";
 
 import { useAuth } from "@/components/auth-provider";
 import { ElevationPreviewCesiumMap } from "@/components/elevation-preview-cesium-map";
+import { ElevationTowerView } from "@/components/elevation-tower-view";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
@@ -52,6 +53,7 @@ type ElevationFileRecordSummary = {
   resolution_m: number | null;
   status: string;
   data_source_type: string;
+  linked_line_count: number;
   bbox_min_lon: number | null;
   bbox_max_lon: number | null;
   bbox_min_lat: number | null;
@@ -161,6 +163,31 @@ type ElevationFileRecordUploadResponse = {
   warnings: string[];
 };
 
+type ElevationLinkedLineSummary = {
+  line_id: string;
+  line_code: string | null;
+  line_name: string | null;
+  voltage_kv: number | null;
+  apply_status: string;
+  tower_count: number;
+  updated_tower_count: number;
+  applied_at: string | null;
+};
+
+type ElevationLinkedLineListResponse = {
+  items: ElevationLinkedLineSummary[];
+  total: number;
+};
+
+type DetailTabItem = {
+  key: string;
+  label: ReactNode;
+  closable: boolean;
+  children: ReactNode;
+};
+
+const LIST_TAB_KEY = "list";
+
 type UploadFormValues = {
   source?: string;
   resolution_m?: number;
@@ -189,6 +216,23 @@ function statusTagColor(status: string): string {
   if (status === "pending" || status === "queued") return "orange";
   if (status === "failed" || status === "disabled") return "red";
   return "default";
+}
+
+function applyStatusLabel(status: string): string {
+  if (status === "success") return "成功";
+  if (status === "running") return "处理中";
+  if (status === "pending") return "待处理";
+  if (status === "failed") return "失败";
+  return status;
+}
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return "-";
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 function formatFileSize(bytes: number): string {
@@ -268,6 +312,13 @@ export default function ElevationRecordsPage() {
   const [previewData, setPreviewData] = useState<ElevationFileRecordPreviewResponse | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // 动态详情 Tab（参照 lightning-distribution LP-264 的 detailTabs 机制）
+  const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
+  // 关联线路小窗
+  const [linkedLinesModalOpen, setLinkedLinesModalOpen] = useState(false);
+  const [linkedLinesRecord, setLinkedLinesRecord] = useState<ElevationFileRecordSummary | null>(null);
 
   // Fetch file records
   const { data: recordsData, isLoading } = useQuery<FileRecordListResponse>({
@@ -427,6 +478,65 @@ export default function ElevationRecordsPage() {
       message.error(readMutationError(error, "预览失败"));
     },
   });
+
+  // 关联线路明细（小窗）
+  const linkedLinesQuery = useQuery<ElevationLinkedLineListResponse>({
+    queryKey: ["elevation-records", linkedLinesRecord?.id, "linked-lines"],
+    enabled: !!linkedLinesRecord,
+    queryFn: async () => {
+      const response = await fetchWithAuth(`/api/v1/elevation/records/${linkedLinesRecord?.id}/linked-lines`);
+      return readJsonResponse<ElevationLinkedLineListResponse>(response);
+    },
+  });
+
+  const openLinkedLinesModal = (record: ElevationFileRecordSummary) => {
+    setLinkedLinesRecord(record);
+    setLinkedLinesModalOpen(true);
+  };
+
+  // 打开回填数据 Tab（key 用 towers-{record.id} 去重，已存在只切换）
+  const openTowerTab = useCallback((record: ElevationFileRecordSummary) => {
+    const key = `towers-${record.id}`;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: (
+            <Space size={6}>
+              <span>{record.file_name}</span>
+              <Tag color="blue">回填数据</Tag>
+            </Space>
+          ),
+          closable: true,
+          children: (
+            <ElevationTowerView
+              record={record}
+              fetchWithAuth={fetchWithAuth}
+            />
+          ),
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, [fetchWithAuth]);
+
+  const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
+    if (action !== "remove") {
+      return;
+    }
+    const key = String(targetKey);
+    const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
+    const next = detailTabs.filter((tab) => tab.key !== key);
+    setDetailTabs(next);
+    if (activeTabKey === key) {
+      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+      setActiveTabKey(fallback);
+    }
+  }, [detailTabs, activeTabKey]);
 
   const handleKeywordChange = (value: string) => {
     setKeywordInput(value);
@@ -612,6 +722,21 @@ export default function ElevationRecordsPage() {
       },
     },
     {
+      title: "关联线路",
+      key: "linked_lines",
+      width: 100,
+      render: (_value, record) => (
+        <Button
+          type="link"
+          size="small"
+          style={{ padding: 0 }}
+          onClick={() => openLinkedLinesModal(record)}
+        >
+          {record.linked_line_count ?? 0} 条
+        </Button>
+      ),
+    },
+    {
       title: "操作",
       key: "actions",
       fixed: "right",
@@ -629,6 +754,14 @@ export default function ElevationRecordsPage() {
               onClick={() => previewMutation.mutate(row.id)}
             >
               预览
+            </Button>
+
+            <Button
+              size="small"
+              disabled={rowBusy}
+              onClick={() => openTowerTab(row)}
+            >
+              回填数据
             </Button>
 
             <Button danger size="small" loading={deleting} disabled={rowBusy}
@@ -696,6 +829,14 @@ export default function ElevationRecordsPage() {
             >
               预览
             </Button>
+            <Button
+              type="text"
+              size="small"
+              disabled={rowBusy}
+              onClick={() => openTowerTab(record)}
+            >
+              回填数据
+            </Button>
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
               <Button type="text" size="small" disabled={rowBusy} icon={<MoreOutlined />} />
             </Dropdown>
@@ -729,6 +870,17 @@ export default function ElevationRecordsPage() {
             <Typography.Text type="secondary">解析状态</Typography.Text>
             <Tag color={computedParseStatus(record).color}>{computedParseStatus(record).label}</Tag>
           </div>
+          <div className="admin-elevation-record-card-field">
+            <Typography.Text type="secondary">关联线路</Typography.Text>
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0 }}
+              onClick={() => openLinkedLinesModal(record)}
+            >
+              {record.linked_line_count ?? 0} 条
+            </Button>
+          </div>
         </Space>
       </AntCard>
     );
@@ -739,7 +891,9 @@ export default function ElevationRecordsPage() {
       <Tabs
         type="editable-card"
         hideAdd
-        activeKey="list"
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        onEdit={handleTabsEdit}
         className="admin_elevation_tabs"
         tabBarExtraContent={
           <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
@@ -907,6 +1061,7 @@ export default function ElevationRecordsPage() {
               </div>
             ),
           },
+          ...detailTabs,
         ]}
       />
 
@@ -1057,6 +1212,90 @@ export default function ElevationRecordsPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* 关联线路小窗 */}
+      <Modal
+        title={linkedLinesRecord ? `关联线路 - ${linkedLinesRecord.file_name}` : "关联线路"}
+        open={linkedLinesModalOpen}
+        onCancel={() => {
+          setLinkedLinesModalOpen(false);
+          setLinkedLinesRecord(null);
+        }}
+        footer={null}
+        width={560}
+      >
+        <Table<ElevationLinkedLineSummary>
+          rowKey="line_id"
+          size="small"
+          loading={linkedLinesQuery.isFetching}
+          dataSource={linkedLinesQuery.data?.items ?? []}
+          tableLayout="fixed"
+          pagination={false}
+          scroll={{ y: 320 }}
+          columns={[
+            {
+              title: "线路编号",
+              dataIndex: "line_code",
+              key: "line_code",
+              width: 120,
+              render: (value: string | null) => value || "-",
+            },
+            {
+              title: "线路名称",
+              dataIndex: "line_name",
+              key: "line_name",
+              width: 140,
+              ellipsis: true,
+              render: (value: string | null) => value || "-",
+            },
+            {
+              title: "电压(kV)",
+              dataIndex: "voltage_kv",
+              key: "voltage_kv",
+              width: 80,
+              render: (value: number | null) => (value == null ? "-" : value),
+            },
+            {
+              title: "回填状态",
+              dataIndex: "apply_status",
+              key: "apply_status",
+              width: 90,
+              render: (value: string) => (
+                <Tag color={statusTagColor(value)}>{applyStatusLabel(value)}</Tag>
+              ),
+            },
+            {
+              title: "杆塔数",
+              dataIndex: "tower_count",
+              key: "tower_count",
+              width: 70,
+              render: (value: number) => value ?? 0,
+            },
+            {
+              title: "更新数",
+              dataIndex: "updated_tower_count",
+              key: "updated_tower_count",
+              width: 70,
+              render: (value: number) => value ?? 0,
+            },
+            {
+              title: "回填时间",
+              dataIndex: "applied_at",
+              key: "applied_at",
+              width: 150,
+              render: (value: string | null) => (value ? formatDateTime(value) : "-"),
+            },
+          ]}
+          locale={{
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="暂无回填线路"
+              />
+            ),
+          }}
+        />
       </Modal>
     </div>
   );

@@ -217,3 +217,129 @@ def test_zip_with_csv_skipped_creates_no_csv_record(monkeypatch) -> None:
         assert result.detail.startswith("ZIP 文件已解压：成功创建 1 个文件记录")
     finally:
         session.close()
+
+
+def test_linked_lines_endpoint_returns_aggregated_lines() -> None:
+    """一个高程文件对同一线路多次回填，linked-lines 按线路聚合取最近一次。"""
+    from datetime import datetime, timezone
+
+    session_factory = _build_session_factory()
+    session = session_factory()
+    try:
+        line_a = Line(code="L-A", name="线路A", voltage_kv=220, lightning_param_json={})
+        record = ElevationFileRecord(
+            file_name="record.tif",
+            file_path="/elevation/records/ab/cd/record.tif",
+            file_format="tif",
+            file_size=32,
+            mount_code="default",
+            status="active",
+        )
+        session.add_all([line_a, record])
+        session.flush()
+
+        # 第一次回填（成功、旧时间）
+        session.add(ElevationApplyJob(
+            line_id=line_a.id,
+            file_record_id=record.id,
+            mode="fill_null_only",
+            status="success",
+            total_tower_count=10,
+            updated_tower_count=8,
+            finished_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        ))
+        # 第二次回填（running、新时间）——聚合应取这条
+        session.add(ElevationApplyJob(
+            line_id=line_a.id,
+            file_record_id=record.id,
+            mode="overwrite_all",
+            status="running",
+            total_tower_count=12,
+            updated_tower_count=12,
+            finished_at=datetime(2025, 2, 1, tzinfo=timezone.utc),
+        ))
+        session.commit()
+
+        client = _build_app(session_factory)
+        response = client.get(f"/api/v1/elevation/records/{record.id}/linked-lines")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["total"] == 1
+        item = body["items"][0]
+        assert item["line_id"] == line_a.id
+        assert item["line_code"] == "L-A"
+        assert item["line_name"] == "线路A"
+        assert item["voltage_kv"] == 220
+        assert item["apply_status"] == "running"
+        assert item["tower_count"] == 12
+        assert item["updated_tower_count"] == 12
+    finally:
+        session.close()
+
+
+def test_linked_lines_endpoint_404_for_missing_record() -> None:
+    session_factory = _build_session_factory()
+    try:
+        client = _build_app(session_factory)
+        response = client.get("/api/v1/elevation/records/nope/linked-lines")
+        assert response.status_code == 404
+    finally:
+        session_factory().close()
+
+
+def test_linked_lines_endpoint_empty_when_no_jobs() -> None:
+    session_factory = _build_session_factory()
+    session = session_factory()
+    try:
+        record = ElevationFileRecord(
+            file_name="record.tif",
+            file_path="/elevation/records/ab/cd/record.tif",
+            file_format="tif",
+            file_size=32,
+            mount_code="default",
+            status="active",
+        )
+        session.add(record)
+        session.commit()
+
+        client = _build_app(session_factory)
+        response = client.get(f"/api/v1/elevation/records/{record.id}/linked-lines")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["total"] == 0
+        assert body["items"] == []
+    finally:
+        session.close()
+
+
+def test_list_records_includes_linked_line_count() -> None:
+    """列表接口每个文件返回 linked_line_count（DISTINCT line_id 子查询）。"""
+    session_factory = _build_session_factory()
+    session = session_factory()
+    try:
+        line_a = Line(code="L-A", name="线路A", voltage_kv=110, lightning_param_json={})
+        line_b = Line(code="L-B", name="线路B", voltage_kv=110, lightning_param_json={})
+        record = ElevationFileRecord(
+            file_name="record.tif",
+            file_path="/elevation/records/ab/cd/record.tif",
+            file_format="tif",
+            file_size=32,
+            mount_code="default",
+            status="active",
+        )
+        session.add_all([line_a, line_b, record])
+        session.flush()
+        # 文件对线路A回填两次、对线路B回填一次 → DISTINCT 计数应为 2
+        session.add(ElevationApplyJob(line_id=line_a.id, file_record_id=record.id, mode="fill_null_only", status="success"))
+        session.add(ElevationApplyJob(line_id=line_a.id, file_record_id=record.id, mode="overwrite_all", status="success"))
+        session.add(ElevationApplyJob(line_id=line_b.id, file_record_id=record.id, mode="fill_null_only", status="success"))
+        session.commit()
+
+        client = _build_app(session_factory)
+        response = client.get("/api/v1/elevation/records")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["total"] == 1
+        assert body["items"][0]["linked_line_count"] == 2
+    finally:
+        session.close()

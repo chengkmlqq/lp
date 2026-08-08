@@ -35,6 +35,7 @@ const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLD
 
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerModal } from "@/components/task-log-viewer";
+import { TowerDensityView } from "@/components/lightning-tower-density-view";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -45,6 +46,8 @@ import type {
   LightningDistributionListResponse,
   LightningDistributionStatusResponse,
   LightningLpDrawResponse,
+  LightningLinkedLineSummary,
+  LightningLinkedLinesResponse,
   LineSummary,
   LineListResponse,
 } from "@/types/auth";
@@ -134,6 +137,7 @@ export default function AdminLightningDistributionPage() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [lpDrawRow, setLpDrawRow] = useState<LightningDistributionRecord | null>(null);
+  const [linkedLinesRow, setLinkedLinesRow] = useState<LightningDistributionRecord | null>(null);
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
 
@@ -396,6 +400,36 @@ export default function AdminLightningDistributionPage() {
     setActiveTabKey(key);
   }, [fetchWithAuth, canReadLogs, openLogViewer]);
 
+  // 打开「杆塔数据」Tab（key 前缀 `towers-<id>` 去重，避免重复点击叠加 Tab）
+  const openTowerTab = useCallback((record: LightningDistributionRecord) => {
+    const tabKey = `towers-${record.id}`;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === tabKey)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key: tabKey,
+          label: (
+            <Space size={6}>
+              <span>杆塔数据</span>
+              <Tag>{truncateFileName(record.source_file_name)}</Tag>
+            </Space>
+          ),
+          closable: true,
+          children: (
+            <TowerDensityView
+              distributionId={record.id}
+              fetchWithAuth={fetchWithAuth}
+            />
+          ),
+        },
+      ];
+    });
+    setActiveTabKey(tabKey);
+  }, [fetchWithAuth]);
+
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
       return;
@@ -413,6 +447,10 @@ export default function AdminLightningDistributionPage() {
   const openLpDrawModal = (record: LightningDistributionRecord) => {
     setLpDrawRow(record);
   };
+
+  const openLinkedLinesModal = useCallback((record: LightningDistributionRecord) => {
+    setLinkedLinesRow(record);
+  }, []);
 
   const closeImportModal = () => {
     setImportModalOpen(false);
@@ -576,12 +614,50 @@ export default function AdminLightningDistributionPage() {
         render: (value: number | null) => formatNumber(value, 2),
       },
       {
+        title: "关联线路",
+        key: "linked_lines",
+        width: 110,
+        render: (_: unknown, row) => (
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0 }}
+            onClick={() => openLinkedLinesModal(row)}
+          >
+            {row.linked_line_count ?? 0} 条
+          </Button>
+        ),
+      },
+      {
         title: "操作",
         key: "actions",
-        width: 320,
+        width: 200,
         fixed: "right",
         render: (_: unknown, row) => {
           const moreMenuItems: MenuProps["items"] = [
+            {
+              key: "tower-data",
+              label: "杆塔数据",
+              onClick: () => openTowerTab(row),
+            },
+            ...(canReadLogs && row.task_id
+              ? [
+                  {
+                    key: "import-log",
+                    label: "导入日志",
+                    onClick: () => openLogViewer(row.task_id, "导入日志", row.source_file_name),
+                  },
+                ]
+              : []),
+            ...(canReadLogs && row.lp_draw_task_id
+              ? [
+                  {
+                    key: "draw-log",
+                    label: "绘图日志",
+                    onClick: () => openLogViewer(row.lp_draw_task_id, "绘图日志", row.source_file_name),
+                  },
+                ]
+              : []),
             ...(canManage
               ? [
                   {
@@ -598,22 +674,6 @@ export default function AdminLightningDistributionPage() {
               <Button size="small" onClick={() => openDetail(row)}>
                 详情
               </Button>
-              {canReadLogs && row.task_id && (
-                <Button
-                  size="small"
-                  onClick={() => openLogViewer(row.task_id, "导入日志", row.source_file_name)}
-                >
-                  导入日志
-                </Button>
-              )}
-              {canReadLogs && row.lp_draw_task_id && (
-                <Button
-                  size="small"
-                  onClick={() => openLogViewer(row.lp_draw_task_id, "绘图日志", row.source_file_name)}
-                >
-                  绘图日志
-                </Button>
-              )}
               {canManage && (
                 <Button
                   size="small"
@@ -643,7 +703,7 @@ export default function AdminLightningDistributionPage() {
         },
       },
     ],
-    [canManage, deleteMutation, openDetail, openLogViewer, canReadLogs],
+    [canManage, deleteMutation, openDetail, openTowerTab, openLinkedLinesModal, openLogViewer, canReadLogs],
   );
 
   const renderRecordCard = (record: LightningDistributionRecord) => {
@@ -917,6 +977,13 @@ export default function AdminLightningDistributionPage() {
         setSelectedFile={setSelectedFile}
         loading={importMutation.isPending}
         onConfirm={handleImportConfirm}
+      />
+
+      <LinkedLinesModal
+        open={!!linkedLinesRow}
+        data={linkedLinesRow}
+        onClose={() => setLinkedLinesRow(null)}
+        fetchWithAuth={fetchWithAuth}
       />
 
       {canManage && (
@@ -1249,6 +1316,105 @@ function DistributionDetailView({
         ]}
       />
     </Space>
+  );
+}
+
+function LinkedLinesModal({
+  open,
+  data,
+  onClose,
+  fetchWithAuth,
+}: {
+  open: boolean;
+  data: LightningDistributionRecord | null;
+  onClose: () => void;
+  fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
+}) {
+  const linkedLinesPath = data
+    ? `/api/v1/lightning-currents/distributions/${data.id}/linked-lines`
+    : null;
+  const linkedLinesQuery = useQuery({
+    queryKey: [linkedLinesPath],
+    enabled: !!linkedLinesPath,
+    queryFn: async () => {
+      if (!linkedLinesPath) {
+        return { items: [], total: 0 } satisfies LightningLinkedLinesResponse;
+      }
+      const response = await fetchWithAuth(linkedLinesPath);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LightningLinkedLinesResponse;
+    },
+  });
+
+  const linkedLines = useMemo(
+    () => linkedLinesQuery.data?.items ?? [],
+    [linkedLinesQuery.data],
+  );
+
+  const linkedColumns = useMemo<ColumnsType<LightningLinkedLineSummary>>(
+    () => [
+      {
+        title: "线路编号",
+        dataIndex: "line_code",
+        width: 120,
+        render: (value: string | null) => value || "-",
+      },
+      {
+        title: "线路名称",
+        dataIndex: "line_name",
+        width: 150,
+        render: (value: string | null) => value || "-",
+      },
+      {
+        title: "电压等级",
+        dataIndex: "voltage_kv",
+        width: 90,
+        render: (value: number | null) =>
+          value === null || value === undefined ? "-" : `${value}kV`,
+      },
+      {
+        title: "引用杆塔数",
+        dataIndex: "tower_count",
+        width: 90,
+        render: (value: number) => value,
+      },
+      {
+        title: "最近回填时间",
+        dataIndex: "prepared_at",
+        width: 150,
+        render: (value: string | null) => (value ? formatDateTime(value) : "-"),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <Modal
+      title={`关联线路 - ${data?.source_file_name ?? ""}`}
+      open={open}
+      onCancel={onClose}
+      footer={null}
+      width={600}
+      destroyOnClose
+    >
+      <Table<LightningLinkedLineSummary>
+        rowKey="line_id"
+        size="small"
+        columns={linkedColumns}
+        dataSource={linkedLines}
+        loading={linkedLinesQuery.isFetching}
+        pagination={false}
+        locale={{
+          emptyText: linkedLinesQuery.isLoading ? (
+            <Spin size="small" />
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该分布尚未回填任何线路" />
+          ),
+        }}
+      />
+    </Modal>
   );
 }
 

@@ -337,6 +337,22 @@ export type ElevationFileRecordListResponse = {
   total: number;
 };
 
+export type ElevationLinkedLineSummary = {
+  line_id: string;
+  line_code: string | null;
+  line_name: string | null;
+  voltage_kv: number | null;
+  apply_status: string;
+  tower_count: number;
+  updated_tower_count: number;
+  applied_at: string | null;
+};
+
+export type ElevationLinkedLineListResponse = {
+  items: ElevationLinkedLineSummary[];
+  total: number;
+};
+
 export type ElevationFileRecordPreviewResponse = {
   record: ElevationFileRecordSummary;
   preview_mode: "point_cloud";
@@ -1303,6 +1319,7 @@ export type LightningDistributionRecord = {
   source_file_name: string;
   source_object_key: string | null;
   import_type: string;
+  linked_line_count: number | null;
   status: string;
   stage: string;
   progress: number;
@@ -1351,6 +1368,20 @@ export type LightningDistributionStatusResponse = {
 export type LightningLpDrawResponse = {
   task_id: string;
   status: string;
+};
+
+export type LightningLinkedLineSummary = {
+  line_id: string;
+  line_code: string | null;
+  line_name: string | null;
+  voltage_kv: number | null;
+  tower_count: number;
+  prepared_at: string | null;
+};
+
+export type LightningLinkedLinesResponse = {
+  items: LightningLinkedLineSummary[];
+  total: number;
 };
 
 export type LightningLpDrawRequest = {

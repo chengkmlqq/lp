@@ -23,6 +23,7 @@ class ElevationFileRecordSummary(BaseModel):
     resolution_m: float | None = None
     status: ElevationStatus
     data_source_type: str = "generic"
+    linked_line_count: int = 0
     bbox_min_lon: float | None = None
     bbox_max_lon: float | None = None
     bbox_min_lat: float | None = None
@@ -219,6 +220,24 @@ class ElevationApplyJobSummary(BaseModel):
 
 class ElevationApplyJobListResponse(BaseModel):
     items: list[ElevationApplyJobSummary]
+    total: int
+
+
+class ElevationLinkedLineSummary(BaseModel):
+    """高程文件回填过的关联线路摘要（按线路聚合取最近一次回填任务）。"""
+
+    line_id: str
+    line_code: str | None = None
+    line_name: str | None = None
+    voltage_kv: float | None = None
+    apply_status: str          # 最近一次回填任务状态
+    tower_count: int = 0       # 该线路回填任务涉及的杆塔数（total_tower_count）
+    updated_tower_count: int = 0  # 实际更新杆塔数
+    applied_at: datetime | None = None  # 最近回填时间（finished_at）
+
+
+class ElevationLinkedLineListResponse(BaseModel):
+    items: list[ElevationLinkedLineSummary]
     total: int
 
 
