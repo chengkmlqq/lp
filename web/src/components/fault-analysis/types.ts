@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export interface FaultAnalysis {
   id: string;
   title: string;
@@ -12,6 +14,14 @@ export interface FaultAnalysis {
   created_at: string;
   updated_at: string;
   created_by?: string;
+}
+
+/** 故障分析详情动态选项卡项（LP-275：多开详情 Tab 支持） */
+export interface DetailTabItem {
+  key: string;
+  label: ReactNode;
+  closable: boolean;
+  children: ReactNode;
 }
 
 export interface FaultAnalysisDetail extends FaultAnalysis {

@@ -4455,6 +4455,105 @@ body {
   overflow: hidden;
 }
 
+/* LP-275: 故障分析页详情从全页视图/大尺寸 Modal 改造为动态选项卡（editable-card）。
+   复用地闪密度统计/防雷分析页的 Tabs 布局约定：列表主 Tab 撑满高度、详情 Tab 平铺在 tabBar 后，
+   Tab 栏与 Card 头部连成一条白带。 */
+.admin-fault-analysis-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin-fault-analysis-tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  background: var(--ant-color-bg-container);
+}
+
+.admin-fault-analysis-tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-fault-analysis-tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-fault-analysis-tabs .ant-table-pagination {
+  margin: 12px 0 0 !important;
+}
+
+.admin-fault-analysis-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+.admin-fault-analysis-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin-fault-analysis-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin-fault-analysis-tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-fault-analysis-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin-fault-analysis-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+:root[data-fquiz-theme="dark"] .admin-fault-analysis-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin-fault-analysis-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+}
+
+/* LP-275: 列表主 Tab 内容区容器 */
+.admin-fault-analysis-list-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 12px;
+}
+
+/* LP-275: 新建/编辑表单 Modal 内 Tabs 分组 */
+.admin-fault-analysis-form-tabs {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.admin-fault-analysis-modal-tabs .ant-tabs-nav {
+  margin: 0 0 12px;
+}
+
+.admin-fault-analysis-modal-tabs .ant-tabs-tabpane {
+  min-height: 220px;
+}
+
 .fault-analysis-step-header {
   background: var(--fquiz-theme-bg-active);
   color: var(--ant-color-text);
@@ -4488,4 +4587,77 @@ body {
   color: var(--ant-color-primary) !important;
   border-color: var(--ant-color-primary) !important;
   background: color-mix(in srgb, var(--ant-color-primary) 20%, transparent) !important;
+}
+
+
+/* LP-273: 线路管理详情页（[id]/page.tsx）外层 editable-card Tabs，需让 Tabs 容器/内容区撑满高度 */
+.admin-power-line-detail-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin-power-line-detail-tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  background: var(--ant-color-bg-container);
+}
+
+.admin-power-line-detail-tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-power-line-detail-tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-power-line-detail-tabs .ant-table-pagination {
+  margin: 12px 0 0 !important;
+}
+
+.admin-power-line-detail-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+.admin-power-line-detail-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin-power-line-detail-tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-power-line-detail-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin-power-line-detail-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+:root[data-fquiz-theme="dark"] .admin-power-line-detail-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin-power-line-detail-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-power-line-detail-meta {
+  background: var(--ant-color-bg-container);
 }

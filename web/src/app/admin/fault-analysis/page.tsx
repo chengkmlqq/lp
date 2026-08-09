@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useCallback, useMemo, useState, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -8,6 +8,8 @@ import {
   Form,
   Modal,
   Space,
+  Tabs,
+  Tag,
   Typography,
   message,
   Input,
@@ -30,9 +32,13 @@ import type {
 import type {
   FaultAnalysis,
   CreateFaultAnalysisFormValues,
+  DetailTabItem,
 } from "@/components/fault-analysis/types";
 
 const { Text } = Typography;
+
+/** 结果列表固定主 Tab（不可关闭），详情 Tab 依次追加在其后 */
+const LIST_TAB_KEY = "list";
 
 /** Map backend FaultAnalysisSummary to the frontend FaultAnalysis type used by card components. */
 function mapSummary(item: FaultAnalysisListResponse["items"][0]): FaultAnalysis {
@@ -60,7 +66,8 @@ export default function AdminFaultAnalysisPage() {
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
-  const [viewingId, setViewingId] = useState<string | null>(null);
+  const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [createForm] = Form.useForm<CreateFaultAnalysisFormValues>();
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -167,7 +174,7 @@ export default function AdminFaultAnalysisPage() {
       setCreateModalOpen(false);
       messageApi.success("故障分析创建成功");
       createForm.resetFields();
-      setViewingId(data.analysis.id);
+      openDetail({ id: data.analysis.id });
     },
     onError: (error) => {
       messageApi.error(error instanceof Error ? error.message : "创建失败");
@@ -298,6 +305,57 @@ export default function AdminFaultAnalysisPage() {
     });
   };
 
+  // ---- LP-275: 动态详情选项卡 ----
+  // 点击卡片「查看」时新增/激活对应详情 Tab；以分析 id 去重，
+  // 同一分析反复点击不会叠加重复 Tab，便于多开对比。
+  const openDetail = useCallback((record: { id: string; title?: string; fault_type?: string }) => {
+    const tabKey = record.id;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === tabKey)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key: tabKey,
+          label: (
+            <Space size={6}>
+              <span>{record.title || `故障分析 ${record.id.slice(0, 8)}`}</span>
+              {record.fault_type ? <Tag color="blue">{record.fault_type}</Tag> : null}
+            </Space>
+          ),
+          closable: true,
+          children: (
+            <AnalysisDetailView
+              analysisId={tabKey}
+              tabKey={tabKey}
+            />
+          ),
+        } satisfies DetailTabItem,
+      ];
+    });
+    setActiveTabKey(tabKey);
+  }, []);
+
+  // 关闭 Tab：移除对应 tab，关闭的是当前激活 Tab 时按相邻回退规则切换 activeKey
+  //（优先左邻，其次最左，兜底回列表主 Tab），与地闪密度统计/防雷分析页一致。
+  const handleTabsEdit = useCallback((
+    targetKey: ReactMouseEvent | ReactKeyboardEvent | string,
+    action: "add" | "remove",
+  ) => {
+    if (action !== "remove") {
+      return;
+    }
+    const key = String(targetKey);
+    const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
+    const next = detailTabs.filter((tab) => tab.key !== key);
+    setDetailTabs(next);
+    if (activeTabKey === key) {
+      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+      setActiveTabKey(fallback);
+    }
+  }, [detailTabs, activeTabKey]);
+
   if (!initializing && !user) {
     return (
       <Alert
@@ -315,18 +373,6 @@ export default function AdminFaultAnalysisPage() {
         showIcon
         message="当前账号缺少线路读取权限，无法查看故障分析。"
       />
-    );
-  }
-
-  if (viewingId) {
-    return (
-      <>
-        {contextHolder}
-        <AnalysisDetailView
-          analysisId={viewingId}
-          onBack={() => setViewingId(null)}
-        />
-      </>
     );
   }
 
@@ -349,85 +395,106 @@ export default function AdminFaultAnalysisPage() {
             )
           }
         >
-          <div className="flex flex-col gap-4" style={{ height: '100%' }}>
-            <div className="admin-filter-bar">
-              <Form layout="inline">
-                <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                  <Input
-                    placeholder="搜索分析名称、线路名称或描述"
-                    value={keywordInput}
-                    onChange={(e) => setKeywordInput(e.target.value)}
-                    allowClear
-                    onPressEnter={() => {
-                      setSearchKeyword(keywordInput);
-                      setPagination((prev) => ({ ...prev, current: 1 }));
-                      void queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"] });
-                    }}
-                  />
-                </Form.Item>
-                <Form.Item style={{ marginBottom: 0 }}>
-                  <Button
-                    htmlType="button"
-                    icon={<SearchOutlined />}
-                    onClick={() => {
-                      setSearchKeyword(keywordInput);
-                      setPagination((prev) => ({ ...prev, current: 1 }));
-                      void queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"] });
-                    }}
-                    className="admin-search-btn"
-                  >
-                    查询
-                  </Button>
-                </Form.Item>
-              </Form>
-            </div>
+          <Tabs
+            type="editable-card"
+            hideAdd
+            activeKey={activeTabKey}
+            onChange={setActiveTabKey}
+            onEdit={handleTabsEdit}
+            className="admin-fault-analysis-tabs"
+            items={[
+              {
+                key: LIST_TAB_KEY,
+                label: <span className="admin-fault-analysis-tab-title">故障分析列表</span>,
+                closable: false,
+                children: (
+                  <div className="admin-fault-analysis-list-pane">
+                    <div className="admin-filter-bar">
+                      <Form layout="inline">
+                        <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                          <Input
+                            placeholder="搜索分析名称、线路名称或描述"
+                            value={keywordInput}
+                            onChange={(e) => setKeywordInput(e.target.value)}
+                            allowClear
+                            onPressEnter={() => {
+                              setSearchKeyword(keywordInput);
+                              setPagination((prev) => ({ ...prev, current: 1 }));
+                              void queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"] });
+                            }}
+                          />
+                        </Form.Item>
+                        <Form.Item style={{ marginBottom: 0 }}>
+                          <Button
+                            htmlType="button"
+                            icon={<SearchOutlined />}
+                            onClick={() => {
+                              setSearchKeyword(keywordInput);
+                              setPagination((prev) => ({ ...prev, current: 1 }));
+                              void queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"] });
+                            }}
+                            className="admin-search-btn"
+                          >
+                            查询
+                          </Button>
+                        </Form.Item>
+                      </Form>
+                    </div>
 
-            {analysesQuery.error && (
-              <Alert
-                type="error"
-                showIcon
-                message={
-                  analysesQuery.error instanceof Error
-                    ? analysesQuery.error.message
-                    : "加载失败"
-                }
-              />
-            )}
+                    {analysesQuery.error && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message={
+                          analysesQuery.error instanceof Error
+                            ? analysesQuery.error.message
+                            : "加载失败"
+                        }
+                      />
+                    )}
 
-            <div className="flex flex-col" style={{ flex: 1, minHeight: 0 }}>
-              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                <AnalysisCardList
-                  analyses={paginatedAnalyses}
-                  selectedId={null}
-                  loading={analysesQuery.isLoading}
-                  onView={(id) => setViewingId(id)}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              </div>
+                    <div className="flex flex-col" style={{ flex: 1, minHeight: 0 }}>
+                      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                        <AnalysisCardList
+                          analyses={paginatedAnalyses}
+                          selectedId={null}
+                          loading={analysesQuery.isLoading}
+                          onView={(id) => {
+                            const record = analyses.find((item) => item.id === id);
+                            openDetail(record ?? { id });
+                          }}
+                          onEdit={handleEdit}
+                          onDelete={handleDelete}
+                        />
+                      </div>
 
-              <div className="mt-4 flex justify-end">
-                <Pagination
-                  current={pagination.current}
-                  pageSize={pagination.pageSize}
-                  total={Math.max(filteredAnalyses.length, 1)}
-                  onChange={(page, pageSize) => {
-                    setPagination({ current: page, pageSize });
-                  }}
-                  showSizeChanger
-                  showTotal={() => `共 ${filteredAnalyses.length} 条`}
-                  pageSizeOptions={[6, 12, 24, 48]}
-                />
-              </div>
-            </div>
-          </div>
+                      <div className="mt-4 flex justify-end">
+                        <Pagination
+                          current={pagination.current}
+                          pageSize={pagination.pageSize}
+                          total={Math.max(filteredAnalyses.length, 1)}
+                          onChange={(page, pageSize) => {
+                            setPagination({ current: page, pageSize });
+                          }}
+                          showSizeChanger
+                          showTotal={() => `共 ${filteredAnalyses.length} 条`}
+                          pageSizeOptions={[6, 12, 24, 48]}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ),
+              },
+              ...detailTabs,
+            ]}
+          />
         </Card>
       </div>
 
       <Modal
         title="新建故障分析"
         open={createModalOpen}
-        width={950}
+        width={760}
         onCancel={() => {
           if (createMutation.isPending) {
             return;
@@ -451,7 +518,7 @@ export default function AdminFaultAnalysisPage() {
       <Modal
         title="编辑故障分析"
         open={editModalOpen}
-        width={950}
+        width={760}
         onCancel={() => {
           if (updateMutation.isPending) {
             return;

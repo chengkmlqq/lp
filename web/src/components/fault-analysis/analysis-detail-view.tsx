@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Space, Tag, Typography, Spin, Dropdown, message } from "antd";
-import { ArrowLeftOutlined, DownloadOutlined } from "@ant-design/icons";
+import { DownloadOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
@@ -15,7 +15,8 @@ const { Title, Text, Paragraph } = Typography;
 
 interface AnalysisDetailViewProps {
   analysisId: string;
-  onBack: () => void;
+  /** 唯一标识，用作导出容器 DOM id 前缀（多开详情 Tab 时避免重复 id） */
+  tabKey: string;
 }
 
 interface ReportSectionItem {
@@ -147,9 +148,10 @@ function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]
   return { sections, station, fault_datetime: faultDatetime, fault_id: faultId };
 }
 
-export function AnalysisDetailView({ analysisId, onBack }: AnalysisDetailViewProps) {
+export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewProps) {
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
+  const exportElementId = `analysis-export-content-${tabKey}`;
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
 
@@ -171,7 +173,7 @@ export function AnalysisDetailView({ analysisId, onBack }: AnalysisDetailViewPro
     setExporting(true);
     try {
       if (format === "pdf") {
-        await exportToPDF({ ...detail } as any, "analysis-export-content");
+        await exportToPDF({ ...detail } as any, exportElementId);
         message.success("PDF导出成功");
       } else {
         await exportToWord({ ...detail } as any);
@@ -218,14 +220,8 @@ export function AnalysisDetailView({ analysisId, onBack }: AnalysisDetailViewPro
 
   return (
     <div className="flex flex-col gap-4 h-full">
-      <Card>
-        <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
-          返回列表
-        </Button>
-      </Card>
-
       <Card className="flex-1 overflow-auto">
-        <div id="analysis-export-content">
+        <div id={exportElementId}>
           <div className="border-b border-gray-200 pb-5 mb-6">
             <div className="flex items-start justify-between mb-5">
               <div className="flex items-center gap-3">
