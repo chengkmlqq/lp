@@ -137,3 +137,13 @@ test("LP-275: 表单 Modal Tabs 有对应全局样式", () => {
   assert.ok(block, "应存在 .admin-fault-analysis-modal-tabs .ant-tabs-nav 规则块");
   assert.match(block, /margin:\s*0\s+0\s+12px/, "Tabs 导航栏应保留简洁间距");
 });
+
+test("LP-285: 列表内容区 list-pane 有纵向滚动样式", () => {
+  const block = CSS.match(
+    /\.admin-fault-analysis-list-pane \{([^}]*)\}/,
+  )?.[1];
+  assert.ok(block, "应存在 .admin-fault-analysis-list-pane 规则块");
+  assert.match(block, /overflow-x:\s*hidden/, "list-pane 应横向隐藏溢出");
+  assert.match(block, /overflow-y:\s*auto/, "list-pane 应保留纵向滚动");
+  assert.match(block, /padding:\s*12px/, "list-pane 应保留 12px 内边距");
+});

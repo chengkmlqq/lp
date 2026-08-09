@@ -457,3 +457,85 @@ def test_list_lines_bbox_ignores_towers_without_coordinates(monkeypatch) -> None
         assert response.items == []
     finally:
         session.close()
+
+
+def test_list_lines_pagination_limits_items_and_keeps_total(monkeypatch) -> None:
+    """limit/offset 分页：items 截断、total 保持全量计数（与线路管理分页一致）。"""
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        from datetime import datetime, timezone
+
+        fixed_date = datetime(2026, 8, 9, tzinfo=timezone.utc)
+        for i in range(1, 6):
+            session.add(
+                Line(
+                    code=f"PL-PG-{i:03d}",
+                    name=f"分页线路{i}",
+                    status="enabled",
+                    create_date=fixed_date,
+                    update_date=fixed_date,
+                )
+            )
+        session.commit()
+
+        # update_date 相同 → 按 code asc 排序，便于断言分页切片
+        first_page = line_service.list_lines(session, keyword=None, limit=2, offset=0)
+        assert first_page.total == 5
+        assert len(first_page.items) == 2
+        assert {item.code for item in first_page.items} == {"PL-PG-001", "PL-PG-002"}
+
+        second_page = line_service.list_lines(session, keyword=None, limit=2, offset=2)
+        assert second_page.total == 5
+        assert len(second_page.items) == 2
+        assert {item.code for item in second_page.items} == {"PL-PG-003", "PL-PG-004"}
+
+        last_page = line_service.list_lines(session, keyword=None, limit=2, offset=4)
+        assert last_page.total == 5
+        assert len(last_page.items) == 1
+        assert last_page.items[0].code == "PL-PG-005"
+    finally:
+        session.close()
+
+
+def test_list_lines_pagination_keyword_keeps_total_scoped(monkeypatch) -> None:
+    """分页 + 关键词：total 为筛选后全量，items 为当前页（按 update_date desc/code asc）。"""
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        from datetime import datetime, timezone
+
+        fixed_date = datetime(2026, 8, 9, tzinfo=timezone.utc)
+        for i in range(1, 5):
+            session.add(
+                Line(
+                    code=f"PL-KW-{i:03d}",
+                    name=f"目标线路{i}",
+                    status="enabled",
+                    create_date=fixed_date,
+                    update_date=fixed_date,
+                )
+            )
+        session.add(
+            Line(
+                code="PL-OTHER-001",
+                name="无关线路",
+                status="enabled",
+                create_date=fixed_date,
+                update_date=fixed_date,
+            )
+        )
+        session.commit()
+
+        response = line_service.list_lines(session, keyword="目标", limit=2, offset=0)
+        assert response.total == 4
+        assert len(response.items) == 2
+        assert all("目标" in item.name for item in response.items)
+
+        response_all = line_service.list_lines(session, keyword="目标", limit=10, offset=0)
+        assert response_all.total == 4
+        assert len(response_all.items) == 4
+    finally:
+        session.close()

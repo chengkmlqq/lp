@@ -221,7 +221,7 @@ export default function AdminFaultRecurrencePage() {
   return (
     <>
       {contextHolder}
-      <Space direction="vertical" size={16} className="w-full">
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
         <Card title="故障复现" className="surface-card">
           <Space direction="vertical" size={16} className="w-full">
             <Typography.Paragraph type="secondary" className="!mb-0">
@@ -314,22 +314,41 @@ export default function AdminFaultRecurrencePage() {
           />
         ) : null}
 
-        <Card title="复现结果" className="surface-card">
-          {resultTabs.length === 0 ? (
-            <Empty description="选择基础数据文件并执行一次复现计算后，将在这里展示结果。" />
-          ) : (
-            <Tabs
-              type="editable-card"
-              hideAdd
-              activeKey={activeTabKey}
-              onChange={setActiveTabKey}
-              onEdit={handleTabsEdit}
-              className="admin-fault-recurrence-result-tabs"
-              items={resultTabs}
-            />
-          )}
-        </Card>
-      </Space>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <Tabs
+            type="editable-card"
+            hideAdd
+            activeKey={activeTabKey}
+            onChange={setActiveTabKey}
+            onEdit={handleTabsEdit}
+            className="admin-fault-recurrence-tabs"
+            items={[
+              {
+                key: "result",
+                label: <span className="admin-fault-recurrence-tab-title">复现结果</span>,
+                closable: false,
+                children: (
+                  <div className="admin-fault-recurrence-result-pane">
+                    {resultTabs.length === 0 ? (
+                      <Empty description="选择基础数据文件并执行一次复现计算后，将在这里展示结果。" />
+                    ) : (
+                      <Tabs
+                        type="editable-card"
+                        hideAdd
+                        activeKey={activeTabKey}
+                        onChange={setActiveTabKey}
+                        onEdit={handleTabsEdit}
+                        className="admin-fault-recurrence-result-tabs"
+                        items={resultTabs}
+                      />
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </div>
+      </div>
     </>
   );
 }

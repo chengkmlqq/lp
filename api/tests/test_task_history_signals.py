@@ -6,6 +6,10 @@ The race: after_task_publish (PENDING, producer process) and task_prerun
 The old implementation did a non-atomic SELECT-then-INSERT which could raise
 UniqueViolation when both saw no row and then inserted.  The fix switches
 _upsert_task to INSERT ... ON CONFLICT (task_id) DO UPDATE.
+
+Also covers SYSTEM_TASK_NAMES / _is_system_task (LP-281): beat system tasks
+must be short-circuited at the signal layer so they never enter
+celery_task_history nor trigger TaskLogCapture.
 """
 from __future__ import annotations
 
@@ -119,3 +123,40 @@ class TestUpsertTask:
             record = _get(s, "task-1")
         assert record.create_date is not None
         assert record.update_date is not None
+
+
+class TestIsSystemTask:
+    """LP-281: beat 系统任务在被信号层拦截时需要被准确识别。"""
+
+    @pytest.mark.parametrize(
+        "task_name",
+        [
+            "app.tasks.worker_registry_tasks.flush_task_log_buffers",
+            "app.tasks.worker_registry_tasks.sweep_worker_registry_offline",
+            "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks",
+            "app.tasks.log_cleanup_tasks.cleanup_expired_task_logs",
+        ],
+    )
+    def test_hits_blacklist(self, task_name):
+        assert mod._is_system_task(task_name) is True
+
+    @pytest.mark.parametrize(
+        "task_name",
+        [
+            "app.tasks.export.export_task",
+            "app.core.something.unrelated",
+            "app.tasks.worker_registry_tasks.flush_task_log_buffers_extra",
+            "app.tasks.worker_registry_tasks.flush_task_log_buffersx",
+            "",
+        ],
+    )
+    def test_non_system_task_names(self, task_name):
+        assert mod._is_system_task(task_name) is False
+
+    def test_none_task_name(self):
+        assert mod._is_system_task(None) is False
+
+    def test_blacklist_is_frozenset_of_str(self):
+        assert isinstance(mod.SYSTEM_TASK_NAMES, frozenset)
+        assert all(isinstance(name, str) for name in mod.SYSTEM_TASK_NAMES)
+        assert len(mod.SYSTEM_TASK_NAMES) == 4

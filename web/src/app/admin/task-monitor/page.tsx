@@ -525,10 +525,7 @@ export default function AdminTaskMonitorPage() {
       return overviewRows;
     }
 
-    return rows.filter((task) =>
-      task.name !== "app.tasks.worker_registry_tasks.sweep_worker_registry_offline" &&
-      task.name !== "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks"
-    );
+    return rows;
   }, [allTasksQuery.data, overviewData]);
 
   const filteredTaskRows = useMemo(() => {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from ..core.config import get_settings
 
@@ -330,3 +330,84 @@ def list_task_logs(task_id: str) -> list[str]:
         raise TaskLogServiceError(f"Failed to list logs from MinIO: {exc}") from exc
     except Exception as exc:
         raise TaskLogServiceError(f"Unexpected error during log listing: {exc}") from exc
+
+
+def cleanup_expired_task_logs(
+    retain_days: int,
+    *,
+    now: datetime | None = None,
+    dry_run: bool = False,
+) -> int:
+    """删除超过保留期的 ``logs/`` 前缀任务日志对象，返回被删对象数量。
+
+    - 分页遍历 ``logs/`` 前缀，按对象 ``LastModified`` 与 ``retain_days`` 判断是否超期
+    - ``dry_run=True`` 时仅统计不删除（用于生产先观察对象数量级）
+    - ``now`` 仅用于测试注入时间点，默认取当前 UTC
+    """
+    settings = get_settings()
+
+    if not settings.minio_enabled:
+        raise TaskLogServiceError("MinIO storage is not enabled")
+
+    if retain_days <= 0:
+        return 0  # 0=永久保留，不清理
+
+    try:
+        import boto3
+        from botocore.config import Config
+        from botocore.exceptions import BotoCoreError, ClientError
+    except ImportError as exc:
+        raise TaskLogServiceError("boto3 library is required for MinIO storage") from exc
+
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    try:
+        client_config = Config(
+            connect_timeout=3.0,
+            read_timeout=10.0,
+            retries={"max_attempts": 2},
+        )
+
+        session = boto3.session.Session(
+            aws_access_key_id=settings.minio_access_key,
+            aws_secret_access_key=settings.minio_secret_key,
+        )
+
+        client = session.client(
+            "s3",
+            endpoint_url=settings.minio_endpoint,
+            region_name=settings.minio_region,
+            config=client_config,
+        )
+
+        cutoff = now - timedelta(days=retain_days)
+
+        prefix = "logs/"
+        deleted_count = 0
+
+        paginator = client.get_paginator("list_objects_v2")
+        pages = paginator.paginate(Bucket=settings.minio_bucket, Prefix=prefix)
+
+        for page in pages:
+            for item in page.get("Contents", []):
+                key = item.get("Key", "")
+                if not key:
+                    continue
+                last_modified = item.get("LastModified")
+                if last_modified is None:
+                    # 无时间戳时保守处理：跳过，避免误删
+                    continue
+                if last_modified >= cutoff:
+                    # 未过期，保留
+                    continue
+                if not dry_run:
+                    client.delete_object(Bucket=settings.minio_bucket, Key=key)
+                deleted_count += 1
+
+        return deleted_count
+
+    except (BotoCoreError, ClientError) as exc:
+        raise TaskLogServiceError(f"Failed to cleanup task logs from MinIO: {exc}") from exc
+    except Exception as exc:
+        raise TaskLogServiceError(f"Unexpected error during task log cleanup: {exc}") from exc

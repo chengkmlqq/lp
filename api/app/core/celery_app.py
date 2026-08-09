@@ -15,6 +15,7 @@ celery_app = Celery(
         "app.tasks.elevation_tasks",
         "app.tasks.fl_analysis_tasks",
         "app.tasks.lightning_tasks",
+        "app.tasks.log_cleanup_tasks",
         "app.tasks.scheduled_task_tasks",
         "app.tasks.wine_tasks",
         "app.tasks.worker_registry_tasks",
@@ -36,6 +37,10 @@ celery_app.conf.update(
             "task": "app.tasks.worker_registry_tasks.flush_task_log_buffers",
             "schedule": 30.0,
         },
+        "cleanup-expired-task-logs": {
+            "task": "app.tasks.log_cleanup_tasks.cleanup_expired_task_logs",
+            "schedule": 3600.0,  # 每小时清理一次（与 30 天保留期解耦，无需更频繁）
+        },
     },
     # Redis broker 默认 visibility_timeout=3600s，重任务（如雷电分布导入约 106 分钟）
     # 超过 1 小时会被 Redis 重新投递，导致同一任务被两个 worker 并行执行。
@@ -43,6 +48,10 @@ celery_app.conf.update(
     broker_transport_options={"visibility_timeout": 21600},
     enable_utc=True,
     result_serializer="json",
+    # 心跳间隔显式设为 15s，替代 Celery event 模式约 2s 的默认值，降低每个 worker 对
+    # worker_registry 表的心跳 UPSERT 写频率（2s → 15s）。配合 worker_registry_ttl_seconds=90，
+    # 90s 内可收约 6 次心跳，离线判定仍可靠（TTL ≥ 3× 心跳间隔）。
+    worker_heartbeat_interval=15.0,
     task_acks_late=True,
     # worker 异常退出时任务消息被 reject 而非 ack，配合 acks_late 让消息及时回到队列
     # 由其他 worker 继续处理，而不是依赖 Redis visibility_timeout 的漫长等待。

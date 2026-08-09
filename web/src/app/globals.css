@@ -3352,6 +3352,9 @@ body {
 
 /* LP-274: 结果列表区容器，在 Tab 内容区内提供内边距 */
 .admin-fl-analysis-list-pane {
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 0;
   padding: 12px;
 }
 
@@ -4537,7 +4540,91 @@ body {
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 12px;
+}
+
+/* LP-287: 故障复现页面移除外层 Card 后，外层 Tabs 容器撑满高度，
+   结果 Tab 内容区沿用 list-pane 规范（padding 12px + 纵向滚动），
+   与 lightning-distribution / fault-analysis 页保持一致 */
+.admin-fault-recurrence-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin-fault-recurrence-tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  background: var(--ant-color-bg-container);
+}
+
+.admin-fault-recurrence-tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-fault-recurrence-tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-fault-recurrence-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+.admin-fault-recurrence-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin-fault-recurrence-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin-fault-recurrence-tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-fault-recurrence-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin-fault-recurrence-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+.admin-fault-recurrence-result-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+:root[data-fquiz-theme="dark"] .admin-fault-recurrence-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin-fault-recurrence-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
 }
 
 /* LP-275: 新建/编辑表单 Modal 内 Tabs 分组 */
@@ -4660,4 +4747,48 @@ body {
 
 .admin-power-line-detail-meta {
   background: var(--ant-color-bg-container);
+}
+
+/* ======================================
+   LP-280: 线路管理页卡片滚动与分页
+   ====================================== */
+
+/* 页面根容器撑满内容区高度，卡片列表才能在受限高度内滚动而非溢出页面 */
+.admin-power-lines-card {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* antd Card body 也参与 flex 布局，让内部滚动容器可伸缩 */
+.admin-power-lines-card > .ant-card-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-power-lines-card-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* 卡片视图固定高度滚动容器：卡片多时不溢出页面，自动出现垂直滚动条 */
+.admin-power-lines-card-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+/* 分页条：与卡片列表底部保持间距 */
+.admin-power-lines-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+  flex-shrink: 0;
 }

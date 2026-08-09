@@ -6,8 +6,10 @@ import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PAGE_FILE = join(__dirname, "../app/admin/fault-recurrence/page.tsx");
+const GLOBALS_CSS = join(__dirname, "../app/globals.css");
 
 const source = readFileSync(PAGE_FILE, "utf-8");
+const CSS = readFileSync(GLOBALS_CSS, "utf-8");
 
 test("LP-276: antd Tabs is imported", () => {
   assert.ok(
@@ -65,4 +67,54 @@ test("LP-276: 未选择文件/选择新文件不再清空已有结果 Tab", () =
 test("LP-276: 空状态在无任何结果 Tab 时展示占位", () => {
   assert.ok(source.includes("resultTabs.length === 0"));
   assert.ok(source.includes('Empty description="选择基础数据文件并执行一次复现计算后，将在这里展示结果。"'));
+});
+
+test("LP-287: 复现结果外层 Card 已移除，内容放入 list-pane 容器", () => {
+  assert.ok(
+    !/<Card\s+title="复现结果"/.test(source),
+    "不应再存在 <Card title=\"复现结果\"> 外层包裹",
+  );
+  assert.ok(
+    source.includes('className="admin-fault-recurrence-result-pane"'),
+    "复现结果内容应使用 list-pane 语义容器 admin-fault-recurrence-result-pane",
+  );
+  assert.ok(
+    source.includes('className="admin-fault-recurrence-tabs"'),
+    "外层 Tabs 应使用 admin-fault-recurrence-tabs",
+  );
+  assert.ok(
+    source.includes('<div className="flex min-h-0 flex-1 flex-col">'),
+    "页面根部应使用 flex min-h-0 flex-1 flex-col 撑满高度",
+  );
+});
+
+test("LP-287: 复现结果 list-pane 内容区有纵向滚动样式", () => {
+  const block = CSS.match(
+    /\.admin-fault-recurrence-result-pane \{([^}]*)\}/,
+  )?.[1];
+  assert.ok(block, "应存在 .admin-fault-recurrence-result-pane 规则块");
+  assert.match(block, /overflow-x:\s*hidden/, "list-pane 应横向隐藏溢出");
+  assert.match(block, /overflow-y:\s*auto/, "list-pane 应保留纵向滚动");
+  assert.match(block, /padding:\s*12px/, "list-pane 应保留 12px 内边距");
+});
+
+test("LP-287: 外层 Tabs 有对应全局样式", () => {
+  assert.ok(
+    CSS.includes(".admin-fault-recurrence-tabs {"),
+    "应存在 .admin-fault-recurrence-tabs 规则块",
+  );
+  assert.ok(
+    CSS.includes(".admin-fault-recurrence-tabs > .ant-tabs-nav {"),
+    "应存在 Tab 栏样式规则，保证与容器连成白带",
+  );
+  assert.ok(
+    CSS.includes(".admin-fault-recurrence-tab-title {"),
+    "应存在主结果 Tab 标题样式规则",
+  );
+  const activeBlock = CSS.match(
+    /\.admin-fault-recurrence-tabs \.ant-tabs-tabpane-active \{([^}]*)\}/,
+  )?.[1];
+  assert.ok(activeBlock, "应存在 .ant-tabs-tabpane-active 规则块");
+  assert.match(activeBlock, /display:\s*flex/, "激活 pane 应保持 flex 布局");
+  assert.match(activeBlock, /flex:\s*1/, "激活 pane 应保持 flex:1 撑满");
 });

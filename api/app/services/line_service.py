@@ -179,6 +179,8 @@ def list_lines(
     *,
     keyword: str | None,
     bbox: tuple[float, float, float, float] | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> LineListResponse:
     stmt = select(Line)
     total_stmt = select(func.count()).select_from(Line)
@@ -210,7 +212,10 @@ def list_lines(
         total_stmt = total_stmt.where(Line.id.in_(tower_overlap))
 
     total = int(db.scalar(total_stmt) or 0)
-    items = db.execute(stmt.order_by(Line.update_date.desc(), Line.code.asc())).scalars().all()
+    stmt = stmt.order_by(Line.update_date.desc(), Line.code.asc())
+    if limit is not None:
+        stmt = stmt.limit(limit).offset(offset)
+    items = db.execute(stmt).scalars().all()
     line_ids = [item.id for item in items]
     tower_count_map = _load_tower_counts(db, line_ids)
     estimated_length_map = _load_line_estimated_lengths(db, line_ids)

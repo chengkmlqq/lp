@@ -58,8 +58,10 @@ def register_worker(
             row.queues_csv = queues_csv
         if normalized_pid is not None:
             row.pid = normalized_pid
-        if heartbeat_increment:
-            row.heartbeat_count = int(row.heartbeat_count or 0) + 1
+        # 不再随每次心跳递增 heartbeat_count（原逻辑导致字段无上限增长且无业务含义）。
+        # 仅保留 worker_ready 时（heartbeat_increment=False）初始化的计数基线，字段保持兼容。
+        # if heartbeat_increment:
+        #     row.heartbeat_count = int(row.heartbeat_count or 0) + 1
         if metadata_text is not None:
             row.metadata_json = metadata_text
         row.last_seen_at = now

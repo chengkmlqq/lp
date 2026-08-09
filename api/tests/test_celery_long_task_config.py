@@ -28,6 +28,14 @@ class CeleryLongTaskConfigTest(unittest.TestCase):
         # 而不是依赖 visibility_timeout 的漫长等待。
         self.assertIs(celery_app.conf.task_reject_on_worker_lost, True)
 
+    def test_worker_heartbeat_interval_configured(self) -> None:
+        # LP-282：显式设置心跳间隔，替代 Celery event 模式约 2s 的默认值，
+        # 降低 worker_registry 表心跳 UPSERT 写频率；需 ≥3s 且 ≤ TTL/3=30s。
+        interval = celery_app.conf.worker_heartbeat_interval
+        self.assertIsNotNone(interval)
+        self.assertGreaterEqual(float(interval), 3.0)
+        self.assertLessEqual(float(interval), 30.0)
+
     def test_distribution_job_has_time_limits(self) -> None:
         task = import_lightning_distribution_job
         self.assertEqual(task.soft_time_limit, 7200)  # 软限制 2 小时

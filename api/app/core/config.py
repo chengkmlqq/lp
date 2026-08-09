@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     task_log_noisy_logger_prefixes: str = (           # 噪音 logger 前缀（逗号分隔），其级别被提升到 WARNING 不入任务日志
         "botocore,urllib3,s3transfer,boto3,celery.worker.strategy"
     )
+    # 任务日志 MinIO 保留天数（默认 30 天，0=永久保留，不清理）
+    task_log_retain_days: int = 30
 
     wine_binary_path: str = "wine"
     wine_allowed_root: str = "./data/wine"
@@ -114,6 +116,15 @@ class Settings(BaseSettings):
     def validate_positive_numbers(cls, value: int) -> int:
         if value <= 0:
             msg = "Value must be greater than 0"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("task_log_retain_days")
+    @classmethod
+    def validate_task_log_retain_days(cls, value: int) -> int:
+        # 0=永久保留（不清理），负数为非法配置
+        if value < 0:
+            msg = "Value must be greater than or equal to 0 (0=keep forever)"
             raise ValueError(msg)
         return value
 

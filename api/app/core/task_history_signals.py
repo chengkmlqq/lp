@@ -14,6 +14,21 @@ from ..services.task_log_service import (
     upload_task_log,
 )
 
+# beat 定期调度的系统任务（LP-281）：不应写入 celery_task_history 监控表，也不触发
+# TaskLogCapture 日志采集。在信号层源头拦截，不做前端过滤。
+SYSTEM_TASK_NAMES: frozenset[str] = frozenset({
+    "app.tasks.worker_registry_tasks.flush_task_log_buffers",
+    "app.tasks.worker_registry_tasks.sweep_worker_registry_offline",
+    "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks",
+    # LP-283：日志清理任务不该记录自身日志（否则“越清越多”），加入黑名单
+    "app.tasks.log_cleanup_tasks.cleanup_expired_task_logs",
+})
+
+
+def _is_system_task(task_name: str | None) -> bool:
+    """判断任务是否命中系统任务黑名单（beat 系统任务不落监控表 / 不采集日志）。"""
+    return bool(task_name and task_name in SYSTEM_TASK_NAMES)
+
 
 def _get_db_task(task_id: str) -> TaskHistory | None:
     """Get existing task record from DB, or None."""
@@ -134,6 +149,9 @@ def on_task_prerun(task_id=None, task=None, **kwargs):  # type: ignore[no-untype
     """Record task as STARTED when it begins executing."""
     if not task_id:
         return
+    if _is_system_task(task.name if task else None):
+        # 系统任务：不落监控表，也不装日志采集器（LP-281）
+        return
     started_at = datetime.now(timezone.utc)
     _upsert_task(
         task_id,
@@ -156,6 +174,9 @@ def on_task_postrun(sender=None, task_id=None, task=None, **kwargs):  # type: ig
     """
     if not task_id:
         return
+    if _is_system_task(task.name if task else None):
+        # 系统任务：跳过后置处理（含 TaskLogCapture.stop / 日志上传）（LP-281）
+        return
     _finalize_task_log(task_id)
 
 
@@ -165,6 +186,10 @@ def on_task_success(sender=None, result=None, **kwargs):  # type: ignore[no-unty
     # sender is the task class, not the task_id
     # Use the current_app's current request to get the task_id
     from celery._state import get_current_task
+
+    if _is_system_task(sender.name if sender else None):
+        # 系统任务：不写 SUCCESS 状态（LP-281）
+        return
 
     current_task = get_current_task()
     if current_task is None:
@@ -193,6 +218,9 @@ def on_task_failure(sender=None, task_id=None, exception=None, **kwargs):  # typ
     """Record task as FAILURE when it fails."""
     if not task_id:
         return
+    if _is_system_task(sender.name if sender else None):
+        # 系统任务：不写 FAILURE 状态（LP-281）
+        return
 
     done_at = datetime.now(timezone.utc)
     runtime = None
@@ -217,6 +245,9 @@ def on_task_revoked(sender=None, request=None, terminated=None, signum=None, exp
     task_id = request.id
     if not task_id:
         return
+    if _is_system_task(request.task_name if request else None):
+        # 系统任务：不写 REVOKED 状态、不触发日志采集（LP-281）
+        return
 
     _finalize_task_log(task_id)
     _upsert_task(
@@ -234,6 +265,9 @@ def on_after_task_publish(sender=None, headers=None, body=None, **kwargs):  # ty
     task_id = headers.get("id")
     task_name = headers.get("task")
     if not task_id:
+        return
+    if _is_system_task(task_name):
+        # 系统任务：不写 PENDING，直接跳过（LP-281）
         return
 
     eta_raw = headers.get("eta")
