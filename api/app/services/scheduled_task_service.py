@@ -257,6 +257,7 @@ def seed_default_scheduled_tasks(db: Session) -> None:
     if get_scheduled_task_by_key(db, SYSLOG_CLEANUP_TASK_KEY):
         return
 
+    retain_days = get_settings().audit_log_retain_days
     payload = ScheduledTaskCreateRequest(
         task_key=SYSLOG_CLEANUP_TASK_KEY,
         name="系统日志定时清理",
@@ -264,8 +265,8 @@ def seed_default_scheduled_tasks(db: Session) -> None:
         description="按保留天数自动清理历史系统日志，避免审计表持续膨胀。",
         cron_expression="0 3 * * *",
         timezone=get_settings().celery_timezone,
-        retain_days=30,
-        enabled=True,
+        retain_days=retain_days,
+        enabled=retain_days > 0,
     )
     create_scheduled_task(db, payload, actor_user_id=None)
 
@@ -436,6 +437,12 @@ def _execute_scheduled_task_with_session(
 
 def _run_task_handler(db: Session, item: ScheduledTask) -> ScheduledTaskExecutionResult:
     if item.task_type == "syslog_cleanup":
+        if item.retain_days <= 0:
+            # 0=永久保留：跳过清理，避免阈值=now 误删全部日志
+            return ScheduledTaskExecutionResult(
+                detail="保留天数为 0（永久保留），跳过清理",
+                payload={"deleted_count": 0, "retain_days": item.retain_days},
+            )
         deleted_count = cleanup_audit_logs(db, retain_days=item.retain_days)
         return ScheduledTaskExecutionResult(
             detail=f"已清理 {deleted_count} 条系统日志",

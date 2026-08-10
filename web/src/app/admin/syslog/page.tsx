@@ -524,6 +524,12 @@ export default function AdminSyslogPage() {
               <div ref={pageCardRef} className="admin_syslog_list_pane">
                 {filterBar}
 
+                <div style={{ marginBottom: 8 }}>
+                  <Typography.Text type="secondary">
+                    系统日志按保留策略定期自动清理，仅保留最近一段时间；具体保留天数可在「定时任务管理 → 系统日志定时清理」中查看调整。
+                  </Typography.Text>
+                </div>
+
                 {viewMode === "table" ? (
                   <div
                     ref={tableScrollAnchorRef}

@@ -50,7 +50,8 @@ class ScheduledTaskCreateRequest(BaseModel):
     description: str | None = Field(default="", max_length=4000)
     cron_expression: str = Field(min_length=9, max_length=128)
     timezone: str = Field(default="Asia/Shanghai", min_length=2, max_length=64)
-    retain_days: int = Field(default=30, ge=1, le=3650)
+    # 0=永久保留（配合 enabled=False，等价于不清理）
+    retain_days: int = Field(default=30, ge=0, le=3650)
     enabled: bool = True
 
 
@@ -59,7 +60,8 @@ class ScheduledTaskUpdateRequest(BaseModel):
     description: str | None = Field(default=None, max_length=4000)
     cron_expression: str | None = Field(default=None, min_length=9, max_length=128)
     timezone: str | None = Field(default=None, min_length=2, max_length=64)
-    retain_days: int | None = Field(default=None, ge=1, le=3650)
+    # 0=永久保留（配合 enabled=False，等价于不清理）
+    retain_days: int | None = Field(default=None, ge=0, le=3650)
     enabled: bool | None = None
 
 

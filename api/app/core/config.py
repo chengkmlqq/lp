@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     )
     # 任务日志 MinIO 保留天数（默认 30 天，0=永久保留，不清理）
     task_log_retain_days: int = 30
+    # 审计日志保留天数（默认 90 天，0=永久保留，不清理）
+    audit_log_retain_days: int = 90
 
     wine_binary_path: str = "wine"
     wine_allowed_root: str = "./data/wine"
@@ -119,9 +121,9 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         return value
 
-    @field_validator("task_log_retain_days")
+    @field_validator("task_log_retain_days", "audit_log_retain_days")
     @classmethod
-    def validate_task_log_retain_days(cls, value: int) -> int:
+    def validate_retain_days(cls, value: int) -> int:
         # 0=永久保留（不清理），负数为非法配置
         if value < 0:
             msg = "Value must be greater than or equal to 0 (0=keep forever)"

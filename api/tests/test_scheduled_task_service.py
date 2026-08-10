@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -11,6 +12,7 @@ from app.models.audit_log import AuditLog
 from app.models.scheduled_task import ScheduledTask
 from app.schemas.scheduled_task import ScheduledTaskCreateRequest, ScheduledTaskUpdateRequest
 from app.services.scheduled_task_service import (
+    _run_task_handler,
     cleanup_audit_logs,
     compute_next_run_at,
     create_scheduled_task,
@@ -30,17 +32,80 @@ def _build_sessionmaker(*tables):
     return sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
 
 
+def _make_settings(audit_log_retain_days: int = 90) -> MagicMock:
+    settings = MagicMock()
+    settings.audit_log_retain_days = audit_log_retain_days
+    settings.celery_timezone = "Asia/Shanghai"
+    return settings
+
+
 def test_seed_default_scheduled_tasks_creates_syslog_cleanup_task() -> None:
     testing_session = _build_sessionmaker(ScheduledTask.__table__)
     session: Session = testing_session()
     try:
-        seed_default_scheduled_tasks(session)
+        with patch("app.services.scheduled_task_service.get_settings", return_value=_make_settings()):
+            seed_default_scheduled_tasks(session)
         created = get_scheduled_task_by_key(session, "syslog.cleanup.default")
         assert created is not None
         assert created.task_type == "syslog_cleanup"
         assert created.enabled is True
-        assert created.retain_days == 30
+        assert created.retain_days == 90
         assert created.next_run_at is not None
+    finally:
+        session.close()
+
+
+def test_seed_default_scheduled_tasks_reads_config_retain_days() -> None:
+    testing_session = _build_sessionmaker(ScheduledTask.__table__)
+    session: Session = testing_session()
+    try:
+        with patch(
+            "app.services.scheduled_task_service.get_settings",
+            return_value=_make_settings(audit_log_retain_days=120),
+        ):
+            seed_default_scheduled_tasks(session)
+        created = get_scheduled_task_by_key(session, "syslog.cleanup.default")
+        assert created is not None
+        assert created.retain_days == 120
+        assert created.enabled is True
+    finally:
+        session.close()
+
+
+def test_seed_default_scheduled_tasks_disabled_when_retain_days_zero() -> None:
+    testing_session = _build_sessionmaker(ScheduledTask.__table__)
+    session: Session = testing_session()
+    try:
+        with patch(
+            "app.services.scheduled_task_service.get_settings",
+            return_value=_make_settings(audit_log_retain_days=0),
+        ):
+            seed_default_scheduled_tasks(session)
+        created = get_scheduled_task_by_key(session, "syslog.cleanup.default")
+        assert created is not None
+        assert created.retain_days == 0
+        assert created.enabled is False
+        assert created.next_run_at is None
+    finally:
+        session.close()
+
+
+def test_syslog_cleanup_handler_skips_when_retain_days_zero() -> None:
+    testing_session = _build_sessionmaker(AuditLog.__table__)
+    session: Session = testing_session()
+    try:
+        expired = AuditLog(user_id=None, action="expired", detail="old")
+        session.add(expired)
+        session.flush()
+        expired.created_at = expired.created_at - timedelta(days=45)
+        session.commit()
+
+        item = ScheduledTask(task_key="syslog.cleanup.default", name="t", task_type="syslog_cleanup", retain_days=0)
+        result = _run_task_handler(session, item)
+
+        assert result.payload["deleted_count"] == 0
+        remaining = session.scalars(select(AuditLog.id)).all()
+        assert len(remaining) == 1
     finally:
         session.close()
 
