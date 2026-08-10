@@ -209,6 +209,15 @@ export default function AdminTaskMonitorPage() {
   const [logModalStatus, setLogModalStatus] = useState("");
   const logEventSourceRef = useRef<EventSource | null>(null);
   const logModalContentRef = useRef<HTMLPreElement | null>(null);
+  // 断线补偿游标：记录最近一条 SSE 事件的 id；重连时作为 lastEventId 查询参数传回服务端
+  const logLastEventIdRef = useRef("");
+  // 重连指数退避（秒）：1 / 2 / 4 / 8 / 16 → 最多 30
+  const logRetryDelayRef = useRef(1);
+  // 弹窗可见性：关闭后遗留的重连定时器不得重新拉起弹窗
+  const logModalVisibleRef = useRef(false);
+  // handleViewLog / reconnectLogEventSource 相互引用，经 ref 打破循环
+  const handleViewLogRef = useRef<((taskId: string, cancelledRef?: { current: boolean }) => Promise<void>) | null>(null);
+  const reconnectLogEventSourceRef = useRef<((cancelledRef: { current: boolean }, taskId: string) => void) | null>(null);
 
   const resetTaskListPagination = useCallback(() => {
     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -225,12 +234,39 @@ export default function AdminTaskMonitorPage() {
     }
   }, []);
 
-  const handleViewLog = async (taskId: string) => {
+  /**
+   * 断线重连：关闭旧连接（终止 EventSource 自动"复用旧 URL + 旧 ticket"导致的 401 循环），
+   * 指数退避后重新签发 ticket 并重建连接；lastEventId 游标随查询参数传回，断线日志不丢。
+   */
+  const reconnectLogEventSource = useCallback((cancelledRef: { current: boolean }, taskId: string) => {
+    if (cancelledRef.current) return;
+    closeLogEventSource();
+    setLogModalStreaming(false);
+    const delay = logRetryDelayRef.current;
+    logRetryDelayRef.current = Math.min(30, delay * 2);
+    setLogModalStatus("重连中");
+    window.setTimeout(() => {
+      if (cancelledRef.current || !logModalVisibleRef.current) return;
+      void handleViewLogRef.current?.(taskId, cancelledRef);
+    }, delay * 1000);
+  }, [closeLogEventSource]);
+  useEffect(() => {
+    reconnectLogEventSourceRef.current = reconnectLogEventSource;
+  }, [reconnectLogEventSource]);
+
+  const handleViewLog = useCallback(async (taskId: string, cancelledRef?: { current: boolean }) => {
+    const cancelled = cancelledRef ?? { current: false };
     setLogModalTaskId(taskId);
     setLogModalVisible(true);
-    setLogModalLoading(true);
-    setLogModalContent("");
-    setLogModalStatus("");
+    logModalVisibleRef.current = true;
+    if (!cancelledRef) {
+      // 首次打开时重置重连状态
+      setLogModalLoading(true);
+      setLogModalContent("");
+      setLogModalStatus("");
+      logLastEventIdRef.current = "";
+      logRetryDelayRef.current = 1;
+    }
     setLogModalStreaming(false);
     closeLogEventSource();
 
@@ -247,17 +283,30 @@ export default function AdminTaskMonitorPage() {
       }
 
       // 2. 建立 SSE 连接（EventSource 无法自定义 Authorization header，走 ticket 查询参数）
+      const params = new URLSearchParams({ ticket: ticketPayload.ticket });
+      // 断线重连：重建连接后浏览器不会自动带 Last-Event-ID header，须显式传查询参数，
+      // 后端 sse 端点同时兼容 header 与 lastEventId 查询参数两种来源
+      if (logLastEventIdRef.current) {
+        params.set("lastEventId", logLastEventIdRef.current);
+      }
       const es = new EventSource(
-        `${API_BASE_URL}/api/v1/admin/task-logs/${encodeURIComponent(taskId)}/sse?ticket=${encodeURIComponent(ticketPayload.ticket)}`,
+        `${API_BASE_URL}/api/v1/admin/task-logs/${encodeURIComponent(taskId)}/sse?${params.toString()}`,
       );
       logEventSourceRef.current = es;
 
       es.onopen = () => {
+        if (cancelled.current) return;
+        logRetryDelayRef.current = 1;
         setLogModalLoading(false);
         setLogModalStreaming(true);
+        setLogModalStatus("");
       };
 
       es.onmessage = (e) => {
+        if (cancelled.current) return;
+        if (e.lastEventId) {
+          logLastEventIdRef.current = e.lastEventId;
+        }
         try {
           const data = JSON.parse(e.data) as { line?: string; lines?: string };
           const linesText = data.lines;
@@ -273,6 +322,7 @@ export default function AdminTaskMonitorPage() {
       };
 
       es.addEventListener("done", () => {
+        if (cancelled.current) return;
         es.close();
         logEventSourceRef.current = null;
         setLogModalStreaming(false);
@@ -280,25 +330,35 @@ export default function AdminTaskMonitorPage() {
       });
 
       es.addEventListener("error", (e) => {
-        // error 事件也可能由 `event: error` 自定义事件触发
+        if (cancelled.current) return;
+        // error 事件也可能由 `event: error` 自定义事件触发（服务端推送的明确错误）
         const eventSourceError = e as MessageEvent<string>;
         try {
           const data = JSON.parse(eventSourceError.data ?? "") as { message?: string };
           if (data.message) {
             setLogModalContent(data.message);
+            setLogModalStreaming(false);
+            return;
           }
         } catch {
-          // 普通连接错误（EventSource 自动重连，无需处理）
+          // 普通连接错误：关闭旧连接，重新取票并重建连接（ticket 已过期 / 连接中断）
         }
+        reconnectLogEventSourceRef.current?.(cancelled, taskId);
       });
     } catch (error) {
+      if (cancelled.current) return;
       const errorMessage = error instanceof Error ? error.message : "获取日志失败";
       setLogModalContent(`错误：${errorMessage}`);
       setLogModalLoading(false);
+      reconnectLogEventSourceRef.current?.(cancelled, taskId);
     }
-  };
+  }, [fetchWithAuth, closeLogEventSource]);
+  useEffect(() => {
+    handleViewLogRef.current = handleViewLog;
+  }, [handleViewLog]);
 
   const handleCloseLogModal = () => {
+    logModalVisibleRef.current = false;
     closeLogEventSource();
     setLogModalVisible(false);
     setLogModalTaskId("");

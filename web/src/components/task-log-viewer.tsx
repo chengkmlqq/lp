@@ -5,6 +5,7 @@ import { Button, Empty, Modal, Space, Spin, Tag, Typography } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { readApiError, API_BASE_URL } from "@/lib/api";
+import type { WsTicketResponse } from "@/types/ws";
 
 const { Text } = Typography;
 
@@ -16,9 +17,11 @@ const { Text } = Typography;
  *  2. new EventSource(`${API_BASE_URL}/api/v1/admin/task-logs/${taskId}/sse?ticket=${ticket}`)
  *  3. onmessage: data.lines 全量覆盖 / data.line 增量追加
  *  4. done 事件 → 关闭连接 + 状态「已结束」
- *  5. error 事件保持连接（EventSource 自动重连，Last-Event-ID 断线补偿由服务端处理）
+ *  5. error 事件：连接错误（如 ticket 过期 401、网络中断）→ 关闭旧连接，
+ *     重新签发 ticket 并以 lastEventId 查询参数携带 Last-Event-ID 游标重建连接，
+ *     指数退避重试（修复 LP-295：旧 ticket 30s 过期后自动重连持续 401 的循环）
  *  6. 自动滚动到底部（用户上滚时暂停），可复制
- *  7. 状态 Tag：连接中 / 实时接收中 / 已结束 / 无日志
+ *  7. 状态 Tag：连接中 / 实时接收中 / 重连中 / 已结束 / 无日志 / 连接中断
  */
 export function TaskLogViewerModal({
   taskId,
@@ -38,6 +41,13 @@ export function TaskLogViewerModal({
   const [content, setContent] = useState("");
   const eventSourceRef = useRef<EventSource | null>(null);
   const contentRef = useRef<HTMLPreElement | null>(null);
+  // 断线补偿游标：记录最近一条 SSE 事件的 id；重连时作为 Last-Event-ID 传给服务端续读
+  const lastEventIdRef = useRef("");
+  // 重连指数退避（秒）：1 / 2 / 4 / 8 / 16 → 最多 30
+  const retryDelayRef = useRef(1);
+  // connect / reconnect 相互引用，通过 ref 打破循环（const 后置声明会触发 TDZ）
+  const connectRef = useRef<((cancelledRef: { current: boolean }, taskId: string) => Promise<void>) | null>(null);
+  const reconnectRef = useRef<((cancelledRef: { current: boolean }, taskId: string) => void) | null>(null);
 
   const closeEventSource = useCallback(() => {
     const es = eventSourceRef.current;
@@ -47,89 +57,152 @@ export function TaskLogViewerModal({
     }
   }, []);
 
+  /**
+   * 断线重连：关闭旧连接（终止 EventSource 自带的"复用旧 URL+旧 ticket"重连），
+   * 指数退避后重签发 ticket 并重建连接，恢复日志流（LP-295）。
+   */
+  const reconnect = useCallback(
+    (cancelledRef: { current: boolean }, taskId: string) => {
+      if (cancelledRef.current) return;
+      closeEventSource();
+      setStreaming(false);
+      const delay = retryDelayRef.current;
+      retryDelayRef.current = Math.min(30, delay * 2);
+      setStatus("reconnecting");
+      window.setTimeout(() => {
+        if (cancelledRef.current) return;
+        (async () => {
+          try {
+            await connectRef.current?.(cancelledRef, taskId);
+          } catch (error) {
+            if (cancelledRef.current) return;
+            const errorMessage = error instanceof Error ? error.message : "获取日志失败";
+            setContent(`错误：${errorMessage}`);
+            setLoading(false);
+            reconnectRef.current?.(cancelledRef, taskId);
+          }
+        })();
+      }, delay * 1000);
+    },
+    [closeEventSource],
+  );
+  // connect / reconnect 相互引用，经 ref 调用；ref 需在渲染后写入（不能渲染期访问）
+  useEffect(() => {
+    reconnectRef.current = reconnect;
+  }, [reconnect]);
+
+  /** 为一个新 ticket 拉起一条 SSE 连接。 */
+  const connect = useCallback(
+    async (cancelledRef: { current: boolean }, taskId: string) => {
+      // 1. 先签发一次性 ticket（复用 /api/v1/ws/ticket）
+      const ticketRes = await fetchWithAuth("/api/v1/ws/ticket", { method: "POST" });
+      if (!ticketRes.ok) {
+        const errorText = await readApiError(ticketRes);
+        throw new Error(errorText || "获取日志凭证失败");
+      }
+      const ticketPayload = (await ticketRes.json()) as WsTicketResponse;
+      if (!ticketPayload.ticket) {
+        throw new Error("获取日志凭证失败");
+      }
+
+      // 2. 建立 SSE 连接（EventSource 无法自定义 Authorization header，走 ticket 查询参数）
+      const params = new URLSearchParams({ ticket: ticketPayload.ticket });
+      // 断线重连：把 Last-Event-ID 游标作为查询参数带回，服务端据此续读（EventSource
+      // 重连会自动带 Last-Event-ID header，但这里重建了连接，必须显式传；后端 sse
+      // 端点同时兼容 header 与 lastEventId 查询参数两种来源）
+      if (lastEventIdRef.current) {
+        params.set("lastEventId", lastEventIdRef.current);
+      }
+      const es = new EventSource(
+        `${API_BASE_URL}/api/v1/admin/task-logs/${encodeURIComponent(taskId)}/sse?${params.toString()}`,
+      );
+      eventSourceRef.current = es;
+
+      es.onopen = () => {
+        if (cancelledRef.current) return;
+        retryDelayRef.current = 1;
+        setLoading(false);
+        setStreaming(true);
+        setStatus("");
+      };
+
+      es.onmessage = (e) => {
+        if (cancelledRef.current) return;
+        if (e.lastEventId) {
+          lastEventIdRef.current = e.lastEventId;
+        }
+        try {
+          const data = JSON.parse(e.data) as { line?: string; lines?: string };
+          const linesText = data.lines;
+          const singleLine = data.line;
+          if (linesText) {
+            setContent(linesText);
+          } else if (singleLine) {
+            setContent((prev) => (prev ? `${prev}\n${singleLine}` : singleLine));
+          }
+        } catch {
+          // 忽略无法解析的 SSE 数据
+        }
+      };
+
+      es.addEventListener("done", () => {
+        if (cancelledRef.current) return;
+        es.close();
+        eventSourceRef.current = null;
+        setStreaming(false);
+        setStatus("done");
+      });
+
+      es.addEventListener("error", (e) => {
+        if (cancelledRef.current) return;
+        // error 事件也可能由 `event: error` 自定义事件触发（服务端推送的明确错误）
+        const eventSourceError = e as MessageEvent<string>;
+        try {
+          const data = JSON.parse(eventSourceError.data ?? "") as { message?: string };
+          if (data.message) {
+            setContent(data.message);
+            setStreaming(false);
+            return;
+          }
+        } catch {
+          // 普通连接错误：关闭旧连接，重新取票并重建连接（ticket 已过期 / 连接中断）
+        }
+        reconnectRef.current?.(cancelledRef, taskId);
+      });
+    },
+    [fetchWithAuth],
+  );
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
+
   useEffect(() => {
     if (!open) {
       return;
     }
-    if (!taskId) {
-      setLoading(false);
-      setStreaming(false);
-      setStatus("no-log");
-      setContent("");
-      return;
-    }
-    setLoading(true);
-    setStreaming(false);
-    setStatus("");
-    setContent("");
     closeEventSource();
+    lastEventIdRef.current = "";
+    retryDelayRef.current = 1;
 
-    let cancelled = false;
-
+    // 从零开始的一次性连接（与 reconnect 复用同一个 connect 实现）。
+    // 状态重置放在异步函数内：避免 effect 内同步 setState（lint 规则 + 级联渲染）。
+    const cancelledRef: { current: boolean } = { current: false };
     (async () => {
+      if (!taskId) {
+        setLoading(false);
+        setStreaming(false);
+        setStatus("no-log");
+        setContent("");
+        return;
+      }
+      setLoading(true);
+      setStreaming(false);
+      setStatus("");
+      setContent("");
       try {
-        // 1. 先签发一次性 ticket（复用 /api/v1/ws/ticket）
-        const ticketRes = await fetchWithAuth("/api/v1/ws/ticket", { method: "POST" });
-        if (!ticketRes.ok) {
-          const errorText = await readApiError(ticketRes);
-          throw new Error(errorText || "获取日志凭证失败");
-        }
-        const ticketPayload = (await ticketRes.json()) as { ticket: string };
-        if (!ticketPayload.ticket) {
-          throw new Error("获取日志凭证失败");
-        }
-
-        // 2. 建立 SSE 连接（EventSource 无法自定义 Authorization header，走 ticket 查询参数）
-        const es = new EventSource(
-          `${API_BASE_URL}/api/v1/admin/task-logs/${encodeURIComponent(taskId)}/sse?ticket=${encodeURIComponent(ticketPayload.ticket)}`,
-        );
-        eventSourceRef.current = es;
-
-        es.onopen = () => {
-          if (cancelled) return;
-          setLoading(false);
-          setStreaming(true);
-        };
-
-        es.onmessage = (e) => {
-          if (cancelled) return;
-          try {
-            const data = JSON.parse(e.data) as { line?: string; lines?: string };
-            const linesText = data.lines;
-            const singleLine = data.line;
-            if (linesText) {
-              setContent(linesText);
-            } else if (singleLine) {
-              setContent((prev) => (prev ? `${prev}\n${singleLine}` : singleLine));
-            }
-          } catch {
-            // 忽略无法解析的 SSE 数据
-          }
-        };
-
-        es.addEventListener("done", () => {
-          if (cancelled) return;
-          es.close();
-          eventSourceRef.current = null;
-          setStreaming(false);
-          setStatus("done");
-        });
-
-        es.addEventListener("error", (e) => {
-          if (cancelled) return;
-          // error 事件也可能由 `event: error` 自定义事件触发
-          const eventSourceError = e as MessageEvent<string>;
-          try {
-            const data = JSON.parse(eventSourceError.data ?? "") as { message?: string };
-            if (data.message) {
-              setContent(data.message);
-            }
-          } catch {
-            // 普通连接错误（EventSource 自动重连，无需处理）
-          }
-        });
+        await connect(cancelledRef, taskId);
       } catch (error) {
-        if (cancelled) return;
+        if (cancelledRef.current) return;
         const errorMessage = error instanceof Error ? error.message : "获取日志失败";
         setContent(`错误：${errorMessage}`);
         setLoading(false);
@@ -137,10 +210,10 @@ export function TaskLogViewerModal({
     })();
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       closeEventSource();
     };
-  }, [open, taskId, fetchWithAuth, closeEventSource]);
+  }, [open, taskId, fetchWithAuth, connect, closeEventSource]);
 
   const handleClose = () => {
     closeEventSource();
@@ -163,18 +236,20 @@ export function TaskLogViewerModal({
 
   const statusTone = status === "done"
     ? "success"
-    : streaming
-      ? "processing"
-      : status === "no-log"
-        ? "default"
+    : status === "reconnecting"
+      ? "warning"
+      : streaming
+        ? "processing"
         : "default";
   const statusLabel = status === "done"
     ? "已结束"
-    : streaming
-      ? "实时接收中"
-      : status === "no-log"
-        ? "无日志"
-        : "";
+    : status === "reconnecting"
+      ? "重连中"
+      : streaming
+        ? "实时接收中"
+        : status === "no-log"
+          ? "无日志"
+          : "";
 
   return (
     <Modal

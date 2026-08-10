@@ -102,6 +102,7 @@ async def stream_log(
     task_id: str,
     request: Request,
     ticket: str = Query(...),
+    last_event_id: str | None = Query(default=None, description="Front-end rebuilt connection resume cursor"),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """
@@ -110,6 +111,9 @@ async def stream_log(
     认证：复用一次性 ws ticket（EventSource 无法自定义 Authorization header）。
     权限：celery.read / celery.manage。
 
+    断线续读游标：EventSource 原生自动重连会带 ``Last-Event-ID`` request header；
+    前端重建连接（LP-295 换新 ticket）无法复用该 header，因此在 URL 上显式携带
+    ``lastEventId`` 查询参数。该参数优先于 header，兼容两种来源。
     协议：
       - 日志行：`id: <stream-id>` + `data: {"line": "..."}`（id 即重连游标）
       - 结束：`event: done`
@@ -160,8 +164,9 @@ async def stream_log(
         # 运行中：XREAD 增量续读
         #   初始 last_id="0"：从流开头读，把任务开始以来已 flush 的日志一次性补上，
         #     再进入实时续读（比 "$" 只收新消息体验好，弹窗打开即可看到已滚动日志）。
-        #   断线重连：EventSource 自动带上 Last-Event-ID，据此续读，断线日志一条不丢。
-        last_id = request.headers.get("last-event-id") or "0"
+        #   断线重连（含前端重建连接）：优先取前端显式传回的 last_event_id 查询参数，
+        #     否则回落到 EventSource 自动携带的 Last-Event-ID header，据此续读，断线日志一条不丢。
+        last_id = last_event_id or request.headers.get("last-event-id") or "0"
         while True:
             if await request.is_disconnected():
                 return
