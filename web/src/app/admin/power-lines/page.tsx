@@ -450,27 +450,6 @@ export default function AdminPowerLinesPage() {
           ...detailTabs,
         ]}
       />
-                          total={total}
-                          showSizeChanger
-                          pageSizeOptions={[6, 12, 24, 48]}
-                          showTotal={(count) => `共 ${count} 条`}
-                          onChange={(page, pageSize) => {
-                            setPagination({ current: page, pageSize });
-                          }}
-                          onShowSizeChange={(page, pageSize) => {
-                            setPagination({ current: 1, pageSize });
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              </div>
-            ),
-          },
-          ...detailTabs,
-        ]}
-      />
 
       <Modal
         title={editingLine ? "编辑线路" : "新建线路"}
