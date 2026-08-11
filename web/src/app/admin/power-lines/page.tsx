@@ -327,6 +327,13 @@ export default function AdminPowerLinesPage() {
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
         className="admin-power-lines-tabs"
+        tabBarExtraContent={
+          canLineManage ? (
+            <Button type="primary" onClick={openCreateLineModal}>
+              新建线路
+            </Button>
+          ) : null
+        }
         items={[
           {
             key: LIST_TAB_KEY,
@@ -334,88 +341,51 @@ export default function AdminPowerLinesPage() {
             closable: false,
             children: (
               <div className="admin-power-lines-list-pane">
-                <Card
-                  className="admin-power-lines-card"
-                  extra={canLineManage ? (
-                    <Button type="primary" onClick={openCreateLineModal}>
-                      新建线路
-                    </Button>
-                  ) : null}
-                >
-                  <div className="admin-power-lines-card-body">
-                    <div className="admin-filter-bar flex justify-between items-center">
-                      <Form layout="inline" style={{ flex: 1 }}>
-                        <Form.Item label="线路编码/名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                          <Input
-                            value={keywordInput}
-                            allowClear
-                            onChange={(event) => setKeywordInput(event.target.value)}
-                            placeholder="按线路编码/名称筛选"
-                            onPressEnter={handleSearch}
-                          />
-                        </Form.Item>
-                        <Form.Item style={{ marginBottom: 0 }}>
-                          <Button
-                            htmlType="button"
-                            icon={<SearchOutlined />}
-                            onClick={handleSearch}
-                            className="admin-search-btn"
-                          >
-                            查询
-                          </Button>
-                        </Form.Item>
-                      </Form>
-                      <Form layout="inline" style={{ marginLeft: 16 }}>
-                        <Form.Item style={{ marginBottom: 0 }}>
-                          <Segmented
-                            value={viewMode}
-                            onChange={(value) => setViewMode(value as "card" | "list")}
-                            options={[
-                              { label: "卡片视图", value: "card" },
-                              { label: "列表视图", value: "list" },
-                            ]}
-                          />
-                        </Form.Item>
-                      </Form>
-                    </div>
+                <div className="admin-filter-bar flex justify-between items-center" style={{ marginBottom: 16 }}>
+                  <Form layout="inline">
+                    <Form.Item label="线路编码/名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Input
+                        value={keywordInput}
+                        allowClear
+                        onChange={(event) => setKeywordInput(event.target.value)}
+                        placeholder="按线路编码/名称筛选"
+                        onPressEnter={handleSearch}
+                      />
+                    </Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button
+                        htmlType="button"
+                        icon={<SearchOutlined />}
+                        onClick={handleSearch}
+                        className="admin-search-btn"
+                      >
+                        查询
+                      </Button>
+                    </Form.Item>
+                  </Form>
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => setViewMode(value as "card" | "list")}
+                    options={[
+                      { label: "卡片视图", value: "card" },
+                      { label: "列表视图", value: "list" },
+                    ]}
+                  />
+                </div>
 
-                    {lines.length === 0 ? (
-                      <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                    ) : viewMode === "card" ? (
-                      <div className="admin-power-lines-card-scroll">
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                          {lines.map((line) => (
-                            <PowerLineCard
-                              key={line.id}
-                              line={line}
-                              canLineManage={canLineManage}
-                              onEdit={openEditLineModal}
-                              onDetail={openDetail}
-                              onDelete={() => {
-                                Modal.confirm({
-                                  title: "删除线路",
-                                  content: `确认删除线路 ${line.name || line.code} 吗？`,
-                                  okText: "删除",
-                                  cancelText: "取消",
-                                  okButtonProps: { danger: true },
-                                  onOk: async () => {
-                                    await deleteLineMutation.mutateAsync(line.id);
-                                  },
-                                });
-                              }}
-                              deleteLoading={deleteLineMutation.isPending}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="admin-power-lines-table-view">
-                        <PowerLineTable
-                          lines={lines}
+                {lines.length === 0 ? (
+                  <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                ) : viewMode === "card" ? (
+                  <div className="admin-power-lines-card-scroll">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {lines.map((line) => (
+                        <PowerLineCard
+                          key={line.id}
+                          line={line}
                           canLineManage={canLineManage}
                           onEdit={openEditLineModal}
                           onDetail={openDetail}
-                          onDelete={(line) => {
+                          onDelete={() => {
                             Modal.confirm({
                               title: "删除线路",
                               content: `确认删除线路 ${line.name || line.code} 吗？`,
@@ -429,14 +399,57 @@ export default function AdminPowerLinesPage() {
                           }}
                           deleteLoading={deleteLineMutation.isPending}
                         />
-                      </div>
-                    )}
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="admin-power-lines-table-view">
+                    <PowerLineTable
+                      lines={lines}
+                      canLineManage={canLineManage}
+                      onEdit={openEditLineModal}
+                      onDetail={openDetail}
+                      onDelete={(line) => {
+                        Modal.confirm({
+                          title: "删除线路",
+                          content: `确认删除线路 ${line.name || line.code} 吗？`,
+                          okText: "删除",
+                          cancelText: "取消",
+                          okButtonProps: { danger: true },
+                          onOk: async () => {
+                            await deleteLineMutation.mutateAsync(line.id);
+                          },
+                        });
+                      }}
+                      deleteLoading={deleteLineMutation.isPending}
+                    />
+                  </div>
+                )}
 
-                    {total > 0 && (
-                      <div className="admin-power-lines-pagination">
-                        <Pagination
-                          current={pagination.current}
-                          pageSize={pagination.pageSize}
+                {total > 0 && (
+                  <div className="admin-power-lines-pagination" style={{ marginTop: 16 }}>
+                    <Pagination
+                      current={pagination.current}
+                      pageSize={pagination.pageSize}
+                      total={total}
+                      showSizeChanger
+                      pageSizeOptions={[6, 12, 24, 48]}
+                      showTotal={(count) => `共 ${count} 条`}
+                      onChange={(page, pageSize) => {
+                        setPagination({ current: page, pageSize });
+                      }}
+                      onShowSizeChange={(page, pageSize) => {
+                        setPagination({ current: 1, pageSize });
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            ),
+          },
+          ...detailTabs,
+        ]}
+      />
                           total={total}
                           showSizeChanger
                           pageSizeOptions={[6, 12, 24, 48]}
