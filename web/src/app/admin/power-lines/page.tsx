@@ -328,11 +328,21 @@ export default function AdminPowerLinesPage() {
         onEdit={handleTabsEdit}
         className="admin-power-lines-tabs"
         tabBarExtraContent={
-          canLineManage ? (
-            <Button type="primary" onClick={openCreateLineModal}>
-              新建线路
-            </Button>
-          ) : null
+          <Space>
+            <Segmented
+              value={viewMode}
+              onChange={(value) => setViewMode(value as "card" | "list")}
+              options={[
+                { label: "卡片视图", value: "card" },
+                { label: "列表视图", value: "list" },
+              ]}
+            />
+            {canLineManage && (
+              <Button type="primary" onClick={openCreateLineModal}>
+                新建线路
+              </Button>
+            )}
+          </Space>
         }
         items={[
           {
@@ -341,7 +351,7 @@ export default function AdminPowerLinesPage() {
             closable: false,
             children: (
               <div className="admin-power-lines-list-pane">
-                <div className="admin-filter-bar flex justify-between items-center" style={{ marginBottom: 16 }}>
+                <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label="线路编码/名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
@@ -363,14 +373,6 @@ export default function AdminPowerLinesPage() {
                       </Button>
                     </Form.Item>
                   </Form>
-                  <Segmented
-                    value={viewMode}
-                    onChange={(value) => setViewMode(value as "card" | "list")}
-                    options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "list" },
-                    ]}
-                  />
                 </div>
 
                 {lines.length === 0 ? (
