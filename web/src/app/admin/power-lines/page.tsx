@@ -17,6 +17,7 @@ import {
   Tabs,
   Tag,
   Typography,
+  Alert,
   type MenuProps,
 } from "antd";
 import { MoreOutlined, SearchOutlined } from "@ant-design/icons";
@@ -26,12 +27,13 @@ import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { PowerLineCesiumMap } from "@/components/power-line-cesium-map";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
-import type { LineListResponse, LineSummary } from "@/types/auth";
+import type { LineListResponse, LineSummary, LineTowerListResponse, LineTowerSummary } from "@/types/auth";
 
 type LineFormValues = {
   name: string;
@@ -94,6 +96,18 @@ const EMPTY_LINE_FORM: LineFormValues = {
   name: "",
   voltage_level: null,
 };
+
+const TOWER_TYPE_OPTIONS = [
+  { value: "", label: "全部塔型" },
+  { value: "直线", label: "直线" },
+  { value: "耐张", label: "耐张" },
+] as const;
+
+const TOWER_TABLE_DEFAULT_PAGE_SIZE = 20;
+const TOWER_MAP_QUERY_LIMIT = 500;
+const POWER_LINES_PANEL_MIN_HEIGHT = 360;
+const POWER_LINES_MAP_MIN_HEIGHT = 240;
+const POWER_LINES_TABLE_MIN_SCROLL_Y = 180;
 
 function resolveVoltageOptionFromKv(voltageKv: number | null): LineFormValues["voltage_level"] {
   if (voltageKv === null) {
@@ -682,9 +696,14 @@ interface PowerLineDetailViewProps {
 }
 
 function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManage, onLineDeleted }: PowerLineDetailViewProps) {
+  const { message: messageApi } = App.useApp();
+  const queryClient = useQueryClient();
   const [lineDetail, setLineDetail] = useState<LineSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [towerKeyword, setTowerKeyword] = useState("");
+  const [towerTypeFilter, setTowerTypeFilter] = useState("");
+  const [towerPagination, setTowerPagination] = useState({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE });
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -706,6 +725,81 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManag
     void fetchDetail();
   }, [lineId, fetchWithAuth]);
 
+  const towerListPath = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("limit", String(TOWER_TABLE_DEFAULT_PAGE_SIZE));
+    params.set("offset", String((towerPagination.current - 1) * TOWER_TABLE_DEFAULT_PAGE_SIZE));
+    if (towerKeyword.trim()) {
+      params.set("keyword", towerKeyword.trim());
+    }
+    if (towerTypeFilter) {
+      params.set("tower_type", towerTypeFilter);
+    }
+    const query = params.toString();
+    return `/api/v1/lines/${lineId}/towers${query ? `?${query}` : ""}`;
+  }, [lineId, towerKeyword, towerTypeFilter, towerPagination]);
+
+  const towersQuery = useQuery({
+    queryKey: [towerListPath],
+    enabled: !!canTowerRead && !!lineDetail,
+    queryFn: async () => {
+      const response = await fetchWithAuth(towerListPath);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LineTowerListResponse;
+    },
+  });
+
+  const towers = useMemo(() => towersQuery.data?.items ?? [], [towersQuery.data?.items]);
+
+  const towerColumns: ColumnsType<LineTowerSummary> = [
+    { title: "序号", dataIndex: "seq_no", width: 80 },
+    {
+      title: "塔号",
+      dataIndex: "tower_no",
+      width: 120,
+      render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
+    },
+    { title: "模型", dataIndex: "tower_model", width: 180, render: (value: string | null) => value || "-" },
+    { title: "塔型", dataIndex: "tower_type", width: 100, render: (value: string | null) => value || "-" },
+    {
+      title: "坐标",
+      key: "geo",
+      width: 200,
+      render: (_: unknown, row) =>
+        row.longitude !== null && row.latitude !== null
+          ? `${row.longitude.toFixed(6)}, ${row.latitude.toFixed(6)}`
+          : "-",
+    },
+    { title: "接地电阻", dataIndex: "ground_resistance_ohm", width: 100, render: (value: number | null) => value ?? "-" },
+    { title: "地闪密度", dataIndex: "lightning_density", width: 100, render: (value: number | null) => value ?? "-" },
+    {
+      title: "风险等级",
+      dataIndex: "risk_level",
+      width: 100,
+      render: (value: string | null) => {
+        if (!value) return "-";
+        const riskLevel = value.trim();
+        let color = "default";
+        if (riskLevel === "1") {
+          color = "green";
+        } else if (riskLevel === "2") {
+          color = "orange";
+        } else if (riskLevel === "3") {
+          color = "red";
+        }
+        return <Tag color={color}>{value}</Tag>;
+      },
+    },
+    {
+      title: "更新时间",
+      dataIndex: "update_date",
+      width: 180,
+      render: (value: string) => new Date(value).toLocaleString(),
+    },
+  ];
+
   if (loading) {
     return <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[280px]" />;
   }
@@ -722,18 +816,90 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManag
 
   return (
     <div className="admin-power-lines-detail-view">
-      <Card title="线路详情">
-        <Space direction="vertical" size={12} className="w-full">
-          <Typography.Text>线路编码：{lineDetail.code}</Typography.Text>
-          <Typography.Text>线路名称：{lineDetail.name}</Typography.Text>
-          <Typography.Text>电压等级：{lineDetail.voltage_kv ?? "-"} kV</Typography.Text>
-          <Typography.Text>杆塔总数：{lineDetail.tower_count}</Typography.Text>
-          <Typography.Text>
-            估算长度：{lineDetail.estimated_length_km != null && lineDetail.estimated_length_km > 0 ? `${lineDetail.estimated_length_km.toFixed(2)} km` : "-"}
-          </Typography.Text>
-          <Typography.Text>更新时间：{new Date(lineDetail.update_date).toLocaleString()}</Typography.Text>
-        </Space>
-      </Card>
+      <Tabs
+        type="card"
+        items={[
+          {
+            key: "info",
+            label: "线路信息",
+            children: (
+              <Card>
+                <Space direction="vertical" size={12} className="w-full">
+                  <Typography.Text>线路编码：{lineDetail.code}</Typography.Text>
+                  <Typography.Text>线路名称：{lineDetail.name}</Typography.Text>
+                  <Typography.Text>电压等级：{lineDetail.voltage_kv ?? "-"} kV</Typography.Text>
+                  <Typography.Text>杆塔总数：{lineDetail.tower_count}</Typography.Text>
+                  <Typography.Text>
+                    估算长度：{lineDetail.estimated_length_km != null && lineDetail.estimated_length_km > 0 ? `${lineDetail.estimated_length_km.toFixed(2)} km` : "-"}
+                  </Typography.Text>
+                  <Typography.Text>更新时间：{new Date(lineDetail.update_date).toLocaleString()}</Typography.Text>
+                </Space>
+              </Card>
+            ),
+          },
+          {
+            key: "map",
+            label: "Cesium地图",
+            children: (
+              <div className="flex flex-col gap-3">
+                <PowerLineCesiumMap
+                  lineCode={lineDetail.code}
+                  lineName={lineDetail.name}
+                  towers={towers}
+                  terrainDataset={null}
+                  accessToken=""
+                  exaggeration={1}
+                  loading={towersQuery.isFetching}
+                  height={500}
+                />
+              </div>
+            ),
+          },
+          {
+            key: "towers",
+            label: "杆塔列表",
+            children: (
+              <Space direction="vertical" size={12} className="w-full">
+                <div className="admin-filter-bar">
+                  <Form layout="inline">
+                    <Form.Item label="关键词" className="admin-filter-keyword-item">
+                      <Input value={towerKeyword} allowClear onChange={(event) => setTowerKeyword(event.target.value)} placeholder="按塔号/模型筛选" />
+                    </Form.Item>
+                    <Form.Item label="塔型" className="admin-filter-keyword-item">
+                      <Select value={towerTypeFilter} options={[...TOWER_TYPE_OPTIONS]} onChange={(value) => setTowerTypeFilter(value)} />
+                    </Form.Item>
+                    <Form.Item>
+                      <Button htmlType="button" icon={<SearchOutlined />} onClick={() => setTowerPagination({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE })} className="admin-search-btn">
+                        查询
+                      </Button>
+                    </Form.Item>
+                  </Form>
+                </div>
+                <div className="relative overflow-auto">
+                  <Table<LineTowerSummary>
+                    rowKey={(row) => row.id}
+                    columns={towerColumns}
+                    dataSource={towers}
+                    loading={towersQuery.isFetching}
+                    pagination={{
+                      current: towerPagination.current,
+                      pageSize: towerPagination.pageSize,
+                      total: towersQuery.data?.total ?? 0,
+                      showSizeChanger: true,
+                      showTotal: (total) => `共 ${total} 条`,
+                      hideOnSinglePage: false,
+                      onChange: (page, pageSize) => {
+                        setTowerPagination({ current: page, pageSize });
+                      },
+                    }}
+                    scroll={{ x: 1400, y: 300 }}
+                  />
+                </div>
+              </Space>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }
