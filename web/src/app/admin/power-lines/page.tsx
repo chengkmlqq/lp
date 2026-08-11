@@ -4,17 +4,24 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
   Button,
+  Dropdown,
   Empty,
   Form,
   Input,
   Modal,
   Pagination,
+  Segmented,
   Select,
   Space,
+  Table,
+  Tabs,
+  Tag,
   Typography,
+  type MenuProps,
 } from "antd";
-import { SearchOutlined } from "@ant-design/icons";
-import { useCallback, useMemo, useState } from "react";
+import { MoreOutlined, SearchOutlined } from "@ant-design/icons";
+import type { ColumnsType } from "antd/es/table";
+import { useCallback, useMemo, useState, useEffect, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/components/auth-provider";
@@ -22,6 +29,7 @@ import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
+import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
 import type { LineListResponse, LineSummary } from "@/types/auth";
 
@@ -29,6 +37,15 @@ type LineFormValues = {
   name: string;
   voltage_level: string | null;
 };
+
+type DetailTabItem = {
+  key: string;
+  label: ReactNode;
+  closable: boolean;
+  children: ReactNode;
+};
+
+const LIST_TAB_KEY = "list";
 
 const LINE_VOLTAGE_OPTIONS = [
   { value: "dc_500", label: "直流500kV", voltage_kv: 500 },
@@ -90,6 +107,7 @@ export default function AdminPowerLinesPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
+  const isMobile = useMobileDetection();
   const [lineForm] = Form.useForm<LineFormValues>();
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -99,6 +117,9 @@ export default function AdminPowerLinesPage() {
   const [editingLine, setEditingLine] = useState<LineSummary | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   const canLineManage = hasPermission("line.manage");
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
@@ -205,12 +226,58 @@ export default function AdminPowerLinesPage() {
       setError("");
       messageApi.success("线路已删除");
       await refreshLines();
-      router.push("/admin/power-lines");
     },
     onError: (candidate) => {
       setError(candidate instanceof Error ? candidate.message : "删除线路失败");
     },
   });
+
+  const openDetail = useCallback((line: LineSummary) => {
+    const key = line.id;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        setActiveTabKey(key);
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: <span>{line.name}</span>,
+          closable: true,
+          children: (
+            <PowerLineDetailView
+              lineId={line.id}
+              fetchWithAuth={fetchWithAuth}
+              canTowerRead={canTowerRead}
+              canLineManage={canLineManage}
+              onLineDeleted={async () => {
+                setDetailTabs((tabs) => tabs.filter((tab) => tab.key !== key));
+                setActiveTabKey(LIST_TAB_KEY);
+                await refreshLines();
+              }}
+            />
+          ),
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, [fetchWithAuth, canTowerRead, canLineManage, refreshLines]);
+
+  const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
+    if (action !== "remove") {
+      return;
+    }
+    const key = String(targetKey);
+    const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
+    const next = detailTabs.filter((tab) => tab.key !== key);
+    setDetailTabs(next);
+    if (activeTabKey === key) {
+      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+      setActiveTabKey(fallback);
+    }
+  }, [detailTabs, activeTabKey]);
+
   const openCreateLineModal = () => {
     setEditingLine(null);
     lineForm.setFieldsValue(EMPTY_LINE_FORM);
@@ -253,136 +320,145 @@ export default function AdminPowerLinesPage() {
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Card
-        className="admin-power-lines-card"
-        title="线路管理"
-        extra={canLineManage ? (
-          <Button type="primary" onClick={openCreateLineModal}>
-            新建线路
-          </Button>
-        ) : null}
-      >
-        <div className="admin-power-lines-card-body">
-          <div className="admin-filter-bar">
-              <Form layout="inline">
-                <Form.Item label="线路编码/名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                  <Input
-                    value={keywordInput}
-                    allowClear
-                    onChange={(event) => setKeywordInput(event.target.value)}
-                    placeholder="按线路编码/名称筛选"
-                    onPressEnter={handleSearch}
-                  />
-                </Form.Item>
-                <Form.Item style={{ marginBottom: 0 }}>
-                  <Button
-                    htmlType="button"
-                    icon={<SearchOutlined />}
-                    onClick={handleSearch}
-                    className="admin-search-btn"
-                  >
-                    查询
-                  </Button>
-                </Form.Item>
-              </Form>
-            </div>
-            {lines.length === 0 ? (
-              <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            ) : (
-              <div className="admin-power-lines-card-scroll">
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {lines.map((line) => (
-                    <Card
-                      key={line.id}
-                      size="small"
-                      hoverable
-                      onClick={() => router.push(`/admin/power-lines/${line.id}`)}
-                      title={<Typography.Text strong>{line.name}</Typography.Text>}
-                      extra={canLineManage ? (
-                        <Space size={4}>
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        onEdit={handleTabsEdit}
+        className="admin-power-lines-tabs"
+        items={[
+          {
+            key: LIST_TAB_KEY,
+            label: <span className="admin-power-lines-tab-title">线路管理</span>,
+            closable: false,
+            children: (
+              <div className="admin-power-lines-list-pane">
+                <Card
+                  className="admin-power-lines-card"
+                  extra={canLineManage ? (
+                    <Button type="primary" onClick={openCreateLineModal}>
+                      新建线路
+                    </Button>
+                  ) : null}
+                >
+                  <div className="admin-power-lines-card-body">
+                    <div className="admin-filter-bar flex justify-between items-center">
+                      <Form layout="inline" style={{ flex: 1 }}>
+                        <Form.Item label="线路编码/名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                          <Input
+                            value={keywordInput}
+                            allowClear
+                            onChange={(event) => setKeywordInput(event.target.value)}
+                            placeholder="按线路编码/名称筛选"
+                            onPressEnter={handleSearch}
+                          />
+                        </Form.Item>
+                        <Form.Item style={{ marginBottom: 0 }}>
                           <Button
-                            size="small"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openEditLineModal(line);
-                            }}
+                            htmlType="button"
+                            icon={<SearchOutlined />}
+                            onClick={handleSearch}
+                            className="admin-search-btn"
                           >
-                            编辑
+                            查询
                           </Button>
-                          <Button
-                            size="small"
-                            onClick={() => router.push(`/admin/power-lines/${line.id}`)}
-                          >
-                            详情
-                          </Button>
-                          <Button
-                            size="small"
-                            danger
-                            loading={deleteLineMutation.isPending}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              Modal.confirm({
-                                title: "删除线路",
-                                content: `确认删除线路 ${line.name || line.code} 吗？`,
-                                okText: "删除",
-                                cancelText: "取消",
-                                okButtonProps: { danger: true },
-                                onOk: async () => {
-                                  await deleteLineMutation.mutateAsync(line.id);
-                                },
-                              });
-                            }}
-                          >
-                            删除
-                          </Button>
-                        </Space>
-                      ) : (
-                        <Button
-                          size="small"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            router.push(`/admin/power-lines/${line.id}`);
+                        </Form.Item>
+                      </Form>
+                      <Form layout="inline" style={{ marginLeft: 16 }}>
+                        <Form.Item style={{ marginBottom: 0 }}>
+                          <Segmented
+                            value={viewMode}
+                            onChange={(value) => setViewMode(value as "card" | "list")}
+                            options={[
+                              { label: "卡片视图", value: "card" },
+                              { label: "列表视图", value: "list" },
+                            ]}
+                          />
+                        </Form.Item>
+                      </Form>
+                    </div>
+
+                    {lines.length === 0 ? (
+                      <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    ) : viewMode === "card" ? (
+                      <div className="admin-power-lines-card-scroll">
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          {lines.map((line) => (
+                            <PowerLineCard
+                              key={line.id}
+                              line={line}
+                              canLineManage={canLineManage}
+                              onEdit={openEditLineModal}
+                              onDetail={openDetail}
+                              onDelete={() => {
+                                Modal.confirm({
+                                  title: "删除线路",
+                                  content: `确认删除线路 ${line.name || line.code} 吗？`,
+                                  okText: "删除",
+                                  cancelText: "取消",
+                                  okButtonProps: { danger: true },
+                                  onOk: async () => {
+                                    await deleteLineMutation.mutateAsync(line.id);
+                                  },
+                                });
+                              }}
+                              deleteLoading={deleteLineMutation.isPending}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="admin-power-lines-table-view">
+                        <PowerLineTable
+                          lines={lines}
+                          canLineManage={canLineManage}
+                          onEdit={openEditLineModal}
+                          onDetail={openDetail}
+                          onDelete={(line) => {
+                            Modal.confirm({
+                              title: "删除线路",
+                              content: `确认删除线路 ${line.name || line.code} 吗？`,
+                              okText: "删除",
+                              cancelText: "取消",
+                              okButtonProps: { danger: true },
+                              onOk: async () => {
+                                await deleteLineMutation.mutateAsync(line.id);
+                              },
+                            });
                           }}
-                        >
-                          详情
-                        </Button>
-                      )}
-                    >
-                      <Space direction="vertical" size={4} className="w-full">
-                        <Typography.Text type="secondary">电压等级：{line.voltage_kv ?? "-"} kV</Typography.Text>
-                        <Typography.Text type="secondary">杆塔总数：{line.tower_count}</Typography.Text>
-                        <Typography.Text type="secondary">
-                          估算长度：{line.estimated_length_km != null && line.estimated_length_km > 0 ? `${line.estimated_length_km.toFixed(2)} km` : "-"}
-                        </Typography.Text>
-                        <Typography.Text type="secondary">
-                          更新时间：{new Date(line.update_date).toLocaleString()}
-                        </Typography.Text>
-                      </Space>
-                    </Card>
-                  ))}
-                </div>
+                          deleteLoading={deleteLineMutation.isPending}
+                        />
+                      </div>
+                    )}
+
+                    {total > 0 && (
+                      <div className="admin-power-lines-pagination">
+                        <Pagination
+                          current={pagination.current}
+                          pageSize={pagination.pageSize}
+                          total={total}
+                          showSizeChanger
+                          pageSizeOptions={[6, 12, 24, 48]}
+                          showTotal={(count) => `共 ${count} 条`}
+                          onChange={(page, pageSize) => {
+                            setPagination({ current: page, pageSize });
+                          }}
+                          onShowSizeChange={(page, pageSize) => {
+                            setPagination({ current: 1, pageSize });
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </Card>
               </div>
-            )}
-            {total > 0 && (
-              <div className="admin-power-lines-pagination">
-                <Pagination
-                  current={pagination.current}
-                  pageSize={pagination.pageSize}
-                  total={total}
-                  showSizeChanger
-                  pageSizeOptions={[6, 12, 24, 48]}
-                  showTotal={(count) => `共 ${count} 条`}
-                  onChange={(page, pageSize) => {
-                    setPagination({ current: page, pageSize });
-                  }}
-                  onShowSizeChange={(page, pageSize) => {
-                    setPagination({ current: 1, pageSize });
-                  }}
-                />
-              </div>
-            )}
-          </div>
-      </Card>
+            ),
+          },
+          ...detailTabs,
+        ]}
+      />
+
       <Modal
         title={editingLine ? "编辑线路" : "新建线路"}
         open={lineModalOpen}
@@ -420,6 +496,250 @@ export default function AdminPowerLinesPage() {
           </Form.Item>
         </Form>
       </Modal>
+    </div>
+  );
+}
+
+interface PowerLineCardProps {
+  line: LineSummary;
+  canLineManage: boolean;
+  onEdit: (line: LineSummary) => void;
+  onDetail: (line: LineSummary) => void;
+  onDelete: () => void;
+  deleteLoading: boolean;
+}
+
+function PowerLineCard({ line, canLineManage, onEdit, onDetail, onDelete, deleteLoading }: PowerLineCardProps) {
+  const menuItems: MenuProps["items"] = canLineManage
+    ? [
+        {
+          key: "delete",
+          label: "删除",
+          danger: true,
+          onClick: onDelete,
+        },
+      ]
+    : [];
+
+  return (
+    <Card
+      size="small"
+      hoverable
+      title={<Typography.Text strong>{line.name}</Typography.Text>}
+      extra={
+        <Space size={4}>
+          <Button
+            size="small"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit(line);
+            }}
+          >
+            编辑
+          </Button>
+          <Button
+            size="small"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDetail(line);
+            }}
+          >
+            详情
+          </Button>
+          {canLineManage && menuItems.length > 0 && (
+            <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
+              <Button
+                size="small"
+                icon={<MoreOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                }}
+              />
+            </Dropdown>
+          )}
+        </Space>
+      }
+    >
+      <Space direction="vertical" size={4} className="w-full">
+        <Typography.Text type="secondary">电压等级：{line.voltage_kv ?? "-"} kV</Typography.Text>
+        <Typography.Text type="secondary">杆塔总数：{line.tower_count}</Typography.Text>
+        <Typography.Text type="secondary">
+          估算长度：{line.estimated_length_km != null && line.estimated_length_km > 0 ? `${line.estimated_length_km.toFixed(2)} km` : "-"}
+        </Typography.Text>
+        <Typography.Text type="secondary">
+          更新时间：{new Date(line.update_date).toLocaleString()}
+        </Typography.Text>
+      </Space>
+    </Card>
+  );
+}
+
+interface PowerLineTableProps {
+  lines: LineSummary[];
+  canLineManage: boolean;
+  onEdit: (line: LineSummary) => void;
+  onDetail: (line: LineSummary) => void;
+  onDelete: (line: LineSummary) => void;
+  deleteLoading: boolean;
+}
+
+function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onDelete, deleteLoading }: PowerLineTableProps) {
+  const columns: ColumnsType<LineSummary> = [
+    {
+      title: "线路编码",
+      dataIndex: "code",
+      key: "code",
+      width: 120,
+    },
+    {
+      title: "线路名称",
+      dataIndex: "name",
+      key: "name",
+      flex: 1,
+    },
+    {
+      title: "电压等级",
+      dataIndex: "voltage_kv",
+      key: "voltage_kv",
+      width: 100,
+      render: (value: number | null) => `${value ?? "-"} kV`,
+    },
+    {
+      title: "杆塔总数",
+      dataIndex: "tower_count",
+      key: "tower_count",
+      width: 100,
+      align: "right" as const,
+    },
+    {
+      title: "估算长度",
+      dataIndex: "estimated_length_km",
+      key: "estimated_length_km",
+      width: 120,
+      render: (value: number | null) =>
+        value != null && value > 0 ? `${value.toFixed(2)} km` : "-",
+    },
+    {
+      title: "更新时间",
+      dataIndex: "update_date",
+      key: "update_date",
+      width: 180,
+      render: (value: string) => new Date(value).toLocaleString(),
+    },
+    {
+      title: "操作",
+      key: "actions",
+      width: 160,
+      fixed: "right" as const,
+      render: (_, line) => {
+        const menuItems: MenuProps["items"] = canLineManage
+          ? [
+              {
+                key: "delete",
+                label: "删除",
+                danger: true,
+                onClick: () => onDelete(line),
+              },
+            ]
+          : [];
+
+        return (
+          <Space size={4}>
+            <Button
+              size="small"
+              onClick={() => onEdit(line)}
+            >
+              编辑
+            </Button>
+            <Button
+              size="small"
+              onClick={() => onDetail(line)}
+            >
+              详情
+            </Button>
+            {canLineManage && menuItems.length > 0 && (
+              <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
+                <Button size="small" icon={<MoreOutlined />} />
+              </Dropdown>
+            )}
+          </Space>
+        );
+      },
+    },
+  ];
+
+  return (
+    <Table<LineSummary>
+      rowKey="id"
+      columns={columns}
+      dataSource={lines}
+      pagination={false}
+      tableLayout="fixed"
+    />
+  );
+}
+
+interface PowerLineDetailViewProps {
+  lineId: string;
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
+  canTowerRead: boolean;
+  canLineManage: boolean;
+  onLineDeleted: () => Promise<void>;
+}
+
+function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManage, onLineDeleted }: PowerLineDetailViewProps) {
+  const [lineDetail, setLineDetail] = useState<LineSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchDetail = async () => {
+      try {
+        setLoading(true);
+        const response = await fetchWithAuth(`/api/v1/lines/${lineId}`);
+        if (!response.ok) {
+          throw new Error(await readApiError(response));
+        }
+        const data = (await response.json()) as LineSummary;
+        setLineDetail(data);
+        setError("");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "加载详情失败");
+      } finally {
+        setLoading(false);
+      }
+    };
+    void fetchDetail();
+  }, [lineId, fetchWithAuth]);
+
+  if (loading) {
+    return <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[280px]" />;
+  }
+
+  if (error || !lineDetail) {
+    return (
+      <Card>
+        <Space direction="vertical" size={12}>
+          <Typography.Text type="danger">{error || "加载详情失败"}</Typography.Text>
+        </Space>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="admin-power-lines-detail-view">
+      <Card title="线路详情">
+        <Space direction="vertical" size={12} className="w-full">
+          <Typography.Text>线路编码：{lineDetail.code}</Typography.Text>
+          <Typography.Text>线路名称：{lineDetail.name}</Typography.Text>
+          <Typography.Text>电压等级：{lineDetail.voltage_kv ?? "-"} kV</Typography.Text>
+          <Typography.Text>杆塔总数：{lineDetail.tower_count}</Typography.Text>
+          <Typography.Text>
+            估算长度：{lineDetail.estimated_length_km != null && lineDetail.estimated_length_km > 0 ? `${lineDetail.estimated_length_km.toFixed(2)} km` : "-"}
+          </Typography.Text>
+          <Typography.Text>更新时间：{new Date(lineDetail.update_date).toLocaleString()}</Typography.Text>
+        </Space>
+      </Card>
     </div>
   );
 }
