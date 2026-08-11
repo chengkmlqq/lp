@@ -9,7 +9,6 @@ import {
   Form,
   Input,
   Modal,
-  Pagination,
   Segmented,
   Select,
   Space,
@@ -22,7 +21,7 @@ import {
 } from "antd";
 import { MoreOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useMemo, useState, useEffect, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/components/auth-provider";
@@ -108,6 +107,8 @@ const TOWER_MAP_QUERY_LIMIT = 500;
 const POWER_LINES_PANEL_MIN_HEIGHT = 360;
 const POWER_LINES_MAP_MIN_HEIGHT = 240;
 const POWER_LINES_TABLE_MIN_SCROLL_Y = 180;
+const POWER_LINES_TABLE_VIEWPORT_GAP = 40;
+const POWER_LINES_TABLE_FALLBACK_RESERVE = 220;
 
 function resolveVoltageOptionFromKv(voltageKv: number | null): LineFormValues["voltage_level"] {
   if (voltageKv === null) {
@@ -134,10 +135,46 @@ export default function AdminPowerLinesPage() {
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  const [tableScrollY, setTableScrollY] = useState(POWER_LINES_TABLE_MIN_SCROLL_Y);
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   const canLineManage = hasPermission("line.manage");
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
   const canRead = canLineRead || canTowerRead;
+
+  const updateTableScrollHeight = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+    const anchorTop = anchor.getBoundingClientRect().top;
+    const nextHeight = Math.floor(window.innerHeight - anchorTop - POWER_LINES_TABLE_VIEWPORT_GAP - POWER_LINES_TABLE_FALLBACK_RESERVE);
+    const clampedHeight = Math.max(POWER_LINES_TABLE_MIN_SCROLL_Y, nextHeight);
+    setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
+  }, []);
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(updateTableScrollHeight);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [updateTableScrollHeight]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const onViewportChange = () => {
+      window.requestAnimationFrame(updateTableScrollHeight);
+    };
+    window.addEventListener("resize", onViewportChange);
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+    };
+  }, [updateTableScrollHeight]);
   const lineListPath = useMemo(() => {
     const params = new URLSearchParams();
     params.set("limit", String(paginationPageSize));
@@ -419,7 +456,11 @@ export default function AdminPowerLinesPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="admin-power-lines-table-view">
+                  <div
+                    ref={tableScrollAnchorRef}
+                    className="admin-power-lines-table-view"
+                    style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                  >
                     <PowerLineTable
                       lines={lines}
                       canLineManage={canLineManage}
@@ -438,28 +479,11 @@ export default function AdminPowerLinesPage() {
                         });
                       }}
                       deleteLoading={deleteLineMutation.isPending}
+                      scrollY={tableScrollY}
                     />
                   </div>
                 )}
 
-                {total > 0 && (
-                  <div className="admin-power-lines-pagination" style={{ marginTop: 16 }}>
-                    <Pagination
-                      current={pagination.current}
-                      pageSize={pagination.pageSize}
-                      total={total}
-                      showSizeChanger
-                      pageSizeOptions={[6, 12, 24, 48]}
-                      showTotal={(count) => `共 ${count} 条`}
-                      onChange={(page, pageSize) => {
-                        setPagination({ current: page, pageSize });
-                      }}
-                      onShowSizeChange={(page, pageSize) => {
-                        setPagination({ current: 1, pageSize });
-                      }}
-                    />
-                  </div>
-                )}
               </div>
             ),
           },
@@ -589,9 +613,10 @@ interface PowerLineTableProps {
   onDetail: (line: LineSummary) => void;
   onDelete: (line: LineSummary) => void;
   deleteLoading: boolean;
+  scrollY?: number;
 }
 
-function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onDelete, deleteLoading }: PowerLineTableProps) {
+function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onDelete, deleteLoading, scrollY = POWER_LINES_TABLE_MIN_SCROLL_Y }: PowerLineTableProps) {
   const columns: ColumnsType<LineSummary> = [
     {
       title: "线路编码",
@@ -681,7 +706,14 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onDelete, dele
       rowKey="id"
       columns={columns}
       dataSource={lines}
-      pagination={false}
+      pagination={{
+        hideOnSinglePage: false,
+        showSizeChanger: true,
+        pageSizeOptions: [6, 12, 24, 48],
+        showTotal: (total) => `共 ${total} 条`,
+        style: { marginBottom: 0 },
+      }}
+      scroll={{ x: 1200, y: scrollY }}
       tableLayout="fixed"
     />
   );
