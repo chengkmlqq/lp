@@ -4750,10 +4750,105 @@ body {
 }
 
 /* ======================================
-   LP-280: 线路管理页卡片滚动与分页
+   LP-297: 线路管理页视觉与滚动布局对齐用户管理页规范
    ====================================== */
 
-/* 页面根容器撑满内容区高度，卡片列表才能在受限高度内滚动而非溢出页面 */
+/* LP-297: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
+   内部列表 Tab 的列表才能延续原有 flex 自适应滚动布局 */
+.admin-power-lines-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin-power-lines-tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  /* 内容区背景改为与 Tab 栏一致的白底 */
+  background: var(--ant-color-bg-container);
+}
+
+.admin-power-lines-tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-power-lines-tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-power-lines-tabs .ant-table-pagination {
+  margin: 12px 0 0 !important;
+}
+
+/* LP-297: 线路管理 Tab 栏底色统一为 colorBgContainer 白底；
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
+.admin-power-lines-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
+  margin: 0;
+  /* 去掉选项卡标题栏底部自带的 1px 边框 */
+  border-bottom: none;
+  /* 标题栏四周内边距 */
+  padding: 12px;
+}
+
+/* LP-297: 默认选项卡标题样式：粗体 16px 标题色，与用户管理页保持一致 */
+.admin-power-lines-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin-power-lines-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin-power-lines-tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-power-lines-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin-power-lines-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+/* LP-297 深色模式：Tab 栏与内容区保持 colorBgContainer 一致的背景 */
+:root[data-fquiz-theme="dark"] .admin-power-lines-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin-power-lines-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+}
+
+/* LP-297: 用户管理页去外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+.admin-power-lines-list-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+/* LP-280: 页面根容器撑满内容区高度，卡片列表才能在受限高度内滚动而非溢出页面 */
 .admin-power-lines-card {
   display: flex;
   min-height: 0;
@@ -4776,19 +4871,45 @@ body {
   flex-direction: column;
 }
 
-/* 卡片视图固定高度滚动容器：卡片多时不溢出页面，自动出现垂直滚动条 */
+/* LP-297: 卡片视图固定高度滚动容器：卡片多时不溢出页面，自动出现垂直滚动条 */
 .admin-power-lines-card-scroll {
+  display: flex;
   min-height: 0;
   flex: 1;
+  flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 2px;
+  padding: 12px;
+  gap: 12px;
 }
 
-/* 分页条：与卡片列表底部保持间距 */
+/* LP-297: 卡片容器的 grid 外包装，用 flex 保持滚动区域灵活 */
+.admin-power-lines-card-scroll > .grid {
+  flex: 0 0 auto;
+}
+
+/* LP-297: 表格视图容器 */
+.admin-power-lines-table-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-power-lines-table-view .ant-table-body {
+  min-height: var(--admin-power-lines-table-body-min-height, 180px);
+}
+
+/* LP-297: 分页条：与卡片列表底部保持间距 */
 .admin-power-lines-pagination {
   display: flex;
   justify-content: flex-end;
-  padding-top: 4px;
+  gap: 12px;
+  padding: 12px;
   flex-shrink: 0;
+}
+
+/* LP-297: 详情视图内容区增加 10px padding */
+.admin-power-lines-detail-view {
+  padding: 10px;
 }

@@ -9,6 +9,7 @@ import {
   Form,
   Input,
   Modal,
+  Pagination,
   Segmented,
   Select,
   Space,
@@ -453,6 +454,18 @@ export default function AdminPowerLinesPage() {
                           deleteLoading={deleteLineMutation.isPending}
                         />
                       ))}
+                    </div>
+                    <div className="admin-power-lines-pagination">
+                      <Pagination
+                        current={pagination.current}
+                        pageSize={pagination.pageSize}
+                        total={total}
+                        onChange={(page, pageSize) => {
+                          setPagination({ current: page, pageSize });
+                        }}
+                        showSizeChanger
+                        showTotal={(total) => `共 ${total} 条`}
+                      />
                     </div>
                   </div>
                 ) : (
