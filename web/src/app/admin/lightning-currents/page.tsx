@@ -473,17 +473,11 @@ export default function AdminLightningCurrentsPage() {
       if (previous.some((tab) => tab.key === key)) {
         return previous;
       }
-      const meta = STATUS_META[record.status] ?? { color: "default", label: record.status };
       return [
         ...previous,
         {
           key,
-          label: (
-            <Space size={6}>
-              <span>{truncateFileName(record.source_file_name)}</span>
-              <Tag color={meta.color}>{meta.label}</Tag>
-            </Space>
-          ),
+          label: <span>{truncateFileName(record.source_file_name)}</span>,
           closable: true,
           children: (
             <AmplitudeDetailView
@@ -1237,7 +1231,7 @@ function AmplitudeDetailView({
   retryLoading: boolean;
 }) {
   return (
-    <Space direction="vertical" size={16} className="w-full">
+    <Space direction="vertical" size={16} className="w-full admin-lightning-currents-detail-pane">
       <div>
         <Typography.Title level={5}>基本信息</Typography.Title>
         <Descriptions bordered size="small" column={2}>

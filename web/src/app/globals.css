@@ -2828,6 +2828,14 @@ body {
   padding: 12px;
 }
 
+/* LP-303: 详情动态 Tab 内容容器：12px 内边距，内容超高时纵向滚动 */
+.admin-lightning-currents-detail-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+
 /* LP-246: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
    内部列表 Tab 的布局才能延续原有 flex 自适应滚动布局 */
 .admin-lightning-currents-tabs {
