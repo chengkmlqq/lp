@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
@@ -111,6 +112,17 @@ const POWER_LINES_TABLE_MIN_SCROLL_Y = 180;
 const POWER_LINES_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
 const POWER_LINES_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
 const POWER_LINES_TABLE_BOTTOM_GAP = 8;
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) {
+    return "-";
+  }
+  const parsed = dayjs(value);
+  if (!parsed.isValid()) {
+    return "-";
+  }
+  return parsed.format("YYYY-MM-DD HH:mm:ss");
+}
 
 function resolveVoltageOptionFromKv(voltageKv: number | null): LineFormValues["voltage_level"] {
   if (voltageKv === null) {
@@ -404,14 +416,6 @@ export default function AdminPowerLinesPage() {
         className="admin-power-lines-tabs"
         tabBarExtraContent={
           <Space>
-            <Segmented
-              value={viewMode}
-              onChange={(value) => setViewMode(value as "card" | "list")}
-              options={[
-                { label: "卡片视图", value: "card" },
-                { label: "列表视图", value: "list" },
-              ]}
-            />
             {canLineManage && (
               <Button type="primary" onClick={openCreateLineModal}>
                 新建线路
@@ -448,35 +452,45 @@ export default function AdminPowerLinesPage() {
                       </Button>
                     </Form.Item>
                   </Form>
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => setViewMode(value as "card" | "list")}
+                    options={[
+                      { label: "卡片视图", value: "card" },
+                      { label: "列表视图", value: "list" },
+                    ]}
+                  />
                 </div>
 
                 {lines.length === 0 ? (
                   <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : viewMode === "card" ? (
-                  <div className="admin-power-lines-card-scroll">
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {lines.map((line) => (
-                        <PowerLineCard
-                          key={line.id}
-                          line={line}
-                          canLineManage={canLineManage}
-                          onEdit={openEditLineModal}
-                          onDetail={openDetail}
-                          onDelete={() => {
-                            Modal.confirm({
-                              title: "删除线路",
-                              content: `确认删除线路 ${line.name || line.code} 吗？`,
-                              okText: "删除",
-                              cancelText: "取消",
-                              okButtonProps: { danger: true },
-                              onOk: async () => {
-                                await deleteLineMutation.mutateAsync(line.id);
-                              },
-                            });
-                          }}
-                          deleteLoading={deleteLineMutation.isPending}
-                        />
-                      ))}
+                  <>
+                    <div className="admin-power-lines-card-scroll">
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {lines.map((line) => (
+                          <PowerLineCard
+                            key={line.id}
+                            line={line}
+                            canLineManage={canLineManage}
+                            onEdit={openEditLineModal}
+                            onDetail={openDetail}
+                            onDelete={() => {
+                              Modal.confirm({
+                                title: "删除线路",
+                                content: `确认删除线路 ${line.name || line.code} 吗？`,
+                                okText: "删除",
+                                cancelText: "取消",
+                                okButtonProps: { danger: true },
+                                onOk: async () => {
+                                  await deleteLineMutation.mutateAsync(line.id);
+                                },
+                              });
+                            }}
+                            deleteLoading={deleteLineMutation.isPending}
+                          />
+                        ))}
+                      </div>
                     </div>
                     <div className="admin-power-lines-pagination">
                       <Pagination
@@ -490,7 +504,7 @@ export default function AdminPowerLinesPage() {
                         showTotal={(total) => `共 ${total} 条`}
                       />
                     </div>
-                  </div>
+                  </>
                 ) : (
                   <div
                     ref={tableScrollAnchorRef}
@@ -636,7 +650,7 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onDelete, delete
           估算长度：{line.estimated_length_km != null && line.estimated_length_km > 0 ? `${line.estimated_length_km.toFixed(2)} km` : "-"}
         </Typography.Text>
         <Typography.Text type="secondary">
-          更新时间：{new Date(line.update_date).toLocaleString()}
+          更新时间：{formatDateTime(line.update_date)}
         </Typography.Text>
       </Space>
     </Card>
@@ -688,7 +702,7 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onDelete, dele
       dataIndex: "update_date",
       key: "update_date",
       width: 180,
-      render: (value: string) => new Date(value).toLocaleString(),
+      render: (value: string) => formatDateTime(value),
     },
     {
       title: "操作",
@@ -859,7 +873,7 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManag
       title: "更新时间",
       dataIndex: "update_date",
       width: 180,
-      render: (value: string) => new Date(value).toLocaleString(),
+      render: (value: string) => formatDateTime(value),
     },
   ];
 
@@ -888,7 +902,7 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManag
           <Typography.Text>
             估算长度：{lineDetail.estimated_length_km != null && lineDetail.estimated_length_km > 0 ? `${lineDetail.estimated_length_km.toFixed(2)} km` : "-"}
           </Typography.Text>
-          <Typography.Text>更新时间：{new Date(lineDetail.update_date).toLocaleString()}</Typography.Text>
+          <Typography.Text>更新时间：{formatDateTime(lineDetail.update_date)}</Typography.Text>
         </Space>
       </Card>
       <Tabs

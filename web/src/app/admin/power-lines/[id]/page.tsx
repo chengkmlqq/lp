@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import dayjs from "dayjs";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -244,6 +245,16 @@ function formatJsonText(value: unknown): string {
     return "{}";
   }
   return JSON.stringify(value, null, 2);
+}
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) {
+    return "-";
+  }
+  const parsed = dayjs(value);
+  if (!parsed.isValid()) {
+    return "-";
+  }
+  return parsed.format("YYYY-MM-DD HH:mm:ss");
 }
 function parseJsonObjectText(value: string, label: string): Record<string, unknown> {
   const normalized = value.trim();
@@ -1440,7 +1451,7 @@ export default function AdminPowerLineDetailPage() {
       title: "更新时间",
       dataIndex: "update_date",
       width: 180,
-      render: (value: string) => new Date(value).toLocaleString(),
+      render: (value: string) => formatDateTime(value),
     },
     {
       title: "操作",
@@ -1644,7 +1655,7 @@ export default function AdminPowerLineDetailPage() {
                   估算长度：{selectedLine?.estimated_length_km && selectedLine.estimated_length_km > 0 ? `${selectedLine.estimated_length_km.toFixed(2)} km` : "-"}
                 </Typography.Text>
                 <Typography.Text>
-                  更新时间：{selectedLine ? new Date(selectedLine.update_date).toLocaleString() : "-"}
+                  更新时间：{selectedLine ? formatDateTime(selectedLine.update_date) : "-"}
                 </Typography.Text>
               </Space>
             </Card>
@@ -2444,7 +2455,7 @@ export default function AdminPowerLineDetailPage() {
                     经度: {ev.longitude != null ? ev.longitude.toFixed(4) : "-"} | 纬度: {ev.latitude != null ? ev.latitude.toFixed(4) : "-"}
                   </Typography.Text>
                   <Typography.Text type="secondary">
-                    发生时间: {ev.event_time ? new Date(ev.event_time).toLocaleString("zh-CN") : "-"} | 峰值电流: {ev.peak_current_ka != null ? `${ev.peak_current_ka} kA` : "-"}
+                    发生时间: {formatDateTime(ev.event_time)} | 峰值电流: {ev.peak_current_ka != null ? `${ev.peak_current_ka} kA` : "-"}
                   </Typography.Text>
                 </Space>
               </div>
