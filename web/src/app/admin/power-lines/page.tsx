@@ -656,12 +656,6 @@ interface PowerLineTableProps {
 function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onDelete, deleteLoading, scrollY = POWER_LINES_TABLE_MIN_SCROLL_Y }: PowerLineTableProps) {
   const columns: ColumnsType<LineSummary> = [
     {
-      title: "线路编码",
-      dataIndex: "code",
-      key: "code",
-      width: 120,
-    },
-    {
       title: "线路名称",
       dataIndex: "name",
       key: "name",
@@ -750,7 +744,7 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onDelete, dele
         showTotal: (total) => `共 ${total} 条`,
         style: { marginBottom: 0 },
       }}
-      scroll={{ x: 1200, y: scrollY }}
+      scroll={{ x: 1080, y: scrollY }}
       tableLayout="fixed"
     />
   );
