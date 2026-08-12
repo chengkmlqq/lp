@@ -385,6 +385,7 @@ def render_density_image(
         matplotlib.use("Agg")
         _configure_chinese_font()
         import matplotlib.pyplot as plt
+        from matplotlib.colors import LogNorm
     except ImportError:
         return b""
 
@@ -451,6 +452,7 @@ def render_density_image(
         aspect="auto",
         cmap="YlOrRd",
         interpolation="nearest",
+        norm=LogNorm(vmin=1, vmax=ng_matrix.max()),
     )
     ax.set_xlabel("经度 (°E)")
     ax.set_ylabel("纬度 (°N)")
