@@ -108,8 +108,9 @@ const TOWER_MAP_QUERY_LIMIT = 500;
 const POWER_LINES_PANEL_MIN_HEIGHT = 360;
 const POWER_LINES_MAP_MIN_HEIGHT = 240;
 const POWER_LINES_TABLE_MIN_SCROLL_Y = 180;
-const POWER_LINES_TABLE_VIEWPORT_GAP = 40;
-const POWER_LINES_TABLE_FALLBACK_RESERVE = 220;
+const POWER_LINES_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
+const POWER_LINES_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
+const POWER_LINES_TABLE_BOTTOM_GAP = 8;
 
 function resolveVoltageOptionFromKv(voltageKv: number | null): LineFormValues["voltage_level"] {
   if (voltageKv === null) {
@@ -151,18 +152,15 @@ export default function AdminPowerLinesPage() {
     if (!anchor) {
       return;
     }
-    const anchorTop = anchor.getBoundingClientRect().top;
-    const nextHeight = Math.floor(window.innerHeight - anchorTop - POWER_LINES_TABLE_VIEWPORT_GAP - POWER_LINES_TABLE_FALLBACK_RESERVE);
+    const anchorHeight = anchor.getBoundingClientRect().height;
+    const header = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const pagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = header?.getBoundingClientRect().height ?? POWER_LINES_TABLE_ESTIMATED_HEADER_HEIGHT;
+    const paginationHeight = pagination?.getBoundingClientRect().height ?? POWER_LINES_TABLE_ESTIMATED_PAGINATION_HEIGHT;
+    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - POWER_LINES_TABLE_BOTTOM_GAP);
     const clampedHeight = Math.max(POWER_LINES_TABLE_MIN_SCROLL_Y, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);
-
-  useEffect(() => {
-    const frameId = window.requestAnimationFrame(updateTableScrollHeight);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [updateTableScrollHeight]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -217,6 +215,31 @@ export default function AdminPowerLinesPage() {
   }, [refreshLines]));
   const lines = useMemo(() => linesQuery.data?.items ?? [], [linesQuery.data?.items]);
   const total = linesQuery.data?.total ?? 0;
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(updateTableScrollHeight);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [updateTableScrollHeight, viewMode, lines.length]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(updateTableScrollHeight);
+    });
+    resizeObserver.observe(anchor);
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [updateTableScrollHeight, viewMode, lines.length]);
+
   const handleSearch = () => {
     setKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -570,6 +593,7 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onDelete, delete
     <Card
       size="small"
       hoverable
+      className="admin-power-lines-line-card"
       title={<Typography.Text strong>{line.name}</Typography.Text>}
       extra={
         <Space size={4}>
@@ -861,30 +885,26 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManag
 
   return (
     <div className="admin-power-lines-detail-view">
+      <Card size="small" className="admin-power-line-detail-meta">
+        <Space direction="vertical" size={4} className="w-full">
+          <Typography.Text>线路编码：{lineDetail.code}</Typography.Text>
+          <Typography.Text>线路名称：{lineDetail.name}</Typography.Text>
+          <Typography.Text>电压等级：{lineDetail.voltage_kv ?? "-"} kV</Typography.Text>
+          <Typography.Text>杆塔总数：{lineDetail.tower_count}</Typography.Text>
+          <Typography.Text>
+            估算长度：{lineDetail.estimated_length_km != null && lineDetail.estimated_length_km > 0 ? `${lineDetail.estimated_length_km.toFixed(2)} km` : "-"}
+          </Typography.Text>
+          <Typography.Text>更新时间：{new Date(lineDetail.update_date).toLocaleString()}</Typography.Text>
+        </Space>
+      </Card>
       <Tabs
-        type="card"
+        type="editable-card"
+        hideAdd
+        className="admin-power-line-detail-tabs"
         items={[
           {
-            key: "info",
-            label: "线路信息",
-            children: (
-              <Card>
-                <Space direction="vertical" size={12} className="w-full">
-                  <Typography.Text>线路编码：{lineDetail.code}</Typography.Text>
-                  <Typography.Text>线路名称：{lineDetail.name}</Typography.Text>
-                  <Typography.Text>电压等级：{lineDetail.voltage_kv ?? "-"} kV</Typography.Text>
-                  <Typography.Text>杆塔总数：{lineDetail.tower_count}</Typography.Text>
-                  <Typography.Text>
-                    估算长度：{lineDetail.estimated_length_km != null && lineDetail.estimated_length_km > 0 ? `${lineDetail.estimated_length_km.toFixed(2)} km` : "-"}
-                  </Typography.Text>
-                  <Typography.Text>更新时间：{new Date(lineDetail.update_date).toLocaleString()}</Typography.Text>
-                </Space>
-              </Card>
-            ),
-          },
-          {
             key: "map",
-            label: "Cesium地图",
+            label: "地图",
             children: (
               <div className="flex flex-col gap-3">
                 <PowerLineCesiumMap

@@ -101,7 +101,8 @@
 
 :root[data-fquiz-theme="dark"] .admin-users-user-card,
 :root[data-fquiz-theme="dark"] .admin-menus-menu-card,
-:root[data-fquiz-theme="dark"] .admin-workers-worker-card {
+:root[data-fquiz-theme="dark"] .admin-workers-worker-card,
+:root[data-fquiz-theme="dark"] .admin-power-lines-line-card {
   border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
   background:
     linear-gradient(
@@ -114,14 +115,16 @@
 
 :root[data-fquiz-theme="dark"] .admin-users-user-card > .ant-card-head,
 :root[data-fquiz-theme="dark"] .admin-menus-menu-card > .ant-card-head,
-:root[data-fquiz-theme="dark"] .admin-workers-worker-card > .ant-card-head {
+:root[data-fquiz-theme="dark"] .admin-workers-worker-card > .ant-card-head,
+:root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-head {
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
   background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
 }
 
 :root[data-fquiz-theme="dark"] .admin-users-user-card > .ant-card-body,
 :root[data-fquiz-theme="dark"] .admin-menus-menu-card > .ant-card-body,
-:root[data-fquiz-theme="dark"] .admin-workers-worker-card > .ant-card-body {
+:root[data-fquiz-theme="dark"] .admin-workers-worker-card > .ant-card-body,
+:root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-body {
   background: var(--ant-color-bg-container) !important;
 }
 
@@ -4890,7 +4893,8 @@ body {
   flex-direction: column;
 }
 
-/* LP-297: 卡片视图固定高度滚动容器：卡片多时不溢出页面，自动出现垂直滚动条 */
+/* LP-297: 卡片视图固定高度滚动容器：卡片多时不溢出页面，自动出现垂直滚动条。
+   padding 由父容器 .admin-power-lines-list-pane 提供，此处不再重复内边距 */
 .admin-power-lines-card-scroll {
   display: flex;
   min-height: 0;
@@ -4898,13 +4902,35 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 12px;
   gap: 12px;
 }
 
 /* LP-297: 卡片容器的 grid 外包装，用 flex 保持滚动区域灵活 */
 .admin-power-lines-card-scroll > .grid {
   flex: 0 0 auto;
+}
+
+/* LP-301: 线路卡片配色对齐 worker 监控页卡片（主色渐变背景、主色混合边框、柔和阴影、头部主色淡背景） */
+.admin-power-lines-line-card {
+  height: 100%;
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--fquiz-theme-bg-container) 96%, var(--fquiz-theme-primary) 4%) 0%,
+      var(--fquiz-theme-bg-container) 100%
+    );
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--fquiz-theme-text-primary) 8%, transparent);
+}
+
+.admin-power-lines-line-card > .ant-card-head {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-power-lines-line-card > .ant-card-body {
+  padding-block: 14px;
 }
 
 /* LP-297: 表格视图容器 */
@@ -4928,7 +4954,13 @@ body {
   flex-shrink: 0;
 }
 
-/* LP-297: 详情视图内容区增加 10px padding */
+/* LP-297: 详情视图内容区增加 10px padding；LP-301: 改为 flex 纵向布局，
+   上方基本信息 Card + 下方地图/杆塔列表 Tabs 撑满可用高度 */
 .admin-power-lines-detail-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
   padding: 10px;
 }
