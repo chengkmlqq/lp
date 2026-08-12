@@ -48,3 +48,29 @@ test("LP-301: detail view shows meta card on top and map/tower tabs below", () =
   assert.match(detailBlock, /label:\s*"地图"/, "详情下方应有地图 Tab");
   assert.match(detailBlock, /label:\s*"杆塔列表"/, "详情下方应有杆塔列表 Tab");
 });
+
+test("LP-307: detail basic info is rendered as a bordered Descriptions table", () => {
+  const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
+  assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
+  assert.match(detailBlock, /<Descriptions bordered size="small" column=\{3\}>/, "基本信息应以 bordered Descriptions 表格呈现");
+  assert.match(detailBlock, /label="线路编码"/, "表格应包含线路编码");
+  assert.match(detailBlock, /label="线路名称"/, "表格应包含线路名称");
+  assert.match(detailBlock, /label="电压等级"/, "表格应包含电压等级");
+  assert.match(detailBlock, /label="杆塔总数"/, "表格应包含杆塔总数");
+  assert.match(detailBlock, /label="估算长度"/, "表格应包含估算长度");
+  assert.match(detailBlock, /label="更新时间"/, "表格应包含更新时间");
+});
+
+test("LP-307: detail tabs use card type without close icon", () => {
+  const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
+  assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
+  assert.match(detailBlock, /type="card"/, "选项卡应为 card 类型");
+  assert.ok(!/type="editable-card"/.test(detailBlock), "选项卡不应再使用 editable-card 类型");
+});
+
+test("LP-307: detail tabs default to the tower list", () => {
+  const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
+  assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
+  assert.match(detailBlock, /defaultActiveKey="towers"/, "选项卡应默认激活杆塔列表");
+  assert.match(detailBlock, /key: "towers"[\s\S]{0,60}label: "杆塔列表"/, "杆塔列表应为首个选项卡");
+});

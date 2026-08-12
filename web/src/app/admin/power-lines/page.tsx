@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
   Button,
+  Descriptions,
   Dropdown,
   Empty,
   Form,
@@ -894,40 +895,22 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManag
   return (
     <div className="admin-power-lines-detail-view">
       <Card size="small" className="admin-power-line-detail-meta">
-        <Space direction="vertical" size={4} className="w-full">
-          <Typography.Text>线路编码：{lineDetail.code}</Typography.Text>
-          <Typography.Text>线路名称：{lineDetail.name}</Typography.Text>
-          <Typography.Text>电压等级：{lineDetail.voltage_kv ?? "-"} kV</Typography.Text>
-          <Typography.Text>杆塔总数：{lineDetail.tower_count}</Typography.Text>
-          <Typography.Text>
-            估算长度：{lineDetail.estimated_length_km != null && lineDetail.estimated_length_km > 0 ? `${lineDetail.estimated_length_km.toFixed(2)} km` : "-"}
-          </Typography.Text>
-          <Typography.Text>更新时间：{formatDateTime(lineDetail.update_date)}</Typography.Text>
-        </Space>
+        <Descriptions bordered size="small" column={3}>
+          <Descriptions.Item label="线路编码">{lineDetail.code || "-"}</Descriptions.Item>
+          <Descriptions.Item label="线路名称">{lineDetail.name || "-"}</Descriptions.Item>
+          <Descriptions.Item label="电压等级">{lineDetail.voltage_kv ?? "-"} kV</Descriptions.Item>
+          <Descriptions.Item label="杆塔总数">{lineDetail.tower_count}</Descriptions.Item>
+          <Descriptions.Item label="估算长度">
+            {lineDetail.estimated_length_km != null && lineDetail.estimated_length_km > 0 ? `${lineDetail.estimated_length_km.toFixed(2)} km` : "-"}
+          </Descriptions.Item>
+          <Descriptions.Item label="更新时间">{formatDateTime(lineDetail.update_date)}</Descriptions.Item>
+        </Descriptions>
       </Card>
       <Tabs
-        type="editable-card"
-        hideAdd
+        type="card"
+        defaultActiveKey="towers"
         className="admin-power-line-detail-tabs"
         items={[
-          {
-            key: "map",
-            label: "地图",
-            children: (
-              <div className="flex flex-col gap-3">
-                <PowerLineCesiumMap
-                  lineCode={lineDetail.code}
-                  lineName={lineDetail.name}
-                  towers={towers}
-                  terrainDataset={null}
-                  accessToken=""
-                  exaggeration={1}
-                  loading={towersQuery.isFetching}
-                  height={500}
-                />
-              </div>
-            ),
-          },
           {
             key: "towers",
             label: "杆塔列表",
@@ -969,6 +952,24 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManag
                   />
                 </div>
               </Space>
+            ),
+          },
+          {
+            key: "map",
+            label: "地图",
+            children: (
+              <div className="flex flex-col gap-3">
+                <PowerLineCesiumMap
+                  lineCode={lineDetail.code}
+                  lineName={lineDetail.name}
+                  towers={towers}
+                  terrainDataset={null}
+                  accessToken=""
+                  exaggeration={1}
+                  loading={towersQuery.isFetching}
+                  height={500}
+                />
+              </div>
             ),
           },
         ]}
