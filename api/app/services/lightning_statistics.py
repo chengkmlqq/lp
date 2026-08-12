@@ -612,8 +612,9 @@ def render_lp_density_image(
     ax.set_xlabel("经度 (°E)")
     ax.set_ylabel("纬度 (°N)")
     ax.set_title(title or "雷电流地闪密度分布 - 杆塔分区")
-    # 经纬度等比：lon 1度≈111cosφ km（matplotlib ax.set_aspect 数值语义为 dy/dx）
-    ax.set_aspect(1.0 / (111.0 * math.cos(math.radians(cells[0]["center_lat"]))))
+    # 经纬度等比：lon 1度≈111cosφ km（matplotlib ax.set_aspect 数值语义为 dy/dx，
+    # 111km 为物理单位换算不应代入；正确值为 1/cosφ，保证纬度/经度单位屏幕等长）
+    ax.set_aspect(1.0 / math.cos(math.radians(cells[0]["center_lat"])))
 
     total_strikes = len(strikes)
     total_area = sum(c["area_km2"] for c in cells)
