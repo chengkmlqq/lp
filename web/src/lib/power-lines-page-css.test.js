@@ -74,3 +74,10 @@ test("LP-307: detail tabs default to the tower list", () => {
   assert.match(detailBlock, /defaultActiveKey="towers"/, "选项卡应默认激活杆塔列表");
   assert.match(detailBlock, /key: "towers"[\s\S]{0,60}label: "杆塔列表"/, "杆塔列表应为首个选项卡");
 });
+
+test("LP-307: detail tower table height is not limited (no vertical scroll setting)", () => {
+  const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
+  assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
+  assert.match(detailBlock, /scroll=\{\{ x: 1400 \}\}/, "杆塔列表 Table 应仅保留横向滚动");
+  assert.ok(!/scroll=\{\{ x: 1400, y:/.test(detailBlock), "杆塔列表 Table 不应再有纵向滚动高度限制");
+});

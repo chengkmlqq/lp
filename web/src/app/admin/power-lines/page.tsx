@@ -948,7 +948,7 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManag
                         setTowerPagination({ current: page, pageSize });
                       },
                     }}
-                    scroll={{ x: 1400, y: 300 }}
+                    scroll={{ x: 1400 }}
                   />
                 </div>
               </Space>
