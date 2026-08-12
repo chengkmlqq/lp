@@ -3,7 +3,9 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from sqlalchemy.orm import Session
 
+from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route
 from ...schemas.traveling_wave import (
     TravelingWaveAnalyzeRequest,
@@ -36,6 +38,7 @@ async def get_traveling_wave_status(
 async def submit_traveling_wave_analysis(
     payload: TravelingWaveAnalyzeRequest,
     current_user: CurrentUser = Depends(require_any_permission("traveling_wave.manage")),
+    db: Session = Depends(get_db),
 ) -> TravelingWaveAnalyzeResponse:
     """提交行波分析任务（通过服务端文件路径）。"""
     file_a = payload.file_a
@@ -56,13 +59,15 @@ async def submit_traveling_wave_analysis(
                 detail=f"{label} 文件不存在: {path}",
             )
 
-    result = create_analysis_job(
+    _, result = create_analysis_job(
+        db=db,
         file_a_path=file_a,
         file_b_path=file_b,
         file_c_path=file_c,
         sample_rate_hz=payload.sample_rate_hz,
         fault_distance_km=payload.fault_distance_km,
         tower_no=payload.tower_no,
+        created_by=current_user.username if current_user else None,
     )
     return result
 
@@ -76,6 +81,7 @@ async def upload_and_analyze(
     fault_distance_km: float | None = None,
     tower_no: str | None = None,
     current_user: CurrentUser = Depends(require_any_permission("traveling_wave.manage")),
+    db: Session = Depends(get_db),
 ) -> TravelingWaveAnalyzeResponse:
     """提交行波分析任务（通过文件上传）。"""
     if not file_a and not file_b and not file_c:
@@ -88,13 +94,15 @@ async def upload_and_analyze(
     content_b = (await file_b.read()).decode("utf-8") if file_b else None
     content_c = (await file_c.read()).decode("utf-8") if file_c else None
 
-    result = create_analysis_job(
+    _, result = create_analysis_job(
+        db=db,
         content_a=content_a,
         content_b=content_b,
         content_c=content_c,
         sample_rate_hz=sample_rate_hz,
         fault_distance_km=fault_distance_km,
         tower_no=tower_no,
+        created_by=current_user.username if current_user else None,
     )
     return result
 
@@ -103,9 +111,10 @@ async def upload_and_analyze(
 async def get_traveling_wave_analysis(
     job_id: str,
     _: CurrentUser = Depends(require_any_permission("traveling_wave.read", "traveling_wave.manage")),
+    db: Session = Depends(get_db),
 ) -> TravelingWaveAnalyzeResponse:
     """查询行波分析结果。"""
-    result = get_analysis_result(job_id)
+    result = get_analysis_result(db, job_id)
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

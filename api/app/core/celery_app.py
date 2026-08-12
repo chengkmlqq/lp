@@ -17,6 +17,7 @@ celery_app = Celery(
         "app.tasks.lightning_tasks",
         "app.tasks.log_cleanup_tasks",
         "app.tasks.scheduled_task_tasks",
+        "app.tasks.traveling_wave_tasks",
         "app.tasks.wine_tasks",
         "app.tasks.worker_registry_tasks",
     ],

@@ -62,24 +62,55 @@ def check_environment() -> TravelingWaveStatusResponse:
     )
 
 
-# ── In-memory job store ───────────────────────────────────────────────
+# ── Database persistence ──────────────────────────────────────────────
 
-_jobs: dict[str, _JobRecord] = {}
+def create_job(
+    db,
+    sample_rate_hz: int = 1_000_000,
+    fault_distance_km: float | None = None,
+    tower_no: str | None = None,
+    file_a_path: str | None = None,
+    file_b_path: str | None = None,
+    file_c_path: str | None = None,
+    created_by: str | None = None,
+) -> str:
+    """Create a new traveling wave job in the database. Returns job_id."""
+    from ..models.traveling_wave_job import TravelingWaveJob
+
+    job = TravelingWaveJob(
+        status="pending",
+        sample_rate_hz=sample_rate_hz,
+        fault_distance_km=fault_distance_km,
+        tower_no=tower_no,
+        file_a_path=file_a_path,
+        file_b_path=file_b_path,
+        file_c_path=file_c_path,
+        created_by=created_by,
+    )
+    db.add(job)
+    db.commit()
+    return job.id
 
 
-class _JobRecord:
-    __slots__ = ("id", "status", "result", "created_at", "finished_at")
+def get_job(db, job_id: str):
+    """Retrieve a traveling wave job from the database."""
+    from ..models.traveling_wave_job import TravelingWaveJob
 
-    def __init__(self, job_id: str) -> None:
-        self.id = job_id
-        self.status: str = "pending"
-        self.result: TravelingWaveAnalyzeResponse | None = None
-        self.created_at = datetime.now(timezone.utc)
-        self.finished_at: datetime | None = None
+    return db.query(TravelingWaveJob).filter(TravelingWaveJob.id == job_id).first()
 
 
-def _get_job(job_id: str) -> _JobRecord | None:
-    return _jobs.get(job_id)
+def _update_job_result(db, job_id: str, status: str, result_json: dict[str, Any] | None, error_message: str | None, log_text: str) -> None:
+    """Update job result in database."""
+    from ..models.traveling_wave_job import TravelingWaveJob
+
+    job = db.query(TravelingWaveJob).filter(TravelingWaveJob.id == job_id).first()
+    if job:
+        job.status = status
+        job.result_json = result_json
+        job.error_message = error_message
+        job.log_text = log_text
+        job.finished_at = datetime.now(timezone.utc)
+        db.commit()
 
 
 # ── File parsing ──────────────────────────────────────────────────────
@@ -463,7 +494,94 @@ def execute_analysis_sync(
     )
 
 
+def execute_job(job_id: str) -> None:
+    """Execute a traveling wave analysis job by retrieving from DB and processing.
+
+    This is called by Celery worker. Updates the DB with results.
+    """
+    from ..core.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        job = get_job(db, job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+
+        log_parts: list[str] = [f"执行任务 {job_id}"]
+
+        # Execute the analysis
+        result = execute_analysis_sync(
+            file_a_path=job.file_a_path,
+            file_b_path=job.file_b_path,
+            file_c_path=job.file_c_path,
+            sample_rate_hz=job.sample_rate_hz or 1_000_000,
+            fault_distance_km=job.fault_distance_km,
+            tower_no=job.tower_no,
+        )
+
+        # Build result JSON from response
+        result_dict: dict[str, Any] = {
+            "status": result.status,
+            "created_at": result.created_at.isoformat() if result.created_at else None,
+            "finished_at": result.finished_at.isoformat() if result.finished_at else None,
+            "sample_rate_hz": result.sample_rate_hz,
+            "fault_distance_km": result.fault_distance_km,
+            "tower_no": result.tower_no,
+            "three_phase_chart": result.three_phase_chart,
+            "zero_sequence_chart": result.zero_sequence_chart,
+            "error_message": result.error_message,
+            "log_text": result.log_text,
+        }
+        if result.phase_a_info:
+            result_dict["phase_a_info"] = result.phase_a_info.model_dump()
+        if result.phase_b_info:
+            result_dict["phase_b_info"] = result.phase_b_info.model_dump()
+        if result.phase_c_info:
+            result_dict["phase_c_info"] = result.phase_c_info.model_dump()
+        if hasattr(result, "vo_level"):
+            result_dict["vo_level"] = result.vo_level
+        if hasattr(result, "line_name"):
+            result_dict["line_name"] = result.line_name
+        if hasattr(result, "left_dist_ohl"):
+            result_dict["left_dist_ohl"] = result.left_dist_ohl
+        if hasattr(result, "right_dist_ohl"):
+            result_dict["right_dist_ohl"] = result.right_dist_ohl
+
+        log_text = result.log_text or ""
+        _update_job_result(
+            db,
+            job_id,
+            status=result.status,
+            result_json=result_dict,
+            error_message=result.error_message,
+            log_text=log_text,
+        )
+    except Exception as exc:
+        log_parts.append(f"任务执行异常: {exc}")
+        import traceback
+        log_parts.append(traceback.format_exc())
+        _update_job_result(
+            db,
+            job_id,
+            status="failed",
+            result_json=None,
+            error_message=str(exc),
+            log_text="\n".join(log_parts),
+        )
+        raise
+    finally:
+        db.close()
+
+
+def dispatch_traveling_wave_task(job_id: str) -> None:
+    """Dispatch a traveling wave job to Celery for async execution."""
+    from ..tasks.traveling_wave_tasks import execute_traveling_wave_job
+
+    execute_traveling_wave_job.delay(job_id)
+
+
 def create_analysis_job(
+    db,
     file_a_path: str | None = None,
     file_b_path: str | None = None,
     file_c_path: str | None = None,
@@ -473,49 +591,92 @@ def create_analysis_job(
     content_a: str | None = None,
     content_b: str | None = None,
     content_c: str | None = None,
-) -> TravelingWaveAnalyzeResponse:
-    """Create and execute a traveling wave analysis job synchronously.
+    created_by: str | None = None,
+) -> tuple[str, TravelingWaveAnalyzeResponse]:
+    """Create a traveling wave job and dispatch to Celery.
 
-    Store result in the in-memory job store for retrieval.
+    Returns (job_id, pending_response).
     """
-    job_id = uuid.uuid4().hex
-    record = _JobRecord(job_id)
+    import os
+    from pathlib import Path
 
-    try:
-        result = execute_analysis_sync(
-            file_a_path=file_a_path,
-            file_b_path=file_b_path,
-            file_c_path=file_c_path,
-            sample_rate_hz=sample_rate_hz,
-            fault_distance_km=fault_distance_km,
-            tower_no=tower_no,
-            content_a=content_a,
-            content_b=content_b,
-            content_c=content_c,
-        )
-        result.id = job_id
-        record.result = result
-        record.status = result.status
-        record.finished_at = result.finished_at
-    except Exception as exc:
-        record.status = "failed"
-        record.result = TravelingWaveAnalyzeResponse(
-            id=job_id,
-            status="failed",
-            created_at=record.created_at,
-            finished_at=datetime.now(timezone.utc),
-            error_message=str(exc),
-            sample_rate_hz=sample_rate_hz,
-        )
-    finally:
-        _jobs[job_id] = record
+    # If content is provided, save to shared volume
+    saved_paths = {}
+    if content_a or content_b or content_c:
+        vfs_root = os.environ.get("FILE_VFS_ROOT", "/app/data/vfs")
+        os.makedirs(vfs_root, exist_ok=True)
 
-    return record.result or TravelingWaveAnalyzeResponse(id=job_id, status="failed", sample_rate_hz=sample_rate_hz)
+        for phase, content in [("a", content_a), ("b", content_b), ("c", content_c)]:
+            if content:
+                filename = f"{uuid.uuid4().hex}_{phase}.dat"
+                filepath = os.path.join(vfs_root, filename)
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(content)
+                saved_paths[f"file_{phase}_path"] = filepath
+
+    # Create job in database
+    job_id = create_job(
+        db,
+        sample_rate_hz=sample_rate_hz,
+        fault_distance_km=fault_distance_km,
+        tower_no=tower_no,
+        file_a_path=saved_paths.get("file_a_path") or file_a_path,
+        file_b_path=saved_paths.get("file_b_path") or file_b_path,
+        file_c_path=saved_paths.get("file_c_path") or file_c_path,
+        created_by=created_by,
+    )
+
+    # Dispatch task to Celery
+    dispatch_traveling_wave_task(job_id)
+
+    # Return pending response
+    result = TravelingWaveAnalyzeResponse(
+        id=job_id,
+        status="pending",
+        created_at=datetime.now(timezone.utc),
+        sample_rate_hz=sample_rate_hz,
+        fault_distance_km=fault_distance_km,
+        tower_no=tower_no,
+    )
+    return job_id, result
 
 
-def get_analysis_result(job_id: str) -> TravelingWaveAnalyzeResponse | None:
-    """Retrieve a previously created analysis result by job ID."""
-    record = _get_job(job_id)
-    if record is None:
+def get_analysis_result(db, job_id: str) -> TravelingWaveAnalyzeResponse | None:
+    """Retrieve a traveling wave analysis result from database."""
+    job = get_job(db, job_id)
+    if job is None:
         return None
-    return record.result
+
+    result = TravelingWaveAnalyzeResponse(
+        id=job.id,
+        status=job.status,
+        created_at=job.created_at,
+        finished_at=job.finished_at,
+        sample_rate_hz=job.sample_rate_hz,
+        fault_distance_km=job.fault_distance_km,
+        tower_no=job.tower_no,
+        error_message=job.error_message,
+        log_text=job.log_text,
+    )
+
+    # Populate from result_json if available
+    if job.result_json:
+        data = job.result_json
+        result.three_phase_chart = data.get("three_phase_chart")
+        result.zero_sequence_chart = data.get("zero_sequence_chart")
+        if "phase_a_info" in data and data["phase_a_info"]:
+            result.phase_a_info = TravelingWaveParseResult(**data["phase_a_info"])
+        if "phase_b_info" in data and data["phase_b_info"]:
+            result.phase_b_info = TravelingWaveParseResult(**data["phase_b_info"])
+        if "phase_c_info" in data and data["phase_c_info"]:
+            result.phase_c_info = TravelingWaveParseResult(**data["phase_c_info"])
+        if "vo_level" in data:
+            result.vo_level = data["vo_level"]
+        if "line_name" in data:
+            result.line_name = data["line_name"]
+        if "left_dist_ohl" in data:
+            result.left_dist_ohl = data["left_dist_ohl"]
+        if "right_dist_ohl" in data:
+            result.right_dist_ohl = data["right_dist_ohl"]
+
+    return result
