@@ -31,6 +31,11 @@ from ...services.ws_ticket_service import ws_ticket_service
 
 router = APIRouter(prefix="/admin/task-logs", tags=["admin-task-logs"], dependencies=[Depends(require_enabled_menu_route)])
 
+# SSE 端点使用 EventSource（无法携带 Authorization header），必须脱离 router 级
+# require_enabled_menu_route（内部强制 get_current_user）依赖，否则任何请求都会在
+# 进入端点前被 401 Not authenticated 拦截。ticket + 用户权限校验在端点内完成。
+sse_router = APIRouter(prefix="/admin/task-logs", tags=["admin-task-logs"])
+
 
 @router.post("/upload", response_model=TaskLogUploadResponse)
 def upload_log(
@@ -97,7 +102,7 @@ def list_logs(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/{task_id}/sse")
+@sse_router.get("/{task_id}/sse")
 async def stream_log(
     task_id: str,
     request: Request,
