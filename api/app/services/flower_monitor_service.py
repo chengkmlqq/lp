@@ -10,6 +10,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from ..core.config import get_settings
+from ..core.task_history_signals import SYSTEM_TASK_NAMES
 from ..models.base import utcnow
 from ..schemas.flower_monitor import (
     FlowerTaskItem,
@@ -169,6 +170,11 @@ def _build_snapshot_tasks(worker_name: str, worker_raw: dict[str, Any], source: 
 def _build_recent_tasks(worker_name: str, tasks_map: dict[str, Any]) -> list[FlowerTaskItem]:
     items: list[FlowerTaskItem] = []
     for task_id, raw in tasks_map.items():
+        # 周期系统任务（flush/sweep/dispatch/cleanup）不展示在实时任务列表，
+        # 与 celery_task_history 落库过滤（task_history_signals.SYSTEM_TASK_NAMES）保持一致
+        raw_name = raw.get("name") if isinstance(raw, dict) else None
+        if raw_name and raw_name in SYSTEM_TASK_NAMES:
+            continue
         item = _normalize_task_item(raw, source="RECENT", fallback_task_id=str(task_id), default_worker=worker_name)
         if item.worker.strip().lower() != worker_name.strip().lower():
             continue
