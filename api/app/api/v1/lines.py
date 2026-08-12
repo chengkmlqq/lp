@@ -24,11 +24,11 @@ from ...services.line_service import (
     delete_line_tower,
     export_line_towers_to_csv,
     get_line_by_id,
+    get_line_detail_summary,
     get_line_tower_by_id,
     import_line_towers_from_csv,
     list_line_towers,
     list_lines,
-    serialize_line,
     serialize_line_tower,
     update_line,
     update_line_tower,
@@ -86,12 +86,11 @@ def get_line_detail(
     _: CurrentUser = Depends(require_any_permission("line.read", "line.manage", "tower.read", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> LineSummary:
-    line = get_line_by_id(db, line_id)
+    line = get_line_detail_summary(db, line_id)
     if not line:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Line not found")
 
-    tower_total = int(len(line.towers))
-    return serialize_line(line, tower_count=tower_total)
+    return line
 
 
 @router.patch("/{line_id}", response_model=LineSummary)

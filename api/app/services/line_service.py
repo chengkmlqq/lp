@@ -239,6 +239,20 @@ def get_line_by_id(db: Session, line_id: str) -> Line | None:
     return db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
 
 
+def get_line_detail_summary(db: Session, line_id: str) -> LineSummary | None:
+    """Return a fully-serialized line summary including computed estimated length."""
+    line = get_line_by_id(db, line_id)
+    if not line:
+        return None
+    tower_count = int(len(line.towers))
+    estimated_length_map = _load_line_estimated_lengths(db, [line_id])
+    return serialize_line(
+        line,
+        tower_count=tower_count,
+        estimated_length_km=estimated_length_map.get(line_id),
+    )
+
+
 def get_line_by_code(db: Session, code: str) -> Line | None:
     normalized = code.strip()
     if not normalized:

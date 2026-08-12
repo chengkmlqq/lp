@@ -373,6 +373,48 @@ def test_list_lines_estimated_length_none_without_coordinates(monkeypatch) -> No
         session.close()
 
 
+def test_get_line_detail_summary_includes_estimated_length(monkeypatch) -> None:
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        line = Line(
+            code="PL-EST-004",
+            name="详情估算长度线路",
+            voltage_kv=220,
+            status="enabled",
+        )
+        session.add(line)
+        session.flush()
+
+        session.add_all(
+            [
+                LineTower(line_id=line.id, seq_no=1, tower_no="E031", longitude=120.0, latitude=30.0),
+                LineTower(line_id=line.id, seq_no=2, tower_no="E032", longitude=120.01, latitude=30.0),
+            ]
+        )
+        session.commit()
+
+        detail = line_service.get_line_detail_summary(session, line.id)
+        assert detail is not None
+        assert detail.id == line.id
+        assert detail.tower_count == 2
+        assert detail.estimated_length_km is not None
+        assert detail.estimated_length_km > 0
+        assert abs(detail.estimated_length_km - _expected_km_per_0_01_deg_at_30()) < 0.05
+    finally:
+        session.close()
+
+
+def test_get_line_detail_summary_missing_line_returns_none(monkeypatch) -> None:
+    session = _build_session()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+        assert line_service.get_line_detail_summary(session, "missing-line-id") is None
+    finally:
+        session.close()
+
+
 def _expected_km_per_0_01_deg_at_30() -> float:
     from app.services.line_service import _haversine_km
 
