@@ -3186,6 +3186,17 @@ body {
   padding: 12px;
 }
 
+/* LP-302: 详情动态 Tab 内容区：12px 内边距，内容超高时出现纵向滚动条 */
+.admin-lightning-distribution-detail-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+}
+
 /* LP-235: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
    内部列表 Tab 的 Card 才能延续原有 flex 自适应滚动布局 */
 .admin-lightning-distribution-tabs {

@@ -61,6 +61,16 @@ type ImportFormValues = {
   line_id: string | null;
 };
 
+type DistributionLogRow = {
+  key: string;
+  typeLabel: string;
+  taskId: string | null;
+  statusLabel: string;
+  createdAt: string;
+  fileName: string;
+  logLabel: string;
+};
+
 const INITIAL_IMPORT_VALUES: ImportFormValues = {
   event_year: new Date().getFullYear(),
   region_id: "",
@@ -374,17 +384,11 @@ export default function AdminLightningDistributionPage() {
       if (previous.some((tab) => tab.key === key)) {
         return previous;
       }
-      const meta = STATUS_META[record.status] ?? { color: "default", label: record.status };
       return [
         ...previous,
         {
           key,
-          label: (
-            <Space size={6}>
-              <span>{truncateFileName(record.source_file_name)}</span>
-              <Tag color={meta.color}>{meta.label}</Tag>
-            </Space>
-          ),
+          label: <span>{truncateFileName(record.source_file_name)}</span>,
           closable: true,
           children: (
             <DistributionDetailView
@@ -1209,8 +1213,68 @@ function DistributionDetailView({
 
   const imageUrl = imageQuery.data ?? null;
 
+  const logRows = useMemo<DistributionLogRow[]>(() => {
+    const statusLabel = STATUS_META[record.status]?.label ?? record.status;
+    const rows: DistributionLogRow[] = [];
+    if (record.task_id) {
+      rows.push({
+        key: `import-${record.task_id}`,
+        typeLabel: "导入",
+        taskId: record.task_id,
+        statusLabel,
+        createdAt: record.create_date,
+        fileName: record.source_file_name,
+        logLabel: "导入日志",
+      });
+    }
+    if (record.lp_draw_task_id) {
+      rows.push({
+        key: `lp-draw-${record.lp_draw_task_id}`,
+        typeLabel: "LP 绘图",
+        taskId: record.lp_draw_task_id,
+        statusLabel,
+        createdAt: record.create_date,
+        fileName: record.source_file_name,
+        logLabel: "绘图日志",
+      });
+    }
+    return rows;
+  }, [record]);
+
+  const logColumns = useMemo<ColumnsType<DistributionLogRow>>(
+    () => [
+      { title: "处理类型", dataIndex: "typeLabel", width: 110 },
+      {
+        title: "任务 ID",
+        dataIndex: "taskId",
+        ellipsis: true,
+        render: (value: string | null) => value || "-",
+      },
+      { title: "状态", dataIndex: "statusLabel", width: 110 },
+      { title: "处理时间", dataIndex: "createdAt", width: 180 },
+      {
+        title: "文件名",
+        dataIndex: "fileName",
+        ellipsis: true,
+        render: (value: string) => truncateFileName(value),
+      },
+      {
+        title: "操作",
+        key: "action",
+        width: 110,
+        render: (_, row) => (
+          <Button size="small" type="link" onClick={() => onOpenLog(row.taskId, row.logLabel, row.fileName)}>
+            查看日志
+          </Button>
+        ),
+      },
+    ],
+    [onOpenLog],
+  );
+
   return (
-    <Space direction="vertical" size={16} className="w-full">
+    <div className="admin-lightning-distribution-detail-view">
+      <Space direction="vertical" size={16} className="w-full">
       <Descriptions bordered size="small" column={3}>
         <Descriptions.Item label="城市">{record.city || "-"}</Descriptions.Item>
         <Descriptions.Item label="地点标签">{record.location_tag || "-"}</Descriptions.Item>
@@ -1294,28 +1358,29 @@ function DistributionDetailView({
                   key: "logs",
                   label: "处理日志",
                   children: (
-                    <Space direction="vertical" size={12} style={{ width: "100%", minHeight: 120 }}>
-                      {record.task_id && (
-                        <Button onClick={() => onOpenLog(record.task_id, "导入日志", record.source_file_name)}>
-                          查看导入日志
-                        </Button>
-                      )}
-                      {record.lp_draw_task_id && (
-                        <Button onClick={() => onOpenLog(record.lp_draw_task_id, "绘图日志", record.source_file_name)}>
-                          查看绘图日志
-                        </Button>
-                      )}
-                      {!record.task_id && !record.lp_draw_task_id && (
-                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可查看的处理日志" />
-                      )}
-                    </Space>
+                    <Table<DistributionLogRow>
+                      rowKey="key"
+                      size="small"
+                      columns={logColumns}
+                      dataSource={logRows}
+                      pagination={false}
+                      locale={{
+                        emptyText: (
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description="暂无可查看的处理日志"
+                          />
+                        ),
+                      }}
+                    />
                   ),
                 },
               ]
             : []),
         ]}
       />
-    </Space>
+      </Space>
+    </div>
   );
 }
 
