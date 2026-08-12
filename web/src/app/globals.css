@@ -4699,33 +4699,21 @@ body {
 }
 
 
-/* LP-273: 线路管理详情页（[id]/page.tsx）外层 editable-card Tabs，需让 Tabs 容器/内容区撑满高度 */
+/* LP-304: 线路管理详情页（[id]/page.tsx）外层固定 card Tabs，内容区白底；
+   纵向滚动已上移到整个详情页容器（overflow-y: auto），Tabs 不再强制撑满高度 */
 .admin-power-line-detail-tabs {
   display: flex;
-  flex: 1;
-  min-height: 0;
   flex-direction: column;
 }
 
 .admin-power-line-detail-tabs > .ant-tabs-content-holder {
   display: flex;
-  min-height: 0;
-  flex: 1;
   flex-direction: column;
   background: var(--ant-color-bg-container);
 }
 
 .admin-power-line-detail-tabs > .ant-tabs-content-holder > .ant-tabs-content {
   display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-power-line-detail-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
   flex-direction: column;
 }
 

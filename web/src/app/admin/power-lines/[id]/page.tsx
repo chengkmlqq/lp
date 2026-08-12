@@ -7,6 +7,7 @@ import {
   App,
   Alert,
   Button,
+  Descriptions,
   Dropdown,
   Empty,
   Form,
@@ -175,13 +176,7 @@ const LINE_VOLTAGE_KV_TO_DEFAULT_OPTION: Partial<Record<number, (typeof LINE_VOL
 };
 const TOWER_TABLE_DEFAULT_PAGE_SIZE = 20;
 const TOWER_MAP_QUERY_LIMIT = 500;
-const POWER_LINES_PANEL_MIN_HEIGHT = 360;
-const POWER_LINES_PANEL_FALLBACK_RESERVE = 220;
-const POWER_LINES_PANEL_VIEWPORT_GAP = 10;
-const POWER_LINES_PANEL_BODY_GAP = 16;
-const POWER_LINES_MAP_HEADER_ESTIMATE_HEIGHT = 112;
-const POWER_LINES_MAP_MIN_HEIGHT = 240;
-const POWER_LINES_TABLE_MIN_SCROLL_Y = 180;
+const POWER_LINES_MAP_DETAIL_HEIGHT = 480;
 const TERRAIN_EXAGGERATION_OPTIONS = [
   { label: "1.0x", value: 1 },
   { label: "1.5x", value: 1.5 },
@@ -605,7 +600,6 @@ export default function AdminPowerLineDetailPage() {
   const { optionMap: topologyDimensionOptions } = useDimensionOptions({ tower_topology_kind: "tower_topology_kind" });
   const { message: messageApi } = App.useApp();
   const importInputRef = useRef<HTMLInputElement | null>(null);
-  const panelScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [lineForm] = Form.useForm<LineFormValues>();
   const [towerForm] = Form.useForm<TowerFormValues>();
   const [towerProfileForm] = Form.useForm<TowerProfileFormValues>();
@@ -624,7 +618,7 @@ export default function AdminPowerLineDetailPage() {
   const [editingLine, setEditingLine] = useState<LineSummary | null>(null);
   const [editingTower, setEditingTower] = useState<LineTowerSummary | null>(null);
   const [editingTowerProfileTower, setEditingTowerProfileTower] = useState<LineTowerSummary | null>(null);
-  const [towerViewMode, setTowerViewMode] = useState<"table" | "map">("map");
+  const [towerViewMode, setTowerViewMode] = useState<"table" | "map">("table");
   const [selectedTerrainDatasetId, setSelectedTerrainDatasetId] = useState<string | null | undefined>(undefined);
   const [terrainExaggeration, setTerrainExaggeration] = useState<number>(1.5);
   const [prepareDensityRadiusKm, setPrepareDensityRadiusKm] = useState(3);
@@ -635,7 +629,6 @@ export default function AdminPowerLineDetailPage() {
   const [currentEventPickerOpen, setCurrentEventPickerOpen] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [panelBodyHeight, setPanelBodyHeight] = useState(POWER_LINES_PANEL_MIN_HEIGHT);
   const [routeLengthMap, setRouteLengthMap] = useState<Record<string, number>>({});
   // line id whose route length is still being computed by the map (shows placeholder instead of "-")
   const [routeLengthPendingLineId, setRouteLengthPendingLineId] = useState<string | null>(null);
@@ -1508,77 +1501,6 @@ export default function AdminPowerLineDetailPage() {
       },
     },
   ];
-  const updatePanelBodyHeight = useCallback(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const anchor = panelScrollAnchorRef.current;
-    if (!anchor) {
-      return;
-    }
-    const anchorTop = anchor.getBoundingClientRect().top;
-    let nextHeight = Math.floor(window.innerHeight - anchorTop - POWER_LINES_PANEL_FALLBACK_RESERVE);
-    const rightCard = anchor.querySelector<HTMLElement>(".power-lines-right-card");
-    if (rightCard) {
-      const cardRect = rightCard.getBoundingClientRect();
-      const body = rightCard.querySelector<HTMLElement>(".ant-card-body");
-      const bodyHeight = body?.getBoundingClientRect().height ?? POWER_LINES_PANEL_MIN_HEIGHT;
-      const nonBodyHeight = Math.max(0, cardRect.height - bodyHeight);
-      const topGap = Math.max(0, cardRect.top - anchorTop);
-      nextHeight = Math.floor(
-        window.innerHeight - anchorTop - topGap - nonBodyHeight - POWER_LINES_PANEL_VIEWPORT_GAP,
-      );
-    }
-    const clampedHeight = Math.max(POWER_LINES_PANEL_MIN_HEIGHT, nextHeight);
-    setPanelBodyHeight((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
-  }, []);
-  useEffect(() => {
-    const frameId = window.requestAnimationFrame(updatePanelBodyHeight);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [
-    towers.length,
-    towerViewMode,
-    towers.length,
-    towersQuery.isFetching,
-    towersQuery.isFetching,
-    updatePanelBodyHeight,
-  ]);
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const onViewportChange = () => {
-      window.requestAnimationFrame(updatePanelBodyHeight);
-    };
-    window.addEventListener("resize", onViewportChange);
-    return () => {
-      window.removeEventListener("resize", onViewportChange);
-    };
-  }, [updatePanelBodyHeight]);
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") {
-      return;
-    }
-    const anchor = panelScrollAnchorRef.current;
-    if (!anchor) {
-      return;
-    }
-    const resizeObserver = new ResizeObserver(() => {
-      window.requestAnimationFrame(updatePanelBodyHeight);
-    });
-    resizeObserver.observe(anchor);
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [updatePanelBodyHeight]);
-  const rightContentHeight = Math.max(
-    220,
-    panelBodyHeight - POWER_LINES_MAP_HEADER_ESTIMATE_HEIGHT - POWER_LINES_PANEL_BODY_GAP,
-  );
-  const mapHeight = Math.max(POWER_LINES_MAP_MIN_HEIGHT, rightContentHeight - 32);
-  const towerTableScrollY = Math.max(POWER_LINES_TABLE_MIN_SCROLL_Y, rightContentHeight - 54);
   const terrainSelectionHint = useMemo(() => {
     if (!canElevationRead) {
       return "当前账号没有高程数据读取权限，线路分布图将使用椭球地表。";
@@ -1627,7 +1549,7 @@ export default function AdminPowerLineDetailPage() {
   }
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
         <Space align="center" size={8}>
           <Button icon={<ArrowLeftOutlined />} onClick={() => router.push("/admin/power-lines")}>
             返回列表
@@ -1644,24 +1566,25 @@ export default function AdminPowerLineDetailPage() {
         ) : (
           <>
             <Card size="small" className="power-line-detail-meta">
-              <Space direction="vertical" size={4} className="w-full">
-                <Typography.Text>
-                  电压等级：{selectedLine?.voltage_kv ?? "-"} kV
-                </Typography.Text>
-                <Typography.Text>
-                  杆塔总数：{selectedLine?.tower_count ?? towers.length}
-                </Typography.Text>
-                <Typography.Text>
-                  估算长度：{selectedLine?.estimated_length_km && selectedLine.estimated_length_km > 0 ? `${selectedLine.estimated_length_km.toFixed(2)} km` : "-"}
-                </Typography.Text>
-                <Typography.Text>
-                  更新时间：{selectedLine ? formatDateTime(selectedLine.update_date) : "-"}
-                </Typography.Text>
-              </Space>
+              <Card size="small" className="power-line-detail-meta">
+                <Descriptions bordered size="small" column={3}>
+                  <Descriptions.Item label="电压等级">
+                    {selectedLine?.voltage_kv ?? "-"} kV
+                  </Descriptions.Item>
+                  <Descriptions.Item label="杆塔总数">
+                    {selectedLine?.tower_count ?? towers.length}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="估算长度">
+                    {selectedLine?.estimated_length_km && selectedLine.estimated_length_km > 0 ? `${selectedLine.estimated_length_km.toFixed(2)} km` : "-"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="更新时间">
+                    {selectedLine ? formatDateTime(selectedLine.update_date) : "-"}
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
             </Card>
             <Tabs
-              type="editable-card"
-              hideAdd
+              type="card"
               className="admin-power-line-detail-tabs"
               activeKey={towerViewMode}
               onChange={(key) => setTowerViewMode(key as "table" | "map")}
@@ -1734,7 +1657,7 @@ export default function AdminPowerLineDetailPage() {
                         accessToken={getAccessToken()}
                         exaggeration={terrainExaggeration}
                         loading={towersQuery.isFetching}
-                        height={mapHeight}
+                        height={POWER_LINES_MAP_DETAIL_HEIGHT}
                         onRouteLengthChange={handleRouteLengthChange}
                       />
                     </div>
@@ -1763,7 +1686,7 @@ export default function AdminPowerLineDetailPage() {
                           </Form.Item>
                         </Form>
                       </div>
-                      <div className="relative overflow-auto">
+                      <div className="relative overflow-x-auto">
                         <Table<LineTowerSummary>
                           rowKey={(row) => row.id}
                           columns={towerColumns}
@@ -1780,7 +1703,7 @@ export default function AdminPowerLineDetailPage() {
                               setTowerPagination({ current: page, pageSize });
                             },
                           }}
-                          scroll={{ x: 1520, y: towerTableScrollY }}
+                          scroll={{ x: 1520 }}
                         />
                       </div>
                     </Space>
