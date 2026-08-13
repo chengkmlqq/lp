@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -13,159 +13,195 @@ def _now() -> datetime:
 
 
 class TestTaskMonitorOverviewErrorIsolation:
-    """LP-185: /admin/task-monitor/overview must not 500 when Flower or DB is unavailable."""
+    """LP-313: overview must be pure-DB and never fail when Flower/Redis is unavailable."""
 
     def test_db_failure_yields_empty_db_tasks(self):
         """When TaskHistory table is missing/unreachable, DB source degrades to empty, not 500."""
-        with patch("app.services.task_monitor_service._safe_workers_overview", return_value=None):
-            with patch(
-                "app.services.task_monitor_service._load_db_task_history",
-                return_value=[],
-            ):
-                result = task_monitor_service.build_task_monitor_overview(
-                    task_limit=10,
-                    history_limit=5,
-                )
+        with patch(
+            "app.services.task_monitor_service._load_db_task_history",
+            return_value=[],
+        ):
+            result = task_monitor_service.build_task_monitor_overview(
+                task_limit=10,
+                history_limit=5,
+            )
         assert result.tasks == []
         assert result.workers == []
         assert result.queues == []
         assert result.workers_online == 0
         assert result.generated_at is not None
 
-    def test_flower_unavailable_still_returns_response(self):
-        """When Flower is unreachable, the overview still returns a valid (degraded) response."""
+    def test_flower_independent_response_shape(self):
+        """Overview no longer depends on Flower: workers are empty and broker info comes from settings."""
         with patch(
-            "app.services.task_monitor_service._safe_workers_overview",
-            return_value=None,
+            "app.services.task_monitor_service._load_db_task_history",
+            return_value=[],
         ):
             with patch(
-                "app.services.task_monitor_service._load_db_task_history",
-                return_value=[],
+                "app.services.task_monitor_service._safe_queue_pending_counts",
+                return_value={},
             ):
                 result = task_monitor_service.build_task_monitor_overview(
                     task_limit=10,
                     history_limit=5,
                 )
         assert result.workers_online == 0
+        assert result.worker_concurrency_total == 0
         assert result.workers == []
         assert result.tasks == []
+        assert result.broker_url == "redis://redis:6379/0"
+        assert result.result_backend == "redis://redis:6379/1"
 
-    def test_single_worker_flower_failure_skips_only_that_worker(self):
-        """A per-worker Flower failure should not fail the whole overview."""
-        from app.schemas.flower_monitor import (
-            FlowerWorkerItem,
-            FlowerWorkersOverviewResponse,
-            FlowerWorkersSummary,
-        )
+    def test_db_tasks_are_returned(self):
+        """DB task history is the single source of truth for the task list."""
+        from app.schemas.task_monitor import TaskMonitorTaskItem
 
-        overview = FlowerWorkersOverviewResponse(
-            generated_at=_now(),
-            workers=[
-                FlowerWorkerItem(worker="worker-a", status="ONLINE", queue_names=["q1"]),
-                FlowerWorkerItem(worker="worker-b", status="ONLINE", queue_names=["q2"]),
-            ],
-            summary=FlowerWorkersSummary(total=2, online=2, offline=0),
-        )
-
-        def fake_build_worker_task_overview(worker, **kwargs):
-            if worker == "worker-b":
-                raise RuntimeError("flower down for worker-b")
-            from app.schemas.flower_monitor import (
-                FlowerTaskItem,
-                FlowerWorkerTaskOverviewResponse,
-                FlowerWorkerTaskSummary,
-            )
-            return FlowerWorkerTaskOverviewResponse(
-                generated_at=_now(),
-                worker=worker,
-                active_tasks=[],
-                reserved_tasks=[],
-                scheduled_tasks=[],
-                recent_tasks=[],
-                summary=FlowerWorkerTaskSummary(),
-            )
-
+        items = [
+            TaskMonitorTaskItem(
+                task_id="task-1",
+                name="export",
+                state="STARTED",
+                queue_name="q1",
+                worker="celery@worker-1",
+                started_at=_now(),
+            ),
+            TaskMonitorTaskItem(
+                task_id="task-2",
+                name="import",
+                state="SUCCESS",
+                queue_name="q1",
+                done_at=_now(),
+            ),
+        ]
         with patch(
-            "app.services.task_monitor_service._safe_workers_overview",
-            return_value=overview,
+            "app.services.task_monitor_service._load_db_task_history",
+            return_value=items,
         ):
             with patch(
-                "app.services.task_monitor_service.build_worker_task_overview",
-                side_effect=fake_build_worker_task_overview,
+                "app.services.task_monitor_service._safe_queue_pending_counts",
+                return_value={},
             ):
-                with patch(
-                    "app.services.task_monitor_service._load_db_task_history",
-                    return_value=[],
-                ):
-                    result = task_monitor_service.build_task_monitor_overview(
-                        task_limit=10,
-                        history_limit=5,
-                    )
+                result = task_monitor_service.build_task_monitor_overview(
+                    task_limit=10,
+                    history_limit=5,
+                )
 
-        assert result.workers_online == 2
-        assert len(result.workers) == 2
-        # queue names from both workers survive even if one worker's task fetch fails
-        assert {q.name for q in result.queues} == {"q1", "q2"}
-        assert result.tasks == []
+        assert [t.task_id for t in result.tasks] == ["task-1", "task-2"]
+        assert result.tasks[0].worker == "celery@worker-1"
+        assert {q.name for q in result.queues} == {"q1"}
 
-    def test_flower_tasks_are_converted_and_merged(self):
-        """Flower active/recent tasks are converted into the task list."""
-        from app.schemas.flower_monitor import (
-            FlowerTaskItem,
-            FlowerWorkerItem,
-            FlowerWorkerTaskOverviewResponse,
-            FlowerWorkerTaskSummary,
-            FlowerWorkersOverviewResponse,
-            FlowerWorkersSummary,
-        )
+    def test_queue_active_count_counts_only_started(self):
+        """Queue active_count counts STARTED tasks from DB; others do not inflate it."""
+        from app.schemas.task_monitor import TaskMonitorTaskItem
 
-        overview = FlowerWorkersOverviewResponse(
-            generated_at=_now(),
-            workers=[FlowerWorkerItem(worker="worker-a", status="ONLINE", queue_names=["q1"])],
-            summary=FlowerWorkersSummary(total=1, online=1, offline=0),
-        )
-        active = FlowerTaskItem(
-            task_id="task-1",
-            name="foo",
-            state="STARTED",
-            source="ACTIVE",
-            worker="worker-a",
-            queue_name="q1",
-            started_at=_now(),
-        )
-
-        def fake_build_worker_task_overview(worker, **kwargs):
-            return FlowerWorkerTaskOverviewResponse(
-                generated_at=_now(),
-                worker=worker,
-                active_tasks=[active],
-                reserved_tasks=[],
-                scheduled_tasks=[],
-                recent_tasks=[],
-                summary=FlowerWorkerTaskSummary(),
-            )
-
+        items = [
+            TaskMonitorTaskItem(
+                task_id="task-1",
+                name="a",
+                state="STARTED",
+                queue_name="q1",
+                started_at=_now(),
+            ),
+            TaskMonitorTaskItem(
+                task_id="task-2",
+                name="b",
+                state="SUCCESS",
+                queue_name="q1",
+                done_at=_now(),
+            ),
+            TaskMonitorTaskItem(
+                task_id="task-3",
+                name="c",
+                state="STARTED",
+                queue_name="q2",
+                started_at=_now(),
+            ),
+        ]
         with patch(
-            "app.services.task_monitor_service._safe_workers_overview",
-            return_value=overview,
+            "app.services.task_monitor_service._load_db_task_history",
+            return_value=items,
         ):
             with patch(
-                "app.services.task_monitor_service.build_worker_task_overview",
-                side_effect=fake_build_worker_task_overview,
+                "app.services.task_monitor_service._safe_queue_pending_counts",
+                return_value={"q1": 4, "q2": 0},
             ):
-                with patch(
-                    "app.services.task_monitor_service._load_db_task_history",
-                    return_value=[],
-                ):
-                    result = task_monitor_service.build_task_monitor_overview(
-                        task_limit=10,
-                        history_limit=5,
-                    )
+                result = task_monitor_service.build_task_monitor_overview(
+                    task_limit=10,
+                    history_limit=5,
+                )
 
-        assert len(result.tasks) == 1
-        assert result.tasks[0].task_id == "task-1"
-        assert result.tasks[0].state == "STARTED"
-        assert result.workers_online == 1
+        queues = {q.name: q for q in result.queues}
+        assert queues["q1"].active_count == 1
+        assert queues["q1"].pending_count == 4
+        assert queues["q1"].consumer_count == 0
+        assert queues["q2"].active_count == 1
+        assert result.queue_pending_total == 4
+
+    @patch("app.services.task_monitor_service._load_db_task_history", return_value=[])
+    @patch("app.services.task_monitor_service._safe_queue_pending_counts", return_value={})
+    def test_task_state_buckets_built_from_db_tasks(self, *_mocks):
+        from app.schemas.task_monitor import TaskMonitorTaskItem
+
+        items = [
+            TaskMonitorTaskItem(task_id="t1", name="a", state="STARTED"),
+            TaskMonitorTaskItem(task_id="t2", name="b", state="SUCCESS"),
+            TaskMonitorTaskItem(task_id="t3", name="c", state="SUCCESS"),
+        ]
+        with patch(
+            "app.services.task_monitor_service._load_db_task_history",
+            return_value=items,
+        ):
+            result = task_monitor_service.build_task_monitor_overview(
+                task_limit=10,
+                history_limit=5,
+            )
+        buckets = {b.key: b.count for b in result.task_state_buckets}
+        assert buckets["STARTED"] == 1
+        assert buckets["SUCCESS"] == 2
+
+    def test_redis_pending_failure_degrades_to_zero(self):
+        """Redis LLEN failure must not crash the overview; pending counts stay 0."""
+        with patch(
+            "app.services.task_monitor_service._safe_queue_pending_counts",
+            return_value={},
+        ):
+            from app.schemas.task_monitor import TaskMonitorTaskItem
+
+            with patch(
+                "app.services.task_monitor_service._load_db_task_history",
+                return_value=[
+                    TaskMonitorTaskItem(
+                        task_id="task-1",
+                        name="a",
+                        state="STARTED",
+                        queue_name="q1",
+                        started_at=_now(),
+                    )
+                ],
+            ):
+                result = task_monitor_service.build_task_monitor_overview(
+                    task_limit=10,
+                    history_limit=5,
+                )
+        queues = {q.name: q for q in result.queues}
+        assert queues["q1"].pending_count == 0
+
+    def test_safe_queue_pending_counts_returns_empty_on_redis_error(self):
+        """_safe_queue_pending_counts itself must swallow Redis errors and return {}."""
+        fake_client = MagicMock()
+        fake_pipe = MagicMock()
+        fake_pipe.execute.side_effect = RuntimeError("redis down")
+        fake_client.pipeline.return_value = fake_pipe
+        with patch(
+            "app.services.task_monitor_service.get_settings"
+        ) as fake_settings:
+            fake_settings.return_value = type(
+                "S",
+                (),
+                {"resolved_celery_broker_url": "redis://localhost:1/0"},
+            )()
+            with patch("redis.from_url", return_value=fake_client):
+                assert task_monitor_service._safe_queue_pending_counts(["q1"]) == {}
 
     @pytest.mark.parametrize(
         "exc",

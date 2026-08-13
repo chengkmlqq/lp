@@ -3,21 +3,19 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from datetime import datetime, timezone
-from typing import Any
 
 from sqlalchemy import desc
 
+from ..core.config import get_settings
 from ..core.database import SessionLocal
 from ..models.base import utcnow
 from ..models.task_history import TaskHistory
-from ..schemas.flower_monitor import FlowerWorkersOverviewResponse
 from ..schemas.task_monitor import (
     TaskMonitorBucketItem,
     TaskMonitorOverviewResponse,
     TaskMonitorQueueItem,
     TaskMonitorTaskItem,
 )
-from .flower_monitor_service import build_worker_task_overview, build_workers_overview
 
 STATE_LABELS = {
     "PENDING": "待执行",
@@ -78,108 +76,80 @@ def _load_db_task_history(*, limit: int) -> list[TaskMonitorTaskItem]:
         return []
 
 
-def _safe_workers_overview() -> FlowerWorkersOverviewResponse | None:
-    """Fetch Flower workers overview; returns None on any error."""
-    try:
-        return build_workers_overview(force_refresh=False)
-    except Exception:
-        logger.exception("Failed to fetch workers overview from Flower")
-        return None
+def _safe_queue_pending_counts(queue_names: Iterable[str]) -> dict[str, int]:
+    """Read pending message counts (LLEN) from the Redis broker queue keys.
 
-
-def _safe_worker_task_overview(
-    worker_name: str,
-    *,
-    recent_limit: int,
-) -> list[TaskMonitorTaskItem]:
-    """Fetch per-worker Flower tasks; returns empty list on any error."""
+    Returns {} on any error; missing/empty keys count as 0. Best-effort:
+    queue stats must never crash the overview endpoint.
+    """
+    names = list(queue_names)
+    if not names:
+        return {}
     try:
-        worker_tasks = build_worker_task_overview(
-            worker=worker_name,
-            force_refresh=False,
-            recent_limit=max(recent_limit, 1),
-        )
-        items: list[TaskMonitorTaskItem] = []
-        items.extend(_convert_flower_tasks(worker_tasks.active_tasks, source_state="STARTED"))
-        items.extend(_convert_flower_tasks(worker_tasks.reserved_tasks, source_state="RECEIVED"))
-        items.extend(_convert_flower_tasks(worker_tasks.scheduled_tasks, source_state="SCHEDULED"))
-        items.extend(_convert_flower_tasks(worker_tasks.recent_tasks, source_state=None))
-        return items
+        import redis as redis_lib
+
+        settings = get_settings()
+        broker = settings.resolved_celery_broker_url
+        if not broker.startswith("redis://"):
+            return {}
+        client = redis_lib.from_url(broker)
+        try:
+            pipe = client.pipeline(transaction=False)
+            for name in names:
+                pipe.llen(name)
+            counts = pipe.execute()
+        finally:
+            client.close()
+        return {name: int(count or 0) for name, count in zip(names, counts)}
     except Exception:
-        logger.exception("Failed to fetch task overview from Flower for worker %s", worker_name)
-        return []
+        logger.exception("Failed to read queue pending counts from Redis broker")
+        return {}
 
 
 def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskMonitorOverviewResponse:
-    workers_overview = _safe_workers_overview()
-    task_items: list[TaskMonitorTaskItem] = []
-    queue_runtime_counts: dict[str, dict[str, int]] = {}
-    queue_consumer_counts: dict[str, int] = {}
+    """Build the task monitor overview purely from the task history database.
 
-    if workers_overview is not None:
-        for worker in workers_overview.workers:
-            queue_names = worker.queue_names
-            for queue_name in queue_names:
-                queue_consumer_counts[queue_name] = queue_consumer_counts.get(queue_name, 0) + 1
-                queue_runtime_counts.setdefault(
-                    queue_name,
-                    {"active": 0, "reserved": 0, "scheduled": 0},
-                )
-
-            worker_tasks = _safe_worker_task_overview(
-                worker.worker,
-                recent_limit=max(history_limit, 1),
-            )
-            task_items.extend(worker_tasks)
-
-            for task in worker_tasks:
-                if task.state == "STARTED" and task.queue_name:
-                    queue_runtime_counts.setdefault(task.queue_name, {"active": 0, "reserved": 0, "scheduled": 0})
-                    queue_runtime_counts[task.queue_name]["active"] += 1
-                elif task.state == "RECEIVED" and task.queue_name:
-                    queue_runtime_counts.setdefault(task.queue_name, {"active": 0, "reserved": 0, "scheduled": 0})
-                    queue_runtime_counts[task.queue_name]["reserved"] += 1
-                elif task.state == "SCHEDULED" and task.queue_name:
-                    queue_runtime_counts.setdefault(task.queue_name, {"active": 0, "reserved": 0, "scheduled": 0})
-                    queue_runtime_counts[task.queue_name]["scheduled"] += 1
-
-    # Load all task history from database first (primary source)
+    Flower is no longer involved: running tasks are already persisted to
+    celery_task_history by the celery signals (on_task_prerun writes STARTED),
+    so polling this endpoint every ~5s gives near-real-time state.
+    """
     db_tasks = _load_db_task_history(limit=max(task_limit, history_limit))
-    all_tasks_by_id: dict[str, TaskMonitorTaskItem] = {}
-    for item in db_tasks:
-        if item.task_id:
-            all_tasks_by_id[item.task_id] = item
 
-    # Supplement with Flower's real-time active/reserved/scheduled tasks
-    # (Flower data takes priority only for currently running tasks)
-    runtime_tasks_by_id: dict[str, TaskMonitorTaskItem] = {}
-    for item in task_items:
-        if not item.task_id:
+    # 队列统计：基于 DB 任务的 queue_name（STARTED 计 active）
+    queue_runtime_counts: dict[str, dict[str, int]] = {}
+    queue_names: set[str] = set()
+    for task in db_tasks:
+        if not task.queue_name:
             continue
-        # Only override database state if this is an active/running task from Flower
-        if item.state in ("STARTED", "RECEIVED", "SCHEDULED"):
-            runtime_tasks_by_id[item.task_id] = item
-        else:
-            # For completed tasks, keep existing entry or add new
-            existing = runtime_tasks_by_id.get(item.task_id)
-            if existing is None:
-                runtime_tasks_by_id[item.task_id] = item
-                continue
-            if _task_priority(item.state) < _task_priority(existing.state):
-                runtime_tasks_by_id[item.task_id] = item
+        queue_names.add(task.queue_name)
+        bucket = queue_runtime_counts.setdefault(
+            task.queue_name,
+            {"active": 0, "reserved": 0, "scheduled": 0},
+        )
+        if task.state == "STARTED":
+            bucket["active"] += 1
 
-    # Merge: database is primary, Flower runtime data supplements active tasks
-    for task_id, flower_item in runtime_tasks_by_id.items():
-        db_item = all_tasks_by_id.get(task_id)
-        if db_item is None:
-            all_tasks_by_id[task_id] = flower_item
-        elif flower_item.state in ("STARTED", "RECEIVED", "SCHEDULED"):
-            # Flower has more current state for active tasks
-            all_tasks_by_id[task_id] = flower_item
-        # Otherwise keep database record (it's more persistent)
+    pending_counts = _safe_queue_pending_counts(queue_names)
+
+    queues = sorted(
+        [
+            TaskMonitorQueueItem(
+                name=name,
+                pending_count=pending_counts.get(name, 0),
+                consumer_count=0,
+                active_count=queue_runtime_counts.get(name, {}).get("active", 0),
+                reserved_count=0,
+                scheduled_count=0,
+            )
+            for name in sorted(queue_names)
+        ],
+        key=lambda item: (-item.active_count - item.reserved_count - item.scheduled_count, item.name),
+    )
+
+    settings = get_settings()
 
     all_tasks = sorted(
-        all_tasks_by_id.values(),
+        db_tasks,
         key=lambda item: (
             _task_priority(item.state),
             -_task_sort_timestamp(item).timestamp(),
@@ -187,44 +157,15 @@ def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskM
         ),
     )
 
-    queues = sorted(
-        [
-            TaskMonitorQueueItem(
-                name=name,
-                pending_count=0,
-                consumer_count=queue_consumer_counts.get(name, 0),
-                active_count=queue_runtime_counts.get(name, {}).get("active", 0),
-                reserved_count=queue_runtime_counts.get(name, {}).get("reserved", 0),
-                scheduled_count=queue_runtime_counts.get(name, {}).get("scheduled", 0),
-            )
-            for name in sorted(set(queue_runtime_counts) | set(queue_consumer_counts))
-        ],
-        key=lambda item: (-item.active_count - item.reserved_count - item.scheduled_count, item.name),
-    )
-
     return TaskMonitorOverviewResponse(
-        generated_at=workers_overview.generated_at if workers_overview is not None else utcnow(),
-        broker_url="flower",
-        result_backend="flower",
-        workers_online=workers_overview.summary.online if workers_overview is not None else 0,
-        worker_concurrency_total=sum(item.concurrency for item in workers_overview.workers) if workers_overview is not None else 0,
+        generated_at=utcnow(),
+        broker_url=settings.resolved_celery_broker_url,
+        result_backend=settings.resolved_celery_result_backend,
+        workers_online=0,
+        worker_concurrency_total=0,
         queue_pending_total=sum(item.pending_count for item in queues),
-        task_state_buckets=_build_state_buckets(all_tasks_by_id.values()),
-        workers=[
-            {
-                "worker": worker.worker,
-                "online": worker.status == "ONLINE",
-                "queue_names": worker.queue_names,
-                "max_concurrency": worker.concurrency,
-                "prefetch_count": worker.prefetch_count,
-                "uptime_seconds": 0,
-                "processed_total": worker.processed_count,
-                "active_count": worker.active_count,
-                "reserved_count": worker.reserved_count,
-                "scheduled_count": worker.scheduled_count,
-            }
-            for worker in (workers_overview.workers if workers_overview is not None else [])
-        ],
+        task_state_buckets=_build_state_buckets(all_tasks),
+        workers=[],
         queues=queues,
         tasks=all_tasks[:task_limit],
     )
@@ -238,28 +179,6 @@ def _build_state_buckets(tasks: Iterable[TaskMonitorTaskItem]) -> list[TaskMonit
         TaskMonitorBucketItem(key=state, label=STATE_LABELS.get(state, state), count=count)
         for state, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     ]
-
-
-def _convert_flower_tasks(tasks: list[Any], *, source_state: str | None) -> list[TaskMonitorTaskItem]:
-    items: list[TaskMonitorTaskItem] = []
-    for task in tasks:
-        state = source_state or task.state
-        items.append(
-            TaskMonitorTaskItem(
-                task_id=task.task_id,
-                name=task.name,
-                state=state,
-                queue_name=task.queue_name,
-                worker=task.worker,
-                retries=0,
-                eta=task.eta,
-                started_at=task.started_at,
-                done_at=task.finished_at,
-                runtime_seconds=task.runtime_seconds,
-                error=task.exception_text,
-            )
-        )
-    return items
 
 
 def _task_priority(state: str) -> int:

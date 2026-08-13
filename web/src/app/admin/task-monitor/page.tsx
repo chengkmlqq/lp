@@ -34,78 +34,15 @@ import {
   formatTaskMonitorDuration,
   formatTaskMonitorErrorMessage,
   getQueueDisplayName,
-  getTaskSourceDisplay,
   getTaskStateDisplay,
 } from "@/lib/task-monitor-display";
 
 const { Text } = Typography;
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
-const DEFAULT_RECENT_LIMIT = 100;
 const TASK_MONITOR_TABLE_MIN_SCROLL_Y = 180;
 const TASK_MONITOR_TABLE_VIEWPORT_GAP = 40;
 const TASK_MONITOR_TABLE_FALLBACK_RESERVE = 220;
-
-type FlowerWorkerItem = {
-  worker: string;
-  status: string;
-  queue_names: string[];
-  registered_count: number;
-  processed_count: number;
-  concurrency: number;
-  prefetch_count: number;
-  active_count: number;
-  reserved_count: number;
-  scheduled_count: number;
-  last_heartbeat_at: string | null;
-};
-
-type FlowerWorkersOverviewResponse = {
-  generated_at: string;
-  workers: FlowerWorkerItem[];
-  summary: {
-    total: number;
-    online: number;
-    offline: number;
-  };
-};
-
-type FlowerTaskItem = {
-  task_id: string;
-  name: string;
-  state: string;
-  source: string;
-  worker: string;
-  queue_name: string | null;
-  args_text: string | null;
-  kwargs_text: string | null;
-  eta: string | null;
-  received_at: string | null;
-  started_at: string | null;
-  finished_at: string | null;
-  runtime_seconds: number | null;
-  result_text: string | null;
-  exception_text: string | null;
-};
-
-type FlowerWorkerTaskOverviewResponse = {
-  generated_at: string;
-  worker: string;
-  active_tasks: FlowerTaskItem[];
-  reserved_tasks: FlowerTaskItem[];
-  scheduled_tasks: FlowerTaskItem[];
-  recent_tasks: FlowerTaskItem[];
-  summary: {
-    active: number;
-    reserved: number;
-    scheduled: number;
-    recent: number;
-  };
-};
-
-type TaskTableRow = FlowerTaskItem & {
-  key: string;
-};
 
 /** Response type from /api/v1/admin/task-monitor/overview */
 type OverviewMonitorTaskItem = {
@@ -141,6 +78,18 @@ type TaskMonitorOverviewResponse = {
   tasks: OverviewMonitorTaskItem[];
 };
 
+type TaskTableRow = {
+  key: string;
+  task_id: string;
+  name: string;
+  state: string;
+  queue_name: string | null;
+  worker: string;
+  started_at: string | null;
+  finished_at: string | null;
+  runtime_seconds: number | null;
+};
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return "-";
@@ -163,33 +112,11 @@ function renderTaskStateTag(state: string) {
   );
 }
 
-function renderTaskSourceTag(source: string) {
-  const display = getTaskSourceDisplay(source);
-  return <Tag color={display.color}>{display.label}</Tag>;
-}
-
-function containsText(source: string | null | undefined, keyword: string): boolean {
-  if (!keyword) {
-    return true;
-  }
-  return (source || "").toLowerCase().includes(keyword.toLowerCase());
-}
-
-function toTaskRows(workerName: string, source: string, tasks: FlowerTaskItem[]): TaskTableRow[] {
-  return tasks.map((item, index) => ({
-    ...item,
-    source: item.source || source,
-    worker: item.worker || workerName,
-    key: `${workerName}:${source}:${item.task_id}:${index + 1}`,
-  }));
-}
-
 export default function AdminTaskMonitorPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const isMobile = useMobileDetection();
   const canRead = hasPermission("celery.read") || hasPermission("celery.manage");
 
-  const [autoRefresh, setAutoRefresh] = useState(false);
   const [pendingKeyword, setPendingKeyword] = useState("");
   const [taskKeyword, setTaskKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
@@ -381,48 +308,9 @@ export default function AdminTaskMonitorPage() {
     }
   }, [logModalContent, logModalStreaming, logModalStatus]);
 
-  const workersOverviewQuery = useQuery({
-    queryKey: ["flower-workers-overview"],
-    enabled: Boolean(user) && canRead,
-    queryFn: async () => {
-      const response = await fetchWithAuth("/api/v1/admin/flower/workers?forceRefresh=false");
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as FlowerWorkersOverviewResponse;
-    },
-    refetchInterval: autoRefresh ? 5_000 : false,
-    staleTime: 15_000,
-  });
-
-  const workerNames = useMemo(() => (workersOverviewQuery.data?.workers || []).map((item) => item.worker), [workersOverviewQuery.data?.workers]);
-
-  const allTasksQuery = useQuery({
-    queryKey: ["flower-worker-tasks-batch", workerNames],
-    enabled: Boolean(user) && canRead && workerNames.length > 0,
-    queryFn: async () => {
-      const settled = await Promise.all(
-        workerNames.map(async (worker) => {
-          const params = new URLSearchParams();
-          params.set("worker", worker);
-          params.set("recentLimit", String(DEFAULT_RECENT_LIMIT));
-          params.set("forceRefresh", "false");
-          const response = await fetchWithAuth(`/api/v1/admin/flower/worker-tasks?${params.toString()}`);
-          if (!response.ok) {
-            throw new Error(await readApiError(response));
-          }
-          return (await response.json()) as FlowerWorkerTaskOverviewResponse;
-        }),
-      );
-      return settled;
-    },
-    refetchInterval: autoRefresh ? 5_000 : false,
-    staleTime: 15_000,
-  });
-
   const overviewQuery = useQuery({
     queryKey: ["task-monitor-overview"],
-    enabled: Boolean(user) && canRead && workerNames.length === 0,
+    enabled: Boolean(user) && canRead,
     queryFn: async () => {
       const response = await fetchWithAuth("/api/v1/admin/task-monitor/overview?task_limit=500&history_limit=100");
       if (!response.ok) {
@@ -430,41 +318,11 @@ export default function AdminTaskMonitorPage() {
       }
       return (await response.json()) as TaskMonitorOverviewResponse;
     },
-    refetchInterval: autoRefresh ? 10_000 : false,
-    staleTime: 30_000,
+    refetchInterval: 5_000,
+    staleTime: 5_000,
   });
 
   const overviewData = overviewQuery.data;
-
-  const workersOverview = useMemo(() => {
-    if (workersOverviewQuery.data) {
-      return workersOverviewQuery.data;
-    }
-    if (overviewData && overviewData.workers.length > 0) {
-      return {
-        generated_at: overviewData.generated_at,
-        workers: overviewData.workers.map((w) => ({
-          worker: w.worker,
-          status: w.online ? "ONLINE" : "OFFLINE",
-          queue_names: w.queue_names,
-          registered_count: 0,
-          processed_count: w.processed_total,
-          concurrency: w.max_concurrency,
-          prefetch_count: w.prefetch_count,
-          active_count: w.active_count,
-          reserved_count: w.reserved_count,
-          scheduled_count: w.scheduled_count,
-          last_heartbeat_at: null,
-        })),
-        summary: {
-          total: overviewData.workers.length,
-          online: overviewData.workers.filter((w) => w.online).length,
-          offline: overviewData.workers.filter((w) => !w.online).length,
-        },
-      };
-    }
-    return workersOverviewQuery.data;
-  }, [workersOverviewQuery.data, overviewData]);
 
   const taskColumns = useMemo<TableColumnsType<TaskTableRow>>(
     () => [
@@ -550,51 +408,24 @@ export default function AdminTaskMonitorPage() {
     [handleViewLog],
   );
 
-  const filteredWorkers = useMemo(() => workersOverview?.workers || [], [workersOverview?.workers]);
-
-  const allTaskRows = useMemo(() => {
-    const workerTaskOverviews = allTasksQuery.data || [];
-    const rows: TaskTableRow[] = [];
-    for (const overview of workerTaskOverviews) {
-      rows.push(...toTaskRows(overview.worker, "ACTIVE", overview.active_tasks));
-      rows.push(...toTaskRows(overview.worker, "RESERVED", overview.reserved_tasks));
-      rows.push(...toTaskRows(overview.worker, "SCHEDULED", overview.scheduled_tasks));
-      rows.push(...toTaskRows(overview.worker, "RECENT", overview.recent_tasks));
-    }
-
-    // Fallback: use overview endpoint data when Flower returns no tasks
-    if (rows.length === 0 && overviewData && overviewData.tasks.length > 0) {
-      const overviewRows: TaskTableRow[] = overviewData.tasks.map((task, index) => ({
-        task_id: task.task_id,
-        name: task.name,
-        state: task.state,
-        source: "RECENT",
-        worker: task.worker || "-",
-        queue_name: task.queue_name,
-        args_text: null,
-        kwargs_text: null,
-        eta: task.eta,
-        received_at: null,
-        started_at: task.started_at,
-        finished_at: task.done_at,
-        runtime_seconds: task.runtime_seconds,
-        result_text: null,
-        exception_text: task.error,
-        key: `overview:${task.task_id}:${index}`,
-      }));
-      return overviewRows;
-    }
-
-    return rows;
-  }, [allTasksQuery.data, overviewData]);
+  const allTaskRows = useMemo<TaskTableRow[]>(() => {
+    const tasks = overviewData?.tasks || [];
+    return tasks.map((task, index) => ({
+      task_id: task.task_id,
+      name: task.name,
+      state: task.state,
+      worker: task.worker || "-",
+      queue_name: task.queue_name,
+      started_at: task.started_at,
+      finished_at: task.done_at,
+      runtime_seconds: task.runtime_seconds,
+      key: `overview:${task.task_id}:${index}`,
+    }));
+  }, [overviewData]);
 
   const filteredTaskRows = useMemo(() => {
-    const workerSet = new Set(filteredWorkers.map((item) => item.worker));
     const keyword = taskKeyword.trim();
     return allTaskRows.filter((item) => {
-      if (!workerSet.has(item.worker)) {
-        return false;
-      }
       if (!keyword) {
         return true;
       }
@@ -605,22 +436,17 @@ export default function AdminTaskMonitorPage() {
         item.queue_name || "",
         getQueueDisplayName(item.queue_name),
         item.worker,
-        getTaskSourceDisplay(item.source).label,
         getTaskStateDisplay(item.state).label,
-        item.args_text || "",
-        item.kwargs_text || "",
       ]
         .join(" ")
         .toLowerCase();
       return haystack.includes(keyword.toLowerCase());
     });
-  }, [allTaskRows, filteredWorkers, taskKeyword]);
+  }, [allTaskRows, taskKeyword]);
 
   const handleSearch = useCallback(() => {
     setTaskKeyword(pendingKeyword);
     resetTaskListPagination();
-    workersOverviewQuery.refetch();
-    allTasksQuery.refetch();
   }, [pendingKeyword, resetTaskListPagination]);
 
   const handleResetFilters = () => {
@@ -629,23 +455,16 @@ export default function AdminTaskMonitorPage() {
     resetTaskListPagination();
   };
 
-  const workersOverviewErrorMessage = workersOverviewQuery.error instanceof Error
-    ? formatTaskMonitorErrorMessage(workersOverviewQuery.error.message, "任务监控数据加载失败，请稍后重试。")
-    : "";
-  const allTasksErrorMessage = allTasksQuery.error instanceof Error
-    ? formatTaskMonitorErrorMessage(allTasksQuery.error.message, "任务列表数据加载失败，请稍后重试。")
-    : "";
   const overviewErrorMessage = overviewQuery.error instanceof Error
     ? formatTaskMonitorErrorMessage(overviewQuery.error.message, "任务监控概览数据加载失败，请稍后重试。")
     : "";
-  const anyError = workersOverviewErrorMessage || allTasksErrorMessage || (workersOverviewQuery.data ? "" : overviewErrorMessage);
 
   useToastFeedback({
-    errorMessage: anyError,
+    errorMessage: overviewErrorMessage,
   });
 
   useEffect(() => {
-    if (viewMode !== "card" || allTasksQuery.isLoading) {
+    if (viewMode !== "card" || overviewQuery.isFetching) {
       return;
     }
 
@@ -671,7 +490,7 @@ export default function AdminTaskMonitorPage() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [allTasksQuery.isLoading, cardViewPage, filteredTaskRows, paginationPageSize, viewMode]);
+  }, [overviewQuery.isFetching, cardViewPage, filteredTaskRows, paginationPageSize, viewMode]);
 
   useEffect(() => {
     if (viewMode !== "card") {
@@ -686,7 +505,7 @@ export default function AdminTaskMonitorPage() {
     const cardBody = pageCard as HTMLElement;
 
     const handleScroll = () => {
-      if (isLoadingMore || allTasksQuery.isLoading) {
+      if (isLoadingMore || overviewQuery.isFetching) {
         return;
       }
 
@@ -707,7 +526,7 @@ export default function AdminTaskMonitorPage() {
     return () => {
       cardBody.removeEventListener("scroll", handleScroll);
     };
-  }, [allLoadedTasks.length, allTasksQuery.isLoading, filteredTaskRows.length, isLoadingMore, viewMode]);
+  }, [allLoadedTasks.length, overviewQuery.isFetching, filteredTaskRows.length, isLoadingMore, viewMode]);
 
   const updateTableScrollY = useCallback(() => {
     if (typeof window === "undefined") {
@@ -744,13 +563,10 @@ export default function AdminTaskMonitorPage() {
     }
     window.requestAnimationFrame(updateTableScrollY);
   }, [
-    allTasksQuery.isFetching,
+    overviewQuery.isFetching,
     filteredTaskRows.length,
     updateTableScrollY,
     viewMode,
-    workersOverviewQuery.error,
-    workersOverviewQuery.isFetching,
-    workersOverview?.summary.total,
   ]);
 
   useEffect(() => {
@@ -958,7 +774,7 @@ export default function AdminTaskMonitorPage() {
         )}
 
 
-        {!workersOverview && !workersOverviewQuery.isFetching && !overviewQuery.isFetching && (
+        {!overviewData && !overviewQuery.isFetching && (
           <div className="mt-4">
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -967,7 +783,7 @@ export default function AdminTaskMonitorPage() {
           </div>
         )}
 
-        {workersOverview && viewMode === "table" ? (
+        {overviewData && viewMode === "table" ? (
           <div
             ref={tableScrollAnchorRef}
             className="admin-task-monitor-table-anchor"
@@ -977,7 +793,7 @@ export default function AdminTaskMonitorPage() {
               rowKey={(record) => record.key}
               columns={taskColumns}
               dataSource={filteredTaskRows}
-              loading={allTasksQuery.isFetching || workersOverviewQuery.isFetching}
+              loading={overviewQuery.isFetching}
               tableLayout="fixed"
               pagination={{
                 current: paginationCurrent,
@@ -1003,9 +819,9 @@ export default function AdminTaskMonitorPage() {
               scroll={{ x: 1600, y: tableScrollY }}
             />
           </div>
-        ) : workersOverview ? (
+        ) : overviewData ? (
           <div className="admin-task-monitor-card-view">
-            {allTasksQuery.isLoading && allLoadedTasks.length === 0 ? (
+            {overviewQuery.isFetching && allLoadedTasks.length === 0 ? (
               <div className="admin-task-monitor-card-view-state">
                 <Spin tip="加载中..." />
               </div>

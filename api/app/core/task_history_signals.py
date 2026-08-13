@@ -155,10 +155,18 @@ def on_task_prerun(task_id=None, task=None, **kwargs):  # type: ignore[no-untype
         # 系统任务：不落监控表，也不装日志采集器（LP-281）
         return
     started_at = datetime.now(timezone.utc)
+    request = getattr(task, "request", None) if task else None
+    worker = getattr(request, "hostname", None) if request is not None else None
+    queue_name = None
+    if request is not None:
+        delivery_info = getattr(request, "delivery_info", None) or {}
+        queue_name = delivery_info.get("routing_key")
     _upsert_task(
         task_id,
         name=task.name if task else None,
         state="STARTED",
+        worker=worker,
+        queue_name=queue_name,
         started_at=started_at,
     )
     # 新增：安装采集器，从任务开始捕获 Celery / print / 业务日志
@@ -260,7 +268,7 @@ def on_task_revoked(sender=None, request=None, terminated=None, signum=None, exp
 
 
 @signals.after_task_publish.connect
-def on_after_task_publish(sender=None, headers=None, body=None, **kwargs):  # type: ignore[no-untyped-def]
+def on_after_task_publish(sender=None, headers=None, body=None, routing_key=None, **kwargs):  # type: ignore[no-untyped-def]
     """Record task as PENDING when it is first published to the queue."""
     if not headers:
         return
@@ -290,4 +298,5 @@ def on_after_task_publish(sender=None, headers=None, body=None, **kwargs):  # ty
         state="PENDING",
         retries=retries,
         eta=eta,
+        queue_name=routing_key,
     )
