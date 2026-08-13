@@ -137,6 +137,7 @@ export default function AdminSystemParamsPage() {
   const canManage = hasPermission("system_param.manage");
 
   // Category tree state
+  const [selectedTreeKey, setSelectedTreeKey] = useState<string>("all");
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [categoryEditorOpen, setCategoryEditorOpen] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
@@ -157,10 +158,55 @@ export default function AdminSystemParamsPage() {
     },
   });
 
+  const renderCategoryTitle = (cat: ParamCategoryTreeItem): React.ReactNode => {
+    const categoryMenuItems: MenuProps["items"] = [
+      {
+        key: "edit",
+        label: "编辑分类",
+        onClick: () => openCategoryEdit(cat),
+      },
+      {
+        key: "delete",
+        label: "删除分类",
+        danger: true,
+        onClick: () => {
+          Modal.confirm({
+            title: "删除分类",
+            content: `确认删除分类 "${cat.name}" 吗？该分类下不能有子分类和参数。`,
+            okText: "删除",
+            cancelText: "取消",
+            okButtonProps: { danger: true },
+            onOk: () => deleteCategoryMutation.mutate(cat.id),
+          });
+        },
+      },
+    ];
+
+    return (
+      <span className="admin-system-params-tree-node">
+        <span className="admin-system-params-tree-node-title">{cat.name}</span>
+        {canManage ? (
+          <Dropdown
+            menu={{ items: categoryMenuItems }}
+            trigger={["click"]}
+          >
+            <span
+              className="admin-system-params-tree-node-more"
+              role="button"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreOutlined />
+            </span>
+          </Dropdown>
+        ) : null}
+      </span>
+    );
+  };
+
   const convertToTreeData = (categories: ParamCategoryTreeItem[]): DataNode[] => {
     return categories.map((cat) => ({
       key: String(cat.id),
-      title: cat.name,
+      title: renderCategoryTitle(cat),
       children: cat.children ? convertToTreeData(cat.children) : [],
     }));
   };
@@ -193,15 +239,18 @@ export default function AdminSystemParamsPage() {
       if (key === "all") {
         setSelectedCategoryId(null);
         setCategoryIdFilter(null);
+        setSelectedTreeKey("all");
       } else {
         const catId = Number(key);
         setSelectedCategoryId(catId);
         setCategoryIdFilter(catId);
+        setSelectedTreeKey(key);
       }
       setPagination((prev) => ({ ...prev, current: 1 }));
     } else {
       setSelectedCategoryId(null);
       setCategoryIdFilter(null);
+      setSelectedTreeKey("all");
     }
   };
 
@@ -269,6 +318,7 @@ export default function AdminSystemParamsPage() {
       if (selectedCategoryId === categoryId) {
         setSelectedCategoryId(null);
         setCategoryIdFilter(null);
+        setSelectedTreeKey("all");
       }
       await queryClient.invalidateQueries({ queryKey: ["/api/v1/admin/system-param-categories/tree"] });
     },
@@ -983,44 +1033,6 @@ export default function AdminSystemParamsPage() {
                 <PlusOutlined /> 新建参数
               </Button>
             )}
-            {canManage && selectedCategoryId !== null ? (
-              <Space>
-                {(() => {
-                  const findCat = (items: ParamCategoryTreeItem[], id: number): ParamCategoryTreeItem | null => {
-                    for (const item of items) {
-                      if (item.id === id) return item;
-                      if (item.children) {
-                        const found = findCat(item.children, id);
-                        if (found) return found;
-                      }
-                    }
-                    return null;
-                  };
-                  const currentCat = findCat(categoryTreeQuery.data ?? [], selectedCategoryId);
-                  return currentCat ? (
-                    <>
-                      <Button size="small" onClick={() => openCategoryEdit(currentCat)}>
-                        编辑分类
-                      </Button>
-                      <Button size="small" danger
-                        onClick={() => {
-                          Modal.confirm({
-                            title: "删除分类",
-                            content: `确认删除分类 "${currentCat.name}" 吗？该分类下不能有子分类和参数。`,
-                            okText: "删除",
-                            cancelText: "取消",
-                            okButtonProps: { danger: true },
-                            onOk: () => deleteCategoryMutation.mutate(currentCat.id),
-                          });
-                        }}
-                      >
-                        删除分类
-                      </Button>
-                    </>
-                  ) : null;
-                })()}
-              </Space>
-            ) : null}
           </Space>
         }
         items={[
@@ -1069,7 +1081,7 @@ export default function AdminSystemParamsPage() {
                   <div className="admin-system-params-sider-menu">
                     <Tree
                       showLine
-                      selectedKeys={selectedCategoryId !== null ? [String(selectedCategoryId)] : []}
+                      selectedKeys={[selectedTreeKey]}
                       treeData={[
                         {
                           key: "all",

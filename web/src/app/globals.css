@@ -1977,6 +1977,60 @@ body {
   background: transparent !important;
 }
 
+/* LP-308: 分类节点占满容器宽度，编辑/删除入口收进节点最右侧三点菜单。
+   仅作用于 system-params 页（sider-menu 类被 dimensions/documents 复用，故用 list-pane 前缀限定作用域） */
+.admin-system-params-list-pane .admin-system-params-sider-menu .ant-tree-treenode {
+  display: flex;
+  align-items: center;
+}
+
+.admin-system-params-list-pane .admin-system-params-sider-menu .ant-tree-node-content-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-system-params-tree-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+.admin-system-params-tree-node-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-system-params-tree-node-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 4px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--ant-color-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms cubic-bezier(0.2, 0, 0, 1), background 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.admin-system-params-list-pane .admin-system-params-sider-menu .ant-tree-treenode:hover .admin-system-params-tree-node-more,
+.admin-system-params-list-pane .admin-system-params-sider-menu .ant-tree-treenode-selected .admin-system-params-tree-node-more {
+  opacity: 1;
+}
+
+.admin-system-params-tree-node-more:hover {
+  background: var(--ant-color-bg-text-hover);
+  color: var(--ant-color-primary);
+}
+
 /* "全部参数" root node styling */
 .admin-system-params-sider-menu .ant-tree .ant-tree-treenode:first-child {
   font-weight: 500;
