@@ -216,6 +216,8 @@ export default function AdminSystemParamsPage() {
             <span
               className="admin-system-params-tree-node-more"
               role="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
               <MoreOutlined />
@@ -1118,6 +1120,7 @@ export default function AdminSystemParamsPage() {
                   <div className="admin-system-params-sider-menu">
                     <Tree
                       showLine
+                      blockNode
                       selectedKeys={[selectedTreeKey]}
                       treeData={[
                         {

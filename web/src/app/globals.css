@@ -1981,16 +1981,12 @@ body {
 }
 
 /* LP-308: 分类节点占满容器宽度，编辑/删除入口收进节点最右侧三点菜单。
+   宽度占满依赖 Tree 的 blockNode（list-holder-inner align-items:stretch、content-wrapper flex:auto），
+   这里仅补齐 title 撑满 content-wrapper。
    仅作用于 system-params 页（sider-menu 类被 dimensions/documents 复用，故用 list-pane 前缀限定作用域） */
-.admin-system-params-list-pane .admin-system-params-sider-menu .ant-tree-treenode {
-  display: flex;
-  align-items: center;
-}
-
-.admin-system-params-list-pane .admin-system-params-sider-menu .ant-tree-node-content-wrapper {
-  display: flex;
-  align-items: center;
-  flex: 1;
+.admin-system-params-list-pane .admin-system-params-sider-menu .ant-tree-title {
+  display: block;
+  width: 100%;
   min-width: 0;
 }
 
@@ -1998,9 +1994,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex: 1;
+  width: 100%;
   min-width: 0;
   padding-right: 4px;
+  box-sizing: border-box;
 }
 
 .admin-system-params-tree-node-title {
