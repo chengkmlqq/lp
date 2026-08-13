@@ -186,13 +186,17 @@ export default function AdminSystemParamsPage() {
       {
         key: "edit",
         label: "编辑分类",
-        onClick: () => openCategoryEdit(cat),
+        onClick: ({ domEvent }) => {
+          domEvent.stopPropagation();
+          openCategoryEdit(cat);
+        },
       },
       {
         key: "delete",
         label: "删除分类",
         danger: true,
-        onClick: () => {
+        onClick: ({ domEvent }) => {
+          domEvent.stopPropagation();
           Modal.confirm({
             title: "删除分类",
             content: `确认删除分类 "${cat.name}" 吗？该分类下不能有子分类和参数。`,
