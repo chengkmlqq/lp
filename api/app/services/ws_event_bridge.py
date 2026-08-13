@@ -93,8 +93,10 @@ def _read_ws_events(
     for _stream_name, entries in response:
         for entry_id, fields in entries:
             entry_id_str = entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
-            topic = fields.get("topic")
-            event_json = fields.get("event")
+            # redis-py XREAD 返回的 fields dict 键为 bytes（b"topic"/b"event"），
+            # 需兼容 bytes 与 str 两种键，否则 get 永远 None 导致事件全部被跳过
+            topic = fields.get(b"topic") or fields.get("topic")
+            event_json = fields.get(b"event") or fields.get("event")
             if not topic or not event_json:
                 continue
             topic_str = topic.decode() if isinstance(topic, bytes) else topic
