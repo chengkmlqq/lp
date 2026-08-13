@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
   Card,
-  Col,
   DatePicker,
   Descriptions,
   Dropdown,
@@ -14,8 +13,9 @@ import {
   Input,
   InputNumber,
   Modal,
+  Pagination,
   Progress,
-  Row,
+  Segmented,
   Select,
   Space,
   Table,
@@ -38,7 +38,6 @@ import { AdminPageLoading } from "@/components/admin-page-loading";
 import { LightningTowerView } from "@/components/lightning-tower-view";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
 import type {
   LightningAmplitudeRecord,
@@ -131,16 +130,15 @@ function truncateFileName(name: string, maxLength = 20): string {
 }
 
 const LIGHTNING_TABLE_MIN_SCROLL_Y = 180;
-const LIGHTNING_TABLE_VIEWPORT_GAP = 40;
-const LIGHTNING_TABLE_FALLBACK_RESERVE = 220;
+const LIGHTNING_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
+const LIGHTNING_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
+const LIGHTNING_TABLE_BOTTOM_GAP = 8;
 
 export default function AdminLightningCurrentsPage() {
   const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
   const queryClient = useQueryClient();
-  const isMobile = useMobileDetection();
   const [importForm] = Form.useForm<ImportFormValues>();
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
-  const pageCardRef = useRef<HTMLDivElement | null>(null);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -155,10 +153,7 @@ export default function AdminLightningCurrentsPage() {
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
-  const viewMode: "table" | "card" = isMobile ? "card" : "table";
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedRecords, setAllLoadedRecords] = useState<LightningAmplitudeRecord[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
@@ -251,18 +246,12 @@ export default function AdminLightningCurrentsPage() {
       return;
     }
 
-    const anchorTop = anchor.getBoundingClientRect().top;
-    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
-    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
-
-    let nextHeight = Math.floor(window.innerHeight - anchorTop - LIGHTNING_TABLE_FALLBACK_RESERVE);
-    if (tableWrapper) {
-      const wrapperRect = tableWrapper.getBoundingClientRect();
-      const bodyHeight = tableBody?.getBoundingClientRect().height ?? LIGHTNING_TABLE_MIN_SCROLL_Y;
-      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
-      const topGap = Math.max(0, wrapperRect.top - anchorTop);
-      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - LIGHTNING_TABLE_VIEWPORT_GAP);
-    }
+    const anchorHeight = anchor.getBoundingClientRect().height;
+    const tableHeader = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const tablePagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = tableHeader?.getBoundingClientRect().height ?? LIGHTNING_TABLE_ESTIMATED_HEADER_HEIGHT;
+    const paginationHeight = tablePagination?.getBoundingClientRect().height ?? LIGHTNING_TABLE_ESTIMATED_PAGINATION_HEIGHT;
+    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - LIGHTNING_TABLE_BOTTOM_GAP);
 
     const clampedHeight = Math.max(LIGHTNING_TABLE_MIN_SCROLL_Y, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
@@ -272,74 +261,17 @@ export default function AdminLightningCurrentsPage() {
     if (typeof window === "undefined") {
       return;
     }
-    if (viewMode !== "table") {
+    if (viewMode !== "list") {
       return;
     }
     window.requestAnimationFrame(updateTableScrollY);
   }, [error, listError, records.length, recordsQuery.isFetching, updateTableScrollY, viewMode]);
 
   useEffect(() => {
-    if (viewMode !== "card" || recordsQuery.isLoading) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedRecords(() => records);
-      } else {
-        setAllLoadedRecords((prev) => {
-          if (records.length === 0) {
-            return prev;
-          }
-          const existingIds = new Set(prev.map(e => e.id));
-          const newRecords = records.filter(e => !existingIds.has(e.id));
-          return [...prev, ...newRecords];
-        });
-      }
-      setIsLoadingMore(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [records, recordsQuery.isLoading, viewMode, cardViewPage]);
-
-  useEffect(() => {
-    if (viewMode !== "card") return;
-
-    // 卡片视图滚动加载：外层 AntCard 改为 Tabs 后，pageCardRef 挂在 list-pane 滚动容器上，
-    // 直接以容器自身作为滚动源（替代原 .ant-card-body）
-    const listPane = pageCardRef.current;
-    if (!listPane) return;
-
-    const handleScroll = () => {
-      if (isLoadingMore || recordsQuery.isLoading) return;
-
-      const scrollTop = listPane.scrollTop;
-      const scrollHeight = listPane.scrollHeight;
-      const clientHeight = listPane.clientHeight;
-
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const total = recordsQuery.data?.total ?? 0;
-        const loadedCount = allLoadedRecords.length;
-
-        if (loadedCount < total) {
-          setIsLoadingMore(true);
-          setCardViewPage((prev) => prev + 1);
-          setPagination((prev) => ({ ...prev, current: prev.current + 1 }));
-        }
-      }
-    };
-
-    listPane.addEventListener("scroll", handleScroll);
-    return () => listPane.removeEventListener("scroll", handleScroll);
-  }, [viewMode, isLoadingMore, recordsQuery.isLoading, recordsQuery.data?.total, allLoadedRecords.length]);
-
-  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
-    if (viewMode !== "table") {
+    if (viewMode !== "list") {
       return;
     }
 
@@ -357,7 +289,7 @@ export default function AdminLightningCurrentsPage() {
     if (typeof window === "undefined" || typeof ResizeObserver === "undefined") {
       return;
     }
-    if (viewMode !== "table") {
+    if (viewMode !== "list") {
       return;
     }
 
@@ -572,8 +504,6 @@ export default function AdminLightningCurrentsPage() {
   const handleSearch = () => {
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    setCardViewPage(1);
-    setAllLoadedRecords([]);
     void queryClient.refetchQueries({ queryKey: [listPath] });
   };
 
@@ -884,10 +814,10 @@ export default function AdminLightningCurrentsPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: "雷电流幅值统计",
+            label: <span className="admin-lightning-currents-tab-title">雷电流幅值统计</span>,
             closable: false,
             children: (
-              <div ref={pageCardRef} className="admin-lightning-currents-list-pane">
+              <div className="admin-lightning-currents-list-pane">
         <div className="admin-filter-bar">
           <Form layout="inline">
             <Form.Item label="关键词" className="admin-filter-keyword-item">
@@ -905,9 +835,17 @@ export default function AdminLightningCurrentsPage() {
               </Button>
             </Form.Item>
           </Form>
+          <Segmented
+            value={viewMode}
+            onChange={(value) => setViewMode(value as "card" | "list")}
+            options={[
+              { label: "卡片视图", value: "card" },
+              { label: "列表视图", value: "list" },
+            ]}
+          />
         </div>
 
-        {viewMode === "table" ? (
+        {viewMode === "list" ? (
           <div
             ref={tableScrollAnchorRef}
             className="lightning-table-anchor"
@@ -944,11 +882,11 @@ export default function AdminLightningCurrentsPage() {
           </div>
         ) : (
           <div className="admin-lightning-events-card-view">
-            {recordsQuery.isLoading && allLoadedRecords.length === 0 ? (
+            {recordsQuery.isLoading && records.length === 0 ? (
               <div className="admin-lightning-events-card-view-state">
                 <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[180px]" />
               </div>
-            ) : allLoadedRecords.length === 0 ? (
+            ) : records.length === 0 ? (
               <div className="admin-lightning-events-card-view-state">
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -956,27 +894,25 @@ export default function AdminLightningCurrentsPage() {
                 />
               </div>
             ) : (
-              <div className="admin-lightning-events-card-view-content">
-                <Row gutter={[12, 12]}>
-                  {allLoadedRecords.map((record) => (
-                    <Col key={record.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                      {renderRecordCard(record)}
-                    </Col>
-                  ))}
-                </Row>
-                {isLoadingMore && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <AdminPageLoading tip="加载更多..." minHeightClassName="min-h-[60px]" />
+              <>
+                <div className="admin-lightning-events-card-scroll">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {records.map((record) => renderRecordCard(record))}
                   </div>
-                )}
-                {allLoadedRecords.length >= (recordsQuery.data?.total ?? 0) && allLoadedRecords.length > 0 && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Typography.Text type="secondary">
-                      已加载全部 {allLoadedRecords.length} 条数据
-                    </Typography.Text>
-                  </div>
-                )}
-              </div>
+                </div>
+                <div className="admin-lightning-events-pagination">
+                  <Pagination
+                    current={pagination.current}
+                    pageSize={pagination.pageSize}
+                    total={recordsQuery.data?.total ?? 0}
+                    onChange={(page, pageSize) => {
+                      setPagination({ current: page, pageSize });
+                    }}
+                    showSizeChanger
+                    showTotal={(total) => `共 ${total} 条`}
+                  />
+                </div>
+              </>
             )}
           </div>
         )}
@@ -1231,7 +1167,7 @@ function AmplitudeDetailView({
   retryLoading: boolean;
 }) {
   return (
-    <Space direction="vertical" size={16} className="w-full admin-lightning-currents-detail-pane">
+    <Space direction="vertical" size={12} className="w-full admin-lightning-currents-detail-pane">
       <div>
         <Typography.Title level={5}>基本信息</Typography.Title>
         <Descriptions bordered size="small" column={2}>

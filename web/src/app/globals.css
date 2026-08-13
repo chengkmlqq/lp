@@ -102,7 +102,8 @@
 :root[data-fquiz-theme="dark"] .admin-users-user-card,
 :root[data-fquiz-theme="dark"] .admin-menus-menu-card,
 :root[data-fquiz-theme="dark"] .admin-workers-worker-card,
-:root[data-fquiz-theme="dark"] .admin-power-lines-line-card {
+:root[data-fquiz-theme="dark"] .admin-power-lines-line-card,
+:root[data-fquiz-theme="dark"] .admin-lightning-events-card {
   border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
   background:
     linear-gradient(
@@ -116,7 +117,8 @@
 :root[data-fquiz-theme="dark"] .admin-users-user-card > .ant-card-head,
 :root[data-fquiz-theme="dark"] .admin-menus-menu-card > .ant-card-head,
 :root[data-fquiz-theme="dark"] .admin-workers-worker-card > .ant-card-head,
-:root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-head {
+:root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-head,
+:root[data-fquiz-theme="dark"] .admin-lightning-events-card > .ant-card-head {
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
   background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
 }
@@ -124,7 +126,8 @@
 :root[data-fquiz-theme="dark"] .admin-users-user-card > .ant-card-body,
 :root[data-fquiz-theme="dark"] .admin-menus-menu-card > .ant-card-body,
 :root[data-fquiz-theme="dark"] .admin-workers-worker-card > .ant-card-body,
-:root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-body {
+:root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-body,
+:root[data-fquiz-theme="dark"] .admin-lightning-events-card > .ant-card-body {
   background: var(--ant-color-bg-container) !important;
 }
 
@@ -2870,6 +2873,13 @@ body {
   flex-direction: column;
 }
 
+.lightning-table-anchor {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
 .lightning-table-anchor .ant-table-body {
   min-height: var(--lightning-table-body-min-height, 180px);
 }
@@ -2885,12 +2895,16 @@ body {
   padding: 12px;
 }
 
-/* LP-303: 详情动态 Tab 内容容器：12px 内边距，内容超高时纵向滚动 */
+/* LP-303: 详情动态 Tab 内容容器：10px 内边距，内容超高时纵向滚动；LP-311: 对齐线路页详情容器样式 */
 .admin-lightning-currents-detail-pane {
+  display: flex;
   flex: 1;
   min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px;
   overflow-y: auto;
-  padding: 12px;
+  overflow-x: hidden;
 }
 
 /* LP-246: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
@@ -2964,6 +2978,13 @@ body {
   color: var(--ant-color-text-secondary);
 }
 
+/* LP-311: 默认选项卡标题样式：粗体 16px 标题色，与线路管理页保持一致 */
+.admin-lightning-currents-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
 /* LP-246 深色模式：主列表 Tab 栏与内容区保持与用户管理页标题栏一致的背景 */
 :root[data-fquiz-theme="dark"] .admin-lightning-currents-tabs > .ant-tabs-nav {
   background: var(--ant-color-bg-container);
@@ -2988,10 +3009,62 @@ body {
   min-height: 180px;
 }
 
-.admin-lightning-events-card-view-content {
+/* LP-311: 卡片视图固定高度滚动容器：卡片多时不溢出页面，自动出现垂直滚动条。
+   padding 由父容器 .admin-lightning-currents-list-pane 提供，此处不再重复内边距 */
+.admin-lightning-events-card-scroll {
   display: flex;
+  min-height: 0;
   flex: 1;
   flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  gap: 12px;
+}
+
+/* LP-311: 卡片容器的 grid 外包装，用 flex 保持滚动区域灵活 */
+.admin-lightning-events-card-scroll > .grid {
+  flex: 0 0 auto;
+}
+
+/* LP-311: 雷电流卡片配色对齐线路管理页卡片（主色渐变背景、主色混合边框、柔和阴影、头部主色淡背景） */
+.admin-lightning-events-card {
+  height: 100%;
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--fquiz-theme-bg-container) 96%, var(--fquiz-theme-primary) 4%) 0%,
+      var(--fquiz-theme-bg-container) 100%
+    );
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--fquiz-theme-text-primary) 8%, transparent);
+}
+
+.admin-lightning-events-card > .ant-card-head {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-lightning-events-card > .ant-card-body {
+  padding-block: 14px;
+}
+
+/* LP-311: 卡片字段行：标签居左（次要色）、数值居右 */
+.admin-lightning-events-card-field {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* LP-311: 卡片视图分页条：与卡片列表底部保持间距 */
+.admin-lightning-events-pagination {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px;
+  flex-shrink: 0;
 }
 
 .admin-filter-keyword-item {
