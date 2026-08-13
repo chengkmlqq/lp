@@ -5,7 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
-import type { SystemParamListResponse, SystemParamSummary } from "@/types/auth";
+import type {
+  SystemParamListResponse,
+  SystemParamRuntimeResponse,
+  SystemParamSummary,
+} from "@/types/auth";
 
 /**
  * 天地图（Tianditu）底图配置。
@@ -101,10 +105,39 @@ export function useTiandituConfig() {
     retry: false,
   });
 
+  // 加密参数（如 tianditu.tk）密文不下发，需通过运行时解密接口获取实际 Key（LP-310）
+  const runtimeQuery = useQuery({
+    queryKey: ["/api/v1/admin/system-params/runtime", { keys: ["tianditu.tk"] }],
+    enabled: ready,
+    queryFn: async () => {
+      const params = new URLSearchParams({ keys: `${TIANDITU_PREFIX}tk` });
+      const response = await fetchWithAuth(`/api/v1/admin/system-params/runtime?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const data = (await response.json()) as SystemParamRuntimeResponse;
+      if (!Array.isArray(data.items)) {
+        throw new Error("系统参数数据格式异常");
+      }
+      return data.items;
+    },
+    staleTime: 30_000,
+    retry: false,
+  });
+
   const config = useMemo<TiandituConfig>(() => {
     const items = paramsQuery.data ?? [];
     const enabledRaw = firstParam(items, "enabled");
-    const tk = firstParam(items, "tk");
+
+    // tk 优先取运行时解密结果；未加密的存量参数从列表接口回退取明文。
+    // 加密参数在列表中仅返回掩码（不返回明文），因此绝不作为 tk 使用。
+    const tkItem = items.find((p) => p.param_key === `${TIANDITU_PREFIX}tk`);
+    const tkFromList =
+      tkItem && tkItem.status === "enabled" && !tkItem.is_encrypted
+        ? (tkItem.param_value ?? "").trim()
+        : "";
+    const runtimeTk = runtimeQuery.data?.find((item) => item.param_key === `${TIANDITU_PREFIX}tk`)?.param_value?.trim() ?? "";
+    const tk = runtimeTk || tkFromList;
 
     // 关闭 / 未配置 Key / 查询失败 → 禁用态（维持深色背景）
     if (!parseEnabled(enabledRaw) || !tk) {
@@ -125,10 +158,10 @@ export function useTiandituConfig() {
       maxLevel: parseMaxLevel(firstParam(items, "max_level")),
       coordTransform: parseEnabled(firstParam(items, "coord_transform")),
     };
-  }, [paramsQuery.data]);
+  }, [paramsQuery.data, runtimeQuery.data]);
 
   return {
     config,
-    isLoading: paramsQuery.isLoading,
+    isLoading: paramsQuery.isLoading || runtimeQuery.isLoading,
   };
 }

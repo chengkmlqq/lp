@@ -6,6 +6,7 @@ from ...core.dependencies import CurrentUser, require_any_permission, require_en
 from ...schemas.system_param import (
     SystemParamCreateRequest,
     SystemParamListResponse,
+    SystemParamRuntimeResponse,
     SystemParamSummary,
     SystemParamUpdateRequest,
 )
@@ -13,6 +14,7 @@ from ...services.system_param_service import (
     create_system_param,
     delete_system_param,
     get_system_param_by_id,
+    get_system_params_runtime,
     list_system_params,
     serialize_system_param,
     update_system_param,
@@ -51,6 +53,16 @@ def create_system_param_endpoint(
             detail="System parameter key already exists",
         )
     return created
+
+
+@router.get("/runtime", response_model=SystemParamRuntimeResponse)
+def get_system_params_runtime_endpoint(
+    keys: str = Query(description="逗号分隔的参数键列表，服务端解密后仅返回实际使用参数明文"),
+    _: CurrentUser = Depends(require_any_permission("system_param.read", "system_param.manage")),
+    db: Session = Depends(get_db),
+) -> SystemParamRuntimeResponse:
+    key_list = [key.strip() for key in keys.split(",") if key.strip()]
+    return SystemParamRuntimeResponse(items=get_system_params_runtime(db, key_list))
 
 
 @router.get("/{param_id}", response_model=SystemParamSummary)

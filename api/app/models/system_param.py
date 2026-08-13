@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.database import Base
@@ -20,6 +20,7 @@ class SystemParam(Base):
     param_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     param_name: Mapped[str] = mapped_column(String(128), index=True)
     param_value: Mapped[str] = mapped_column(Text(), default="")
+    is_encrypted: Mapped[bool] = mapped_column(Boolean(), default=False)
     description: Mapped[str | None] = mapped_column(Text(), default="")
     status: Mapped[str] = mapped_column(String(16), default="enabled", index=True)
     category_id: Mapped[int | None] = mapped_column(

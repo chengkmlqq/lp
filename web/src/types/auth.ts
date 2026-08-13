@@ -110,6 +110,8 @@ export type SystemParamSummary = {
   param_key: string;
   param_name: string;
   param_value: string;
+  is_encrypted: boolean;
+  has_value: boolean;
   description: string | null;
   status: SystemParamStatus;
   category_id: number | null;
@@ -124,6 +126,15 @@ export type SystemParamSummary = {
 export type SystemParamListResponse = {
   items: SystemParamSummary[];
   total: number;
+};
+
+export type SystemParamRuntimeItem = {
+  param_key: string;
+  param_value: string;
+};
+
+export type SystemParamRuntimeResponse = {
+  items: SystemParamRuntimeItem[];
 };
 
 export type SystemMessageType = "info" | "warning" | "error" | "success";

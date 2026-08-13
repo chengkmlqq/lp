@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 480
     refresh_token_expire_days: int = 30
 
+    # 系统参数加密密钥（AES-256-GCM，LP-310）。生产环境必须配置独立强密钥；
+    # 仅在未配置时回退到内置占位值用于本地开发，切勿在生产使用默认值。
+    system_param_encryption_key: str = "change-this-in-production-system-param-encryption-key"
+
     refresh_cookie_name: str = "refresh_token"
     refresh_cookie_secure: bool = False
     refresh_cookie_samesite: Literal["lax", "strict", "none"] = "lax"

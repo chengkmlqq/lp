@@ -18,7 +18,7 @@ from ..schemas.ai_chat import (
     AiChatConversationUpdateRequest,
     AiChatMessageSummary,
 )
-from ..services.system_param_service import get_system_param_by_key
+from ..services.system_param_service import get_system_param_by_key, get_system_param_decrypted
 from .user_service import serialize_user
 
 
@@ -545,7 +545,12 @@ def _build_openai_chat_request(
     model_param = get_system_param_by_key(db, "ai_chat.model")
     base_url_param = get_system_param_by_key(db, "ai_chat.base_url")
 
-    api_key = api_key_param.param_value if api_key_param and api_key_param.status == "enabled" else None
+    # 加密参数通过解密函数在"使用时"解密（LP-310）
+    api_key = (
+        get_system_param_decrypted(db, "ai_chat.openai_api_key")
+        if api_key_param and api_key_param.status == "enabled"
+        else None
+    )
     model = model_param.param_value if model_param and model_param.status == "enabled" else "gpt-3.5-turbo"
     base_url = base_url_param.param_value if base_url_param and base_url_param.status == "enabled" else "https://api.openai.com/v1"
 

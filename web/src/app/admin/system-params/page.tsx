@@ -17,6 +17,7 @@ import {
   Skeleton,
   Spin,
   Space,
+  Switch,
   Tabs,
   Table,
   Tag,
@@ -44,6 +45,7 @@ type FormState = {
   param_key: string;
   param_name: string;
   param_value: string;
+  is_encrypted: boolean;
   description: string;
   category_id: number | null;
 };
@@ -52,9 +54,13 @@ const EMPTY_FORM: FormState = {
   param_key: "",
   param_name: "",
   param_value: "",
+  is_encrypted: false,
   description: "",
   category_id: null,
 };
+
+/** 加密参数值展示掩码（与后端 serialize 一致） */
+const ENCRYPTED_VALUE_MASK = "••••••••";
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
@@ -74,11 +80,27 @@ function statusTag(value: unknown): React.ReactNode {
   return <Tag color={value === "enabled" ? "green" : "red"}>{paramStatusLabel(value as SystemParamSummary["status"])}</Tag>;
 }
 
+/** 参数值展示：加密参数显示掩码 + "已加密" Tag，绝不展示明文 */
+function renderParamValue(value: string, record: SystemParamSummary): React.ReactNode {
+  if (record.is_encrypted) {
+    return (
+      <Space size={4} wrap>
+        <Tag color="purple">已加密</Tag>
+        <Typography.Text className="font-mono text-xs">
+          {record.has_value ? ENCRYPTED_VALUE_MASK : "-"}
+        </Typography.Text>
+      </Space>
+    );
+  }
+  return value || "-";
+}
+
 export default function AdminSystemParamsPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
   const [formApi] = Form.useForm<FormState>();
+  const isEncryptedFormValue = Form.useWatch("is_encrypted", formApi);
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -86,6 +108,7 @@ export default function AdminSystemParamsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(undefined);
   const [categoryIdFilter, setCategoryIdFilter] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingItem, setEditingItem] = useState<SystemParamSummary | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -378,6 +401,7 @@ export default function AdminSystemParamsPage() {
 
   const resetForm = useCallback(() => {
     setEditingId(null);
+    setEditingItem(null);
     setParamKeyValidationError("");
     formApi.setFieldsValue(EMPTY_FORM);
   }, [formApi]);
@@ -395,10 +419,13 @@ export default function AdminSystemParamsPage() {
     setSuccess("");
     setParamKeyValidationError("");
     setEditingId(item.id);
+    setEditingItem(item);
     formApi.setFieldsValue({
       param_key: item.param_key,
       param_name: item.param_name,
-      param_value: item.param_value,
+      // 加密参数在编辑弹窗中显示占位，输入新值才提交，避免明文回显
+      param_value: item.is_encrypted ? "" : item.param_value,
+      is_encrypted: item.is_encrypted,
       description: item.description ?? "",
       category_id: item.category_id ?? null,
     });
@@ -496,6 +523,7 @@ export default function AdminSystemParamsPage() {
             param_key: paramKey,
             param_name: values.param_name.trim(),
             param_value: values.param_value,
+            is_encrypted: values.is_encrypted,
             description: values.description,
             status: "enabled",
             category_id: values.category_id ?? null,
@@ -507,15 +535,24 @@ export default function AdminSystemParamsPage() {
         return "created" as const;
       }
 
+      // 编辑：加密参数仅当用户显式输入新值才提交 param_value，空值/占位不覆盖原密文
+      const patchBody: Record<string, unknown> = {
+        param_name: values.param_name.trim(),
+        description: values.description,
+        category_id: values.category_id ?? null,
+        is_encrypted: values.is_encrypted,
+      };
+      const wasEncrypted = editingItem?.is_encrypted ?? false;
+      if (!wasEncrypted) {
+        patchBody.param_value = values.param_value;
+      } else if (values.param_value && values.param_value.trim()) {
+        patchBody.param_value = values.param_value;
+      }
+
       const response = await fetchWithAuth(`/api/v1/admin/system-params/${editingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          param_name: values.param_name.trim(),
-          param_value: values.param_value,
-          description: values.description,
-          category_id: values.category_id ?? null,
-        }),
+        body: JSON.stringify(patchBody),
       });
       if (!response.ok) {
         throw new Error(await readApiError(response));
@@ -777,7 +814,7 @@ export default function AdminSystemParamsPage() {
           <div className="admin-system-params-param-card-field">
             <Typography.Text type="secondary">参数值</Typography.Text>
             <Typography.Text ellipsis={{ tooltip: param.param_value || "-" }}>
-              {param.param_value || "-"}
+              {renderParamValue(param.param_value, param)}
             </Typography.Text>
           </div>
           {param.description && (
@@ -819,7 +856,7 @@ export default function AdminSystemParamsPage() {
         key: "param_value",
         ellipsis: true,
         width: 240,
-        render: (value: string) => value || "-",
+        render: (value: string, record: SystemParamSummary) => renderParamValue(value, record),
       },
       {
         title: "状态",
@@ -1303,7 +1340,25 @@ export default function AdminSystemParamsPage() {
                   name="param_value"
                   rules={[{ max: 20000, message: "参数值不能超过 20000 位" }]}
                 >
-                  <Input.TextArea rows={4} />
+                  <Input.TextArea
+                    rows={4}
+                    placeholder={
+                      isEncryptedFormValue
+                        ? (editingItem?.is_encrypted
+                          ? "已加密参数，留空不修改；输入新值将替换密文"
+                          : "加密存储，保存后不可查看明文")
+                        : "请输入参数值"
+                    }
+                  />
+                </Form.Item>
+
+                <Form.Item<FormState>
+                  label="加密"
+                  name="is_encrypted"
+                  valuePropName="checked"
+                  extra="加密后参数值将以密文存储，后台与前端仅展示掩码；系统使用时自动解密。"
+                >
+                  <Switch checkedChildren="加密" unCheckedChildren="明文" />
                 </Form.Item>
 
                 <Form.Item<FormState>

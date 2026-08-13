@@ -664,6 +664,42 @@ def _ensure_lightning_distribution_lp_image_column_compatibility() -> None:
         )
 
 
+def _ensure_system_param_encrypted_column_compatibility() -> None:
+    """
+    Keep `system_params.is_encrypted` column aligned with the ORM mapping (LP-310).
+
+    Legacy deployments created `system_params` before the encrypted-storage feature
+    existed; without the column every SELECT on `system_params` fails with
+    "column system_params.is_encrypted does not exist". Existing rows stay plaintext
+    (default FALSE) — no data migration is performed by design.
+    """
+    if not database_url.startswith("postgresql"):
+        return
+
+    schema = settings.resolved_db_schema
+    with engine.begin() as connection:
+        db_inspector = inspect(connection)
+        if not db_inspector.has_table("system_params", schema=schema):
+            return
+
+        column_names = {
+            column["name"]
+            for column in db_inspector.get_columns("system_params", schema=schema)
+        }
+        if "is_encrypted" in column_names:
+            return
+
+        connection.execute(
+            text(
+                "ALTER TABLE system_params "
+                "ADD COLUMN IF NOT EXISTS is_encrypted BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+        )
+        logger.warning(
+            "Detected missing system_params.is_encrypted; added column with default FALSE.",
+        )
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
@@ -715,4 +751,5 @@ def init_db() -> None:
     _ensure_tower_profile_column_compatibility()
     _ensure_dimension_item_type_id_column_compatibility()
     _ensure_lightning_distribution_lp_image_column_compatibility()
+    _ensure_system_param_encrypted_column_compatibility()
     Base.metadata.create_all(bind=engine)
