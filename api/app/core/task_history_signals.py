@@ -22,6 +22,8 @@ SYSTEM_TASK_NAMES: frozenset[str] = frozenset({
     "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks",
     # LP-283：日志清理任务不该记录自身日志（否则“越清越多”），加入黑名单
     "app.tasks.log_cleanup_tasks.cleanup_expired_task_logs",
+    # LP-314：ctb worker 状态回执是内部管道任务，不需要在监控页单独展示
+    "app.tasks.elevation_tasks.report_ctb_task_state",
 })
 
 

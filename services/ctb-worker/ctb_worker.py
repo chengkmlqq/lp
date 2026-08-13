@@ -43,6 +43,28 @@ TERRAIN_ROOT = Path(os.environ.get("TERRAIN_ROOT", "/data/terrain"))
 TILE_SIZE = 65  # Cesium heightmap-1.0 标准瓦片尺寸
 TERRAIN_CONTENT_TYPE = "application/octet-stream"
 
+# LP-314：ctb worker 独立进程无法直接写 celery_task_history（DB），
+# 通过向 API worker 的默认队列投递 report 任务，由 API worker 更新状态与文件记录。
+REPORT_TASK_NAME = "app.tasks.elevation_tasks.report_ctb_task_state"
+REPORT_QUEUE = "celery"
+
+
+def _send_task_report(*, task_id: str, record_id: str, state: str, error: str | None = None, result: dict | None = None) -> None:
+    """向 API worker 上报 ctb 任务状态（STARTED / SUCCESS / FAILURE），失败不阻断主流程。"""
+    kwargs: dict[str, object] = {
+        "ctb_task_id": task_id,
+        "record_id": record_id,
+        "state": state,
+    }
+    if error is not None:
+        kwargs["error"] = error
+    if result is not None:
+        kwargs["result"] = result
+    try:
+        celery_app.send_task(REPORT_TASK_NAME, kwargs=kwargs, queue=REPORT_QUEUE)
+    except Exception:
+        logger.exception("Failed to report ctb task state %s for task %s", state, task_id)
+
 
 def _compute_zoom_limits(
     input_path: str,
@@ -173,7 +195,36 @@ def build_file_record_terrain(
         "Building terrain for record=%s input=%s zoom=%s-%s",
         record_id, input_path, min_zoom, max_zoom,
     )
+    ctb_task_id = self.request.id
+    _send_task_report(task_id=ctb_task_id, record_id=record_id, state="STARTED")
 
+    try:
+        result = _build_terrain_for_record(
+            record_id=record_id,
+            input_path=input_path,
+            name=name,
+            min_zoom=min_zoom,
+            max_zoom=max_zoom,
+            bounds=bounds,
+        )
+    except Exception as exc:
+        _send_task_report(task_id=ctb_task_id, record_id=record_id, state="FAILURE", error=str(exc))
+        raise
+
+    _send_task_report(task_id=ctb_task_id, record_id=record_id, state="SUCCESS", result=result)
+    return result
+
+
+def _build_terrain_for_record(
+    *,
+    record_id: str,
+    input_path: str,
+    name: str,
+    min_zoom: int | None,
+    max_zoom: int | None,
+    bounds: list[float] | None,
+) -> dict:
+    """执行 DEM → 地形瓦片的实际构建（供 build_file_record_terrain 调用）。"""
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"DEM not found: {input_path}")
 

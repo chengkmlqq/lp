@@ -135,6 +135,7 @@ class TestIsSystemTask:
             "app.tasks.worker_registry_tasks.sweep_worker_registry_offline",
             "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks",
             "app.tasks.log_cleanup_tasks.cleanup_expired_task_logs",
+            "app.tasks.elevation_tasks.report_ctb_task_state",
         ],
     )
     def test_hits_blacklist(self, task_name):
@@ -159,4 +160,4 @@ class TestIsSystemTask:
     def test_blacklist_is_frozenset_of_str(self):
         assert isinstance(mod.SYSTEM_TASK_NAMES, frozenset)
         assert all(isinstance(name, str) for name in mod.SYSTEM_TASK_NAMES)
-        assert len(mod.SYSTEM_TASK_NAMES) == 4
+        assert len(mod.SYSTEM_TASK_NAMES) == 5

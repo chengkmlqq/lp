@@ -1396,7 +1396,14 @@ def execute_file_record_analysis_job(*, record_id: str, actor_user_id: str | Non
 
 
 def execute_file_record_terrain_build_job(*, record_id: str, actor_user_id: str | None) -> None:
-    """Execute terrain build job for a single elevation file record."""
+    """Dispatch terrain build for a single elevation file record.
+
+    只做派发，不阻塞等待 CTB Worker 结果（LP-314）：
+    - 将 DEM 下载到共享临时卷（ctb-worker 通过 ./data/app:/data/app 挂载读取）；
+    - 把 ctb 任务投递到 ``ctb`` 队列后立即返回；
+    - 后续由 ctb worker 通过 ``report_ctb_task_state`` 回调上报 STARTED/SUCCESS/FAILURE，
+      再由 API worker 更新 celery_task_history 与文件记录状态。
+    """
     db = SessionLocal()
     try:
         from .elevation_file_record_service import get_file_record_by_id
@@ -1435,12 +1442,10 @@ def execute_file_record_terrain_build_job(*, record_id: str, actor_user_id: str 
             )
             return
 
-        # 使用 CTB Worker (ctb-tile) 生成地形瓦片
+        # 1. 从存储下载 DEM 到共享卷临时路径（ctb-worker 期望 /data/app/temp/）
         import os as _os
         from ..core.celery_app import celery_app as _celery_app
-        from celery.result import AsyncResult as _AsyncResult
 
-        # 1. 从 MinIO 下载 DEM 到共享卷临时路径
         mount = _require_mount(db, item.mount_code)
         driver = _build_driver_or_400(mount)
         _read_result = driver.read_file(item.file_path)
@@ -1450,7 +1455,7 @@ def execute_file_record_terrain_build_job(*, record_id: str, actor_user_id: str 
         with open(_temp_dem, "wb") as _f:
             _f.write(_read_result.content)
 
-        # 2. 发送任务到 CTB Worker (ctb queue)
+        # 2. 发送任务到 CTB Worker（ctb queue），不阻塞等待
         _ctb_input = f"/data/app/temp/{record_id}.tif"
         _task = _celery_app.send_task(
             "app.tasks.ctb.build_file_record_terrain",
@@ -1462,56 +1467,11 @@ def execute_file_record_terrain_build_job(*, record_id: str, actor_user_id: str 
             queue="ctb",
         )
 
-        # 3. 等待 CTB Worker 完成（最多 1 小时）
-        _ctb_result = _task.get(timeout=3600)
-
-        # 4. 清理临时 DEM 文件
-        try:
-            _os.unlink(_temp_dem)
-        except Exception:
-            pass
-
-        # 5. 映射 CTB Worker 结果到 _TerrainBuildArtifacts
-        _tile_count = _ctb_result.get("tile_count", 0)
-        _min_zoom = _ctb_result.get("min_zoom", 0)
-        _max_zoom = _ctb_result.get("max_zoom", 6)
-        _bounds_list = _ctb_result.get("bounds", [0, 0, 0, 0])
-        _layer_url = _ctb_result.get("layer_url", f"/terrain/{record_id}/layer.json")
-
-        artifacts = _TerrainBuildArtifacts(
-            min_zoom=_min_zoom,
-            max_zoom=_max_zoom,
-            bounds={"west": _bounds_list[0], "south": _bounds_list[1], "east": _bounds_list[2], "north": _bounds_list[3]},
-            metadata={
-                "tool": "ctb-tile",
-                "format": "heightmap-1.0",
-                "projection": "EPSG:4326",
-                "tile_size": 65,
-                "generated_at": utcnow().isoformat(),
-                "tile_count": _tile_count,
-                "layer_url": _layer_url,
-                "terrain_url_template": f"/terrain/{record_id}/{{z}}/{{x}}/{{y}}.terrain",
-            },
-        )
-
-        saved = get_file_record_by_id(db, record_id)
-        if saved is None:
-            return
-        saved.terrain_status = "ready"
-        saved.terrain_error_message = None
-        saved.terrain_root_path = _resolve_file_record_terrain_dir(saved.id)
-        saved.terrain_url_template = _build_file_record_terrain_url_template(saved.id)
-        saved.terrain_min_zoom = artifacts.min_zoom
-        saved.terrain_max_zoom = artifacts.max_zoom
-        saved.terrain_bounds = artifacts.bounds
-        saved.terrain_metadata = artifacts.metadata
-        saved.update_date = utcnow()
-        saved.update_user = actor.id
+        # 记录 ctb 任务 id，供任务监控页与 celery_task_history 关联
+        item.terrain_task_id = str(_task.id)
+        item.update_user = actor.id
+        item.update_date = utcnow()
         db.commit()
-        _publish_elevation_change(
-            "elevation.file_record.terrain.ready",
-            {"action": "file_record_terrain_ready", "file_record_id": saved.id},
-        )
     except Exception as exc:
         from .elevation_file_record_service import get_file_record_by_id
         failed = get_file_record_by_id(db, record_id)
@@ -1525,5 +1485,122 @@ def execute_file_record_terrain_build_job(*, record_id: str, actor_user_id: str 
                 {"action": "file_record_terrain_failed", "file_record_id": failed.id},
             )
         raise
+    finally:
+        db.close()
+
+
+def _cleanup_ctb_temp_dem(record_id: str) -> None:
+    """清理 API worker 写入的临时 DEM（ctb worker 读取完成后不再需要）。"""
+    import os as _os
+    try:
+        _os.unlink(f"/app/data/temp/{record_id}.tif")
+    except Exception:
+        pass
+
+
+def execute_file_record_terrain_state_report(
+    *,
+    ctb_task_id: str,
+    record_id: str,
+    state: str,
+    error: str | None = None,
+    result: dict[str, Any] | None = None,
+) -> None:
+    """处理 ctb worker 上报的任务状态（LP-314）。
+
+    - 将 ctb 任务状态写入 celery_task_history（STARTED / SUCCESS / FAILURE）；
+    - SUCCESS：把文件记录置为 ready 并落库瓦片元数据；
+    - FAILURE：把文件记录置为 failed 并记录错误。
+    顺带清理共享临时 DEM 文件。
+    """
+    from ..core.task_history_signals import _get_db_task, _upsert_task
+
+    now = utcnow()
+    if state == "STARTED":
+        _upsert_task(
+            ctb_task_id,
+            name="app.tasks.ctb.build_file_record_terrain",
+            state="STARTED",
+            started_at=now,
+        )
+        return
+
+    runtime = None
+    existing = _get_db_task(ctb_task_id)
+    if existing is not None and existing.started_at is not None:
+        runtime = (now - existing.started_at).total_seconds()
+
+    if state == "SUCCESS":
+        _upsert_task(ctb_task_id, name="app.tasks.ctb.build_file_record_terrain", state="SUCCESS", done_at=now, runtime_seconds=runtime)
+        _cleanup_ctb_temp_dem(record_id)
+        _finalize_file_record_terrain_ready(record_id=record_id, result=result or {}, now=now)
+        return
+
+    if state == "FAILURE":
+        _upsert_task(ctb_task_id, name="app.tasks.ctb.build_file_record_terrain", state="FAILURE", done_at=now, runtime_seconds=runtime, error=error)
+        _cleanup_ctb_temp_dem(record_id)
+        db = SessionLocal()
+        try:
+            from .elevation_file_record_service import get_file_record_by_id
+            failed = get_file_record_by_id(db, record_id)
+            if failed is not None:
+                failed.terrain_status = "failed"
+                failed.terrain_error_message = error
+                failed.update_date = utcnow()
+                db.commit()
+                _publish_elevation_change(
+                    "elevation.file_record.terrain.failed",
+                    {"action": "file_record_terrain_failed", "file_record_id": failed.id},
+                )
+        finally:
+            db.close()
+
+
+def _finalize_file_record_terrain_ready(*, record_id: str, result: dict[str, Any], now) -> None:
+    """将文件记录标记为 ready，并写入 ctb worker 返回的瓦片元数据。"""
+    db = SessionLocal()
+    try:
+        from .elevation_file_record_service import get_file_record_by_id
+
+        saved = get_file_record_by_id(db, record_id)
+        if saved is None:
+            return
+
+        _tile_count = result.get("tile_count", 0)
+        _min_zoom = result.get("min_zoom", 0)
+        _max_zoom = result.get("max_zoom", 6)
+        _bounds_list = result.get("bounds", [0, 0, 0, 0])
+        _layer_url = result.get("layer_url", f"/terrain/{record_id}/layer.json")
+
+        artifacts = _TerrainBuildArtifacts(
+            min_zoom=_min_zoom,
+            max_zoom=_max_zoom,
+            bounds={"west": _bounds_list[0], "south": _bounds_list[1], "east": _bounds_list[2], "north": _bounds_list[3]},
+            metadata={
+                "tool": "ctb-tile",
+                "format": "heightmap-1.0",
+                "projection": "EPSG:4326",
+                "tile_size": 65,
+                "generated_at": now.isoformat(),
+                "tile_count": _tile_count,
+                "layer_url": _layer_url,
+                "terrain_url_template": f"/terrain/{record_id}/{{z}}/{{x}}/{{y}}.terrain",
+            },
+        )
+
+        saved.terrain_status = "ready"
+        saved.terrain_error_message = None
+        saved.terrain_root_path = _resolve_file_record_terrain_dir(saved.id)
+        saved.terrain_url_template = _build_file_record_terrain_url_template(saved.id)
+        saved.terrain_min_zoom = artifacts.min_zoom
+        saved.terrain_max_zoom = artifacts.max_zoom
+        saved.terrain_bounds = artifacts.bounds
+        saved.terrain_metadata = artifacts.metadata
+        saved.update_date = now
+        db.commit()
+        _publish_elevation_change(
+            "elevation.file_record.terrain.ready",
+            {"action": "file_record_terrain_ready", "file_record_id": saved.id},
+        )
     finally:
         db.close()
