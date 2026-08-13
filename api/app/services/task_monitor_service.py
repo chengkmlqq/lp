@@ -4,6 +4,7 @@ import logging
 from collections.abc import Iterable
 from datetime import datetime, timezone
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import desc
 
 from ..core.config import get_settings
@@ -104,6 +105,25 @@ def _safe_queue_pending_counts(queue_names: Iterable[str]) -> dict[str, int]:
     except Exception:
         logger.exception("Failed to read queue pending counts from Redis broker")
         return {}
+
+
+def delete_task_history(task_id: str) -> bool:
+    """Delete a task history record by task_id.
+
+    Returns True if a row was deleted, False if the record does not exist or
+    the database is unreachable (callers may treat both as "nothing to do").
+    """
+    try:
+        db = SessionLocal()
+        try:
+            result = db.execute(sa_delete(TaskHistory).where(TaskHistory.task_id == task_id))
+            db.commit()
+            return bool(result.rowcount)
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Failed to delete task history %s", task_id)
+        return False
 
 
 def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskMonitorOverviewResponse:

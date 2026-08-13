@@ -9,6 +9,7 @@ import {
   Button,
   Card,
   Col,
+  Drawer,
   Empty,
   Form,
   Input,
@@ -116,6 +117,7 @@ export default function AdminTaskMonitorPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const isMobile = useMobileDetection();
   const canRead = hasPermission("celery.read") || hasPermission("celery.manage");
+  const canManage = hasPermission("celery.manage");
 
   const [pendingKeyword, setPendingKeyword] = useState("");
   const [taskKeyword, setTaskKeyword] = useState("");
@@ -128,6 +130,7 @@ export default function AdminTaskMonitorPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [logModalVisible, setLogModalVisible] = useState(false);
   const [logModalContent, setLogModalContent] = useState("");
   const [logModalTaskId, setLogModalTaskId] = useState("");
@@ -318,11 +321,38 @@ export default function AdminTaskMonitorPage() {
       }
       return (await response.json()) as TaskMonitorOverviewResponse;
     },
-    refetchInterval: 5_000,
     staleTime: 5_000,
   });
 
   const overviewData = overviewQuery.data;
+
+  const handleDeleteTask = useCallback(async (taskId: string) => {
+    setDeletingTaskId(taskId);
+    try {
+      const response = await fetchWithAuth(`/api/v1/admin/task-monitor/tasks/${encodeURIComponent(taskId)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      overviewQuery.refetch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "删除任务失败";
+      Modal.error({ title: "删除任务失败", content: message });
+    } finally {
+      setDeletingTaskId(null);
+    }
+  }, [fetchWithAuth, overviewQuery]);
+
+  const confirmDeleteTask = useCallback((taskId: string) => {
+    Modal.confirm({
+      title: `确认删除任务 ${taskId}？`,
+      okText: "删除",
+      cancelText: "取消",
+      okButtonProps: { danger: true },
+      onOk: () => handleDeleteTask(taskId),
+    });
+  }, [handleDeleteTask]);
 
   const taskColumns = useMemo<TableColumnsType<TaskTableRow>>(
     () => [
@@ -351,20 +381,6 @@ export default function AdminTaskMonitorPage() {
         key: "state",
         width: 110,
         render: (value: string) => renderTaskStateTag(value),
-      },
-      {
-        title: "队列",
-        dataIndex: "queue_name",
-        key: "queue_name",
-        width: 120,
-        render: (value: string | null) => getQueueDisplayName(value),
-      },
-      {
-        title: "执行节点",
-        dataIndex: "worker",
-        key: "worker",
-        width: 220,
-        render: (value: string) => value || "-",
       },
       {
         title: "开始时间",
@@ -401,11 +417,20 @@ export default function AdminTaskMonitorPage() {
             <Button size="small" onClick={() => handleViewLog(record.task_id)}>
               日志
             </Button>
+            <Button
+              size="small"
+              danger
+              loading={deletingTaskId === record.task_id}
+              disabled={!canManage}
+              onClick={() => confirmDeleteTask(record.task_id)}
+            >
+              删除
+            </Button>
           </Space>
         ),
       },
     ],
-    [handleViewLog],
+    [handleViewLog, canManage, deletingTaskId, confirmDeleteTask],
   );
 
   const allTaskRows = useMemo<TaskTableRow[]>(() => {
@@ -863,17 +888,12 @@ export default function AdminTaskMonitorPage() {
         ]}
       />
 
-      <Modal
+      <Drawer
         title={`任务执行日志 - ${logModalTaskId}`}
-        open={logModalVisible}
-        onCancel={handleCloseLogModal}
-        footer={[
-          <Button key="close" onClick={handleCloseLogModal}>
-            关闭
-          </Button>,
-        ]}
         width={800}
-        style={{ top: 20 }}
+        open={logModalVisible}
+        onClose={handleCloseLogModal}
+        destroyOnClose
       >
         {logModalLoading ? (
           <div style={{ textAlign: "center", padding: "40px 0" }}>
@@ -910,7 +930,7 @@ export default function AdminTaskMonitorPage() {
             </pre>
           </>
         )}
-      </Modal>
+      </Drawer>
     </div>
   );
 }

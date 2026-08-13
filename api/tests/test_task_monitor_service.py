@@ -213,3 +213,34 @@ class TestTaskMonitorOverviewErrorIsolation:
             side_effect=exc,
         ):
             assert task_monitor_service._load_db_task_history(limit=10) == []
+
+
+class TestDeleteTaskHistory:
+    def test_delete_returns_true_when_row_deleted(self):
+        fake_db = MagicMock()
+        fake_result = MagicMock()
+        fake_result.rowcount = 1
+        fake_db.execute.return_value = fake_result
+        with patch(
+            "app.services.task_monitor_service.SessionLocal",
+            return_value=fake_db,
+        ):
+            assert task_monitor_service.delete_task_history("task-1") is True
+
+    def test_delete_returns_false_when_row_missing(self):
+        fake_db = MagicMock()
+        fake_result = MagicMock()
+        fake_result.rowcount = 0
+        fake_db.execute.return_value = fake_result
+        with patch(
+            "app.services.task_monitor_service.SessionLocal",
+            return_value=fake_db,
+        ):
+            assert task_monitor_service.delete_task_history("task-missing") is False
+
+    def test_delete_returns_false_on_db_error(self):
+        with patch(
+            "app.services.task_monitor_service.SessionLocal",
+            side_effect=RuntimeError("db down"),
+        ):
+            assert task_monitor_service.delete_task_history("task-1") is False
