@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
   Card,
-  Col,
   Descriptions,
   Dropdown,
   Empty,
@@ -13,8 +12,9 @@ import {
   Input,
   InputNumber,
   Modal,
+  Pagination,
   Progress,
-  Row,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -38,7 +38,6 @@ import { TaskLogViewerModal } from "@/components/task-log-viewer";
 import { TowerDensityView } from "@/components/lightning-tower-density-view";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
 import type {
   LightningDistributionImportResponse,
@@ -87,8 +86,9 @@ const STATUS_META: Record<string, { color: string; label: string }> = {
 };
 
 const LIGHTNING_TABLE_MIN_SCROLL_Y = 180;
-const LIGHTNING_TABLE_VIEWPORT_GAP = 40;
-const LIGHTNING_TABLE_FALLBACK_RESERVE = 220;
+const LIGHTNING_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
+const LIGHTNING_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
+const LIGHTNING_TABLE_BOTTOM_GAP = 8;
 
 const FIELD_HELP_TOOLTIPS = {
   overallNg: "地闪密度：区域内单位面积、单位时间内的落雷次数，即有效落雷数 ÷（面积 km² × 统计年数），单位为 次/(km²·年)。数值越高表示该区域雷击活动越频繁。",
@@ -139,7 +139,6 @@ const LIST_TAB_KEY = "list";
 export default function AdminLightningDistributionPage() {
   const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
   const queryClient = useQueryClient();
-  const isMobile = useMobileDetection();
   const [importForm] = Form.useForm<ImportFormValues>();
 
   const [error, setError] = useState("");
@@ -154,6 +153,9 @@ export default function AdminLightningDistributionPage() {
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [activeImportId, setActiveImportId] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
@@ -180,10 +182,10 @@ export default function AdminLightningDistributionPage() {
   const distributionsPath = useMemo(() => {
     const params = new URLSearchParams();
     if (trimmedKeyword) params.set("keyword", trimmedKeyword);
-    params.set("limit", "100");
-    params.set("offset", "0");
+    params.set("limit", String(paginationPageSize));
+    params.set("offset", String((paginationCurrent - 1) * paginationPageSize));
     return `/api/v1/lightning-currents/distributions?${params.toString()}`;
-  }, [trimmedKeyword]);
+  }, [trimmedKeyword, paginationCurrent, paginationPageSize]);
 
   const distributionsQuery = useQuery({
     queryKey: [distributionsPath],
@@ -205,6 +207,7 @@ export default function AdminLightningDistributionPage() {
   });
 
   const records = useMemo(() => distributionsQuery.data?.items ?? [], [distributionsQuery.data?.items]);
+  const total = distributionsQuery.data?.total ?? 0;
   const listError = distributionsQuery.error instanceof Error ? distributionsQuery.error.message : "";
 
   // ---- 导入任务进度轮询 ----
@@ -475,10 +478,10 @@ export default function AdminLightningDistributionPage() {
 
   const handleSearch = () => {
     setSearchKeyword(keywordInput);
-    void queryClient.refetchQueries({ queryKey: [distributionsPath] });
+    setPagination((prev) => ({ ...prev, current: 1 }));
   };
 
-  // ---- 表格高度自适应（参考用户管理页）----
+  // ---- 表格高度自适应（锚点高度算法，与线路管理页一致）----
   const updateTableScrollY = useCallback(() => {
     if (typeof window === "undefined") {
       return;
@@ -488,18 +491,12 @@ export default function AdminLightningDistributionPage() {
       return;
     }
 
-    const anchorTop = anchor.getBoundingClientRect().top;
-    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
-    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
-
-    let nextHeight = Math.floor(window.innerHeight - anchorTop - LIGHTNING_TABLE_FALLBACK_RESERVE);
-    if (tableWrapper) {
-      const wrapperRect = tableWrapper.getBoundingClientRect();
-      const bodyHeight = tableBody?.getBoundingClientRect().height ?? LIGHTNING_TABLE_MIN_SCROLL_Y;
-      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
-      const topGap = Math.max(0, wrapperRect.top - anchorTop);
-      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - LIGHTNING_TABLE_VIEWPORT_GAP);
-    }
+    const anchorHeight = anchor.getBoundingClientRect().height;
+    const header = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = header?.getBoundingClientRect().height ?? LIGHTNING_TABLE_ESTIMATED_HEADER_HEIGHT;
+    const paginationHeight = paginationEl?.getBoundingClientRect().height ?? LIGHTNING_TABLE_ESTIMATED_PAGINATION_HEIGHT;
+    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - LIGHTNING_TABLE_BOTTOM_GAP);
 
     const clampedHeight = Math.max(LIGHTNING_TABLE_MIN_SCROLL_Y, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
@@ -509,8 +506,11 @@ export default function AdminLightningDistributionPage() {
     if (typeof window === "undefined") {
       return;
     }
-    window.requestAnimationFrame(updateTableScrollY);
-  }, [records.length, distributionsQuery.isFetching, updateTableScrollY]);
+    const frameId = window.requestAnimationFrame(updateTableScrollY);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [updateTableScrollY, viewMode, records.length]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -545,7 +545,7 @@ export default function AdminLightningDistributionPage() {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [updateTableScrollY]);
+  }, [updateTableScrollY, viewMode, records.length]);
 
   // ---- 表格列 ----
   const columns = useMemo<ColumnsType<LightningDistributionRecord>>(
@@ -766,7 +766,7 @@ export default function AdminLightningDistributionPage() {
     return (
       <AntCard
         key={record.id}
-        className="admin-lightning-distribution-batch-card"
+        className="admin-lightning-distribution-event-card"
         size="small"
         title={
           <Space className="min-w-0" size={8}>
@@ -781,32 +781,32 @@ export default function AdminLightningDistributionPage() {
         }
       >
         <Space direction="vertical" size={10} style={{ width: "100%" }}>
-          <div className="admin-lightning-distribution-batch-card-field">
+          <div className="admin-lightning-distribution-event-card-field">
             <Typography.Text type="secondary">城市</Typography.Text>
             <Typography.Text>{record.city || "-"}</Typography.Text>
           </div>
-          <div className="admin-lightning-distribution-batch-card-field">
+          <div className="admin-lightning-distribution-event-card-field">
             <Typography.Text type="secondary">地点标签</Typography.Text>
             <Typography.Text>{record.location_tag || "-"}</Typography.Text>
           </div>
-          <div className="admin-lightning-distribution-batch-card-field">
+          <div className="admin-lightning-distribution-event-card-field">
             <Typography.Text type="secondary">导入时间</Typography.Text>
             <Typography.Text>
               {formatDateTime(record.create_date)}
             </Typography.Text>
           </div>
-          <div className="admin-lightning-distribution-batch-card-field">
+          <div className="admin-lightning-distribution-event-card-field">
             <Typography.Text type="secondary">有效点数</Typography.Text>
             <Typography.Text>{record.valid_count}</Typography.Text>
           </div>
-          <div className="admin-lightning-distribution-batch-card-field">
+          <div className="admin-lightning-distribution-event-card-field">
             <Typography.Text type="secondary">
               整体 Ng
               <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.overallNg} />
             </Typography.Text>
             <Typography.Text>{formatNumber(record.overall_ng, 4)}</Typography.Text>
           </div>
-          <div className="admin-lightning-distribution-batch-card-field">
+          <div className="admin-lightning-distribution-event-card-field">
             <Typography.Text type="secondary">
               最大电流
               <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.maxCurrent} />
@@ -815,7 +815,7 @@ export default function AdminLightningDistributionPage() {
               {formatNumber(record.max_abs_current, 2)} kA
             </Typography.Text>
           </div>
-          <div className="admin-lightning-distribution-batch-card-field">
+          <div className="admin-lightning-distribution-event-card-field">
             <Typography.Text type="secondary">
               平均电流
               <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
@@ -908,33 +908,51 @@ export default function AdminLightningDistributionPage() {
                       </Button>
                     </Form.Item>
                   </Form>
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => setViewMode(value as "card" | "list")}
+                    options={[
+                      { label: "卡片视图", value: "card" },
+                      { label: "列表视图", value: "list" },
+                    ]}
+                  />
                 </div>
 
-                {isMobile ? (
-                  <div className="admin-lightning-distribution-card-view">
-                    {distributionsQuery.isLoading && records.length === 0 ? (
-                      <div className="admin-lightning-distribution-card-view-state">
-                        <Spin tip="加载中..." />
-                      </div>
-                    ) : records.length === 0 ? (
-                      <div className="admin-lightning-distribution-card-view-state">
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="未找到符合筛选条件的地闪分布记录。"
+                {viewMode === "card" ? (
+                  <>
+                    <div className="admin-lightning-distribution-card-scroll">
+                      {distributionsQuery.isLoading && records.length === 0 ? (
+                        <div className="admin-lightning-distribution-card-view-state">
+                          <Spin tip="加载中..." />
+                        </div>
+                      ) : records.length === 0 ? (
+                        <div className="admin-lightning-distribution-card-view-state">
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description="未找到符合筛选条件的地闪分布记录。"
+                          />
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          {records.map((record) => renderRecordCard(record))}
+                        </div>
+                      )}
+                    </div>
+                    {records.length > 0 && (
+                      <div className="admin-lightning-distribution-pagination">
+                        <Pagination
+                          current={pagination.current}
+                          pageSize={pagination.pageSize}
+                          total={total}
+                          onChange={(page, pageSize) => {
+                            setPagination({ current: page, pageSize });
+                          }}
+                          showSizeChanger
+                          showTotal={(totalCount) => `共 ${totalCount} 条`}
                         />
                       </div>
-                    ) : (
-                      <div className="admin-lightning-distribution-card-view-content">
-                        <Row gutter={[12, 12]}>
-                          {records.map((record) => (
-                            <Col key={record.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                              {renderRecordCard(record)}
-                            </Col>
-                          ))}
-                        </Row>
-                      </div>
                     )}
-                  </div>
+                  </>
                 ) : (
                   <div
                     ref={tableScrollAnchorRef}
@@ -948,10 +966,15 @@ export default function AdminLightningDistributionPage() {
                       loading={distributionsQuery.isFetching}
                       tableLayout="fixed"
                       pagination={{
-                        pageSize: 20,
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total,
                         showSizeChanger: true,
                         pageSizeOptions: [10, 20, 50, 100],
-                        showTotal: (total) => `共 ${records.length} 条`,
+                        showTotal: (totalCount) => `共 ${totalCount} 条`,
+                        onChange: (page, pageSize) => {
+                          setPagination({ current: page, pageSize });
+                        },
                       }}
                       scroll={{ x: 1000, y: tableScrollY }}
                       locale={{
