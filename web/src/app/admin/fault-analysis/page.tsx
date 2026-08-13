@@ -59,6 +59,52 @@ function mapSummary(item: FaultAnalysisListResponse["items"][0]): FaultAnalysis 
   };
 }
 
+/** Build the scalar JSON body shared by create/edit requests. */
+function buildFaultAnalysisBody(values: CreateFaultAnalysisFormValues): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (values.title) body.title = values.title;
+  if (values.description) body.description = values.description;
+  if (values.line_id) body.line_id = values.line_id;
+  if (values.station_name) body.station = values.station_name;
+  if (values.fault_time) body.fault_time = values.fault_time;
+  if (values.fault_line_name) body.line_name = values.fault_line_name;
+  if (values.fault_phase) body.fault_phase = values.fault_phase;
+  if (values.fault_duration != null) body.fault_duration_ms = values.fault_duration;
+  if (values.reclosure_status) body.reclosure_status = values.reclosure_status;
+  if (values.fault_voltage != null) body.fault_voltage_v = values.fault_voltage;
+  if (values.fault_current != null) body.fault_current_a = values.fault_current;
+  if (values.max_zero_current != null) body.max_zero_current_a = values.max_zero_current;
+  if (values.zero_compensation != null) body.zero_compensation = values.zero_compensation;
+  if (values.fault_resistance != null) body.fault_resistance_ohm = values.fault_resistance;
+  if (values.line_length != null) body.line_length_km = values.line_length;
+  if (values.line_angle != null) body.line_angle_deg = values.line_angle;
+  if (values.line_impedance != null) body.line_impedance_ohm = values.line_impedance;
+  if (values.lightning_current) body.lightning_current_ka = parseFloat(values.lightning_current) || undefined;
+  if (values.lightning_longitude != null) body.lightning_longitude = values.lightning_longitude;
+  if (values.lightning_latitude != null) body.lightning_latitude = values.lightning_latitude;
+  if (values.wave_distance != null) body.wave_distance_km = values.wave_distance;
+  if (values.traveling_wave_distance != null) body.traveling_wave_distance_km = values.traveling_wave_distance;
+  if (values.optical_position) body.optical_position = values.optical_position;
+  if (values.optical_device_location) body.optical_device_location = values.optical_device_location;
+  return body;
+}
+
+/** 从 antd Upload fileList 取值中提取首个原始 File。 */
+function pickUploadFile(value: { originFileObj: File }[] | undefined): File | undefined {
+  return value?.[0]?.originFileObj;
+}
+
+/** 创建请求是否携带判别输入文件（有文件时走 multipart 上传接口）。 */
+function hasUploadFiles(values: CreateFaultAnalysisFormValues): boolean {
+  return [
+    values.wave_data_file,
+    values.lightning_data_file,
+    values.ledger_data_file,
+    values.traveling_wave_file,
+    values.optical_data_file,
+  ].some((fileList) => (fileList?.length ?? 0) > 0);
+}
+
 export default function AdminFaultAnalysisPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -131,31 +177,37 @@ export default function AdminFaultAnalysisPage() {
 
   const createMutation = useMutation({
     mutationFn: async (values: CreateFaultAnalysisFormValues) => {
-      const body: Record<string, unknown> = {};
-      if (values.title) body.title = values.title;
-      if (values.description) body.description = values.description;
-      if (values.line_id) body.line_id = values.line_id;
-      if (values.station_name) body.station = values.station_name;
-      if (values.fault_time) body.fault_time = values.fault_time;
-      if (values.fault_line_name) body.line_name = values.fault_line_name;
-      if (values.fault_phase) body.fault_phase = values.fault_phase;
-      if (values.fault_duration != null) body.fault_duration_ms = values.fault_duration;
-      if (values.reclosure_status) body.reclosure_status = values.reclosure_status;
-      if (values.fault_voltage != null) body.fault_voltage_v = values.fault_voltage;
-      if (values.fault_current != null) body.fault_current_a = values.fault_current;
-      if (values.max_zero_current != null) body.max_zero_current_a = values.max_zero_current;
-      if (values.zero_compensation != null) body.zero_compensation = values.zero_compensation;
-      if (values.fault_resistance != null) body.fault_resistance_ohm = values.fault_resistance;
-      if (values.line_length != null) body.line_length_km = values.line_length;
-      if (values.line_angle != null) body.line_angle_deg = values.line_angle;
-      if (values.line_impedance != null) body.line_impedance_ohm = values.line_impedance;
-      if (values.lightning_current) body.lightning_current_ka = parseFloat(values.lightning_current) || undefined;
-      if (values.lightning_longitude != null) body.lightning_longitude = values.lightning_longitude;
-      if (values.lightning_latitude != null) body.lightning_latitude = values.lightning_latitude;
-      if (values.wave_distance != null) body.wave_distance_km = values.wave_distance;
-      if (values.traveling_wave_distance != null) body.traveling_wave_distance_km = values.traveling_wave_distance;
-      if (values.optical_position) body.optical_position = values.optical_position;
-      if (values.optical_device_location) body.optical_device_location = values.optical_device_location;
+      const body = buildFaultAnalysisBody(values);
+      const fileFields: Array<[string, File | undefined]> = [
+        ["wave_data_file", pickUploadFile(values.wave_data_file)],
+        ["lightning_data_file", pickUploadFile(values.lightning_data_file)],
+        ["ledger_data_file", pickUploadFile(values.ledger_data_file)],
+        ["traveling_wave_file", pickUploadFile(values.traveling_wave_file)],
+        ["optical_data_file", pickUploadFile(values.optical_data_file)],
+      ];
+
+      if (hasUploadFiles(values)) {
+        // 携带判别输入文件时使用 multipart 上传接口（LP-316）。
+        const formData = new FormData();
+        for (const [key, value] of Object.entries(body)) {
+          if (value !== undefined) {
+            formData.set(key, String(value));
+          }
+        }
+        for (const [field, file] of fileFields) {
+          if (file) {
+            formData.set(field, file, file.name);
+          }
+        }
+        const response = await fetchWithAuth("/api/v1/fault-analysis/upload", {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) {
+          throw new Error(await readApiError(response));
+        }
+        return (await response.json()) as FaultAnalysisCreateResponse;
+      }
 
       const response = await fetchWithAuth("/api/v1/fault-analysis", {
         method: "POST",
@@ -233,31 +285,7 @@ export default function AdminFaultAnalysisPage() {
     mutationFn: async (values: CreateFaultAnalysisFormValues) => {
       if (!editingId) throw new Error("未指定编辑记录");
 
-      const body: Record<string, unknown> = {};
-      if (values.title) body.title = values.title;
-      if (values.description) body.description = values.description;
-      if (values.line_id) body.line_id = values.line_id;
-      if (values.station_name) body.station = values.station_name;
-      if (values.fault_time) body.fault_time = values.fault_time;
-      if (values.fault_line_name) body.line_name = values.fault_line_name;
-      if (values.fault_phase) body.fault_phase = values.fault_phase;
-      if (values.fault_duration != null) body.fault_duration_ms = values.fault_duration;
-      if (values.reclosure_status) body.reclosure_status = values.reclosure_status;
-      if (values.fault_voltage != null) body.fault_voltage_v = values.fault_voltage;
-      if (values.fault_current != null) body.fault_current_a = values.fault_current;
-      if (values.max_zero_current != null) body.max_zero_current_a = values.max_zero_current;
-      if (values.zero_compensation != null) body.zero_compensation = values.zero_compensation;
-      if (values.fault_resistance != null) body.fault_resistance_ohm = values.fault_resistance;
-      if (values.line_length != null) body.line_length_km = values.line_length;
-      if (values.line_angle != null) body.line_angle_deg = values.line_angle;
-      if (values.line_impedance != null) body.line_impedance_ohm = values.line_impedance;
-      if (values.lightning_current) body.lightning_current_ka = parseFloat(values.lightning_current) || undefined;
-      if (values.lightning_longitude != null) body.lightning_longitude = values.lightning_longitude;
-      if (values.lightning_latitude != null) body.lightning_latitude = values.lightning_latitude;
-      if (values.wave_distance != null) body.wave_distance_km = values.wave_distance;
-      if (values.traveling_wave_distance != null) body.traveling_wave_distance_km = values.traveling_wave_distance;
-      if (values.optical_position) body.optical_position = values.optical_position;
-      if (values.optical_device_location) body.optical_device_location = values.optical_device_location;
+      const body = buildFaultAnalysisBody(values);
 
       const response = await fetchWithAuth(`/api/v1/fault-analysis/${editingId}`, {
         method: "PUT",

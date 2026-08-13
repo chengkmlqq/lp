@@ -322,8 +322,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                       <div className="font-semibold text-sm mb-1">录波数据</div>
                       <div className="text-xs text-gray-500 mb-3">支持 .txt 格式</div>
                     </div>
-                    <Form.Item name="wave_data_file" className="mb-0">
-                      <Upload maxCount={1}>
+                    <Form.Item name="wave_data_file" valuePropName="fileList" className="mb-0">
+                      <Upload maxCount={1} beforeUpload={() => false}>
                         <Button icon={<UploadOutlined />} size="small">选择文件</Button>
                       </Upload>
                     </Form.Item>
@@ -335,8 +335,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                       <div className="font-semibold text-sm mb-1">雷电定位数据</div>
                       <div className="text-xs text-gray-500 mb-3">支持 .xls/.xlsx 格式</div>
                     </div>
-                    <Form.Item name="lightning_data_file" className="mb-0">
-                      <Upload maxCount={1}>
+                    <Form.Item name="lightning_data_file" valuePropName="fileList" className="mb-0">
+                      <Upload maxCount={1} beforeUpload={() => false}>
                         <Button icon={<UploadOutlined />} size="small">选择文件</Button>
                       </Upload>
                     </Form.Item>
@@ -348,8 +348,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                       <div className="font-semibold text-sm mb-1">分布式行波数据</div>
                       <div className="text-xs text-gray-500 mb-3">支持 .csv/.dat 格式</div>
                     </div>
-                    <Form.Item name="traveling_wave_file" className="mb-0">
-                      <Upload maxCount={1}>
+                    <Form.Item name="traveling_wave_file" valuePropName="fileList" className="mb-0">
+                      <Upload maxCount={1} beforeUpload={() => false}>
                         <Button icon={<UploadOutlined />} size="small">选择文件</Button>
                       </Upload>
                     </Form.Item>
@@ -361,8 +361,21 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                       <div className="font-semibold text-sm mb-1">光学监控数据</div>
                       <div className="text-xs text-gray-500 mb-3">支持图片或视频格式</div>
                     </div>
-                    <Form.Item name="optical_data_file" className="mb-0">
-                      <Upload maxCount={1}>
+                    <Form.Item name="optical_data_file" valuePropName="fileList" className="mb-0">
+                      <Upload maxCount={1} beforeUpload={() => false}>
+                        <Button icon={<UploadOutlined />} size="small">选择文件</Button>
+                      </Upload>
+                    </Form.Item>
+                  </div>
+
+                  <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
+                    <TableOutlined className="text-4xl text-green-600" />
+                    <div className="text-center">
+                      <div className="font-semibold text-sm mb-1">线路台账</div>
+                      <div className="text-xs text-gray-500 mb-3">支持 .csv 格式（含线路名称/塔号）</div>
+                    </div>
+                    <Form.Item name="ledger_data_file" valuePropName="fileList" className="mb-0">
+                      <Upload maxCount={1} beforeUpload={() => false}>
                         <Button icon={<UploadOutlined />} size="small">选择文件</Button>
                       </Upload>
                     </Form.Item>

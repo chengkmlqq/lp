@@ -12,6 +12,9 @@ ENV PYTHONUNBUFFERED=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT}
 ENV PIP_RETRIES=${PIP_RETRIES}
+# 中文文件名/内容全程 UTF-8（LP-316 判别系统输入输出均为中文）
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 # Keep daocloud mirror for apt/pip (internal mirrors work from GitHub runners too)
 RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \

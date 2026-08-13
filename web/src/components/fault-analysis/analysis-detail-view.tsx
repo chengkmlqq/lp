@@ -165,6 +165,11 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
       }
       return (await response.json()) as FaultAnalysisDetail;
     },
+    // 判别为异步任务（pending/processing 时），轮询详情直至完成/失败（LP-316）。
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "pending" || status === "processing" ? 3000 : false;
+    },
   });
 
   const handleExport = async (format: "pdf" | "word") => {
@@ -218,6 +223,15 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
 
   const { sections, station, fault_datetime, fault_id } = buildSections(detail);
 
+  // 判别任务状态标签（pending/processing/completed/failed）
+  const statusMeta: Record<string, { color: string; label: string }> = {
+    pending: { color: "default", label: "判别排队中" },
+    processing: { color: "processing", label: "判别中" },
+    completed: { color: "success", label: "判别完成" },
+    failed: { color: "error", label: "判别失败" },
+  };
+  const statusTag = statusMeta[detail.status] ?? { color: "default", label: detail.status ?? "" };
+
   return (
     <div className="flex flex-col gap-4 h-full">
       <Card className="flex-1 overflow-auto">
@@ -229,6 +243,7 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
                   {fault_id} 故障分析报告
                 </Title>
                 <Tag color="orange">待复核</Tag>
+                <Tag color={statusTag.color}>{statusTag.label}</Tag>
               </div>
               <Dropdown
                 menu={{

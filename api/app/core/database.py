@@ -700,6 +700,41 @@ def _ensure_system_param_encrypted_column_compatibility() -> None:
         )
 
 
+def _ensure_fault_analysis_upload_files_column_compatibility() -> None:
+    """
+    Keep `fault_analysis.upload_files` column aligned with the ORM mapping (LP-316).
+
+    Legacy deployments created `fault_analysis` before the discrimination-engine
+    integration existed; without the column every INSERT/SELECT on the new JSON
+    field fails. Existing rows default to `{}` (no uploaded inputs).
+    """
+    if not database_url.startswith("postgresql"):
+        return
+
+    schema = settings.resolved_db_schema
+    with engine.begin() as connection:
+        db_inspector = inspect(connection)
+        if not db_inspector.has_table("fault_analysis", schema=schema):
+            return
+
+        column_names = {
+            column["name"]
+            for column in db_inspector.get_columns("fault_analysis", schema=schema)
+        }
+        if "upload_files" in column_names:
+            return
+
+        connection.execute(
+            text(
+                "ALTER TABLE fault_analysis "
+                "ADD COLUMN IF NOT EXISTS upload_files JSONB NOT NULL DEFAULT '{}'::jsonb"
+            )
+        )
+        logger.warning(
+            "Detected missing fault_analysis.upload_files; added JSON column with default {}.",
+        )
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
@@ -752,4 +787,5 @@ def init_db() -> None:
     _ensure_dimension_item_type_id_column_compatibility()
     _ensure_lightning_distribution_lp_image_column_compatibility()
     _ensure_system_param_encrypted_column_compatibility()
+    _ensure_fault_analysis_upload_files_column_compatibility()
     Base.metadata.create_all(bind=engine)

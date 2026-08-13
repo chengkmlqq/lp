@@ -59,9 +59,10 @@ export interface CreateFaultAnalysisFormValues {
   traveling_wave_distance?: number;
   optical_position?: string;
   optical_device_location?: string;
-  // 文件上传
-  wave_data_file?: any;
-  lightning_data_file?: any;
-  traveling_wave_file?: any;
-  optical_data_file?: any;
+  // 文件上传（antd Upload fileList）
+  wave_data_file?: { originFileObj: File; name?: string }[];
+  lightning_data_file?: { originFileObj: File; name?: string }[];
+  ledger_data_file?: { originFileObj: File; name?: string }[];
+  traveling_wave_file?: { originFileObj: File; name?: string }[];
+  optical_data_file?: { originFileObj: File; name?: string }[];
 }

@@ -94,6 +94,13 @@ class Settings(BaseSettings):
     initial_admin_username: str = "管理员"
     initial_admin_password: str | None = None
 
+    # --- 判别系统集成（LP-316） ---
+    # 未随故障记录上传台账 CSV 时，可选提供一份默认线路台账（CSV）路径供判别使用。
+    fault_diag_ledger_csv: str = ""
+    # 可选：MATLAB 行波增强编译产物目录（Linux 上由 mcc 编译，内嵌 MATLAB Runtime，
+    # 含 RunWaveAnalysisModule 可执行入口）。为空/目录不存在时自动降级到 Python 特征规则。
+    fault_diag_matlab_compiled_dir: str = ""
+
     debug_mode: bool = True
 
     model_config = SettingsConfigDict(

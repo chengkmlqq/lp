@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from ..core.config import get_settings
 from ..models.base import utcnow
 from ..models.fault_analysis import FaultAnalysis
 from ..models.user import User
@@ -137,6 +140,8 @@ def create_analysis(
     payload: FaultAnalysisCreateRequest,
     *,
     actor: User,
+    upload_files: dict[str, str] | None = None,
+    auto_diagnose: bool = True,
 ) -> FaultAnalysisCreateResponse:
     now = utcnow()
     item = FaultAnalysis(
@@ -169,6 +174,7 @@ def create_analysis(
         optical_device_location=payload.optical_device_location,
         confidence=payload.confidence,
         result_json={},
+        upload_files=upload_files or {},
         create_date=now,
         create_user=actor.id,
         update_date=now,
@@ -183,7 +189,54 @@ def create_analysis(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="创建故障分析记录失败",
         )
+    if auto_diagnose:
+        dispatch_fault_diagnosis(db, saved.id)
     return FaultAnalysisCreateResponse(analysis=serialize_detail(saved))
+
+
+def store_analysis_upload_file(analysis_id: str, field: str, filename: str, content: bytes) -> str:
+    """把上传的判别输入文件保存到共享卷，返回相对 vfs 根的路径供 worker 读取。"""
+    settings = get_settings()
+    vfs_root = Path(settings.file_vfs_root)
+    analysis_dir = vfs_root / "fault_analysis" / analysis_id
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = Path(filename or f"{field}.bin").name
+    target = analysis_dir / f"{field}_{safe_name}"
+    target.write_bytes(content)
+    return target.relative_to(vfs_root).as_posix()
+
+
+def set_analysis_upload_files(db: Session, analysis_id: str, upload_files: dict[str, str]) -> None:
+    item = get_analysis_by_id(db, analysis_id)
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="故障分析记录不存在",
+        )
+    item.upload_files = upload_files
+    item.update_date = utcnow()
+    db.commit()
+
+
+def dispatch_fault_diagnosis(db: Session, analysis_id: str) -> None:
+    """派发判别任务到 Celery；队列不可用时将记录标记为失败并记录原因。"""
+    from ..tasks.fault_diagnosis_tasks import run_fault_diagnosis_task
+
+    item = get_analysis_by_id(db, analysis_id)
+    if item is not None:
+        item.status = "processing"
+        item.update_date = utcnow()
+        db.commit()
+    try:
+        run_fault_diagnosis_task.delay(analysis_id)
+    except Exception as exc:  # pragma: no cover - depends on broker availability
+        item = get_analysis_by_id(db, analysis_id)
+        if item is not None:
+            item.status = "failed"
+            item.result_json = dict(item.result_json or {})
+            item.result_json["error"] = {"message": f"判别任务派发失败: {exc}"}
+            item.update_date = utcnow()
+            db.commit()
 
 
 def delete_analysis(db: Session, analysis_id: str) -> None:
@@ -193,8 +246,17 @@ def delete_analysis(db: Session, analysis_id: str) -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="故障分析记录不存在",
         )
+    upload_dir = Path(get_settings().file_vfs_root) / "fault_analysis" / analysis_id
     db.delete(item)
     db.commit()
+    # 尽力清理该记录关联的判别输入文件（失败不阻断删除）。
+    import shutil
+
+    try:
+        if upload_dir.is_dir():
+            shutil.rmtree(upload_dir, ignore_errors=True)
+    except OSError:
+        pass
 
 
 def update_analysis(

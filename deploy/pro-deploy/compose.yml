@@ -91,11 +91,15 @@ services:
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
       FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH}
+      # LP-316：判别系统可插拔行波增强（MATLAB Runtime 编译产物目录），为空时降级到 Python 特征规则。
+      FAULT_DIAG_MATLAB_COMPILED_DIR: ${FAULT_DIAG_MATLAB_COMPILED_DIR:-}
+      FAULT_DIAG_LEDGER_CSV: ${FAULT_DIAG_LEDGER_CSV:-}
     ports:
       - "${API_PORT}:8000"
     volumes:
       - ./data/app:/app/data
       - ./data/terrain:/app/data/terrain
+      - ./data/matlab-wave-module:/app/data/matlab-wave-module
     restart: unless-stopped
     logging: *default-logging
 
@@ -118,8 +122,12 @@ services:
       DB_PORT: 5432
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
+      # LP-316：判别任务常驻 worker 复用，避免编译产物冷启动开销。
+      FAULT_DIAG_MATLAB_COMPILED_DIR: ${FAULT_DIAG_MATLAB_COMPILED_DIR:-}
+      FAULT_DIAG_LEDGER_CSV: ${FAULT_DIAG_LEDGER_CSV:-}
     volumes:
       - ./data/app:/app/data
+      - ./data/matlab-wave-module:/app/data/matlab-wave-module
     restart: unless-stopped
     logging: *default-logging
 
