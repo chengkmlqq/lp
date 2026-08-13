@@ -926,7 +926,7 @@ export default function AtpModelsPage() {
         items={[
           {
             key: "list",
-            label: "ATP 模型管理",
+            label: <span className="admin-atp-models-tab-title">ATP 模型管理</span>,
             closable: false,
             children: (
               <div ref={pageCardRef} className="admin_atp_models_list_pane">

@@ -781,6 +781,13 @@ body {
   padding: 12px;
 }
 
+/* LP-315: 默认选项卡标题样式：粗体 16px 标题色，与用户管理页保持一致 */
+.admin-system-messages-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
 /* LP-257: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
    内部列表 Tab 的列表才能延续原有 flex 自适应滚动布局 */
 .admin_system_messages_tabs {
@@ -1636,6 +1643,13 @@ body {
   padding: 12px;
 }
 
+/* LP-315: 默认选项卡标题样式：粗体 16px 标题色，与用户管理页保持一致 */
+.admin-roles-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
 /* LP-254: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度 */
 .admin_roles_tabs {
   display: flex;
@@ -2300,6 +2314,13 @@ body {
   padding: 12px;
 }
 
+/* LP-315: 默认选项卡标题样式：粗体 16px 标题色，与用户管理页保持一致 */
+.admin-syslog-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
 /* LP-252: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度 */
 .admin_syslog_tabs {
   display: flex;
@@ -2572,6 +2593,13 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
+}
+
+/* LP-315: 默认选项卡标题样式：粗体 16px 标题色，与用户管理页保持一致 */
+.admin-atp-models-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
 }
 
 /* LP-248: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，

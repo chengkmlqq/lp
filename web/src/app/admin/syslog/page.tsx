@@ -518,7 +518,7 @@ export default function AdminSyslogPage() {
         items={[
           {
             key: "list",
-            label: "系统日志",
+            label: <span className="admin-syslog-tab-title">系统日志</span>,
             closable: false,
             children: (
               <div ref={pageCardRef} className="admin_syslog_list_pane">

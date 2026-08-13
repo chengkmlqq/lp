@@ -825,7 +825,7 @@ export default function AdminSystemMessagesPage() {
         items={[
           {
             key: "list",
-            label: "消息列表",
+            label: <span className="admin-system-messages-tab-title">消息列表</span>,
             closable: false,
             children: (
               <div ref={pageCardRef} className="admin_system_messages_list_pane">

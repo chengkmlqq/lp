@@ -817,7 +817,7 @@ export default function AdminRolesPage() {
         items={[
           {
             key: "list",
-            label: "角色管理",
+            label: <span className="admin-roles-tab-title">角色管理</span>,
             closable: false,
             children: (
               <div ref={pageCardRef} className="admin_roles_list_pane">
