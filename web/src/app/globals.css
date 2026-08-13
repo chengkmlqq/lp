@@ -4951,4 +4951,6 @@ body {
   flex-direction: column;
   gap: 12px;
   padding: 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }

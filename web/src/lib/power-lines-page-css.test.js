@@ -38,6 +38,13 @@ test("LP-301: detail view is a flex column so meta card + tabs stack and stretch
   assert.ok(block, "应存在 .admin-power-lines-detail-view 规则块");
   assert.match(block, /display:\s*flex/, "详情视图应为 flex 布局");
   assert.match(block, /flex-direction:\s*column/, "详情视图应为纵向布局");
+  assert.match(block, /overflow-y:\s*auto/, "详情视图应开启纵向滚动");
+});
+
+test("LP-307: detail view scrolls vertically without redundant inner table wrapper scroll", () => {
+  const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
+  assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
+  assert.ok(/<div className="relative">\s*<Table<LineTowerSummary>/.test(detailBlock), "杆塔列表 Table 外层不应再有 overflow-auto 滚动容器");
 });
 
 test("LP-301: detail view shows meta card on top and map/tower tabs below", () => {

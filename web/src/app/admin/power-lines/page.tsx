@@ -931,7 +931,7 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManag
                     </Form.Item>
                   </Form>
                 </div>
-                <div className="relative overflow-auto">
+                <div className="relative">
                   <Table<LineTowerSummary>
                     rowKey={(row) => row.id}
                     columns={towerColumns}
