@@ -1,7 +1,7 @@
 "use client";
 
 import { AimOutlined, MinusOutlined, PlusOutlined } from "@ant-design/icons";
-import { Alert, Button, Checkbox, Empty, Space, Spin, Typography } from "antd";
+import { Alert, Button, Checkbox, Empty, Segmented, Space, Spin, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getApiBaseUrl } from "@/lib/api";
@@ -57,6 +57,18 @@ const RISK_COLOR_BY_LEVEL: Record<string, string> = {
   "1": "#22c55e",
   "2": "#f59e0b",
   "3": "#ef4444",
+};
+
+// 天地图底图类型与注记层严格配对：vec↔cva、img↔cia、ter↔cta
+const TIANDITU_BASE_LAYER_OPTIONS = [
+  { label: "矢量", value: "vec" },
+  { label: "影像", value: "img" },
+  { label: "地形", value: "ter" },
+] as const;
+const TIANDITU_ANNOTATION_BY_BASE_LAYER: Record<string, string> = {
+  vec: "cva",
+  img: "cia",
+  ter: "cta",
 };
 
 function normalizeRiskLevel(value: string | null): string {
@@ -122,8 +134,13 @@ export function PowerLineCesiumMap({
   const [pointerInfo, setPointerInfo] = useState("");
   const [colorByRisk, setColorByRisk] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
+  const [baseLayerOverride, setBaseLayerOverride] = useState<string | null>(null);
   const tianditu = useTiandituConfig();
   const tiandituEnabled = tianditu.config.enabled;
+  const effectiveBaseLayer = baseLayerOverride ?? tianditu.config.baseLayer;
+  const effectiveAnnotationLayer = baseLayerOverride
+    ? TIANDITU_ANNOTATION_BY_BASE_LAYER[baseLayerOverride] ?? tianditu.config.annotationLayer
+    : tianditu.config.annotationLayer;
   const terrainRenderState = useMemo(
     () => (terrainDataset ? getElevationTerrainRenderState(terrainDataset) : "fallback"),
     [terrainDataset],
@@ -420,7 +437,7 @@ export function PowerLineCesiumMap({
 
     const addedLayers: import("cesium").ImageryLayer[] = [];
 
-    const baseUrl = resolveTiandituUrl(cfg.urlTemplate, cfg.baseLayer, cfg.tk);
+    const baseUrl = resolveTiandituUrl(cfg.urlTemplate, effectiveBaseLayer, cfg.tk);
     if (baseUrl) {
       const baseProvider = new Cesium.UrlTemplateImageryProvider({
         url: baseUrl,
@@ -435,8 +452,8 @@ export function PowerLineCesiumMap({
     }
 
     // 注记层叠加在底图之上（后添加的在上层）
-    if (cfg.annotationLayer) {
-      const annotationUrl = resolveTiandituUrl(cfg.urlTemplate, cfg.annotationLayer, cfg.tk);
+    if (effectiveAnnotationLayer) {
+      const annotationUrl = resolveTiandituUrl(cfg.urlTemplate, effectiveAnnotationLayer, cfg.tk);
       if (annotationUrl) {
         const annotationProvider = new Cesium.UrlTemplateImageryProvider({
           url: annotationUrl,
@@ -458,7 +475,7 @@ export function PowerLineCesiumMap({
         }
       });
     };
-  }, [ready, tianditu.config, tiandituEnabled]);
+  }, [ready, tianditu.config, tiandituEnabled, effectiveBaseLayer, effectiveAnnotationLayer]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -586,6 +603,12 @@ export function PowerLineCesiumMap({
         <Checkbox checked={showLabels} onChange={(event) => setShowLabels(event.target.checked)}>
           显示塔号
         </Checkbox>
+        <Segmented
+          value={effectiveBaseLayer}
+          options={[...TIANDITU_BASE_LAYER_OPTIONS]}
+          onChange={(value) => setBaseLayerOverride(value)}
+          disabled={!tiandituEnabled}
+        />
       </div>
       {initError ? (
         <Space>
