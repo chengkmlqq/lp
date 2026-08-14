@@ -80,3 +80,31 @@ export async function readApiError(response: Response): Promise<string> {
     return `HTTP ${response.status}`;
   }
 }
+
+/**
+ * 结构化 API 错误类型
+ *
+ * 相比原生 Error，额外携带 HTTP 状态码与业务错误码，
+ * 便于前端结构性消费（如区分 4xx / 5xx、按 code 分流）。
+ */
+export class ApiError extends Error {
+  status?: number;
+  code?: string;
+
+  constructor(message: string, options?: { status?: number; code?: string }) {
+    super(message);
+    this.name = "ApiError";
+    this.status = options?.status;
+    this.code = options?.code;
+  }
+}
+
+/**
+ * 统一错误消息渲染 helper
+ *
+ * 兼容 ApiError、纯字符串与 null，返回可用于界面展示的字符串。
+ */
+export function formatErrorMessage(err: ApiError | string | null | undefined): string {
+  if (err == null) return "";
+  return typeof err === "string" ? err : err.message;
+}

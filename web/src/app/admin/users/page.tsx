@@ -32,7 +32,7 @@ import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
-import { readApiError, getApiBaseUrl } from "@/lib/api";
+import { ApiError, readApiError, getApiBaseUrl } from "@/lib/api";
 import type { RoleItem, RoleListResponse, UserListResponse, UserPublic } from "@/types/auth";
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
@@ -108,7 +108,7 @@ export default function AdminUsersPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
 
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState("");
   const [userIdValidationError, setUserIdValidationError] = useState("");
   const [editUserIdValidationError, setEditUserIdValidationError] = useState("");
@@ -230,7 +230,7 @@ export default function AdminUsersPage() {
             file: selectedCreateAvatarFile,
           });
         } catch {
-          setError("用户已创建，但 Logo 上传失败，可在编辑中重试");
+          setError(new ApiError("用户已创建，但 Logo 上传失败，可在编辑中重试"));
           setSuccess("");
         } finally {
           setCreateAvatarUploading(false);
@@ -238,7 +238,7 @@ export default function AdminUsersPage() {
       } else {
         setSuccess("用户已创建");
       }
-      setError("");
+      setError(null);
       createForm.resetFields();
       setSelectedCreateAvatarFile(null);
       setCreateAvatarPreview("");
@@ -247,7 +247,7 @@ export default function AdminUsersPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "创建用户失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "创建用户失败"));
     },
   });
 
@@ -263,7 +263,7 @@ export default function AdminUsersPage() {
     },
     onMutate: ({ userId }) => {
       setSavingUserId(userId);
-      setError("");
+      setError(null);
       setSuccess("");
     },
     onSuccess: async () => {
@@ -271,7 +271,7 @@ export default function AdminUsersPage() {
       await refreshData();
     },
     onError: (mutationError) => {
-      setError(mutationError instanceof Error ? mutationError.message : "更新失败");
+      setError(new ApiError(mutationError instanceof Error ? mutationError.message : "更新失败"));
     },
     onSettled: () => setSavingUserId(null),
   });
@@ -288,7 +288,7 @@ export default function AdminUsersPage() {
     },
     onMutate: ({ userId }) => {
       setResettingUserId(userId);
-      setError("");
+      setError(null);
       setSuccess("");
     },
     onSuccess: () => {
@@ -298,7 +298,7 @@ export default function AdminUsersPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "重置密码失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "重置密码失败"));
     },
     onSettled: () => setResettingUserId(null),
   });
@@ -323,7 +323,7 @@ export default function AdminUsersPage() {
     },
     onMutate: ({ userId }) => {
       setUpdatingStatusUserId(userId);
-      setError("");
+      setError(null);
       setSuccess("");
     },
     onSuccess: async (_, variables) => {
@@ -338,7 +338,7 @@ export default function AdminUsersPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "更新用户信息失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "更新用户信息失败"));
     },
     onSettled: () => setUpdatingStatusUserId(null),
   });
@@ -351,7 +351,7 @@ export default function AdminUsersPage() {
     },
     onMutate: (userId) => {
       setDeletingUserId(userId);
-      setError("");
+      setError(null);
       setSuccess("");
     },
     onSuccess: async () => {
@@ -360,7 +360,7 @@ export default function AdminUsersPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "删除用户失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "删除用户失败"));
     },
     onSettled: () => setDeletingUserId(null),
   });
@@ -388,7 +388,7 @@ export default function AdminUsersPage() {
       void refreshData();
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "上传头像失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "上传头像失败"));
     },
     onSettled: () => setUploadingAvatarUserId(null),
   });
@@ -462,7 +462,7 @@ export default function AdminUsersPage() {
   };
 
   const handleCreateUser = async (values: CreateUserValues) => {
-    setError("");
+    setError(null);
     setSuccess("");
 
     const payload: CreateUserValues = {
@@ -477,13 +477,13 @@ export default function AdminUsersPage() {
 
     const formatError = validateUserIdFormat(payload.user_id);
     if (formatError) {
-      setError(formatError);
+      setError(new ApiError(formatError));
       return;
     }
 
     const availabilityCheck = await checkUserIdAvailability(payload.user_id);
     if (!availabilityCheck.available) {
-      setError(availabilityCheck.message);
+      setError(new ApiError(availabilityCheck.message));
       return;
     }
 
@@ -491,11 +491,11 @@ export default function AdminUsersPage() {
     const candidateUsername = payload.username.toLowerCase();
 
     if (candidateEmail && existingEmails.has(candidateEmail)) {
-      setError("邮箱已存在，请更换后重试");
+      setError(new ApiError("邮箱已存在，请更换后重试"));
       return;
     }
     if (existingUsernames.has(candidateUsername)) {
-      setError("用户名已存在，请更换后重试");
+      setError(new ApiError("用户名已存在，请更换后重试"));
       return;
     }
 
@@ -503,7 +503,7 @@ export default function AdminUsersPage() {
   };
 
   const openResetPasswordModal = (target: UserPublic) => {
-    setError("");
+    setError(null);
     setSuccess("");
     setResetPasswordTarget(target);
     resetPasswordForm.resetFields();
@@ -516,7 +516,7 @@ export default function AdminUsersPage() {
   };
 
   const openAssignRolesModal = (target: UserPublic) => {
-    setError("");
+    setError(null);
     setSuccess("");
     setAssigningRolesUser(target);
     roleForm.setFieldsValue({ role_codes: target.role_codes });
@@ -547,7 +547,7 @@ export default function AdminUsersPage() {
   };
 
   const openEditUserModal = (target: UserPublic) => {
-    setError("");
+    setError(null);
     setSuccess("");
     setEditUserIdValidationError("");
     setEditingUser(target);
@@ -575,7 +575,7 @@ export default function AdminUsersPage() {
 
     const formatError = validateUserIdFormat(nextUserId);
     if (formatError) {
-      setError(formatError);
+      setError(new ApiError(formatError));
       return;
     }
 
@@ -584,7 +584,7 @@ export default function AdminUsersPage() {
     if (nextUserId !== editingUser.id) {
       const availabilityCheck = await checkUserIdAvailability(nextUserId, editingUser.id);
       if (!availabilityCheck.available) {
-        setError(availabilityCheck.message);
+        setError(new ApiError(availabilityCheck.message));
         return;
       }
       payload.new_user_id = nextUserId;
@@ -617,7 +617,7 @@ export default function AdminUsersPage() {
   };
 
   const openCreateUserModal = () => {
-    setError("");
+    setError(null);
     setSuccess("");
     setUserIdValidationError("");
     createForm.resetFields();
@@ -645,15 +645,17 @@ export default function AdminUsersPage() {
     setCardViewPage(1);
   };
 
-  const queryError =
-    (usersQuery.error instanceof Error ? usersQuery.error.message : "")
-    || (rolesQuery.error instanceof Error ? rolesQuery.error.message : "");
-  const anyError = error || queryError;
+  const queryError = useMemo<ApiError | null>(() =>
+    (usersQuery.error instanceof Error ? new ApiError(usersQuery.error.message) : null)
+    || (rolesQuery.error instanceof Error ? new ApiError(rolesQuery.error.message) : null),
+    [usersQuery.error, rolesQuery.error],
+  );
+  const apiError = error || queryError;
 
   useToastFeedback({
-    errorMessage: anyError,
+    errorMessage: apiError,
     successMessage: success,
-    clearError: () => setError(""),
+    clearError: () => setError(null),
     clearSuccess: () => setSuccess(""),
   });
 
@@ -746,7 +748,7 @@ export default function AdminUsersPage() {
       return;
     }
     window.requestAnimationFrame(updateTableScrollY);
-  }, [anyError, paginationCurrent, paginationPageSize, users.length, usersQuery.isFetching, updateTableScrollY]);
+  }, [apiError, paginationCurrent, paginationPageSize, users.length, usersQuery.isFetching, updateTableScrollY]);
 
   useEffect(() => {
     return () => {
@@ -879,7 +881,7 @@ export default function AdminUsersPage() {
             disabled: rowBusy || row.id === user?.id,
             onClick: () => {
               if (row.id === user?.id) {
-                setError("不能修改当前登录账号的状态");
+                setError(new ApiError("不能修改当前登录账号的状态"));
                 return;
               }
               const nextStatus: "active" | "disabled" = row.status === "active" ? "disabled" : "active";
@@ -962,7 +964,7 @@ export default function AdminUsersPage() {
         disabled: rowBusy || userItem.id === user?.id,
         onClick: () => {
           if (userItem.id === user?.id) {
-            setError("不能修改当前登录账号的状态");
+            setError(new ApiError("不能修改当前登录账号的状态"));
             return;
           }
           const nextStatus: "active" | "disabled" = userItem.status === "active" ? "disabled" : "active";

@@ -30,7 +30,7 @@ import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
-import { readApiError } from "@/lib/api";
+import { ApiError, readApiError } from "@/lib/api";
 import type { AtpAssetListResponse, AtpAssetSummary, AtpAssetFileListResponse, DimensionTypeTreeItem } from "@/types/auth";
 import type { DimensionItemListResponse } from "@/types/dimension";
 
@@ -127,7 +127,7 @@ export default function AtpModelsPage() {
   const [allLoadedAssets, setAllLoadedAssets] = useState<AtpAssetSummary[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState("");
 
   const canRead = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
@@ -219,14 +219,14 @@ export default function AtpModelsPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
       setSuccess("模型已创建并上传文件");
-      setError("");
+      setError(null);
       setModalOpen(false);
       setFileList([]);
       form.resetFields();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "创建模型失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "创建模型失败"));
     },
   });
 
@@ -240,16 +240,16 @@ export default function AtpModelsPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
       setSuccess("模型已删除");
-      setError("");
+      setError(null);
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "删除模型失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "删除模型失败"));
     },
   });
 
   const openCreateModal = useCallback(() => {
-    setError("");
+    setError(null);
     setSuccess("");
     setFileList([]);
     form.setFieldsValue(EMPTY_FORM);
@@ -394,13 +394,13 @@ export default function AtpModelsPage() {
     [fileViewAssetsQuery.data?.items, assetItems],
   );
   const assetTotal = assetsQuery.data?.total ?? 0;
-  const queryError = assetsQuery.error instanceof Error ? assetsQuery.error.message : "";
-  const anyError = error || queryError;
+  const queryError = useMemo<ApiError | null>(() => assetsQuery.error instanceof Error ? new ApiError(assetsQuery.error.message) : null, [assetsQuery.error]);
+  const apiError = error || queryError;
 
   useToastFeedback({
-    errorMessage: anyError,
+    errorMessage: apiError,
     successMessage: success,
-    clearError: () => setError(""),
+    clearError: () => setError(null),
     clearSuccess: () => setSuccess(""),
   });
 
@@ -485,7 +485,7 @@ export default function AtpModelsPage() {
       return;
     }
     window.requestAnimationFrame(updateTableScrollY);
-  }, [anyError, paginationCurrent, paginationPageSize, assetItems.length, assetsQuery.isFetching, displayMode, viewMode, updateTableScrollY]);
+  }, [apiError, paginationCurrent, paginationPageSize, assetItems.length, assetsQuery.isFetching, displayMode, viewMode, updateTableScrollY]);
 
   useEffect(() => {
     if (typeof window === "undefined") {

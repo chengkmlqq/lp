@@ -32,14 +32,14 @@ import { MoreOutlined, QuestionCircleOutlined, SearchOutlined } from "@ant-desig
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefAttributes } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, type TooltipValueType } from "recharts";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { LightningTowerView } from "@/components/lightning-tower-view";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { readApiError } from "@/lib/api";
+import { ApiError, readApiError } from "@/lib/api";
 import type {
   LightningAmplitudeRecord,
   LightningAmplitudeListResponse,
@@ -141,7 +141,7 @@ export default function AdminLightningCurrentsPage() {
   const [importForm] = Form.useForm<ImportFormValues>();
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState("");
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
@@ -188,12 +188,12 @@ export default function AdminLightningCurrentsPage() {
 
   const records = useMemo(() => recordsQuery.data?.items ?? [], [recordsQuery.data?.items]);
 
-  const listError = recordsQuery.error instanceof Error ? recordsQuery.error.message : "";
+  const listError = useMemo<ApiError | null>(() => recordsQuery.error instanceof Error ? new ApiError(recordsQuery.error.message) : null, [recordsQuery.error]);
 
   useToastFeedback({
     errorMessage: error || listError,
     successMessage: success,
-    clearError: () => setError(""),
+    clearError: () => setError(null),
     clearSuccess: () => setSuccess(""),
   });
 
@@ -230,7 +230,7 @@ export default function AdminLightningCurrentsPage() {
         );
         void refreshAll();
       } else if (name === "amplitude.import_failed") {
-        setError(payload?.error || "导入失败，请在列表中对失败记录执行重试");
+        setError(new ApiError(payload?.error || "导入失败，请在列表中对失败记录执行重试"));
         void refreshAll();
       } else {
         void refreshAll();
@@ -342,7 +342,7 @@ export default function AdminLightningCurrentsPage() {
       return (await response.json()) as LightningAmplitudeImportResponse;
     },
     onSuccess: async (payload) => {
-      setError("");
+      setError(null);
       setSuccess(`导入任务已提交（任务ID: ${payload.task_id}），正在后台处理`);
       setImportModalOpen(false);
       importForm.resetFields();
@@ -351,7 +351,7 @@ export default function AdminLightningCurrentsPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "导入失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "导入失败"));
     },
   });
 
@@ -366,13 +366,13 @@ export default function AdminLightningCurrentsPage() {
       return record.id;
     },
     onSuccess: async () => {
-      setError("");
+      setError(null);
       setSuccess("雷电流幅值记录已删除");
       await refreshAll();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "删除失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "删除失败"));
     },
   });
 
@@ -390,13 +390,13 @@ export default function AdminLightningCurrentsPage() {
       return (await response.json()) as LightningAmplitudeImportResponse;
     },
     onSuccess: async (payload) => {
-      setError("");
+      setError(null);
       setSuccess(`重试任务已提交（任务ID: ${payload.task_id}）`);
       await refreshAll();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "重试失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "重试失败"));
     },
   });
 
@@ -1296,11 +1296,10 @@ function AmplitudeDetailView({
               <XAxis dataKey="index" label={{ value: "回击序号", position: "insideBottomRight", offset: -5 }} />
               <YAxis label={{ value: "峰值电流 (kA)", angle: -90, position: "insideLeft", offset: 10 }} />
               <Tooltip
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                formatter={(value: any, name?: string | number) => {
-                  if (name === "current_ka") return [formatNumber(Number(value), 3), "峰值电流 (kA)"];
-                  if (name === "time_us") return [formatNumber(Number(value), 2), "时间 (μs)"];
-                  return [value, name];
+                formatter={(value: TooltipValueType | undefined, name?: string | number) => {
+                  if (name === "current_ka") return [formatNumber(Number(value), 3), "峰值电流 (kA)"] as [ReactNode, string | number];
+                  if (name === "time_us") return [formatNumber(Number(value), 2), "时间 (μs)"] as [ReactNode, string | number];
+                  return [value, name ?? ""] as [ReactNode, string | number];
                 }}
                 labelFormatter={(label) => `回击 ${label}`}
               />

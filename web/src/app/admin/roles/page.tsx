@@ -31,7 +31,7 @@ import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
-import { readApiError } from "@/lib/api";
+import { ApiError, readApiError } from "@/lib/api";
 import type { DataNode } from "antd/es/tree";
 import type { MenuItem, RoleItem } from "@/types/auth";
 
@@ -70,7 +70,7 @@ export default function AdminRolesPage() {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
 
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState("");
   const [roleCodeValidationError, setRoleCodeValidationError] = useState("");
   const [editingRole, setEditingRole] = useState<RoleItem | null>(null);
@@ -149,7 +149,7 @@ export default function AdminRolesPage() {
     },
     onSuccess: async () => {
       setSuccess("角色已创建");
-      setError("");
+      setError(null);
       form.resetFields();
       setDialogOpen(false);
       setEditingRole(null);
@@ -157,7 +157,7 @@ export default function AdminRolesPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "创建角色失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "创建角色失败"));
     },
   });
 
@@ -176,7 +176,7 @@ export default function AdminRolesPage() {
     },
     onMutate: ({ roleId }) => {
       setSavingRoleId(roleId);
-      setError("");
+      setError(null);
       setSuccess("");
     },
     onSuccess: async () => {
@@ -188,7 +188,7 @@ export default function AdminRolesPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "更新角色失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "更新角色失败"));
     },
     onSettled: () => setSavingRoleId(null),
   });
@@ -201,7 +201,7 @@ export default function AdminRolesPage() {
     },
     onMutate: (roleId) => {
       setDeletingRoleId(roleId);
-      setError("");
+      setError(null);
       setSuccess("");
     },
     onSuccess: async () => {
@@ -215,7 +215,7 @@ export default function AdminRolesPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "删除角色失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "删除角色失败"));
     },
     onSettled: () => setDeletingRoleId(null),
   });
@@ -334,7 +334,7 @@ export default function AdminRolesPage() {
   }, [createRoleMutation.isPending, form, updateRoleMutation.isPending]);
 
   const startCreate = useCallback(() => {
-    setError("");
+    setError(null);
     setSuccess("");
     setRoleCodeValidationError("");
     setEditingRole(null);
@@ -343,7 +343,7 @@ export default function AdminRolesPage() {
   }, [form]);
 
   const startEdit = useCallback((role: RoleItem) => {
-    setError("");
+    setError(null);
     setSuccess("");
     setRoleCodeValidationError("");
     setEditingRole(role);
@@ -356,7 +356,7 @@ export default function AdminRolesPage() {
   }, [form]);
 
   const submit = useCallback(async () => {
-    setError("");
+    setError(null);
     setSuccess("");
 
     try {
@@ -399,7 +399,7 @@ export default function AdminRolesPage() {
       }
 
       const nextError = candidate instanceof Error ? candidate.message : "提交失败，请稍后重试";
-      setError(nextError);
+      setError(new ApiError(nextError));
     }
   }, [checkRoleCodeAvailability, createRoleMutation, editingRole, form, updateRoleMutation, validateRoleCodeFormat]);
 
@@ -414,13 +414,13 @@ export default function AdminRolesPage() {
     void queryClient.refetchQueries({ queryKey: ["admin.roles"] });
   };
 
-  const queryError = rolesQuery.error instanceof Error ? rolesQuery.error.message : "";
-  const anyError = error || queryError;
+  const queryError = useMemo<ApiError | null>(() => rolesQuery.error instanceof Error ? new ApiError(rolesQuery.error.message) : null, [rolesQuery.error]);
+  const apiError = error || queryError;
 
   useToastFeedback({
-    errorMessage: anyError,
+    errorMessage: apiError,
     successMessage: success,
-    clearError: () => setError(""),
+    clearError: () => setError(null),
     clearSuccess: () => setSuccess(""),
   });
 
@@ -719,7 +719,7 @@ export default function AdminRolesPage() {
       return;
     }
     window.requestAnimationFrame(updateTableScrollY);
-  }, [anyError, paginationCurrent, paginationPageSize, roles.length, rolesQuery.isFetching, updateTableScrollY]);
+  }, [apiError, paginationCurrent, paginationPageSize, roles.length, rolesQuery.isFetching, updateTableScrollY]);
 
   useEffect(() => {
     return () => {

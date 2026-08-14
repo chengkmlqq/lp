@@ -35,7 +35,7 @@ import { IconPicker } from "@/components/icon-picker";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
-import { readApiError } from "@/lib/api";
+import { ApiError, readApiError } from "@/lib/api";
 import { normalizeAppRoutePath } from "@/lib/app-route-path";
 import type { MenuItem, MenuListResponse, MenuTreeItem } from "@/types/auth";
 
@@ -144,7 +144,7 @@ export default function AdminMenusPage() {
   const isMobile = useMobileDetection();
   const [deletingMenuId, setDeletingMenuId] = useState<string | null>(null);
   const [updatingStatusMenuId, setUpdatingStatusMenuId] = useState<string | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
@@ -232,13 +232,13 @@ export default function AdminMenusPage() {
 
   const menus = useMemo(() => menusQuery.data?.items ?? [], [menusQuery.data?.items]);
   const menuTotal = menusQuery.data?.total ?? 0;
-  const queryError = menusQuery.error instanceof Error ? menusQuery.error.message : "";
-  const anyError = error || queryError;
+  const queryError = useMemo<ApiError | null>(() => menusQuery.error instanceof Error ? new ApiError(menusQuery.error.message) : null, [menusQuery.error]);
+  const apiError = error || queryError;
 
   useToastFeedback({
-    errorMessage: anyError,
+    errorMessage: apiError,
     successMessage: success,
-    clearError: () => setError(""),
+    clearError: () => setError(null),
     clearSuccess: () => setSuccess(""),
   });
 
@@ -468,7 +468,7 @@ export default function AdminMenusPage() {
       return response.json() as Promise<MenuItem>;
     },
     onMutate: () => {
-      setError("");
+      setError(null);
       setSuccess("");
     },
     onSuccess: async () => {
@@ -478,7 +478,7 @@ export default function AdminMenusPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "创建菜单失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "创建菜单失败"));
     },
   });
 
@@ -496,7 +496,7 @@ export default function AdminMenusPage() {
       if (payload.status && Object.keys(payload).length === 1) {
         setUpdatingStatusMenuId(menuId);
       }
-      setError("");
+      setError(null);
       setSuccess("");
     },
     onSuccess: async (_, variables) => {
@@ -513,7 +513,7 @@ export default function AdminMenusPage() {
       const fallbackMessage = variables.payload.status && Object.keys(variables.payload).length === 1
         ? "菜单状态更新失败"
         : "更新菜单失败";
-      setError(candidate instanceof Error ? candidate.message : fallbackMessage);
+      setError(new ApiError(candidate instanceof Error ? candidate.message : fallbackMessage));
     },
     onSettled: (_data, _error, variables) => {
       if (variables?.payload.status && Object.keys(variables.payload).length === 1) {
@@ -532,7 +532,7 @@ export default function AdminMenusPage() {
     },
     onMutate: (menuId) => {
       setDeletingMenuId(menuId);
-      setError("");
+      setError(null);
       setSuccess("");
     },
     onSuccess: async (_, menuId) => {
@@ -545,7 +545,7 @@ export default function AdminMenusPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "菜单删除失败");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "菜单删除失败"));
     },
     onSettled: () => setDeletingMenuId(null),
   });
@@ -584,7 +584,7 @@ export default function AdminMenusPage() {
       }
 
       const msg = candidate instanceof Error ? candidate.message : "提交失败，请稍后重试";
-      setError(msg);
+      setError(new ApiError(msg));
     }
   }, [createMenuMutation, editingMenuId, form, updateMenuMutation]);
 
@@ -791,7 +791,7 @@ export default function AdminMenusPage() {
       return;
     }
     window.requestAnimationFrame(updateTableScrollY);
-  }, [anyError, filteredMenus.length, menusQuery.isFetching, paginationCurrent, paginationPageSize, updateTableScrollY]);
+  }, [apiError, filteredMenus.length, menusQuery.isFetching, paginationCurrent, paginationPageSize, updateTableScrollY]);
 
   useEffect(() => {
     if (typeof window === "undefined") {

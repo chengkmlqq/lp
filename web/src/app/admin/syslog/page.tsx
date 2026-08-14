@@ -12,7 +12,7 @@ import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { readApiError } from "@/lib/api";
+import { ApiError, readApiError } from "@/lib/api";
 import type { AuditLogItem, AuditLogListResponse } from "@/types/auth";
 
 const PAGE_SIZE = 50;
@@ -88,7 +88,7 @@ export default function AdminSyslogPage() {
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [draftFilters, setDraftFilters] = useState<Filters>(EMPTY_FILTERS);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState("");
   const [tableScrollY, setTableScrollY] = useState(SYSLOG_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -188,14 +188,14 @@ export default function AdminSyslogPage() {
 
   const logs = useMemo(() => logsQuery.data?.items ?? [], [logsQuery.data?.items]);
   const total = logsQuery.data?.total ?? 0;
-  const queryError = logsQuery.error instanceof Error ? logsQuery.error.message : "";
-  const anyError = error || queryError;
+  const queryError = useMemo<ApiError | null>(() => logsQuery.error instanceof Error ? new ApiError(logsQuery.error.message) : null, [logsQuery.error]);
+  const apiError = error || queryError;
   const currentPage = Math.floor(offset / pageSize) + 1;
 
   useToastFeedback({
-    errorMessage: anyError,
+    errorMessage: apiError,
     successMessage: success,
-    clearError: () => setError(""),
+    clearError: () => setError(null),
     clearSuccess: () => setSuccess(""),
   });
 

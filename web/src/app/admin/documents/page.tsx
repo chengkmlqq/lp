@@ -35,7 +35,7 @@ import type { DataNode } from "antd/es/tree";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
-import { readApiError } from "@/lib/api";
+import { ApiError, readApiError } from "@/lib/api";
 import type {
   Document,
   DocumentChapter,
@@ -77,7 +77,7 @@ export default function AdminDocumentsPage() {
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
 
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState("");
   const [chapterDialogOpen, setChapterDialogOpen] = useState(false);
   const [documentDrawerOpen, setDocumentDrawerOpen] = useState(false);
@@ -202,14 +202,14 @@ export default function AdminDocumentsPage() {
     },
     onSuccess: () => {
       setSuccess("章节创建成功");
-      setError("");
+      setError(null);
       refreshData();
       setChapterDialogOpen(false);
       chapterForm.resetFields();
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(candidate.message || "创建章节失败");
+      setError(new ApiError(candidate.message || "创建章节失败"));
     },
   });
 
@@ -231,7 +231,7 @@ export default function AdminDocumentsPage() {
     },
     onSuccess: () => {
       setSuccess("章节更新成功");
-      setError("");
+      setError(null);
       refreshData();
       setChapterDialogOpen(false);
       setEditingChapterId(null);
@@ -239,7 +239,7 @@ export default function AdminDocumentsPage() {
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(candidate.message || "更新章节失败");
+      setError(new ApiError(candidate.message || "更新章节失败"));
     },
   });
 
@@ -252,12 +252,12 @@ export default function AdminDocumentsPage() {
     },
     onSuccess: () => {
       setSuccess("章节删除成功");
-      setError("");
+      setError(null);
       refreshData();
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(candidate.message || "删除章节失败");
+      setError(new ApiError(candidate.message || "删除章节失败"));
     },
   });
 
@@ -273,14 +273,14 @@ export default function AdminDocumentsPage() {
     },
     onSuccess: () => {
       setSuccess("文档创建成功");
-      setError("");
+      setError(null);
       refreshData();
       setDocumentDrawerOpen(false);
       documentForm.resetFields();
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(candidate.message || "创建文档失败");
+      setError(new ApiError(candidate.message || "创建文档失败"));
     },
   });
 
@@ -302,7 +302,7 @@ export default function AdminDocumentsPage() {
     },
     onSuccess: () => {
       setSuccess("文档更新成功");
-      setError("");
+      setError(null);
       refreshData();
       setDocumentDrawerOpen(false);
       setEditingDocumentId(null);
@@ -310,7 +310,7 @@ export default function AdminDocumentsPage() {
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(candidate.message || "更新文档失败");
+      setError(new ApiError(candidate.message || "更新文档失败"));
     },
   });
 
@@ -323,7 +323,7 @@ export default function AdminDocumentsPage() {
     },
     onMutate: (id) => {
       setDeletingDocumentId(id);
-      setError("");
+      setError(null);
       setSuccess("");
     },
     onSuccess: () => {
@@ -332,7 +332,7 @@ export default function AdminDocumentsPage() {
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(candidate.message || "删除文档失败");
+      setError(new ApiError(candidate.message || "删除文档失败"));
     },
     onSettled: () => setDeletingDocumentId(null),
   });
@@ -455,14 +455,16 @@ export default function AdminDocumentsPage() {
     return result;
   }, []);
 
-  const queryError =
-    (documentsData && "error" in documentsData ? String(documentsData) : "");
-  const anyError = error || queryError;
+  const queryError = useMemo<ApiError | null>(() =>
+    documentsData && "error" in documentsData ? new ApiError(String(documentsData)) : null,
+    [documentsData],
+  );
+  const apiError = error || queryError;
 
   useToastFeedback({
-    errorMessage: anyError,
+    errorMessage: apiError,
     successMessage: success,
-    clearError: () => setError(""),
+    clearError: () => setError(null),
     clearSuccess: () => setSuccess(""),
   });
 
@@ -556,7 +558,7 @@ export default function AdminDocumentsPage() {
       return;
     }
     window.requestAnimationFrame(updateTableScrollY);
-  }, [anyError, documents.length, documentsLoading, updateTableScrollY]);
+  }, [apiError, documents.length, documentsLoading, updateTableScrollY]);
 
   useEffect(() => {
     if (typeof window === "undefined") {

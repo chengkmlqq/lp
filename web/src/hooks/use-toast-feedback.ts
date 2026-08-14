@@ -2,11 +2,12 @@
 
 import { App } from "antd";
 import { useEffect, useRef } from "react";
+import { formatErrorMessage, type ApiError } from "@/lib/api";
 
 type ToastFeedbackOptions = {
   errorTitle?: string;
   successTitle?: string;
-  errorMessage: string;
+  errorMessage: ApiError | string | null;
   successMessage?: string;
   clearError?: () => void;
   clearSuccess?: () => void;
@@ -25,15 +26,16 @@ export function useToastFeedback({
   const lastSuccessRef = useRef("");
 
   useEffect(() => {
-    if (!errorMessage) {
+    const renderedError = formatErrorMessage(errorMessage);
+    if (!renderedError) {
       lastErrorRef.current = "";
       return;
     }
-    if (!errorMessage || errorMessage === lastErrorRef.current) {
+    if (renderedError === lastErrorRef.current) {
       return;
     }
-    lastErrorRef.current = errorMessage;
-    message.error(`${errorTitle}：${errorMessage}`);
+    lastErrorRef.current = renderedError;
+    message.error(`${errorTitle}：${renderedError}`);
     clearError?.();
   }, [clearError, errorMessage, errorTitle, message]);
 
