@@ -15,6 +15,7 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
     fi; \
     apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        wine \
         libwine:amd64 \
         wine64 \
     && command -v wine >/dev/null \
