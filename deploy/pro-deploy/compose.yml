@@ -110,7 +110,7 @@ services:
       - -A
       - app.core.celery_app.celery_app
       - worker
-      - --hostname=主任务worker@lp
+      - --hostname=主任务worker
       - --loglevel=${CELERY_LOG_LEVEL}
       - --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
     depends_on:
@@ -139,7 +139,7 @@ services:
       - -A
       - ctb_worker.celery_app
       - worker
-      - --hostname=地形worker@lp
+      - --hostname=地形worker
       - --loglevel=INFO
       - --concurrency=1
       - --queues=ctb
