@@ -31,6 +31,7 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
     fi; \
     apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        curl \
         unzip \
         xvfb \
     && rm -rf /var/lib/apt/lists/*
