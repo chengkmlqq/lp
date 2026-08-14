@@ -38,45 +38,73 @@ if [ -f "${STATIC_ROOT}/ATP/tpbig.exe" ]; then
 fi
 
 # ============================================================
-# MATLAB Runtime（Wine）首启静默安装（仅 fquiz-matlab-worker 镜像）
-# 标记：仅 matlab-worker 镜像内存在 /opt/mcr-stage（解压后的 MCR 安装包）。
-# 普通 api/worker 镜像无此目录，脚本直接跳过，不影响现有行为。
+# MATLAB Runtime（Wine）幂等安装（仅 fquiz-matlab-worker 镜像）
+#
+# 方案 2：构建镜像仅携带 mcr.zip（未解压，/opt/mcr-stage/mcr.zip）。
+# - 解压：部署机由 GitHub Actions 完成（见 workflow "解压 MCR" 步骤），
+#   解压到外部持久卷（挂载到 /opt/mcr-stage，无 .unpacked 标记时执行）。
+# - Wine 安装：本脚本在容器首启时执行，安装到外部持久卷挂载的 /root/.wine，
+#   写 .installed 标记；重复发布/容器重建因标记存在而跳过（幂等）。
+# 普通 api/worker 镜像无 /opt/mcr-stage/mcr.zip，脚本直接跳过。
 # ============================================================
-if [ -d /opt/mcr-stage ] && [ ! -f /root/.wine/drive_c/MATLAB_Runtime-installed ]; then
-    echo "entrypoint: 检测到 /opt/mcr-stage，开始经 Wine 静默安装 MATLAB Runtime..."
-    mkdir -p /root/.wine
+if [ -f /opt/mcr-stage/mcr.zip ]; then
+    echo "entrypoint: 检测到 MCR zip，开始幂等安装 MATLAB Runtime（首选官方源，失败回退 84）..."
 
-    # 无头环境：初始化 Wine 前缀（wineboot）
     export WINEDLLOVERRIDES="winemenubuilder.exe=d"
-    export WINEPREFIX="/root/.wine"
-    if ! command -v xvfb-run >/dev/null 2>&1; then
-        echo "entrypoint: 未找到 xvfb-run，跳过 Runtime 安装（将降级到 Python 规则）"
+    export WINEPREFIX="${WINEPREFIX:-/root/.wine}"
+    UNPACKED_MARKER="/opt/mcr-stage/.unpacked"
+    INSTALLED_MARKER="${WINEPREFIX}/drive_c/MATLAB_Runtime-installed"
+
+    # 1) 解压（若部署机未解压或因任何原因缺标记，则此处补上）
+    if [ ! -f "${UNPACKED_MARKER}" ]; then
+        echo "entrypoint: 解压 MCR zip 到 /opt/mcr-stage ..."
+        mkdir -p /opt/mcr-stage
+        cd /opt/mcr-stage
+        if unzip -q -o /opt/mcr-stage/mcr.zip; then
+            touch "${UNPACKED_MARKER}"
+            echo "entrypoint: 解压完成"
+        else
+            echo "entrypoint: 警告 - MCR zip 解压失败，尝试继续（可能不完整）"
+        fi
     else
-        # 生成静默安装输入文件：安装到 Wine 的 C:\MATLAB_Runtime
-        cat > /tmp/mcr_input.txt <<EOF
+        echo "entrypoint: MCR 已解压过（.unpacked 存在），跳过解压"
+    fi
+
+    # 2) Wine 安装（幂等：有标记则跳过）
+    if [ ! -f "${INSTALLED_MARKER}" ]; then
+        echo "entrypoint: 开始 Wine 静默安装 MATLAB Runtime（WINEPREFIX=${WINEPREFIX}）..."
+        mkdir -p "${WINEPREFIX}"
+
+        if ! command -v xvfb-run >/dev/null 2>&1; then
+            echo "entrypoint: 未找到 xvfb-run，跳过 Runtime 安装（将降级到 Python 规则）"
+        else
+            cat > /tmp/mcr_input.txt <<EOF
 destinationFolder=C:\MATLAB_Runtime
 two=no
 agreeToLicense=yes
 mode=silent
 EOF
-        # 定位安装器：解压包内含 setup.exe
-        SETUP="$(find /opt/mcr-stage -maxdepth 2 -iname 'setup.exe' | head -1)"
-        if [ -z "${SETUP}" ]; then
-            echo "entrypoint: 未找到 setup.exe，尝试直接运行（可能在子目录）"
-            SETUP="/opt/mcr-stage/setup.exe"
+            SETUP="$(find /opt/mcr-stage -maxdepth 2 -iname 'setup.exe' | head -1)"
+            if [ -z "${SETUP}" ]; then
+                echo "entrypoint: 未找到 setup.exe，尝试直接运行（可能在子目录）"
+                SETUP="/opt/mcr-stage/setup.exe"
+            fi
+            echo "entrypoint: 安装器 = ${SETUP}"
+            timeout 120 xvfb-run -a wineboot --init || true
+            timeout 900 xvfb-run -a wine "${SETUP}" -inputfile /tmp/mcr_input.txt || \
+            timeout 900 xvfb-run -a wine "${SETUP}" -silent -verbose -inputfile /tmp/mcr_input.txt || true
+            touch "${INSTALLED_MARKER}" 2>/dev/null || true
+            echo "entrypoint: MATLAB Runtime 安装流程结束"
+            rm -f /tmp/mcr_input.txt || true
         fi
-        echo "entrypoint: 安装器 = ${SETUP}"
-        # Wine 首次初始化（timeout 防止 headless 卡住）
-        timeout 120 xvfb-run -a wineboot --init || true
-        # 静默安装（经 Wine 执行 Windows setup.exe）
-        timeout 900 xvfb-run -a wine "${SETUP}" -inputfile /tmp/mcr_input.txt || \
-        timeout 900 xvfb-run -a wine "${SETUP}" -silent -verbose -inputfile /tmp/mcr_input.txt || true
-        # 安装完成标记（无论成功与否，避免每次重启重试）
-        touch /root/.wine/drive_c/MATLAB_Runtime-installed 2>/dev/null || true
-        echo "entrypoint: MATLAB Runtime 安装流程结束"
-        # 释放解压临时空间
-        rm -rf /opt/mcr-stage /tmp/mcr_input.txt || true
+    else
+        echo "entrypoint: MATLAB Runtime 已安装（.installed 存在），跳过安装"
     fi
+
+    # 3) 释放解压后的中间文件（保留 mcr.zip 供后续重建复用；删掉已展开的目录以省空间）
+    #    注意：不删 mcr.zip 本身，避免将来需要重装时又要重新下载。
+    echo "entrypoint: 保留 /opt/mcr-stage/mcr.zip（供复用），清理展开目录..."
+    find /opt/mcr-stage -mindepth 1 -maxdepth 1 ! -name 'mcr.zip' ! -name '.unpacked' -exec rm -rf {} + 2>/dev/null || true
 fi
 
 # Execute the main container command

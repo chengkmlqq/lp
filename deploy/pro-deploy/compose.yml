@@ -154,13 +154,19 @@ services:
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
       # LP-316：判别任务专用队列（matlab-diagnostics），仅本镜像消费。
-      # 判别系统编译器产物目录：镜像内 /app/matlab-wave（含 waveform_engine_v2.exe）。
+      # 判别系统编译器产物目录：外部卷挂载到 /app/matlab-wave（含 waveform_engine_v2.exe），
+      # exe 改动无需重建镜像，替换部署机卷内文件即可。
       FAULT_DIAG_MATLAB_COMPILED_DIR: ${FAULT_DIAG_MATLAB_COMPILED_DIR:-/app/matlab-wave}
       FAULT_DIAG_LEDGER_CSV: ${FAULT_DIAG_LEDGER_CSV:-}
       WINE_BINARY_PATH: ${WINE_BINARY_PATH:-wine}
+      # 方案 2：MCR zip / 解压目录 / Wine 前缀均放外部持久卷，重建容器不丢、幂等。
+      WINEPREFIX: ${WINEPREFIX:-/root/.wine}
     volumes:
       - ./data/app:/app/data
       - ./data/matlab-wave-module:/app/data/matlab-wave-module
+      - ./data/matlab-worker/matlab-wave:/app/matlab-wave
+      - ./data/matlab-worker/mcr:/opt/mcr-stage
+      - ./data/matlab-worker/wine:${WINEPREFIX:-/root/.wine}
     restart: unless-stopped
     logging: *default-logging
 

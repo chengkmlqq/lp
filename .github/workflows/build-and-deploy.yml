@@ -537,6 +537,38 @@ jobs:
               done
             }
 
+            # ── 方案 2：在部署机幂等解压 MATLAB Runtime（外部持久卷） ──
+            # MCR zip 由镜像 /opt/mcr-stage/mcr.zip 提供；解压目标与容器挂载一致
+            # （deploy/pro-deploy/data/matlab-worker/mcr → /opt/mcr-stage）。
+            # .unpacked 标记：仅首次（或无标记时）解压，重复发布/重新拉取镜像跳过。
+            MW_DIR="${DEPLOY_DIR}/deploy/pro-deploy/data/matlab-worker"
+            MCR_DIR="${MW_DIR}/mcr"
+            MCR_ZIP_PATH="${MCR_DIR}/mcr.zip"
+            UNPACKED_MARKER="${MCR_DIR}/.unpacked"
+            mkdir -p "${MCR_DIR}" "${MW_DIR}/matlab-wave"
+            
+            # 1) 从镜像抽取 mcr.zip（仅当本地缺失且未解压时；已解压则完全跳过）
+            if [ -f "${UNPACKED_MARKER}" ]; then
+              echo "MCR 已在部署机解压过（.unpacked 存在），跳过镜像抽取与解压"
+            else
+              if [ ! -f "${MCR_ZIP_PATH}" ]; then
+                echo "从镜像 ${MATLAB_WORKER_IMAGE}:${IMAGE_TAG} 抽取 mcr.zip ..."
+                docker run --rm --entrypoint /bin/sh -v "${MCR_DIR}:/out" "${MATLAB_WORKER_IMAGE}:${IMAGE_TAG}" -c "cp /opt/mcr-stage/mcr.zip /out/mcr.zip"
+                ls -lh "${MCR_ZIP_PATH}"
+              else
+                echo "mcr.zip 已存在于部署机，跳过抽取"
+              fi
+            
+              # 2) 幂等解压到 MCR_DIR（对齐容器挂载 /opt/mcr-stage）
+              echo "解压 MCR zip 到 ${MCR_DIR} ..."
+              ( cd "${MCR_DIR}" && unzip -q -o mcr.zip ) || { echo "[error] MCR 解压失败"; exit 1; }
+              touch "${UNPACKED_MARKER}"
+              echo "MCR 解压完成并写入标记"
+            fi
+            
+            # 确保 wine 持久卷目录存在（容器挂载 ${WINEPREFIX}）
+            mkdir -p "${MW_DIR}/wine"
+            
             pull_with_retry
 
             if ! compose_run up -d --remove-orphans; then
