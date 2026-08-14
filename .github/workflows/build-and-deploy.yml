@@ -62,12 +62,9 @@ jobs:
           cache-from: type=gha,scope=fquiz-api
           cache-to: type=gha,mode=max,scope=fquiz-api
 
-  # ───── Web 镜像（分架构并行构建） ─────
+  # ───── Web 镜像（仅 amd64） ─────
   build-web:
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
-    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
@@ -90,12 +87,12 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: 构建并推送 Web 镜像 (${{ matrix.arch }})
+      - name: 构建并推送 Web 镜像
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./web/Dockerfile
-          platforms: linux/${{ matrix.arch }}
+          platforms: linux/amd64
           pull: true
           push: true
           provenance: false
@@ -105,17 +102,14 @@ jobs:
             NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000' }}
             NEXT_PUBLIC_APP_BASE_PATH=${{ vars.NEXT_PUBLIC_APP_BASE_PATH || '' }}
           tags: |
-            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}-${{ matrix.arch }}
-            ${{ steps.vars.outputs.image }}:latest-${{ matrix.arch }}
-          cache-from: type=gha,scope=fquiz-web-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=fquiz-web-${{ matrix.arch }}
+            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
+            ${{ steps.vars.outputs.image }}:latest
+          cache-from: type=gha,scope=fquiz-web
+          cache-to: type=gha,mode=max,scope=fquiz-web
 
-  # ───── ctb-worker 镜像（分架构并行构建） ─────
+  # ───── ctb-worker 镜像（仅 amd64） ─────
   build-ctb-worker:
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
-    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
@@ -138,62 +132,26 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: 构建并推送 ctb-worker 镜像 (${{ matrix.arch }})
+      - name: 构建并推送 ctb-worker 镜像
         uses: docker/build-push-action@v7
         with:
           context: ./services/ctb-worker
           file: ./services/ctb-worker/Dockerfile.worker
-          platforms: linux/${{ matrix.arch }}
+          platforms: linux/amd64
           pull: true
           push: true
           provenance: false
           sbom: false
           tags: |
-            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}-${{ matrix.arch }}
-            ${{ steps.vars.outputs.image }}:latest-${{ matrix.arch }}
-          cache-from: type=gha,scope=ctb-worker-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=ctb-worker-${{ matrix.arch }}
-
-  # ───── 合并多架构 manifest 标签 ─────
-  merge-manifests:
-    needs: [build-web, build-ctb-worker]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 登录镜像仓库
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-
-      - name: 安装 Buildx（用于 imagetools）
-        uses: docker/setup-buildx-action@v4
-
-      - name: 合并 Web 多架构 manifest
-        run: |
-          IMG="${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/fquiz-web"
-          TAG="${GITHUB_SHA}"
-          # 创建 sha 标签的多架构 manifest
-          docker buildx imagetools create -t "${IMG}:${TAG}" \
-            "${IMG}:${TAG}-amd64" "${IMG}:${TAG}-arm64"
-          # 创建 latest 标签的多架构 manifest
-          docker buildx imagetools create -t "${IMG}:latest" \
-            "${IMG}:latest-amd64" "${IMG}:latest-arm64"
-
-      - name: 合并 ctb-worker 多架构 manifest
-        run: |
-          IMG="${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/ctb-worker"
-          TAG="${GITHUB_SHA}"
-          docker buildx imagetools create -t "${IMG}:${TAG}" \
-            "${IMG}:${TAG}-amd64" "${IMG}:${TAG}-arm64"
-          docker buildx imagetools create -t "${IMG}:latest" \
-            "${IMG}:latest-amd64" "${IMG}:latest-arm64"
+            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
+            ${{ steps.vars.outputs.image }}:latest
+          cache-from: type=gha,scope=ctb-worker
+          cache-to: type=gha,mode=max,scope=ctb-worker
 
   # ───── 部署到生产服务器 ─────
   deploy:
     runs-on: ubuntu-latest
-    needs: [build-api, merge-manifests]
+    needs: [build-api, build-web, build-ctb-worker]
     if: github.ref == 'refs/heads/dev'
 
     steps:
