@@ -34,6 +34,14 @@ async def get_traveling_wave_status(
     return check_environment()
 
 
+@router.get("/environment", response_model=TravelingWaveStatusResponse)
+async def get_traveling_wave_environment(
+    _: CurrentUser = Depends(require_any_permission("traveling_wave.read", "traveling_wave.manage")),
+) -> TravelingWaveStatusResponse:
+    """检测行波分析服务环境可用性（``/status`` 的别名，供前端环境探针调用）。"""
+    return check_environment()
+
+
 @router.post("/analyze", response_model=TravelingWaveAnalyzeResponse)
 async def submit_traveling_wave_analysis(
     payload: TravelingWaveAnalyzeRequest,

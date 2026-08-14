@@ -33,24 +33,28 @@ def check_environment() -> TravelingWaveStatusResponse:
     numpy_ok = False
     scipy_ok = False
     matplotlib_ok = False
+    missing_components: list[str] = []
     error_parts: list[str] = []
 
     try:
         import numpy  # noqa: F401
         numpy_ok = True
     except ImportError:
+        missing_components.append("numpy")
         error_parts.append("numpy not available")
 
     try:
         import scipy  # noqa: F401
         scipy_ok = True
     except ImportError:
+        missing_components.append("scipy")
         error_parts.append("scipy not available")
 
     try:
         import matplotlib  # noqa: F401
         matplotlib_ok = True
     except ImportError:
+        missing_components.append("matplotlib")
         error_parts.append("matplotlib not available")
 
     return TravelingWaveStatusResponse(
@@ -58,6 +62,7 @@ def check_environment() -> TravelingWaveStatusResponse:
         numpy_available=numpy_ok,
         scipy_available=scipy_ok,
         matplotlib_available=matplotlib_ok,
+        missing_components=missing_components,
         error="; ".join(error_parts) if error_parts else None,
     )
 

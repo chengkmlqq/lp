@@ -15,6 +15,7 @@ class TravelingWaveStatusResponse(BaseModel):
     numpy_available: bool = False
     scipy_available: bool = False
     matplotlib_available: bool = False
+    missing_components: list[str] = Field(default_factory=list, description="Missing dependency module names")
     error: str | None = None
 
 

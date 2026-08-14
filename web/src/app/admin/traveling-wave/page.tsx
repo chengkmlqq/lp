@@ -35,6 +35,7 @@ type TravelingWaveStatusResponse = {
   numpy_available: boolean;
   scipy_available: boolean;
   matplotlib_available: boolean;
+  missing_components: string[];
   error: string | null;
 };
 
@@ -106,6 +107,32 @@ function formatInfoRow(label: string, value: string | number | null | undefined)
   return `${label}: ${value}`;
 }
 
+function getMissingComponents(status: TravelingWaveStatusResponse | null): string[] {
+  if (!status) return [];
+  if (Array.isArray(status.missing_components) && status.missing_components.length > 0) {
+    return status.missing_components;
+  }
+  // Fallback: derive from available booleans (older backend without structured field)
+  const missing: string[] = [];
+  if (!status.python_available) missing.push("python");
+  if (!status.numpy_available) missing.push("numpy");
+  if (!status.scipy_available) missing.push("scipy");
+  if (!status.matplotlib_available) missing.push("matplotlib");
+  return missing;
+}
+
+function formatMissingComponents(missing: string[]): string {
+  if (missing.length === 0) return "";
+  const labels: Record<string, string> = {
+    python: "Python",
+    numpy: "numpy",
+    scipy: "scipy",
+    matplotlib: "matplotlib",
+  };
+  const names = missing.map((name) => labels[name] || name);
+  return names.join("、");
+}
+
 function buildParseInfoBlock(label: string, info: TravelingWaveParseResult | null): string {
   if (!info) return `${label}: 未提供`;
   return [
@@ -126,6 +153,7 @@ export default function AdminTravelingWavePage() {
   const [status, setStatus] = useState<TravelingWaveStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [lastValues, setLastValues] = useState<AnalyzeFormValues | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -255,6 +283,7 @@ export default function AdminTravelingWavePage() {
     }
     setError("");
     setSuccess("");
+    setLastValues(values);
     await analyzeMutation.mutateAsync(values);
   };
 
@@ -263,7 +292,25 @@ export default function AdminTravelingWavePage() {
     form.resetFields();
   };
 
+  const handleRetry = async () => {
+    if (!canManage) {
+      setError("缺少 traveling_wave.manage 权限");
+      return;
+    }
+    if (!lastValues) return;
+    setError("");
+    setSuccess("");
+    await analyzeMutation.mutateAsync(lastValues);
+  };
+
+  const handleCheckEnvironment = () => {
+    void loadStatus();
+  };
+
   const result = resultQuery.data;
+
+  const missingComponents = useMemo(() => getMissingComponents(status), [status]);
+  const missingComponentsText = useMemo(() => formatMissingComponents(missingComponents), [missingComponents]);
 
   // ── Derived info block ──────────────────────────────────────────
 
@@ -409,6 +456,17 @@ export default function AdminTravelingWavePage() {
                 </Col>
               </Row>
 
+              {/* Environment warning in submit area */}
+              {missingComponents.length > 0 && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message="分析服务环境不完整"
+                  description={`缺少依赖组件：${missingComponentsText}。任务仍可提交，但分析可能失败（由 worker 兜底报错），建议先修复服务端环境。`}
+                />
+              )}
+
               {/* Actions */}
               <Space wrap>
                 <Button
@@ -475,7 +533,32 @@ export default function AdminTravelingWavePage() {
                   </Typography.Text>
                 </Space>
                 {result.error_message && (
-                  <Alert type="error" showIcon message="分析失败" description={result.error_message} />
+                  <Alert
+                    type="error"
+                    showIcon
+                    message="分析失败"
+                    description={result.error_message}
+                    action={
+                      <Space direction="vertical" size={4}>
+                        {canManage && (
+                          <Button
+                            type="primary"
+                            ghost
+                            size="small"
+                            icon={<ThunderboltOutlined />}
+                            loading={analyzeMutation.isPending}
+                            disabled={!lastValues}
+                            onClick={() => void handleRetry()}
+                          >
+                            重试
+                          </Button>
+                        )}
+                        <Button size="small" icon={<ReloadOutlined />} loading={statusLoading} onClick={handleCheckEnvironment}>
+                          环境检测
+                        </Button>
+                      </Space>
+                    }
+                  />
                 )}
 
                 {/* Parsed Info */}
