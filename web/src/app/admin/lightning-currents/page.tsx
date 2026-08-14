@@ -968,7 +968,7 @@ export default function AdminLightningCurrentsPage() {
               <Input placeholder="例如 LCS-1000" />
             </Form.Item>
             <Form.Item name="sample_interval_us" label="采样间隔(us)">
-              <InputNumber className="w-full" min={0.000001} precision={6} />
+              <InputNumber style={{ width: "100%" }} min={0.000001} precision={6} />
             </Form.Item>
             <Form.Item name="event_time" label="发生时间">
               <DatePicker className="w-full" showTime placeholder="选择日期时间" />
