@@ -110,6 +110,7 @@ services:
       - -A
       - app.core.celery_app.celery_app
       - worker
+      - --hostname=main-worker@lp
       - --loglevel=${CELERY_LOG_LEVEL}
       - --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
     depends_on:
@@ -133,6 +134,15 @@ services:
 
   ctb-worker:
     image: ${CTB_WORKER_IMAGE}
+    command:
+      - celery
+      - -A
+      - ctb_worker.celery_app
+      - worker
+      - --hostname=ctb-worker@lp
+      - --loglevel=INFO
+      - --concurrency=1
+      - --queues=ctb
     depends_on:
       - redis
     environment:
