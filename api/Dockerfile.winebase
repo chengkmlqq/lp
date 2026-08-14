@@ -4,8 +4,13 @@ ARG REGISTRY=crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com
 ARG REGISTRY_NAMESPACE=ck-registry
 FROM ${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-base:latest
 
-RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
-    sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list 2>/dev/null; \
+# apt 源镜像，默认空 = 官方源（海外 CI runner）；国内构建传 mirrors.ustc.edu.cn
+ARG APT_MIRROR=""
+
+RUN if [ -n "${APT_MIRROR}" ]; then \
+        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list 2>/dev/null; \
+    fi; \
     dpkg --add-architecture i386 \
     && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

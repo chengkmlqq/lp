@@ -6,6 +6,9 @@ WORKDIR /app
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_DEFAULT_TIMEOUT=300
 ARG PIP_RETRIES=20
+# apt 源镜像（如 mirrors.ustc.edu.cn / mirrors.aliyun.com）。默认空 = 官方源，
+# 适配海外 CI runner（GitHub Actions 连不上 USTC）；国内构建传 --build-arg APT_MIRROR=mirrors.ustc.edu.cn
+ARG APT_MIRROR=""
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -19,8 +22,10 @@ ENV LC_ALL=C.UTF-8
 # 一级基础镜像：仅包含不随业务代码变化的系统库 + Python 依赖。
 # 不含 wine（wine 单独放在二级 wine-base 镜像，仅 amd64 可用）。
 # 构建用 g++/gcc 在 GDAL 绑定编译后 purge。
-RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
-    sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list 2>/dev/null; \
+RUN if [ -n "${APT_MIRROR}" ]; then \
+        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list 2>/dev/null; \
+    fi; \
     apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         libexpat1 \
