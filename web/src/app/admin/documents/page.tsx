@@ -89,6 +89,7 @@ export default function AdminDocumentsPage() {
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
   const [deletingDocumentId, setDeletingDocumentId] = useState<number | null>(null);
+  const [treeFilterKeyword, setTreeFilterKeyword] = useState("");
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<"draft" | "published" | undefined>(undefined);
@@ -420,6 +421,26 @@ export default function AdminDocumentsPage() {
     }));
   };
 
+  const filteredTreeData = useMemo(() => {
+    const keyword = treeFilterKeyword.trim().toLowerCase();
+    if (!keyword) {
+      return treeData ?? [];
+    }
+    const matches = (chapter: DocumentChapterTreeItem): boolean =>
+      chapter.name.toLowerCase().includes(keyword);
+    const prune = (chapters: DocumentChapterTreeItem[]): DocumentChapterTreeItem[] => {
+      const result: DocumentChapterTreeItem[] = [];
+      for (const chapter of chapters) {
+        const children = prune(chapter.children);
+        if (matches(chapter) || children.length > 0) {
+          result.push({ ...chapter, children });
+        }
+      }
+      return result;
+    };
+    return prune(treeData ?? []);
+  }, [treeData, treeFilterKeyword]);
+
   const flattenChapters = useCallback((chapters: DocumentChapterTreeItem[]): DocumentChapter[] => {
     const result: DocumentChapter[] = [];
     const traverse = (items: DocumentChapterTreeItem[]) => {
@@ -640,7 +661,7 @@ export default function AdminDocumentsPage() {
     return (
       <AntCard
         key={doc.id}
-        className="admin-system-params-param-card"
+        className="admin-documents-document-card"
         size="small"
         title={
           <Space className="min-w-0" size={8}>
@@ -684,12 +705,12 @@ export default function AdminDocumentsPage() {
         }
       >
         <Space direction="vertical" size={10} style={{ width: "100%" }}>
-          <div className="admin-system-params-param-card-field">
+          <div className="admin-documents-document-card-field">
             <Typography.Text type="secondary">排序</Typography.Text>
             <Typography.Text>{doc.sort_order}</Typography.Text>
           </div>
           {doc.content && (
-            <div className="admin-system-params-param-card-field">
+            <div className="admin-documents-document-card-field">
               <Typography.Text type="secondary">内容</Typography.Text>
               <Typography.Text ellipsis={{ tooltip: doc.content }}>
                 {doc.content.substring(0, 100)}
@@ -703,11 +724,11 @@ export default function AdminDocumentsPage() {
   };
 
   const skeletonMenu = (
-    <div className="admin-system-params-skeleton-menu">
+    <div className="admin-documents-skeleton-menu">
       {[0, 1, 2, 3, 4, 5].map((i) => (
         <div
           key={i}
-          className="admin-system-params-skeleton-item"
+          className="admin-documents-skeleton-item"
           style={i % 3 === 0 ? {} : { paddingLeft: 20 }}
         >
           <Skeleton.Input active size="small" block style={{ width: `${50 + (i % 3) * 15}%` }} />
@@ -761,13 +782,22 @@ export default function AdminDocumentsPage() {
         className="admin-documents-tabs"
         tabBarExtraContent={
           canManage && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleCreateDocument}
-            >
-              新建文档
-            </Button>
+            <Space>
+              <Button
+                type="default"
+                icon={<FolderOutlined />}
+                onClick={handleCreateChapter}
+              >
+                新建章节
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleCreateDocument}
+              >
+                新建文档
+              </Button>
+            </Space>
           )
         }
         items={[
@@ -778,31 +808,35 @@ export default function AdminDocumentsPage() {
             children: (
               <div ref={pageCardRef} className="admin-documents-list-pane">
         {/* ===== Body Area: Two-column layout ===== */}
-        <div ref={containerRef} className="admin-system-params-page-body">
+        <div ref={containerRef} className="admin-documents-page-body">
           {/* Chapter sidebar (hidden on mobile) */}
           {!isMobile && (
             <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
               <AntCard
-                title="章节目录"
-                className="admin-system-params-sider-card"
+                className="admin-documents-tree-card"
                 style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-                bodyStyle={{ flex: 1, overflow: "auto", padding: 0 }}
-                actions={canManage ? [
-                  <Button type="text" key="add-chapter" onClick={handleCreateChapter} style={{ width: "100%", color: "var(--ant-color-primary)" }}>
-                    <PlusOutlined /> 新建章节
-                  </Button>,
-                ] : undefined}
+                bodyStyle={{ flex: 1, padding: 0 }}
               >
-                {treeLoading ? (
-                  skeletonMenu
-                ) : treeData && treeData.length > 0 ? (
-                  <div className="admin-system-params-sider-menu">
+                <div className="admin-documents-sider-search">
+                  <Input
+                    className="admin-documents-search-input"
+                    placeholder="搜索章节..."
+                    prefix={<SearchOutlined />}
+                    value={treeFilterKeyword}
+                    onChange={(e) => setTreeFilterKeyword(e.target.value)}
+                    allowClear
+                  />
+                </div>
+                <div className="admin-documents-sider-menu">
+                  {treeLoading ? (
+                    skeletonMenu
+                  ) : filteredTreeData.length > 0 ? (
                     <Tree
                       showLine
                       defaultExpandAll
                       expandedKeys={expandedKeys}
                       onExpand={(keys) => setExpandedKeys(keys)}
-                      treeData={convertToTreeData(treeData)}
+                      treeData={convertToTreeData(filteredTreeData)}
                       onSelect={(keys) => {
                         if (keys.length > 0) {
                           const key = keys[0] as string;
@@ -815,29 +849,31 @@ export default function AdminDocumentsPage() {
                         }
                       }}
                     />
-                  </div>
-                ) : (
-                  <div className="admin-system-params-sider-empty">
+                  ) : (
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="未找到符合筛选条件的章节。"
+                      description={
+                        treeFilterKeyword.trim()
+                          ? "未找到匹配的章节"
+                          : "未找到符合筛选条件的章节。"
+                      }
                     />
-                  </div>
-                )}
+                  )}
+                </div>
               </AntCard>
             </div>
           )}
           {!isMobile && (
             <div
-              className="admin-system-params-resize-handle"
+              className="admin-documents-resize-handle"
               onMouseDown={handleResizeStart}
             >
-              <div className="admin-system-params-resize-handle-line" />
+              <div className="admin-documents-resize-handle-line" />
             </div>
           )}
           {/* Right Panel: filter + table/card view */}
           <div
-            className="admin-system-params-main"
+            className="admin-documents-main"
           >
             {viewMode === "card" ? (
               <div className="admin-filter-bar">
@@ -933,8 +969,8 @@ export default function AdminDocumentsPage() {
             {viewMode === "table" ? (
               <div
                 ref={tableScrollAnchorRef}
-                className="admin-system-params-table-anchor"
-                style={{ "--admin-system-params-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                className="admin-documents-table-anchor"
+                style={{ "--admin-documents-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
               >
                 <Table<Document>
                   rowKey="id"
@@ -967,20 +1003,20 @@ export default function AdminDocumentsPage() {
                 />
               </div>
             ) : (
-              <div className="admin-system-params-card-view">
+              <div className="admin-documents-card-view">
                 {documentsLoading && allLoadedDocuments.length === 0 ? (
-                  <div className="admin-system-params-card-view-state">
+                  <div className="admin-documents-card-view-state">
                     <Spin tip="加载中..." />
                   </div>
                 ) : allLoadedDocuments.length === 0 ? (
-                  <div className="admin-system-params-card-view-state">
+                  <div className="admin-documents-card-view-state">
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
                       description="未找到符合筛选条件的文档。"
                     />
                   </div>
                 ) : (
-                  <div className="admin-system-params-card-view-content">
+                  <div className="admin-documents-card-view-content">
                     <Row gutter={[12, 12]}>
                       {allLoadedDocuments.map((doc) => (
                         <Col key={doc.id} xs={24} sm={24} md={12} lg={8} xl={6}>
