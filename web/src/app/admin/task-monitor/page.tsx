@@ -901,32 +901,57 @@ export default function AdminTaskMonitorPage() {
           </div>
         ) : (
           <>
-            {logModalStreaming && !logModalStatus && (
-              <div style={{ marginBottom: 8, fontSize: 12, color: "var(--gray-11)" }}>
-                <Spin size="small" style={{ marginRight: 6 }} />
-                任务运行中，实时接收日志...
-              </div>
-            )}
-            {logModalStatus && (
-              <div style={{ marginBottom: 8, fontSize: 12, color: "var(--gray-11)" }}>
-                {logModalStatus}
-              </div>
-            )}
+            <Space
+              style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}
+              align="center"
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {logModalStreaming && !logModalStatus && (
+                  <>
+                    <Spin size="small" />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      任务运行中，实时接收日志...
+                    </Text>
+                  </>
+                )}
+                {logModalStatus && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {logModalStatus}
+                  </Text>
+                )}
+              </span>
+              {logModalContent && (
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => navigator.clipboard?.writeText(logModalContent)}
+                >
+                  复制
+                </Button>
+              )}
+            </Space>
             <pre
               ref={logModalContentRef}
               style={{
                 maxHeight: "60vh",
                 overflow: "auto",
                 padding: "16px",
-                backgroundColor: "#f5f5f5",
+                backgroundColor: "#0f172a",
+                color: "#e2e8f0",
                 borderRadius: "4px",
                 fontSize: "12px",
                 lineHeight: "1.5",
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
               }}
             >
-              {logModalContent}
+              {logModalContent || (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={logModalStatus ? logModalStatus : "等待日志..."}
+                />
+              )}
             </pre>
           </>
         )}
