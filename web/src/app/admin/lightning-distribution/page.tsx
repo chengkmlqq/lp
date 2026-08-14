@@ -800,26 +800,17 @@ export default function AdminLightningDistributionPage() {
             <Typography.Text>{record.valid_count}</Typography.Text>
           </div>
           <div className="admin-lightning-distribution-event-card-field">
-            <Typography.Text type="secondary">
-              整体 Ng
-              <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.overallNg} />
-            </Typography.Text>
+            <Typography.Text type="secondary">整体 Ng</Typography.Text>
             <Typography.Text>{formatNumber(record.overall_ng, 4)}</Typography.Text>
           </div>
           <div className="admin-lightning-distribution-event-card-field">
-            <Typography.Text type="secondary">
-              最大电流
-              <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.maxCurrent} />
-            </Typography.Text>
+            <Typography.Text type="secondary">最大电流</Typography.Text>
             <Typography.Text>
               {formatNumber(record.max_abs_current, 2)} kA
             </Typography.Text>
           </div>
           <div className="admin-lightning-distribution-event-card-field">
-            <Typography.Text type="secondary">
-              平均电流
-              <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
-            </Typography.Text>
+            <Typography.Text type="secondary">平均电流</Typography.Text>
             <Typography.Text>
               {formatNumber(record.avg_abs_current, 2)} kA
             </Typography.Text>
