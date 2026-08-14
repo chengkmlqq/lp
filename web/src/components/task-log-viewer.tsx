@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Empty, Modal, Space, Spin, Tag, Typography } from "antd";
+import { Button, Drawer, Empty, Space, Spin, Tag, Typography } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { readApiError, API_BASE_URL } from "@/lib/api";
@@ -10,7 +10,7 @@ import type { WsTicketResponse } from "@/types/ws";
 const { Text } = Typography;
 
 /**
- * 通用任务日志查看弹窗。
+ * 通用任务日志查看抽屉。
  *
  * 从任务监控页（task-monitor/page.tsx）提炼的 SSE 日志实现：
  *  1. POST /api/v1/ws/ticket 取一次性凭证
@@ -23,7 +23,7 @@ const { Text } = Typography;
  *  6. 自动滚动到底部（用户上滚时暂停），可复制
  *  7. 状态 Tag：连接中 / 实时接收中 / 重连中 / 已结束 / 无日志 / 连接中断
  */
-export function TaskLogViewerModal({
+export function TaskLogViewerDrawer({
   taskId,
   title,
   open,
@@ -252,17 +252,12 @@ export function TaskLogViewerModal({
           : "";
 
   return (
-    <Modal
+    <Drawer
       title={title}
+      width={800}
       open={open}
-      onCancel={handleClose}
-      footer={[
-        <Button key="close" onClick={handleClose}>
-          关闭
-        </Button>,
-      ]}
-      width={760}
-      style={{ top: 20 }}
+      onClose={handleClose}
+      destroyOnClose
     >
       {loading ? (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
@@ -296,7 +291,7 @@ export function TaskLogViewerModal({
           <pre
             ref={contentRef}
             style={{
-              maxHeight: "420px",
+              maxHeight: "60vh",
               overflow: "auto",
               padding: "16px",
               backgroundColor: "#0f172a",
@@ -318,6 +313,6 @@ export function TaskLogViewerModal({
           </pre>
         </>
       )}
-    </Modal>
+    </Drawer>
   );
 }

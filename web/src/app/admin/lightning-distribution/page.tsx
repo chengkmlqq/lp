@@ -34,7 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 import { useAuth } from "@/components/auth-provider";
-import { TaskLogViewerModal } from "@/components/task-log-viewer";
+import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { TowerDensityView } from "@/components/lightning-tower-density-view";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -1012,7 +1012,7 @@ export default function AdminLightningDistributionPage() {
         />
       )}
 
-      <TaskLogViewerModal
+      <TaskLogViewerDrawer
         taskId={logModalTaskId}
         title={logModalTitle}
         open={logModalOpen}

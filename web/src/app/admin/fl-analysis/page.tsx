@@ -16,7 +16,7 @@ import {
 
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
-import { TaskLogViewerModal } from "@/components/task-log-viewer";
+import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { CreateJobForm } from "@/components/fl-analysis/create-job-form";
 import { TowerDetailView } from "@/components/fl-analysis/detail-modal";
 import { JobDetailPanel } from "@/components/fl-analysis/job-detail-panel";
@@ -805,7 +805,7 @@ export default function AdminFlAnalysisPage() {
         }}
       />
 
-      <TaskLogViewerModal
+      <TaskLogViewerDrawer
         taskId={logModalTaskId}
         title={logModalTitle}
         open={logModalOpen}
