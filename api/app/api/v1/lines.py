@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
+from ...core.file_upload import validate_upload
 from ...schemas.line import (
     LineCreateRequest,
     LineListResponse,
@@ -188,6 +189,7 @@ def import_line_tower_csv_endpoint(
     current_user: CurrentUser = Depends(require_permission("tower.manage")),
     db: Session = Depends(get_db),
 ) -> LineTowerImportResponse:
+    validate_upload(file, allowed_exts={"csv"})
     line = get_line_by_id(db, line_id)
     if not line:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Line not found")

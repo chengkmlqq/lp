@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
+from ...core.file_upload import validate_upload
 from ...schemas.elevation import (
     ElevationApplyJobCreateRequest,
     ElevationApplyJobCreateResponse,
@@ -80,6 +81,7 @@ def create_elevation_file_record(
     current_user: CurrentUser = Depends(require_permission("elevation.manage")),
     db: Session = Depends(get_db),
 ) -> ElevationFileRecordUploadResponse:
+    validate_upload(file, allowed_exts={"tif", "tiff", "zip"}, allowed_exts_label="tif/tiff/zip")
     payload = ElevationFileRecordCreateRequest(
         source=source,
         mount_code=mount_code,

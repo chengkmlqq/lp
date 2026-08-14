@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
+from ...core.file_upload import validate_upload
 from ...schemas.lightning import (
     LightningAmplitudeBackfillLineListResponse,
     LightningAmplitudeImportResponse,
@@ -178,6 +179,7 @@ def import_lightning_amplitude_file_async(
     异步导入雷电流幅值波形数据（Celery Worker 后台处理）。
     上传文件立即 put_object 到 MinIO → 建 LightningAmplitude(pending) → 派发任务。
     """
+    validate_upload(file, allowed_exts={"csv", "txt"})
     return import_lightning_amplitude_from_file(
         db,
         file=file,
@@ -249,6 +251,7 @@ def import_lightning_distribution_file(
     current_user: CurrentUser = Depends(require_permission("lightning.manage")),
     db: Session = Depends(get_db),
 ) -> LightningDistributionImportResponse:
+    validate_upload(file, allowed_exts={"csv", "txt"})
     return import_lightning_distribution_from_file(
         db,
         file=file,

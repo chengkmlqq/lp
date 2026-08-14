@@ -995,6 +995,19 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) {
+                const maxMB = 50;
+                const allowedExts = ["csv"];
+                const ext = file.name.split(".").pop()?.toLowerCase() || "";
+                if (file.size > maxMB * 1024 * 1024) {
+                  messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                  event.target.value = "";
+                  return;
+                }
+                if (!allowedExts.includes(ext)) {
+                  messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                  event.target.value = "";
+                  return;
+                }
                 importMutation.mutate(file);
               }
               event.target.value = "";

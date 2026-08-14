@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     user_password_column: Literal["password", "password_hash"] = "password_hash"
     user_status_column: Literal["status", "state"] = "status"
     file_vfs_root: str = "./data/vfs"
+    # 文件上传大小上限（MB），供统一上传校验 validate_upload 使用（模块级可覆盖）
+    upload_max_file_size_mb: int = 50
     minio_enabled: bool = True
     minio_endpoint: str = "http://minio:9000"
     minio_access_key: str = "minioadmin"
@@ -124,6 +126,7 @@ class Settings(BaseSettings):
         "atp_engine_max_timeout_seconds",
         "task_log_redis_ttl_seconds",
         "task_log_max_buffer_lines",
+        "upload_max_file_size_mb",
         "task_log_sse_heartbeat_seconds",
     )
     @classmethod
