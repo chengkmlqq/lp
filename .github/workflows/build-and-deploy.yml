@@ -197,7 +197,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=fquiz-worker
 
   # ───── MATLAB Worker 镜像（wine-base-64 + Windows MATLAB Runtime + 判别系统） ─────
-  # 消费 matlab-diagnostics 队列，判别任务专用；Runtime 来自部署机 84 nginx 直链（方案 A）。
+  # 消费 matlab-diagnostics 队列，判别任务专用；Runtime 先走官方源，失败回退到 84。
   build-matlab-worker:
     needs: [build-wine-base-64]
     runs-on: ubuntu-latest
@@ -237,6 +237,7 @@ jobs:
             REGISTRY=${{ env.REGISTRY }}
             REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
             APT_MIRROR=${{ vars.APT_MIRROR || '' }}
+            MCR_OFFICIAL_URL=${{ vars.MCR_OFFICIAL_URL || 'https://ssd.mathworks.cn/supportfiles/downloads/R2026a/Release/0/deployment_files/installer/complete/win64/MATLAB_Runtime_R2026a_win64.zip' }}
             DL_BASE=${{ vars.DL_BASE || 'http://223.109.142.84/downloads' }}
           tags: |
             ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
