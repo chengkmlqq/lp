@@ -9,8 +9,8 @@ const DEFAULT_TAG_DISPLAY: TagDisplay = {
 };
 
 const TASK_STATE_DISPLAYS: Record<string, TagDisplay> = {
-  TODO: { label: "待处理", color: "default" },
-  PENDING: { label: "待执行", color: "default" },
+  TODO: { label: "待处理", color: "gold" },
+  PENDING: { label: "待执行", color: "gold" },
   RECEIVED: { label: "已接收", color: "blue" },
   STARTED: { label: "执行中", color: "processing" },
   RUNNING: { label: "执行中", color: "processing" },
