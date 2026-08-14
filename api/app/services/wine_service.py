@@ -17,7 +17,6 @@ from ..core.database import SessionLocal
 from ..models.base import utcnow
 from ..models.wine import WineRun
 from ..schemas.wine import WineRunDetail, WineRunListResponse, WineRunRequest, WineRunSummary, WineStatusResponse
-from .wine_probe import probe_wine_binary, probe_wine_binary_async
 from .task_log_service import TaskLogServiceError, upload_task_log
 
 
@@ -122,27 +121,16 @@ def _resolve_timeout(payload_timeout: int | None) -> int:
 async def get_wine_status() -> WineStatusResponse:
     binary = settings.wine_binary_path.strip() or "wine"
     allowed_root = str(_allowed_root())
-    resolved = _resolve_binary()
-    if not resolved:
-        return WineStatusResponse(
-            wine_binary=binary,
-            available=False,
-            allowed_root=allowed_root,
-            default_timeout_seconds=settings.wine_default_timeout_seconds,
-            max_timeout_seconds=settings.wine_max_timeout_seconds,
-            error="Wine binary not found",
-        )
-
-    probe = await probe_wine_binary_async(resolved)
+    # API 容器不再安装 wine：wine 执行已全部下沉到 worker。
+    # 状态仅反映配置项，实际可用性由 worker 侧的 execute_run_job 在
+    # 每次执行时探测（失败会写入 run.error_message）。
     return WineStatusResponse(
         wine_binary=binary,
-        resolved_binary=resolved,
-        available=probe.available,
-        version=probe.version,
+        available=False,
         allowed_root=allowed_root,
         default_timeout_seconds=settings.wine_default_timeout_seconds,
         max_timeout_seconds=settings.wine_max_timeout_seconds,
-        error=probe.error,
+        error="Wine 由 worker 容器提供，API 侧不探测（请查看最近一次 WineRun 执行结果）",
     )
 
 
@@ -206,18 +194,12 @@ def create_run(
     payload: WineRunRequest,
     actor_user_id: str,
 ) -> WineRunDetail:
-    resolved_binary = _resolve_binary()
-    if not resolved_binary:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Wine binary not found")
-
-    probe = probe_wine_binary(resolved_binary)
-    if not probe.available:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=probe.error or "Wine binary unavailable")
-
+    # API 容器无 wine：不做二进制探测（worker 执行时由 execute_run_job
+    # 兜底解析，失败会写入 run.error_message）。仅保留路径/参数校验。
     executable = _resolve_executable(payload.exe_path)
     working_dir = _resolve_working_dir(payload.working_dir, executable)
     timeout_seconds = _resolve_timeout(payload.timeout_seconds)
-    command = [resolved_binary, str(executable), *payload.arguments]
+    command = [settings.wine_binary_path.strip() or "wine", str(executable), *payload.arguments]
 
     run = WineRun(
         status="pending",
@@ -226,7 +208,7 @@ def create_run(
         working_dir=str(working_dir),
         environment_json=payload.environment,
         wine_binary=settings.wine_binary_path.strip() or "wine",
-        resolved_binary=resolved_binary,
+        resolved_binary=None,
         command_text=" ".join(command),
         timeout_seconds=timeout_seconds,
         create_user=actor_user_id,

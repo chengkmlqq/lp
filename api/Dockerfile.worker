@@ -1,0 +1,19 @@
+# Worker 镜像：二级 wine-base（含 wine）+ 业务代码。
+# 跑 celery worker：fl_analysis ATP 仿真、wine 执行等所有 wine 相关任务。
+# 未来新增 worker（如判别系统）可仿照本文件从 wine-base 派生。
+ARG REGISTRY=crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com
+ARG REGISTRY_NAMESPACE=ck-registry
+FROM ${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-wine-base:latest
+
+WORKDIR /app
+
+# Static assets (tpbig.exe, etc.) are volume-mounted at runtime
+# from deploy/pro-deploy/data/app/wine/
+
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+COPY app ./app
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["celery", "-A", "app.core.celery_app.celery_app", "worker", "--loglevel=info"]

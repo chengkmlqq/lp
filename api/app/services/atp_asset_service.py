@@ -52,7 +52,6 @@ from ..schemas.atp_asset import (
 from .atp_topology_parser import parse_atp_topology_from_bytes
 from .legacy_atp_adapter import build_legacy_atp_status_checks
 from .push_service import publish_topic
-from .wine_probe import probe_wine_binary
 from .storage_driver import (
     StorageDriver,
     StorageDriverError,
@@ -189,9 +188,9 @@ def _resolve_engine_workdir() -> Path:
 
 
 def _resolve_wine_engine_executable() -> tuple[str | None, str | None, str | None]:
-    wine_binary = _resolve_binary(settings.wine_binary_path)
-    if not wine_binary:
-        return None, None, "Wine binary not found"
+    # API 容器不再安装 wine：wine 由 worker 容器提供，此处仅做配置/路径级
+    # 检查（不探测二进制）。实际可用性由 worker 侧执行时验证。
+    wine_binary = settings.wine_binary_path.strip() or "wine"
 
     allowed_root = Path(settings.wine_allowed_root).expanduser().resolve(strict=False)
     configured = Path(settings.atp_engine_executable).expanduser()
@@ -205,8 +204,7 @@ def _resolve_wine_engine_executable() -> tuple[str | None, str | None, str | Non
     if not configured.exists() or not configured.is_file():
         return wine_binary, None, f"ATP engine executable not found: {configured}"
 
-    probe = probe_wine_binary(wine_binary)
-    return wine_binary, str(configured), None if probe.available else (probe.error or "Wine binary unavailable")
+    return wine_binary, str(configured), None
 
 
 def _resolve_native_engine_executable() -> tuple[str | None, str | None]:

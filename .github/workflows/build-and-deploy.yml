@@ -18,8 +18,141 @@ env:
   REGISTRY_NAMESPACE: ${{ vars.REGISTRY_NAMESPACE || 'ck-registry' }}
 
 jobs:
-  # ───── API 镜像（wine i386，仅 amd64） ─────
+  # ───── 一级基础镜像（python + 系统库 + pip 依赖，无 wine、无业务代码） ─────
+  build-base:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 生成镜像变量
+        id: vars
+        shell: bash
+        run: |
+          NS="${{ env.REGISTRY_NAMESPACE }}"
+          echo "image=${{ env.REGISTRY }}/${NS}/fquiz-base" >> "$GITHUB_OUTPUT"
+
+      - name: 安装 Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: 登录镜像仓库
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 构建并推送 base 镜像
+        uses: docker/build-push-action@v7
+        with:
+          context: ./api
+          file: ./api/Dockerfile.base
+          platforms: linux/amd64
+          pull: true
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            REGISTRY=${{ env.REGISTRY }}
+            REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
+            PIP_INDEX_URL=${{ secrets.PIP_INDEX_URL || vars.PIP_INDEX_URL || 'https://pypi.org/simple' }}
+            PIP_DEFAULT_TIMEOUT=${{ vars.PIP_DEFAULT_TIMEOUT || '120' }}
+          tags: |
+            ${{ steps.vars.outputs.image }}:latest
+          cache-from: type=gha,scope=fquiz-base
+          cache-to: type=gha,mode=max,scope=fquiz-base
+
+  # ───── 二级 wine-base 镜像（base + wine，仅 amd64，api/worker 共用） ─────
+  build-wine-base:
+    needs: [build-base]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 生成镜像变量
+        id: vars
+        shell: bash
+        run: |
+          NS="${{ env.REGISTRY_NAMESPACE }}"
+          echo "image=${{ env.REGISTRY }}/${NS}/fquiz-wine-base" >> "$GITHUB_OUTPUT"
+
+      - name: 安装 Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: 登录镜像仓库
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 构建并推送 wine-base 镜像
+        uses: docker/build-push-action@v7
+        with:
+          context: ./api
+          file: ./api/Dockerfile.winebase
+          platforms: linux/amd64
+          pull: true
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            REGISTRY=${{ env.REGISTRY }}
+            REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
+          tags: |
+            ${{ steps.vars.outputs.image }}:latest
+          cache-from: type=gha,scope=fquiz-wine-base
+          cache-to: type=gha,mode=max,scope=fquiz-wine-base
+
+  # ───── Worker 镜像（wine-base + 业务代码，celery worker） ─────
+  build-worker:
+    needs: [build-wine-base]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 生成镜像变量
+        id: vars
+        shell: bash
+        run: |
+          NS="${{ env.REGISTRY_NAMESPACE }}"
+          echo "image=${{ env.REGISTRY }}/${NS}/fquiz-worker" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: 安装 Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: 登录镜像仓库
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 构建并推送 Worker 镜像
+        uses: docker/build-push-action@v7
+        with:
+          context: ./api
+          file: ./api/Dockerfile.worker
+          platforms: linux/amd64
+          pull: true
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            REGISTRY=${{ env.REGISTRY }}
+            REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
+          tags: |
+            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
+            ${{ steps.vars.outputs.image }}:latest
+          cache-from: type=gha,scope=fquiz-worker
+          cache-to: type=gha,mode=max,scope=fquiz-worker
+
+  # ───── API 镜像（无 wine，仅 amd64） ─────
   build-api:
+    needs: [build-base]
     runs-on: ubuntu-latest
 
     steps:
@@ -54,6 +187,8 @@ jobs:
           provenance: false
           sbom: false
           build-args: |
+            REGISTRY=${{ env.REGISTRY }}
+            REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
             PIP_INDEX_URL=${{ secrets.PIP_INDEX_URL || vars.PIP_INDEX_URL || 'https://pypi.org/simple' }}
             PIP_DEFAULT_TIMEOUT=${{ vars.PIP_DEFAULT_TIMEOUT || '120' }}
           tags: |
@@ -151,7 +286,7 @@ jobs:
   # ───── 部署到生产服务器 ─────
   deploy:
     runs-on: ubuntu-latest
-    needs: [build-api, build-web, build-ctb-worker]
+    needs: [build-api, build-worker, build-web, build-ctb-worker]
     if: github.ref == 'refs/heads/dev'
 
     steps:
@@ -262,10 +397,12 @@ jobs:
             API_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-api"
             WEB_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-web"
             CTB_WORKER_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/ctb-worker"
+            WORKER_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-worker"
             {
               echo "API_IMAGE=${API_IMAGE}:${IMAGE_TAG}"
               echo "WEB_IMAGE=${WEB_IMAGE}:${IMAGE_TAG}"
               echo "CTB_WORKER_IMAGE=${CTB_WORKER_IMAGE}:${IMAGE_TAG}"
+              echo "WORKER_IMAGE=${WORKER_IMAGE}:${IMAGE_TAG}"
               echo "NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}"
               echo "NEXT_PUBLIC_APP_BASE_PATH="
               echo "FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH}"

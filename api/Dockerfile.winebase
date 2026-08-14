@@ -1,0 +1,16 @@
+# 二级 wine-base 镜像：一级基础镜像 + wine（i386 仅 amd64 可用）。
+# api 与所有 worker 共用本层，wine 只安装一次。
+ARG REGISTRY=crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com
+ARG REGISTRY_NAMESPACE=ck-registry
+FROM ${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-base:latest
+
+RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list 2>/dev/null; \
+    dpkg --add-architecture i386 \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        wine \
+        wine32:i386 \
+    && command -v wine >/dev/null \
+    && dpkg-query -W -f='${Status}' wine32:i386 | grep -q "install ok installed" \
+    && rm -rf /var/lib/apt/lists/*
