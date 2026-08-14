@@ -14,11 +14,11 @@ import {
   Input,
   InputNumber,
   Modal,
+  Radio,
   Segmented,
   Select,
   Space,
   Table,
-  Tabs,
   Tag,
   Typography,
   type MenuProps,
@@ -1583,134 +1583,123 @@ export default function AdminPowerLineDetailPage() {
                 </Descriptions>
               </Card>
             </Card>
-            <Tabs
-              type="card"
-              className="admin-power-line-detail-tabs"
-              activeKey={towerViewMode}
-              onChange={(key) => setTowerViewMode(key as "table" | "map")}
-              tabBarExtraContent={(
-                <Space size={8} wrap>
-                  {selectedLine && (
-                    <Button onClick={openLineParamModal}>
-                      线路参数准备
-                    </Button>
-                  )}
-                  {canTowerManage && (
-                    <Button onClick={() => importInputRef.current?.click()} loading={importMutation.isPending} disabled={!lineId}>
-                      导入 CSV
-                    </Button>
-                  )}
-                  <input
-                    ref={importInputRef}
-                    type="file"
-                    accept=".csv,text/csv"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file && lineId) {
-                        importMutation.mutate(file);
-                      }
-                      event.target.value = "";
-                    }}
-                  />
-                  <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending} disabled={!lineId}>
-                    导出 CSV
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <Space size={8} wrap>
+                {selectedLine && (
+                  <Button onClick={openLineParamModal}>
+                    线路参数准备
                   </Button>
-                  {canTowerManage && (
-                    <Button type="primary" onClick={openCreateTowerModal} disabled={!lineId}>
-                      新建杆塔
+                )}
+                {canTowerManage && (
+                  <Button onClick={() => importInputRef.current?.click()} loading={importMutation.isPending} disabled={!lineId}>
+                    导入 CSV
+                  </Button>
+                )}
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file && lineId) {
+                      importMutation.mutate(file);
+                    }
+                    event.target.value = "";
+                  }}
+                />
+                <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending} disabled={!lineId}>
+                  导出 CSV
+                </Button>
+                {canTowerManage && (
+                  <Button type="primary" onClick={openCreateTowerModal} disabled={!lineId}>
+                    新建杆塔
+                  </Button>
+                )}
+              </Space>
+              <Radio.Group
+                value={towerViewMode}
+                onChange={(e) => setTowerViewMode(e.target.value as "table" | "map")}
+                optionType="button"
+                buttonStyle="solid"
+              >
+                <Radio.Button value="map">地图</Radio.Button>
+                <Radio.Button value="table">杆塔列表</Radio.Button>
+              </Radio.Group>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col gap-3" style={{ display: towerViewMode === "map" ? "flex" : "none" }}>
+              <div className="flex flex-wrap items-center gap-3">
+                <Select
+                  className="w-72"
+                  placeholder={canElevationRead ? "选择地形数据集" : "无高程读取权限"}
+                  value={effectiveTerrainDatasetId ?? undefined}
+                  allowClear
+                  disabled={!canElevationRead}
+                  loading={elevationDatasetsQuery.isFetching}
+                  onChange={(value) => setSelectedTerrainDatasetId(value ?? null)}
+                  options={terrainDatasetOptions}
+                />
+                <Segmented
+                  value={terrainExaggeration}
+                  options={[...TERRAIN_EXAGGERATION_OPTIONS]}
+                  onChange={(value) => setTerrainExaggeration(value)}
+                />
+              </div>
+              {terrainSelectionHint ? (
+                <Typography.Text type="secondary">{terrainSelectionHint}</Typography.Text>
+              ) : null}
+              <PowerLineCesiumMap
+                lineCode={selectedLine?.code}
+                lineName={selectedLine?.name}
+                towers={towers}
+                terrainDataset={selectedTerrainDataset}
+                accessToken={getAccessToken()}
+                exaggeration={terrainExaggeration}
+                loading={towersQuery.isFetching}
+                height={POWER_LINES_MAP_DETAIL_HEIGHT}
+                onRouteLengthChange={handleRouteLengthChange}
+              />
+            </div>
+            <Space direction="vertical" size={12} className="w-full" style={{ display: towerViewMode === "table" ? "flex" : "none" }}>
+              <div className="admin-filter-bar">
+                <Form layout="inline">
+                  <Form.Item label="关键词" className="admin-filter-keyword-item">
+                    <Input value={towerKeyword} allowClear onChange={(event) => setTowerKeyword(event.target.value)} placeholder="按塔号/模型筛选" />
+                  </Form.Item>
+                  <Form.Item label="塔型" className="admin-filter-keyword-item">
+                    <Select value={towerTypeFilter} options={[...TOWER_TYPE_OPTIONS]} onChange={(value) => setTowerTypeFilter(value)} />
+                  </Form.Item>
+                  <Form.Item label="风险等级" className="admin-filter-keyword-item">
+                    <Input value={towerRiskFilter} allowClear onChange={(event) => setTowerRiskFilter(event.target.value)} placeholder="按风险等级筛选" />
+                  </Form.Item>
+                  <Form.Item>
+                    <Button htmlType="button" icon={<SearchOutlined />} onClick={() => refreshTowers()} className="admin-search-btn">
+                      查询
                     </Button>
-                  )}
-                </Space>
-              )}
-              items={[
-                {
-                  key: "map",
-                  label: "地图",
-                  children: (
-                    <div className="flex min-h-0 flex-1 flex-col gap-3">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <Select
-                          className="w-72"
-                          placeholder={canElevationRead ? "选择地形数据集" : "无高程读取权限"}
-                          value={effectiveTerrainDatasetId ?? undefined}
-                          allowClear
-                          disabled={!canElevationRead}
-                          loading={elevationDatasetsQuery.isFetching}
-                          onChange={(value) => setSelectedTerrainDatasetId(value ?? null)}
-                          options={terrainDatasetOptions}
-                        />
-                        <Segmented
-                          value={terrainExaggeration}
-                          options={[...TERRAIN_EXAGGERATION_OPTIONS]}
-                          onChange={(value) => setTerrainExaggeration(value)}
-                        />
-                      </div>
-                      {terrainSelectionHint ? (
-                        <Typography.Text type="secondary">{terrainSelectionHint}</Typography.Text>
-                      ) : null}
-                      <PowerLineCesiumMap
-                        lineCode={selectedLine?.code}
-                        lineName={selectedLine?.name}
-                        towers={towers}
-                        terrainDataset={selectedTerrainDataset}
-                        accessToken={getAccessToken()}
-                        exaggeration={terrainExaggeration}
-                        loading={towersQuery.isFetching}
-                        height={POWER_LINES_MAP_DETAIL_HEIGHT}
-                        onRouteLengthChange={handleRouteLengthChange}
-                      />
-                    </div>
-                  ),
-                },
-                {
-                  key: "table",
-                  label: "杆塔列表",
-                  children: (
-                    <Space direction="vertical" size={12} className="w-full">
-                      <div className="admin-filter-bar">
-                        <Form layout="inline">
-                          <Form.Item label="关键词" className="admin-filter-keyword-item">
-                            <Input value={towerKeyword} allowClear onChange={(event) => setTowerKeyword(event.target.value)} placeholder="按塔号/模型筛选" />
-                          </Form.Item>
-                          <Form.Item label="塔型" className="admin-filter-keyword-item">
-                            <Select value={towerTypeFilter} options={[...TOWER_TYPE_OPTIONS]} onChange={(value) => setTowerTypeFilter(value)} />
-                          </Form.Item>
-                          <Form.Item label="风险等级" className="admin-filter-keyword-item">
-                            <Input value={towerRiskFilter} allowClear onChange={(event) => setTowerRiskFilter(event.target.value)} placeholder="按风险等级筛选" />
-                          </Form.Item>
-                          <Form.Item>
-                            <Button htmlType="button" icon={<SearchOutlined />} onClick={() => refreshTowers()} className="admin-search-btn">
-                              查询
-                            </Button>
-                          </Form.Item>
-                        </Form>
-                      </div>
-                      <div className="relative overflow-x-auto">
-                        <Table<LineTowerSummary>
-                          rowKey={(row) => row.id}
-                          columns={towerColumns}
-                          dataSource={towers}
-                          loading={towersQuery.isFetching}
-                          pagination={{
-                            current: towerPagination.current,
-                            pageSize: towerPagination.pageSize,
-                            total: towersQuery.data?.total ?? 0,
-                            showSizeChanger: true,
-                            showTotal: (total) => `共 ${total} 条`,
-                            hideOnSinglePage: false,
-                            onChange: (page, pageSize) => {
-                              setTowerPagination({ current: page, pageSize });
-                            },
-                          }}
-                          scroll={{ x: 1520 }}
-                        />
-                      </div>
-                    </Space>
-                  ),
-                },
-              ]}
-            />
+                  </Form.Item>
+                </Form>
+              </div>
+              <div className="relative overflow-x-auto">
+                <Table<LineTowerSummary>
+                  rowKey={(row) => row.id}
+                  columns={towerColumns}
+                  dataSource={towers}
+                  loading={towersQuery.isFetching}
+                  pagination={{
+                    current: towerPagination.current,
+                    pageSize: towerPagination.pageSize,
+                    total: towersQuery.data?.total ?? 0,
+                    showSizeChanger: true,
+                    showTotal: (total) => `共 ${total} 条`,
+                    hideOnSinglePage: false,
+                    onChange: (page, pageSize) => {
+                      setTowerPagination({ current: page, pageSize });
+                    },
+                  }}
+                  scroll={{ x: 1520 }}
+                />
+              </div>
+            </Space>
           </>
         )}
       </div>

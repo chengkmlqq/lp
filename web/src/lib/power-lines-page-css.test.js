@@ -47,13 +47,13 @@ test("LP-307: detail view scrolls vertically without redundant inner table wrapp
   assert.ok(/<div className="relative">\s*<Table<LineTowerSummary>/.test(detailBlock), "杆塔列表 Table 外层不应再有 overflow-auto 滚动容器");
 });
 
-test("LP-301: detail view shows meta card on top and map/tower tabs below", () => {
+test("LP-301: detail view shows meta card on top and map/tower switch below", () => {
   const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
   assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
   assert.match(detailBlock, /admin-power-line-detail-meta/, "详情顶部应展示基本信息 Card");
   assert.ok(!/key:\s*"info"[\s\S]{0,80}label:\s*"线路信息"/.test(detailBlock), "线路信息不应再作为独立 Tab");
-  assert.match(detailBlock, /label:\s*"地图"/, "详情下方应有地图 Tab");
-  assert.match(detailBlock, /label:\s*"杆塔列表"/, "详情下方应有杆塔列表 Tab");
+  assert.match(detailBlock, /<Radio.Button value="map">地图<\/Radio.Button>/, "详情下方应有地图切换按钮");
+  assert.match(detailBlock, /<Radio.Button value="table">杆塔列表<\/Radio.Button>/, "详情下方应有杆塔列表切换按钮");
 });
 
 test("LP-307: detail basic info is rendered as a bordered Descriptions table", () => {
@@ -68,18 +68,25 @@ test("LP-307: detail basic info is rendered as a bordered Descriptions table", (
   assert.match(detailBlock, /label="更新时间"/, "表格应包含更新时间");
 });
 
-test("LP-307: detail tabs use card type without close icon", () => {
+test("LP-317: detail view uses Radio.Group switch without Tabs", () => {
   const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
   assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
-  assert.match(detailBlock, /type="card"/, "选项卡应为 card 类型");
-  assert.ok(!/type="editable-card"/.test(detailBlock), "选项卡不应再使用 editable-card 类型");
+  assert.match(detailBlock, /<Radio\.Group/, "地图/列表切换应使用 Radio.Group");
+  assert.ok(!/<Tabs/.test(detailBlock), "详情视图不应再使用 Tabs 组件切换");
+  assert.ok(!/type="editable-card"/.test(detailBlock), "详情视图不应再使用 editable-card 类型");
 });
 
-test("LP-307: detail tabs default to the tower list", () => {
+test("LP-317: detail view defaults to the tower list", () => {
   const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
   assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
-  assert.match(detailBlock, /defaultActiveKey="towers"/, "选项卡应默认激活杆塔列表");
-  assert.match(detailBlock, /key: "towers"[\s\S]{0,60}label: "杆塔列表"/, "杆塔列表应为首个选项卡");
+  assert.match(
+    detailBlock,
+    /towerViewMode === "table" \? "block" : "none"/,
+    "默认应展示杆塔列表面板（table）",
+  );
+  const tableIndex = detailBlock.indexOf("towerViewMode === \"table\" ? \"block\" : \"none\"");
+  const mapIndex = detailBlock.indexOf("towerViewMode === \"map\" ? \"block\" : \"none\"");
+  assert.ok(tableIndex >= 0 && mapIndex > tableIndex, "杆塔列表面板应位于地图面板之前");
 });
 
 test("LP-307: detail tower table height is not limited (no vertical scroll setting)", () => {
@@ -87,4 +94,15 @@ test("LP-307: detail tower table height is not limited (no vertical scroll setti
   assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
   assert.match(detailBlock, /scroll=\{\{ x: 1400 \}\}/, "杆塔列表 Table 应仅保留横向滚动");
   assert.ok(!/scroll=\{\{ x: 1400, y:/.test(detailBlock), "杆塔列表 Table 不应再有纵向滚动高度限制");
+});
+
+test("LP-317: embedded detail import/export buttons are permission gated", () => {
+  assert.match(PAGE, /canTowerManage &&[\s\S]{0,160}导入 CSV/, "导入按钮应在 tower.manage 权限下显示");
+  assert.match(PAGE, /canTowerRead &&[\s\S]{0,160}导出 CSV/, "导出按钮应在 tower.read 权限下显示");
+  assert.match(PAGE, /towers\/import/, "导入应调用 /towers/import 接口");
+  assert.match(PAGE, /towers\/export/, "导出应调用 /towers/export 接口");
+});
+
+test("LP-317: openDetail passes canTowerManage to embedded detail", () => {
+  assert.match(PAGE, /canTowerManage=\{canTowerManage\}/, "openDetail 调用处应向下传递 canTowerManage");
 });

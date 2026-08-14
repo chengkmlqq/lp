@@ -12,6 +12,7 @@ import {
   Input,
   Modal,
   Pagination,
+  Radio,
   Segmented,
   Select,
   Space,
@@ -35,7 +36,7 @@ import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
-import type { LineListResponse, LineSummary, LineTowerListResponse, LineTowerSummary } from "@/types/auth";
+import type { LineListResponse, LineSummary, LineTowerImportResponse, LineTowerListResponse, LineTowerSummary } from "@/types/auth";
 
 type LineFormValues = {
   name: string;
@@ -155,6 +156,7 @@ export default function AdminPowerLinesPage() {
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   const canLineManage = hasPermission("line.manage");
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
+  const canTowerManage = hasPermission("tower.manage");
   const canRead = canLineRead || canTowerRead;
 
   const updateTableScrollHeight = useCallback(() => {
@@ -338,6 +340,7 @@ export default function AdminPowerLinesPage() {
               lineId={line.id}
               fetchWithAuth={fetchWithAuth}
               canTowerRead={canTowerRead}
+              canTowerManage={canTowerManage}
               canLineManage={canLineManage}
               onLineDeleted={async () => {
                 setDetailTabs((tabs) => tabs.filter((tab) => tab.key !== key));
@@ -350,7 +353,7 @@ export default function AdminPowerLinesPage() {
       ];
     });
     setActiveTabKey(key);
-  }, [fetchWithAuth, canTowerRead, canLineManage, refreshLines]);
+  }, [fetchWithAuth, canTowerRead, canTowerManage, canLineManage, refreshLines]);
 
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
@@ -468,7 +471,7 @@ export default function AdminPowerLinesPage() {
                 ) : viewMode === "card" ? (
                   <>
                     <div className="admin-power-lines-card-scroll">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                         {lines.map((line) => (
                           <PowerLineCard
                             key={line.id}
@@ -769,19 +772,22 @@ interface PowerLineDetailViewProps {
   lineId: string;
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
   canTowerRead: boolean;
+  canTowerManage: boolean;
   canLineManage: boolean;
   onLineDeleted: () => Promise<void>;
 }
 
-function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManage, onLineDeleted }: PowerLineDetailViewProps) {
+function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerManage, canLineManage, onLineDeleted }: PowerLineDetailViewProps) {
   const { message: messageApi } = App.useApp();
   const queryClient = useQueryClient();
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const [lineDetail, setLineDetail] = useState<LineSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [towerKeyword, setTowerKeyword] = useState("");
   const [towerTypeFilter, setTowerTypeFilter] = useState("");
   const [towerPagination, setTowerPagination] = useState({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE });
+  const [towerViewMode, setTowerViewMode] = useState<"table" | "map">("table");
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -830,6 +836,74 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManag
   });
 
   const towers = useMemo(() => towersQuery.data?.items ?? [], [towersQuery.data?.items]);
+
+  const refreshLines = useCallback(async () => {
+    await queryClient.invalidateQueries({
+      predicate: (query) =>
+        Array.isArray(query.queryKey)
+        && typeof query.queryKey[0] === "string"
+        && query.queryKey[0].startsWith("/api/v1/lines"),
+    });
+  }, [queryClient]);
+  const refreshTowers = useCallback(async () => {
+    await queryClient.invalidateQueries({
+      predicate: (query) =>
+        Array.isArray(query.queryKey)
+        && typeof query.queryKey[0] === "string"
+        && query.queryKey[0].includes("/towers"),
+    });
+  }, [queryClient]);
+  const importMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers/import`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LineTowerImportResponse;
+    },
+    onSuccess: async (result) => {
+      messageApi.success(
+        `导入完成：新增 ${result.imported_count} 条，更新 ${result.updated_count} 条，跳过 ${result.skipped_count} 条`,
+      );
+      await refreshLines();
+      await refreshTowers();
+    },
+    onError: (candidate) => {
+      messageApi.error(candidate instanceof Error ? candidate.message : "导入失败");
+    },
+  });
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers/export`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get("Content-Disposition") || "";
+      const matched = contentDisposition.match(/filename=\"([^\"]+)\"/i);
+      const filename = matched?.[1] ?? "towers_export.csv";
+      return { blob, filename };
+    },
+    onSuccess: ({ blob, filename }) => {
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+      messageApi.success("导出成功");
+    },
+    onError: (candidate) => {
+      messageApi.error(candidate instanceof Error ? candidate.message : "导出失败");
+    },
+  });
 
   const towerColumns: ColumnsType<LineTowerSummary> = [
     { title: "序号", dataIndex: "seq_no", width: 80 },
@@ -906,74 +980,95 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canLineManag
           <Descriptions.Item label="更新时间">{formatDateTime(lineDetail.update_date)}</Descriptions.Item>
         </Descriptions>
       </Card>
-      <Tabs
-        type="card"
-        defaultActiveKey="towers"
-        className="admin-power-line-detail-tabs"
-        items={[
-          {
-            key: "towers",
-            label: "杆塔列表",
-            children: (
-              <Space direction="vertical" size={12} className="w-full">
-                <div className="admin-filter-bar">
-                  <Form layout="inline">
-                    <Form.Item label="关键词" className="admin-filter-keyword-item">
-                      <Input value={towerKeyword} allowClear onChange={(event) => setTowerKeyword(event.target.value)} placeholder="按塔号/模型筛选" />
-                    </Form.Item>
-                    <Form.Item label="塔型" className="admin-filter-keyword-item">
-                      <Select value={towerTypeFilter} options={[...TOWER_TYPE_OPTIONS]} onChange={(value) => setTowerTypeFilter(value)} />
-                    </Form.Item>
-                    <Form.Item>
-                      <Button htmlType="button" icon={<SearchOutlined />} onClick={() => setTowerPagination({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE })} className="admin-search-btn">
-                        查询
-                      </Button>
-                    </Form.Item>
-                  </Form>
-                </div>
-                <div className="relative">
-                  <Table<LineTowerSummary>
-                    rowKey={(row) => row.id}
-                    columns={towerColumns}
-                    dataSource={towers}
-                    loading={towersQuery.isFetching}
-                    pagination={{
-                      current: towerPagination.current,
-                      pageSize: towerPagination.pageSize,
-                      total: towersQuery.data?.total ?? 0,
-                      showSizeChanger: true,
-                      showTotal: (total) => `共 ${total} 条`,
-                      hideOnSinglePage: false,
-                      onChange: (page, pageSize) => {
-                        setTowerPagination({ current: page, pageSize });
-                      },
-                    }}
-                    scroll={{ x: 1400 }}
-                  />
-                </div>
-              </Space>
-            ),
-          },
-          {
-            key: "map",
-            label: "地图",
-            children: (
-              <div className="flex flex-col gap-3">
-                <PowerLineCesiumMap
-                  lineCode={lineDetail.code}
-                  lineName={lineDetail.name}
-                  towers={towers}
-                  terrainDataset={null}
-                  accessToken=""
-                  exaggeration={1}
-                  loading={towersQuery.isFetching}
-                  height={500}
-                />
-              </div>
-            ),
-          },
-        ]}
-      />
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <Space size={8} wrap>
+          {canTowerManage && (
+            <Button onClick={() => importInputRef.current?.click()} loading={importMutation.isPending}>
+              导入 CSV
+            </Button>
+          )}
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                importMutation.mutate(file);
+              }
+              event.target.value = "";
+            }}
+          />
+          {canTowerRead && (
+            <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
+              导出 CSV
+            </Button>
+          )}
+        </Space>
+        <Radio.Group
+          value={towerViewMode}
+          onChange={(e) => setTowerViewMode(e.target.value as "table" | "map")}
+          optionType="button"
+          buttonStyle="solid"
+        >
+          <Radio.Button value="map">地图</Radio.Button>
+          <Radio.Button value="table">杆塔列表</Radio.Button>
+        </Radio.Group>
+      </div>
+      <div style={{ display: towerViewMode === "table" ? "block" : "none" }}>
+        <Space direction="vertical" size={12} className="w-full">
+          <div className="admin-filter-bar">
+            <Form layout="inline">
+              <Form.Item label="关键词" className="admin-filter-keyword-item">
+                <Input value={towerKeyword} allowClear onChange={(event) => setTowerKeyword(event.target.value)} placeholder="按塔号/模型筛选" />
+              </Form.Item>
+              <Form.Item label="塔型" className="admin-filter-keyword-item">
+                <Select value={towerTypeFilter} options={[...TOWER_TYPE_OPTIONS]} onChange={(value) => setTowerTypeFilter(value)} />
+              </Form.Item>
+              <Form.Item>
+                <Button htmlType="button" icon={<SearchOutlined />} onClick={() => setTowerPagination({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE })} className="admin-search-btn">
+                  查询
+                </Button>
+              </Form.Item>
+            </Form>
+          </div>
+          <div className="relative">
+            <Table<LineTowerSummary>
+              rowKey={(row) => row.id}
+              columns={towerColumns}
+              dataSource={towers}
+              loading={towersQuery.isFetching}
+              pagination={{
+                current: towerPagination.current,
+                pageSize: towerPagination.pageSize,
+                total: towersQuery.data?.total ?? 0,
+                showSizeChanger: true,
+                showTotal: (total) => `共 ${total} 条`,
+                hideOnSinglePage: false,
+                onChange: (page, pageSize) => {
+                  setTowerPagination({ current: page, pageSize });
+                },
+              }}
+              scroll={{ x: 1400 }}
+            />
+          </div>
+        </Space>
+      </div>
+      <div style={{ display: towerViewMode === "map" ? "block" : "none" }}>
+        <div className="flex flex-col gap-3">
+          <PowerLineCesiumMap
+            lineCode={lineDetail.code}
+            lineName={lineDetail.name}
+            towers={towers}
+            terrainDataset={null}
+            accessToken=""
+            exaggeration={1}
+            loading={towersQuery.isFetching}
+            height={500}
+          />
+        </div>
+      </div>
     </div>
   );
 }

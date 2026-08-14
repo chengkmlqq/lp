@@ -11,9 +11,12 @@ const PAGE_FILE = join(__dirname, "../app/admin/power-lines/[id]/page.tsx");
 const CSS = readFileSync(GLOBALS_CSS, "utf-8");
 const PAGE = readFileSync(PAGE_FILE, "utf-8");
 
-test("LP-304: tabs are fixed card type without closable editable-card", () => {
-  // 选项卡固定，不需要动态选项卡的关闭按钮
-  assert.match(PAGE, /type="card"/, "外层 Tabs 应使用固定 card 类型");
+test("LP-317: map/tower switching uses Radio.Group without Tabs", () => {
+  // 地图/列表切换由 Tabs 改为 Radio.Group，无需选项卡的关闭按钮
+  assert.match(PAGE, /<Radio\.Group/, "地图/列表切换应使用 Radio.Group");
+  assert.match(PAGE, /<Radio.Button value="map">地图<\/Radio.Button>/, "应存在地图切换按钮");
+  assert.match(PAGE, /<Radio.Button value="table">杆塔列表<\/Radio.Button>/, "应存在杆塔列表切换按钮");
+  assert.ok(!/<Tabs/.test(PAGE), "不应再使用 Tabs 组件切换地图/列表");
   assert.ok(!PAGE.includes('type="editable-card"'), "不应再使用 editable-card 类型（无关闭按钮）");
 });
 
