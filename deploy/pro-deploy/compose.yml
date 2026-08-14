@@ -110,7 +110,7 @@ services:
       - -A
       - app.core.celery_app.celery_app
       - worker
-      - --hostname=主任务worker@lp
+      - --hostname=通用worker@lp
       - --loglevel=${CELERY_LOG_LEVEL}
       - --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
     depends_on:
@@ -139,6 +139,7 @@ services:
       - -A
       - app.core.celery_app.celery_app
       - worker
+      - --hostname=matlab worker@lp
       - -Q
       - matlab-diagnostics
       - --loglevel=${CELERY_LOG_LEVEL}
@@ -177,7 +178,7 @@ services:
       - -A
       - ctb_worker.celery_app
       - worker
-      - --hostname=地形worker@lp
+      - --hostname=地形转换worker@lp
       - --loglevel=INFO
       - --concurrency=1
       - --queues=ctb
