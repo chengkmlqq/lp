@@ -237,8 +237,6 @@ jobs:
             REGISTRY=${{ env.REGISTRY }}
             REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
             APT_MIRROR=${{ vars.APT_MIRROR || '' }}
-            MCR_OFFICIAL_URL=${{ vars.MCR_OFFICIAL_URL || 'https://ssd.mathworks.cn/supportfiles/downloads/R2026a/Release/0/deployment_files/installer/complete/win64/MATLAB_Runtime_R2026a_win64.zip' }}
-            DL_BASE=${{ vars.DL_BASE || 'http://223.109.142.84/downloads' }}
           tags: |
             ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
             ${{ steps.vars.outputs.image }}:latest
@@ -537,38 +535,38 @@ jobs:
               done
             }
 
-            # ── 方案 2：在部署机幂等解压 MATLAB Runtime（外部持久卷） ──
-            # MCR zip 由镜像 /opt/mcr-stage/mcr.zip 提供；解压目标与容器挂载一致
-            # （deploy/pro-deploy/data/matlab-worker/mcr → /opt/mcr-stage）。
-            # .unpacked 标记：仅首次（或无标记时）解压，重复发布/重新拉取镜像跳过。
+            # ── 方案 A：在部署机下载并幂等解压 MATLAB Runtime（外部持久卷） ──
+            # 镜像不携带 MCR（避免 runner 磁盘溢出）。zip 由部署机直连官方源下载（失败回退 84 nginx），
+            # 解压到 deploy/pro-deploy/data/matlab-worker/mcr（容器挂载 /opt/mcr-stage）。
+            # .unpacked 标记：仅首次（或无标记时）下载+解压，重复发布/重新拉取镜像跳过。
             MW_DIR="${DEPLOY_DIR}/deploy/pro-deploy/data/matlab-worker"
             MCR_DIR="${MW_DIR}/mcr"
             MCR_ZIP_PATH="${MCR_DIR}/mcr.zip"
             UNPACKED_MARKER="${MCR_DIR}/.unpacked"
-            mkdir -p "${MCR_DIR}" "${MW_DIR}/matlab-wave"
+            MCR_OFFICIAL_URL="${MCR_OFFICIAL_URL:-https://ssd.mathworks.cn/supportfiles/downloads/R2026a/Release/0/deployment_files/installer/complete/win64/MATLAB_Runtime_R2026a_win64.zip}"
+            DL_BASE="${DL_BASE:-http://223.109.142.84/downloads}"
+            mkdir -p "${MCR_DIR}" "${MW_DIR}/matlab-wave" "${MW_DIR}/wine"
             
-            # 1) 从镜像抽取 mcr.zip（仅当本地缺失且未解压时；已解压则完全跳过）
             if [ -f "${UNPACKED_MARKER}" ]; then
-              echo "MCR 已在部署机解压过（.unpacked 存在），跳过镜像抽取与解压"
+              echo "MCR 已在部署机下载并解压过（.unpacked 存在），跳过"
             else
+              # 1) 下载 mcr.zip（存在则跳过；官方源优先，失败回退 84）
               if [ ! -f "${MCR_ZIP_PATH}" ]; then
-                echo "从镜像 ${MATLAB_WORKER_IMAGE}:${IMAGE_TAG} 抽取 mcr.zip ..."
-                docker run --rm --entrypoint /bin/sh -v "${MCR_DIR}:/out" "${MATLAB_WORKER_IMAGE}:${IMAGE_TAG}" -c "cp /opt/mcr-stage/mcr.zip /out/mcr.zip"
+                echo "下载 MCR zip（官方源优先）: ${MCR_OFFICIAL_URL}"
+                curl -fSL --retry 3 --retry-delay 5 -o "${MCR_ZIP_PATH}" "${MCR_OFFICIAL_URL}" \
+                  || { echo "官方源失败，回退 84: ${DL_BASE}"; curl -fSL --retry 5 --retry-delay 5 -o "${MCR_ZIP_PATH}" "${DL_BASE}/MATLAB_Runtime_R2026a_win64.zip"; }
                 ls -lh "${MCR_ZIP_PATH}"
               else
-                echo "mcr.zip 已存在于部署机，跳过抽取"
+                echo "mcr.zip 已存在于部署机，跳过下载"
               fi
             
               # 2) 幂等解压到 MCR_DIR（对齐容器挂载 /opt/mcr-stage）
               echo "解压 MCR zip 到 ${MCR_DIR} ..."
               ( cd "${MCR_DIR}" && unzip -q -o mcr.zip ) || { echo "[error] MCR 解压失败"; exit 1; }
               touch "${UNPACKED_MARKER}"
-              echo "MCR 解压完成并写入标记"
+              echo "MCR 下载并解压完成，写入标记"
             fi
-            
-            # 确保 wine 持久卷目录存在（容器挂载 ${WINEPREFIX}）
-            mkdir -p "${MW_DIR}/wine"
-            
+
             pull_with_retry
 
             if ! compose_run up -d --remove-orphans; then
