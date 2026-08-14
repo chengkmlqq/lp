@@ -132,6 +132,38 @@ services:
     restart: unless-stopped
     logging: *default-logging
 
+  matlab-worker:
+    image: ${MATLAB_WORKER_IMAGE}
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - worker
+      - -Q
+      - matlab-diagnostics
+      - --loglevel=${CELERY_LOG_LEVEL}
+      - --concurrency=${CELERY_WORKER_CONCURRENCY:-1}
+    depends_on:
+      - api
+      - redis
+    env_file:
+      - ./.env.prod
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
+      # LP-316：判别任务专用队列（matlab-diagnostics），仅本镜像消费。
+      # 判别系统编译器产物目录：镜像内 /app/matlab-wave（含 waveform_engine_v2.exe）。
+      FAULT_DIAG_MATLAB_COMPILED_DIR: ${FAULT_DIAG_MATLAB_COMPILED_DIR:-/app/matlab-wave}
+      FAULT_DIAG_LEDGER_CSV: ${FAULT_DIAG_LEDGER_CSV:-}
+      WINE_BINARY_PATH: ${WINE_BINARY_PATH:-wine}
+    volumes:
+      - ./data/app:/app/data
+      - ./data/matlab-wave-module:/app/data/matlab-wave-module
+    restart: unless-stopped
+    logging: *default-logging
+
   ctb-worker:
     image: ${CTB_WORKER_IMAGE}
     command:

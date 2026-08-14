@@ -6,6 +6,9 @@ from ..core.celery_app import celery_app
 @celery_app.task(
     name="app.tasks.fault_diagnosis_tasks.run_fault_diagnosis_task",
     bind=True,
+    # 判别任务走独立队列：仅 fquiz-matlab-worker（含 Wine + MATLAB Runtime）消费，
+    # 保证 MATLAB 行波判别不因落到无 Runtime 的普通 worker 而降级。
+    queue="matlab-diagnostics",
     soft_time_limit=300,
     time_limit=600,
 )

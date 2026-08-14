@@ -212,9 +212,14 @@ def _try_matlab_wave_enhancement(
     compiled_dir = (get_settings().fault_diag_matlab_compiled_dir or "").strip()
     if not compiled_dir or not traveling_wave_records:
         return None, None
-    executable = Path(compiled_dir) / "RunWaveAnalysisModule"
-    if not executable.is_file():
+    # 判别系统产物：Windows mcc 编译的 waveform_engine_v2.exe（R2026a，含模型 CTF）。
+    # 在 Linux 容器内经 Wine 调用（fquiz-matlab-worker 镜像装有 Windows MATLAB Runtime）。
+    exe_names = ("waveform_engine_v2.exe", "waveform_engine.exe", "RunWaveAnalysisModule")
+    executable = next((Path(compiled_dir) / n for n in exe_names if (Path(compiled_dir) / n).is_file()), None)
+    if executable is None:
         return None, None
+    # Wine 二进制：优先配置项，缺省 "wine"（由 fquiz-matlab-worker 镜像提供）。
+    wine_binary = (get_settings().wine_binary_path or "wine").strip() or "wine"
 
     # 先用内置规则做一次初判，提取录波故障相与雷电流/耐雷水平（与交付版 run_latest_wave_module 相同）。
     try:
@@ -267,10 +272,15 @@ def _try_matlab_wave_enhancement(
         )
 
     try:
+        # Wine 无头环境：抑制 GUI 弹窗，避免 headless 服务器首启卡住。
+        env = {**__import__("os").environ}
+        env.setdefault("WINEDLLOVERRIDES", "winemenubuilder.exe=d")
+        env.setdefault("DISPLAY", "")
         completed = subprocess.run(
-            [str(executable), str(staged_input.resolve()), str(output_root.resolve())],
+            [wine_binary, str(executable), str(staged_input.resolve()), str(output_root.resolve())],
             capture_output=True,
             text=True,
+            env=env,
             timeout=600,
         )
     except Exception:

@@ -107,6 +107,50 @@ jobs:
           cache-from: type=gha,scope=fquiz-wine-base
           cache-to: type=gha,mode=max,scope=fquiz-wine-base
 
+  # ───── 二级 wine-base-64 镜像（base + 64位 wine，专供 MATLAB 判别系统） ─────
+  build-wine-base-64:
+    needs: [build-base]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 生成镜像变量
+        id: vars
+        shell: bash
+        run: |
+          NS="${{ env.REGISTRY_NAMESPACE }}"
+          echo "image=${{ env.REGISTRY }}/${NS}/fquiz-wine-base-64" >> "$GITHUB_OUTPUT"
+
+      - name: 安装 Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: 登录镜像仓库
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 构建并推送 wine-base-64 镜像
+        uses: docker/build-push-action@v7
+        with:
+          context: ./api
+          file: ./api/Dockerfile.winebase64
+          platforms: linux/amd64
+          pull: true
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            REGISTRY=${{ env.REGISTRY }}
+            REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
+            APT_MIRROR=${{ vars.APT_MIRROR || '' }}
+          tags: |
+            ${{ steps.vars.outputs.image }}:latest
+          cache-from: type=gha,scope=fquiz-wine-base-64
+          cache-to: type=gha,mode=max,scope=fquiz-wine-base-64
+
   # ───── Worker 镜像（wine-base + 业务代码，celery worker） ─────
   build-worker:
     needs: [build-wine-base]
@@ -151,6 +195,54 @@ jobs:
             ${{ steps.vars.outputs.image }}:latest
           cache-from: type=gha,scope=fquiz-worker
           cache-to: type=gha,mode=max,scope=fquiz-worker
+
+  # ───── MATLAB Worker 镜像（wine-base-64 + Windows MATLAB Runtime + 判别系统） ─────
+  # 消费 matlab-diagnostics 队列，判别任务专用；Runtime 来自部署机 84 nginx 直链（方案 A）。
+  build-matlab-worker:
+    needs: [build-wine-base-64]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 生成镜像变量
+        id: vars
+        shell: bash
+        run: |
+          NS="${{ env.REGISTRY_NAMESPACE }}"
+          echo "image=${{ env.REGISTRY }}/${NS}/fquiz-matlab-worker" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: 安装 Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: 登录镜像仓库
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 构建并推送 MATLAB Worker 镜像
+        uses: docker/build-push-action@v7
+        with:
+          context: ./api
+          file: ./api/Dockerfile.matlab
+          platforms: linux/amd64
+          pull: true
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            REGISTRY=${{ env.REGISTRY }}
+            REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
+            APT_MIRROR=${{ vars.APT_MIRROR || '' }}
+            DL_BASE=${{ vars.DL_BASE || 'http://223.109.142.84/downloads' }}
+          tags: |
+            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
+            ${{ steps.vars.outputs.image }}:latest
+          cache-from: type=gha,scope=fquiz-matlab-worker
+          cache-to: type=gha,mode=max,scope=fquiz-matlab-worker
 
   # ───── API 镜像（无 wine，仅 amd64） ─────
   build-api:
@@ -288,7 +380,7 @@ jobs:
   # ───── 部署到生产服务器 ─────
   deploy:
     runs-on: ubuntu-latest
-    needs: [build-api, build-worker, build-web, build-ctb-worker]
+    needs: [build-api, build-worker, build-web, build-ctb-worker, build-matlab-worker]
     if: github.ref == 'refs/heads/dev'
 
     steps:
@@ -400,11 +492,13 @@ jobs:
             WEB_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-web"
             CTB_WORKER_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/ctb-worker"
             WORKER_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-worker"
+            MATLAB_WORKER_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-matlab-worker"
             {
               echo "API_IMAGE=${API_IMAGE}:${IMAGE_TAG}"
               echo "WEB_IMAGE=${WEB_IMAGE}:${IMAGE_TAG}"
               echo "CTB_WORKER_IMAGE=${CTB_WORKER_IMAGE}:${IMAGE_TAG}"
               echo "WORKER_IMAGE=${WORKER_IMAGE}:${IMAGE_TAG}"
+              echo "MATLAB_WORKER_IMAGE=${MATLAB_WORKER_IMAGE}:${IMAGE_TAG}"
               echo "NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}"
               echo "NEXT_PUBLIC_APP_BASE_PATH="
               echo "FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH}"

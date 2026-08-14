@@ -1,0 +1,22 @@
+# 二级 wine-base-64 镜像：一级基础镜像 + 64 位 wine（amd64，仅 amd64 可用）。
+# 专用于 MATLAB 判别系统（waveform_engine_v2.exe 为 64 位 PE，需 64 位 wine 加载）。
+# 与 32 位 fquiz-wine-base 分开：fquiz-wine-base 供普通 worker/api（32 位 Win32 程序），
+# 本镜像供 matlab-worker（64 位 MATLAB Runtime + exe）。
+ARG REGISTRY=crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com
+ARG REGISTRY_NAMESPACE=ck-registry
+FROM ${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-base:latest
+
+# apt 源镜像，默认空 = 官方源（海外 CI runner）；国内构建传 mirrors.ustc.edu.cn
+ARG APT_MIRROR=""
+
+RUN if [ -n "${APT_MIRROR}" ]; then \
+        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list 2>/dev/null; \
+    fi; \
+    apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        libwine:amd64 \
+        wine64 \
+    && command -v wine >/dev/null \
+    && ls /usr/lib/x86_64-linux-gnu/wine/ >/dev/null 2>&1 \
+    && rm -rf /var/lib/apt/lists/*
