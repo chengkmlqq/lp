@@ -1,5 +1,5 @@
 import { Badge, Button, Card, Space, Typography } from "antd";
-import { ClockCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import type { FaultAnalysis } from "./types";
 
 const { Text } = Typography;
@@ -19,13 +19,6 @@ const statusConfig = {
   failed: { text: "失败", icon: CloseCircleOutlined, color: "error" as const },
 };
 
-const riskConfig = {
-  low: { text: "低风险", color: "success" as const },
-  medium: { text: "中风险", color: "warning" as const },
-  high: { text: "高风险", color: "error" as const },
-  critical: { text: "严重", color: "error" as const },
-};
-
 const getConfidenceColor = (confidence: number) => {
   if (confidence >= 90) return "#22C55E";
   if (confidence >= 70) return "#F97316";
@@ -40,7 +33,6 @@ const getConfidenceIcon = (confidence: number) => {
 
 export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: AnalysisCardProps) {
   const status = statusConfig[analysis.status];
-  const risk = riskConfig[analysis.risk_level];
   const confidenceColor = getConfidenceColor(analysis.confidence);
   const confidenceIcon = getConfidenceIcon(analysis.confidence);
 
@@ -92,19 +84,23 @@ export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: A
               icon={<EyeOutlined />}
               onClick={onView}
             />
-            <Button
-              type="text"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={onEdit}
-            />
-            <Button
-              type="text"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={onDelete}
-            />
+            {onEdit && (
+              <Button
+                type="text"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={onEdit}
+              />
+            )}
+            {onDelete && (
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={onDelete}
+              />
+            )}
           </Space>
         </div>
       </div>

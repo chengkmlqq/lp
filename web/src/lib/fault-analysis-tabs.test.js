@@ -6,11 +6,13 @@ import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PAGE_FILE = join(__dirname, "../app/admin/fault-analysis/page.tsx");
+const CARD_FILE = join(__dirname, "../components/fault-analysis/analysis-card.tsx");
 const FORM_FILE = join(__dirname, "../components/fault-analysis/create-analysis-form-advanced.tsx");
 const DETAIL_FILE = join(__dirname, "../components/fault-analysis/analysis-detail-view.tsx");
 const GLOBALS_CSS = join(__dirname, "../app/globals.css");
 
 const PAGE = readFileSync(PAGE_FILE, "utf-8");
+const CARD = readFileSync(CARD_FILE, "utf-8");
 const FORM = readFileSync(FORM_FILE, "utf-8");
 const DETAIL = readFileSync(DETAIL_FILE, "utf-8");
 const CSS = readFileSync(GLOBALS_CSS, "utf-8");
@@ -146,4 +148,70 @@ test("LP-285: 列表内容区 list-pane 有纵向滚动样式", () => {
   assert.match(block, /overflow-x:\s*hidden/, "list-pane 应横向隐藏溢出");
   assert.match(block, /overflow-y:\s*auto/, "list-pane 应保留纵向滚动");
   assert.match(block, /padding:\s*12px/, "list-pane 应保留 12px 内边距");
+});
+
+test("LP-319: 故障分析页 Tabs 外壳化并迁入新建按钮", () => {
+  assert.ok(
+    !PAGE.includes("admin-fault-analysis-page-card"),
+    "页面不应再使用 admin-fault-analysis-page-card 外层 Card",
+  );
+  assert.ok(!PAGE.includes("<Card"), "Tabs 不应再包裹在 Card 组件内");
+  assert.ok(PAGE.includes("tabBarExtraContent"), "新建分析按钮应迁入 Tabs.tabBarExtraContent");
+  assert.ok(PAGE.includes("canManage ?"), "新建/管理操作应保留 canManage 权限门控");
+  assert.ok(
+    !CSS.includes(".admin-fault-analysis-page-card"),
+    "全局样式应删除外层 Card 相关规则",
+  );
+});
+
+test("LP-319: 故障分析页支持卡片/列表双视图与表格操作列", () => {
+  assert.ok(PAGE.includes("Segmented"), "过滤栏应包含 Segmented 视图切换");
+  assert.ok(PAGE.includes('useState<"card" | "list">("card")'), "默认应为卡片视图");
+  assert.ok(PAGE.includes("Table<FaultAnalysis>"), "列表视图应使用 antd Table");
+  assert.ok(PAGE.includes("ColumnsType<FaultAnalysis>"), "表格列定义应使用 FaultAnalysis 类型");
+  assert.ok(PAGE.includes("FAULT_STATUS_META"), "状态枚举应收敛为页面级常量");
+  assert.ok(PAGE.includes("FAULT_RISK_META"), "风险枚举应收敛为页面级常量");
+  assert.ok(PAGE.includes("Dropdown"), "删除操作应收进三点 Dropdown");
+  assert.ok(PAGE.includes("MoreOutlined"), "三点菜单应使用 MoreOutlined 图标");
+  assert.ok(PAGE.includes('fixed: "right"'), "操作列应固定在右侧");
+});
+
+test("LP-319: 故障分析列表视图有动态表格高度锚点", () => {
+  for (const constant of [
+    "FAULT_TABLE_MIN_SCROLL_Y",
+    "FAULT_TABLE_ESTIMATED_HEADER_HEIGHT",
+    "FAULT_TABLE_ESTIMATED_PAGINATION_HEIGHT",
+    "FAULT_TABLE_BOTTOM_GAP",
+  ]) {
+    assert.ok(PAGE.includes(constant), `应定义 ${constant} 表格高度常量`);
+  }
+  assert.ok(PAGE.includes("updateTableScrollHeight"), "应存在表格滚动高度测量函数");
+  assert.ok(PAGE.includes("ResizeObserver"), "应监听锚点容器尺寸变化");
+  assert.ok(PAGE.includes("tableScrollAnchorRef"), "列表表格应挂载高度锚点 ref");
+  assert.ok(PAGE.includes("admin-fault-analysis-table-anchor"), "列表表格应使用故障分析锚点类");
+  assert.ok(PAGE.includes("--admin-fault-analysis-table-body-min-height"), "表格 body 最小高度应通过 CSS 变量传入");
+});
+
+test("LP-319: 故障分析卡片视图抽象为统一滚动和分页容器", () => {
+  for (const className of [
+    ".admin-fault-analysis-table-anchor",
+    ".admin-fault-analysis-table-anchor .ant-table-body",
+    ".admin-fault-analysis-card-view",
+    ".admin-fault-analysis-card-scroll",
+    ".admin-fault-analysis-card-scroll > .grid",
+    ".admin-fault-analysis-pagination",
+  ]) {
+    assert.ok(CSS.includes(className), `全局样式应包含 ${className}`);
+  }
+  assert.ok(PAGE.includes('className="admin-fault-analysis-card-view"'), "卡片视图应使用统一容器类");
+  assert.ok(PAGE.includes('className="admin-fault-analysis-card-scroll"'), "卡片列表应使用统一滚动类");
+  assert.ok(PAGE.includes('className="admin-fault-analysis-pagination"'), "分页区域应使用统一分页类");
+  assert.ok(!PAGE.includes("overflowY: 'auto'"), "卡片滚动不应继续使用内联 overflowY 样式");
+});
+
+test("LP-319: 故障分析卡片编辑和删除按钮按处理器存在性渲染", () => {
+  assert.ok(CARD.includes("onEdit &&"), "编辑按钮应仅在传入 onEdit 时渲染");
+  assert.ok(CARD.includes("onDelete &&"), "删除按钮应仅在传入 onDelete 时渲染");
+  assert.ok(PAGE.includes("onEdit={canManage ? handleEdit : undefined}"), "卡片视图编辑入口应受 canManage 门控");
+  assert.ok(PAGE.includes("onDelete={canManage ? handleDelete : undefined}"), "卡片视图删除入口应受 canManage 门控");
 });

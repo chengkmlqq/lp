@@ -4644,21 +4644,6 @@ body {
   color: var(--ant-color-text-secondary) !important;
 }
 
-.admin-fault-analysis-page-card {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-fault-analysis-page-card > .ant-card-body {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 /* LP-275: 故障分析页详情从全页视图/大尺寸 Modal 改造为动态选项卡（editable-card）。
    复用地闪密度统计/防雷分析页的 Tabs 布局约定：列表主 Tab 撑满高度、详情 Tab 平铺在 tabBar 后，
    Tab 栏与 Card 头部连成一条白带。 */
@@ -4744,6 +4729,45 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
+}
+
+.admin-fault-analysis-table-anchor {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-fault-analysis-table-anchor .ant-table-body {
+  min-height: var(--admin-fault-analysis-table-body-min-height, 180px);
+}
+
+.admin-fault-analysis-card-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-fault-analysis-card-scroll {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+  gap: 12px;
+}
+
+.admin-fault-analysis-card-scroll > .grid {
+  flex: 0 0 auto;
+}
+
+.admin-fault-analysis-pagination {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px;
+  flex-shrink: 0;
 }
 
 /* LP-287: 故障复现页面移除外层 Card 后，外层 Tabs 容器撑满高度，
