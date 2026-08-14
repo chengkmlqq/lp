@@ -413,7 +413,7 @@ export default function AdminTaskMonitorPage() {
         width: 200,
         fixed: "right",
         render: (_: unknown, record: TaskTableRow) => (
-          <Space size={4}>
+          <Space wrap>
             <Button size="small" onClick={() => handleViewLog(record.task_id)}>
               日志
             </Button>
