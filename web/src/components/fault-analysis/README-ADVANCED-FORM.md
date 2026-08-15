@@ -120,27 +120,24 @@ interface CreateAnalysisFormAdvancedProps {
   lines: Array<{ id: string; name: string; code: string }>;
   linesLoading?: boolean;
   onSubmit: (values: CreateFaultAnalysisFormValues) => void;
+  submitText?: string;   // 提交按钮文案（新建「提交分析」/ 编辑「保存修改」）
+  submitting?: boolean;  // 提交中加载态
 }
 ```
 
 ## 使用方法
 
-在主页面中已更新为使用新表单：
+在动态选项卡（`create-analysis-form-tab.tsx`，LP-348）中已更新为使用新表单：
 
 ```typescript
-<Modal
-  title="新建故障分析"
-  open={createModalOpen}
-  width={950}  // 增加宽度以容纳复杂表单
-  ...
->
-  <CreateAnalysisFormAdvanced
-    form={createForm}
-    lines={linesQuery.data?.items ?? []}
-    linesLoading={linesQuery.isLoading}
-    onSubmit={(values) => createMutation.mutate(values)}
-  />
-</Modal>
+<CreateAnalysisFormAdvanced
+  form={form}
+  lines={lines}
+  linesLoading={linesLoading}
+  submitText="提交分析"
+  submitting={submitting}
+  onSubmit={onSubmit}
+/>
 ```
 
 ## 数据结构

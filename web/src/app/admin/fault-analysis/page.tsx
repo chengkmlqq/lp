@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Button,
@@ -26,9 +26,8 @@ import type { ColumnsType } from "antd/es/table";
 import { useAuth } from "@/components/auth-provider";
 import { AnalysisCardList } from "@/components/fault-analysis/analysis-card-list";
 import { AnalysisDetailView } from "@/components/fault-analysis/analysis-detail-view";
-import { CreateAnalysisFormAdvanced } from "@/components/fault-analysis/create-analysis-form-advanced";
+import { CreateAnalysisFormTab } from "@/components/fault-analysis/create-analysis-form-tab";
 import { readApiError } from "@/lib/api";
-import type { LineListResponse } from "@/types/auth";
 import type {
   FaultAnalysisListResponse,
   FaultAnalysisCreateResponse,
@@ -44,6 +43,10 @@ const { Text } = Typography;
 
 /** 结果列表固定主 Tab（不可关闭），详情 Tab 依次追加在其后 */
 const LIST_TAB_KEY = "list";
+/** 新建表单固定 Tab key（唯一，重复点击去重） */
+const CREATE_TAB_KEY = "create";
+/** 编辑表单 Tab key 前缀：edit-{id}，按 id 去重 */
+const EDIT_TAB_KEY_PREFIX = "edit-";
 
 const FAULT_STATUS_META: Record<FaultAnalysis["status"], { color: string; label: string }> = {
   pending: { color: "default", label: "待处理" },
@@ -147,7 +150,6 @@ export default function AdminFaultAnalysisPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
-  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
@@ -155,29 +157,20 @@ export default function AdminFaultAnalysisPage() {
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [tableScrollY, setTableScrollY] = useState(FAULT_TABLE_MIN_SCROLL_Y);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
-  const [createForm] = Form.useForm<CreateFaultAnalysisFormValues>();
   const [messageApi, contextHolder] = message.useMessage();
 
-  // Edit / delete state
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm] = Form.useForm<CreateFaultAnalysisFormValues>();
-  const [editLoading, setEditLoading] = useState(false);
+  // 提交进行中的 Tab key 集合（LP-348：提交中禁止关闭对应表单 Tab）
+  const [submittingTabKeys, setSubmittingTabKeys] = useState<Set<string>>(() => new Set());
+
+  // closeTab 可能被 Tab 内回调（onSuccess/onLoadError）以较早的闭包触发，
+  // 故用 ref 始终读取最新的 detailTabs/activeTabKey，避免关闭/回退位置错乱。
+  const detailTabsRef = useRef(detailTabs);
+  detailTabsRef.current = detailTabs;
+  const activeTabKeyRef = useRef(activeTabKey);
+  activeTabKeyRef.current = activeTabKey;
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage");
-
-  const linesQuery = useQuery({
-    queryKey: ["/api/v1/lines"],
-    enabled: !!user && canRead,
-    queryFn: async () => {
-      const response = await fetchWithAuth("/api/v1/lines");
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LineListResponse;
-    },
-  });
 
   const analysesQuery = useQuery({
     queryKey: ["/api/v1/fault-analysis", searchKeyword],
@@ -284,150 +277,178 @@ export default function AdminFaultAnalysisPage() {
     };
   }, [updateTableScrollHeight, viewMode]);
 
-  const createMutation = useMutation({
-    mutationFn: async (values: CreateFaultAnalysisFormValues) => {
-      const body = buildFaultAnalysisBody(values);
-      const fileFields: Array<[string, File | undefined]> = [
-        ["wave_data_file", pickUploadFile(values.wave_data_file)],
-        ["lightning_data_file", pickUploadFile(values.lightning_data_file)],
-        ["ledger_data_file", pickUploadFile(values.ledger_data_file)],
-        ["traveling_wave_file", pickUploadFile(values.traveling_wave_file)],
-        ["optical_data_file", pickUploadFile(values.optical_data_file)],
-      ];
+  // ---- LP-348: 新建/编辑表单改用动态选项卡 ----
 
-      if (hasUploadFiles(values)) {
-        // 携带判别输入文件时使用 multipart 上传接口（LP-316）。
-        const formData = new FormData();
-        for (const [key, value] of Object.entries(body)) {
-          if (value !== undefined) {
-            formData.set(key, String(value));
-          }
-        }
+  // 移除指定 Tab 并按「左邻 → 最左 → 列表主 Tab」回退 activeKey（与详情 Tab 关闭逻辑一致）。
+  // 通过 ref 读取最新状态，兼容 Tab 内回调以较早闭包触发的场景。
+  const closeTab = useCallback((tabKey: string) => {
+    const previous = detailTabsRef.current;
+    const removedIndex = previous.findIndex((tab) => tab.key === tabKey);
+    const next = previous.filter((tab) => tab.key !== tabKey);
+    setDetailTabs(next);
+    if (activeTabKeyRef.current === tabKey) {
+      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+      setActiveTabKey(fallback);
+    }
+  }, []);
 
-        const autoFiles = values.auto_classify_files;
-        if (autoFiles && autoFiles.length > 0) {
-          formData.set("auto_classify", "true");
-          for (const item of autoFiles) {
-            const file = item.originFileObj;
-            formData.append("auto_classify_files", file, file.name);
-          }
-        } else {
-          for (const [field, file] of fileFields) {
-            if (file) {
-              formData.set(field, file, file.name);
-            }
-          }
-        }
+  // 提交进行中的 Tab 状态（LP-348：提交中禁止关闭对应表单 Tab）。
+  const setTabSubmitting = useCallback((tabKey: string, submitting: boolean) => {
+    setSubmittingTabKeys((previous) => {
+      const next = new Set(previous);
+      if (submitting) {
+        next.add(tabKey);
+      } else {
+        next.delete(tabKey);
+      }
+      return next;
+    });
+  }, []);
 
-        const response = await fetchWithAuth("/api/v1/fault-analysis/upload", {
-          method: "POST",
-          body: formData,
-        });
-        if (!response.ok) {
-          throw new Error(await readApiError(response));
+  // 新建提交请求（含 multipart 上传分支，与改造前 createMutation 行为一致）。
+  const submitCreate = useCallback(async (values: CreateFaultAnalysisFormValues) => {
+    const body = buildFaultAnalysisBody(values);
+    const fileFields: Array<[string, File | undefined]> = [
+      ["wave_data_file", pickUploadFile(values.wave_data_file)],
+      ["lightning_data_file", pickUploadFile(values.lightning_data_file)],
+      ["ledger_data_file", pickUploadFile(values.ledger_data_file)],
+      ["traveling_wave_file", pickUploadFile(values.traveling_wave_file)],
+      ["optical_data_file", pickUploadFile(values.optical_data_file)],
+    ];
+
+    if (hasUploadFiles(values)) {
+      // 携带判别输入文件时使用 multipart 上传接口（LP-316）。
+      const formData = new FormData();
+      for (const [key, value] of Object.entries(body)) {
+        if (value !== undefined) {
+          formData.set(key, String(value));
         }
-        return (await response.json()) as FaultAnalysisCreateResponse;
       }
 
-      const response = await fetchWithAuth("/api/v1/fault-analysis", {
+      const autoFiles = values.auto_classify_files;
+      if (autoFiles && autoFiles.length > 0) {
+        formData.set("auto_classify", "true");
+        for (const item of autoFiles) {
+          const file = item.originFileObj;
+          formData.append("auto_classify_files", file, file.name);
+        }
+      } else {
+        for (const [field, file] of fileFields) {
+          if (file) {
+            formData.set(field, file, file.name);
+          }
+        }
+      }
+
+      const response = await fetchWithAuth("/api/v1/fault-analysis/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: formData,
       });
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
       return (await response.json()) as FaultAnalysisCreateResponse;
-    },
-    onSuccess: async (data) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["/api/v1/fault-analysis"],
-      });
-      setCreateModalOpen(false);
-      messageApi.success("故障分析创建成功");
-      createForm.resetFields();
-      openDetail({ id: data.analysis.id });
-    },
-    onError: (error) => {
-      messageApi.error(error instanceof Error ? error.message : "创建失败");
-    },
-  });
+    }
+
+    const response = await fetchWithAuth("/api/v1/fault-analysis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(await readApiError(response));
+    }
+    return (await response.json()) as FaultAnalysisCreateResponse;
+  }, [fetchWithAuth]);
+
+  // 新建成功：刷新列表并关闭新建 Tab（回到列表）。
+  const handleCreateSuccess = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
+    closeTab(CREATE_TAB_KEY);
+    messageApi.success("故障分析创建成功");
+  }, [queryClient, closeTab, messageApi]);
+
+  // 点击「新建分析」→ 打开/激活唯一的新建 Tab（固定 key "create"，重复点击去重）。
+  const openCreateTab = useCallback(() => {
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === CREATE_TAB_KEY)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key: CREATE_TAB_KEY,
+          label: <span>新建故障分析</span>,
+          closable: true,
+          children: (
+            <CreateAnalysisFormTab
+              mode="create"
+              submitRequest={submitCreate}
+              onSuccess={handleCreateSuccess}
+              onError={(error) => messageApi.error(error instanceof Error ? error.message : "创建失败")}
+              onSubmittingChange={(submitting) => setTabSubmitting(CREATE_TAB_KEY, submitting)}
+            />
+          ),
+        } satisfies DetailTabItem,
+      ];
+    });
+    setActiveTabKey(CREATE_TAB_KEY);
+  }, [submitCreate, handleCreateSuccess, setTabSubmitting, messageApi]);
 
   // --- Edit handlers ---
 
-  const handleEdit = useCallback(async (id: string) => {
-    setEditingId(id);
-    setEditModalOpen(true);
-    setEditLoading(true);
-    editForm.resetFields();
+  // 更新提交请求（与改造前 updateMutation 行为一致）。
+  const submitUpdate = useCallback(async (id: string, values: CreateFaultAnalysisFormValues) => {
+    const body = buildFaultAnalysisBody(values);
 
-    try {
-      const response = await fetchWithAuth(`/api/v1/fault-analysis/${id}`);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      const detail: FaultAnalysisDetail = await response.json();
-
-      editForm.setFieldsValue({
-        line_id: detail.line_id ?? "",
-        station_name: detail.station ?? undefined,
-        fault_time: detail.fault_time ?? undefined,
-        fault_line_name: detail.line_name ?? undefined,
-        fault_phase: detail.fault_phase ?? undefined,
-        fault_duration: detail.fault_duration_ms ?? undefined,
-        reclosure_status: detail.reclosure_status ?? undefined,
-        fault_voltage: detail.fault_voltage_v ?? undefined,
-        fault_current: detail.fault_current_a ?? undefined,
-        max_zero_current: detail.max_zero_current_a ?? undefined,
-        zero_compensation: detail.zero_compensation ?? undefined,
-        fault_resistance: detail.fault_resistance_ohm ?? undefined,
-        line_length: detail.line_length_km ?? undefined,
-        line_angle: detail.line_angle_deg ?? undefined,
-        line_impedance: detail.line_impedance_ohm ?? undefined,
-        lightning_current: detail.lightning_current_ka?.toString() ?? undefined,
-        lightning_longitude: detail.lightning_longitude ?? undefined,
-        lightning_latitude: detail.lightning_latitude ?? undefined,
-        wave_distance: detail.wave_distance_km ?? undefined,
-        traveling_wave_distance: detail.traveling_wave_distance_km ?? undefined,
-        optical_position: detail.optical_position ?? undefined,
-        optical_device_location: detail.optical_device_location ?? undefined,
-      });
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "加载故障分析详情失败");
-      setEditModalOpen(false);
-      setEditingId(null);
-    } finally {
-      setEditLoading(false);
+    const response = await fetchWithAuth(`/api/v1/fault-analysis/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(await readApiError(response));
     }
-  }, [editForm, fetchWithAuth, messageApi]);
+    return (await response.json()) as FaultAnalysisDetail;
+  }, [fetchWithAuth]);
 
-  const updateMutation = useMutation({
-    mutationFn: async (values: CreateFaultAnalysisFormValues) => {
-      if (!editingId) throw new Error("未指定编辑记录");
+  // 更新成功：刷新列表并关闭对应编辑 Tab（回到列表）。
+  const handleUpdateSuccess = useCallback(async (tabKey: string) => {
+    await queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
+    closeTab(tabKey);
+    messageApi.success("故障分析更新成功");
+  }, [queryClient, closeTab, messageApi]);
 
-      const body = buildFaultAnalysisBody(values);
-
-      const response = await fetchWithAuth(`/api/v1/fault-analysis/${editingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
+  // 点击卡片/列表「编辑」→ 打开/激活编辑 Tab（key 用 edit-{id} 去重），
+  // 表单内按 id 加载详情并预填（见 CreateAnalysisFormTab）。
+  const handleEdit = useCallback((id: string, title?: string) => {
+    const tabKey = `${EDIT_TAB_KEY_PREFIX}${id}`;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === tabKey)) {
+        return previous;
       }
-      return (await response.json()) as FaultAnalysisDetail;
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
-      setEditModalOpen(false);
-      setEditingId(null);
-      messageApi.success("故障分析更新成功");
-      editForm.resetFields();
-    },
-    onError: (error) => {
-      messageApi.error(error instanceof Error ? error.message : "更新失败");
-    },
-  });
+      return [
+        ...previous,
+        {
+          key: tabKey,
+          label: <span>{title ? `编辑：${title}` : "编辑故障分析"}</span>,
+          closable: true,
+          children: (
+            <CreateAnalysisFormTab
+              mode="edit"
+              editId={id}
+              submitRequest={(values) => submitUpdate(id, values)}
+              onSuccess={() => handleUpdateSuccess(tabKey)}
+              onError={(error) => messageApi.error(error instanceof Error ? error.message : "更新失败")}
+              onSubmittingChange={(submitting) => setTabSubmitting(tabKey, submitting)}
+              onLoadError={() => closeTab(tabKey)}
+            />
+          ),
+        } satisfies DetailTabItem,
+      ];
+    });
+    setActiveTabKey(tabKey);
+  }, [submitUpdate, handleUpdateSuccess, closeTab, setTabSubmitting, messageApi]);
 
   const handleDelete = useCallback((id: string) => {
     Modal.confirm({
@@ -495,6 +516,10 @@ export default function AdminFaultAnalysisPage() {
       return;
     }
     const key = String(targetKey);
+    // LP-348：提交进行中的表单 Tab 禁止关闭，避免丢失已填内容。
+    if (submittingTabKeys.has(key)) {
+      return;
+    }
     const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
     const next = detailTabs.filter((tab) => tab.key !== key);
     setDetailTabs(next);
@@ -502,7 +527,7 @@ export default function AdminFaultAnalysisPage() {
       const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
       setActiveTabKey(fallback);
     }
-  }, [detailTabs, activeTabKey]);
+  }, [detailTabs, activeTabKey, submittingTabKeys]);
 
   const columns = useMemo<ColumnsType<FaultAnalysis>>(
     () => [
@@ -583,7 +608,7 @@ export default function AdminFaultAnalysisPage() {
                 详情
               </Button>
               {canManage && (
-                <Button size="small" onClick={() => handleEdit(row.id)}>
+                <Button size="small" onClick={() => handleEdit(row.id, row.title)}>
                   编辑
                 </Button>
               )}
@@ -636,7 +661,7 @@ export default function AdminFaultAnalysisPage() {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                onClick={() => setCreateModalOpen(true)}
+                onClick={openCreateTab}
               >
                 新建分析
               </Button>
@@ -774,59 +799,6 @@ export default function AdminFaultAnalysisPage() {
           ]}
         />
       </div>
-
-      <Modal
-        title="新建故障分析"
-        open={createModalOpen}
-        width={760}
-        onCancel={() => {
-          if (createMutation.isPending) {
-            return;
-          }
-          setCreateModalOpen(false);
-        }}
-        onOk={() => createForm.submit()}
-        okText="提交分析"
-        cancelText="取消"
-        confirmLoading={createMutation.isPending}
-        destroyOnClose
-      >
-        <CreateAnalysisFormAdvanced
-          form={createForm}
-          lines={linesQuery.data?.items ?? []}
-          linesLoading={linesQuery.isLoading}
-          onSubmit={(values) => createMutation.mutate(values)}
-        />
-      </Modal>
-
-      <Modal
-        title="编辑故障分析"
-        open={editModalOpen}
-        width={760}
-        onCancel={() => {
-          if (updateMutation.isPending) {
-            return;
-          }
-          setEditModalOpen(false);
-          setEditingId(null);
-        }}
-        onOk={() => editForm.submit()}
-        okText="保存修改"
-        cancelText="取消"
-        confirmLoading={updateMutation.isPending || editLoading}
-        destroyOnClose
-        afterClose={() => {
-          editForm.resetFields();
-          setEditingId(null);
-        }}
-      >
-        <CreateAnalysisFormAdvanced
-          form={editForm}
-          lines={linesQuery.data?.items ?? []}
-          linesLoading={linesQuery.isLoading}
-          onSubmit={(values) => updateMutation.mutate(values)}
-        />
-      </Modal>
     </>
   );
 }

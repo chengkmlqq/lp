@@ -54,17 +54,39 @@ test("LP-275: 新建/编辑 Modal 大尺寸宽度已移除", () => {
   );
 });
 
-test("LP-275: 新建/编辑表单改用 Tabs 分组", () => {
+test("LP-348: 新建/编辑表单不再使用内层 Tabs，改为纵向三分区", () => {
   assert.ok(
-    FORM.includes('className="admin-fault-analysis-modal-tabs"'),
-    "表单应使用 Tabs 分组（admin-fault-analysis-modal-tabs）",
+    !FORM.includes('className="admin-fault-analysis-modal-tabs"'),
+    "表单不应再使用 admin-fault-analysis-modal-tabs 内层 Tabs",
   );
-  assert.ok(FORM.includes('key: "line"'), "应存在“故障线路”Tab");
-  assert.ok(FORM.includes('label: "故障线路"'), "故障线路 Tab 标签应为“故障线路”");
-  assert.ok(FORM.includes('key: "fault"'), "应存在“故障信息”Tab");
-  assert.ok(FORM.includes('label: "故障信息"'), "故障信息 Tab 标签应为“故障信息”");
-  assert.ok(FORM.includes('key: "data"'), "应存在“分析数据”Tab");
-  assert.ok(FORM.includes('label: "分析数据"'), "分析数据 Tab 标签应为“分析数据”");
+  assert.ok(
+    !FORM.includes("<Tabs"),
+    "表单不应再嵌套内层 Tabs",
+  );
+  assert.ok(
+    FORM.includes('className="admin-fault-analysis-form-section-title"'),
+    "表单应使用纵向分区标题类",
+  );
+  assert.ok(
+    FORM.includes(">故障线路</div>"),
+    "应保留“故障线路”分区标题",
+  );
+  assert.ok(
+    FORM.includes(">故障信息</div>"),
+    "应保留“故障信息”分区标题",
+  );
+  assert.ok(
+    FORM.includes(">分析数据</div>"),
+    "应保留“分析数据”分区标题",
+  );
+  assert.ok(
+    FORM.includes("htmlType=\"submit\""),
+    "表单底部应提供提交按钮",
+  );
+  assert.ok(
+    FORM.includes("loading={submitting}"),
+    "提交按钮应展示 submitting 加载态",
+  );
 });
 
 test("LP-275: 表单字段名与提交逻辑保持不变", () => {
@@ -132,12 +154,24 @@ test("LP-275: 动态选项卡有对应全局样式", () => {
   );
 });
 
-test("LP-275: 表单 Modal Tabs 有对应全局样式", () => {
-  const block = CSS.match(
-    /\.admin-fault-analysis-modal-tabs \.ant-tabs-nav \{([^}]*)\}/,
+test("LP-348: 新建/编辑表单纵向分区有对应全局样式", () => {
+  assert.ok(
+    CSS.includes(".admin-fault-analysis-form-tab-pane {"),
+    "应存在 Tab 内表单容器样式（admin-fault-analysis-form-tab-pane）",
+  );
+  const titleBlock = CSS.match(
+    /\.admin-fault-analysis-form-section-title \{([^}]*)\}/,
   )?.[1];
-  assert.ok(block, "应存在 .admin-fault-analysis-modal-tabs .ant-tabs-nav 规则块");
-  assert.match(block, /margin:\s*0\s+0\s+12px/, "Tabs 导航栏应保留简洁间距");
+  assert.ok(titleBlock, "应存在表单分区标题样式规则");
+  assert.match(titleBlock, /font-weight:\s*600/, "分区标题应加粗");
+  assert.ok(
+    CSS.includes(".admin-fault-analysis-form-actions {"),
+    "应存在表单提交按钮区域样式",
+  );
+  assert.ok(
+    !CSS.includes(".admin-fault-analysis-modal-tabs"),
+    "不应再存在 modal-tabs 内层 Tabs 样式",
+  );
 });
 
 test("LP-285: 列表内容区 list-pane 有纵向滚动样式", () => {
@@ -215,3 +249,62 @@ test("LP-319: 故障分析卡片编辑和删除按钮按处理器存在性渲染
   assert.ok(PAGE.includes("onEdit={canManage ? handleEdit : undefined}"), "卡片视图编辑入口应受 canManage 门控");
   assert.ok(PAGE.includes("onDelete={canManage ? handleDelete : undefined}"), "卡片视图删除入口应受 canManage 门控");
 });
+
+test("LP-348: 新建/编辑不再使用 Modal，改为动态选项卡", () => {
+  assert.ok(
+    !PAGE.includes("createModalOpen"),
+    "不应再存在 createModalOpen 状态",
+  );
+  assert.ok(
+    !PAGE.includes("editModalOpen"),
+    "不应再存在 editModalOpen 状态",
+  );
+  assert.ok(
+    !PAGE.includes("createForm"),
+    "不应再存在页面级 createForm 实例",
+  );
+  assert.ok(
+    !PAGE.includes("editForm"),
+    "不应再存在页面级 editForm 实例",
+  );
+  assert.ok(PAGE.includes("openCreateTab"), "应存在 openCreateTab 打开新建 Tab");
+  assert.ok(PAGE.includes('CREATE_TAB_KEY'), "应存在新建 Tab 固定 key 常量");
+  assert.ok(PAGE.includes('EDIT_TAB_KEY_PREFIX'), "应存在编辑 Tab key 前缀常量");
+  assert.ok(PAGE.includes("CreateAnalysisFormTab"), "Tab 内容应挂载 CreateAnalysisFormTab");
+  assert.ok(
+    PAGE.includes("previous.some((tab) => tab.key === CREATE_TAB_KEY)"),
+    "新建 Tab 应按固定 key 去重",
+  );
+  assert.ok(
+    PAGE.includes("`${EDIT_TAB_KEY_PREFIX}${id}`"),
+    "编辑 Tab key 应为 edit-{id}",
+  );
+});
+
+test("LP-348: 提交成功自动关闭对应 Tab，失败保留内容", () => {
+  assert.ok(
+    PAGE.includes("closeTab(CREATE_TAB_KEY)"),
+    "新建成功后应关闭新建 Tab（回到列表）",
+  );
+  assert.ok(
+    PAGE.includes("handleUpdateSuccess"),
+    "编辑成功后应关闭对应编辑 Tab",
+  );
+  assert.ok(
+    PAGE.includes("closeTab(tabKey)"),
+    "保存成功应复用 closeTab 关闭对应 Tab",
+  );
+  assert.ok(
+    PAGE.includes("submittingTabKeys"),
+    "应跟踪提交中的 Tab 以便禁止关闭",
+  );
+  assert.ok(
+    PAGE.includes("submittingTabKeys.has(key)"),
+    "提交进行中的 Tab 应禁止被关闭",
+  );
+  assert.ok(
+    PAGE.includes("onLoadError"),
+    "编辑详情加载失败时应回调关闭对应 Tab",
+  );
+});
+

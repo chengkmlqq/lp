@@ -4955,18 +4955,47 @@ body {
   background: var(--ant-color-bg-container) !important;
 }
 
-/* LP-275: 新建/编辑表单 Modal 内 Tabs 分组 */
-.admin-fault-analysis-form-tabs {
-  max-height: 70vh;
+/* LP-348: 动态选项卡内新建/编辑表单纵向分区 */
+.admin-fault-analysis-form-tab-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
   overflow-y: auto;
+  padding: 12px;
 }
 
-.admin-fault-analysis-modal-tabs .ant-tabs-nav {
-  margin: 0 0 12px;
+.admin-fault-analysis-form-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.admin-fault-analysis-modal-tabs .ant-tabs-tabpane {
-  min-height: 220px;
+.admin-fault-analysis-form-section-title {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ant-color-text);
+  background: var(--fquiz-theme-bg-active);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 6px;
+}
+
+.admin-fault-analysis-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 16px;
+  margin-top: 8px;
+  border-top: 1px solid var(--ant-color-border-secondary);
+}
+
+:root[data-fquiz-theme="dark"] .admin-fault-analysis-form-section-title {
+  background: color-mix(in srgb, var(--ant-color-primary) 15%, var(--ant-color-bg-container));
+  border-color: color-mix(in srgb, var(--ant-color-primary) 25%, var(--ant-color-border-secondary));
 }
 
 .fault-analysis-step-header {
