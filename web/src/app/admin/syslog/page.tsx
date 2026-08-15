@@ -15,7 +15,7 @@ import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { ApiError, readApiError } from "@/lib/api";
 import type { AuditLogItem, AuditLogListResponse } from "@/types/auth";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 const SYSLOG_TABLE_MIN_SCROLL_Y = 180;
 const SYSLOG_TABLE_VIEWPORT_GAP = 40;
 const SYSLOG_TABLE_FALLBACK_RESERVE = 220;
