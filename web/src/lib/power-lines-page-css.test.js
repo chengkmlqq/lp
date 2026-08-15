@@ -136,6 +136,14 @@ test("LP-320: middle section renders basic info as icon + text rows", () => {
   assert.match(powerLineCardBlock, /<ClockCircleOutlined /, "更新时间应带图标");
 });
 
+test("LP-353: title bar is separated from basic info by a bottom border divider", () => {
+  assert.match(
+    powerLineCardBlock,
+    /flex items-center gap-2 pb-2 border-b border-gray-200/,
+    "标题栏底部应有 border-b 分隔线且与底部操作栏 border-gray-200 风格一致",
+  );
+});
+
 test("LP-320: bottom section holds icon action buttons with a top border divider", () => {
   assert.match(powerLineCardBlock, /flex justify-end pt-2 border-t border-gray-200/, "操作区上方应有 border-t 分隔线并右对齐");
   assert.match(powerLineCardBlock, /icon=\{<EyeOutlined \/>\}/, "底部应有详情图标按钮");

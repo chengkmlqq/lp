@@ -616,7 +616,7 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onDelete, delete
       className="admin-power-lines-line-card"
     >
       <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
           <DeploymentUnitOutlined className="text-base text-gray-500" />
           <Typography.Text strong className="truncate">{line.name}</Typography.Text>
         </div>
