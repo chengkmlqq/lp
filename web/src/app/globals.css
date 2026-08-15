@@ -3377,7 +3377,7 @@ body {
 .admin-elevation-card-view-content {
   min-height: 0;
   flex: 1;
-  padding: 2px 2px 4px;
+  padding: 0;
 }
 
 .admin-elevation-card-view-state {
@@ -3408,13 +3408,6 @@ body {
 
 .admin-elevation-record-card > .ant-card-body {
   padding-block: 14px;
-}
-
-.admin-elevation-record-card-field {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 8px;
-  align-items: baseline;
 }
 
 :root[data-fquiz-theme="dark"] .admin-elevation-record-card {

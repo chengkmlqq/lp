@@ -1,13 +1,11 @@
 "use client";
 
-import type { ComponentType, CSSProperties, ReactNode, RefAttributes } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Button,
-  Card,
-  Col,
   Descriptions,
   Dropdown,
   Empty,
@@ -15,7 +13,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Row,
   Segmented,
   Select,
   Space,
@@ -26,21 +23,33 @@ import {
   Typography,
   Upload,
   message,
-  type CardProps,
   type MenuProps,
   type UploadFile,
 } from "antd";
-import { MoreOutlined, UploadOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  AppstoreOutlined,
+  CheckCircleOutlined,
+  CloudUploadOutlined,
+  DatabaseOutlined,
+  DeploymentUnitOutlined,
+  EyeOutlined,
+  FileOutlined,
+  FileTextOutlined,
+  GlobalOutlined,
+  MoreOutlined,
+  NumberOutlined,
+  SearchOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
 import { useAuth } from "@/components/auth-provider";
+import { Card } from "@/components/ui-antd";
 import { ElevationPreviewCesiumMap } from "@/components/elevation-preview-cesium-map";
 import { ElevationTowerView } from "@/components/elevation-tower-view";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { readApiError } from "@/lib/api";
 import type { ElevationDatasetTerrainStatus } from "@/types/auth";
-
-const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 type ElevationFileRecordSummary = {
   id: string;
@@ -808,97 +817,99 @@ export default function ElevationRecordsPage() {
     ];
 
     return (
-      <AntCard
+      <Card
         key={record.id}
         className="admin-elevation-record-card"
         size="small"
         hoverable
         onClick={() => openTowerTab(record)}
-        title={
-          <Space className="min-w-0" size={8}>
-            <Typography.Text strong ellipsis>{record.file_name}</Typography.Text>
+      >
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
+            <FileOutlined className="text-base text-gray-500" />
+            <Typography.Text strong className="truncate min-w-0 flex-1">{record.file_name}</Typography.Text>
             <Tag color={statusTagColor(record.status)}>{record.status}</Tag>
-          </Space>
-        }
-        extra={
-          <Space size={4}>
-            <Button
-              type="text"
-              size="small"
-              disabled={rowBusy}
-              onClick={(event) => {
-                event.stopPropagation();
-                previewMutation.mutate(record.id);
-              }}
-            >
-              预览
-            </Button>
-            <Button
-              type="text"
-              size="small"
-              disabled={rowBusy}
-              onClick={(event) => {
-                event.stopPropagation();
-                openTowerTab(record);
-              }}
-            >
-              回填
-            </Button>
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <FileTextOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs">格式：</Typography.Text>
+              <Tag className="text-xs">{record.file_format.toUpperCase()}</Tag>
+            </div>
+            <div className="flex items-center gap-2">
+              <DatabaseOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">大小：{formatFileSize(record.file_size)}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <GlobalOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">来源：{record.source || "-"}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <AppstoreOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">分辨率：{record.resolution_m ? `${record.resolution_m.toFixed(1)} m` : "-"}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <NumberOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">样本数：{record.sample_count.toLocaleString()}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircleOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs">解析状态：</Typography.Text>
+              <Tag color={computedParseStatus(record).color} className="text-xs">{computedParseStatus(record).label}</Tag>
+            </div>
+            <div className="flex items-center gap-2">
+              <DeploymentUnitOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs">关联线路：</Typography.Text>
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0 }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openLinkedLinesModal(record);
+                }}
+              >
+                {record.linked_line_count ?? 0} 条
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-gray-200">
+            <Space size="small">
               <Button
                 type="text"
                 size="small"
+                icon={<EyeOutlined />}
                 disabled={rowBusy}
-                icon={<MoreOutlined />}
-                onClick={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  previewMutation.mutate(record.id);
+                }}
               />
-            </Dropdown>
-          </Space>
-        }
-      >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
-          <div className="admin-elevation-record-card-field">
-            <Typography.Text type="secondary">格式</Typography.Text>
-            <Tag>{record.file_format.toUpperCase()}</Tag>
+              <Button
+                type="text"
+                size="small"
+                icon={<CloudUploadOutlined />}
+                disabled={rowBusy}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openTowerTab(record);
+                }}
+              />
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button
+                  type="text"
+                  size="small"
+                  disabled={rowBusy}
+                  icon={<MoreOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </Dropdown>
+            </Space>
           </div>
-          <div className="admin-elevation-record-card-field">
-            <Typography.Text type="secondary">大小</Typography.Text>
-            <Typography.Text>{formatFileSize(record.file_size)}</Typography.Text>
-          </div>
-          <div className="admin-elevation-record-card-field">
-            <Typography.Text type="secondary">来源</Typography.Text>
-            <Typography.Text ellipsis={{ tooltip: record.source || "-" }}>
-              {record.source || "-"}
-            </Typography.Text>
-          </div>
-          <div className="admin-elevation-record-card-field">
-            <Typography.Text type="secondary">分辨率</Typography.Text>
-            <Typography.Text>{record.resolution_m ? `${record.resolution_m.toFixed(1)} m` : "-"}</Typography.Text>
-          </div>
-          <div className="admin-elevation-record-card-field">
-            <Typography.Text type="secondary">样本数</Typography.Text>
-            <Typography.Text>{record.sample_count.toLocaleString()}</Typography.Text>
-          </div>
-          <div className="admin-elevation-record-card-field">
-            <Typography.Text type="secondary">解析状态</Typography.Text>
-            <Tag color={computedParseStatus(record).color}>{computedParseStatus(record).label}</Tag>
-          </div>
-          <div className="admin-elevation-record-card-field">
-            <Typography.Text type="secondary">关联线路</Typography.Text>
-            <Button
-              type="link"
-              size="small"
-              style={{ padding: 0 }}
-              onClick={(event) => {
-                event.stopPropagation();
-                openLinkedLinesModal(record);
-              }}
-            >
-              {record.linked_line_count ?? 0} 条
-            </Button>
-          </div>
-        </Space>
-      </AntCard>
+        </div>
+      </Card>
     );
   };
 
@@ -1019,13 +1030,11 @@ export default function ElevationRecordsPage() {
                 </div>
               ) : (
                 <div className="admin-elevation-card-view-content">
-                  <Row gutter={[12, 12]}>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     {allLoadedRecords.map((recordItem) => (
-                      <Col key={recordItem.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                        {renderRecordCard(recordItem)}
-                      </Col>
+                      renderRecordCard(recordItem)
                     ))}
-                  </Row>
+                  </div>
                   {isLoadingMore && (
                     <div style={{ textAlign: "center", padding: "20px 0" }}>
                       <Spin tip="加载更多..." />
