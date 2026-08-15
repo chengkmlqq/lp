@@ -16,6 +16,7 @@ import {
   InputNumber,
   Modal,
   Row,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -36,7 +37,6 @@ import { useAuth } from "@/components/auth-provider";
 import { ElevationPreviewCesiumMap } from "@/components/elevation-preview-cesium-map";
 import { ElevationTowerView } from "@/components/elevation-tower-view";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
 import type { ElevationDatasetTerrainStatus } from "@/types/auth";
 
@@ -288,7 +288,6 @@ function readMutationError(error: unknown, fallback: string): string {
 export default function ElevationRecordsPage() {
   const { fetchWithAuth, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
-  const isMobile = useMobileDetection();
 
   const [uploadForm] = Form.useForm();
   const [applyForm] = Form.useForm<ApplyFormValues>();
@@ -298,7 +297,7 @@ export default function ElevationRecordsPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(ELEVATION_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
-  const viewMode: "table" | "card" = isMobile ? "card" : "table";
+  const [viewMode, setViewMode] = useState<"card" | "list">("list");
   const [cardViewPage, setCardViewPage] = useState(1);
   const [allLoadedRecords, setAllLoadedRecords] = useState<ElevationFileRecordSummary[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -761,7 +760,7 @@ export default function ElevationRecordsPage() {
               disabled={rowBusy}
               onClick={() => openTowerTab(row)}
             >
-              回填数据
+              回填
             </Button>
 
             <Button danger size="small" loading={deleting} disabled={rowBusy}
@@ -835,7 +834,7 @@ export default function ElevationRecordsPage() {
               disabled={rowBusy}
               onClick={() => openTowerTab(record)}
             >
-              回填数据
+              回填
             </Button>
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
               <Button type="text" size="small" disabled={rowBusy} icon={<MoreOutlined />} />
@@ -907,84 +906,52 @@ export default function ElevationRecordsPage() {
             closable: false,
             children: (
               <div ref={pageCardRef} className="admin_elevation_list_pane">
-          {viewMode === "card" ? (
-            <div className="admin-filter-bar">
-              <Form layout="inline" style={{ flexWrap: "nowrap" }}>
-                <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                  <Input
-                    allowClear
-                    placeholder="搜索文件名或来源"
-                    value={keywordInput}
-                    onChange={(event) => handleKeywordChange(event.target.value)}
-                    onPressEnter={(e) => {
-                      const value = (e.target as HTMLInputElement).value;
-                      setSearchKeyword(value);
-                      setPagination((prev) => ({ ...prev, current: 1 }));
-                      setCardViewPage(1);
-                      setAllLoadedRecords([]);
-                    }}
-                    style={{ textOverflow: "ellipsis", overflow: "hidden" }}
-                  />
-                </Form.Item>
-                <Form.Item style={{ marginBottom: 0 }}>
-                  <Button
-                    htmlType="button"
-                    icon={<SearchOutlined />}
-                    onClick={() => {
-                      setSearchKeyword(keywordInput);
-                      setPagination((prev) => ({ ...prev, current: 1 }));
-                      setCardViewPage(1);
-                      setAllLoadedRecords([]);
-                      void queryClient.refetchQueries({ queryKey: ["elevation-records"] });
-                    }}
-                    className="admin-search-btn"
-                  >
-                    查询
-                  </Button>
-                </Form.Item>
-              </Form>
-            </div>
-          ) : (
-            <div className="admin-filter-bar">
-              <Form layout="inline" style={{ flexWrap: "nowrap" }}>
-                <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                  <Input
-                    allowClear
-                    placeholder="搜索文件名或来源"
-                    value={keywordInput}
-                    onChange={(event) => handleKeywordChange(event.target.value)}
-                    onPressEnter={(e) => {
-                      const value = (e.target as HTMLInputElement).value;
-                      setSearchKeyword(value);
-                      setPagination((prev) => ({ ...prev, current: 1 }));
-                      setCardViewPage(1);
-                      setAllLoadedRecords([]);
-                    }}
-                    style={{ textOverflow: "ellipsis", overflow: "hidden" }}
-                  />
-                </Form.Item>
+                <div className="admin-filter-bar">
+            <Form layout="inline" style={{ flexWrap: "nowrap" }}>
+              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                <Input
+                  allowClear
+                  placeholder="搜索文件名或来源"
+                  value={keywordInput}
+                  onChange={(event) => handleKeywordChange(event.target.value)}
+                  onPressEnter={(e) => {
+                    const value = (e.target as HTMLInputElement).value;
+                    setSearchKeyword(value);
+                    setPagination((prev) => ({ ...prev, current: 1 }));
+                    setCardViewPage(1);
+                    setAllLoadedRecords([]);
+                  }}
+                  style={{ textOverflow: "ellipsis", overflow: "hidden" }}
+                />
+              </Form.Item>
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Button
+                  htmlType="button"
+                  icon={<SearchOutlined />}
+                  onClick={() => {
+                    setSearchKeyword(keywordInput);
+                    setPagination((prev) => ({ ...prev, current: 1 }));
+                    setCardViewPage(1);
+                    setAllLoadedRecords([]);
+                    void queryClient.refetchQueries({ queryKey: ["elevation-records"] });
+                  }}
+                  className="admin-search-btn"
+                >
+                  查询
+                </Button>
+              </Form.Item>
+            </Form>
+            <Segmented
+              value={viewMode}
+              onChange={(value) => setViewMode(value as "card" | "list")}
+              options={[
+                { label: "卡片视图", value: "card" },
+                { label: "列表视图", value: "list" },
+              ]}
+            />
+          </div>
   
-                <Form.Item style={{ marginBottom: 0 }}>
-                  <Button
-                    htmlType="button"
-                    icon={<SearchOutlined />}
-                    onClick={() => {
-                      setSearchKeyword(keywordInput);
-                      setPagination((prev) => ({ ...prev, current: 1 }));
-                      setCardViewPage(1);
-                      setAllLoadedRecords([]);
-                      void queryClient.refetchQueries({ queryKey: ["elevation-records"] });
-                    }}
-                    className="admin-search-btn"
-                  >
-                    查询
-                  </Button>
-                </Form.Item>
-              </Form>
-            </div>
-          )}
-  
-          {viewMode === "table" ? (
+          {viewMode === "list" ? (
             <div
               ref={tableScrollAnchorRef}
               className="admin-elevation-table-anchor"
