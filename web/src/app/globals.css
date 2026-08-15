@@ -5239,12 +5239,15 @@ body {
   min-height: var(--admin-power-lines-table-body-min-height, 180px);
 }
 
-/* LP-297: 分页条：与卡片列表底部保持间距 */
+/* LP-320: 分页条：右对齐并固定上下边距（顶部 12px、底部 8px），
+   与列表视图 Table 内置分页（margin-top 12px + 表格底部 BOTTOM_GAP 8px）保持一致，
+   切换卡片/列表视图时分页组件不上下晃动 */
 .admin-power-lines-pagination {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 0 8px;
   flex-shrink: 0;
 }
 

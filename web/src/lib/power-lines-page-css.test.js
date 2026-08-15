@@ -27,10 +27,11 @@ test("LP-301: line card keeps worker-style color scheme in light theme", () => {
 });
 
 test("LP-301: line card has dark theme adaptation", () => {
-  const darkSelector = /:root\[data-fquiz-theme="dark"\] \.admin-power-lines-line-card\s*\{/;
-  assert.match(CSS, darkSelector, "深色模式应存在线路卡片配色规则");
-  const headSelector = /:root\[data-fquiz-theme="dark"\] \.admin-power-lines-line-card\s*>\s*\.ant-card-head/;
-  assert.match(CSS, headSelector, "深色模式应存在线路卡片头部配色规则");
+  // 深色主题规则与其他同类卡片分组定义，选择器在分组内而非块首
+  const darkGroup = /:root\[data-fquiz-theme="dark"\]\s[^{]*\.admin-power-lines-line-card\s*[^,{]*[,{]/;
+  assert.match(CSS, darkGroup, "深色模式应存在线路卡片配色规则");
+  const headGroup = /:root\[data-fquiz-theme="dark"\]\s[^{]*\.admin-power-lines-line-card\s*>\s*\.ant-card-head\s*[,{]/;
+  assert.match(CSS, headGroup, "深色模式应存在线路卡片头部配色规则");
 });
 
 test("LP-301: detail view is a flex column so meta card + tabs stack and stretch", () => {
@@ -105,4 +106,54 @@ test("LP-317: embedded detail import/export buttons are permission gated", () =>
 
 test("LP-317: openDetail passes canTowerManage to embedded detail", () => {
   assert.match(PAGE, /canTowerManage=\{canTowerManage\}/, "openDetail 调用处应向下传递 canTowerManage");
+});
+
+const powerLineCardBlock = PAGE.match(/function PowerLineCard\([\s\S]*?\n\}/)?.[0] ?? "";
+
+test("LP-320: line card uses a three-section layout without antd title/extra", () => {
+  assert.ok(powerLineCardBlock, "应能提取 PowerLineCard 组件定义");
+  assert.ok(!/title=\{</.test(powerLineCardBlock), "卡片不应再使用 antd Card title 作为标题区");
+  assert.ok(!/\bextra=\{</.test(powerLineCardBlock), "卡片不应再使用 antd Card extra 放置操作按钮");
+  assert.match(powerLineCardBlock, /flex flex-col gap-3/, "卡片内容应为三段式纵向布局");
+});
+
+test("LP-320: upper section shows a line icon next to the title without status badge", () => {
+  assert.match(powerLineCardBlock, /<DeploymentUnitOutlined /, "标题区左侧应有代表线路的图标");
+  assert.match(powerLineCardBlock, /<Typography.Text strong/, "标题区应展示线路名称");
+  assert.ok(!/<Badge/.test(powerLineCardBlock), "线路暂无状态,卡片不应显示状态 Badge");
+});
+
+test("LP-320: middle section renders basic info as icon + text rows", () => {
+  assert.match(powerLineCardBlock, /电压等级：/, "中部应保留电压等级信息");
+  assert.match(powerLineCardBlock, /杆塔总数：/, "中部应保留杆塔总数信息");
+  assert.match(powerLineCardBlock, /估算长度：/, "中部应保留估算长度信息");
+  assert.match(powerLineCardBlock, /更新时间：/, "中部应保留更新时间信息");
+  assert.match(powerLineCardBlock, /<ThunderboltOutlined /, "电压等级应带图标");
+  assert.match(powerLineCardBlock, /<ApartmentOutlined /, "杆塔总数应带图标");
+  assert.match(powerLineCardBlock, /<SwapOutlined /, "估算长度应带图标");
+  assert.match(powerLineCardBlock, /<ClockCircleOutlined /, "更新时间应带图标");
+});
+
+test("LP-320: bottom section holds icon action buttons with a top border divider", () => {
+  assert.match(powerLineCardBlock, /flex justify-end pt-2 border-t border-gray-200/, "操作区上方应有 border-t 分隔线并右对齐");
+  assert.match(powerLineCardBlock, /icon=\{<EyeOutlined \/>\}/, "底部应有详情图标按钮");
+  assert.match(powerLineCardBlock, /type="text"\s*[\s\S]{0,200}size="small"/, "操作按钮应为 text 小号图标按钮");
+});
+
+test("LP-320: delete action is icon button gated by canLineManage", () => {
+  assert.match(powerLineCardBlock, /icon=\{<EditOutlined \/>\}/, "底部应有编辑图标按钮");
+  assert.match(powerLineCardBlock, /icon=\{<DeleteOutlined \/>\}/, "底部应有删除图标按钮");
+  assert.match(powerLineCardBlock, /\{canLineManage &&[\s\S]{0,200}icon=\{<DeleteOutlined \/>\}/, "删除按钮仅在 canLineManage 时显示");
+  assert.match(powerLineCardBlock, /\bdanger\b/, "删除按钮应标记 danger");
+});
+
+test("LP-320: card and list view pagination share consistent vertical spacing", () => {
+  const cardPaginationBlock = CSS.match(/\.admin-power-lines-pagination \{([^}]*)\}/)?.[1];
+  assert.ok(cardPaginationBlock, "应存在卡片视图分页容器规则");
+  assert.match(cardPaginationBlock, /padding:\s*12px\s+0\s+8px/, "卡片分页容器应使用统一上下边距(顶部12px 底部8px)");
+  const tablePaginationRule =
+    /\.admin-power-lines-tabs \.ant-table-pagination\s*\{([^}]*)\}/;
+  const tablePaginationBlock = CSS.match(tablePaginationRule)?.[1];
+  assert.ok(tablePaginationBlock, "应存在表格视图分页规则");
+  assert.match(tablePaginationBlock, /margin:\s*12px\s+0\s+0\s*!important/, "表格分页应保持顶部 12px 间距");
 });

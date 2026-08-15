@@ -23,7 +23,18 @@ import {
   Alert,
   type MenuProps,
 } from "antd";
-import { MoreOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  ApartmentOutlined,
+  ClockCircleOutlined,
+  DeleteOutlined,
+  DeploymentUnitOutlined,
+  EditOutlined,
+  EyeOutlined,
+  MoreOutlined,
+  SearchOutlined,
+  SwapOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useMemo, useState, useEffect, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
@@ -596,67 +607,77 @@ interface PowerLineCardProps {
 }
 
 function PowerLineCard({ line, canLineManage, onEdit, onDetail, onDelete, deleteLoading }: PowerLineCardProps) {
-  const menuItems: MenuProps["items"] = canLineManage
-    ? [
-        {
-          key: "delete",
-          label: "删除",
-          danger: true,
-          onClick: onDelete,
-        },
-      ]
-    : [];
-
   return (
     <Card
       size="small"
       hoverable
       className="admin-power-lines-line-card"
-      title={<Typography.Text strong>{line.name}</Typography.Text>}
-      extra={
-        <Space size={4}>
-          <Button
-            size="small"
-            onClick={(event) => {
-              event.stopPropagation();
-              onEdit(line);
-            }}
-          >
-            编辑
-          </Button>
-          <Button
-            size="small"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDetail(line);
-            }}
-          >
-            详情
-          </Button>
-          {canLineManage && menuItems.length > 0 && (
-            <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
+    >
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <DeploymentUnitOutlined className="text-base text-gray-500" />
+          <Typography.Text strong className="truncate">{line.name}</Typography.Text>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <ThunderboltOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" className="text-xs">电压等级：{line.voltage_kv ?? "-"} kV</Typography.Text>
+          </div>
+          <div className="flex items-center gap-2">
+            <ApartmentOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" className="text-xs">杆塔总数：{line.tower_count}</Typography.Text>
+          </div>
+          <div className="flex items-center gap-2">
+            <SwapOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" className="text-xs">
+              估算长度：{line.estimated_length_km != null && line.estimated_length_km > 0 ? `${line.estimated_length_km.toFixed(2)} km` : "-"}
+            </Typography.Text>
+          </div>
+          <div className="flex items-center gap-2">
+            <ClockCircleOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" className="text-xs">
+              更新时间：{formatDateTime(line.update_date)}
+            </Typography.Text>
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-2 border-t border-gray-200">
+          <Space size="small">
+            <Button
+              type="text"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDetail(line);
+              }}
+            />
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(line);
+              }}
+            />
+            {canLineManage && (
               <Button
+                type="text"
                 size="small"
-                icon={<MoreOutlined />}
+                danger
+                icon={<DeleteOutlined />}
+                loading={deleteLoading}
                 onClick={(event) => {
                   event.stopPropagation();
+                  onDelete();
                 }}
               />
-            </Dropdown>
-          )}
-        </Space>
-      }
-    >
-      <Space direction="vertical" size={4} className="w-full">
-        <Typography.Text type="secondary">电压等级：{line.voltage_kv ?? "-"} kV</Typography.Text>
-        <Typography.Text type="secondary">杆塔总数：{line.tower_count}</Typography.Text>
-        <Typography.Text type="secondary">
-          估算长度：{line.estimated_length_km != null && line.estimated_length_km > 0 ? `${line.estimated_length_km.toFixed(2)} km` : "-"}
-        </Typography.Text>
-        <Typography.Text type="secondary">
-          更新时间：{formatDateTime(line.update_date)}
-        </Typography.Text>
-      </Space>
+            )}
+          </Space>
+        </div>
+      </div>
     </Card>
   );
 }
@@ -760,7 +781,6 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onDelete, dele
         showSizeChanger: true,
         pageSizeOptions: [6, 12, 24, 48],
         showTotal: (total) => `共 ${total} 条`,
-        style: { marginBottom: 0 },
       }}
       scroll={{ x: 1080, y: scrollY }}
       tableLayout="fixed"
