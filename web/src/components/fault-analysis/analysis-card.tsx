@@ -1,5 +1,6 @@
-import { Badge, Button, Card, Space, Typography } from "antd";
+import { Badge, Button, Space, Typography } from "antd";
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { Card } from "@/components/ui-antd";
 import type { FaultAnalysis } from "./types";
 
 const { Text } = Typography;
@@ -38,17 +39,18 @@ export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: A
 
   return (
     <Card
+      size="small"
       hoverable
-      className={`${selected ? "border-blue-500 border-2" : "border-gray-300"} shadow-sm`}
+      className={`admin-fault-analysis-card${selected ? " selected" : ""}`}
     >
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <Text strong className="text-base">{analysis.title}</Text>
+          <div className="flex-1 min-w-0">
+            <Text strong className="truncate">{analysis.title}</Text>
           </div>
           <div className="flex items-center gap-2">
             <Badge status={status.color} />
-            <Text type="secondary" className="text-sm">{status.text}</Text>
+            <Text type="secondary" className="text-xs">{status.text}</Text>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-import { Spin, Empty, Space } from "antd";
+import { Spin, Empty } from "antd";
 import { AnalysisCard } from "./analysis-card";
 import type { FaultAnalysis } from "./types";
 
@@ -30,7 +30,7 @@ export function AnalysisCardList({ analyses, selectedId, loading, onView, onEdit
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
       {analyses.map((analysis) => (
         <AnalysisCard
           key={analysis.id}
