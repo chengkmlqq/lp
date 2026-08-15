@@ -134,12 +134,17 @@ services:
 
   matlab-worker:
     image: ${MATLAB_WORKER_IMAGE}
-    command:
+    # 临时：跳过 docker-entrypoint.sh 的 MCR 安装/清理逻辑（容器重启会清理解压产物），
+    # 直接启动 celery worker。MCR 安装由运维手动完成（见故障记录）。
+    entrypoint:
       - celery
       - -A
       - app.core.celery_app.celery_app
       - worker
+      - -Q
+      - matlab-diagnostics
       - --hostname=matlab worker@lp
+      - --loglevel=info
       - -Q
       - matlab-diagnostics
       - --loglevel=${CELERY_LOG_LEVEL}
