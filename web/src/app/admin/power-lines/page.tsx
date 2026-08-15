@@ -30,9 +30,11 @@ import {
   DeploymentUnitOutlined,
   EditOutlined,
   EyeOutlined,
+  GlobalOutlined,
   MoreOutlined,
   SearchOutlined,
   SwapOutlined,
+  TableOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
@@ -1002,51 +1004,58 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
       </Card>
       <div className="mb-3 flex items-center justify-between gap-3">
         <Space size={8} wrap>
-          {canTowerManage && (
-            <Button onClick={() => importInputRef.current?.click()} loading={importMutation.isPending}>
-              导入 CSV
-            </Button>
-          )}
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".csv,text/csv"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) {
-                const maxMB = 50;
-                const allowedExts = ["csv"];
-                const ext = file.name.split(".").pop()?.toLowerCase() || "";
-                if (file.size > maxMB * 1024 * 1024) {
-                  messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
-                  event.target.value = "";
-                  return;
+          <Space.Compact size="small">
+            {canTowerManage && (
+              <Button onClick={() => importInputRef.current?.click()} loading={importMutation.isPending}>
+                导入 CSV
+              </Button>
+            )}
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  const maxMB = 50;
+                  const allowedExts = ["csv"];
+                  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+                  if (file.size > maxMB * 1024 * 1024) {
+                    messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                    event.target.value = "";
+                    return;
+                  }
+                  if (!allowedExts.includes(ext)) {
+                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                    event.target.value = "";
+                    return;
+                  }
+                  importMutation.mutate(file);
                 }
-                if (!allowedExts.includes(ext)) {
-                  messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
-                  event.target.value = "";
-                  return;
-                }
-                importMutation.mutate(file);
-              }
-              event.target.value = "";
-            }}
-          />
-          {canTowerRead && (
-            <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
-              导出 CSV
-            </Button>
-          )}
+                event.target.value = "";
+              }}
+            />
+            {canTowerRead && (
+              <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
+                导出 CSV
+              </Button>
+            )}
+          </Space.Compact>
         </Space>
         <Radio.Group
           value={towerViewMode}
           onChange={(e) => setTowerViewMode(e.target.value as "table" | "map")}
           optionType="button"
           buttonStyle="solid"
+          size="small"
         >
-          <Radio.Button value="map">地图</Radio.Button>
-          <Radio.Button value="table">杆塔列表</Radio.Button>
+          <Radio.Button value="map" title="地图">
+            <GlobalOutlined />
+          </Radio.Button>
+          <Radio.Button value="table" title="杆塔列表">
+            <TableOutlined />
+          </Radio.Button>
         </Radio.Group>
       </div>
       <div style={{ display: towerViewMode === "table" ? "block" : "none" }}>

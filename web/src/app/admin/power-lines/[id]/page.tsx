@@ -23,7 +23,7 @@ import {
   Typography,
   type MenuProps,
 } from "antd";
-import { ArrowLeftOutlined, MoreOutlined, SearchOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, GlobalOutlined, MoreOutlined, SearchOutlined, TableOutlined } from "@ant-design/icons";
 import type { DefaultOptionType } from "antd/es/select";
 import type { ColumnsType } from "antd/es/table";
 import type { CSSProperties, ReactNode } from "react";
@@ -1586,15 +1586,20 @@ export default function AdminPowerLineDetailPage() {
             <div className="mb-3 flex items-center justify-between gap-3">
               <Space size={8} wrap>
                 {selectedLine && (
-                  <Button onClick={openLineParamModal}>
+                  <Button size="small" onClick={openLineParamModal}>
                     线路参数准备
                   </Button>
                 )}
-                {canTowerManage && (
-                  <Button onClick={() => importInputRef.current?.click()} loading={importMutation.isPending} disabled={!lineId}>
-                    导入 CSV
+                <Space.Compact size="small">
+                  {canTowerManage && (
+                    <Button onClick={() => importInputRef.current?.click()} loading={importMutation.isPending} disabled={!lineId}>
+                      导入 CSV
+                    </Button>
+                  )}
+                  <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending} disabled={!lineId}>
+                    导出 CSV
                   </Button>
-                )}
+                </Space.Compact>
                 <input
                   ref={importInputRef}
                   type="file"
@@ -1608,11 +1613,8 @@ export default function AdminPowerLineDetailPage() {
                     event.target.value = "";
                   }}
                 />
-                <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending} disabled={!lineId}>
-                  导出 CSV
-                </Button>
                 {canTowerManage && (
-                  <Button type="primary" onClick={openCreateTowerModal} disabled={!lineId}>
+                  <Button type="primary" size="small" onClick={openCreateTowerModal} disabled={!lineId}>
                     新建杆塔
                   </Button>
                 )}
@@ -1622,9 +1624,14 @@ export default function AdminPowerLineDetailPage() {
                 onChange={(e) => setTowerViewMode(e.target.value as "table" | "map")}
                 optionType="button"
                 buttonStyle="solid"
+                size="small"
               >
-                <Radio.Button value="map">地图</Radio.Button>
-                <Radio.Button value="table">杆塔列表</Radio.Button>
+                <Radio.Button value="map" title="地图">
+                  <GlobalOutlined />
+                </Radio.Button>
+                <Radio.Button value="table" title="杆塔列表">
+                  <TableOutlined />
+                </Radio.Button>
               </Radio.Group>
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-3" style={{ display: towerViewMode === "map" ? "flex" : "none" }}>

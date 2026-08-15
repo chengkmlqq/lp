@@ -53,8 +53,10 @@ test("LP-301: detail view shows meta card on top and map/tower switch below", ()
   assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
   assert.match(detailBlock, /admin-power-line-detail-meta/, "详情顶部应展示基本信息 Card");
   assert.ok(!/key:\s*"info"[\s\S]{0,80}label:\s*"线路信息"/.test(detailBlock), "线路信息不应再作为独立 Tab");
-  assert.match(detailBlock, /<Radio.Button value="map">地图<\/Radio.Button>/, "详情下方应有地图切换按钮");
-  assert.match(detailBlock, /<Radio.Button value="table">杆塔列表<\/Radio.Button>/, "详情下方应有杆塔列表切换按钮");
+  assert.match(detailBlock, /<Radio.Button value="map"/, "详情下方应有地图切换按钮");
+  assert.match(detailBlock, /<GlobalOutlined \/>/, "地图切换按钮应使用图标");
+  assert.match(detailBlock, /<Radio.Button value="table"/, "详情下方应有杆塔列表切换按钮");
+  assert.match(detailBlock, /<TableOutlined \/>/, "杆塔列表切换按钮应使用图标");
 });
 
 test("LP-307: detail basic info is rendered as a bordered Descriptions table", () => {
