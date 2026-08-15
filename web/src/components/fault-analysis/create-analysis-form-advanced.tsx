@@ -1,5 +1,5 @@
 import { Form, Input, Select, Upload, Button, FormInstance, Space, Tabs, message } from "antd";
-import { UploadOutlined, FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined } from "@ant-design/icons";
+import { UploadOutlined, FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined, AppstoreOutlined } from "@ant-design/icons";
 import type { CreateFaultAnalysisFormValues } from "./types";
 import { parseExcelFile, generateImportTemplate } from "@/lib/excel-import-utils";
 
@@ -314,7 +314,24 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
             key: "data",
             label: "分析数据",
             children: (
-              <div className="px-1">
+              <div className="px-1 space-y-4">
+                <div className="border border-dashed border-blue-300 rounded-lg p-4 bg-blue-50">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AppstoreOutlined className="text-lg text-blue-600" />
+                    <div className="font-semibold text-sm">自动识别文件类别</div>
+                  </div>
+                  <div className="text-xs text-gray-500 mb-3">
+                    支持多个文件同时上传，按文件名前缀自动归类：1开头=录波、2开头=雷电定位、3开头=线路台账、TXT/JSON=行波。同类别仅保留一个文件。
+                  </div>
+                  <Form.Item name="auto_classify_files" valuePropName="fileList" className="mb-0">
+                    <Upload multiple beforeUpload={() => false}>
+                      <Button icon={<UploadOutlined />} size="small">选择文件（自动归类）</Button>
+                    </Upload>
+                  </Form.Item>
+                </div>
+
+                <div className="text-xs text-gray-400">或按下方分类卡片手动指定文件类别（优先级高于自动识别）</div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
                     <FileTextOutlined className="text-4xl text-blue-600" />

@@ -45,6 +45,7 @@ class FaultAnalysisDetail(FaultAnalysisSummary):
     optical_position: str | None = None
     optical_device_location: str | None = None
     result_json: dict[str, Any] = Field(default_factory=dict)
+    upload_files: dict[str, Any] = Field(default_factory=dict)
     model_config = {"from_attributes": True}
 
 

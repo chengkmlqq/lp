@@ -23,6 +23,7 @@ from .fault_diagnosis_core import (
     load_wave_model_result,
     render_markdown_summary,
 )
+from .fault_input_discovery import normalize_input_files
 
 # 判别系统人工输入默认值（与交付版 config/manual_input.json 一致）
 DEFAULT_MANUAL: dict[str, Any] = {
@@ -127,6 +128,28 @@ def _resolve_upload_file(upload_files: Mapping[str, Any], field: str) -> Path | 
     return candidate.resolve() if candidate.is_file() else None
 
 
+def _resolve_upload_files(upload_files: Mapping[str, Any], field: str) -> list[Path]:
+    """解析字段路径；行波允许单个相对路径或相对路径列表。"""
+    relative = upload_files.get(field)
+    if not relative:
+        return []
+    if isinstance(relative, str):
+        candidates = [relative]
+    elif isinstance(relative, list):
+        candidates = [str(item) for item in relative if item]
+    else:
+        candidates = [str(relative)]
+    resolved: list[Path] = []
+    for item in candidates:
+        candidate = Path(item)
+        if not candidate.is_absolute():
+            candidate = Path(get_settings().file_vfs_root) / item
+        candidate = candidate.resolve()
+        if candidate.is_file():
+            resolved.append(candidate)
+    return resolved
+
+
 def _collect_inputs(
     item: FaultAnalysis,
 ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, str]], list[dict[str, Any]], list[str]]:
@@ -177,9 +200,8 @@ def _collect_inputs(
         except Exception as exc:
             warnings.append(f"台账文件解析失败：{exc}")
 
-    # 行波输入：支持 TXT/JSON（含 CurrentDataInput 或采样数组），失败则跳过该文件。
-    wave_file = _resolve_upload_file(upload_files, "traveling_wave_file")
-    if wave_file is not None:
+    # 行波输入：支持 TXT/JSON（含 CurrentDataInput 或采样数组），允许多文件，失败则跳过该文件。
+    for wave_file in _resolve_upload_files(upload_files, "traveling_wave_file"):
         try:
             traveling_wave_records.append(load_traveling_wave_file(wave_file))
         except Exception as exc:
@@ -582,11 +604,7 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
             "lightning": _resolve_upload_file(item.upload_files or {}, "lightning_data_file"),
             "ledger": _resolve_upload_file(item.upload_files or {}, "ledger_data_file"),
             "manual": None,
-            "traveling_waves": [
-                wave_path
-                for wave_path in [_resolve_upload_file(item.upload_files or {}, "traveling_wave_file")]
-                if wave_path is not None
-            ],
+            "traveling_waves": _resolve_upload_files(item.upload_files or {}, "traveling_wave_file"),
             "wave_model_result": wave_model_path,
         }
 
@@ -620,3 +638,97 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
         item.update_user = "system"
         db.commit()
         raise
+
+
+def create_diagnosis_job_from_inputs(
+    db: Session,
+    files: Mapping[str, Sequence[Path]],
+    *,
+    fault_raw: Mapping[str, Any] | None = None,
+    lightning_raw: Mapping[str, Any] | None = None,
+    manual: Mapping[str, Any] | None = None,
+    ledger_rows: Sequence[Mapping[str, Any]] | None = None,
+    input_warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    """按发现/归一化后的输入文件就地执行一次完整判别，返回判别结果。
+
+    与前端的「表单字段 + 显式类别文件」流程（run_fault_diagnosis + _collect_inputs）不同，
+    此路径直接接收按类别划分的原始文件列表（自动发现/归类），逐类通过核心 loader 加载后
+    走现有 build_diagnosis 管线。同类别多文件在此处校验并抛 InputError。
+    """
+    normalized = normalize_input_files({key: list(value) for key, value in files.items()})
+    _fault_raw = dict(fault_raw or {})
+    _lightning_raw = dict(lightning_raw or {})
+    _ledger_rows = [dict(row) for row in (ledger_rows or [])] if ledger_rows is not None else []
+    warnings = list(input_warnings or [])
+
+    for path in normalized.get("wave", []) or []:
+        try:
+            loaded = load_fault_source(path)
+            merged = dict(_fault_raw)
+            merged.update({key: value for key, value in loaded.items() if _has_value(value)})
+            _fault_raw = merged
+        except Exception as exc:
+            warnings.append(f"录波文件解析失败：{exc}")
+
+    for path in normalized.get("lightning", []) or []:
+        try:
+            loaded = load_lightning_source(path)
+            merged = dict(_lightning_raw)
+            merged.update({key: value for key, value in loaded.items() if _has_value(value)})
+            _lightning_raw = merged
+        except Exception as exc:
+            warnings.append(f"雷电定位文件解析失败：{exc}")
+
+    for path in normalized.get("ledger", []) or []:
+        try:
+            rows = load_ledger_rows(path)
+            if rows and not _ledger_rows:
+                _ledger_rows = [dict(row) for row in rows]
+            elif rows:
+                _ledger_rows.extend(dict(row) for row in rows)
+            if not rows:
+                warnings.append("台账文件无有效行（需包含线路名称与塔号字段）")
+        except Exception as exc:
+            warnings.append(f"台账文件解析失败：{exc}")
+
+    traveling_wave_records: list[dict[str, Any]] = []
+    for path in normalized.get("traveling_wave", []) or []:
+        try:
+            traveling_wave_records.append(load_traveling_wave_file(path))
+        except Exception as exc:
+            warnings.append(f"行波文件解析失败：{exc}")
+
+    _manual = dict(dict(manual) if manual is not None else DEFAULT_MANUAL)
+    try:
+        diag = build_diagnosis(
+            dict(_fault_raw),
+            dict(_manual),
+            list(_ledger_rows),
+            lightning_raw=dict(_lightning_raw) or None,
+            traveling_wave_records=traveling_wave_records,
+        )
+    except Exception as exc:
+        raise InputError(f"判别管线初始化失败：{exc}") from exc
+    return build_result_json(
+        diag,
+        risk_level=_derive_risk_level(diag)[0],
+        risk_basis=_derive_risk_level(diag)[1],
+        confidence=_decision_confidence(diag),
+        confidence_source=_confidence_source(diag),
+        input_warnings=warnings,
+        upload_files=None,
+    )
+
+
+def _decision_confidence(diag: Mapping[str, Any]) -> float | None:
+    decision = diag.get("ground_fault_decision", {})
+    raw = decision.get("confidence")
+    if raw is None:
+        return None
+    return round(float(raw) * 100, 2)
+
+
+def _confidence_source(diag: Mapping[str, Any]) -> str:
+    decision = diag.get("ground_fault_decision", {})
+    return "接地故障判别置信度" if decision.get("confidence") is not None else "未计算（接地属性不确定）"

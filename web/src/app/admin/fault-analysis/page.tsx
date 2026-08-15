@@ -139,6 +139,7 @@ function hasUploadFiles(values: CreateFaultAnalysisFormValues): boolean {
     values.ledger_data_file,
     values.traveling_wave_file,
     values.optical_data_file,
+    values.auto_classify_files,
   ].some((fileList) => (fileList?.length ?? 0) > 0);
 }
 
@@ -302,11 +303,22 @@ export default function AdminFaultAnalysisPage() {
             formData.set(key, String(value));
           }
         }
-        for (const [field, file] of fileFields) {
-          if (file) {
-            formData.set(field, file, file.name);
+
+        const autoFiles = values.auto_classify_files;
+        if (autoFiles && autoFiles.length > 0) {
+          formData.set("auto_classify", "true");
+          for (const item of autoFiles) {
+            const file = item.originFileObj;
+            formData.append("auto_classify_files", file, file.name);
+          }
+        } else {
+          for (const [field, file] of fileFields) {
+            if (file) {
+              formData.set(field, file, file.name);
+            }
           }
         }
+
         const response = await fetchWithAuth("/api/v1/fault-analysis/upload", {
           method: "POST",
           body: formData,

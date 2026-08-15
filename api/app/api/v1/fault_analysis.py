@@ -23,6 +23,13 @@ from ...services.fault_analysis_service import (
     store_analysis_upload_file,
     update_analysis,
 )
+from ...services.fault_input_discovery import (
+    CATEGORY_FIELDS,
+    SINGLE_FILE_CATEGORIES,
+    CATEGORY_LABELS,
+    InputDiscoveryError,
+    classify_upload_file,
+)
 
 router = APIRouter(
     prefix="/fault-analysis",
@@ -98,10 +105,16 @@ async def create_fault_analysis_with_files(
     ledger_data_file: UploadFile | None = File(default=None),
     traveling_wave_file: UploadFile | None = File(default=None),
     optical_data_file: UploadFile | None = File(default=None),
+    auto_classify: bool | None = Form(default=None),
+    auto_classify_files: list[UploadFile] | None = File(default=None),
     current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> FaultAnalysisCreateResponse:
-    """创建故障分析记录并附带判别输入文件（录波/雷电/台账/行波/光学）。"""
+    """创建故障分析记录并附带判别输入文件（录波/雷电/台账/行波/光学）。
+
+    auto_classify 为 True 时忽略前端表单字段名，改按文件名前缀自动归类：
+    1 开头=录波、2 开头=雷电定位、3 开头=线路台账、其余 TXT/JSON=行波。
+    """
     payload = FaultAnalysisCreateRequest(
         title=title,
         description=description,
@@ -141,25 +154,79 @@ async def create_fault_analysis_with_files(
         auto_diagnose=False,
     )
     analysis_id = created.analysis.id
-    upload_files: dict[str, str] = {}
-    for field, upload in (
-        ("wave_data_file", wave_data_file),
-        ("lightning_data_file", lightning_data_file),
-        ("ledger_data_file", ledger_data_file),
-        ("traveling_wave_file", traveling_wave_file),
-        ("optical_data_file", optical_data_file),
-    ):
-        if upload is not None and upload.filename:
-            content = await upload.read()
-            upload_files[field] = store_analysis_upload_file(
-                analysis_id, field, upload.filename, content
-            )
+
+    if auto_classify:
+        upload_files = await _store_auto_classified_files(analysis_id, auto_classify_files or [])
+    else:
+        upload_files: dict[str, str] = {}
+        for field, upload in (
+            ("wave_data_file", wave_data_file),
+            ("lightning_data_file", lightning_data_file),
+            ("ledger_data_file", ledger_data_file),
+            ("traveling_wave_file", traveling_wave_file),
+            ("optical_data_file", optical_data_file),
+        ):
+            if upload is not None and upload.filename:
+                content = await upload.read()
+                upload_files[field] = store_analysis_upload_file(
+                    analysis_id, field, upload.filename, content
+                )
 
     if upload_files:
         set_analysis_upload_files(db, analysis_id, upload_files)
     dispatch_fault_diagnosis(db, analysis_id)
     saved = get_analysis_by_id(db, analysis_id)
     return FaultAnalysisCreateResponse(analysis=serialize_detail(saved))
+
+
+async def _store_auto_classified_files(
+    analysis_id: str,
+    uploads: list[UploadFile],
+) -> dict[str, str | list[str]]:
+    """按文件名前缀自动归类并持久化上传文件，返回 upload_files 字典。
+
+    录波/雷电/台账为单文件类别：同类别上传多个文件时报错（提示保留一个）。
+    行波允许多个，保存为相对路径列表。
+    """
+    upload_files: dict[str, str | list[str]] = {}
+    seen_single: set[str] = set()
+    for upload in uploads:
+        if not upload.filename:
+            continue
+        try:
+            category = classify_upload_file(upload.filename)
+            field = CATEGORY_FIELDS[category]
+        except (KeyError, InputDiscoveryError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"无法自动识别文件类别：{upload.filename}。"
+                    "请按 1（录波）/2（雷电定位）/3（线路台账）前缀命名，"
+                    "或使用 TXT/JSON 行波文件。"
+                ),
+            )
+        content = await upload.read()
+        relative = store_analysis_upload_file(analysis_id, field, upload.filename, content)
+        if category in SINGLE_FILE_CATEGORIES:
+            if field in seen_single:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"{CATEGORY_LABELS[category]}同一类别仅允许一个文件，"
+                        f"请保留一个（{upload.filename}）。"
+                    ),
+                )
+            seen_single.add(field)
+            upload_files[field] = relative
+        else:
+            existing = upload_files.get(field)
+            if isinstance(existing, list):
+                existing.append(relative)
+            elif existing:
+                upload_files[field] = [existing, relative]
+            else:
+                upload_files[field] = [relative]
+    return upload_files
 
 
 @router.put("/{analysis_id}", response_model=FaultAnalysisDetail)

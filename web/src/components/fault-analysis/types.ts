@@ -65,4 +65,6 @@ export interface CreateFaultAnalysisFormValues {
   ledger_data_file?: { originFileObj: File; name?: string }[];
   traveling_wave_file?: { originFileObj: File; name?: string }[];
   optical_data_file?: { originFileObj: File; name?: string }[];
+  // 自动识别类别上传（后端按文件名前缀归类）
+  auto_classify_files?: { originFileObj: File; name?: string }[];
 }

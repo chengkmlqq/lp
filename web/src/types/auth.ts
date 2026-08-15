@@ -912,6 +912,7 @@ export type FaultAnalysisDetail = FaultAnalysisSummary & {
   optical_position: string | null;
   optical_device_location: string | null;
   result_json: Record<string, unknown>;
+  upload_files: Record<string, unknown>;
 };
 
 export type FaultAnalysisListResponse = {
