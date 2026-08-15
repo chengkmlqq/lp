@@ -910,7 +910,9 @@ export default function AdminTaskMonitorPage() {
             <Spin tip="加载日志中..." />
           </div>
         ) : (
-          <>
+          <div
+            style={{ display: "flex", flexDirection: "column", height: "100%" }}
+          >
             <Space
               style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}
               align="center"
@@ -943,7 +945,8 @@ export default function AdminTaskMonitorPage() {
             <pre
               ref={logModalContentRef}
               style={{
-                maxHeight: "60vh",
+                flex: 1,
+                minHeight: 0,
                 overflow: "auto",
                 padding: "16px",
                 backgroundColor: "#0f172a",
@@ -963,7 +966,7 @@ export default function AdminTaskMonitorPage() {
                 />
               )}
             </pre>
-          </>
+          </div>
         )}
       </Drawer>
     </div>
