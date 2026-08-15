@@ -832,6 +832,7 @@ export default function AdminLightningDistributionPage() {
         className="admin-lightning-distribution-event-card"
         size="small"
         hoverable
+        onClick={() => openDetail(record)}
       >
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
@@ -896,11 +897,19 @@ export default function AdminLightningDistributionPage() {
                 type="text"
                 size="small"
                 icon={<EyeOutlined />}
-                onClick={() => openDetail(record)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openDetail(record);
+                }}
               />
               {dropdownItems.length > 0 && (
                 <Dropdown menu={{ items: dropdownItems }} trigger={["click"]}>
-                  <Button type="text" size="small" icon={<MoreOutlined />} />
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
+                  />
                 </Dropdown>
               )}
             </Space>

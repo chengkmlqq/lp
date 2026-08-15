@@ -42,6 +42,7 @@ export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: A
       size="small"
       hoverable
       className={`admin-fault-analysis-card${selected ? " selected" : ""}`}
+      onClick={onView}
     >
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between">
@@ -84,14 +85,20 @@ export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: A
               type="text"
               size="small"
               icon={<EyeOutlined />}
-              onClick={onView}
+              onClick={(event) => {
+                event.stopPropagation();
+                onView?.();
+              }}
             />
             {onEdit && (
               <Button
                 type="text"
                 size="small"
                 icon={<EditOutlined />}
-                onClick={onEdit}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdit?.();
+                }}
               />
             )}
             {onDelete && (
@@ -100,7 +107,10 @@ export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: A
                 size="small"
                 danger
                 icon={<DeleteOutlined />}
-                onClick={onDelete}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete?.();
+                }}
               />
             )}
           </Space>

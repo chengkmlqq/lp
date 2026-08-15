@@ -838,6 +838,8 @@ export default function AtpModelsPage() {
         key={item.id}
         className="admin-atp-models-model-card"
         size="small"
+        hoverable
+        onClick={() => router.push(`/admin/atp-models/${item.id}`)}
         title={
           <Typography.Text strong ellipsis={{ tooltip: item.name }}>
             {item.name}
@@ -845,7 +847,14 @@ export default function AtpModelsPage() {
         }
         extra={
           <Space size={4}>
-            <Button size="small" icon={<EyeOutlined />} onClick={() => router.push(`/admin/atp-models/${item.id}`)}>
+            <Button
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={(event) => {
+                event.stopPropagation();
+                router.push(`/admin/atp-models/${item.id}`);
+              }}
+            >
               详情
             </Button>
             <Button
@@ -853,7 +862,8 @@ export default function AtpModelsPage() {
               size="small"
               disabled={!canManage || rowBusy}
               loading={deleteLoading}
-              onClick={() => {
+              onClick={(event) => {
+                event.stopPropagation();
                 Modal.confirm({
                   title: "删除模型",
                   content: "这会同时删除其文件与运行记录。",

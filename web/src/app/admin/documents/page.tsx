@@ -665,6 +665,8 @@ export default function AdminDocumentsPage() {
         key={doc.id}
         className="admin-documents-document-card"
         size="small"
+        hoverable
+        onClick={() => handleEditDocument(doc)}
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong ellipsis={{ tooltip: doc.title }}>
@@ -681,7 +683,10 @@ export default function AdminDocumentsPage() {
               type="text"
               size="small"
               disabled={rowBusy || !canManage}
-              onClick={() => handleEditDocument(doc)}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleEditDocument(doc);
+              }}
             >
               编辑
             </Button>
@@ -691,7 +696,8 @@ export default function AdminDocumentsPage() {
               danger
               disabled={rowBusy || !canManage}
               loading={deleteLoading}
-              onClick={() => {
+              onClick={(event) => {
+                event.stopPropagation();
                 Modal.confirm({
                   title: `确认删除文档 ${doc.title}？`,
                   okText: "删除",

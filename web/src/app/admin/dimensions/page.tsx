@@ -791,6 +791,8 @@ export default function AdminDimensionsPage() {
         key={item.id}
         className="admin-system-params-param-card"
         size="small"
+        hoverable
+        onClick={() => openDimensionEdit(item)}
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong>{item.name}</Typography.Text>
@@ -805,10 +807,19 @@ export default function AdminDimensionsPage() {
                 size="small"
                 disabled={deleteLoading}
                 icon={<EditOutlined />}
-                onClick={() => openDimensionEdit(item)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openDimensionEdit(item);
+                }}
               />
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button type="text" size="small" disabled={deleteLoading} icon={<MoreOutlined />} />
+                <Button
+                  type="text"
+                  size="small"
+                  disabled={deleteLoading}
+                  icon={<MoreOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
               </Dropdown>
             </Space>
           ) : null

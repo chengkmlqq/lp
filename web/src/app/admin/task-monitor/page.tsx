@@ -650,6 +650,8 @@ export default function AdminTaskMonitorPage() {
       key={task.key}
       className="admin-task-monitor-task-card"
       size="small"
+      hoverable
+      onClick={() => handleViewLog(task.task_id)}
       title={
         <Space className="min-w-0" size={8}>
           <Typography.Text strong ellipsis={{ tooltip: getTaskDisplayName(task.name) }}>
@@ -662,7 +664,11 @@ export default function AdminTaskMonitorPage() {
       <Space direction="vertical" size={10} style={{ width: "100%" }}>
         <div className="admin-task-monitor-task-card-field">
           <Typography.Text type="secondary">任务 ID</Typography.Text>
-          <Typography.Text copyable ellipsis={{ tooltip: task.task_id }}>
+          <Typography.Text
+            copyable
+            ellipsis={{ tooltip: task.task_id }}
+            onClick={(event) => event.stopPropagation()}
+          >
             {task.task_id}
           </Typography.Text>
         </div>
@@ -690,7 +696,14 @@ export default function AdminTaskMonitorPage() {
         </div>
         <div style={{ marginTop: 8 }}>
           <Space direction="vertical" size={8} style={{ width: "100%" }}>
-            <Button size="small" block onClick={() => handleViewLog(task.task_id)}>
+            <Button
+              size="small"
+              block
+              onClick={(event) => {
+                event.stopPropagation();
+                handleViewLog(task.task_id);
+              }}
+            >
               日志
             </Button>
           </Space>

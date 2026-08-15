@@ -652,6 +652,8 @@ export default function AdminTowerModelsPage() {
         key={row.id}
         className="admin-tower-models-model-card"
         size="small"
+        hoverable
+        onClick={() => openEdit(row)}
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong ellipsis={{ tooltip: row.name }}>
@@ -667,10 +669,19 @@ export default function AdminTowerModelsPage() {
               size="small"
               disabled={rowBusy}
               icon={<EditOutlined />}
-              onClick={() => openEdit(row)}
+              onClick={(event) => {
+                event.stopPropagation();
+                openEdit(row);
+              }}
             />
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button type="text" size="small" disabled={rowBusy} icon={<MoreOutlined />} />
+              <Button
+                type="text"
+                size="small"
+                disabled={rowBusy}
+                icon={<MoreOutlined />}
+                onClick={(event) => event.stopPropagation()}
+              />
             </Dropdown>
           </Space>
         ) : null}

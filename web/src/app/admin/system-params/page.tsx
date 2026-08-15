@@ -787,6 +787,8 @@ export default function AdminSystemParamsPage() {
         key={param.id}
         className="admin-system-params-param-card"
         size="small"
+        hoverable
+        onClick={() => startEdit(param)}
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong>{param.param_name}</Typography.Text>
@@ -803,10 +805,19 @@ export default function AdminSystemParamsPage() {
                 size="small"
                 disabled={rowBusy}
                 icon={<EditOutlined />}
-                onClick={() => startEdit(param)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  startEdit(param);
+                }}
               />
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button type="text" size="small" disabled={rowBusy} icon={<MoreOutlined />} />
+                <Button
+                  type="text"
+                  size="small"
+                  disabled={rowBusy}
+                  icon={<MoreOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
               </Dropdown>
             </Space>
           ) : null

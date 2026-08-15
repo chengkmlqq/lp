@@ -812,6 +812,8 @@ export default function ElevationRecordsPage() {
         key={record.id}
         className="admin-elevation-record-card"
         size="small"
+        hoverable
+        onClick={() => openTowerTab(record)}
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong ellipsis>{record.file_name}</Typography.Text>
@@ -824,7 +826,10 @@ export default function ElevationRecordsPage() {
               type="text"
               size="small"
               disabled={rowBusy}
-              onClick={() => previewMutation.mutate(record.id)}
+              onClick={(event) => {
+                event.stopPropagation();
+                previewMutation.mutate(record.id);
+              }}
             >
               预览
             </Button>
@@ -832,12 +837,21 @@ export default function ElevationRecordsPage() {
               type="text"
               size="small"
               disabled={rowBusy}
-              onClick={() => openTowerTab(record)}
+              onClick={(event) => {
+                event.stopPropagation();
+                openTowerTab(record);
+              }}
             >
               回填
             </Button>
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button type="text" size="small" disabled={rowBusy} icon={<MoreOutlined />} />
+              <Button
+                type="text"
+                size="small"
+                disabled={rowBusy}
+                icon={<MoreOutlined />}
+                onClick={(event) => event.stopPropagation()}
+              />
             </Dropdown>
           </Space>
         }
@@ -875,7 +889,10 @@ export default function ElevationRecordsPage() {
               type="link"
               size="small"
               style={{ padding: 0 }}
-              onClick={() => openLinkedLinesModal(record)}
+              onClick={(event) => {
+                event.stopPropagation();
+                openLinkedLinesModal(record);
+              }}
             >
               {record.linked_line_count ?? 0} 条
             </Button>

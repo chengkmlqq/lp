@@ -978,6 +978,8 @@ export default function AdminUsersPage() {
         key={userItem.id}
         className="admin-users-user-card"
         size="small"
+        hoverable
+        onClick={() => openEditUserModal(userItem)}
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong>{userItem.username}</Typography.Text>
@@ -993,10 +995,19 @@ export default function AdminUsersPage() {
               size="small"
               disabled={rowBusy}
               icon={<EditOutlined />}
-              onClick={() => openEditUserModal(userItem)}
+              onClick={(event) => {
+                event.stopPropagation();
+                openEditUserModal(userItem);
+              }}
             />
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button type="text" size="small" disabled={rowBusy} icon={<MoreOutlined />} />
+              <Button
+                type="text"
+                size="small"
+                disabled={rowBusy}
+                icon={<MoreOutlined />}
+                onClick={(event) => event.stopPropagation()}
+              />
             </Dropdown>
           </Space>
         }

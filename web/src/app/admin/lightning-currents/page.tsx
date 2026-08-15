@@ -608,6 +608,7 @@ export default function AdminLightningCurrentsPage() {
         size="small"
         hoverable
         className="admin-lightning-events-card"
+        onClick={() => openDetail(record)}
       >
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
@@ -648,7 +649,10 @@ export default function AdminLightningCurrentsPage() {
                 type="text"
                 size="small"
                 icon={<EyeOutlined />}
-                onClick={() => openDetail(record)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openDetail(record);
+                }}
               />
               {record.status === "failed" && canManage && (
                 <Button
@@ -656,7 +660,10 @@ export default function AdminLightningCurrentsPage() {
                   size="small"
                   icon={<RedoOutlined />}
                   loading={retryMutation.isPending}
-                  onClick={() => retryMutation.mutate(record)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    retryMutation.mutate(record);
+                  }}
                 />
               )}
               {canManage && (
@@ -666,7 +673,8 @@ export default function AdminLightningCurrentsPage() {
                   danger
                   icon={<DeleteOutlined />}
                   loading={deleteMutation.isPending}
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.stopPropagation();
                     Modal.confirm({
                       title: "删除记录",
                       content: `确认删除记录 ${record.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,

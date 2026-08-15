@@ -640,6 +640,8 @@ export default function AdminSystemMessagesPage() {
         key={item.id}
         className="admin-system-messages-message-card"
         size="small"
+        hoverable
+        onClick={() => setDetailMessage(item)}
         title={
           <Space direction="vertical" size={2} style={{ width: "100%" }}>
             <Typography.Text strong={!item.is_read} ellipsis={{ tooltip: item.title }}>
@@ -652,11 +654,24 @@ export default function AdminSystemMessagesPage() {
         }
         extra={
           <Space size={4}>
-            <Button size="small" type="text" onClick={() => setDetailMessage(item)}>
+            <Button
+              size="small"
+              type="text"
+              onClick={(event) => {
+                event.stopPropagation();
+                setDetailMessage(item);
+              }}
+            >
               查看
             </Button>
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button type="text" size="small" disabled={isDeleting} icon={<MoreOutlined />} />
+              <Button
+                type="text"
+                size="small"
+                disabled={isDeleting}
+                icon={<MoreOutlined />}
+                onClick={(event) => event.stopPropagation()}
+              />
             </Dropdown>
           </Space>
         }

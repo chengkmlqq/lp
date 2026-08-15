@@ -711,6 +711,8 @@ export default function AdminMenusPage() {
         key={menuItem.id}
         className="admin-menus-menu-card"
         size="small"
+        hoverable
+        onClick={() => startEdit(menuItem)}
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong>{menuItem.name}</Typography.Text>
@@ -727,10 +729,20 @@ export default function AdminMenusPage() {
                 size="small"
                 disabled={menuBusy}
                 icon={<EditOutlined />}
-                onClick={() => startEdit(menuItem)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  startEdit(menuItem);
+                }}
               />
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button type="text" size="small" loading={updatingLoading} disabled={menuBusy} icon={<MoreOutlined />} />
+                <Button
+                  type="text"
+                  size="small"
+                  loading={updatingLoading}
+                  disabled={menuBusy}
+                  icon={<MoreOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
               </Dropdown>
             </Space>
           ) : null

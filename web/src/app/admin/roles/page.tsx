@@ -625,6 +625,8 @@ export default function AdminRolesPage() {
         key={role.id}
         className="admin-roles-role-card"
         size="small"
+        hoverable
+        onClick={() => startEdit(role)}
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong ellipsis={{ tooltip: role.name }}>
@@ -643,7 +645,10 @@ export default function AdminRolesPage() {
                 size="small"
                 icon={<EditOutlined />}
                 disabled={rowBusy}
-                onClick={() => startEdit(role)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  startEdit(role);
+                }}
               />
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button
@@ -651,6 +656,7 @@ export default function AdminRolesPage() {
                   size="small"
                   icon={<MoreOutlined />}
                   disabled={rowBusy}
+                  onClick={(event) => event.stopPropagation()}
                 />
               </Dropdown>
             </Space>

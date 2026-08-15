@@ -614,6 +614,7 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onDelete, delete
       size="small"
       hoverable
       className="admin-power-lines-line-card"
+      onClick={() => onDetail(line)}
     >
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
