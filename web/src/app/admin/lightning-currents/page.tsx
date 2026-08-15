@@ -592,18 +592,8 @@ export default function AdminLightningCurrentsPage() {
             <Typography.Text>{record.sample_count}</Typography.Text>
           </div>
           <div className="admin-lightning-events-card-field">
-            <Typography.Text type="secondary">回填关联线路数</Typography.Text>
-            {(() => {
-              const count = record.backfill_line_count ?? 0;
-              if (count === 0) {
-                return <Typography.Text type="secondary">-</Typography.Text>;
-              }
-              return (
-                <Button type="link" size="small" style={{ padding: 0 }} onClick={() => openBackfillLines(record)}>
-                  {count} 条
-                </Button>
-              );
-            })()}
+            <Typography.Text type="secondary">采样时间</Typography.Text>
+            <Typography.Text>{formatDateTime(record.event_time) || "-"}</Typography.Text>
           </div>
           {record.status === "processing" && (
             <Progress percent={record.progress} size="small" />
@@ -897,7 +887,7 @@ export default function AdminLightningCurrentsPage() {
             ) : (
               <>
                 <div className="admin-lightning-events-card-scroll">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     {records.map((record) => renderRecordCard(record))}
                   </div>
                 </div>
@@ -1183,13 +1173,6 @@ function AmplitudeDetailView({
       <div>
         <Typography.Title level={5}>基本信息</Typography.Title>
         <Descriptions bordered size="small" column={2}>
-          <Descriptions.Item label="状态">
-            {(() => {
-              const meta = STATUS_META[record.status] ?? { color: "default", label: record.status };
-              return <Tag color={meta.color}>{meta.label}</Tag>;
-            })()}
-          </Descriptions.Item>
-          <Descriptions.Item label="事件编号">{formatNullable(record.event_id)}</Descriptions.Item>
           <Descriptions.Item label="城市">{formatNullable(record.city)}</Descriptions.Item>
           <Descriptions.Item label="事件发生地点">{formatNullable(record.location_tag)}</Descriptions.Item>
           <Descriptions.Item label="传感器">{formatNullable(record.sensor_model)}</Descriptions.Item>
@@ -1198,8 +1181,6 @@ function AmplitudeDetailView({
           <Descriptions.Item label="采样点数">{record.sample_count}</Descriptions.Item>
           <Descriptions.Item label="采样间隔(us)">{formatNumber(record.sample_interval_us, 6)}</Descriptions.Item>
           <Descriptions.Item label="海拔(m)">{formatNullable(record.altitude_m)}</Descriptions.Item>
-          <Descriptions.Item label="气压(hPa)">{formatNullable(record.pressure_hpa)}</Descriptions.Item>
-          <Descriptions.Item label="湿度(%)">{formatNullable(record.humidity_percent)}</Descriptions.Item>
         </Descriptions>
       </div>
 
