@@ -24,12 +24,12 @@ def _file_size_bytes(file: UploadFile) -> int:
 
 
 def validate_upload(
-    file: UploadFile,
+    file: UploadFile | None,
     max_mb: int | None = None,
     allowed_exts: set[str] | None = None,
     *,
     allowed_exts_label: str = "",
-) -> UploadFile:
+) -> UploadFile | None:
     """统一的上传文件校验依赖：大小上限（413）+ 扩展名白名单（400）。
 
     可作 FastAPI ``Depends`` 使用，也可在端点内显式调用。校验通过后原样返回
@@ -37,6 +37,9 @@ def validate_upload(
 
     Parameters
     ----------
+    file:
+        上传文件对象。为 None 时直接放行返回 None（兼容 temp_file_id 路径：
+        文件已上传到临时区，导入端点仅传临时文件 ID 不带 file）。
     max_mb:
         文件大小上限（MB）。为 None 时取全局配置 ``UPLOAD_MAX_FILE_SIZE_MB``（默认 50）。
     allowed_exts:
@@ -45,6 +48,8 @@ def validate_upload(
     allowed_exts_label:
         错误提示里的扩展名展示文案（如 "csv/xlsx"）。为空则自动从 allowed_exts 生成。
     """
+    if file is None:
+        return None
     if max_mb is None:
         max_mb = get_settings().upload_max_file_size_mb
     if max_mb <= 0:
