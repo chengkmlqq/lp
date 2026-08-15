@@ -34,6 +34,7 @@ import {
   EnvironmentOutlined,
   EyeOutlined,
   HomeOutlined,
+  InboxOutlined,
   MoreOutlined,
   NumberOutlined,
   QuestionCircleOutlined,
@@ -1050,7 +1051,7 @@ export default function AdminLightningCurrentsPage() {
                 }))}
               />
             </Form.Item>
-            <Form.Item name="location_tag" label="事件发生地点">
+            <Form.Item name="location_tag" label="采样地点">
               <Input placeholder="例如 XX变电站、XX区域" />
             </Form.Item>
             <Form.Item name="install_position" label="安装位置">
@@ -1062,7 +1063,7 @@ export default function AdminLightningCurrentsPage() {
             <Form.Item name="sample_interval_us" label="采样间隔(us)">
               <InputNumber style={{ width: "100%" }} min={0.000001} precision={6} />
             </Form.Item>
-            <Form.Item name="event_time" label="发生时间">
+            <Form.Item name="event_time" label="采样时间">
               <DatePicker className="w-full" showTime placeholder="选择日期时间" />
             </Form.Item>
           </div>
@@ -1111,6 +1112,7 @@ export default function AdminLightningCurrentsPage() {
                   </>
                 ) : (
                   <>
+                    <InboxOutlined style={{ fontSize: 40, color: "#999" }} />
                     <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
                       点击或拖拽文件到此区域上传
                     </p>
@@ -1298,13 +1300,13 @@ function AmplitudeDetailView({
         <Typography.Title level={5}>基本信息</Typography.Title>
         <Descriptions bordered size="small" column={2}>
           <Descriptions.Item label="城市">{formatNullable(record.city)}</Descriptions.Item>
-          <Descriptions.Item label="事件发生地点">{formatNullable(record.location_tag)}</Descriptions.Item>
+          <Descriptions.Item label="采样地点">{formatNullable(record.location_tag)}</Descriptions.Item>
           <Descriptions.Item label="传感器">{formatNullable(record.sensor_model)}</Descriptions.Item>
           <Descriptions.Item label="安装位置">{formatNullable(record.install_position)}</Descriptions.Item>
-          <Descriptions.Item label="发生时间">{formatNullable(record.event_time)}</Descriptions.Item>
+          <Descriptions.Item label="采样时间">{formatNullable(record.event_time)}</Descriptions.Item>
           <Descriptions.Item label="采样点数">{record.sample_count}</Descriptions.Item>
           <Descriptions.Item label="采样间隔(us)">{formatNumber(record.sample_interval_us, 6)}</Descriptions.Item>
-          <Descriptions.Item label="海拔(m)">{formatNullable(record.altitude_m)}</Descriptions.Item>
+          <Descriptions.Item label="备注">{formatNullable(record.notes)}</Descriptions.Item>
         </Descriptions>
       </div>
 
