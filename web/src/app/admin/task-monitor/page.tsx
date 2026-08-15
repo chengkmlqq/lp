@@ -77,6 +77,7 @@ type TaskMonitorOverviewResponse = {
   generated_at: string;
   workers: OverviewMonitorWorkerItem[];
   tasks: OverviewMonitorTaskItem[];
+  total: number;
 };
 
 type TaskTableRow = {
@@ -469,6 +470,15 @@ export default function AdminTaskMonitorPage() {
     });
   }, [allTaskRows, taskKeyword]);
 
+  // 分页总数：有关键词时后端过滤在前端完成，总数以本地筛选结果为准；
+  // 无关键词时使用后端真实 total（删除任务后 refetch 自动更新，不再固定 500）
+  const taskTotal = useMemo(() => {
+    if (taskKeyword.trim()) {
+      return filteredTaskRows.length;
+    }
+    return overviewData?.total ?? filteredTaskRows.length;
+  }, [overviewData, filteredTaskRows, taskKeyword]);
+
   const handleSearch = useCallback(() => {
     setTaskKeyword(pendingKeyword);
     resetTaskListPagination();
@@ -823,10 +833,10 @@ export default function AdminTaskMonitorPage() {
               pagination={{
                 current: paginationCurrent,
                 pageSize: paginationPageSize,
-                total: Math.max(filteredTaskRows.length, 1),
+                total: Math.max(Math.min(taskTotal, filteredTaskRows.length), 1),
                 showSizeChanger: true,
                 pageSizeOptions: [10, 20, 50, 100],
-                showTotal: () => `共 ${filteredTaskRows.length} 条`,
+                showTotal: () => `共 ${taskTotal} 条`,
                 hideOnSinglePage: false,
                 style: { marginBottom: 0 },
                 onChange: (page, pageSize) => {

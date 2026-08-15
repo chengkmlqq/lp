@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import desc
+from sqlalchemy import desc, func, select
 
 from ..core.config import get_settings
 from ..core.database import SessionLocal
@@ -75,6 +75,19 @@ def _load_db_task_history(*, limit: int) -> list[TaskMonitorTaskItem]:
     except Exception:
         logger.exception("Failed to load task history from database")
         return []
+
+
+def _count_db_task_history() -> int:
+    """Count all task history records in the database. Returns 0 on DB errors."""
+    try:
+        db = SessionLocal()
+        try:
+            return int(db.scalar(select(func.count()).select_from(TaskHistory)) or 0)
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Failed to count task history in database")
+        return 0
 
 
 def _safe_queue_pending_counts(queue_names: Iterable[str]) -> dict[str, int]:
@@ -177,6 +190,8 @@ def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskM
         ),
     )
 
+    total = _count_db_task_history()
+
     return TaskMonitorOverviewResponse(
         generated_at=utcnow(),
         broker_url=settings.resolved_celery_broker_url,
@@ -188,6 +203,7 @@ def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskM
         workers=[],
         queues=queues,
         tasks=all_tasks[:task_limit],
+        total=total,
     )
 
 

@@ -21,14 +21,19 @@ class TestTaskMonitorOverviewErrorIsolation:
             "app.services.task_monitor_service._load_db_task_history",
             return_value=[],
         ):
-            result = task_monitor_service.build_task_monitor_overview(
-                task_limit=10,
-                history_limit=5,
-            )
+            with patch(
+                "app.services.task_monitor_service._count_db_task_history",
+                return_value=0,
+            ):
+                result = task_monitor_service.build_task_monitor_overview(
+                    task_limit=10,
+                    history_limit=5,
+                )
         assert result.tasks == []
         assert result.workers == []
         assert result.queues == []
         assert result.workers_online == 0
+        assert result.total == 0
         assert result.generated_at is not None
 
     def test_flower_independent_response_shape(self):
@@ -41,10 +46,14 @@ class TestTaskMonitorOverviewErrorIsolation:
                 "app.services.task_monitor_service._safe_queue_pending_counts",
                 return_value={},
             ):
-                result = task_monitor_service.build_task_monitor_overview(
-                    task_limit=10,
-                    history_limit=5,
-                )
+                with patch(
+                    "app.services.task_monitor_service._count_db_task_history",
+                    return_value=0,
+                ):
+                    result = task_monitor_service.build_task_monitor_overview(
+                        task_limit=10,
+                        history_limit=5,
+                    )
         assert result.workers_online == 0
         assert result.worker_concurrency_total == 0
         assert result.workers == []
@@ -81,14 +90,19 @@ class TestTaskMonitorOverviewErrorIsolation:
                 "app.services.task_monitor_service._safe_queue_pending_counts",
                 return_value={},
             ):
-                result = task_monitor_service.build_task_monitor_overview(
-                    task_limit=10,
-                    history_limit=5,
-                )
+                with patch(
+                    "app.services.task_monitor_service._count_db_task_history",
+                    return_value=len(items),
+                ):
+                    result = task_monitor_service.build_task_monitor_overview(
+                        task_limit=10,
+                        history_limit=5,
+                    )
 
         assert [t.task_id for t in result.tasks] == ["task-1", "task-2"]
         assert result.tasks[0].worker == "celery@worker-1"
         assert {q.name for q in result.queues} == {"q1"}
+        assert result.total == 2
 
     def test_queue_active_count_counts_only_started(self):
         """Queue active_count counts STARTED tasks from DB; others do not inflate it."""
@@ -125,10 +139,14 @@ class TestTaskMonitorOverviewErrorIsolation:
                 "app.services.task_monitor_service._safe_queue_pending_counts",
                 return_value={"q1": 4, "q2": 0},
             ):
-                result = task_monitor_service.build_task_monitor_overview(
-                    task_limit=10,
-                    history_limit=5,
-                )
+                with patch(
+                    "app.services.task_monitor_service._count_db_task_history",
+                    return_value=len(items),
+                ):
+                    result = task_monitor_service.build_task_monitor_overview(
+                        task_limit=10,
+                        history_limit=5,
+                    )
 
         queues = {q.name: q for q in result.queues}
         assert queues["q1"].active_count == 1
@@ -151,10 +169,14 @@ class TestTaskMonitorOverviewErrorIsolation:
             "app.services.task_monitor_service._load_db_task_history",
             return_value=items,
         ):
-            result = task_monitor_service.build_task_monitor_overview(
-                task_limit=10,
-                history_limit=5,
-            )
+            with patch(
+                "app.services.task_monitor_service._count_db_task_history",
+                return_value=len(items),
+            ):
+                result = task_monitor_service.build_task_monitor_overview(
+                    task_limit=10,
+                    history_limit=5,
+                )
         buckets = {b.key: b.count for b in result.task_state_buckets}
         assert buckets["STARTED"] == 1
         assert buckets["SUCCESS"] == 2
@@ -179,10 +201,14 @@ class TestTaskMonitorOverviewErrorIsolation:
                     )
                 ],
             ):
-                result = task_monitor_service.build_task_monitor_overview(
-                    task_limit=10,
-                    history_limit=5,
-                )
+                with patch(
+                    "app.services.task_monitor_service._count_db_task_history",
+                    return_value=1,
+                ):
+                    result = task_monitor_service.build_task_monitor_overview(
+                        task_limit=10,
+                        history_limit=5,
+                    )
         queues = {q.name: q for q in result.queues}
         assert queues["q1"].pending_count == 0
 
@@ -213,6 +239,69 @@ class TestTaskMonitorOverviewErrorIsolation:
             side_effect=exc,
         ):
             assert task_monitor_service._load_db_task_history(limit=10) == []
+
+
+class TestCountDbTaskHistory:
+    def test_count_returns_row_count(self):
+        fake_db = MagicMock()
+        fake_db.scalar.return_value = 42
+        with patch(
+            "app.services.task_monitor_service.SessionLocal",
+            return_value=fake_db,
+        ):
+            assert task_monitor_service._count_db_task_history() == 42
+
+    def test_count_returns_zero_on_none(self):
+        fake_db = MagicMock()
+        fake_db.scalar.return_value = None
+        with patch(
+            "app.services.task_monitor_service.SessionLocal",
+            return_value=fake_db,
+        ):
+            assert task_monitor_service._count_db_task_history() == 0
+
+    @pytest.mark.parametrize(
+        "exc",
+        [RuntimeError("boom"), OSError("boom"), ValueError("boom")],
+    )
+    def test_count_returns_zero_on_error(self, exc):
+        with patch(
+            "app.services.task_monitor_service.SessionLocal",
+            side_effect=exc,
+        ):
+            assert task_monitor_service._count_db_task_history() == 0
+
+    def test_overview_total_uses_database_count_even_when_list_is_capped(self):
+        """total reflects the full DB count, not the task_limit-capped list length."""
+        from app.schemas.task_monitor import TaskMonitorTaskItem
+
+        items = [
+            TaskMonitorTaskItem(
+                task_id=f"task-{i}",
+                name=f"t{i}",
+                state="SUCCESS",
+                done_at=_now(),
+            )
+            for i in range(2)
+        ]
+        with patch(
+            "app.services.task_monitor_service._load_db_task_history",
+            return_value=items,
+        ):
+            with patch(
+                "app.services.task_monitor_service._safe_queue_pending_counts",
+                return_value={},
+            ):
+                with patch(
+                    "app.services.task_monitor_service._count_db_task_history",
+                    return_value=7,
+                ):
+                    result = task_monitor_service.build_task_monitor_overview(
+                        task_limit=2,
+                        history_limit=2,
+                    )
+        assert len(result.tasks) == 2
+        assert result.total == 7
 
 
 class TestDeleteTaskHistory:

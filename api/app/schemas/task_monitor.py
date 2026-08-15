@@ -58,3 +58,4 @@ class TaskMonitorOverviewResponse(BaseModel):
     workers: list[TaskMonitorWorkerItem] = Field(default_factory=list)
     queues: list[TaskMonitorQueueItem] = Field(default_factory=list)
     tasks: list[TaskMonitorTaskItem] = Field(default_factory=list)
+    total: int = 0
