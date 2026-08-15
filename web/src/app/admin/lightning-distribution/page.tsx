@@ -28,7 +28,18 @@ import {
   type CardProps,
   type MenuProps,
 } from "antd";
-import { MoreOutlined, QuestionCircleOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  BarChartOutlined,
+  ClockCircleOutlined,
+  EnvironmentOutlined,
+  EyeOutlined,
+  MoreOutlined,
+  NumberOutlined,
+  QuestionCircleOutlined,
+  SearchOutlined,
+  TagOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefAttributes } from "react";
 
@@ -706,11 +717,6 @@ export default function AdminLightningDistributionPage() {
 
   const renderRecordCard = (record: LightningDistributionRecord) => {
     const dropdownItems: MenuProps["items"] = [
-      {
-        key: "image",
-        label: "详情",
-        onClick: () => openDetail(record),
-      },
       ...(canReadLogs && record.task_id
         ? [
             {
@@ -762,57 +768,81 @@ export default function AdminLightningDistributionPage() {
         key={record.id}
         className="admin-lightning-distribution-event-card"
         size="small"
-        title={
-          <Space className="min-w-0" size={8}>
-            <Typography.Text strong>{record.source_file_name || "未命名文件"}</Typography.Text>
-            <Tag color={meta.color}>{meta.label}</Tag>
-          </Space>
-        }
-        extra={
-          <Dropdown menu={{ items: dropdownItems }}>
-            <Button type="text" size="small" icon={<MoreOutlined />} />
-          </Dropdown>
-        }
+        hoverable
       >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
-          <div className="admin-lightning-distribution-event-card-field">
-            <Typography.Text type="secondary">城市</Typography.Text>
-            <Typography.Text>{record.city || "-"}</Typography.Text>
-          </div>
-          <div className="admin-lightning-distribution-event-card-field">
-            <Typography.Text type="secondary">地点标签</Typography.Text>
-            <Typography.Text>{record.location_tag || "-"}</Typography.Text>
-          </div>
-          <div className="admin-lightning-distribution-event-card-field">
-            <Typography.Text type="secondary">导入时间</Typography.Text>
-            <Typography.Text>
-              {formatDateTime(record.create_date)}
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
+            <ThunderboltOutlined className="text-base text-gray-500" />
+            <Typography.Text strong className="truncate min-w-0">
+              {record.source_file_name || "未命名文件"}
             </Typography.Text>
+            <Tag color={meta.color}>{meta.label}</Tag>
           </div>
-          <div className="admin-lightning-distribution-event-card-field">
-            <Typography.Text type="secondary">有效点数</Typography.Text>
-            <Typography.Text>{record.valid_count}</Typography.Text>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <EnvironmentOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
+                城市：{record.city || "-"}
+              </Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <TagOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
+                地点标签：{record.location_tag || "-"}
+              </Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <ClockCircleOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
+                导入时间：{formatDateTime(record.create_date)}
+              </Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <NumberOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
+                有效点数：{record.valid_count}
+              </Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <ThunderboltOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
+                整体 Ng：{formatNumber(record.overall_ng, 4)}
+              </Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <BarChartOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
+                最大电流：{formatNumber(record.max_abs_current, 2)} kA
+              </Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <BarChartOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
+                平均电流：{formatNumber(record.avg_abs_current, 2)} kA
+              </Typography.Text>
+            </div>
+            {record.status === "processing" && (
+              <Progress percent={record.progress} size="small" />
+            )}
           </div>
-          <div className="admin-lightning-distribution-event-card-field">
-            <Typography.Text type="secondary">整体 Ng</Typography.Text>
-            <Typography.Text>{formatNumber(record.overall_ng, 4)}</Typography.Text>
+
+          <div className="flex justify-end pt-2 border-t border-gray-200">
+            <Space size="small">
+              <Button
+                type="text"
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={() => openDetail(record)}
+              />
+              {dropdownItems.length > 0 && (
+                <Dropdown menu={{ items: dropdownItems }} trigger={["click"]}>
+                  <Button type="text" size="small" icon={<MoreOutlined />} />
+                </Dropdown>
+              )}
+            </Space>
           </div>
-          <div className="admin-lightning-distribution-event-card-field">
-            <Typography.Text type="secondary">最大电流</Typography.Text>
-            <Typography.Text>
-              {formatNumber(record.max_abs_current, 2)} kA
-            </Typography.Text>
-          </div>
-          <div className="admin-lightning-distribution-event-card-field">
-            <Typography.Text type="secondary">平均电流</Typography.Text>
-            <Typography.Text>
-              {formatNumber(record.avg_abs_current, 2)} kA
-            </Typography.Text>
-          </div>
-          {record.status === "processing" && (
-            <Progress percent={record.progress} size="small" />
-          )}
-        </Space>
+        </div>
       </AntCard>
     );
   };
