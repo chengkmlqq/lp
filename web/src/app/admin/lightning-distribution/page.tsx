@@ -1102,11 +1102,11 @@ function ImportModal({
               }))}
             />
           </Form.Item>
-          <Form.Item name="region_id" label="事件发生地点" rules={[{ required: true, message: "请填写事件发生地点" }]}>
+          <Form.Item name="region_id" label="地点" rules={[{ required: true, message: "请填写地点" }]}>
             <Input placeholder="例如 XX变电站、XX区域（闪电事件发生地点）" />
           </Form.Item>
           <Form.Item name="event_year" label="数据年份" rules={[{ required: true, message: "请填写年份" }]}>
-            <InputNumber className="w-full" min={1900} max={2100} />
+            <InputNumber style={{ width: "100%" }} min={1900} max={2100} />
           </Form.Item>
           <Form.Item name="notes" label="数据说明">
             <Input placeholder="可填写数据来源、采集说明等" />
