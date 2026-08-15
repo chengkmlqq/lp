@@ -23,7 +23,7 @@ import {
   Typography,
   type MenuProps,
 } from "antd";
-import { ArrowLeftOutlined, GlobalOutlined, MoreOutlined, SearchOutlined, TableOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, DownloadOutlined, GlobalOutlined, MoreOutlined, SearchOutlined, TableOutlined, UploadOutlined } from "@ant-design/icons";
 import type { DefaultOptionType } from "antd/es/select";
 import type { ColumnsType } from "antd/es/table";
 import type { CSSProperties, ReactNode } from "react";
@@ -1590,16 +1590,6 @@ export default function AdminPowerLineDetailPage() {
                     线路参数准备
                   </Button>
                 )}
-                <Space.Compact size="small">
-                  {canTowerManage && (
-                    <Button onClick={() => importInputRef.current?.click()} loading={importMutation.isPending} disabled={!lineId}>
-                      导入 CSV
-                    </Button>
-                  )}
-                  <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending} disabled={!lineId}>
-                    导出 CSV
-                  </Button>
-                </Space.Compact>
                 <input
                   ref={importInputRef}
                   type="file"
@@ -1619,20 +1609,52 @@ export default function AdminPowerLineDetailPage() {
                   </Button>
                 )}
               </Space>
-              <Radio.Group
-                value={towerViewMode}
-                onChange={(e) => setTowerViewMode(e.target.value as "table" | "map")}
-                optionType="button"
-                buttonStyle="solid"
-                size="small"
-              >
-                <Radio.Button value="map" title="地图">
-                  <GlobalOutlined />
-                </Radio.Button>
-                <Radio.Button value="table" title="杆塔列表">
-                  <TableOutlined />
-                </Radio.Button>
-              </Radio.Group>
+            </div>
+            <div className="admin-filter-bar">
+              <Form layout="inline">
+                <Form.Item label="关键词" className="admin-filter-keyword-item">
+                  <Input value={towerKeyword} allowClear onChange={(event) => setTowerKeyword(event.target.value)} placeholder="按塔号/模型筛选" />
+                </Form.Item>
+                <Form.Item label="塔型" className="admin-filter-keyword-item">
+                  <Select value={towerTypeFilter} options={[...TOWER_TYPE_OPTIONS]} onChange={(value) => setTowerTypeFilter(value)} />
+                </Form.Item>
+                <Form.Item label="风险等级" className="admin-filter-keyword-item">
+                  <Input value={towerRiskFilter} allowClear onChange={(event) => setTowerRiskFilter(event.target.value)} placeholder="按风险等级筛选" />
+                </Form.Item>
+                <Form.Item>
+                  <Button htmlType="button" icon={<SearchOutlined />} onClick={() => refreshTowers()} className="admin-search-btn">
+                    查询
+                  </Button>
+                </Form.Item>
+                {canTowerManage && (
+                  <Form.Item>
+                    <Button htmlType="button" icon={<UploadOutlined />} onClick={() => importInputRef.current?.click()} loading={importMutation.isPending} disabled={!lineId} className="admin-search-btn">
+                      导入
+                    </Button>
+                  </Form.Item>
+                )}
+                <Form.Item>
+                  <Button htmlType="button" icon={<DownloadOutlined />} onClick={() => exportMutation.mutate()} loading={exportMutation.isPending} disabled={!lineId} className="admin-search-btn">
+                    导出
+                  </Button>
+                </Form.Item>
+                <Form.Item style={{ marginLeft: "auto" }}>
+                  <Radio.Group
+                    value={towerViewMode}
+                    onChange={(e) => setTowerViewMode(e.target.value as "table" | "map")}
+                    optionType="button"
+                    buttonStyle="solid"
+                    size="small"
+                  >
+                    <Radio.Button value="map" title="地图">
+                      <GlobalOutlined />
+                    </Radio.Button>
+                    <Radio.Button value="table" title="杆塔列表">
+                      <TableOutlined />
+                    </Radio.Button>
+                  </Radio.Group>
+                </Form.Item>
+              </Form>
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-3" style={{ display: towerViewMode === "map" ? "flex" : "none" }}>
               <div className="flex flex-wrap items-center gap-3">
@@ -1668,24 +1690,6 @@ export default function AdminPowerLineDetailPage() {
               />
             </div>
             <Space direction="vertical" size={12} className="w-full" style={{ display: towerViewMode === "table" ? "flex" : "none" }}>
-              <div className="admin-filter-bar">
-                <Form layout="inline">
-                  <Form.Item label="关键词" className="admin-filter-keyword-item">
-                    <Input value={towerKeyword} allowClear onChange={(event) => setTowerKeyword(event.target.value)} placeholder="按塔号/模型筛选" />
-                  </Form.Item>
-                  <Form.Item label="塔型" className="admin-filter-keyword-item">
-                    <Select value={towerTypeFilter} options={[...TOWER_TYPE_OPTIONS]} onChange={(value) => setTowerTypeFilter(value)} />
-                  </Form.Item>
-                  <Form.Item label="风险等级" className="admin-filter-keyword-item">
-                    <Input value={towerRiskFilter} allowClear onChange={(event) => setTowerRiskFilter(event.target.value)} placeholder="按风险等级筛选" />
-                  </Form.Item>
-                  <Form.Item>
-                    <Button htmlType="button" icon={<SearchOutlined />} onClick={() => refreshTowers()} className="admin-search-btn">
-                      查询
-                    </Button>
-                  </Form.Item>
-                </Form>
-              </div>
               <div className="relative overflow-x-auto">
                 <Table<LineTowerSummary>
                   rowKey={(row) => row.id}
