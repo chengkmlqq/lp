@@ -17,8 +17,9 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
     fi; \
     apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        xvfb \
-    && rm -rf /var/lib/apt/lists/*
+     xvfb \
+     xauth \
+ && rm -rf /var/lib/apt/lists/*
 
 # exe is provided via an external volume mounted at /app/matlab-wave.
 RUN mkdir -p /app/matlab-wave
