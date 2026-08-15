@@ -116,7 +116,7 @@ test("LP-320: line card uses a three-section layout without antd title/extra", (
   assert.ok(powerLineCardBlock, "应能提取 PowerLineCard 组件定义");
   assert.ok(!/title=\{</.test(powerLineCardBlock), "卡片不应再使用 antd Card title 作为标题区");
   assert.ok(!/\bextra=\{</.test(powerLineCardBlock), "卡片不应再使用 antd Card extra 放置操作按钮");
-  assert.match(powerLineCardBlock, /flex flex-col gap-3/, "卡片内容应为三段式纵向布局");
+  assert.match(powerLineCardBlock, /flex flex-col/, "卡片内容应为三段式纵向布局");
 });
 
 test("LP-320: upper section shows a line icon next to the title without status badge", () => {
@@ -139,13 +139,13 @@ test("LP-320: middle section renders basic info as icon + text rows", () => {
 test("LP-353: title bar is separated from basic info by a bottom border divider", () => {
   assert.match(
     powerLineCardBlock,
-    /flex items-center gap-2 pb-2 border-b border-gray-200/,
+    /flex items-center gap-2 px-4 py-3 border-b border-gray-200/,
     "标题栏底部应有 border-b 分隔线且与底部操作栏 border-gray-200 风格一致",
   );
 });
 
 test("LP-320: bottom section holds icon action buttons with a top border divider", () => {
-  assert.match(powerLineCardBlock, /flex justify-end pt-2 border-t border-gray-200/, "操作区上方应有 border-t 分隔线并右对齐");
+  assert.match(powerLineCardBlock, /flex justify-end px-4 py-2 border-t border-gray-200/, "操作区上方应有 border-t 分隔线并右对齐");
   assert.match(powerLineCardBlock, /icon=\{<EyeOutlined \/>\}/, "底部应有详情图标按钮");
   assert.match(powerLineCardBlock, /type="text"\s*[\s\S]{0,200}size="small"/, "操作按钮应为 text 小号图标按钮");
 });
@@ -166,4 +166,29 @@ test("LP-320: card and list view pagination share consistent vertical spacing", 
   const tablePaginationBlock = CSS.match(tablePaginationRule)?.[1];
   assert.ok(tablePaginationBlock, "应存在表格视图分页规则");
   assert.match(tablePaginationBlock, /margin:\s*12px\s+0\s+0\s*!important/, "表格分页应保持顶部 12px 间距");
+});
+
+test("LP-365: line card body padding is zeroed so dividers span the full card width", () => {
+  const bodyBlock = CSS.match(/\.admin-power-lines-line-card > \.ant-card-body \{([^}]*)\}/)?.[1];
+  assert.ok(bodyBlock, "应存在线路卡片 body 规则块");
+  assert.match(bodyBlock, /padding:\s*0/, "ant-card-body padding 应归零");
+  assert.ok(!/padding-block/.test(bodyBlock), "不应再保留 padding-block 设置");
+});
+
+test("LP-365: three card sections carry independent padding", () => {
+  assert.match(powerLineCardBlock, /admin-power-lines-line-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200/, "标题栏应有 px-4 py-3 独立 padding");
+  assert.match(powerLineCardBlock, /flex flex-col gap-2 px-4 py-3/, "信息区应有 px-4 py-3 独立 padding");
+  assert.match(powerLineCardBlock, /admin-power-lines-line-card-actions flex justify-end px-4 py-2 border-t border-gray-200/, "按钮区应有 px-4 py-2 独立 padding");
+  assert.ok(!/gap-3/.test(powerLineCardBlock), "外层不再依赖 gap-3 承担间距");
+});
+
+test("LP-365: action bar divider uses themed border color in light and dark themes", () => {
+  const lightBlock = CSS.match(/\.admin-power-lines-line-card-actions \{([^}]*)\}/)?.[1];
+  assert.ok(lightBlock, "应存在 .admin-power-lines-line-card-actions 规则块");
+  assert.match(lightBlock, /border-top-color:\s*color-mix\(in srgb, var\(--fquiz-theme-primary\)/, "浅色主题操作区分隔线应使用主色混色");
+  const darkRule = /:root\[data-fquiz-theme="dark"\] \.admin-power-lines-line-card-actions \{([^}]*)\}/;
+  const darkBlock = CSS.match(darkRule)?.[1];
+  assert.ok(darkBlock, "应存在暗色主题操作区分隔线规则");
+  assert.match(darkBlock, /border-top-color:\s*color-mix\(in srgb, var\(--fquiz-theme-primary\)/, "暗色主题操作区分隔线应使用主色混色");
+  assert.match(darkBlock, /!important/, "暗色主题规则应带 !important");
 });

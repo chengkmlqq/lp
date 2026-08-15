@@ -616,13 +616,13 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onDelete, delete
       className="admin-power-lines-line-card"
       onClick={() => onDetail(line)}
     >
-      <div className="flex flex-col gap-3">
-        <div className="admin-power-lines-line-card-title flex items-center gap-2 pb-2 border-b border-gray-200">
+      <div className="flex flex-col">
+        <div className="admin-power-lines-line-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
           <DeploymentUnitOutlined className="text-base text-gray-500" />
           <Typography.Text strong className="truncate">{line.name}</Typography.Text>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 px-4 py-3">
           <div className="flex items-center gap-2">
             <ThunderboltOutlined className="text-xs text-gray-500" />
             <Typography.Text type="secondary" className="text-xs">电压等级：{line.voltage_kv ?? "-"} kV</Typography.Text>
@@ -645,7 +645,7 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onDelete, delete
           </div>
         </div>
 
-        <div className="flex justify-end pt-2 border-t border-gray-200">
+        <div className="admin-power-lines-line-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
           <Space size="small">
             <Button
               type="text"

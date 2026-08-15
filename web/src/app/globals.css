@@ -137,6 +137,10 @@
   background: var(--ant-color-bg-container) !important;
 }
 
+:root[data-fquiz-theme="dark"] .admin-power-lines-line-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+}
+
 :root[data-fquiz-theme="dark"] .admin-menus-card-view,
 :root[data-fquiz-theme="dark"] .admin-menus-card-view-content {
   background: transparent !important;
@@ -5242,8 +5246,12 @@ body {
   background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
 }
 
+.admin-power-lines-line-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+}
+
 .admin-power-lines-line-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
 }
 
 /* LP-297: 表格视图容器 */
