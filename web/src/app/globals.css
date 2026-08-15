@@ -3176,15 +3176,6 @@ body {
   padding-block: 14px;
 }
 
-/* LP-311: 卡片字段行：标签居左（次要色）、数值居右 */
-.admin-lightning-events-card-field {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-
 /* LP-311: 卡片视图分页条：与卡片列表底部保持间距 */
 .admin-lightning-events-pagination {
   display: flex;

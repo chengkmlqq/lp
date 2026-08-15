@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
-  Card,
   DatePicker,
   Descriptions,
   Dropdown,
@@ -25,17 +24,30 @@ import {
   Typography,
   Upload,
   message,
-  type CardProps,
   type MenuProps,
 } from "antd";
-import { MoreOutlined, QuestionCircleOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  AppstoreOutlined,
+  ClockCircleOutlined,
+  DeleteOutlined,
+  EnvironmentOutlined,
+  EyeOutlined,
+  HomeOutlined,
+  MoreOutlined,
+  NumberOutlined,
+  QuestionCircleOutlined,
+  RedoOutlined,
+  SearchOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, type TooltipValueType } from "recharts";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { ApiError, readApiError } from "@/lib/api";
@@ -50,8 +62,6 @@ import type {
   LightningPolarity,
 } from "@/types/auth";
 import { CHINESE_CITIES, type CityOption } from "@/data/chinese-cities";
-
-const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 type DetailTabItem = {
   key: string;
@@ -528,97 +538,90 @@ export default function AdminLightningCurrentsPage() {
   };
 
   const renderRecordCard = (record: LightningAmplitudeRecord) => {
-    const moreMenuItems: MenuProps["items"] = [
-      {
-        key: "detail",
-        label: "详情",
-        onClick: () => openDetail(record),
-      },
-      {
-        type: "divider",
-      },
-      ...(record.status === "failed" && canManage
-        ? [
-            {
-              key: "retry",
-              label: "重试",
-              onClick: () => retryMutation.mutate(record),
-            },
-            {
-              type: "divider" as const,
-            },
-          ]
-        : []),
-      ...(canManage
-        ? [
-            {
-              key: "delete",
-              label: "删除",
-              danger: true as const,
-              onClick: () => {
-                Modal.confirm({
-                  title: "删除记录",
-                  content: `确认删除记录 ${record.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
-                  okText: "删除",
-                  cancelText: "取消",
-                  okButtonProps: { danger: true },
-                  onOk: async () => {
-                    await deleteMutation.mutateAsync(record);
-                  },
-                });
-              },
-            },
-          ]
-        : []),
-    ];
-
     const meta = STATUS_META[record.status] ?? { color: "default", label: record.status };
 
     return (
-      <AntCard
+      <Card
         key={record.id}
-        className="admin-lightning-events-card"
         size="small"
-        title={
-          <Space className="min-w-0" size={8}>
-            <Typography.Text strong ellipsis>
-              {record.source_file_name || "-"}
-            </Typography.Text>
-            <Tag color={meta.color}>{meta.label}</Tag>
-          </Space>
-        }
-        extra={
-          <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-            <Button type="text" size="small" icon={<MoreOutlined />} />
-          </Dropdown>
-        }
+        hoverable
+        className="admin-lightning-events-card"
       >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
-          <div className="admin-lightning-events-card-field">
-            <Typography.Text type="secondary">城市</Typography.Text>
-            <Typography.Text>{record.city || "-"}</Typography.Text>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
+            <ThunderboltOutlined className="text-base text-gray-500" />
+            <Typography.Text strong className="truncate">{record.source_file_name || "-"}</Typography.Text>
+            <Tag color={meta.color}>{meta.label}</Tag>
           </div>
-          <div className="admin-lightning-events-card-field">
-            <Typography.Text type="secondary">安装位置</Typography.Text>
-            <Typography.Text>{record.install_position || "-"}</Typography.Text>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <EnvironmentOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">城市：{record.city || "-"}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <HomeOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">安装位置：{record.install_position || "-"}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <AppstoreOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">传感器型号：{record.sensor_model || "-"}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <NumberOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">采样点数：{record.sample_count}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <ClockCircleOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">采样时间：{formatDateTime(record.event_time) || "-"}</Typography.Text>
+            </div>
+            {record.status === "processing" && (
+              <Progress percent={record.progress} size="small" />
+            )}
           </div>
-          <div className="admin-lightning-events-card-field">
-            <Typography.Text type="secondary">传感器型号</Typography.Text>
-            <Typography.Text>{record.sensor_model || "-"}</Typography.Text>
+
+          <div className="flex justify-end pt-2 border-t border-gray-200">
+            <Space size="small">
+              <Button
+                type="text"
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={() => openDetail(record)}
+              />
+              {record.status === "failed" && canManage && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<RedoOutlined />}
+                  loading={retryMutation.isPending}
+                  onClick={() => retryMutation.mutate(record)}
+                />
+              )}
+              {canManage && (
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  loading={deleteMutation.isPending}
+                  onClick={() => {
+                    Modal.confirm({
+                      title: "删除记录",
+                      content: `确认删除记录 ${record.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
+                      okText: "删除",
+                      cancelText: "取消",
+                      okButtonProps: { danger: true },
+                      onOk: async () => {
+                        await deleteMutation.mutateAsync(record);
+                      },
+                    });
+                  }}
+                />
+              )}
+            </Space>
           </div>
-          <div className="admin-lightning-events-card-field">
-            <Typography.Text type="secondary">采样点数</Typography.Text>
-            <Typography.Text>{record.sample_count}</Typography.Text>
-          </div>
-          <div className="admin-lightning-events-card-field">
-            <Typography.Text type="secondary">采样时间</Typography.Text>
-            <Typography.Text>{formatDateTime(record.event_time) || "-"}</Typography.Text>
-          </div>
-          {record.status === "processing" && (
-            <Progress percent={record.progress} size="small" />
-          )}
-        </Space>
-      </AntCard>
+        </div>
+      </Card>
     );
   };
 
