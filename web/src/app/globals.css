@@ -120,6 +120,7 @@
 :root[data-fquiz-theme="dark"] .admin-menus-menu-card > .ant-card-head,
 :root[data-fquiz-theme="dark"] .admin-workers-worker-card > .ant-card-head,
 :root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-head,
+:root[data-fquiz-theme="dark"] .admin-power-lines-line-card-title,
 :root[data-fquiz-theme="dark"] .admin-lightning-events-card > .ant-card-head,
 :root[data-fquiz-theme="dark"] .admin-fault-analysis-card > .ant-card-head {
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
@@ -5230,6 +5231,12 @@ body {
 }
 
 .admin-power-lines-line-card > .ant-card-head {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-power-lines-line-card-title {
   min-height: 44px;
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
   background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
