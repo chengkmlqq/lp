@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
-from datetime import datetime, timezone
 
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, or_, select
 
 from ..core.config import get_settings
 from ..core.database import SessionLocal
@@ -29,47 +28,107 @@ STATE_LABELS = {
     "REVOKED": "已撤销",
 }
 
-STATE_PRIORITY = {
-    "STARTED": 0,
-    "RECEIVED": 1,
-    "SCHEDULED": 2,
-    "RETRY": 3,
-    "FAILURE": 4,
-    "SUCCESS": 5,
-    "REVOKED": 6,
-    "PENDING": 7,
+# 任务中文显示名（需与 web/src/lib/celery-task-display.ts 的 TASK_NAME_LABELS 保持一致，
+# 由 api/tests/test_task_monitor_service.py 的 TestTaskNameLabelMappingSync 同步校验）
+TASK_NAME_LABELS = {
+    "app.tasks.atp_asset_tasks.execute_atp_asset_run_job": "ATP 模型运行",
+    "app.tasks.atp_asset_tasks.process_release_archive_upload": "ATP 版本归档处理",
+    "app.tasks.elevation_tasks.analyze_elevation_file_record_job": "高程文件记录分析",
+    "app.tasks.elevation_tasks.build_elevation_file_record_terrain_job": "高程文件记录地形生成",
+    "app.tasks.elevation_tasks.report_ctb_task_state": "高程地形构建状态回执",
+    "app.tasks.elevation_tasks.apply_elevation_for_line_job": "线路高程回填",
+    "app.tasks.fl_analysis_tasks.execute_fl_analysis_job": "防雷分析计算",
+    "app.tasks.fault_diagnosis_tasks.run_fault_diagnosis_task": "故障综合判别",
+    "app.tasks.lightning_tasks.import_lightning_distribution_job": "地闪分布数据导入",
+    "app.tasks.lightning_tasks.import_lightning_amplitude_job": "雷电流幅值数据导入",
+    "app.tasks.lightning_tasks.render_lp_density_job": "LP 分区密度图绘制",
+    "app.tasks.log_cleanup_tasks.cleanup_expired_task_logs": "过期任务日志清理",
+    "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks": "到期定时任务派发",
+    "app.tasks.scheduled_task_tasks.execute_scheduled_task_job": "定时任务执行",
+    "app.tasks.wine_tasks.execute_wine_run_job": "Wine 程序执行",
+    "app.tasks.worker_registry_tasks.sweep_worker_registry_offline": "执行节点离线巡检",
+    "app.tasks.worker_registry_tasks.flush_task_log_buffers": "任务日志缓冲落库",
 }
 
 logger = logging.getLogger(__name__)
 
 
-def _load_db_task_history(*, limit: int) -> list[TaskMonitorTaskItem]:
-    """Load task records from PostgreSQL. Returns empty list on DB errors."""
+def _keyword_condition(keyword: str | None):
+    """Build a SQLAlchemy filter condition for keyword search.
+
+    Matches the raw fields (task_id/name/queue_name/worker/state) plus the
+    Chinese display names previously matched by the frontend (state label,
+    task display name, "默认队列" for the default queue). Returns None when
+    keyword is blank.
+    """
+    kw = (keyword or "").strip()
+    if not kw:
+        return None
+    lowered = kw.lower()
+    like = f"%{kw}%"
+
+    conditions = [
+        TaskHistory.task_id.ilike(like),
+        TaskHistory.name.ilike(like),
+        TaskHistory.queue_name.ilike(like),
+        TaskHistory.worker.ilike(like),
+        TaskHistory.state.ilike(like),
+    ]
+
+    # 状态中文标签（如"成功" -> SUCCESS）
+    matched_states = [s for s, label in STATE_LABELS.items() if lowered in label.lower()]
+    if matched_states:
+        conditions.append(TaskHistory.state.in_(matched_states))
+
+    # 队列显示名（celery/default -> "默认队列"）
+    if lowered in "默认队列".lower():
+        conditions.append(func.lower(TaskHistory.queue_name).in_(["celery", "default"]))
+
+    # 任务中文显示名（如"ATP 模型运行" -> app.tasks...）
+    matched_names = [n for n, label in TASK_NAME_LABELS.items() if lowered in label.lower()]
+    if matched_names:
+        conditions.append(TaskHistory.name.in_(matched_names))
+
+    return or_(*conditions)
+
+
+def _to_task_item(r: TaskHistory) -> TaskMonitorTaskItem:
+    return TaskMonitorTaskItem(
+        task_id=r.task_id,
+        name=r.name or "",
+        state=r.state,
+        queue_name=r.queue_name,
+        worker=r.worker,
+        retries=r.retries,
+        eta=r.eta,
+        started_at=r.started_at,
+        done_at=r.done_at,
+        runtime_seconds=r.runtime_seconds,
+        error=r.error,
+    )
+
+
+def _load_db_task_history(
+    *,
+    offset: int,
+    limit: int,
+    keyword: str | None = None,
+) -> list[TaskMonitorTaskItem]:
+    """Load a page of task records from PostgreSQL. Returns empty list on DB errors."""
     try:
         db = SessionLocal()
         try:
+            query = db.query(TaskHistory)
+            cond = _keyword_condition(keyword)
+            if cond is not None:
+                query = query.filter(cond)
             records = (
-                db.query(TaskHistory)
-                .order_by(desc(TaskHistory.create_date))
+                query.order_by(desc(TaskHistory.create_date), TaskHistory.task_id)
+                .offset(offset)
                 .limit(limit)
                 .all()
             )
-            return [
-                TaskMonitorTaskItem(
-                    task_id=r.task_id,
-                    name=r.name or "",
-                    state=r.state,
-                    queue_name=r.queue_name,
-                    worker=r.worker,
-                    retries=r.retries,
-                    eta=r.eta,
-                    started_at=r.started_at,
-                    done_at=r.done_at,
-                    runtime_seconds=r.runtime_seconds,
-                    error=r.error,
-                )
-                for r in records
-            ]
+            return [_to_task_item(r) for r in records]
         finally:
             db.close()
     except Exception:
@@ -77,17 +136,77 @@ def _load_db_task_history(*, limit: int) -> list[TaskMonitorTaskItem]:
         return []
 
 
-def _count_db_task_history() -> int:
-    """Count all task history records in the database. Returns 0 on DB errors."""
+def _count_db_task_history(keyword: str | None = None) -> int:
+    """Count task history records (optionally filtered by keyword). Returns 0 on DB errors."""
     try:
         db = SessionLocal()
         try:
-            return int(db.scalar(select(func.count()).select_from(TaskHistory)) or 0)
+            stmt = select(func.count()).select_from(TaskHistory)
+            cond = _keyword_condition(keyword)
+            if cond is not None:
+                stmt = stmt.where(cond)
+            return int(db.scalar(stmt) or 0)
         finally:
             db.close()
     except Exception:
         logger.exception("Failed to count task history in database")
         return 0
+
+
+def _load_state_bucket_items(keyword: str | None = None) -> list[TaskMonitorBucketItem]:
+    """Aggregate state buckets over the full filtered task set via SQL GROUP BY."""
+    try:
+        db = SessionLocal()
+        try:
+            query = db.query(TaskHistory.state, func.count(TaskHistory.task_id))
+            cond = _keyword_condition(keyword)
+            if cond is not None:
+                query = query.filter(cond)
+            rows = query.group_by(TaskHistory.state).all()
+            counts = {state: count for state, count in rows}
+            return [
+                TaskMonitorBucketItem(key=state, label=STATE_LABELS.get(state, state), count=count)
+                for state, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+            ]
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Failed to build task state buckets from database")
+        return []
+
+
+def _load_queue_runtime_stats(keyword: str | None = None) -> tuple[set[str], dict[str, int]]:
+    """Aggregate queue runtime stats over the full filtered task set.
+
+    Returns (queue_names, active_counts) where active_counts[queue] is the
+    number of STARTED tasks. Used for queue list + Redis pending counts.
+    """
+    try:
+        db = SessionLocal()
+        try:
+            query = db.query(
+                TaskHistory.queue_name,
+                TaskHistory.state,
+                func.count(TaskHistory.task_id),
+            )
+            cond = _keyword_condition(keyword)
+            if cond is not None:
+                query = query.filter(cond)
+            rows = query.group_by(TaskHistory.queue_name, TaskHistory.state).all()
+            queue_names: set[str] = set()
+            active_counts: dict[str, int] = {}
+            for queue_name, state, count in rows:
+                if not queue_name:
+                    continue
+                queue_names.add(queue_name)
+                if state == "STARTED":
+                    active_counts[queue_name] = active_counts.get(queue_name, 0) + int(count or 0)
+            return queue_names, active_counts
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Failed to load queue runtime stats from database")
+        return set(), {}
 
 
 def _safe_queue_pending_counts(queue_names: Iterable[str]) -> dict[str, int]:
@@ -139,29 +258,25 @@ def delete_task_history(task_id: str) -> bool:
         return False
 
 
-def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskMonitorOverviewResponse:
+def build_task_monitor_overview(
+    *,
+    offset: int,
+    limit: int,
+    keyword: str | None = None,
+) -> TaskMonitorOverviewResponse:
     """Build the task monitor overview purely from the task history database.
 
-    Flower is no longer involved: running tasks are already persisted to
-    celery_task_history by the celery signals (on_task_prerun writes STARTED),
-    so polling this endpoint every ~5s gives near-real-time state.
+    Server-side pagination: the task list is a stable-sorted page (create_date
+    desc, task_id) fetched with offset/limit; keyword filtering happens in SQL.
+    total is the filtered count. Aggregates (state buckets, queue stats) are
+    computed over the full filtered set, independent of the page slice.
     """
-    db_tasks = _load_db_task_history(limit=max(task_limit, history_limit))
+    keyword = (keyword or "").strip() or None
 
-    # 队列统计：基于 DB 任务的 queue_name（STARTED 计 active）
-    queue_runtime_counts: dict[str, dict[str, int]] = {}
-    queue_names: set[str] = set()
-    for task in db_tasks:
-        if not task.queue_name:
-            continue
-        queue_names.add(task.queue_name)
-        bucket = queue_runtime_counts.setdefault(
-            task.queue_name,
-            {"active": 0, "reserved": 0, "scheduled": 0},
-        )
-        if task.state == "STARTED":
-            bucket["active"] += 1
+    db_tasks = _load_db_task_history(offset=offset, limit=limit, keyword=keyword)
+    total = _count_db_task_history(keyword=keyword)
 
+    queue_names, queue_active_counts = _load_queue_runtime_stats(keyword=keyword)
     pending_counts = _safe_queue_pending_counts(queue_names)
 
     queues = sorted(
@@ -170,7 +285,7 @@ def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskM
                 name=name,
                 pending_count=pending_counts.get(name, 0),
                 consumer_count=0,
-                active_count=queue_runtime_counts.get(name, {}).get("active", 0),
+                active_count=queue_active_counts.get(name, 0),
                 reserved_count=0,
                 scheduled_count=0,
             )
@@ -181,17 +296,6 @@ def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskM
 
     settings = get_settings()
 
-    all_tasks = sorted(
-        db_tasks,
-        key=lambda item: (
-            _task_priority(item.state),
-            -_task_sort_timestamp(item).timestamp(),
-            item.task_id,
-        ),
-    )
-
-    total = _count_db_task_history()
-
     return TaskMonitorOverviewResponse(
         generated_at=utcnow(),
         broker_url=settings.resolved_celery_broker_url,
@@ -199,31 +303,9 @@ def build_task_monitor_overview(*, task_limit: int, history_limit: int) -> TaskM
         workers_online=0,
         worker_concurrency_total=0,
         queue_pending_total=sum(item.pending_count for item in queues),
-        task_state_buckets=_build_state_buckets(all_tasks),
+        task_state_buckets=_load_state_bucket_items(keyword=keyword),
         workers=[],
         queues=queues,
-        tasks=all_tasks[:task_limit],
+        tasks=db_tasks,
         total=total,
     )
-
-
-def _build_state_buckets(tasks: Iterable[TaskMonitorTaskItem]) -> list[TaskMonitorBucketItem]:
-    counts: dict[str, int] = {}
-    for task in tasks:
-        counts[task.state] = counts.get(task.state, 0) + 1
-    return [
-        TaskMonitorBucketItem(key=state, label=STATE_LABELS.get(state, state), count=count)
-        for state, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-    ]
-
-
-def _task_priority(state: str) -> int:
-    normalized = (state or "").strip().upper()
-    return STATE_PRIORITY.get(normalized, 99)
-
-
-def _task_sort_timestamp(item: TaskMonitorTaskItem) -> datetime:
-    for candidate in [item.started_at, item.done_at, item.eta]:
-        if candidate is not None:
-            return candidate
-    return datetime.fromtimestamp(0, tz=timezone.utc)

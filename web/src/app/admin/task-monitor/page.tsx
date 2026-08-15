@@ -313,10 +313,37 @@ export default function AdminTaskMonitorPage() {
   }, [logModalContent, logModalStreaming, logModalStatus]);
 
   const overviewQuery = useQuery({
-    queryKey: ["task-monitor-overview"],
-    enabled: Boolean(user) && canRead,
+    queryKey: ["task-monitor-overview", paginationCurrent, paginationPageSize, taskKeyword],
+    enabled: Boolean(user) && canRead && viewMode === "table",
     queryFn: async () => {
-      const response = await fetchWithAuth("/api/v1/admin/task-monitor/overview?task_limit=500&history_limit=100");
+      const params = new URLSearchParams({
+        offset: String((paginationCurrent - 1) * paginationPageSize),
+        limit: String(paginationPageSize),
+      });
+      if (taskKeyword.trim()) {
+        params.set("keyword", taskKeyword.trim());
+      }
+      const response = await fetchWithAuth(`/api/v1/admin/task-monitor/overview?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as TaskMonitorOverviewResponse;
+    },
+    staleTime: 5_000,
+  });
+
+  const cardQuery = useQuery({
+    queryKey: ["task-monitor-overview-card", cardViewPage, paginationPageSize, taskKeyword],
+    enabled: Boolean(user) && canRead && viewMode === "card",
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        offset: String((cardViewPage - 1) * paginationPageSize),
+        limit: String(paginationPageSize),
+      });
+      if (taskKeyword.trim()) {
+        params.set("keyword", taskKeyword.trim());
+      }
+      const response = await fetchWithAuth(`/api/v1/admin/task-monitor/overview?${params.toString()}`);
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
@@ -336,14 +363,21 @@ export default function AdminTaskMonitorPage() {
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      overviewQuery.refetch();
+      if (viewMode === "card") {
+        setCardViewPage(1);
+        setAllLoadedTasks([]);
+        setIsLoadingMore(false);
+        cardQuery.refetch();
+      } else {
+        overviewQuery.refetch();
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除任务失败";
       Modal.error({ title: "删除任务失败", content: message });
     } finally {
       setDeletingTaskId(null);
     }
-  }, [fetchWithAuth, overviewQuery]);
+  }, [fetchWithAuth, overviewQuery, cardQuery, viewMode]);
 
   const confirmDeleteTask = useCallback((taskId: string) => {
     Modal.confirm({
@@ -449,35 +483,20 @@ export default function AdminTaskMonitorPage() {
     }));
   }, [overviewData]);
 
-  const filteredTaskRows = useMemo(() => {
-    const keyword = taskKeyword.trim();
-    return allTaskRows.filter((item) => {
-      if (!keyword) {
-        return true;
-      }
-      const haystack = [
-        item.task_id,
-        item.name,
-        getTaskDisplayName(item.name),
-        item.queue_name || "",
-        getQueueDisplayName(item.queue_name),
-        item.worker,
-        getTaskStateDisplay(item.state).label,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(keyword.toLowerCase());
-    });
-  }, [allTaskRows, taskKeyword]);
+  // 关键词已由后端过滤并分页，当前页数据即 overviewData.tasks；
+  // 分页总数使用后端真实 total（服务端过滤后计数）。
+  const taskTotal = overviewData?.total ?? 0;
 
-  // 分页总数：有关键词时后端过滤在前端完成，总数以本地筛选结果为准；
-  // 无关键词时使用后端真实 total（删除任务后 refetch 自动更新，不再固定 500）
-  const taskTotal = useMemo(() => {
-    if (taskKeyword.trim()) {
-      return filteredTaskRows.length;
+  // 删除/筛选后 total 缩小，若 current 超出最大页则回退到最后一页，避免空白页
+  useEffect(() => {
+    if (viewMode !== "table" || taskTotal <= 0) {
+      return;
     }
-    return overviewData?.total ?? filteredTaskRows.length;
-  }, [overviewData, filteredTaskRows, taskKeyword]);
+    const maxPage = Math.max(1, Math.ceil(taskTotal / paginationPageSize));
+    if (paginationCurrent > maxPage) {
+      setPagination((prev) => ({ ...prev, current: maxPage }));
+    }
+  }, [viewMode, taskTotal, paginationPageSize, paginationCurrent]);
 
   const handleSearch = useCallback(() => {
     setTaskKeyword(pendingKeyword);
@@ -490,8 +509,13 @@ export default function AdminTaskMonitorPage() {
     resetTaskListPagination();
   };
 
-  const overviewErrorMessage = overviewQuery.error instanceof Error
-    ? formatTaskMonitorErrorMessage(overviewQuery.error.message, "任务监控概览数据加载失败，请稍后重试。")
+  const overviewErrorMessage = (
+    viewMode === "table" ? overviewQuery.error : cardQuery.error
+  ) instanceof Error
+    ? formatTaskMonitorErrorMessage(
+        (viewMode === "table" ? overviewQuery.error : cardQuery.error)?.message ?? "",
+        "任务监控概览数据加载失败，请稍后重试。",
+      )
     : "";
 
   useToastFeedback({
@@ -499,22 +523,32 @@ export default function AdminTaskMonitorPage() {
   });
 
   useEffect(() => {
-    if (viewMode !== "card" || overviewQuery.isFetching) {
+    if (viewMode !== "card" || cardQuery.isFetching) {
       return;
     }
 
-    const frameId = window.requestAnimationFrame(() => {
-      const nextTasks = filteredTaskRows.slice(0, cardViewPage * paginationPageSize);
+    const pageTasks = (cardQuery.data?.tasks ?? []).map((task, index) => ({
+      task_id: task.task_id,
+      name: task.name,
+      state: task.state,
+      worker: task.worker || "-",
+      queue_name: task.queue_name,
+      started_at: task.started_at,
+      finished_at: task.done_at,
+      runtime_seconds: task.runtime_seconds,
+      key: `overview:${task.task_id}:${index}`,
+    }));
 
+    const frameId = window.requestAnimationFrame(() => {
       if (cardViewPage === 1) {
-        setAllLoadedTasks(() => nextTasks);
+        setAllLoadedTasks(() => pageTasks);
       } else {
         setAllLoadedTasks((prev) => {
-          if (nextTasks.length === 0) {
+          if (pageTasks.length === 0) {
             return prev;
           }
           const existingKeys = new Set(prev.map((task) => task.key));
-          const newTasks = nextTasks.filter((task) => !existingKeys.has(task.key));
+          const newTasks = pageTasks.filter((task) => !existingKeys.has(task.key));
           return [...prev, ...newTasks];
         });
       }
@@ -525,7 +559,7 @@ export default function AdminTaskMonitorPage() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [overviewQuery.isFetching, cardViewPage, filteredTaskRows, paginationPageSize, viewMode]);
+  }, [cardQuery.isFetching, cardQuery.data, cardViewPage, viewMode]);
 
   useEffect(() => {
     if (viewMode !== "card") {
@@ -540,19 +574,18 @@ export default function AdminTaskMonitorPage() {
     const cardBody = pageCard as HTMLElement;
 
     const handleScroll = () => {
-      if (isLoadingMore || overviewQuery.isFetching) {
+      if (isLoadingMore || cardQuery.isFetching) {
         return;
       }
 
       const { scrollTop, scrollHeight, clientHeight } = cardBody;
       if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const total = filteredTaskRows.length;
+        const total = cardQuery.data?.total ?? 0;
         const loadedCount = allLoadedTasks.length;
 
         if (loadedCount < total) {
           setIsLoadingMore(true);
           setCardViewPage((prev) => prev + 1);
-          setPagination((prev) => ({ ...prev, current: prev.current + 1 }));
         }
       }
     };
@@ -561,7 +594,7 @@ export default function AdminTaskMonitorPage() {
     return () => {
       cardBody.removeEventListener("scroll", handleScroll);
     };
-  }, [allLoadedTasks.length, overviewQuery.isFetching, filteredTaskRows.length, isLoadingMore, viewMode]);
+  }, [allLoadedTasks.length, cardQuery.isFetching, cardQuery.data?.total, isLoadingMore, viewMode]);
 
   const updateTableScrollY = useCallback(() => {
     if (typeof window === "undefined") {
@@ -599,7 +632,7 @@ export default function AdminTaskMonitorPage() {
     window.requestAnimationFrame(updateTableScrollY);
   }, [
     overviewQuery.isFetching,
-    filteredTaskRows.length,
+    allTaskRows.length,
     updateTableScrollY,
     viewMode,
   ]);
@@ -822,7 +855,7 @@ export default function AdminTaskMonitorPage() {
         )}
 
 
-        {!overviewData && !overviewQuery.isFetching && (
+        {viewMode === "table" && !overviewData && !overviewQuery.isFetching && (
           <div className="mt-4">
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -831,45 +864,47 @@ export default function AdminTaskMonitorPage() {
           </div>
         )}
 
-        {overviewData && viewMode === "table" ? (
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-task-monitor-table-anchor"
-            style={{ "--admin-task-monitor-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<TaskTableRow>
-              rowKey={(record) => record.key}
-              columns={taskColumns}
-              dataSource={filteredTaskRows}
-              loading={overviewQuery.isFetching}
-              tableLayout="fixed"
-              pagination={{
-                current: paginationCurrent,
-                pageSize: paginationPageSize,
-                total: Math.max(Math.min(taskTotal, filteredTaskRows.length), 1),
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: () => `共 ${taskTotal} 条`,
-                hideOnSinglePage: false,
-                style: { marginBottom: 0 },
-                onChange: (page, pageSize) => {
-                  setPagination({ current: page, pageSize });
-                },
-              }}
-              locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="未找到符合筛选条件的任务。"
-                  />
-                ),
-              }}
-              scroll={{ x: 1600, y: tableScrollY }}
-            />
-          </div>
-        ) : overviewData ? (
+        {viewMode === "table" ? (
+          overviewData ? (
+            <div
+              ref={tableScrollAnchorRef}
+              className="admin-task-monitor-table-anchor"
+              style={{ "--admin-task-monitor-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+            >
+              <Table<TaskTableRow>
+                rowKey={(record) => record.key}
+                columns={taskColumns}
+                dataSource={allTaskRows}
+                loading={overviewQuery.isFetching}
+                tableLayout="fixed"
+                pagination={{
+                  current: paginationCurrent,
+                  pageSize: paginationPageSize,
+                  total: Math.max(taskTotal, 1),
+                  showSizeChanger: true,
+                  pageSizeOptions: [10, 20, 50, 100],
+                  showTotal: () => `共 ${taskTotal} 条`,
+                  hideOnSinglePage: false,
+                  style: { marginBottom: 0 },
+                  onChange: (page, pageSize) => {
+                    setPagination({ current: page, pageSize });
+                  },
+                }}
+                locale={{
+                  emptyText: (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="未找到符合筛选条件的任务。"
+                    />
+                  ),
+                }}
+                scroll={{ x: 1600, y: tableScrollY }}
+              />
+            </div>
+          ) : null
+        ) : (
           <div className="admin-task-monitor-card-view">
-            {overviewQuery.isFetching && allLoadedTasks.length === 0 ? (
+            {cardQuery.isFetching && allLoadedTasks.length === 0 ? (
               <div className="admin-task-monitor-card-view-state">
                 <Spin tip="加载中..." />
               </div>
@@ -894,7 +929,7 @@ export default function AdminTaskMonitorPage() {
                     <Spin tip="加载更多..." />
                   </div>
                 )}
-                {allLoadedTasks.length >= filteredTaskRows.length && allLoadedTasks.length > 0 && (
+                {allLoadedTasks.length >= (cardQuery.data?.total ?? 0) && allLoadedTasks.length > 0 && (
                   <div style={{ textAlign: "center", padding: "20px 0" }}>
                     <Typography.Text type="secondary">
                       已加载全部 {allLoadedTasks.length} 条数据
@@ -904,7 +939,7 @@ export default function AdminTaskMonitorPage() {
               </div>
             )}
           </div>
-        ) : null}
+        )}
               </div>
             ),
           },

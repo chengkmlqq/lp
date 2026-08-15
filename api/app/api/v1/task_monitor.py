@@ -13,8 +13,9 @@ router = APIRouter(
 
 @router.get("/overview", response_model=TaskMonitorOverviewResponse)
 def get_task_monitor_overview(
-    task_limit: int = Query(default=100, ge=1, le=500),
-    history_limit: int = Query(default=100, ge=0, le=500),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+    keyword: str | None = Query(default=None, max_length=200),
     _: CurrentUser = Depends(
         require_any_permission(
             "celery.read",
@@ -23,8 +24,9 @@ def get_task_monitor_overview(
     ),
 ) -> TaskMonitorOverviewResponse:
     return build_task_monitor_overview(
-        task_limit=task_limit,
-        history_limit=history_limit,
+        offset=offset,
+        limit=limit,
+        keyword=keyword,
     )
 
 
