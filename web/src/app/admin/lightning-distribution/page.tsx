@@ -30,6 +30,7 @@ import {
 } from "antd";
 import {
   BarChartOutlined,
+  CheckCircleOutlined,
   ClockCircleOutlined,
   EnvironmentOutlined,
   EyeOutlined,
@@ -50,7 +51,7 @@ import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { TowerDensityView } from "@/components/lightning-tower-density-view";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { readApiError } from "@/lib/api";
+import { getApiBaseUrl, readApiError } from "@/lib/api";
 import type {
   LightningDistributionImportResponse,
   LightningDistributionRecord,
@@ -59,6 +60,7 @@ import type {
   LightningLpDrawResponse,
   LightningLinkedLineSummary,
   LightningLinkedLinesResponse,
+  LightningTempUploadResponse,
   LineSummary,
   LineListResponse,
 } from "@/types/auth";
@@ -149,7 +151,7 @@ type DetailTabItem = {
 const LIST_TAB_KEY = "list";
 
 export default function AdminLightningDistributionPage() {
-  const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
+  const { user, initializing, hasPermission, fetchWithAuth, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const [importForm] = Form.useForm<ImportFormValues>();
 
@@ -157,6 +159,9 @@ export default function AdminLightningDistributionPage() {
   const [success, setSuccess] = useState("");
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [tempFileId, setTempFileId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
   const [lpDrawRow, setLpDrawRow] = useState<LightningDistributionRecord | null>(null);
   const [linkedLinesRow, setLinkedLinesRow] = useState<LightningDistributionRecord | null>(null);
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
@@ -299,13 +304,16 @@ export default function AdminLightningDistributionPage() {
 
   // ---- 导入 ----
   const importMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async () => {
       if (!canManage) {
         throw new Error("缺少 lightning.manage 权限");
       }
+      if (!tempFileId) {
+        throw new Error("文件尚未上传完成，请等待上传后再确认导入");
+      }
       const values = importForm.getFieldsValue(true);
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("temp_file_id", tempFileId);
       formData.append("event_year", String(values.event_year));
       formData.append("region_id", values.region_id.trim());
       formData.append("city", values.city.trim());
@@ -328,6 +336,9 @@ export default function AdminLightningDistributionPage() {
       setImportModalOpen(false);
       importForm.resetFields();
       setSelectedFile(null);
+      setTempFileId(null);
+      setUploadProgress(0);
+      setUploadError("");
       await refreshAll();
     },
     onError: (candidate) => {
@@ -335,6 +346,57 @@ export default function AdminLightningDistributionPage() {
       setError(candidate instanceof Error ? candidate.message : "分布导入失败");
     },
   });
+
+  const handleTempUpload = useCallback(
+    (file: File) => {
+      setSelectedFile(file);
+      setTempFileId(null);
+      setUploadProgress(0);
+      setUploadError("");
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${getApiBaseUrl()}/api/v1/lightning-currents/upload-temp`);
+      xhr.withCredentials = true;
+      const token = getAccessToken();
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+      xhr.upload.onprogress = (event: ProgressEvent<EventTarget>) => {
+        if (!event.lengthComputable || event.total <= 0) {
+          return;
+        }
+        const percent = Math.min(99, Math.max(0, Math.round((event.loaded / event.total) * 100)));
+        setUploadProgress(percent);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadProgress(100);
+          try {
+            const payload = JSON.parse(xhr.responseText) as LightningTempUploadResponse;
+            setTempFileId(payload.temp_file_id);
+          } catch {
+            setUploadError("上传成功但响应解析失败，请重新选择文件");
+          }
+          return;
+        }
+        let message = `HTTP ${xhr.status}`;
+        try {
+          const parsed = JSON.parse(xhr.responseText) as { detail?: string };
+          if (parsed?.detail?.trim()) message = parsed.detail;
+        } catch {
+          // 忽略非 JSON 响应
+        }
+        setUploadError(message);
+      };
+      xhr.onerror = () => setUploadError("网络异常，上传失败");
+      xhr.onabort = () => setUploadError("上传已取消");
+
+      const formData = new FormData();
+      formData.append("file", file);
+      xhr.send(formData);
+    },
+    [getAccessToken],
+  );
 
   // 导入任务完成/失败时的反馈
   useEffect(() => {
@@ -468,14 +530,15 @@ export default function AdminLightningDistributionPage() {
     setImportModalOpen(false);
     importForm.resetFields();
     setSelectedFile(null);
+    setTempFileId(null);
+    setUploadProgress(0);
+    setUploadError("");
   };
 
   const handleImportConfirm = async () => {
     try {
       await importForm.validateFields();
-      if (selectedFile) {
-        importMutation.mutate(selectedFile);
-      }
+      importMutation.mutate();
     } catch {
       // 表单校验失败时不触发导入
     }
@@ -1015,7 +1078,16 @@ export default function AdminLightningDistributionPage() {
         importForm={importForm}
         initialValues={INITIAL_IMPORT_VALUES}
         selectedFile={selectedFile}
-        setSelectedFile={setSelectedFile}
+        tempFileId={tempFileId}
+        uploadProgress={uploadProgress}
+        uploadError={uploadError}
+        onTempUpload={handleTempUpload}
+        onRemoveFile={() => {
+          setSelectedFile(null);
+          setTempFileId(null);
+          setUploadProgress(0);
+          setUploadError("");
+        }}
         loading={importMutation.isPending}
         onConfirm={handleImportConfirm}
       />
@@ -1059,7 +1131,11 @@ function ImportModal({
   importForm,
   initialValues,
   selectedFile,
-  setSelectedFile,
+  tempFileId,
+  uploadProgress,
+  uploadError,
+  onTempUpload,
+  onRemoveFile,
   loading,
   onConfirm,
 }: {
@@ -1068,7 +1144,11 @@ function ImportModal({
   importForm: ReturnType<typeof Form.useForm<ImportFormValues>>[0];
   initialValues: ImportFormValues;
   selectedFile: File | null;
-  setSelectedFile: (file: File | null) => void;
+  tempFileId: string | null;
+  uploadProgress: number;
+  uploadError: string;
+  onTempUpload: (file: File) => void;
+  onRemoveFile: () => void;
   loading: boolean;
   onConfirm: () => void;
 }) {
@@ -1159,37 +1239,53 @@ function ImportModal({
 
         <div style={{ marginBottom: 16 }}>
           <Form.Item label="数据文件" required>
-            <Upload.Dragger
-              accept=".txt,.csv,text/plain,text/csv"
-              showUploadList={false}
-              beforeUpload={(file) => {
-                const maxMB = 50;
-                const allowedExts = ["csv", "txt"];
-                const ext = file.name.split(".").pop()?.toLowerCase() || "";
-                if (file.size > maxMB * 1024 * 1024) {
-                  message.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
-                  return Upload.LIST_IGNORE;
-                }
-                if (!allowedExts.includes(ext)) {
-                  message.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
-                  return Upload.LIST_IGNORE;
-                }
-                setSelectedFile(file);
-                return false;
-              }}
-              onRemove={() => setSelectedFile(null)}
-            >
+              <Upload.Dragger
+                accept=".txt,.csv,text/plain,text/csv"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  const maxMB = 50;
+                  const allowedExts = ["csv", "txt"];
+                  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+                  if (file.size > maxMB * 1024 * 1024) {
+                    message.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                    return Upload.LIST_IGNORE;
+                  }
+                  if (!allowedExts.includes(ext)) {
+                    message.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                    return Upload.LIST_IGNORE;
+                  }
+                  return true;
+                }}
+                customRequest={({ file }) => onTempUpload(file as File)}
+                onRemove={() => onRemoveFile()}
+              >
               {selectedFile ? (
-                <p className="ant-upload-text">{selectedFile.name}</p>
+                <>
+                  <p className="ant-upload-text">{selectedFile.name}</p>
+                  {uploadProgress < 100 ? (
+                    <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
+                  ) : tempFileId ? (
+                    <Typography.Text type="success">
+                      <CheckCircleOutlined /> 上传完成，可以确认导入
+                    </Typography.Text>
+                  ) : (
+                    <Typography.Text type="warning">上传中…</Typography.Text>
+                  )}
+                </>
               ) : (
                 <>
                   <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
                     点击或拖拽文件到此区域上传
                   </p>
                   <Typography.Text type="secondary">
-                    支持包含经纬度和电流的 CSV 或 TXT 文件。原始文件将存入 MinIO。
+                    支持包含经纬度和电流的 CSV 或 TXT 文件。选择文件后立即上传到临时存储。
                   </Typography.Text>
                 </>
+              )}
+              {uploadError && (
+                <Typography.Text type="danger" style={{ display: "block", marginTop: 8 }}>
+                  {uploadError}
+                </Typography.Text>
               )}
             </Upload.Dragger>
           </Form.Item>
@@ -1197,7 +1293,7 @@ function ImportModal({
         <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
           <Button
             type="primary"
-            disabled={!selectedFile}
+            disabled={!tempFileId}
             loading={loading}
             onClick={onConfirm}
           >

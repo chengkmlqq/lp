@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     )
     # 任务日志 MinIO 保留天数（默认 30 天，0=永久保留，不清理）
     task_log_retain_days: int = 30
+    # 闪电导入临时文件保留小时数（默认 24 小时，0=永久保留，不清理）
+    lightning_temp_file_ttl_hours: int = 24
     # 审计日志保留天数（默认 90 天，0=永久保留，不清理）
     audit_log_retain_days: int = 90
 
@@ -136,7 +138,7 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         return value
 
-    @field_validator("task_log_retain_days", "audit_log_retain_days")
+    @field_validator("task_log_retain_days", "audit_log_retain_days", "lightning_temp_file_ttl_hours")
     @classmethod
     def validate_retain_days(cls, value: int) -> int:
         # 0=永久保留（不清理），负数为非法配置

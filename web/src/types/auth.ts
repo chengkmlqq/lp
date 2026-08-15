@@ -1351,6 +1351,11 @@ export type LightningCurrentExceedanceResponse = {
   thresholds: LightningCurrentExceedancePoint[];
 };
 
+export type LightningTempUploadResponse = {
+  temp_file_id: string;
+  file_name: string;
+};
+
 export type LightningDistributionImportResponse = {
   distribution_id: string;
   task_id: string | null;

@@ -28,6 +28,7 @@ from ...schemas.lightning import (
     LightningLpDrawResponse,
     LightningLinkedLineSummary,
     LightningLinkedLinesResponse,
+    LightningTempUploadResponse,
 )
 from ...services.lightning_service import (
     delete_lightning_amplitude,
@@ -62,6 +63,28 @@ router = APIRouter(
 # ---------------------------------------------------------------------------
 # 雷电流幅值（LightningAmplitude）
 # ---------------------------------------------------------------------------
+
+@router.post("/upload-temp", response_model=LightningTempUploadResponse)
+def upload_lightning_temp_file(
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
+) -> LightningTempUploadResponse:
+    """选择文件后立即上传到 MinIO 临时目录，返回 temp_file_id 供确认导入时引用。
+
+    临时文件将在导入消费后自动删除，或由定时清理任务清理超过 24h 的孤儿文件。
+    """
+    from ...services.minio_storage import build_temp_key, put_object
+
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
+
+    file_name = (file.filename or "upload").strip() or "upload"
+    temp_file_id = build_temp_key(file_name, current_user.user.id)
+    put_object(temp_file_id, content, content_type="text/plain")
+    return LightningTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
+
+
 @router.get("", response_model=LightningAmplitudeListResponse)
 def get_lightning_amplitude_list(
     keyword: str | None = Query(default=None),
@@ -155,7 +178,8 @@ def delete_lightning_amplitude_endpoint(
 
 @router.post("/import-async", response_model=LightningAmplitudeImportResponse)
 def import_lightning_amplitude_file_async(
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    temp_file_id: str | None = Form(default=None),
     event_id: str | None = Form(default=None),
     event_time: datetime | None = Form(default=None),
     sample_interval_us: float | None = Form(default=1.0),
@@ -177,12 +201,16 @@ def import_lightning_amplitude_file_async(
 ) -> LightningAmplitudeImportResponse:
     """
     异步导入雷电流幅值波形数据（Celery Worker 后台处理）。
-    上传文件立即 put_object 到 MinIO → 建 LightningAmplitude(pending) → 派发任务。
+
+    支持两种入参：
+    1. 传统方式：直接上传文件（file 字段）
+    2. 两段式：先调用 upload-temp 获取 temp_file_id，再提交 temp_file_id + 表单字段
     """
     validate_upload(file, allowed_exts={"csv", "txt"})
     return import_lightning_amplitude_from_file(
         db,
         file=file,
+        temp_file_id=temp_file_id,
         actor_user_id=current_user.user.id,
         event_id=event_id,
         event_time=event_time,
@@ -241,7 +269,8 @@ def get_lightning_peak_exceedance(
 # ---------------------------------------------------------------------------
 @router.post("/import-distribution", response_model=LightningDistributionImportResponse)
 def import_lightning_distribution_file(
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    temp_file_id: str | None = Form(default=None),
     event_year: int | None = Form(default=None, ge=1900, le=2100),
     region_id: str | None = Form(default=None),
     location_tag: str | None = Form(default=None),
@@ -255,6 +284,7 @@ def import_lightning_distribution_file(
     return import_lightning_distribution_from_file(
         db,
         file=file,
+        temp_file_id=temp_file_id,
         actor_user_id=current_user.user.id,
         event_year=event_year,
         region_id=region_id,

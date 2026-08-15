@@ -43,6 +43,10 @@ celery_app.conf.update(
             "task": "app.tasks.log_cleanup_tasks.cleanup_expired_task_logs",
             "schedule": 3600.0,  # 每小时清理一次（与 30 天保留期解耦，无需更频繁）
         },
+        "cleanup-expired-lightning-temp-files": {
+            "task": "app.tasks.lightning_tasks.cleanup_lightning_temp_files",
+            "schedule": 3600.0,  # 每小时清理一次（覆盖 24h 保留期的孤儿临时文件）
+        },
     },
     # Redis broker 默认 visibility_timeout=3600s，重任务（如雷电分布导入约 106 分钟）
     # 超过 1 小时会被 Redis 重新投递，导致同一任务被两个 worker 并行执行。

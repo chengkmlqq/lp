@@ -6,6 +6,7 @@ from sqlalchemy import select, func as sa_func
 from sqlalchemy.orm import Session
 
 from ..core.celery_app import celery_app
+from ..core.config import get_settings
 from ..core.database import SessionLocal
 from ..models.line import Line
 from ..models.line_tower import LineTower
@@ -302,6 +303,27 @@ def import_lightning_distribution_job(
 
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# 临时文件清理（选择文件后未确认导入的孤儿文件）
+# ---------------------------------------------------------------------------
+@celery_app.task(
+    name="app.tasks.lightning_tasks.cleanup_lightning_temp_files",
+    ignore_result=True,
+    track_started=False,
+)
+def cleanup_lightning_temp_files() -> dict[str, int]:
+    """清理超过保留时长的 lightning/tmp/ 前缀临时文件，返回被删数量。"""
+    settings = get_settings()
+    from ..services import minio_storage
+
+    deleted_count = minio_storage.cleanup_expired_temp_files(
+        ttl_hours=settings.lightning_temp_file_ttl_hours,
+    )
+    return {
+        "deleted_count": int(deleted_count),
+    }
 
 
 # ---------------------------------------------------------------------------

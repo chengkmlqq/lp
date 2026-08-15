@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -9,6 +10,7 @@ from ..core.config import get_settings
 SOURCE_PREFIX = "lightning/distribution/source/"  # 原始文件
 IMAGE_PREFIX = "lightning/distribution/image/"    # 密度图
 AMPLITUDE_SOURCE_PREFIX = "lightning/amplitude/source/"  # 雷电流幅值原始波形文件
+TEMP_PREFIX = "lightning/tmp/"                    # 导入临时文件（选择文件后先上传，确认导入后再消费）
 
 
 class MinioStorageError(RuntimeError):
@@ -127,3 +129,86 @@ def build_amplitude_source_key(source_file_name: str) -> str:
 def build_image_key(distribution_id: str) -> str:
     """构造密度图对象 Key：lightning/distribution/image/{distribution_id}.png"""
     return f"{IMAGE_PREFIX}{distribution_id}.png"
+
+
+def build_temp_key(file_name: str, user_id: str) -> str:
+    """构造临时文件对象 Key：lightning/tmp/{user_id}/{uuid}_{file_name}
+
+    嵌入 user_id 用于导入时的所有权校验。
+    """
+    safe_name = (file_name or "upload").strip() or "upload"
+    return f"{TEMP_PREFIX}{user_id}/{uuid4().hex}_{safe_name}"
+
+
+def cleanup_expired_temp_files(
+    ttl_hours: float,
+    *,
+    now: datetime | None = None,
+    dry_run: bool = False,
+) -> int:
+    """删除超过 TTL 的 lightning/tmp/ 前缀临时对象，返回被删对象数量。
+
+    - 分页遍历 ``lightning/tmp/`` 前缀，按对象 ``LastModified`` 与 ``ttl_hours`` 判断是否超期
+    - ``dry_run=True`` 时仅统计不删除
+    - ``now`` 仅用于测试注入时间点，默认取当前 UTC
+    """
+    settings = get_settings()
+
+    if not settings.minio_enabled:
+        raise MinioStorageError("MinIO storage is not enabled")
+
+    if ttl_hours <= 0:
+        return 0  # 0=永久保留，不清理
+
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    cutoff = now - timedelta(hours=ttl_hours)
+
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError as exc:
+        raise MinioStorageError("boto3 library is required for MinIO storage") from exc
+
+    try:
+        client_config = Config(
+            connect_timeout=3.0,
+            read_timeout=10.0,
+            retries={"max_attempts": 2},
+        )
+        session = boto3.session.Session(
+            aws_access_key_id=settings.minio_access_key,
+            aws_secret_access_key=settings.minio_secret_key,
+        )
+        client = session.client(
+            "s3",
+            endpoint_url=settings.minio_endpoint,
+            region_name=settings.minio_region,
+            config=client_config,
+        )
+
+        deleted_count = 0
+        paginator = client.get_paginator("list_objects_v2")
+        pages = paginator.paginate(Bucket=settings.minio_bucket, Prefix=TEMP_PREFIX)
+
+        for page in pages:
+            for item in page.get("Contents", []):
+                key = item.get("Key", "")
+                if not key:
+                    continue
+                last_modified = item.get("LastModified")
+                if last_modified is None:
+                    continue
+                if last_modified >= cutoff:
+                    continue
+                if not dry_run:
+                    client.delete_object(Bucket=settings.minio_bucket, Key=key)
+                deleted_count += 1
+
+        return deleted_count
+
+    except MinioStorageError:
+        raise
+    except Exception as exc:
+        raise MinioStorageError(f"Failed to clean up temp files: {exc}") from exc

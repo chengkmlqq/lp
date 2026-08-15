@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -285,3 +287,114 @@ def test_import_amplitude_duplicate_event_id_rejected(monkeypatch) -> None:
         assert captured.value.status_code == 409
     finally:
         session.close()
+
+
+def test_import_amplitude_via_temp_file_id(monkeypatch) -> None:
+    """通过 temp_file_id 导入：从 MinIO 临时对象读取内容并转移到正式 source_key。"""
+    session = _build_session()
+    try:
+        monkeypatch.setattr(lightning_service, "_publish_lightning_change", lambda *args, **kwargs: None)
+        from app.core.celery_app import celery_app as celery_module_app
+        monkeypatch.setattr(
+            celery_module_app,
+            "send_task",
+            lambda *args, **kwargs: SimpleNamespace(id="mock-task-123"),
+        )
+        from app.services import minio_storage
+
+        temp_file_key = "lightning/tmp/user-1/abc123_test.csv"
+        temp_content = b"0\n5\n10\n8\n3\n0\n"
+
+        def mock_get_object(key: str) -> bytes:
+            if key == temp_file_key:
+                return temp_content
+            msg = f"Object not found: {key}"
+            raise minio_storage.MinioObjectNotFoundError(msg)
+
+        monkeypatch.setattr(minio_storage, "get_object", mock_get_object)
+        monkeypatch.setattr(minio_storage, "put_object", lambda key, data, content_type=None: key)
+        monkeypatch.setattr(minio_storage, "delete_object", lambda key: None)
+        monkeypatch.setattr(minio_storage, "build_amplitude_source_key", lambda name: f"lightning/amplitude/source/{name}")
+
+        result = lightning_service.import_lightning_amplitude_from_file(
+            session,
+            file=None,
+            temp_file_id=temp_file_key,
+            actor_user_id="user-1",
+            event_id="LC-TEMP-1",
+            event_time=None,
+            sample_interval_us=1.0,
+            region_id=None,
+            location_tag=None,
+            city=None,
+            longitude=None,
+            latitude=None,
+            altitude_m=None,
+            sensor_model=None,
+            install_position=None,
+            weather_level=None,
+            pressure_hpa=None,
+            humidity_percent=None,
+            is_synthetic=False,
+            notes=None,
+        )
+
+        assert result.amplitude_id is not None
+        assert result.status == "processing"
+        assert result.task_id is not None
+
+        amp = session.execute(
+            select(LightningAmplitude).where(LightningAmplitude.id == result.amplitude_id)
+        ).scalar_one()
+        assert amp.source_file_name == "test.csv"
+        assert amp.source_object_key == "lightning/amplitude/source/test.csv"
+        assert amp.event_id == "LC-TEMP-1"
+    finally:
+        session.close()
+
+
+def test_import_amplitude_temp_file_id_wrong_user(monkeypatch) -> None:
+    """temp_file_id 不属于当前用户时返回 400。"""
+    session = _build_session()
+    try:
+        from fastapi import HTTPException
+
+        monkeypatch.setattr(lightning_service, "_publish_lightning_change", lambda *args, **kwargs: None)
+
+        with pytest.raises(HTTPException) as captured:
+            lightning_service.import_lightning_amplitude_from_file(
+                session,
+                file=None,
+                temp_file_id="lightning/tmp/other-user/abc123_test.csv",
+                actor_user_id="user-1",
+                event_id="LC-TEMP-2",
+                event_time=None,
+                sample_interval_us=1.0,
+                region_id=None,
+                location_tag=None,
+                city=None,
+                longitude=None,
+                latitude=None,
+                altitude_m=None,
+                sensor_model=None,
+                install_position=None,
+                weather_level=None,
+                pressure_hpa=None,
+                humidity_percent=None,
+                is_synthetic=False,
+                notes=None,
+            )
+
+        assert captured.value.status_code == 400
+        assert "不属于当前用户" in str(captured.value.detail) or "无效" in str(captured.value.detail)
+    finally:
+        session.close()
+
+
+def test_build_temp_key() -> None:
+    """验证 build_temp_key 的格式和嵌入用户 ID。"""
+    from app.services import minio_storage
+    key = minio_storage.build_temp_key("wave.csv", "user-1")
+    assert key.startswith("lightning/tmp/user-1/")
+    assert key.endswith("wave.csv")
+    assert len(key) > len("lightning/tmp/user-1/") + 1

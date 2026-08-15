@@ -28,6 +28,7 @@ import {
 } from "antd";
 import {
   AppstoreOutlined,
+  CheckCircleOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
   EnvironmentOutlined,
@@ -50,13 +51,14 @@ import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { ApiError, readApiError } from "@/lib/api";
+import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
 import type {
   LightningAmplitudeRecord,
   LightningAmplitudeListResponse,
   LightningAmplitudeImportResponse,
   LightningAmplitudeBackfillLine,
   LightningAmplitudeBackfillLineListResponse,
+  LightningTempUploadResponse,
   LineListResponse,
   LineSummary,
   LightningPolarity,
@@ -145,7 +147,7 @@ const LIGHTNING_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
 const LIGHTNING_TABLE_BOTTOM_GAP = 8;
 
 export default function AdminLightningCurrentsPage() {
-  const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
+  const { user, initializing, hasPermission, fetchWithAuth, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const [importForm] = Form.useForm<ImportFormValues>();
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -166,6 +168,9 @@ export default function AdminLightningCurrentsPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [tempFileId, setTempFileId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
 
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
   const canManage = hasPermission("lightning.manage");
@@ -322,13 +327,16 @@ export default function AdminLightningCurrentsPage() {
   // 导入中进度直接通过订阅消息 + 表格“状态”列展示，不弹进度条轮询弹窗
 
   const importMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async () => {
       if (!canManage) {
         throw new Error("缺少 lightning.manage 权限");
       }
+      if (!tempFileId) {
+        throw new Error("文件尚未上传完成，请等待上传后再确认导入");
+      }
       const values = importForm.getFieldsValue(true);
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("temp_file_id", tempFileId);
       if (values.sample_interval_us !== null && values.sample_interval_us !== undefined) {
         formData.append("sample_interval_us", String(values.sample_interval_us));
       }
@@ -357,6 +365,9 @@ export default function AdminLightningCurrentsPage() {
       setImportModalOpen(false);
       importForm.resetFields();
       setSelectedFile(null);
+      setTempFileId(null);
+      setUploadProgress(0);
+      setUploadError("");
       await refreshAll();
     },
     onError: (candidate) => {
@@ -364,6 +375,57 @@ export default function AdminLightningCurrentsPage() {
       setError(new ApiError(candidate instanceof Error ? candidate.message : "导入失败"));
     },
   });
+
+  const handleTempUpload = useCallback(
+    (file: File) => {
+      setSelectedFile(file);
+      setTempFileId(null);
+      setUploadProgress(0);
+      setUploadError("");
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${getApiBaseUrl()}/api/v1/lightning-currents/upload-temp`);
+      xhr.withCredentials = true;
+      const token = getAccessToken();
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+      xhr.upload.onprogress = (event: ProgressEvent<EventTarget>) => {
+        if (!event.lengthComputable || event.total <= 0) {
+          return;
+        }
+        const percent = Math.min(99, Math.max(0, Math.round((event.loaded / event.total) * 100)));
+        setUploadProgress(percent);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadProgress(100);
+          try {
+            const payload = JSON.parse(xhr.responseText) as LightningTempUploadResponse;
+            setTempFileId(payload.temp_file_id);
+          } catch {
+            setUploadError("上传成功但响应解析失败，请重新选择文件");
+          }
+          return;
+        }
+        let message = `HTTP ${xhr.status}`;
+        try {
+          const parsed = JSON.parse(xhr.responseText) as { detail?: string };
+          if (parsed?.detail?.trim()) message = parsed.detail;
+        } catch {
+          // 忽略非 JSON 响应
+        }
+        setUploadError(message);
+      };
+      xhr.onerror = () => setUploadError("网络异常，上传失败");
+      xhr.onabort = () => setUploadError("上传已取消");
+
+      const formData = new FormData();
+      formData.append("file", file);
+      xhr.send(formData);
+    },
+    [getAccessToken],
+  );
 
   const deleteMutation = useMutation({
     mutationFn: async (record: LightningAmplitudeRecord) => {
@@ -949,6 +1011,9 @@ export default function AdminLightningCurrentsPage() {
           setImportModalOpen(false);
           importForm.resetFields();
           setSelectedFile(null);
+          setTempFileId(null);
+          setUploadProgress(0);
+          setUploadError("");
         }}
         footer={null}
         width={800}
@@ -1002,33 +1067,54 @@ export default function AdminLightningCurrentsPage() {
                 accept=".txt,.csv,text/plain,text/csv"
                 showUploadList={false}
                 beforeUpload={(file) => {
-                const maxMB = 50;
-                const allowedExts = ["csv", "txt"];
-                const ext = file.name.split(".").pop()?.toLowerCase() || "";
-                if (file.size > maxMB * 1024 * 1024) {
-                  message.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
-                  return Upload.LIST_IGNORE;
-                }
-                if (!allowedExts.includes(ext)) {
-                  message.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
-                  return Upload.LIST_IGNORE;
-                }
-                setSelectedFile(file);
-                return false;
-              }}
-                onRemove={() => setSelectedFile(null)}
+                  const maxMB = 50;
+                  const allowedExts = ["csv", "txt"];
+                  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+                  if (file.size > maxMB * 1024 * 1024) {
+                    message.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                    return Upload.LIST_IGNORE;
+                  }
+                  if (!allowedExts.includes(ext)) {
+                    message.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                    return Upload.LIST_IGNORE;
+                  }
+                  return true;
+                }}
+                customRequest={({ file }) => handleTempUpload(file as File)}
+                onRemove={() => {
+                  setSelectedFile(null);
+                  setTempFileId(null);
+                  setUploadProgress(0);
+                  setUploadError("");
+                }}
               >
                 {selectedFile ? (
-                  <p className="ant-upload-text">{selectedFile.name}</p>
+                  <>
+                    <p className="ant-upload-text">{selectedFile.name}</p>
+                    {uploadProgress < 100 ? (
+                      <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
+                    ) : tempFileId ? (
+                      <Typography.Text type="success">
+                        <CheckCircleOutlined /> 上传完成，可以确认导入
+                      </Typography.Text>
+                    ) : (
+                      <Typography.Text type="warning">上传中…</Typography.Text>
+                    )}
+                  </>
                 ) : (
                   <>
                     <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
                       点击或拖拽文件到此区域上传
                     </p>
                     <Typography.Text type="secondary">
-                      支持单列电流序列（每行一个值）或双列 time,current 格式。原始文件将存入 MinIO。
+                      支持单列电流序列（每行一个值）或双列 time,current 格式。选择文件后立即上传到临时存储。
                     </Typography.Text>
                   </>
+                )}
+                {uploadError && (
+                  <Typography.Text type="danger" style={{ display: "block", marginTop: 8 }}>
+                    {uploadError}
+                  </Typography.Text>
                 )}
               </Upload.Dragger>
             </Form.Item>
@@ -1036,13 +1122,12 @@ export default function AdminLightningCurrentsPage() {
           <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
             <Button
               type="primary"
-              disabled={!selectedFile}
+              disabled={!tempFileId}
               loading={importMutation.isPending}
               onClick={async () => {
-                if (!selectedFile) return;
                 try {
                   await importForm.validateFields();
-                  importMutation.mutate(selectedFile);
+                  importMutation.mutate();
                 } catch {
                   // 表单校验失败时不触发导入
                 }

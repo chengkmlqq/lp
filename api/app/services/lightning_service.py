@@ -166,10 +166,63 @@ def get_lightning_amplitude_by_id(db: Session, amplitude_id: str) -> LightningAm
     ).scalar_one_or_none()
 
 
+def _resolve_import_content(
+    *,
+    file: UploadFile | None,
+    temp_file_id: str | None,
+    actor_user_id: str,
+) -> tuple[bytes, str]:
+    """从上传文件或临时文件标识解析导入内容与原始文件名。
+
+    优先使用 temp_file_id（两段式上传流程），
+    兼容传统 file 上传参数（向后兼容 multipart 调用方）。
+
+    Returns:
+        (content: bytes, source_file_name: str)
+    """
+    from ..services import minio_storage as _ms
+
+    if temp_file_id:
+        temp_key = temp_file_id.strip()
+        expected_prefix = f"{_ms.TEMP_PREFIX}{actor_user_id}/"
+        if not temp_key.startswith(expected_prefix):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="temp_file_id 无效或不属于当前用户",
+            )
+        try:
+            content = _ms.get_object(temp_key)
+        except _ms.MinioObjectNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="临时文件不存在或已过期，请重新上传",
+            )
+        if not content:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
+        # 从 key 中提取原始文件名：lightning/tmp/{user_id}/{uuid}_{file_name}
+        last_segment = temp_key.rsplit("/", 1)[-1]
+        source_file_name = last_segment.split("_", 1)[1] if "_" in last_segment else last_segment
+        # 读取后删除临时对象（避免定时清理任务在处理完成前误删的风险）
+        try:
+            _ms.delete_object(temp_key)
+        except Exception:
+            pass
+        return content, source_file_name
+
+    if file is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少文件，请提供 file 或 temp_file_id")
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
+    source_file_name = _normalize_str(str(file.filename or "upload")) or "upload"
+    return content, source_file_name
+
+
 def import_lightning_amplitude_from_file(
     db: Session,
     *,
-    file: UploadFile,
+    file: UploadFile | None = None,
+    temp_file_id: str | None = None,
     actor_user_id: str,
     event_id: str | None,
     event_time: datetime | None,
@@ -188,19 +241,16 @@ def import_lightning_amplitude_from_file(
     is_synthetic: bool,
     notes: str | None,
 ) -> LightningAmplitudeImportResponse:
-    """上传文件 → 立即 put_object 到 MinIO → 建 LightningAmplitude(pending) → 派发 Celery。
+    """上传文件或引用临时文件 → 立即 put_object 到 MinIO → 建 LightningAmplitude(pending) → 派发 Celery。
 
     与 import_lightning_distribution_from_file 同一异步模式：
     源文件只存 MinIO，不再写容器临时盘；采样明细不落库。
     """
-    content = file.file.read()
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
+    content, source_file_name = _resolve_import_content(file=file, temp_file_id=temp_file_id, actor_user_id=actor_user_id)
 
     from ..services.minio_storage import build_amplitude_source_key, put_object
     from uuid import uuid4 as _uuid4
 
-    source_file_name = _normalize_str(str(file.filename or "upload")) or "upload"
     source_key = build_amplitude_source_key(source_file_name)
     put_object(source_key, content, content_type="text/plain")
 
@@ -1358,7 +1408,8 @@ def get_distribution_linked_line_count(db: Session, distribution_id: str) -> int
 def import_lightning_distribution_from_file(
     db: Session,
     *,
-    file: UploadFile,
+    file: UploadFile | None = None,
+    temp_file_id: str | None = None,
     actor_user_id: str,
     event_year: int | None,
     region_id: str | None,
@@ -1367,15 +1418,12 @@ def import_lightning_distribution_from_file(
     notes: str | None,
     line_id: str | None = None,
 ) -> LightningDistributionImportResponse:
-    """上传文件 → 立即 put_object 到 MinIO → 建 LightningDistribution(pending) → 派发 Celery。"""
-    content = file.file.read()
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
+    """上传文件或引用临时文件 → 立即 put_object 到 MinIO → 建 LightningDistribution(pending) → 派发 Celery。"""
+    content, source_file_name = _resolve_import_content(file=file, temp_file_id=temp_file_id, actor_user_id=actor_user_id)
 
     from ..services.minio_storage import build_source_key, put_object
     from uuid import uuid4 as _uuid4
 
-    source_file_name = _normalize_str(str(file.filename or "upload")) or "upload"
     source_key = build_source_key(source_file_name)
     put_object(source_key, content, content_type="text/plain")
 
