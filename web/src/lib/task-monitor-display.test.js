@@ -17,6 +17,13 @@ test("getTaskStateDisplay returns chinese labels for known celery states", () =>
   assert.deepEqual(getTaskStateDisplay("custom_state"), { label: "未识别状态", color: "geekblue" });
 });
 
+test("getTaskStateDisplay keeps pending states visually distinct (LP-347)", () => {
+  assert.deepEqual(getTaskStateDisplay("TODO"), { label: "待处理", color: "gold" });
+  assert.deepEqual(getTaskStateDisplay("PENDING"), { label: "待执行", color: "gold" });
+  assert.deepEqual(getTaskStateDisplay("REVOKED"), { label: "已撤销", color: "grey" });
+  assert.deepEqual(getTaskStateDisplay("CANCELLED"), { label: "已取消", color: "grey" });
+});
+
 test("getTaskSourceDisplay localizes flower task buckets", () => {
   assert.deepEqual(getTaskSourceDisplay("ACTIVE"), { label: "活跃任务", color: "processing" });
   assert.deepEqual(getTaskSourceDisplay("RESERVED"), { label: "预留任务", color: "gold" });

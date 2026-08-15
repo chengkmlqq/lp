@@ -20,8 +20,8 @@ const TASK_STATE_DISPLAYS: Record<string, TagDisplay> = {
   DONE: { label: "成功", color: "green" },
   FAILURE: { label: "失败", color: "red" },
   FAILED: { label: "失败", color: "red" },
-  REVOKED: { label: "已撤销", color: "default" },
-  CANCELLED: { label: "已取消", color: "default" },
+  REVOKED: { label: "已撤销", color: "grey" },
+  CANCELLED: { label: "已取消", color: "grey" },
   TIMEOUT: { label: "超时", color: "volcano" },
   UNKNOWN: { label: "未知", color: "geekblue" },
 };
