@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 
-import { getApiBaseUrl, readApiError } from "@/lib/api";
+import { setAuthHooks, fetchWithAuth, postJson } from "@/lib/api";
 import { withBasePath } from "@/lib/base-path";
 import type { AuthTokenResponse, UserPublic } from "@/types/auth";
 
@@ -35,13 +35,6 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
-function withApiPath(path: string): string {
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
-  return `${getApiBaseUrl()}${path}`;
-}
 
 function hasSessionHint(): boolean {
   if (typeof window === "undefined") {
@@ -98,10 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const refreshTask = (async (): Promise<boolean> => {
-      const response = await fetch(withApiPath("/api/v1/auth/refresh"), {
-        method: "POST",
-        credentials: "include",
-      });
+      const response = await fetchWithAuth("/api/v1/auth/refresh", { method: "POST" }, false);
       if (!response.ok) {
         clearAuth();
         return false;
@@ -122,61 +112,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyAuthPayload, clearAuth]);
 
-  const fetchWithAuth = useCallback(
-    async (
-      path: string,
-      init: RequestInit = {},
-      retryOnUnauthorized = true,
-    ): Promise<Response> => {
-      const headers = new Headers(init.headers);
-      const token = accessTokenRef.current;
-      if (token) {
-        headers.set("Authorization", `Bearer ${token}`);
-      }
-
-      const response = await fetch(withApiPath(path), {
-        ...init,
-        headers,
-        credentials: "include",
-      });
-
-      if (response.status !== 401 || !retryOnUnauthorized) {
-        return response;
-      }
-
-      const refreshed = await refreshAccessToken();
-      if (!refreshed) {
-        return response;
-      }
-
-      const retryHeaders = new Headers(init.headers);
-      const nextToken = accessTokenRef.current;
-      if (nextToken) {
-        retryHeaders.set("Authorization", `Bearer ${nextToken}`);
-      }
-
-      return fetch(withApiPath(path), {
-        ...init,
-        headers: retryHeaders,
-        credentials: "include",
-      });
-    },
-    [refreshAccessToken],
-  );
+  useEffect(() => {
+    setAuthHooks({
+      getAccessToken,
+      refreshAccessToken,
+    });
+    return () => setAuthHooks(null);
+  }, [getAccessToken, refreshAccessToken]);
 
   const login = useCallback(
     async (userId: string, password: string) => {
-      const response = await fetch(withApiPath("/api/v1/auth/login"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ user_id: userId, password }),
-      });
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-
-      const payload = (await response.json()) as AuthTokenResponse;
+      const payload = await postJson<AuthTokenResponse>(
+        "/api/v1/auth/login",
+        { user_id: userId, password },
+        false,
+      );
       applyAuthPayload(payload);
     },
     [applyAuthPayload],
@@ -184,17 +134,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(
     async (email: string, username: string, password: string) => {
-      const response = await fetch(withApiPath("/api/v1/auth/register"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, username, password }),
-      });
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-
-      const payload = (await response.json()) as AuthTokenResponse;
+      const payload = await postJson<AuthTokenResponse>(
+        "/api/v1/auth/register",
+        { email, username, password },
+        false,
+      );
       applyAuthPayload(payload);
     },
     [applyAuthPayload],
@@ -202,10 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await fetch(withApiPath("/api/v1/auth/logout"), {
-        method: "POST",
-        credentials: "include",
-      });
+      await fetchWithAuth("/api/v1/auth/logout", { method: "POST" }, false);
     } finally {
       if (typeof window !== "undefined") {
         window.location.replace(withBasePath("/login"));

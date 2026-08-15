@@ -52,6 +52,106 @@ export function getApiBaseUrl(): string {
 
 export const API_BASE_URL = getApiBaseUrl();
 
+export function withApiPath(path: string): string {
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
+  }
+  return `${getApiBaseUrl()}${path}`;
+}
+
+type AuthHooks = {
+  getAccessToken: () => string | null;
+  refreshAccessToken: () => Promise<boolean>;
+};
+
+let authHooks: AuthHooks | null = null;
+
+export function setAuthHooks(hooks: AuthHooks | null): void {
+  authHooks = hooks;
+}
+
+/**
+ * 携带 Bearer token 的请求封装（credentials: include），
+ * 401 时尝试刷新 token 一次后重放请求。
+ */
+export async function fetchWithAuth(
+  path: string,
+  init: RequestInit = {},
+  retryOnUnauthorized = true,
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = authHooks?.getAccessToken() ?? null;
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(withApiPath(path), {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+
+  if (response.status !== 401 || !retryOnUnauthorized) {
+    return response;
+  }
+
+  if (!authHooks) {
+    return response;
+  }
+  const refreshed = await authHooks.refreshAccessToken();
+  if (!refreshed) {
+    return response;
+  }
+
+  const retryHeaders = new Headers(init.headers);
+  const nextToken = authHooks.getAccessToken();
+  if (nextToken) {
+    retryHeaders.set("Authorization", `Bearer ${nextToken}`);
+  }
+
+  return fetch(withApiPath(path), {
+    ...init,
+    headers: retryHeaders,
+    credentials: "include",
+  });
+}
+
+/**
+ * POST JSON 请求封装（credentials: include + readApiError），
+ * 失败时抛出 readApiError 解析出的错误信息。
+ */
+export async function postJson<T = unknown>(
+  path: string,
+  body: unknown,
+  retryOnUnauthorized = true,
+): Promise<T> {
+  const response = await fetchWithAuth(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }, retryOnUnauthorized);
+  if (!response.ok) {
+    throw new Error(await readApiError(response));
+  }
+  return (await response.json()) as T;
+}
+
+/**
+ * GET JSON 请求封装（credentials: include + readApiError），
+ * 失败时抛出 readApiError 解析出的错误信息。
+ */
+export async function getJson<T = unknown>(
+  path: string,
+  init?: RequestInit,
+  retryOnUnauthorized = true,
+): Promise<T> {
+  const response = await fetchWithAuth(path, init, retryOnUnauthorized);
+  if (!response.ok) {
+    throw new Error(await readApiError(response));
+  }
+  return (await response.json()) as T;
+}
+
 /**
  * API 错误响应结构
  *

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
-import { getApiBaseUrl } from "@/lib/api";
+import { fetchWithAuth } from "@/lib/api";
 import { geoToLocal } from "@/lib/geo-coords";
 import { sampleHeight, toFloat32Heights } from "@/lib/terrain-utils";
 import { getElevationTerrainRenderState } from "@/lib/elevation-terrain";
@@ -207,11 +207,8 @@ export function ElevationPreviewThreeMap({
       setHeightmapLoading(true);
       setTerrainError("");
       try {
-        const baseUrl = getApiBaseUrl();
-        const url = `${baseUrl}/api/v1/elevation/datasets/${dataset.id}/heightmap?res=129`;
-        const headers: Record<string, string> = {};
-        if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-        const res = await fetch(url, { headers });
+        const url = `/api/v1/elevation/datasets/${dataset.id}/heightmap?res=129`;
+        const res = await fetchWithAuth(url);
         if (cancelled) return;
         if (!res.ok) throw new Error(`heightmap 请求失败 (${res.status})`);
         const data: HeightmapData = await res.json();
