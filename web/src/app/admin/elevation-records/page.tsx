@@ -28,14 +28,12 @@ import {
 } from "antd";
 import {
   AppstoreOutlined,
-  CheckCircleOutlined,
   CloudUploadOutlined,
   DatabaseOutlined,
   DeploymentUnitOutlined,
   EyeOutlined,
   FileOutlined,
   FileTextOutlined,
-  GlobalOutlined,
   MoreOutlined,
   NumberOutlined,
   SearchOutlined,
@@ -306,7 +304,7 @@ export default function ElevationRecordsPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(ELEVATION_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
-  const [viewMode, setViewMode] = useState<"card" | "list">("list");
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [cardViewPage, setCardViewPage] = useState(1);
   const [allLoadedRecords, setAllLoadedRecords] = useState<ElevationFileRecordSummary[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -748,22 +746,23 @@ export default function ElevationRecordsPage() {
       title: "操作",
       key: "actions",
       fixed: "right",
-      width: 180,
+      width: 140,
       render: (_value, row) => {
         const analyzing = analyzeMutation.isPending && analyzingId === row.id;
         const deleting = deleteMutation.isPending && deletingId === row.id;
         const rowBusy = analyzing || deleting;
 
+        const moreMenuItems: MenuProps["items"] = [
+          {
+            key: "preview",
+            label: "预览",
+            disabled: rowBusy,
+            onClick: () => previewMutation.mutate(row.id),
+          },
+        ];
+
         return (
           <Space wrap>
-            <Button
-              size="small"
-              disabled={rowBusy}
-              onClick={() => previewMutation.mutate(row.id)}
-            >
-              预览
-            </Button>
-
             <Button
               size="small"
               disabled={rowBusy}
@@ -785,6 +784,10 @@ export default function ElevationRecordsPage() {
             >
               删除
             </Button>
+
+            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+              <Button size="small" disabled={rowBusy} icon={<MoreOutlined />} />
+            </Dropdown>
           </Space>
         );
       },
@@ -842,21 +845,12 @@ export default function ElevationRecordsPage() {
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">大小：{formatFileSize(record.file_size)}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
-              <GlobalOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">来源：{record.source || "-"}</Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
               <AppstoreOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">分辨率：{record.resolution_m ? `${record.resolution_m.toFixed(1)} m` : "-"}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <NumberOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">样本数：{record.sample_count.toLocaleString()}</Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircleOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs">解析状态：</Typography.Text>
-              <Tag color={computedParseStatus(record).color} className="text-xs">{computedParseStatus(record).label}</Tag>
             </div>
             <div className="flex items-center gap-2">
               <DeploymentUnitOutlined className="text-xs text-gray-500" />
