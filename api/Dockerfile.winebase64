@@ -13,11 +13,14 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
         sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
         sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list 2>/dev/null; \
     fi; \
-    apt-get update \
+    dpkg --add-architecture i386 \
+    && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         wine \
         libwine:amd64 \
         wine64 \
+        wine32:i386 \
     && command -v wine >/dev/null \
     && ls /usr/lib/x86_64-linux-gnu/wine/ >/dev/null 2>&1 \
+    && ls /usr/lib/wine/i386-windows/ >/dev/null 2>&1 \
     && rm -rf /var/lib/apt/lists/*
