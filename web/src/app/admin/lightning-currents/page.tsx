@@ -36,7 +36,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
-import { LightningTowerView } from "@/components/lightning-tower-view";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { ApiError, readApiError } from "@/lib/api";
@@ -148,8 +147,9 @@ export default function AdminLightningCurrentsPage() {
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [backfillLinesOpen, setBackfillLinesOpen] = useState(false);
   const [backfillLinesRecord, setBackfillLinesRecord] = useState<LightningAmplitudeRecord | null>(null);
-  const [linePickerOpen, setLinePickerOpen] = useState(false);
-  const [linePickerLineId, setLinePickerLineId] = useState<string | null>(null);
+  const [backfillOpen, setBackfillOpen] = useState(false);
+  const [backfillRecord, setBackfillRecord] = useState<LightningAmplitudeRecord | null>(null);
+  const [backfillLineIds, setBackfillLineIds] = useState<string[]>([]);
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -400,6 +400,50 @@ export default function AdminLightningCurrentsPage() {
     },
   });
 
+  const backfillMutation = useMutation({
+    mutationFn: async (lineIds: string[]) => {
+      if (!canManage) {
+        throw new Error("缺少 lightning.manage 权限");
+      }
+      const failures: string[] = [];
+      let successCount = 0;
+      for (const lineId of lineIds) {
+        try {
+          const response = await fetchWithAuth("/api/v1/lightning-currents/prepare-current", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ line_id: lineId }),
+          });
+          if (!response.ok) {
+            failures.push(`线路 ${lineId}: ${await readApiError(response)}`);
+          } else {
+            successCount += 1;
+          }
+        } catch (candidate) {
+          failures.push(`线路 ${lineId}: ${candidate instanceof Error ? candidate.message : "回填失败"}`);
+        }
+      }
+      return { successCount, failures };
+    },
+    onSuccess: async ({ successCount, failures }) => {
+      setBackfillOpen(false);
+      setBackfillRecord(null);
+      setBackfillLineIds([]);
+      if (failures.length > 0) {
+        setSuccess("");
+        setError(new ApiError(`回填完成：成功 ${successCount} 条，失败 ${failures.length} 条（${failures.join("；")}）`));
+      } else {
+        setError(null);
+        setSuccess(`回填完成：成功 ${successCount} 条线路`);
+      }
+      await refreshAll();
+    },
+    onError: (candidate) => {
+      setSuccess("");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "回填失败"));
+    },
+  });
+
   const openDetail = useCallback((record: LightningAmplitudeRecord) => {
     const key = record.id;
     setDetailTabs((previous) => {
@@ -446,10 +490,10 @@ export default function AdminLightningCurrentsPage() {
     setBackfillLinesOpen(true);
   };
 
-  // 线路选择（杆塔列表 Tab 用）：复用现有线路列表接口
+  // 回填线路选择：复用现有线路列表接口
   const linesQuery = useQuery<LineListResponse>({
     queryKey: ["lines"],
-    enabled: linePickerOpen,
+    enabled: backfillOpen,
     queryFn: async () => {
       const response = await fetchWithAuth(`/api/v1/lines?limit=1000`);
       if (!response.ok) {
@@ -458,31 +502,6 @@ export default function AdminLightningCurrentsPage() {
       return (await response.json()) as LineListResponse;
     },
   });
-
-  // 打开杆塔列表 Tab（key 用 line-{lineId} 去重，可同时打开多条线路的 Tab）
-  const openTowerTab = useCallback((lineId: string) => {
-    const key = `line-${lineId}`;
-    setDetailTabs((previous) => {
-      if (previous.some((tab) => tab.key === key)) {
-        return previous;
-      }
-      return [
-        ...previous,
-        {
-          key,
-          label: (
-            <Space size={6}>
-              <span>杆塔列表</span>
-              <Tag color="blue">回填数据</Tag>
-            </Space>
-          ),
-          closable: true,
-          children: <LightningTowerView lineId={lineId} fetchWithAuth={fetchWithAuth} />,
-        },
-      ];
-    });
-    setActiveTabKey(key);
-  }, [fetchWithAuth]);
 
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
@@ -621,7 +640,7 @@ export default function AdminLightningCurrentsPage() {
         title: "导入时间",
         dataIndex: "create_date",
         width: 170,
-        render: (value: string) => new Date(value).toLocaleString("zh-CN", { hour12: false }),
+        render: (value: string) => formatDateTime(value),
       },
       {
         title: "采样点数",
@@ -666,7 +685,7 @@ export default function AdminLightningCurrentsPage() {
         },
       },
       {
-        title: "回填关联线路数",
+        title: "回填线路数",
         dataIndex: "backfill_line_count",
         key: "backfill_line_count",
         width: 130,
@@ -690,14 +709,20 @@ export default function AdminLightningCurrentsPage() {
         render: (_: unknown, row) => {
           // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/删除），其余条件操作收进 ⋯ 三点下拉
           const moreMenuItems: MenuProps["items"] = [
-            {
-              key: "towers",
-              label: "杆塔列表",
-              onClick: () => {
-                setLinePickerLineId(null);
-                setLinePickerOpen(true);
-              },
-            },
+            ...(canManage
+              ? [
+                  {
+                    key: "backfill",
+                    label: "回填",
+                    disabled: backfillMutation.isPending,
+                    onClick: () => {
+                      setBackfillRecord(row);
+                      setBackfillLineIds([]);
+                      setBackfillOpen(true);
+                    },
+                  },
+                ]
+              : []),
             ...(row.status === "failed" && canManage
               ? [
                   {
@@ -746,7 +771,7 @@ export default function AdminLightningCurrentsPage() {
         },
       },
     ],
-    [canManage, deleteMutation, retryMutation, openDetail, openBackfillLines],
+    [canManage, deleteMutation, retryMutation, backfillMutation, openDetail, openBackfillLines],
   );
 
   if (initializing) {
@@ -1122,29 +1147,32 @@ export default function AdminLightningCurrentsPage() {
         />
       </Modal>
 
-      {/* 杆塔列表：选择线路后打开动态 Tab */}
+      {/* 回填：选择线路列表后执行回填 */}
       <Modal
-        title="选择线路查看杆塔列表"
-        open={linePickerOpen}
-        onCancel={() => setLinePickerOpen(false)}
+        title={backfillRecord ? `回填线路 - ${backfillRecord.source_file_name}` : "回填线路"}
+        open={backfillOpen}
+        onCancel={() => {
+          setBackfillOpen(false);
+          setBackfillRecord(null);
+          setBackfillLineIds([]);
+        }}
         onOk={() => {
-          if (linePickerLineId) {
-            openTowerTab(linePickerLineId);
-            setLinePickerOpen(false);
-            setLinePickerLineId(null);
+          if (backfillLineIds.length > 0) {
+            backfillMutation.mutate(backfillLineIds);
           }
         }}
-        okText="打开杆塔列表"
-        okButtonProps={{ disabled: !linePickerLineId }}
+        okText="确认回填"
+        okButtonProps={{ disabled: backfillLineIds.length === 0, loading: backfillMutation.isPending }}
         width={480}
       >
         <Select
+          mode="multiple"
           style={{ width: "100%" }}
           showSearch
           optionFilterProp="label"
-          placeholder="搜索并选择线路"
-          value={linePickerLineId ?? undefined}
-          onChange={(value) => setLinePickerLineId(value)}
+          placeholder="搜索并选择线路（可多选）"
+          value={backfillLineIds}
+          onChange={(value) => setBackfillLineIds(value)}
           loading={linesQuery.isFetching}
           options={(linesQuery.data?.items ?? []).map((line: LineSummary) => ({
             label: `${line.code} - ${line.name}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`,
@@ -1264,9 +1292,6 @@ function AmplitudeDetailView({
       {record.stroke_peaks_json && record.stroke_peaks_json.length > 0 && (
         <div>
           <Typography.Title level={5}>多回击峰值分布</Typography.Title>
-          <Descriptions bordered size="small" column={1} style={{ marginBottom: 12 }}>
-            <Descriptions.Item label="回击数">{record.stroke_count}</Descriptions.Item>
-          </Descriptions>
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={record.stroke_peaks_json.map((peak: Record<string, unknown>, idx: number) => ({
               index: idx + 1,

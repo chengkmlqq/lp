@@ -11,7 +11,7 @@ test("lightning-currents actions column follows unified UI spec (width 200, 2 di
   const source = readFileSync(PAGE_FILE, "utf-8");
 
   // 提取操作列定义块（从 title: "操作" 到 columns useMemo 闭合）
-  const actionsColumnMatch = source.match(/title: "操作",\s+key: "actions"[\s\S]*?\},\n\s+\],/);
+  const actionsColumnMatch = source.match(/title: "操作",\s+key: "actions"[\s\S]*?\},\s*\],/);
   assert.ok(actionsColumnMatch, "actions column definition must exist");
   const col = actionsColumnMatch[0];
 
@@ -35,14 +35,18 @@ test("lightning-currents actions column follows unified UI spec (width 200, 2 di
   assert.ok(!col.includes('key: "detail"'), "actions column must not have detail as dropdown item");
   assert.ok(!col.includes('key: "delete"'), "actions column must not have delete as dropdown item");
 
-  // 条件操作（重试/杆塔列表）收进 MoreOutlined 三点下拉
+  // 条件操作（回填/重试）收进 MoreOutlined 三点下拉
+  assert.ok(
+    col.includes('key: "backfill"') && col.includes('label: "回填"'),
+    "backfill must be a dropdown menu item",
+  );
   assert.ok(
     col.includes('key: "retry"') && col.includes('label: "重试"'),
     "retry must be a dropdown menu item",
   );
   assert.ok(
-    col.includes('key: "towers"') && col.includes('label: "杆塔列表"'),
-    "tower list must be a dropdown menu item",
+    !col.includes('key: "towers"') && !col.includes('label: "杆塔列表"'),
+    "tower list dropdown item must be removed",
   );
 
   // 权限（canManage）与状态（failed）条件保留
