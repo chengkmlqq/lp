@@ -22,5 +22,5 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
         wine32:i386 \
     && command -v wine >/dev/null \
     && ls /usr/lib/x86_64-linux-gnu/wine/ >/dev/null 2>&1 \
-    && ls /usr/lib/wine/i386-windows/ >/dev/null 2>&1 \
+    && ls /usr/lib/i386-linux-gnu/wine/i386-windows/ >/dev/null 2>&1 \
     && rm -rf /var/lib/apt/lists/*
