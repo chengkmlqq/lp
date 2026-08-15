@@ -22,6 +22,12 @@ def run_fault_diagnosis_task(self, analysis_id: str) -> dict[str, str]:
         db = SessionLocal()
         try:
             run_fault_diagnosis(db, analysis_id)
+            # 判别成功后生成 Word 报告
+            from ..services.fault_diagnosis_service import generate_report_docx
+            try:
+                generate_report_docx(db, analysis_id)
+            except Exception as report_exc:
+                log_parts.append(f"[{task_id}] 报告生成失败（不影响判别结果）: {report_exc}")
         finally:
             db.close()
         log_parts.append(f"[{task_id}] Fault diagnosis for analysis {analysis_id} completed")

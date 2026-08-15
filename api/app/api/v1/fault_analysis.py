@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from ...core.config import get_settings
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route
 from ...schemas.fault_analysis import (
@@ -248,3 +252,28 @@ def delete_fault_analysis(
 ) -> dict[str, str]:
     delete_analysis(db, analysis_id)
     return {"message": "故障分析记录已删除"}
+
+
+@router.get("/{analysis_id}/report")
+def download_fault_analysis_report(
+    analysis_id: str,
+    _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """下载判别成功后生成的 Word 正式报告（LP-343）。"""
+    item = get_analysis_by_id(db, analysis_id)
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="故障分析记录不存在")
+    if not item.result_json or not item.result_json.get("diagnosis"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该记录尚未完成判别，无法生成报告")
+    report_path = (
+        Path(get_settings().file_vfs_root) / "fault_analysis" / analysis_id / "report.docx"
+    )
+    if not report_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="报告文件尚未生成，请稍后重试")
+    filename = f"fault_analysis_{analysis_id}_report.docx"
+    return FileResponse(
+        report_path,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=filename,
+    )

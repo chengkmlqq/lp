@@ -121,6 +121,7 @@ export default function FaultAnalysisDetailPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const analysisId = params.id as string;
   const [exporting, setExporting] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
 
@@ -153,6 +154,33 @@ export default function FaultAnalysisDetailPage() {
       message.error("导出失败，请重试");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleDownloadReport = async () => {
+    if (!detail) return;
+    setDownloadingReport(true);
+    try {
+      const response = await fetchWithAuth(`/api/v1/fault-analysis/${analysisId}/report`);
+      if (!response.ok) {
+        const errMsg = await readApiError(response).catch(() => "请求失败");
+        throw new Error(errMsg);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `fault_analysis_${analysisId}_report.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      message.success("Word报告下载成功");
+    } catch (error) {
+      console.error("下载报告失败", error);
+      message.error(error instanceof Error ? error.message : "下载失败，请重试");
+    } finally {
+      setDownloadingReport(false);
     }
   };
 
@@ -261,6 +289,14 @@ export default function FaultAnalysisDetailPage() {
                     导出报告
                   </Button>
                 </Dropdown>
+                <Button
+                  icon={<DownloadOutlined />}
+                  loading={downloadingReport}
+                  disabled={!detail.result_json?.diagnosis}
+                  onClick={handleDownloadReport}
+                >
+                  下载 Word 报告
+                </Button>
               </div>
               <Text type="secondary" className="text-sm">
                 线路: {detail.line_name ?? "-"} | 录波记录厂站: {station} | 故障时间:{" "}

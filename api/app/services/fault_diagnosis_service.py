@@ -732,3 +732,29 @@ def _decision_confidence(diag: Mapping[str, Any]) -> float | None:
 def _confidence_source(diag: Mapping[str, Any]) -> str:
     decision = diag.get("ground_fault_decision", {})
     return "接地故障判别置信度" if decision.get("confidence") is not None else "未计算（接地属性不确定）"
+
+
+def generate_report_docx(db: Session, analysis_id: str, template_path: Path | None = None) -> Path:
+    """生成故障分析 Word 报告并保存到 VFS。"""
+    item = get_analysis_by_id(db, analysis_id)
+    if item is None:
+        raise ValueError(f"故障分析记录不存在: {analysis_id}")
+    if not item.result_json or not item.result_json.get("diagnosis"):
+        raise ValueError(f"故障分析记录 {analysis_id} 无判别结果，请先执行判别")
+
+    from .fault_diagnosis_report import generate_report
+
+    settings = get_settings()
+    vfs_root = Path(settings.file_vfs_root)
+    analysis_dir = vfs_root / "fault_analysis" / analysis_id
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    output_path = analysis_dir / "report.docx"
+    
+    result = item.result_json.get("diagnosis", {})
+    if template_path is None:
+        # 默认模板路径：api/app/templates/综合判别报告模板.docx
+        default_template = Path(__file__).resolve().parent.parent / "templates" / "综合判别报告模板.docx"
+        template_path = default_template if default_template.exists() else None
+    
+    generate_report(result, output_path, template_path=template_path, front_only=False)
+    return output_path

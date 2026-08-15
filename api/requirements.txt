@@ -23,3 +23,4 @@ numpy>=2.0.0
 scipy>=1.14.0
 matplotlib>=3.10.0
 openpyxl>=3.1.0
+python-docx>=0.8.11
