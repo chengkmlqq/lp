@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -185,7 +185,8 @@ def delete_line_tower_endpoint(
 @router.post("/{line_id}/towers/import", response_model=LineTowerImportResponse)
 def import_line_tower_csv_endpoint(
     line_id: str,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    temp_file_id: str | None = Form(default=None),
     current_user: CurrentUser = Depends(require_permission("tower.manage")),
     db: Session = Depends(get_db),
 ) -> LineTowerImportResponse:
@@ -197,6 +198,7 @@ def import_line_tower_csv_endpoint(
         db,
         line=line,
         file=file,
+        temp_file_id=temp_file_id,
         actor_user_id=current_user.user.id,
     )
 

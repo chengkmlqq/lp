@@ -1361,6 +1361,11 @@ export type LightningTempUploadResponse = {
   file_name: string;
 };
 
+export type TempUploadResponse = {
+  temp_file_id: string;
+  file_name: string;
+};
+
 export type LightningDistributionImportResponse = {
   distribution_id: string;
   task_id: string | null;

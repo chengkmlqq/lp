@@ -541,10 +541,21 @@ def import_line_towers_from_csv(
     db: Session,
     *,
     line: Line,
-    file: UploadFile,
+    file: UploadFile | None = None,
+    temp_file_id: str | None = None,
     actor_user_id: str,
 ) -> LineTowerImportResponse:
-    content = file.file.read()
+    if temp_file_id:
+        from ..core.file_upload import resolve_temp_file
+
+        content, _source_name = resolve_temp_file(temp_file_id, actor_user_id)
+    else:
+        if file is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="缺少文件，请提供 file 或 temp_file_id",
+            )
+        content = file.file.read()
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV file is empty")
 

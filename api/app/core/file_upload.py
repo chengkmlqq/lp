@@ -23,6 +23,67 @@ def _file_size_bytes(file: UploadFile) -> int:
     return size
 
 
+def save_temp_file(
+    file: UploadFile,
+    user_id: str,
+    *,
+    allowed_exts: set[str] | None = None,
+) -> tuple[str, str]:
+    """校验并保存上传文件到 MinIO 临时目录，返回 ``(temp_file_id, file_name)``。
+
+    供通用 upload-temp 端点 / 业务模块两段式上传复用：
+    选择文件后先落地临时目录（按 user_id 隔离），确认导入时再通过
+    ``resolve_temp_file`` 读取并删除，兜底由 24h 清理任务处理。
+    """
+    from ..services.minio_storage import build_temp_key, put_object
+
+    validate_upload(file, allowed_exts=allowed_exts)
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
+
+    file_name = (file.filename or "upload").strip() or "upload"
+    temp_file_id = build_temp_key(file_name, user_id)
+    put_object(temp_file_id, content, content_type="text/plain")
+    return temp_file_id, file_name
+
+
+def resolve_temp_file(temp_file_id: str, user_id: str) -> tuple[bytes, str]:
+    """从 MinIO 临时目录读取并删除临时文件，返回 ``(content, source_file_name)``。
+
+    - 校验 ``temp_file_id`` 归属当前用户（key 前缀 ``TEMP_PREFIX/{user_id}/``）
+    - 读取后立即删除，避免定时清理任务在处理完成前误删
+    - ``temp_file_id`` 格式非法 / 不属于当前用户时返回 400
+    """
+    from ..services import minio_storage as _ms
+
+    temp_key = temp_file_id.strip()
+    expected_prefix = f"{_ms.TEMP_PREFIX}{user_id}/"
+    if not temp_key.startswith(expected_prefix):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="temp_file_id 无效或不属于当前用户",
+        )
+    try:
+        content = _ms.get_object(temp_key)
+    except _ms.MinioObjectNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="临时文件不存在或已过期，请重新上传",
+        )
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
+    # 从 key 中提取原始文件名：TEMP_PREFIX/{user_id}/{uuid}_{file_name}
+    last_segment = temp_key.rsplit("/", 1)[-1]
+    source_file_name = last_segment.split("_", 1)[1] if "_" in last_segment else last_segment
+    # 读取后删除临时对象（避免定时清理任务在处理完成前误删的风险）
+    try:
+        _ms.delete_object(temp_key)
+    except Exception:
+        pass
+    return content, source_file_name
+
+
 def validate_upload(
     file: UploadFile | None,
     max_mb: int | None = None,

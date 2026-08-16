@@ -12,6 +12,7 @@ import {
   Input,
   Modal,
   Pagination,
+  Progress,
   Radio,
   Segmented,
   Select,
@@ -21,10 +22,12 @@ import {
   Tag,
   Typography,
   Alert,
+  Upload,
   type MenuProps,
 } from "antd";
 import {
   ApartmentOutlined,
+  CheckCircleOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
   DeploymentUnitOutlined,
@@ -48,8 +51,8 @@ import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
-import { readApiError } from "@/lib/api";
-import type { LineListResponse, LineSummary, LineTowerImportResponse, LineTowerListResponse, LineTowerSummary } from "@/types/auth";
+import { getApiBaseUrl, readApiError } from "@/lib/api";
+import type { LineListResponse, LineSummary, LineTowerImportResponse, LineTowerListResponse, LineTowerSummary, TempUploadResponse } from "@/types/auth";
 
 type LineFormValues = {
   name: string;
@@ -803,7 +806,7 @@ interface PowerLineDetailViewProps {
 function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerManage, canLineManage, onLineDeleted }: PowerLineDetailViewProps) {
   const { message: messageApi } = App.useApp();
   const queryClient = useQueryClient();
-  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const { getAccessToken } = useAuth();
   const [lineDetail, setLineDetail] = useState<LineSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -811,6 +814,11 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
   const [towerTypeFilter, setTowerTypeFilter] = useState("");
   const [towerPagination, setTowerPagination] = useState({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE });
   const [towerViewMode, setTowerViewMode] = useState<"table" | "map">("table");
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [tempFileId, setTempFileId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -876,10 +884,83 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
         && query.queryKey[0].includes("/towers"),
     });
   }, [queryClient]);
-  const importMutation = useMutation({
-    mutationFn: async (file: File) => {
+  const handleTempUpload = useCallback(
+    (file: File) => {
+      setSelectedFile(file);
+      setTempFileId(null);
+      setUploadProgress(0);
+      setUploadError("");
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${getApiBaseUrl()}/api/v1/uploads/temp`);
+      xhr.withCredentials = true;
+      const token = getAccessToken();
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+      xhr.upload.onprogress = (event: ProgressEvent<EventTarget>) => {
+        if (!event.lengthComputable || event.total <= 0) {
+          return;
+        }
+        const percent = Math.min(99, Math.max(0, Math.round((event.loaded / event.total) * 100)));
+        setUploadProgress(percent);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadProgress(100);
+          try {
+            const payload = JSON.parse(xhr.responseText) as TempUploadResponse;
+            setTempFileId(payload.temp_file_id);
+          } catch {
+            setUploadError("上传成功但响应解析失败，请重新选择文件");
+          }
+          return;
+        }
+        let message = `HTTP ${xhr.status}`;
+        try {
+          const parsed = JSON.parse(xhr.responseText) as { detail?: string };
+          if (parsed?.detail?.trim()) message = parsed.detail;
+        } catch {
+          // 忽略非 JSON 响应
+        }
+        setUploadError(message);
+      };
+      xhr.onerror = () => setUploadError("网络异常，上传失败");
+      xhr.onabort = () => setUploadError("上传已取消");
+
       const formData = new FormData();
       formData.append("file", file);
+      xhr.send(formData);
+    },
+    [getAccessToken],
+  );
+
+  const closeImportModal = useCallback(() => {
+    setImportModalOpen(false);
+    setSelectedFile(null);
+    setTempFileId(null);
+    setUploadProgress(0);
+    setUploadError("");
+  }, []);
+
+  const openImportModal = useCallback(() => {
+    setSelectedFile(null);
+    setTempFileId(null);
+    setUploadProgress(0);
+    setUploadError("");
+    setImportModalOpen(true);
+  }, []);
+
+  const importMutation = useMutation({
+    mutationFn: async () => {
+      if (!canTowerManage) {
+        throw new Error("缺少 tower.manage 权限");
+      }
+      if (!tempFileId) {
+        throw new Error("文件尚未上传完成，请等待上传后再确认导入");
+      }
+      const formData = new FormData();
+      formData.append("temp_file_id", tempFileId);
       const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers/import`, {
         method: "POST",
         body: formData,
@@ -893,6 +974,7 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
       messageApi.success(
         `导入完成：新增 ${result.imported_count} 条，更新 ${result.updated_count} 条，跳过 ${result.skipped_count} 条`,
       );
+      closeImportModal();
       await refreshLines();
       await refreshTowers();
     },
@@ -1007,36 +1089,10 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
         <Space size={8} wrap>
           <Space.Compact size="small">
             {canTowerManage && (
-              <Button onClick={() => importInputRef.current?.click()} loading={importMutation.isPending}>
+              <Button onClick={openImportModal}>
                 导入 CSV
               </Button>
             )}
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  const maxMB = 50;
-                  const allowedExts = ["csv"];
-                  const ext = file.name.split(".").pop()?.toLowerCase() || "";
-                  if (file.size > maxMB * 1024 * 1024) {
-                    messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
-                    event.target.value = "";
-                    return;
-                  }
-                  if (!allowedExts.includes(ext)) {
-                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
-                    event.target.value = "";
-                    return;
-                  }
-                  importMutation.mutate(file);
-                }
-                event.target.value = "";
-              }}
-            />
             {canTowerRead && (
               <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
                 导出 CSV
@@ -1112,6 +1168,89 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
           />
         </div>
       </div>
+
+      <Modal
+        title="导入杆塔数据"
+        open={importModalOpen}
+        onCancel={() => {
+          if (importMutation.isPending) return;
+          closeImportModal();
+        }}
+        footer={null}
+        width={520}
+        destroyOnClose
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Form layout="vertical">
+            <Form.Item label="数据文件" required>
+              <Upload.Dragger
+                accept=".csv,text/csv"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  const maxMB = 50;
+                  const allowedExts = ["csv"];
+                  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+                  if (file.size > maxMB * 1024 * 1024) {
+                    messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                    return Upload.LIST_IGNORE;
+                  }
+                  if (!allowedExts.includes(ext)) {
+                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                    return Upload.LIST_IGNORE;
+                  }
+                  return true;
+                }}
+                customRequest={({ file }) => handleTempUpload(file as File)}
+                onRemove={() => {
+                  setSelectedFile(null);
+                  setTempFileId(null);
+                  setUploadProgress(0);
+                  setUploadError("");
+                }}
+              >
+                {selectedFile ? (
+                  <>
+                    <p className="ant-upload-text">{selectedFile.name}</p>
+                    {uploadProgress < 100 ? (
+                      <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
+                    ) : tempFileId ? (
+                      <Typography.Text type="success">
+                        <CheckCircleOutlined /> 上传完成，可以确认导入
+                      </Typography.Text>
+                    ) : (
+                      <Typography.Text type="warning">上传中…</Typography.Text>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
+                      点击或拖拽文件到此区域上传
+                    </p>
+                    <Typography.Text type="secondary">
+                      选择文件后立即上传到临时存储，确认导入后开始解析。
+                    </Typography.Text>
+                  </>
+                )}
+                {uploadError && (
+                  <Typography.Text type="danger" style={{ display: "block", marginTop: 8 }}>
+                    {uploadError}
+                  </Typography.Text>
+                )}
+              </Upload.Dragger>
+            </Form.Item>
+          </Form>
+        </div>
+        <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+          <Button
+            type="primary"
+            disabled={!tempFileId}
+            loading={importMutation.isPending}
+            onClick={() => importMutation.mutate()}
+          >
+            确认导入
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

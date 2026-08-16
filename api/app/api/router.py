@@ -25,6 +25,7 @@ from .v1.task_logs import sse_router as task_logs_sse_router
 from .v1.task_monitor import router as task_monitor_router
 from .v1.tower_models import router as tower_models_router
 from .v1.tower_profiles import router as tower_profiles_router
+from .v1.uploads import router as uploads_router
 from .v1.traveling_wave import router as traveling_wave_router
 from .v1.users import router as users_router
 from .v1.wine import router as wine_router
@@ -57,6 +58,7 @@ v1_router.include_router(lightning_router)
 v1_router.include_router(lines_router)
 v1_router.include_router(tower_models_router)
 v1_router.include_router(tower_profiles_router)
+v1_router.include_router(uploads_router)
 v1_router.include_router(traveling_wave_router)
 v1_router.include_router(wine_router)
 v1_router.include_router(ws_router)
