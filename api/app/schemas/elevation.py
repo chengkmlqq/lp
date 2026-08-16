@@ -104,6 +104,13 @@ class ElevationFileRecordUploadResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ElevationTempUploadResponse(BaseModel):
+    """选择文件后立即上传到临时目录，返回 temp_file_id 供确认提交时引用。"""
+
+    temp_file_id: str
+    file_name: str
+
+
 class ElevationPreviewPoint(BaseModel):
     longitude: float
     latitude: float

@@ -215,16 +215,44 @@ def get_file_record_by_id(db: Session, record_id: str) -> ElevationFileRecord | 
 
 def create_file_record_from_upload(
     db: Session,
-    file: UploadFile,
+    file: UploadFile | None,
     payload: ElevationFileRecordCreateRequest,
     *,
     actor: User,
+    content: bytes | None = None,
+    filename: str | None = None,
 ) -> ElevationFileRecordUploadResponse:
-    """Create a file record and upload the file in one operation. Supports ZIP files with automatic extraction."""
-    if not file.filename:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件名不能为空")
+    """Create a file record and upload the file in one operation. Supports ZIP files with automatic extraction.
 
-    filename = file.filename.strip()
+    两段式上传兼容：可直接传 ``file``（单段式 multipart），也可传 ``content`` +
+    ``filename``（先经 upload-temp 上传到临时区，再在确认提交时引用）。两种方式
+    走同一条校验与入库链路。
+    """
+    if content is None:
+        if file is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少文件，请提供 file 或 temp_file_id")
+        if not file.filename:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件名不能为空")
+
+        filename = file.filename.strip()
+
+        # Read file content
+        try:
+            content = file.file.read()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"读取上传文件失败：{exc}"
+            ) from exc
+        finally:
+            try:
+                file.file.close()
+            except Exception:
+                pass
+
+    if not filename or not filename.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件名不能为空")
+    filename = filename.strip()
     file_ext = Path(filename).suffix.lower()
 
     if file_ext not in IMPORTABLE_ELEVATION_EXTENSIONS and file_ext not in IMPORTABLE_ARCHIVE_EXTENSIONS:
@@ -232,20 +260,6 @@ def create_file_record_from_upload(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"不支持的文件格式: {file_ext}，仅支持 .tif/.zip"
         )
-
-    # Read file content
-    try:
-        content = file.file.read()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"读取上传文件失败：{exc}"
-        ) from exc
-    finally:
-        try:
-            file.file.close()
-        except Exception:
-            pass
 
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
@@ -291,7 +305,7 @@ def create_file_record_from_upload(
         driver.write_file(
             storage_path,
             content=content,
-            content_type=file.content_type or mimetypes.guess_type(filename)[0],
+            content_type=mimetypes.guess_type(filename)[0],
         )
     except Exception as exc:
         raise HTTPException(

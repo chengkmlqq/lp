@@ -13,6 +13,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Progress,
   Segmented,
   Select,
   Space,
@@ -24,10 +25,10 @@ import {
   Upload,
   message,
   type MenuProps,
-  type UploadFile,
 } from "antd";
 import {
   AppstoreOutlined,
+  CheckCircleOutlined,
   CloudUploadOutlined,
   DatabaseOutlined,
   DeploymentUnitOutlined,
@@ -46,7 +47,7 @@ import { Card } from "@/components/ui-antd";
 import { ElevationPreviewCesiumMap } from "@/components/elevation-preview-cesium-map";
 import { ElevationTowerView } from "@/components/elevation-tower-view";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { readApiError } from "@/lib/api";
+import { getApiBaseUrl, readApiError } from "@/lib/api";
 import type { ElevationDatasetTerrainStatus } from "@/types/auth";
 
 type ElevationFileRecordSummary = {
@@ -168,6 +169,11 @@ type ElevationFileRecordUploadResponse = {
   queued: boolean;
   detail: string | null;
   warnings: string[];
+};
+
+type ElevationTempUploadResponse = {
+  temp_file_id: string;
+  file_name: string;
 };
 
 type ElevationLinkedLineSummary = {
@@ -311,7 +317,10 @@ export default function ElevationRecordsPage() {
   const pageCardRef = useRef<HTMLDivElement | null>(null);
 
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [tempFileId, setTempFileId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<ElevationFileRecordSummary | null>(null);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
@@ -359,15 +368,11 @@ export default function ElevationRecordsPage() {
   // Upload mutation
   const uploadMutation = useMutation({
     mutationFn: async (values: UploadFormValues) => {
+      if (!tempFileId) {
+        throw new Error("文件尚未上传完成，请等待上传后再确认");
+      }
       const formData = new FormData();
-      if (fileList.length === 0) {
-        throw new Error("请选择文件");
-      }
-      const file = fileList[0].originFileObj || fileList[0];
-      if (!file || !(file instanceof File || file instanceof Blob)) {
-        throw new Error("无效的文件对象");
-      }
-      formData.append("file", file);
+      formData.append("temp_file_id", tempFileId);
       if (values.source?.trim()) formData.append("source", values.source.trim());
       if (values.resolution_m) formData.append("resolution_m", values.resolution_m.toString());
       if (values.notes?.trim()) formData.append("notes", values.notes.trim());
@@ -383,13 +388,72 @@ export default function ElevationRecordsPage() {
       message.success("文件上传成功");
       setUploadModalOpen(false);
       uploadForm.resetFields();
-      setFileList([]);
+      resetTempUploadState();
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
       message.error(readMutationError(error, "上传失败"));
     },
   });
+
+  // 选择文件后立即上传到临时目录（与地闪密度导入统一的两段式交互）
+  const handleTempUpload = useCallback(
+    (file: File) => {
+      setSelectedFile(file);
+      setTempFileId(null);
+      setUploadProgress(0);
+      setUploadError("");
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${getApiBaseUrl()}/api/v1/elevation/upload-temp`);
+      xhr.withCredentials = true;
+      const token = getAccessToken();
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+      xhr.upload.onprogress = (event: ProgressEvent<EventTarget>) => {
+        if (!event.lengthComputable || event.total <= 0) {
+          return;
+        }
+        const percent = Math.min(99, Math.max(0, Math.round((event.loaded / event.total) * 100)));
+        setUploadProgress(percent);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadProgress(100);
+          try {
+            const payload = JSON.parse(xhr.responseText) as ElevationTempUploadResponse;
+            setTempFileId(payload.temp_file_id);
+          } catch {
+            setUploadError("上传成功但响应解析失败，请重新选择文件");
+          }
+          return;
+        }
+        let messageText = `HTTP ${xhr.status}`;
+        try {
+          const parsed = JSON.parse(xhr.responseText) as { detail?: string };
+          if (parsed?.detail?.trim()) messageText = parsed.detail;
+        } catch {
+          // 忽略非 JSON 响应
+        }
+        setUploadError(messageText);
+      };
+      xhr.onerror = () => setUploadError("网络异常，上传失败");
+      xhr.onabort = () => setUploadError("上传已取消");
+
+      const formData = new FormData();
+      formData.append("file", file);
+      xhr.send(formData);
+    },
+    [getAccessToken],
+  );
+
+  const resetTempUploadState = useCallback(() => {
+    setSelectedFile(null);
+    setTempFileId(null);
+    setUploadProgress(0);
+    setUploadError("");
+  }, []);
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -1059,10 +1123,11 @@ export default function ElevationRecordsPage() {
         onCancel={() => {
           setUploadModalOpen(false);
           uploadForm.resetFields();
-          setFileList([]);
+          resetTempUploadState();
         }}
         onOk={() => uploadForm.submit()}
         confirmLoading={uploadMutation.isPending}
+        okButtonProps={{ disabled: !tempFileId }}
         width={600}
       >
         <Form
@@ -1073,10 +1138,11 @@ export default function ElevationRecordsPage() {
           <Form.Item
             label="文件"
             required
-            help="支持 .tif/.tiff 和 .zip 格式"
+            help="选择文件后立即上传到临时存储，支持 .tif/.tiff 和 .zip 格式"
           >
-            <Upload
-              fileList={fileList}
+            <Upload.Dragger
+              accept=".tif,.tiff,.zip"
+              showUploadList={false}
               beforeUpload={(file) => {
                 const maxMB = 50;
                 const allowedExts = ["tif", "tiff", "zip"];
@@ -1089,15 +1155,40 @@ export default function ElevationRecordsPage() {
                   message.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
                   return Upload.LIST_IGNORE;
                 }
-                setFileList([file]);
-                return false;
+                handleTempUpload(file as File);
+                return Upload.LIST_IGNORE;
               }}
-              onRemove={() => setFileList([])}
-              maxCount={1}
-              accept=".tif,.tiff,.zip"
+              onRemove={() => resetTempUploadState()}
             >
-              <Button icon={<UploadOutlined />}>选择文件</Button>
-            </Upload>
+              {selectedFile ? (
+                <>
+                  <p className="ant-upload-text">{selectedFile.name}</p>
+                  {uploadProgress < 100 ? (
+                    <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
+                  ) : tempFileId ? (
+                    <Typography.Text type="success">
+                      <CheckCircleOutlined /> 上传完成，可以确认提交
+                    </Typography.Text>
+                  ) : (
+                    <Typography.Text type="warning">上传中…</Typography.Text>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
+                    点击或拖拽文件到此区域上传
+                  </p>
+                  <Typography.Text type="secondary">
+                    支持 .tif/.tiff 和 .zip 格式（DEM 可达几十 MB），选择文件后立即上传到临时存储。
+                  </Typography.Text>
+                </>
+              )}
+              {uploadError && (
+                <Typography.Text type="danger" style={{ display: "block", marginTop: 8 }}>
+                  {uploadError}
+                </Typography.Text>
+              )}
+            </Upload.Dragger>
           </Form.Item>
 
           <Form.Item label="来源" name="source">

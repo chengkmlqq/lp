@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
-from ...core.file_upload import validate_upload
+from ...core.file_upload import (
+    resolve_temp_upload,
+    save_temp_upload,
+    validate_upload,
+)
 from ...schemas.elevation import (
     ElevationApplyJobCreateRequest,
     ElevationApplyJobCreateResponse,
@@ -25,6 +29,7 @@ from ...schemas.elevation import (
     ElevationFileRecordTerrainTaskStatusResponse,
     ElevationFileRecordUpdateRequest,
     ElevationFileRecordUploadResponse,
+    ElevationTempUploadResponse,
 )
 from ...services.elevation_service import (
     create_apply_job,
@@ -71,9 +76,26 @@ def get_elevation_file_records(
     )
 
 
+@router.post("/upload-temp", response_model=ElevationTempUploadResponse)
+def upload_elevation_temp_file(
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_permission("elevation.manage")),
+) -> ElevationTempUploadResponse:
+    """选择文件后立即上传到临时目录，返回 temp_file_id 供确认提交时引用。
+
+    与地闪密度导入统一的两段式交互：选择文件后先上传到 MinIO 临时区并展示
+    上传进度，表单确认提交时携带 temp_file_id，服务端从临时目录取文件再入库；
+    临时文件消费后删除，或由定时清理任务兜底清理。
+    """
+    validate_upload(file, allowed_exts={"tif", "tiff", "zip"}, allowed_exts_label="tif/tiff/zip")
+    temp_file_id, file_name = save_temp_upload(file, current_user.user.id)
+    return ElevationTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
+
+
 @router.post("/records", response_model=ElevationFileRecordUploadResponse)
 def create_elevation_file_record(
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    temp_file_id: str | None = Form(default=None),
     source: str | None = Form(default=None),
     mount_code: str | None = Form(default=None),
     resolution_m: float | None = Form(default=None),
@@ -88,6 +110,21 @@ def create_elevation_file_record(
         resolution_m=resolution_m,
         notes=notes,
     )
+    if temp_file_id:
+        content, filename = resolve_temp_upload(temp_file_id, current_user.user.id)
+        return create_file_record_from_upload(
+            db,
+            None,
+            payload,
+            actor=current_user.user,
+            content=content,
+            filename=filename,
+        )
+    if file is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="缺少文件，请提供 file 或 temp_file_id",
+        )
     return create_file_record_from_upload(db, file, payload, actor=current_user.user)
 
 
