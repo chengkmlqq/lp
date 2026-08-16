@@ -123,7 +123,7 @@
 :root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-head,
 :root[data-fquiz-theme="dark"] .admin-power-lines-line-card-title,
 :root[data-fquiz-theme="dark"] .admin-lightning-events-card > .ant-card-head,
-:root[data-fquiz-theme="dark"] .admin-fault-analysis-card > .ant-card-head,
+:root[data-fquiz-theme="dark"] .admin-fault-analysis-card-title,
 :root[data-fquiz-theme="dark"] .admin-fl-analysis-job-card-title {
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
   background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
@@ -140,6 +140,10 @@
 }
 
 :root[data-fquiz-theme="dark"] .admin-power-lines-line-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-fault-analysis-card-actions {
   border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
 }
 
@@ -4907,14 +4911,18 @@ body {
   border-color: var(--fquiz-theme-primary) !important;
 }
 
-.admin-fault-analysis-card > .ant-card-head {
+.admin-fault-analysis-card-title {
   min-height: 44px;
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
   background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
 }
 
+.admin-fault-analysis-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+}
+
 .admin-fault-analysis-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
 }
 
 /* LP-287: 故障复现页面移除外层 Card 后，外层 Tabs 容器撑满高度，

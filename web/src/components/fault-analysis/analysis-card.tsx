@@ -1,5 +1,5 @@
 import { Badge, Button, Space, Typography } from "antd";
-import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined } from "@ant-design/icons";
 import { Card } from "@/components/ui-antd";
 import type { FaultAnalysis } from "./types";
 
@@ -44,18 +44,22 @@ export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: A
       className={`admin-fault-analysis-card${selected ? " selected" : ""}`}
       onClick={onView}
     >
-      <div className="flex flex-col gap-3">
-        <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <Text strong className="truncate">{analysis.title}</Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge status={status.color} />
-            <Text type="secondary" className="text-xs">{status.text}</Text>
+      <div className="flex flex-col">
+        <div className="admin-fault-analysis-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+          <DeploymentUnitOutlined className="text-base text-gray-500" />
+          <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
+            <div className="flex flex-1 min-w-0 flex-col">
+              <Text strong className="truncate">{analysis.line_name}</Text>
+              <Text type="secondary" className="truncate text-xs">{analysis.title}</Text>
+            </div>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <Badge status={status.color} />
+              <Text type="secondary" className="text-xs">{status.text}</Text>
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="text-gray-500">📍</span>
             <Text type="secondary" className="text-xs">{analysis.line_name}</Text>
@@ -70,16 +74,15 @@ export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: A
             <ThunderboltOutlined className="text-gray-500 text-xs" />
             <Text type="secondary" className="text-xs">{analysis.fault_type}</Text>
           </div>
+          <Text
+            style={{ color: confidenceColor }}
+            className="text-xs font-medium"
+          >
+            综合置信度 S={analysis.confidence}% {confidenceIcon}
+          </Text>
         </div>
 
-        <Text
-          style={{ color: confidenceColor }}
-          className="text-xs font-medium"
-        >
-          综合置信度 S={analysis.confidence}% {confidenceIcon}
-        </Text>
-
-        <div className="flex justify-end pt-2 border-t border-gray-200">
+        <div className="admin-fault-analysis-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
           <Space size="small">
             <Button
               type="text"
