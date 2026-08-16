@@ -3665,11 +3665,25 @@ body {
 }
 
 .admin-fl-analysis-job-card-title {
+  min-height: 44px;
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
 }
 
 .admin-fl-analysis-job-card > .ant-card-body {
   padding: 0;
+}
+
+/* LP-377: 表格视图容器，对齐线路管理页动态滚动高度 */
+.admin-fl-analysis-table-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-fl-analysis-table-view .ant-table-body {
+  min-height: var(--admin-fl-analysis-table-body-min-height, 180px);
 }
 
 .admin-lightning-distribution-card-view {

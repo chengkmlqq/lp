@@ -29,11 +29,11 @@ export function JobCardList({ jobs, loading }: JobCardListProps) {
   }
 
   if (jobs.length === 0) {
-    return <Empty description="暂无防雷分析任务" />;
+    return <Empty description="暂无防雷分析任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
       {jobs.map((job) => {
         const lineName = job.line_name || job.line_code || "-";
         return (

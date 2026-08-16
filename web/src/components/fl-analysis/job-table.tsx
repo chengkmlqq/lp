@@ -19,9 +19,10 @@ type JobTableProps = {
   total: number;
   pagination: { current: number; pageSize: number };
   onPaginationChange: (pagination: { current: number; pageSize: number }) => void;
+  scrollY?: number;
 };
 
-export function JobTable({ jobs, loading, total, pagination, onPaginationChange }: JobTableProps) {
+export function JobTable({ jobs, loading, total, pagination, onPaginationChange, scrollY }: JobTableProps) {
   const columns = useMemo<ColumnsType<FlAnalysisJobSummary>>(() => [
     {
       title: "任务名",
@@ -106,7 +107,7 @@ export function JobTable({ jobs, loading, total, pagination, onPaginationChange 
           onPaginationChange({ current: page, pageSize });
         },
       }}
-      scroll={{ x: 1200 }}
+      scroll={{ x: 1200, y: scrollY }}
       locale={{
         emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无防雷分析任务" />,
       }}
