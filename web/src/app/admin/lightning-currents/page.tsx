@@ -710,6 +710,7 @@ export default function AdminLightningCurrentsPage() {
         title: "城市",
         dataIndex: "city",
         width: 110,
+        ellipsis: { showTitle: true },
         render: (value: string | null) => value || "-",
       },
       {
