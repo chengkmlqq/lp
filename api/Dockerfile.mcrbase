@@ -1,0 +1,49 @@
+# fquiz-mcr-base: fquiz-base + Linux 版 MATLAB Runtime（R2026a glnxa64）
+#
+# 低频更新的基础镜像：仅在服务器/大磁盘环境构建（GitHub runner 14G 装不下
+# Linux MCR：zip 5G + 解压 10G + 安装 10G 峰值 ~25G）。
+# 构建一次推送阿里云，fquiz-matlab-worker 以它为基础只叠加业务代码层。
+
+ARG REGISTRY=crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com
+ARG REGISTRY_NAMESPACE=ck-registry
+FROM ${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-base:latest
+
+ARG APT_MIRROR=""
+ARG MCR_VERSION=R2026a
+ARG MCR_DOWNLOAD_URL=https://ssd.mathworks.com/supportfiles/downloads/R2026a/Release/0/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2026a_glnxa64.zip
+
+# 1) MCR 运行所需的系统库（X11/解压工具）
+RUN if [ -n "${APT_MIRROR}" ]; then \
+        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list 2>/dev/null; \
+    fi; \
+    apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        unzip \
+        curl \
+        libxt6 \
+        libxmu6 \
+        libice6 \
+        libsm6 \
+        libxrender1 \
+        libxrandr2 \
+        libxfixes3 \
+        libxcursor1 \
+        libxinerama1 \
+        libxft2 \
+        libxi6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2) 下载并静默安装 Linux 版 MATLAB Runtime（先删 zip 再安装，控制磁盘峰值）
+RUN mkdir -p /mcr-install \
+    && curl -fsSL --retry 5 --retry-delay 5 -o /tmp/MCR.zip "${MCR_DOWNLOAD_URL}" \
+    && unzip -q /tmp/MCR.zip -d /mcr-install \
+    && rm -f /tmp/MCR.zip \
+    && find /mcr-install -maxdepth 1 -iname "*install*" -type f -exec chmod +x {} \; \
+    && /mcr-install/install -mode silent -agreeToLicense yes -destinationFolder /opt/mcr \
+    && rm -rf /mcr-install
+
+# 3) MCR 运行环境变量（基础镜像无 LD_LIBRARY_PATH，直接写全路径）
+ENV MCR_MASTER_PATH=/opt/mcr/${MCR_VERSION}
+ENV LD_LIBRARY_PATH=${MCR_MASTER_PATH}/runtime/glnxa64:${MCR_MASTER_PATH}/bin/glnxa64:${MCR_MASTER_PATH}/sys/os/glnxa64
+ENV XAPPLRESDIR=/etc/X11/app-defaults

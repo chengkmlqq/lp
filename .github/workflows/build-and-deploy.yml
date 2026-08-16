@@ -152,10 +152,10 @@ jobs:
           cache-from: type=gha,scope=fquiz-worker
           cache-to: type=gha,mode=max,scope=fquiz-worker
 
-  # ───── MATLAB Worker 镜像（fquiz-base + Linux MATLAB Runtime + 判别系统） ─────
-  # 消费 matlab-diagnostics 队列，判别任务专用；Linux 版 MATLAB Runtime（glnxa64）
-  # 在镜像构建期从 MathWorks 官方源下载静默安装，判别引擎为 Linux mcc 编译产物，
-  # 直接执行、无需 Wine。
+  # ───── MATLAB Worker 镜像（fquiz-mcr-base + 判别系统，Linux 原生） ─────
+  # 消费 matlab-diagnostics 队列，判别任务专用；Linux 版 MATLAB Runtime 由
+  # fquiz-mcr-base 基础镜像提供（服务器构建推送，GitHub runner 磁盘装不下），
+  # 判别引擎为 Linux mcc 编译产物（RunWaveAnalysisModule），直接执行、无需 Wine。
   build-matlab-worker:
     needs: [build-base]
     runs-on: ubuntu-latest
@@ -195,8 +195,6 @@ jobs:
             REGISTRY=${{ env.REGISTRY }}
             REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
             APT_MIRROR=${{ vars.APT_MIRROR || '' }}
-            MCR_VERSION=${{ vars.MATLAB_MCR_VERSION || 'R2026a' }}
-            MCR_DOWNLOAD_URL=${{ vars.MATLAB_MCR_URL || 'https://ssd.mathworks.com/supportfiles/downloads/R2026a/Release/0/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2026a_glnxa64.zip' }}
           tags: |
             ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
             ${{ steps.vars.outputs.image }}:latest
