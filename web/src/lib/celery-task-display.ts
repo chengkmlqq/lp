@@ -7,6 +7,8 @@ const TASK_NAME_LABELS: Record<string, string> = {
   "app.tasks.elevation_tasks.apply_elevation_for_line_job": "线路高程回填",
   "app.tasks.fl_analysis_tasks.execute_fl_analysis_job": "防雷分析计算",
   "app.tasks.fault_diagnosis_tasks.run_fault_diagnosis_task": "故障综合判别",
+  "app.tasks.ctb.build_file_record_terrain": "高程地形构建",
+  "app.tasks.lightning_tasks.cleanup_lightning_temp_files": "雷电流临时文件清理",
   "app.tasks.lightning_tasks.import_lightning_distribution_job": "地闪分布数据导入",
   "app.tasks.lightning_tasks.import_lightning_amplitude_job": "雷电流幅值数据导入",
   "app.tasks.lightning_tasks.render_lp_density_job": "LP 分区密度图绘制",
