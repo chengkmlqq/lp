@@ -52,6 +52,7 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
         libxinerama1 \
         libxft2 \
         libxi6 \
+        libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # 2) Python 依赖（与 fquiz-base 一致）
