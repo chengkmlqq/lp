@@ -16,6 +16,15 @@ export interface FaultAnalysis {
   created_by?: string;
 }
 
+/** 故障分析临时上传文件条目（LP-369：选择文件后先传到临时目录，提交时携带 temp_file_id）。 */
+export interface FaultAnalysisTempFile {
+  uid: string;
+  name: string;
+  status: "uploading" | "done" | "error";
+  percent: number;
+  temp_file_id?: string;
+  error?: string;
+}
 /** 故障分析详情动态选项卡项（LP-275：多开详情 Tab 支持） */
 export interface DetailTabItem {
   key: string;
@@ -59,12 +68,12 @@ export interface CreateFaultAnalysisFormValues {
   traveling_wave_distance?: number;
   optical_position?: string;
   optical_device_location?: string;
-  // 文件上传（antd Upload fileList）
-  wave_data_file?: { originFileObj: File; name?: string }[];
-  lightning_data_file?: { originFileObj: File; name?: string }[];
-  ledger_data_file?: { originFileObj: File; name?: string }[];
-  traveling_wave_file?: { originFileObj: File; name?: string }[];
-  optical_data_file?: { originFileObj: File; name?: string }[];
+  // 临时文件上传（LP-369：选择文件后立即上传到临时目录，携带 temp_file_id）
+  wave_data_file?: FaultAnalysisTempFile[];
+  lightning_data_file?: FaultAnalysisTempFile[];
+  ledger_data_file?: FaultAnalysisTempFile[];
+  traveling_wave_file?: FaultAnalysisTempFile[];
+  optical_data_file?: FaultAnalysisTempFile[];
   // 自动识别类别上传（后端按文件名前缀归类）
-  auto_classify_files?: { originFileObj: File; name?: string }[];
+  auto_classify_files?: FaultAnalysisTempFile[];
 }

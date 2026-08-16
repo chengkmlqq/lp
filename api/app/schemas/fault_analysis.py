@@ -6,6 +6,12 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class FaultAnalysisTempUploadResponse(BaseModel):
+    """选择文件后立即上传到临时目录，返回 temp_file_id 供确认提交时引用（LP-369）。"""
+    temp_file_id: str
+    file_name: str = "upload"
+
+
 class FaultAnalysisSummary(BaseModel):
     id: str
     title: str | None = None

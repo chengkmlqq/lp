@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session
 from ...core.config import get_settings
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route
+from ...core.file_upload import resolve_temp_upload, save_temp_upload
 from ...schemas.fault_analysis import (
     FaultAnalysisCreateRequest,
     FaultAnalysisCreateResponse,
     FaultAnalysisDetail,
     FaultAnalysisListResponse,
+    FaultAnalysisTempUploadResponse,
     FaultAnalysisUpdateRequest,
 )
 from ...services.fault_analysis_service import (
@@ -75,6 +77,21 @@ def create_fault_analysis(
     return create_analysis(db, payload, actor=current_user.user)
 
 
+@router.post("/upload-temp", response_model=FaultAnalysisTempUploadResponse)
+def upload_fault_analysis_temp_file(
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+) -> FaultAnalysisTempUploadResponse:
+    """选择文件后立即上传到临时目录，返回 temp_file_id 供确认提交时引用（LP-369）。
+
+    与地闪密度导入交互一致：前端先调用本端点展示上传进度条，
+    确认提交时携带 temp_file_id 列表，由 create-fault-analysis-with-files 消费。
+    临时文件在消费后自动删除，或由定时清理任务兜底清除（24h）。
+    """
+    temp_file_id, file_name = save_temp_upload(file, current_user.user.id)
+    return FaultAnalysisTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
+
+
 @router.post("/upload", response_model=FaultAnalysisCreateResponse)
 async def create_fault_analysis_with_files(
     title: str | None = Form(default=None),
@@ -111,10 +128,20 @@ async def create_fault_analysis_with_files(
     optical_data_file: UploadFile | None = File(default=None),
     auto_classify: bool | None = Form(default=None),
     auto_classify_files: list[UploadFile] | None = File(default=None),
+    wave_data_temp_file_id: str | None = Form(default=None),
+    lightning_data_temp_file_id: str | None = Form(default=None),
+    ledger_data_temp_file_id: str | None = Form(default=None),
+    traveling_wave_temp_file_id: str | None = Form(default=None),
+    optical_data_temp_file_id: str | None = Form(default=None),
+    auto_classify_temp_file_ids: list[str] | None = Form(default=None),
     current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> FaultAnalysisCreateResponse:
     """创建故障分析记录并附带判别输入文件（录波/雷电/台账/行波/光学）。
+
+    支持两段式上传（LP-369）：先调用 upload-temp 获取 temp_file_id，
+    确认提交时传 ``*_temp_file_id``（auto_classify 用 ``auto_classify_temp_file_ids`` 列表），
+    后端从临时目录取文件并消费删除；同时保留直接上传原始文件的兼容入参。
 
     auto_classify 为 True 时忽略前端表单字段名，改按文件名前缀自动归类：
     1 开头=录波、2 开头=雷电定位、3 开头=线路台账、其余 TXT/JSON=行波。
@@ -158,19 +185,30 @@ async def create_fault_analysis_with_files(
         auto_diagnose=False,
     )
     analysis_id = created.analysis.id
+    user_id = current_user.user.id
 
-    if auto_classify:
-        upload_files = await _store_auto_classified_files(analysis_id, auto_classify_files or [])
+    if auto_classify or auto_classify_temp_file_ids:
+        upload_files = await _store_auto_classified_files(
+            analysis_id,
+            uploads=auto_classify_files or [],
+            temp_file_ids=auto_classify_temp_file_ids or [],
+            user_id=user_id,
+        )
     else:
         upload_files: dict[str, str] = {}
-        for field, upload in (
-            ("wave_data_file", wave_data_file),
-            ("lightning_data_file", lightning_data_file),
-            ("ledger_data_file", ledger_data_file),
-            ("traveling_wave_file", traveling_wave_file),
-            ("optical_data_file", optical_data_file),
+        for field, upload, temp_file_id in (
+            ("wave_data_file", wave_data_file, wave_data_temp_file_id),
+            ("lightning_data_file", lightning_data_file, lightning_data_temp_file_id),
+            ("ledger_data_file", ledger_data_file, ledger_data_temp_file_id),
+            ("traveling_wave_file", traveling_wave_file, traveling_wave_temp_file_id),
+            ("optical_data_file", optical_data_file, optical_data_temp_file_id),
         ):
-            if upload is not None and upload.filename:
+            if temp_file_id:
+                content, file_name = resolve_temp_upload(temp_file_id, user_id)
+                upload_files[field] = store_analysis_upload_file(
+                    analysis_id, field, file_name, content
+                )
+            elif upload is not None and upload.filename:
                 content = await upload.read()
                 upload_files[field] = store_analysis_upload_file(
                     analysis_id, field, upload.filename, content
@@ -186,38 +224,49 @@ async def create_fault_analysis_with_files(
 async def _store_auto_classified_files(
     analysis_id: str,
     uploads: list[UploadFile],
+    temp_file_ids: list[str],
+    user_id: str,
 ) -> dict[str, str | list[str]]:
     """按文件名前缀自动归类并持久化上传文件，返回 upload_files 字典。
 
+    支持两段式上传的 temp_file_id 列表与直接上传的文件列表混用：
     录波/雷电/台账为单文件类别：同类别上传多个文件时报错（提示保留一个）。
     行波允许多个，保存为相对路径列表。
     """
     upload_files: dict[str, str | list[str]] = {}
     seen_single: set[str] = set()
+    items: list[tuple[str, bytes]] = []
+    for temp_file_id in temp_file_ids:
+        if not temp_file_id:
+            continue
+        content, file_name = resolve_temp_upload(temp_file_id, user_id)
+        items.append((file_name, content))
     for upload in uploads:
         if not upload.filename:
             continue
+        items.append((upload.filename, await upload.read()))
+
+    for file_name, content in items:
         try:
-            category = classify_upload_file(upload.filename)
+            category = classify_upload_file(file_name)
             field = CATEGORY_FIELDS[category]
         except (KeyError, InputDiscoveryError):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    f"无法自动识别文件类别：{upload.filename}。"
+                    f"无法自动识别文件类别：{file_name}。"
                     "请按 1（录波）/2（雷电定位）/3（线路台账）前缀命名，"
                     "或使用 TXT/JSON 行波文件。"
                 ),
             )
-        content = await upload.read()
-        relative = store_analysis_upload_file(analysis_id, field, upload.filename, content)
+        relative = store_analysis_upload_file(analysis_id, field, file_name, content)
         if category in SINGLE_FILE_CATEGORIES:
             if field in seen_single:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=(
                         f"{CATEGORY_LABELS[category]}同一类别仅允许一个文件，"
-                        f"请保留一个（{upload.filename}）。"
+                        f"请保留一个（{file_name}）。"
                     ),
                 )
             seen_single.add(field)

@@ -129,9 +129,15 @@ function buildFaultAnalysisBody(values: CreateFaultAnalysisFormValues): Record<s
   return body;
 }
 
-/** 从 antd Upload fileList 取值中提取首个原始 File。 */
-function pickUploadFile(value: { originFileObj: File }[] | undefined): File | undefined {
-  return value?.[0]?.originFileObj;
+/** 从临时上传文件列表中提取首个已完成的 temp_file_id。 */
+function pickTempFileId(list: { temp_file_id?: string; status?: string }[] | undefined): string | undefined {
+  const item = list?.find((it) => it.temp_file_id);
+  return item?.temp_file_id;
+}
+
+/** 检查是否仍存在未完成上传的文件（提交前阻塞）。 */
+function hasPendingUploads(files: { status?: string; temp_file_id?: string }[] | undefined): boolean {
+  return (files ?? []).some((it) => it.status === "uploading" || (!it.temp_file_id && it.status !== "done"));
 }
 
 /** 创建请求是否携带判别输入文件（有文件时走 multipart 上传接口）。 */
@@ -305,19 +311,17 @@ export default function AdminFaultAnalysisPage() {
     });
   }, []);
 
-  // 新建提交请求（含 multipart 上传分支，与改造前 createMutation 行为一致）。
+  // 新建提交请求（两段式：先传临时目录拿到 temp_file_id，提交时携带 ID 列表）。
   const submitCreate = useCallback(async (values: CreateFaultAnalysisFormValues) => {
     const body = buildFaultAnalysisBody(values);
-    const fileFields: Array<[string, File | undefined]> = [
-      ["wave_data_file", pickUploadFile(values.wave_data_file)],
-      ["lightning_data_file", pickUploadFile(values.lightning_data_file)],
-      ["ledger_data_file", pickUploadFile(values.ledger_data_file)],
-      ["traveling_wave_file", pickUploadFile(values.traveling_wave_file)],
-      ["optical_data_file", pickUploadFile(values.optical_data_file)],
-    ];
 
     if (hasUploadFiles(values)) {
-      // 携带判别输入文件时使用 multipart 上传接口（LP-316）。
+      if (hasPendingUploads(values.auto_classify_files) || hasPendingUploads(values.wave_data_file)
+        || hasPendingUploads(values.lightning_data_file) || hasPendingUploads(values.ledger_data_file)
+        || hasPendingUploads(values.traveling_wave_file) || hasPendingUploads(values.optical_data_file)) {
+        throw new Error("仍有文件在上传中，请等待上传完成后提交");
+      }
+
       const formData = new FormData();
       for (const [key, value] of Object.entries(body)) {
         if (value !== undefined) {
@@ -329,13 +333,22 @@ export default function AdminFaultAnalysisPage() {
       if (autoFiles && autoFiles.length > 0) {
         formData.set("auto_classify", "true");
         for (const item of autoFiles) {
-          const file = item.originFileObj;
-          formData.append("auto_classify_files", file, file.name);
+          if (item.temp_file_id) {
+            formData.append("auto_classify_temp_file_ids", item.temp_file_id);
+          }
         }
       } else {
-        for (const [field, file] of fileFields) {
-          if (file) {
-            formData.set(field, file, file.name);
+        const fileFields: Array<[string, { temp_file_id?: string }[] | undefined]> = [
+          ["wave_data_temp_file_id", values.wave_data_file],
+          ["lightning_data_temp_file_id", values.lightning_data_file],
+          ["ledger_data_temp_file_id", values.ledger_data_file],
+          ["traveling_wave_temp_file_id", values.traveling_wave_file],
+          ["optical_data_temp_file_id", values.optical_data_file],
+        ];
+        for (const [field, list] of fileFields) {
+          const tempFileId = pickTempFileId(list);
+          if (tempFileId) {
+            formData.set(field, tempFileId);
           }
         }
       }
