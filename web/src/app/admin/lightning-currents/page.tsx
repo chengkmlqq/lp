@@ -909,104 +909,104 @@ export default function AdminLightningCurrentsPage() {
             closable: false,
             children: (
               <div className="admin-lightning-currents-list-pane">
-        <div className="admin-filter-bar">
-          <Form layout="inline">
-            <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-              <Input
-                allowClear
-                placeholder="按文件名/事件编号搜索"
-                value={keywordInput}
-                onChange={(event) => handleKeywordChange(event.target.value)}
-                onPressEnter={handleSearch}
-              />
-            </Form.Item>
-            <Form.Item style={{ marginBottom: 0 }}>
-              <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
-                查询
-              </Button>
-            </Form.Item>
-          </Form>
-          <Segmented
-            value={viewMode}
-            onChange={(value) => setViewMode(value as "card" | "list")}
-            options={[
-              { label: "卡片视图", value: "card" },
-              { label: "列表视图", value: "list" },
-            ]}
-          />
-        </div>
+                <div className="admin-filter-bar">
+                  <Form layout="inline">
+                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Input
+                        allowClear
+                        placeholder="按文件名/事件编号搜索"
+                        value={keywordInput}
+                        onChange={(event) => handleKeywordChange(event.target.value)}
+                        onPressEnter={handleSearch}
+                      />
+                    </Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
+                        查询
+                      </Button>
+                    </Form.Item>
+                  </Form>
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => setViewMode(value as "card" | "list")}
+                    options={[
+                      { label: "卡片视图", value: "card" },
+                      { label: "列表视图", value: "list" },
+                    ]}
+                  />
+                </div>
 
-        {viewMode === "list" ? (
-          <div
-            ref={tableScrollAnchorRef}
-            className="lightning-table-anchor"
-            style={{ "--lightning-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<LightningAmplitudeRecord>
-              rowKey={(row) => row.id}
-              columns={columns}
-              dataSource={records}
-              loading={recordsQuery.isFetching}
-              tableLayout="fixed"
-              pagination={{
-                current: pagination.current,
-                pageSize: pagination.pageSize,
-                total: Math.max(recordsQuery.data?.total ?? 0, 1),
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: () => `共 ${recordsQuery.data?.total ?? 0} 条`,
-                hideOnSinglePage: false,
-                onChange: (page, pageSize) => {
-                  setPagination({ current: page, pageSize });
-                },
-              }}
-              scroll={{ x: 1200, y: tableScrollY }}
-              locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="未找到符合筛选条件的记录。"
-                  />
-                ),
-              }}
-            />
-          </div>
-        ) : (
-          <div className="admin-lightning-events-card-view">
-            {recordsQuery.isLoading && records.length === 0 ? (
-              <div className="admin-lightning-events-card-view-state">
-                <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[180px]" />
-              </div>
-            ) : records.length === 0 ? (
-              <div className="admin-lightning-events-card-view-state">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的记录。"
-                />
-              </div>
-            ) : (
-              <>
-                <div className="admin-lightning-events-card-scroll">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    {records.map((record) => renderRecordCard(record))}
+                {viewMode === "list" ? (
+                  <div
+                    ref={tableScrollAnchorRef}
+                    className="lightning-table-anchor"
+                    style={{ "--lightning-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                  >
+                    <Table<LightningAmplitudeRecord>
+                      rowKey={(row) => row.id}
+                      columns={columns}
+                      dataSource={records}
+                      loading={recordsQuery.isFetching}
+                      tableLayout="fixed"
+                      pagination={{
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: recordsQuery.data?.total ?? 0,
+                        showSizeChanger: true,
+                        pageSizeOptions: [10, 20, 50, 100],
+                        showTotal: () => `共 ${recordsQuery.data?.total ?? 0} 条`,
+                        hideOnSinglePage: false,
+                        onChange: (page, pageSize) => {
+                          setPagination({ current: page, pageSize });
+                        },
+                      }}
+                      scroll={{ x: 1200, y: tableScrollY }}
+                      locale={{
+                        emptyText: (
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description="未找到符合筛选条件的记录。"
+                          />
+                        ),
+                      }}
+                    />
                   </div>
-                </div>
-                <div className="admin-lightning-events-pagination">
-                  <Pagination
-                    current={pagination.current}
-                    pageSize={pagination.pageSize}
-                    total={recordsQuery.data?.total ?? 0}
-                    onChange={(page, pageSize) => {
-                      setPagination({ current: page, pageSize });
-                    }}
-                    showSizeChanger
-                    showTotal={(total) => `共 ${total} 条`}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        )}
+                ) : (
+                  <div className="admin-lightning-events-card-view">
+                    {recordsQuery.isLoading && records.length === 0 ? (
+                      <div className="admin-lightning-events-card-view-state">
+                        <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[180px]" />
+                      </div>
+                    ) : records.length === 0 ? (
+                      <div className="admin-lightning-events-card-view-state">
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="未找到符合筛选条件的记录。"
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="admin-lightning-events-card-scroll">
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            {records.map((record) => renderRecordCard(record))}
+                          </div>
+                        </div>
+                        <div className="admin-lightning-events-pagination">
+                          <Pagination
+                            current={pagination.current}
+                            pageSize={pagination.pageSize}
+                            total={recordsQuery.data?.total ?? 0}
+                            onChange={(page, pageSize) => {
+                              setPagination({ current: page, pageSize });
+                            }}
+                            showSizeChanger
+                            showTotal={(total) => `共 ${total} 条`}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             ),
           },

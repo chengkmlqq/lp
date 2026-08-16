@@ -1039,6 +1039,7 @@ export default function AdminLightningDistributionPage() {
                         showSizeChanger: true,
                         pageSizeOptions: [10, 20, 50, 100],
                         showTotal: (totalCount) => `共 ${totalCount} 条`,
+                        hideOnSinglePage: false,
                         onChange: (page, pageSize) => {
                           setPagination({ current: page, pageSize });
                         },

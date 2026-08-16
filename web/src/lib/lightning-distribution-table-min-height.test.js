@@ -51,3 +51,21 @@ test("LP-392: 表格 body min-height 由 CSS 变量驱动并兜底", () => {
     "min-height 应使用 CSS 变量并带 180px 兜底",
   );
 });
+
+test("LP-398: 地闪密度表格锚点容器补齐 flex 撑满规则（对齐线路管理页 table-view）", () => {
+  const anchorBlock = CSS.match(
+    /^\.admin-lightning-distribution-table-anchor \{([^}]*)\}/m,
+  )?.[1];
+  assert.ok(anchorBlock, "应存在 .admin-lightning-distribution-table-anchor 容器规则块");
+  assert.match(anchorBlock, /display:\s*flex/, "锚点容器应为 flex 布局");
+  assert.match(anchorBlock, /flex:\s*1/, "锚点容器应 flex:1 撑满");
+  assert.match(anchorBlock, /min-height:\s*0/, "锚点容器应 min-height:0");
+  assert.match(anchorBlock, /flex-direction:\s*column/, "锚点容器应为纵向布局");
+});
+
+test("LP-398: 地闪密度列表视图分页条隐藏单选页时保持显示（对齐卡片视图分页）", () => {
+  assert.ok(
+    PAGE.includes("hideOnSinglePage: false"),
+    "列表视图 Table 分页应隐藏单页时不隐藏，避免与卡片视图分页条切换时晃动",
+  );
+});

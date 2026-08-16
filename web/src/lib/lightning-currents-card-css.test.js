@@ -112,3 +112,16 @@ test("LP-388: pagination bar matches the line-card vertical spacing", () => {
 test("LP-355: obsolete field-row CSS is removed", () => {
   assert.ok(!/\.admin-lightning-events-card-field/.test(CSS), "卡片字段行样式类已被三段式布局替代，不应残留");
 });
+
+test("LP-398: 列表/卡片视图分页 total 使用同一服务端数据源", () => {
+  // 列表视图分页 total 不应强制 Math.max(...,1)，应与卡片视图 Pagination 的 total 一致，
+  // 避免 total=0 时分页条渲染不一致（列表隐藏、卡片显示）
+  assert.ok(
+    PAGE.includes("total: recordsQuery.data?.total ?? 0"),
+    "列表视图 Table 分页 total 应直接使用服务端 total",
+  );
+  assert.ok(
+    !PAGE.includes("Math.max(recordsQuery.data?.total ?? 0, 1)"),
+    "列表视图分页不应再使用 Math.max(...,1) 强制最小 1",
+  );
+});

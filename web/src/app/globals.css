@@ -137,6 +137,7 @@
 :root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-body,
 :root[data-fquiz-theme="dark"] .admin-lightning-events-card > .ant-card-body,
 :root[data-fquiz-theme="dark"] .admin-fault-analysis-card > .ant-card-body,
+:root[data-fquiz-theme="dark"] .admin-fl-analysis-job-card > .ant-card-body,
 :root[data-fquiz-theme="dark"] .admin-lightning-distribution-event-card > .ant-card-body {
   background: var(--ant-color-bg-container) !important;
 }
@@ -2594,6 +2595,15 @@ body {
   box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
 }
 
+:root[data-fquiz-theme="dark"] .admin-syslog-log-card > .ant-card-head {
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-syslog-log-card > .ant-card-body {
+  background: var(--ant-color-bg-container) !important;
+}
+
 .admin-files-table-anchor .ant-table-body {
   min-height: var(--admin-files-table-body-min-height, 180px);
 }
@@ -3508,6 +3518,13 @@ body {
   margin-bottom: 0 !important;
 }
 
+.admin-lightning-distribution-table-anchor {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
 .admin-lightning-distribution-table-anchor .ant-table-body {
   /* LP-392: min-height 由 CSS 变量驱动（与线路管理页等保持一致），
      默认 180px 兜底，由页面注入动态高度避免表格底部空白 */
@@ -3741,6 +3758,10 @@ body {
   min-height: 44px;
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
   background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-fl-analysis-job-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
 }
 
 .admin-fl-analysis-job-card > .ant-card-body {
