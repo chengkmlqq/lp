@@ -911,7 +911,7 @@ export default function AdminLightningCurrentsPage() {
               <div className="admin-lightning-currents-list-pane">
         <div className="admin-filter-bar">
           <Form layout="inline">
-            <Form.Item label="关键词" className="admin-filter-keyword-item">
+            <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
               <Input
                 allowClear
                 placeholder="按文件名/事件编号搜索"
@@ -920,7 +920,7 @@ export default function AdminLightningCurrentsPage() {
                 onPressEnter={handleSearch}
               />
             </Form.Item>
-            <Form.Item>
+            <Form.Item style={{ marginBottom: 0 }}>
               <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
                 查询
               </Button>

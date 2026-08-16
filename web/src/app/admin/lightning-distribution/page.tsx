@@ -960,7 +960,7 @@ export default function AdminLightningDistributionPage() {
               <div className="admin-lightning-distribution-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
-                    <Form.Item label="关键词" className="admin-filter-keyword-item">
+                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         allowClear
                         placeholder="按地点/标签/文件名筛选"
@@ -969,7 +969,7 @@ export default function AdminLightningDistributionPage() {
                         onPressEnter={handleSearch}
                       />
                     </Form.Item>
-                    <Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
                       <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
                         查询
                       </Button>
