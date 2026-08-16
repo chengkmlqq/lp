@@ -892,14 +892,14 @@ export default function ElevationRecordsPage() {
         hoverable
         onClick={() => openTowerTab(record)}
       >
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
+        <div className="flex flex-col">
+          <div className="admin-elevation-record-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
             <FileOutlined className="text-base text-gray-500" />
             <Typography.Text strong className="truncate min-w-0 flex-1">{record.file_name}</Typography.Text>
             <Tag color={statusTagColor(record.status)}>{record.status}</Tag>
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 px-4 py-3">
             <div className="flex items-center gap-2">
               <FileTextOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs">格式：</Typography.Text>
@@ -943,7 +943,7 @@ export default function ElevationRecordsPage() {
             </div>
           </div>
 
-          <div className="flex justify-end pt-2 border-t border-gray-200">
+          <div className="admin-elevation-record-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
             <Space size="small">
               <Button
                 type="text"
