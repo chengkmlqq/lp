@@ -514,12 +514,7 @@ export default function AdminFaultAnalysisPage() {
         ...previous,
         {
           key: tabKey,
-          label: (
-            <Space size={6}>
-              <span>{record.title || `故障分析 ${record.id.slice(0, 8)}`}</span>
-              {record.fault_type ? <Tag color="blue">{record.fault_type}</Tag> : null}
-            </Space>
-          ),
+          label: <span>{record.title || `故障分析 ${record.id.slice(0, 8)}`}</span>,
           closable: true,
           children: (
             <AnalysisDetailView
@@ -705,7 +700,7 @@ export default function AdminFaultAnalysisPage() {
           items={[
             {
               key: LIST_TAB_KEY,
-              label: <span className="admin-fault-analysis-tab-title">故障分析列表</span>,
+              label: <span className="admin-fault-analysis-tab-title">故障分析</span>,
               closable: false,
               children: (
                 <div className="admin-fault-analysis-list-pane">

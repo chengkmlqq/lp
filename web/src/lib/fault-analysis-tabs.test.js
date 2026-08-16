@@ -308,3 +308,27 @@ test("LP-348: 提交成功自动关闭对应 Tab，失败保留内容", () => {
   );
 });
 
+test("LP-393: 详情动态 Tab 标签去掉故障类型结果标签", () => {
+  const labelBlock = PAGE.match(
+    /label:\s*<span>\{record\.title \|\| `故障分析 \$\{record\.id\.slice\(0, 8\)\}`\}<\/span>/,
+  )?.[0];
+  assert.ok(labelBlock, "详情 Tab 标签应只保留标题 span");
+  assert.ok(
+    !PAGE.includes('<Tag color="blue">{record.fault_type}</Tag>'),
+    "详情 Tab 标签不应再渲染故障类型结果标签",
+  );
+});
+
+test("LP-393: 列表主 Tab 标题改为「故障分析」", () => {
+  assert.ok(
+    PAGE.includes(
+      'label: <span className="admin-fault-analysis-tab-title">故障分析</span>',
+    ),
+    "列表主 Tab 标题应为「故障分析」",
+  );
+  assert.ok(
+    !PAGE.includes("故障分析列表"),
+    "不应再存在「故障分析列表」文案",
+  );
+});
+
