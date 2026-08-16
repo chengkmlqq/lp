@@ -27,3 +27,35 @@ test("LP-356: log pre area stretches to fill remaining space and scrolls interna
   assert.match(preBlock, /overflow: "auto"/, "日志区应保留内部滚动");
   assert.ok(!/maxHeight: "60vh"/.test(preBlock), "日志区不应再使用 60vh 固定高度");
 });
+
+test("LP-386: task monitor query key includes a submit version and table stays mounted while loading", () => {
+  assert.match(
+    PAGE,
+    /const \[searchVersion, setSearchVersion\] = useState\(0\);/,
+    "应存在查询提交版本状态，用于每次点击查询都触发新请求",
+  );
+  assert.match(
+    PAGE,
+    /queryKey: \["task-monitor-overview", paginationCurrent, paginationPageSize, taskKeyword, searchVersion\],/,
+    "表格查询 key 应包含提交版本，避免相同条件重复查询被缓存吞掉",
+  );
+  assert.match(
+    PAGE,
+    /queryKey: \["task-monitor-overview-card", cardViewPage, paginationPageSize, taskKeyword, searchVersion\],/,
+    "卡片视图查询 key 也应同步包含提交版本",
+  );
+  assert.match(
+    PAGE,
+    /setSearchVersion\(\(prev\) => prev \+ 1\);/,
+    "点击查询时应提升提交版本",
+  );
+  assert.ok(
+    !/overviewData \?\s*\(/.test(PAGE),
+    "表格区不应再依赖 overviewData 条件渲染整个 Table",
+  );
+  assert.match(
+    PAGE,
+    /rowKey=\{\(record\) => record\.task_id\}/,
+    "表格 rowKey 应使用稳定的任务主键",
+  );
+});

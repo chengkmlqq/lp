@@ -122,6 +122,7 @@ export default function AdminTaskMonitorPage() {
 
   const [pendingKeyword, setPendingKeyword] = useState("");
   const [taskKeyword, setTaskKeyword] = useState("");
+  const [searchVersion, setSearchVersion] = useState(0);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(TASK_MONITOR_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -313,7 +314,7 @@ export default function AdminTaskMonitorPage() {
   }, [logModalContent, logModalStreaming, logModalStatus]);
 
   const overviewQuery = useQuery({
-    queryKey: ["task-monitor-overview", paginationCurrent, paginationPageSize, taskKeyword],
+    queryKey: ["task-monitor-overview", paginationCurrent, paginationPageSize, taskKeyword, searchVersion],
     enabled: Boolean(user) && canRead && viewMode === "table",
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -329,11 +330,12 @@ export default function AdminTaskMonitorPage() {
       }
       return (await response.json()) as TaskMonitorOverviewResponse;
     },
+    placeholderData: (previousData) => previousData,
     staleTime: 5_000,
   });
 
   const cardQuery = useQuery({
-    queryKey: ["task-monitor-overview-card", cardViewPage, paginationPageSize, taskKeyword],
+    queryKey: ["task-monitor-overview-card", cardViewPage, paginationPageSize, taskKeyword, searchVersion],
     enabled: Boolean(user) && canRead && viewMode === "card",
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -349,6 +351,7 @@ export default function AdminTaskMonitorPage() {
       }
       return (await response.json()) as TaskMonitorOverviewResponse;
     },
+    placeholderData: (previousData) => previousData,
     staleTime: 5_000,
   });
 
@@ -470,7 +473,7 @@ export default function AdminTaskMonitorPage() {
 
   const allTaskRows = useMemo<TaskTableRow[]>(() => {
     const tasks = overviewData?.tasks || [];
-    return tasks.map((task, index) => ({
+    return tasks.map((task) => ({
       task_id: task.task_id,
       name: task.name,
       state: task.state,
@@ -479,7 +482,7 @@ export default function AdminTaskMonitorPage() {
       started_at: task.started_at,
       finished_at: task.done_at,
       runtime_seconds: task.runtime_seconds,
-      key: `overview:${task.task_id}:${index}`,
+      key: `overview:${task.task_id}`,
     }));
   }, [overviewData]);
 
@@ -499,15 +502,10 @@ export default function AdminTaskMonitorPage() {
   }, [viewMode, taskTotal, paginationPageSize, paginationCurrent]);
 
   const handleSearch = useCallback(() => {
+    setSearchVersion((prev) => prev + 1);
     setTaskKeyword(pendingKeyword);
     resetTaskListPagination();
   }, [pendingKeyword, resetTaskListPagination]);
-
-  const handleResetFilters = () => {
-    setTaskKeyword("");
-    setPendingKeyword("");
-    resetTaskListPagination();
-  };
 
   const overviewErrorMessage = (
     viewMode === "table" ? overviewQuery.error : cardQuery.error
@@ -527,7 +525,7 @@ export default function AdminTaskMonitorPage() {
       return;
     }
 
-    const pageTasks = (cardQuery.data?.tasks ?? []).map((task, index) => ({
+    const pageTasks = (cardQuery.data?.tasks ?? []).map((task) => ({
       task_id: task.task_id,
       name: task.name,
       state: task.state,
@@ -536,7 +534,7 @@ export default function AdminTaskMonitorPage() {
       started_at: task.started_at,
       finished_at: task.done_at,
       runtime_seconds: task.runtime_seconds,
-      key: `overview:${task.task_id}:${index}`,
+      key: `overview:${task.task_id}`,
     }));
 
     const frameId = window.requestAnimationFrame(() => {
@@ -865,43 +863,41 @@ export default function AdminTaskMonitorPage() {
         )}
 
         {viewMode === "table" ? (
-          overviewData ? (
-            <div
-              ref={tableScrollAnchorRef}
-              className="admin-task-monitor-table-anchor"
-              style={{ "--admin-task-monitor-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-            >
-              <Table<TaskTableRow>
-                rowKey={(record) => record.key}
-                columns={taskColumns}
-                dataSource={allTaskRows}
-                loading={overviewQuery.isFetching}
-                tableLayout="fixed"
-                pagination={{
-                  current: paginationCurrent,
-                  pageSize: paginationPageSize,
-                  total: Math.max(taskTotal, 1),
-                  showSizeChanger: true,
-                  pageSizeOptions: [10, 20, 50, 100],
-                  showTotal: () => `共 ${taskTotal} 条`,
-                  hideOnSinglePage: false,
-                  style: { marginBottom: 0 },
-                  onChange: (page, pageSize) => {
-                    setPagination({ current: page, pageSize });
-                  },
-                }}
-                locale={{
-                  emptyText: (
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="未找到符合筛选条件的任务。"
-                    />
-                  ),
-                }}
-                scroll={{ x: 1600, y: tableScrollY }}
-              />
-            </div>
-          ) : null
+          <div
+            ref={tableScrollAnchorRef}
+            className="admin-task-monitor-table-anchor"
+            style={{ "--admin-task-monitor-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+          >
+            <Table<TaskTableRow>
+              rowKey={(record) => record.task_id}
+              columns={taskColumns}
+              dataSource={allTaskRows}
+              loading={overviewQuery.isFetching}
+              tableLayout="fixed"
+              pagination={{
+                current: paginationCurrent,
+                pageSize: paginationPageSize,
+                total: Math.max(taskTotal, 1),
+                showSizeChanger: true,
+                pageSizeOptions: [10, 20, 50, 100],
+                showTotal: () => `共 ${taskTotal} 条`,
+                hideOnSinglePage: false,
+                style: { marginBottom: 0 },
+                onChange: (page, pageSize) => {
+                  setPagination({ current: page, pageSize });
+                },
+              }}
+              locale={{
+                emptyText: (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="未找到符合筛选条件的任务。"
+                  />
+                ),
+              }}
+              scroll={{ x: 1600, y: tableScrollY }}
+            />
+          </div>
         ) : (
           <div className="admin-task-monitor-card-view">
             {cardQuery.isFetching && allLoadedTasks.length === 0 ? (
