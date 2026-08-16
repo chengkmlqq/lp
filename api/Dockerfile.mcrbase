@@ -1,24 +1,44 @@
-# fquiz-mcr-base: fquiz-base + Linux 版 MATLAB Runtime（R2023a glnxa64）
+# fquiz-mcr-base: python 3.11 (bookworm) + Linux 版 MATLAB Runtime（R2023a glnxa64）
 #
-# 低频更新的基础镜像：仅在服务器/大磁盘环境构建（GitHub runner 14G 装不下
-# Linux MCR：zip 5G + 解压 10G + 安装 10G 峰值 ~25G）。
-# 构建一次推送阿里云，fquiz-matlab-worker 以它为基础只叠加业务代码层。
+# 注意：MATLAB R2023a 的 MCR 在过新的系统（Debian 13/glibc 2.41/内核 6.8）上
+# 会段错误（mclInitializeApplication segfault），必须用同年代基础：
+#   - python:3.11-slim-bookworm（Debian 12，glibc 2.36）✅ 已验证
+# 另需清除 MCR 库的可执行栈标记（新 glibc 拒绝 RWE GNU_STACK 加载）。
 
 ARG REGISTRY=crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com
 ARG REGISTRY_NAMESPACE=ck-registry
-FROM ${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-base:latest
+FROM python:3.11-slim-bookworm
 
+WORKDIR /app
+
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_DEFAULT_TIMEOUT=300
+ARG PIP_RETRIES=20
 ARG APT_MIRROR=""
 ARG MCR_VERSION=R2023a
 ARG MCR_DOWNLOAD_URL=https://ssd.mathworks.com/supportfiles/downloads/R2023a/Release/0/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2023a_glnxa64.zip
 
-# 1) MCR 运行所需的系统库（X11/解压工具）
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT}
+ENV PIP_RETRIES=${PIP_RETRIES}
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# 1) 系统依赖（fquiz-base 同款 + MCR 所需 X11 库 + 解压工具）
 RUN if [ -n "${APT_MIRROR}" ]; then \
         sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
         sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list 2>/dev/null; \
     fi; \
     apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        libexpat1 \
+        gdal-bin \
+        libgdal-dev \
+        fonts-noto-cjk \
+        g++ \
+        gcc \
         unzip \
         curl \
         libxt6 \
@@ -34,7 +54,15 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
         libxi6 \
     && rm -rf /var/lib/apt/lists/*
 
-# 2) 下载并静默安装 Linux 版 MATLAB Runtime（先删 zip 再安装，控制磁盘峰值）
+# 2) Python 依赖（与 fquiz-base 一致）
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --retries "${PIP_RETRIES}" --timeout "${PIP_DEFAULT_TIMEOUT}" -i "${PIP_INDEX_URL}" -r requirements.txt
+RUN GDAL_VERSION=$(gdal-config --version) \
+    && pip install --no-cache-dir GDAL==${GDAL_VERSION} \
+    && apt-get purge -y --auto-remove g++ gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3) 下载并静默安装 Linux 版 MATLAB Runtime（先删 zip 再安装，控制磁盘峰值）
 RUN mkdir -p /mcr-install \
     && curl -fsSL --retry 5 --retry-delay 5 -o /tmp/MCR.zip "${MCR_DOWNLOAD_URL}" \
     && unzip -q /tmp/MCR.zip -d /mcr-install \
@@ -43,7 +71,11 @@ RUN mkdir -p /mcr-install \
     && /mcr-install/install -mode silent -agreeToLicense yes -destinationFolder /opt/mcr \
     && rm -rf /mcr-install
 
-# 3) MCR 运行环境变量（基础镜像无 LD_LIBRARY_PATH，直接写全路径）
+# 4) 清除 MCR 库的可执行栈标记（RWE GNU_STACK 在新 glibc 下加载失败）
+COPY clear_execstack.py /tmp/clear_execstack.py
+RUN python3 /tmp/clear_execstack.py && rm -f /tmp/clear_execstack.py
+
+# 5) MCR 运行环境变量
 ENV MCR_MASTER_PATH=/opt/mcr/${MCR_VERSION}
 ENV LD_LIBRARY_PATH=${MCR_MASTER_PATH}/runtime/glnxa64:${MCR_MASTER_PATH}/bin/glnxa64:${MCR_MASTER_PATH}/sys/os/glnxa64
 ENV XAPPLRESDIR=/etc/X11/app-defaults
