@@ -73,6 +73,9 @@ class FaultAnalysis(Base):
     # 上传的判别输入文件（判别系统字段名 -> 共享卷内相对路径），由判别任务读取
     upload_files: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
+    # 进度（0-100，异步判别任务执行过程中递增）
+    progress: Mapped[float] = mapped_column(Float, default=0)
+
     # 审计
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)

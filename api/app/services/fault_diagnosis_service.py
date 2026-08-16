@@ -6,7 +6,7 @@ import subprocess
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from sqlalchemy.orm import Session
 
@@ -685,6 +685,117 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
         item.update_date = utcnow()
         item.update_user = "system"
         db.commit()
+        raise
+
+
+def run_fault_diagnosis_with_progress(
+    db: Session,
+    analysis_id: str,
+    progress_callback: Callable[[float, str], None] | None = None,
+) -> dict[str, Any]:
+    """执行一次完整判别，并在各阶段通过 progress_callback 上报进度。
+
+    进度分段：
+      10%  - 开始收集输入
+      30%  - 输入收集完成
+      50%  - 行波增强完成 / 跳过
+      80%  - 综合判别完成
+      85%  - 结果回填完成
+    """
+    item = get_analysis_by_id(db, analysis_id)
+    if item is None:
+        raise ValueError(f"故障分析记录不存在: {analysis_id}")
+
+    now = utcnow()
+    item.status = "processing"
+    item.progress = 10
+    item.update_date = now
+    item.update_user = "system"
+    db.commit()
+    if progress_callback:
+        progress_callback(10, "processing")
+
+    try:
+        if progress_callback:
+            progress_callback(15, "processing")
+        fault_raw, lightning_raw, ledger_rows, traveling_wave_records, input_warnings = _collect_inputs(
+            item, db=db
+        )
+        if progress_callback:
+            progress_callback(30, "processing")
+
+        manual = build_manual_input(item)
+        analysis_dir = Path(get_settings().file_vfs_root) / "fault_analysis" / analysis_id
+        upload_files = item.upload_files or {}
+        traveling_wave_paths = _resolve_upload_files(upload_files, "traveling_wave_file")
+        logger.info(
+            "Fault diagnosis inputs for %s: upload_fields=%s traveling_wave_file_count=%d",
+            analysis_id,
+            sorted(upload_files),
+            len(traveling_wave_paths),
+        )
+
+        wave_model_path, wave_review_context = _try_matlab_wave_enhancement(
+            analysis_id,
+            analysis_dir,
+            fault_raw,
+            lightning_raw,
+            ledger_rows,
+            traveling_wave_records,
+            manual,
+        )
+        wave_model_result = load_wave_model_result(wave_model_path) if wave_model_path is not None else None
+        if progress_callback:
+            progress_callback(50, "processing")
+
+        source_paths = {
+            "fault": _resolve_upload_file(upload_files, "wave_data_file"),
+            "lightning": _resolve_upload_file(upload_files, "lightning_data_file"),
+            "ledger": _resolve_upload_file(upload_files, "ledger_data_file"),
+            "manual": None,
+            "traveling_waves": traveling_wave_paths,
+            "wave_model_result": wave_model_path,
+        }
+
+        diag = build_diagnosis(
+            fault_raw,
+            manual,
+            ledger_rows,
+            lightning_raw=lightning_raw or None,
+            traveling_wave_records=traveling_wave_records,
+            wave_model_result=wave_model_result,
+            wave_review_context=wave_review_context,
+            source_paths=source_paths,
+        )
+        if progress_callback:
+            progress_callback(80, "processing")
+
+        mapped = map_result_to_record(diag, item, input_warnings=input_warnings)
+
+        item.status = "completed"
+        item.progress = 85
+        item.risk_level = mapped["risk_level"]
+        item.fault_type = mapped["fault_type"]
+        item.fault_phase = mapped["fault_phase"]
+        item.confidence = mapped["confidence"]
+        item.result_json = mapped["result_json"]
+        item.update_date = utcnow()
+        item.update_user = "system"
+        db.commit()
+        if progress_callback:
+            progress_callback(85, "processing")
+
+        return mapped["result_json"]
+    except Exception as exc:
+        item.status = "failed"
+        item.progress = 0
+        item.result_json = dict(item.result_json or {})
+        item.result_json["error"] = {"message": str(exc), "traceback": traceback.format_exc()}
+        item.update_date = utcnow()
+        item.update_user = "system"
+        db.commit()
+        if progress_callback:
+            progress_callback(0, "failed")
         raise
 
 

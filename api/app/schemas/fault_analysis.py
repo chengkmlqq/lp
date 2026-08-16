@@ -28,6 +28,7 @@ class FaultAnalysisSummary(BaseModel):
     lightning_current_ka: float | None = None
     wave_distance_km: float | None = None
     traveling_wave_distance_km: float | None = None
+    progress: float = 0
     create_date: datetime
     create_user: str | None = None
     update_date: datetime

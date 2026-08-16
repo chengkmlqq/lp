@@ -1,4 +1,4 @@
-import { Badge, Button, Space, Typography } from "antd";
+import { Badge, Button, Progress, Space, Typography } from "antd";
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined } from "@ant-design/icons";
 import { Card } from "@/components/ui-antd";
 import type { FaultAnalysis } from "./types";
@@ -82,7 +82,12 @@ export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: A
           </Text>
         </div>
 
-        <div className="admin-fault-analysis-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
+        <div className="admin-fault-analysis-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+          {analysis.status === "processing" ? (
+            <Progress percent={Math.round(analysis.progress)} size="small" className="flex-1 max-w-40" />
+          ) : (
+            <div />
+          )}
           <Space size="small">
             <Button
               type="text"

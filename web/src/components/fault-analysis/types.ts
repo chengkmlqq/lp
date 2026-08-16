@@ -11,6 +11,7 @@ export interface FaultAnalysis {
   fault_time: string;
   fault_type: string;
   confidence: number;
+  progress: number;
   created_at: string;
   updated_at: string;
   created_by?: string;

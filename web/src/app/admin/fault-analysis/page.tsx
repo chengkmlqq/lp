@@ -9,6 +9,7 @@ import {
   Empty,
   Form,
   Modal,
+  Progress,
   Segmented,
   Space,
   Table,
@@ -27,6 +28,7 @@ import { useAuth } from "@/components/auth-provider";
 import { AnalysisCardList } from "@/components/fault-analysis/analysis-card-list";
 import { AnalysisDetailView } from "@/components/fault-analysis/analysis-detail-view";
 import { CreateAnalysisFormTab } from "@/components/fault-analysis/create-analysis-form-tab";
+import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { readApiError } from "@/lib/api";
 import type {
   FaultAnalysisListResponse,
@@ -93,6 +95,7 @@ function mapSummary(item: FaultAnalysisListResponse["items"][0]): FaultAnalysis 
     fault_time: item.fault_time ?? "",
     fault_type: item.fault_type ?? "",
     confidence: item.confidence ?? 0,
+    progress: item.progress ?? 0,
     created_at: item.create_date,
     updated_at: item.update_date,
     created_by: item.create_user ?? undefined,
@@ -194,6 +197,13 @@ export default function AdminFaultAnalysisPage() {
       return (await response.json()) as FaultAnalysisListResponse;
     },
   });
+
+  useTopicSubscription(
+    "admin.fault-analysis",
+    useCallback(() => {
+      void queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
+    }, [queryClient]),
+  );
 
   const analyses = useMemo(
     () => (analysesQuery.data?.items ?? []).map(mapSummary),
@@ -571,10 +581,18 @@ export default function AdminFaultAnalysisPage() {
       {
         title: "状态",
         dataIndex: "status",
-        width: 100,
-        render: (value: FaultAnalysis["status"]) => {
+        width: 160,
+        render: (value: FaultAnalysis["status"], row: FaultAnalysis) => {
           const meta = FAULT_STATUS_META[value] ?? { color: "default", label: value };
-          return <Tag color={meta.color}>{meta.label}</Tag>;
+          const statusTag = <Tag color={meta.color}>{meta.label}</Tag>;
+          return (
+            <Space size={6}>
+              {statusTag}
+              {row.status === "processing" && (
+                <Progress percent={Math.round(row.progress)} size="small" style={{ width: 80 }} />
+              )}
+            </Space>
+          );
         },
       },
       {

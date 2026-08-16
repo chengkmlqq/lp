@@ -895,6 +895,7 @@ export type FaultAnalysisSummary = {
   lightning_current_ka: number | null;
   wave_distance_km: number | null;
   traveling_wave_distance_km: number | null;
+  progress: number;
   create_date: string;
   create_user: string | null;
   update_date: string;
