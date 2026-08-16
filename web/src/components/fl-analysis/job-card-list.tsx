@@ -1,6 +1,13 @@
 "use client";
 
-import { Empty, Spin, Space, Tag, Typography } from "antd";
+import { Button, Empty, Space, Spin, Tag, Typography } from "antd";
+import {
+  ApartmentOutlined,
+  ClockCircleOutlined,
+  DeploymentUnitOutlined,
+  EyeOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
 
 import { Card } from "@/components/ui-antd";
 import type { FlAnalysisJobSummary } from "@/types/auth";
@@ -16,7 +23,7 @@ type JobCardListProps = {
   jobs: FlAnalysisJobSummary[];
   selectedJobId: string | null;
   loading: boolean;
-  onSelect: (jobId: string) => void;
+  onSelect: (job: FlAnalysisJobSummary) => void;
 };
 
 export function JobCardList({ jobs, selectedJobId, loading, onSelect }: JobCardListProps) {
@@ -34,57 +41,70 @@ export function JobCardList({ jobs, selectedJobId, loading, onSelect }: JobCardL
         const selected = job.id === selectedJobId;
         const lineName = job.line_name || job.line_code || "-";
         return (
-          <button
+          <Card
             key={job.id}
-            type="button"
-            className={`w-full cursor-pointer rounded-lg border bg-white p-3 text-left transition hover:border-blue-400 hover:shadow-sm ${
-              selected ? "border-blue-500 shadow-sm ring-1 ring-blue-500" : "border-gray-200"
-            }`}
+            size="small"
+            hoverable
+            className={`admin-fl-analysis-job-card${selected ? " admin-fl-analysis-job-card-selected" : ""}`}
             onClick={() => {
-              onSelect(job.id);
+              onSelect(job);
             }}
           >
-            <Space direction="vertical" size={8} className="flex w-full">
-              <Space size={[6, 6]} wrap>
-                <Tag color={statusColor(job.status)}>{job.status}</Tag>
-                <Tag>{formatJobType(job.job_type, mitigationMode(job))}</Tag>
-              </Space>
-              <div>
-                <Typography.Text strong className="line-clamp-1">
+            <div className="flex flex-col">
+              <div className="admin-fl-analysis-job-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+                <ThunderboltOutlined className="text-base text-gray-500" />
+                <Typography.Text strong className="truncate">
                   {job.job_name || lineName}
                 </Typography.Text>
-                <Typography.Text type="secondary" className="block line-clamp-1">
-                  {lineName}
-                </Typography.Text>
+                <Tag color={statusColor(job.status)}>{job.status}</Tag>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-                <span>创建：{formatDateTime(job.create_date)}</span>
-                <span>完成：{formatDateTime(job.finished_at)}</span>
-                <span>杆塔：{job.total_tower_count}</span>
-                <span>结果：{job.result_tower_count}</span>
+
+              <div className="flex flex-col gap-2 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <ApartmentOutlined className="text-xs text-gray-500" />
+                  <Typography.Text type="secondary" className="text-xs truncate">
+                    {lineName}
+                  </Typography.Text>
+                </div>
+                <div className="flex items-center gap-2">
+                  <DeploymentUnitOutlined className="text-xs text-gray-500" />
+                  <Typography.Text type="secondary" className="text-xs">
+                    {formatJobType(job.job_type, mitigationMode(job))}
+                  </Typography.Text>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ClockCircleOutlined className="text-xs text-gray-500" />
+                  <Typography.Text type="secondary" className="text-xs">
+                    创建：{formatDateTime(job.create_date)} / 完成：{formatDateTime(job.finished_at)}
+                  </Typography.Text>
+                </div>
+                <div className="flex items-center gap-2">
+                  <DeploymentUnitOutlined className="text-xs text-gray-500" />
+                  <Typography.Text type="secondary" className="text-xs">
+                    杆塔：{job.total_tower_count} / 结果：{job.result_tower_count}
+                  </Typography.Text>
+                </div>
               </div>
-            </Space>
-          </button>
+
+              <div className="admin-fl-analysis-job-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
+                <Space size="small">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EyeOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSelect(job);
+                    }}
+                  >
+                    查看详情
+                  </Button>
+                </Space>
+              </div>
+            </div>
+          </Card>
         );
       })}
     </div>
-  );
-}
-
-export function JobListCard(props: JobCardListProps) {
-  return (
-    <Card>
-      <Space direction="vertical" size={12} className="flex w-full">
-        <div>
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            任务列表
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            点击卡片查看任务详情与杆塔结果。
-          </Typography.Text>
-        </div>
-        <JobCardList {...props} />
-      </Space>
-    </Card>
   );
 }
