@@ -8,6 +8,7 @@ from app.services.fault_input_discovery import (
     CATEGORY_LIGHTNING,
     CATEGORY_TRAVELING_WAVE,
     CATEGORY_WAVE,
+    classify_upload_file,
     InputDiscoveryError,
     discover_one,
     discover_waveforms,
@@ -55,6 +56,13 @@ class TestDiscoverOne:
         _touch(sub, "1_录波提取.json")
         found = discover_one(tmp_path, "1", {".json", ".txt"}, "录波数据")
         assert found is None
+
+
+class TestClassifyUploadFile:
+    def test_numbered_prefix_requires_separator(self):
+        assert classify_upload_file("1 录波故障信息 雁湖线_fault_info.xlsx") == CATEGORY_WAVE
+        assert classify_upload_file("2 雷电定位输入模板.xlsx") == CATEGORY_LIGHTNING
+        assert classify_upload_file("1号杆塔A相.txt") == CATEGORY_TRAVELING_WAVE
 
 
 class TestDiscoverWaveforms:

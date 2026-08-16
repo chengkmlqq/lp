@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -14,6 +15,7 @@ from app.models.line_tower import LineTower
 from app.models.tower_lightning_result import TowerLightningResult
 from app.models.tower_profile import TowerProfile
 from app.core import file_upload
+from app.api.v1 import fault_analysis as fault_analysis_api
 from app.services import fault_analysis_service
 
 
@@ -280,3 +282,60 @@ def test_resolve_temp_upload_missing(monkeypatch) -> None:
         )
     assert captured.value.status_code == 400
     assert "不存在或已过期" in str(captured.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_auto_classified_temp_uploads_preserve_all_wave_files(monkeypatch) -> None:
+    temp_files = {
+        "tmp/1": (b"wave", "1 录波故障信息 雁湖线_fault_info.xlsx"),
+        "tmp/2": (b"lightning", "2 雷电定位输入模板.xlsx"),
+        "tmp/a": (b"A", "1号杆塔A相.txt"),
+        "tmp/b": (b"B", "1号杆塔B相.txt"),
+        "tmp/c": (b"C", "1号杆塔C相.txt"),
+    }
+    stored: list[tuple[str, str, str, bytes]] = []
+
+    def mock_resolve(temp_file_id: str, user_id: str) -> tuple[bytes, str]:
+        return temp_files[temp_file_id]
+
+    def mock_store(analysis_id: str, field: str, file_name: str, content: bytes) -> str:
+        stored.append((analysis_id, field, file_name, content))
+        return f"fault_analysis/{analysis_id}/{field}_{file_name}"
+
+    monkeypatch.setattr(fault_analysis_api, "resolve_temp_upload", mock_resolve)
+    monkeypatch.setattr(fault_analysis_api, "store_analysis_upload_file", mock_store)
+
+    upload_files = await fault_analysis_api._store_auto_classified_files(
+        "fa-1",
+        uploads=[],
+        temp_file_ids=["tmp/1", "tmp/2", "tmp/a", "tmp/b", "tmp/c"],
+        user_id="u1",
+    )
+
+    assert upload_files["wave_data_file"].endswith("1 录波故障信息 雁湖线_fault_info.xlsx")
+    assert upload_files["lightning_data_file"].endswith("2 雷电定位输入模板.xlsx")
+    assert upload_files["traveling_wave_file"] == [
+        "fault_analysis/fa-1/traveling_wave_file_1号杆塔A相.txt",
+        "fault_analysis/fa-1/traveling_wave_file_1号杆塔B相.txt",
+        "fault_analysis/fa-1/traveling_wave_file_1号杆塔C相.txt",
+    ]
+    assert [field for _, field, _, _ in stored].count("traveling_wave_file") == 3
+
+
+@pytest.mark.asyncio
+async def test_auto_classified_unknown_file_fails_clearly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        fault_analysis_api,
+        "resolve_temp_upload",
+        lambda temp_file_id, user_id: (b"content", "report.docx"),
+    )
+
+    with pytest.raises(HTTPException) as captured:
+        await fault_analysis_api._store_auto_classified_files(
+            "fa-1",
+            uploads=[],
+            temp_file_ids=["tmp/unknown"],
+            user_id="u1",
+        )
+    assert captured.value.status_code == 400
+    assert "无法自动识别文件类别" in str(captured.value.detail)

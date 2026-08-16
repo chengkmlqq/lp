@@ -209,7 +209,7 @@ def store_analysis_upload_file(analysis_id: str, field: str, filename: str, cont
     return target.relative_to(vfs_root).as_posix()
 
 
-def set_analysis_upload_files(db: Session, analysis_id: str, upload_files: dict[str, str]) -> None:
+def set_analysis_upload_files(db: Session, analysis_id: str, upload_files: dict[str, object]) -> None:
     item = get_analysis_by_id(db, analysis_id)
     if item is None:
         raise HTTPException(
