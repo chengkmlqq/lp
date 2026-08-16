@@ -472,11 +472,11 @@ def execute_job(job_id: str) -> None:
                     external_adapter=job.external_adapter,
                     adapter_config_json=job.adapter_config_json or {},
                 )
-                summary["external_model_id"] = external_job.model.id
-                summary["external_model_code"] = external_job.model.code
-                summary["external_model_name"] = external_job.model.name
-                summary["external_version_id"] = external_job.version.id
-                summary["external_version_no"] = external_job.version.version_no
+                summary["external_model_id"] = external_job.asset.id
+                summary["external_model_code"] = external_job.asset.code
+                summary["external_model_name"] = external_job.asset.name
+                summary["external_version_id"] = external_job.release.id
+                summary["external_version_no"] = external_job.release.release_no
             elif job.external_adapter == "legacy_atp":
                 legacy_external_job = resolve_legacy_atp_job(
                     adapter_config_json=job.adapter_config_json or {},

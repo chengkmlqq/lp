@@ -194,6 +194,7 @@ export default function AdminFlAnalysisPage() {
         tail_time_step_us: values.tail_time_step_us,
       };
       if (values.atp_model_id) {
+        payload.external_adapter = "atp";
         payload.adapter_config_json = {
           model_id: values.atp_model_id,
         };

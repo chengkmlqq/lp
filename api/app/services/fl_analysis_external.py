@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,11 +16,18 @@ from ..models.atp_asset import AtpAsset, AtpAssetRelease
 from ..models.base import utcnow
 from ..models.fl_analysis import FlAnalysisJob, FlAnalysisTowerSnapshot
 from .atp_asset_service import (
+    _normalize_relative_path,
     _resolve_engine_workdir,
+    _resolve_mount,
     _resolve_native_engine_executable,
     _resolve_timeout,
     _resolve_wine_engine_executable,
     _truncate_output,
+)
+from .storage_driver import (
+    StorageDriverError,
+    build_storage_driver,
+    normalize_virtual_path,
 )
 
 PLACEHOLDER_PATTERN = re.compile(r"{{\s*([^{}]+?)\s*}}")
@@ -136,6 +144,7 @@ class ResolvedExternalWaveformJob:
     adapter: str
     asset: AtpAsset
     release: AtpAssetRelease
+    atp_text: str
     timeout_seconds: int
     extra_args: list[str]
     environment: dict[str, str]
@@ -150,6 +159,40 @@ class ExternalTowerExecutionResult:
     working_dir: str
     stdout_text: str | None
     stderr_text: str | None
+
+
+def _resolve_release_atp_text(
+    db: Session,
+    *,
+    asset: AtpAsset,
+    release: AtpAssetRelease,
+) -> str:
+    """Resolve executable ATP template text for a release.
+
+    Prefer ``manifest_json.atp_text`` when present; otherwise fall back to
+    reading the release's entry file from storage. Raises RuntimeError with
+    asset code + release number when no template content is available.
+    """
+    manifest = release.manifest_json or {}
+    atp_text = manifest.get("atp_text", "")
+    if atp_text.strip():
+        return atp_text
+
+    entry_file = _normalize_relative_path(release.entry_file) or "work.atp"
+    entry_path = normalize_virtual_path(f"{release.storage_root_path.rstrip('/')}/{entry_file}")
+    try:
+        mount = _resolve_mount(db, release.storage_mount_code)
+        driver = build_storage_driver(mount.backend, mount)
+        read_result = driver.read_file(entry_path)
+    except (HTTPException, StorageDriverError) as exc:
+        raise RuntimeError(
+            f"ATP 资产版本缺少可执行模板: {asset.code} v{release.release_no}（{entry_file}）"
+        ) from exc
+
+    atp_text = read_result.content.decode("utf-8", errors="replace")
+    if not atp_text.strip():
+        raise RuntimeError(f"ATP 资产版本缺少可执行模板: {asset.code} v{release.release_no}")
+    return atp_text
 
 
 def resolve_external_waveform_job(
@@ -180,14 +223,9 @@ def resolve_external_waveform_job(
         release_no=release_no,
     )
 
-    # For AtpAssetRelease, the template content might be in manifest_json
-    # Check if there's an atp_text equivalent or entry_file content
-    manifest = release.manifest_json or {}
-    atp_text = manifest.get("atp_text", "")
-    if not atp_text.strip():
-        raise RuntimeError(f"ATP 资产版本缺少可执行模板: {asset.code} v{release.release_no}")
+    atp_text = _resolve_release_atp_text(db, asset=asset, release=release)
 
-    manifest_contract = _read_object(manifest.get("fl_analysis"))
+    manifest_contract = _read_object(release.manifest_json.get("fl_analysis"))
     adapter_contract = {
         key: value
         for key, value in config.items()
@@ -222,6 +260,7 @@ def resolve_external_waveform_job(
         adapter=adapter,
         asset=asset,
         release=release,
+        atp_text=atp_text,
         timeout_seconds=timeout_seconds,
         extra_args=extra_args,
         environment=environment,
@@ -259,9 +298,7 @@ def execute_external_waveform_tower_analysis(
         execution_options=execution_options,
         baseline_result=baseline_result,
     )
-    # Get atp_text from manifest_json
-    manifest = resolved_job.release.manifest_json or {}
-    atp_text = manifest.get("atp_text", "")
+    atp_text = resolved_job.atp_text
 
     rendered_text = render_atp_template(
         atp_text,
