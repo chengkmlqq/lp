@@ -262,27 +262,21 @@ def upload_tower_model_image(
     *,
     model_id: str,
     mount_code: str,
-    file: UploadFile,
+    content: bytes,
+    filename: str,
+    content_type: str | None = None,
     actor: User,
 ) -> TowerModelImageUploadResponse:
     item = get_tower_model_by_id(db, model_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="杆塔模型不存在")
 
-    filename = (file.filename or "").strip()
+    filename = (filename or "").strip()
     if not filename:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件名不能为空")
     suffix = Path(filename).suffix.lower()
     if suffix not in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="图片格式不支持，仅支持 jpg/jpeg/png/webp/gif/bmp")
-
-    try:
-        content = file.file.read()
-    finally:
-        try:
-            file.file.close()
-        except Exception:
-            pass
 
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传图片为空")
@@ -295,7 +289,7 @@ def upload_tower_model_image(
     target_name = f"{safe_basename}{suffix}"
     target_path = join_virtual_path(image_dir, target_name)
 
-    content_type = file.content_type or mimetypes.guess_type(filename)[0]
+    content_type = content_type or mimetypes.guess_type(filename)[0]
     try:
         driver.write_file(target_path, content=content, content_type=content_type)
     except StoragePathNotFoundError as exc:

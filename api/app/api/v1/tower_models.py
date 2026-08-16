@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
+from ...core.file_upload import resolve_temp_upload, save_temp_upload
 from ...schemas.tower_model import (
     TowerModelCreateRequest,
     TowerModelImageUploadResponse,
     TowerModelListResponse,
     TowerModelSeedResponse,
     TowerModelSummary,
+    TowerModelTempUploadResponse,
     TowerModelUpdateRequest,
 )
 from ...services.file_service import download_file_from_path
@@ -94,19 +96,54 @@ def delete_tower_model_endpoint(
     return {"success": True}
 
 
+@router.post("/upload-temp", response_model=TowerModelTempUploadResponse, dependencies=[Depends(require_enabled_menu_route)])
+def upload_tower_model_temp_file(
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_permission("tower_model.manage")),
+) -> TowerModelTempUploadResponse:
+    """选择文件后立即上传到 MinIO 临时目录，返回 temp_file_id 供确认上传时引用。
+
+    临时文件将在确认上传消费后自动删除，或由定时清理任务清理超过 24h 的孤儿文件。
+    """
+    temp_file_id, file_name = save_temp_upload(file, current_user.user.id)
+    return TowerModelTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
+
+
 @router.post("/{model_id}/image", response_model=TowerModelImageUploadResponse, dependencies=[Depends(require_enabled_menu_route)])
 def upload_tower_model_image_endpoint(
     model_id: str,
     mount_code: str = Query(..., min_length=2, max_length=64),
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    temp_file_id: str | None = Form(default=None),
     current_user: CurrentUser = Depends(require_permission("tower_model.manage")),
     db: Session = Depends(get_db),
 ) -> TowerModelImageUploadResponse:
+    if temp_file_id:
+        content, source_file_name = resolve_temp_upload(temp_file_id, current_user.user.id)
+        return upload_tower_model_image(
+            db,
+            model_id=model_id,
+            mount_code=mount_code,
+            content=content,
+            filename=source_file_name,
+            actor=current_user.user,
+        )
+    if file is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少文件，请提供 file 或 temp_file_id")
+    try:
+        content = file.file.read()
+    finally:
+        try:
+            file.file.close()
+        except Exception:
+            pass
     return upload_tower_model_image(
         db,
         model_id=model_id,
         mount_code=mount_code,
-        file=file,
+        content=content,
+        filename=file.filename or "",
+        content_type=file.content_type,
         actor=current_user.user,
     )
 

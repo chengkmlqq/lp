@@ -442,6 +442,11 @@ export type TowerModelImageUploadResponse = {
   image_path: string;
 };
 
+export type TowerModelTempUploadResponse = {
+  temp_file_id: string;
+  file_name: string;
+};
+
 export type TowerModelSeedResponse = {
   total_models: number;
   imported_models: number;

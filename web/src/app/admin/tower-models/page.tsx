@@ -13,6 +13,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Progress,
   Row,
   Select,
   Space,
@@ -21,10 +22,12 @@ import {
   Tabs,
   Tag,
   Typography,
+  Upload,
+  message,
   type CardProps,
   type MenuProps,
 } from "antd";
-import { EditOutlined, MoreOutlined, SearchOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, EditOutlined, MoreOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
 
@@ -32,13 +35,14 @@ import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
-import { readApiError } from "@/lib/api";
+import { getApiBaseUrl, readApiError } from "@/lib/api";
 import type {
   FileListResponse,
   FileStorageMount,
   TowerModelImageUploadResponse,
   TowerModelListResponse,
   TowerModelSummary,
+  TowerModelTempUploadResponse,
 } from "@/types/auth";
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
@@ -237,10 +241,9 @@ function TowerModelImageCell({
 }
 
 export default function AdminTowerModelsPage() {
-  const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
+  const { user, initializing, fetchWithAuth, getAccessToken, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<TowerModelFormValues>();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isMobile = useMobileDetection();
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -250,6 +253,10 @@ export default function AdminTowerModelsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingModel, setEditingModel] = useState<TowerModelSummary | null>(null);
   const [uploadModel, setUploadModel] = useState<TowerModelSummary | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [tempFileId, setTempFileId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: TOWER_MODEL_DEFAULT_PAGE_SIZE });
   const [cardViewPage, setCardViewPage] = useState(1);
   const [allLoadedModels, setAllLoadedModels] = useState<TowerModelSummary[]>([]);
@@ -447,9 +454,12 @@ export default function AdminTowerModelsPage() {
   });
 
   const uploadImageMutation = useMutation({
-    mutationFn: async (payload: { modelId: string; mountCode: string; file: File }) => {
+    mutationFn: async (payload: { modelId: string; mountCode: string }) => {
+      if (!tempFileId) {
+        throw new Error("文件尚未上传完成，请等待上传后再确认");
+      }
       const formData = new FormData();
-      formData.append("file", payload.file);
+      formData.append("temp_file_id", tempFileId);
       const params = new URLSearchParams({ mount_code: payload.mountCode });
       const response = await fetchWithAuth(`/api/v1/tower-models/${payload.modelId}/image?${params.toString()}`, {
         method: "POST",
@@ -464,12 +474,67 @@ export default function AdminTowerModelsPage() {
       setSuccess("模型图片上传成功");
       setError("");
       setUploadModel(null);
+      setSelectedImageFile(null);
+      setTempFileId(null);
+      setUploadProgress(0);
+      setUploadError("");
       await refreshList();
     },
     onError: (candidate) => {
       setError(candidate instanceof Error ? candidate.message : "图片上传失败");
     },
   });
+
+  const handleTempUpload = useCallback(
+    (file: File) => {
+      setSelectedImageFile(file);
+      setTempFileId(null);
+      setUploadProgress(0);
+      setUploadError("");
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${getApiBaseUrl()}/api/v1/tower-models/upload-temp`);
+      xhr.withCredentials = true;
+      const token = getAccessToken();
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+      xhr.upload.onprogress = (event: ProgressEvent<EventTarget>) => {
+        if (!event.lengthComputable || event.total <= 0) {
+          return;
+        }
+        const percent = Math.min(99, Math.max(0, Math.round((event.loaded / event.total) * 100)));
+        setUploadProgress(percent);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadProgress(100);
+          try {
+            const payload = JSON.parse(xhr.responseText) as TowerModelTempUploadResponse;
+            setTempFileId(payload.temp_file_id);
+          } catch {
+            setUploadError("上传成功但响应解析失败，请重新选择文件");
+          }
+          return;
+        }
+        let messageText = `HTTP ${xhr.status}`;
+        try {
+          const parsed = JSON.parse(xhr.responseText) as { detail?: string };
+          if (parsed?.detail?.trim()) messageText = parsed.detail;
+        } catch {
+          // 忽略非 JSON 响应
+        }
+        setUploadError(messageText);
+      };
+      xhr.onerror = () => setUploadError("网络异常，上传失败");
+      xhr.onabort = () => setUploadError("上传已取消");
+
+      const formData = new FormData();
+      formData.append("file", file);
+      xhr.send(formData);
+    },
+    [getAccessToken],
+  );
 
   const openCreate = () => {
     setError("");
@@ -494,6 +559,14 @@ export default function AdminTowerModelsPage() {
   const handleKeywordChange = (value: string) => {
     setKeywordInput(value);
   };
+
+  const openUpload = useCallback((row: TowerModelSummary) => {
+    setUploadModel(row);
+    setSelectedImageFile(null);
+    setTempFileId(null);
+    setUploadProgress(0);
+    setUploadError("");
+  }, []);
 
   const tableColumns = useMemo<ColumnsType<TowerModelSummary>>(
     () => [
@@ -574,7 +647,7 @@ export default function AdminTowerModelsPage() {
                 </Button>
               )}
               {canManage && (
-                <Button size="small" disabled={rowBusy} onClick={() => setUploadModel(row)}>
+                <Button size="small" disabled={rowBusy} onClick={() => openUpload(row)}>
                   上传图片
                 </Button>
               )}
@@ -607,7 +680,7 @@ export default function AdminTowerModelsPage() {
         },
       },
     ],
-    [canManage, deleteModelAsync, fetchWithAuth, handleImagePreviewError, isDeletingModel, isSavingModel, isUploadingImage, openEdit],
+    [canManage, deleteModelAsync, fetchWithAuth, handleImagePreviewError, isDeletingModel, isSavingModel, isUploadingImage, openEdit, openUpload],
   );
 
   const renderDefaultSummary = (row: TowerModelSummary) => (
@@ -625,7 +698,7 @@ export default function AdminTowerModelsPage() {
         key: "upload-image",
         label: "上传图片",
         disabled: rowBusy,
-        onClick: () => setUploadModel(row),
+        onClick: () => openUpload(row),
       },
       {
         key: "delete",
@@ -1104,16 +1177,20 @@ export default function AdminTowerModelsPage() {
         title="上传模型图片"
         open={!!uploadModel}
         okText="上传"
+        okButtonProps={{ disabled: !tempFileId }}
         confirmLoading={uploadImageMutation.isPending}
         onCancel={() => {
           if (uploadImageMutation.isPending) return;
           setUploadModel(null);
+          setSelectedImageFile(null);
+          setTempFileId(null);
+          setUploadProgress(0);
+          setUploadError("");
         }}
         onOk={() => {
           if (!uploadModel) return;
-          const file = fileInputRef.current?.files?.[0];
-          if (!file) {
-            setError("请先选择图片文件");
+          if (!tempFileId) {
+            setUploadError("请先选择并上传图片文件");
             return;
           }
           const mount = mounts[0];
@@ -1124,7 +1201,6 @@ export default function AdminTowerModelsPage() {
           uploadImageMutation.mutate({
             modelId: uploadModel.id,
             mountCode: mount.code,
-            file,
           });
         }}
       >
@@ -1135,12 +1211,65 @@ export default function AdminTowerModelsPage() {
           <Typography.Text type="secondary">
             目标挂载：{(mounts[0] as FileStorageMount | undefined)?.code ?? "-"}（默认第一个可用挂载）
           </Typography.Text>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,image/*"
-            className="block w-full"
-          />
+          <div>
+            <div style={{ marginBottom: 8 }}>
+              <Typography.Text>图片文件</Typography.Text>
+            </div>
+            <Upload.Dragger
+              accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,image/*"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                const maxMB = 50;
+                const allowedExts = ["jpg", "jpeg", "png", "webp", "gif", "bmp"];
+                const ext = file.name.split(".").pop()?.toLowerCase() || "";
+                if (file.size > maxMB * 1024 * 1024) {
+                  message.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                  return Upload.LIST_IGNORE;
+                }
+                if (!allowedExts.includes(ext)) {
+                  message.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                  return Upload.LIST_IGNORE;
+                }
+                return true;
+              }}
+              customRequest={({ file }) => handleTempUpload(file as File)}
+              onRemove={() => {
+                setSelectedImageFile(null);
+                setTempFileId(null);
+                setUploadProgress(0);
+                setUploadError("");
+              }}
+            >
+              {selectedImageFile ? (
+                <>
+                  <p className="ant-upload-text">{selectedImageFile.name}</p>
+                  {uploadProgress < 100 ? (
+                    <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
+                  ) : tempFileId ? (
+                    <Typography.Text type="success">
+                      <CheckCircleOutlined /> 上传完成，可以确认上传
+                    </Typography.Text>
+                  ) : (
+                    <Typography.Text type="warning">上传中…</Typography.Text>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
+                    点击或拖拽图片文件到此区域上传
+                  </p>
+                  <Typography.Text type="secondary">
+                    支持 jpg/jpeg/png/webp/gif/bmp 格式。选择文件后立即上传到临时存储。
+                  </Typography.Text>
+                </>
+              )}
+              {uploadError && (
+                <Typography.Text type="danger" style={{ display: "block", marginTop: 8 }}>
+                  {uploadError}
+                </Typography.Text>
+              )}
+            </Upload.Dragger>
+          </div>
         </Space>
       </Modal>
     </div>
