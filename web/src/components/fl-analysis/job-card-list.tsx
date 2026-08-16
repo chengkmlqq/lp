@@ -1,11 +1,10 @@
 "use client";
 
-import { Button, Empty, Space, Spin, Tag, Typography } from "antd";
+import { Empty, Spin, Tag, Typography } from "antd";
 import {
   ApartmentOutlined,
   ClockCircleOutlined,
   DeploymentUnitOutlined,
-  EyeOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 
@@ -21,12 +20,10 @@ import {
 
 type JobCardListProps = {
   jobs: FlAnalysisJobSummary[];
-  selectedJobId: string | null;
   loading: boolean;
-  onSelect: (job: FlAnalysisJobSummary) => void;
 };
 
-export function JobCardList({ jobs, selectedJobId, loading, onSelect }: JobCardListProps) {
+export function JobCardList({ jobs, loading }: JobCardListProps) {
   if (loading) {
     return <Spin />;
   }
@@ -38,17 +35,13 @@ export function JobCardList({ jobs, selectedJobId, loading, onSelect }: JobCardL
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {jobs.map((job) => {
-        const selected = job.id === selectedJobId;
         const lineName = job.line_name || job.line_code || "-";
         return (
           <Card
             key={job.id}
             size="small"
             hoverable
-            className={`admin-fl-analysis-job-card${selected ? " admin-fl-analysis-job-card-selected" : ""}`}
-            onClick={() => {
-              onSelect(job);
-            }}
+            className="admin-fl-analysis-job-card"
           >
             <div className="flex flex-col">
               <div className="admin-fl-analysis-job-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
@@ -84,22 +77,6 @@ export function JobCardList({ jobs, selectedJobId, loading, onSelect }: JobCardL
                     杆塔：{job.total_tower_count} / 结果：{job.result_tower_count}
                   </Typography.Text>
                 </div>
-              </div>
-
-              <div className="admin-fl-analysis-job-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
-                <Space size="small">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EyeOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onSelect(job);
-                    }}
-                  >
-                    查看详情
-                  </Button>
-                </Space>
               </div>
             </div>
           </Card>

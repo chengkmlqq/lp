@@ -3628,21 +3628,16 @@ body {
   background: var(--ant-color-bg-container) !important;
 }
 
-/* LP-274: 结果列表区容器，在 Tab 内容区内提供内边距 */
+/* LP-274: 结果列表区容器，在 Tab 内容区内提供内边距；
+   LP-375: 去掉外层 Tabs 后作为页面主体列表容器，补齐 flex 布局以撑满剩余高度 */
 .admin-fl-analysis-list-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  min-height: 0;
   padding: 12px;
-}
-
-/* LP-374: 任务列表主 Tab 顶部工具栏（标题 + 视图切换 Segmented） */
-.admin-fl-analysis-list-toolbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
 }
 
 /* LP-374: 任务详情 Tab 内容容器：详情面板 + 分级结果/塔详情 Tabs 纵向排列并撑满高度 */
@@ -3669,26 +3664,12 @@ body {
   box-shadow: 0 8px 18px color-mix(in srgb, var(--fquiz-theme-text-primary) 8%, transparent);
 }
 
-.admin-fl-analysis-job-card-selected {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 60%, var(--ant-color-border-secondary)) !important;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fquiz-theme-primary) 45%, transparent) !important;
-}
-
 .admin-fl-analysis-job-card-title {
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
 }
 
-.admin-fl-analysis-job-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
-}
-
 .admin-fl-analysis-job-card > .ant-card-body {
   padding: 0;
-}
-
-/* LP-374: 列表视图选中行高亮（rowClassName 挂钩） */
-.admin-fl-analysis-job-table .ant-table-row.admin-fl-analysis-job-row-selected > td {
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, var(--ant-color-bg-container)) !important;
 }
 
 .admin-lightning-distribution-card-view {

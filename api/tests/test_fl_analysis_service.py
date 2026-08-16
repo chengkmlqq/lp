@@ -347,6 +347,82 @@ def test_execute_scenario_job_reuses_base_waveform_and_forces_arresters(monkeypa
         session.close()
 
 
+def test_list_jobs_keyword_and_offset_pagination() -> None:
+    testing_session = _build_sessionmaker()
+    session = testing_session()
+    try:
+        line_a = Line(code="LA-001", name="甲线路", voltage_kv=110)
+        line_b = Line(code="LB-002", name="乙线路", voltage_kv=220)
+        session.add_all([line_a, line_b])
+        session.flush()
+
+        for idx in range(1, 6):
+            session.add(
+                FlAnalysisJob(
+                    line_id=line_a.id,
+                    job_name=f"普通计算{idx}",
+                    job_type="normal",
+                    status="success",
+                    source_kind="line",
+                    total_tower_count=1,
+                    external_adapter="placeholder",
+                    execution_options_json={},
+                    result_summary_json={},
+                )
+            )
+        session.add(
+            FlAnalysisJob(
+                line_id=line_b.id,
+                job_name="风险评估",
+                job_type="risk",
+                status="success",
+                source_kind="line",
+                total_tower_count=1,
+                external_adapter="placeholder",
+                execution_options_json={},
+                result_summary_json={},
+            )
+        )
+        session.commit()
+
+        # 按任务名关键字过滤
+        matched = fl_analysis_service.list_jobs(session, line_id=None, status_filter=None, keyword="风险")
+        assert matched.total == 1
+        assert len(matched.items) == 1
+        assert matched.items[0].job_name == "风险评估"
+
+        # 按线路编码关键字过滤
+        matched = fl_analysis_service.list_jobs(session, line_id=None, status_filter=None, keyword="LB-002")
+        assert matched.total == 1
+        assert matched.items[0].job_name == "风险评估"
+
+        # 按线路名称关键字过滤
+        matched = fl_analysis_service.list_jobs(session, line_id=None, status_filter=None, keyword="甲线路")
+        assert matched.total == 5
+
+        # 关键字空白串视为不过滤
+        matched = fl_analysis_service.list_jobs(session, line_id=None, status_filter=None, keyword="   ")
+        assert matched.total == 6
+
+        # offset/limit 翻页且 total 为过滤后总数
+        page1 = fl_analysis_service.list_jobs(session, line_id=None, status_filter=None, keyword="普通计算", limit=2, offset=0)
+        assert page1.total == 5
+        assert len(page1.items) == 2
+        page2 = fl_analysis_service.list_jobs(session, line_id=None, status_filter=None, keyword="普通计算", limit=2, offset=2)
+        assert len(page2.items) == 2
+        page3 = fl_analysis_service.list_jobs(session, line_id=None, status_filter=None, keyword="普通计算", limit=2, offset=4)
+        assert len(page3.items) == 1
+        page_ids = {job.id for job in (page1.items + page2.items + page3.items)}
+        assert len(page_ids) == 5
+
+        # 无关键字时 offset 同样生效
+        first_page = fl_analysis_service.list_jobs(session, line_id=None, status_filter=None, limit=2, offset=0)
+        assert first_page.total == 6
+        assert len(first_page.items) == 2
+    finally:
+        session.close()
+
+
 def test_report_job_auto_links_latest_scenario_rows(monkeypatch) -> None:
     testing_session = _build_sessionmaker()
     session = testing_session()

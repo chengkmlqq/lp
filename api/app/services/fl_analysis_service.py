@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..core.database import SessionLocal
@@ -135,7 +135,9 @@ def list_jobs(
     *,
     line_id: str | None,
     status_filter: str | None,
-    limit: int,
+    keyword: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> FlAnalysisJobListResponse:
     stmt = select(FlAnalysisJob)
     total_stmt = select(func.count()).select_from(FlAnalysisJob)
@@ -147,9 +149,24 @@ def list_jobs(
         stmt = stmt.where(FlAnalysisJob.status == status_filter)
         total_stmt = total_stmt.where(FlAnalysisJob.status == status_filter)
 
+    normalized = (keyword or "").strip()
+    if normalized:
+        like = f"%{normalized}%"
+        predicate = or_(
+            FlAnalysisJob.job_name.ilike(like),
+            Line.code.ilike(like),
+            Line.name.ilike(like),
+        )
+        stmt = stmt.join(Line, FlAnalysisJob.line_id == Line.id)
+        total_stmt = total_stmt.join(Line, FlAnalysisJob.line_id == Line.id)
+        stmt = stmt.where(predicate)
+        total_stmt = total_stmt.where(predicate)
+
     total = int(db.scalar(total_stmt) or 0)
     items = db.execute(
-        stmt.order_by(FlAnalysisJob.update_date.desc(), FlAnalysisJob.id.desc()).limit(limit)
+        stmt.order_by(FlAnalysisJob.update_date.desc(), FlAnalysisJob.id.desc())
+        .limit(limit)
+        .offset(offset)
     ).scalars().all()
     return FlAnalysisJobListResponse(items=[serialize_job(item) for item in items], total=total)
 

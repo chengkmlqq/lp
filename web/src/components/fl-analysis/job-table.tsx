@@ -15,12 +15,13 @@ import {
 
 type JobTableProps = {
   jobs: FlAnalysisJobSummary[];
-  selectedJobId: string | null;
   loading: boolean;
-  onSelect: (job: FlAnalysisJobSummary) => void;
+  total: number;
+  pagination: { current: number; pageSize: number };
+  onPaginationChange: (pagination: { current: number; pageSize: number }) => void;
 };
 
-export function JobTable({ jobs, selectedJobId, loading, onSelect }: JobTableProps) {
+export function JobTable({ jobs, loading, total, pagination, onPaginationChange }: JobTableProps) {
   const columns = useMemo<ColumnsType<FlAnalysisJobSummary>>(() => [
     {
       title: "任务名",
@@ -94,13 +95,17 @@ export function JobTable({ jobs, selectedJobId, loading, onSelect }: JobTablePro
       className="admin-fl-analysis-job-table"
       columns={columns}
       dataSource={jobs}
-      rowClassName={(job) => (job.id === selectedJobId ? "admin-fl-analysis-job-row-selected" : "")}
-      onRow={(job) => ({
-        onClick: () => {
-          onSelect(job);
+      pagination={{
+        current: pagination.current,
+        pageSize: pagination.pageSize,
+        total,
+        showSizeChanger: true,
+        showTotal: (total) => `共 ${total} 条`,
+        hideOnSinglePage: false,
+        onChange: (page, pageSize) => {
+          onPaginationChange({ current: page, pageSize });
         },
-      })}
-      pagination={{ pageSize: 20, showSizeChanger: true, hideOnSinglePage: false }}
+      }}
       scroll={{ x: 1200 }}
       locale={{
         emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无防雷分析任务" />,
