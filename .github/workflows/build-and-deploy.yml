@@ -107,50 +107,6 @@ jobs:
           cache-from: type=gha,scope=fquiz-wine-base
           cache-to: type=gha,mode=max,scope=fquiz-wine-base
 
-  # ───── 二级 wine-base-64 镜像（base + 64位 wine，专供 MATLAB 判别系统） ─────
-  build-wine-base-64:
-    needs: [build-base]
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: 生成镜像变量
-        id: vars
-        shell: bash
-        run: |
-          NS="${{ env.REGISTRY_NAMESPACE }}"
-          echo "image=${{ env.REGISTRY }}/${NS}/fquiz-wine-base-64" >> "$GITHUB_OUTPUT"
-
-      - name: 安装 Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: 登录镜像仓库
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-
-      - name: 构建并推送 wine-base-64 镜像
-        uses: docker/build-push-action@v7
-        with:
-          context: ./api
-          file: ./api/Dockerfile.winebase64
-          platforms: linux/amd64
-          pull: true
-          push: true
-          provenance: false
-          sbom: false
-          build-args: |
-            REGISTRY=${{ env.REGISTRY }}
-            REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
-            APT_MIRROR=${{ vars.APT_MIRROR || '' }}
-          tags: |
-            ${{ steps.vars.outputs.image }}:latest
-          cache-from: type=gha,scope=fquiz-wine-base-64
-          cache-to: type=gha,mode=max,scope=fquiz-wine-base-64
-
   # ───── Worker 镜像（wine-base + 业务代码，celery worker） ─────
   build-worker:
     needs: [build-wine-base]
@@ -196,10 +152,12 @@ jobs:
           cache-from: type=gha,scope=fquiz-worker
           cache-to: type=gha,mode=max,scope=fquiz-worker
 
-  # ───── MATLAB Worker 镜像（wine-base-64 + Windows MATLAB Runtime + 判别系统） ─────
-  # 消费 matlab-diagnostics 队列，判别任务专用；Runtime 先走官方源，失败回退到 84。
+  # ───── MATLAB Worker 镜像（fquiz-base + Linux MATLAB Runtime + 判别系统） ─────
+  # 消费 matlab-diagnostics 队列，判别任务专用；Linux 版 MATLAB Runtime（glnxa64）
+  # 在镜像构建期从 MathWorks 官方源下载静默安装，判别引擎为 Linux mcc 编译产物，
+  # 直接执行、无需 Wine。
   build-matlab-worker:
-    needs: [build-wine-base-64]
+    needs: [build-base]
     runs-on: ubuntu-latest
 
     steps:
@@ -237,6 +195,8 @@ jobs:
             REGISTRY=${{ env.REGISTRY }}
             REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
             APT_MIRROR=${{ vars.APT_MIRROR || '' }}
+            MCR_VERSION=${{ vars.MATLAB_MCR_VERSION || 'R2026a' }}
+            MCR_DOWNLOAD_URL=${{ vars.MATLAB_MCR_URL || 'https://ssd.mathworks.com/supportfiles/downloads/R2026a/Release/0/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2026a_glnxa64.zip' }}
           tags: |
             ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
             ${{ steps.vars.outputs.image }}:latest
@@ -537,7 +497,7 @@ jobs:
 
             # ── MATLAB Worker 数据卷目录（创建基础目录；Runtime 由外部流程部署，不在构建时下载/解压） ──
             MW_DIR="${DEPLOY_DIR}/deploy/pro-deploy/data/matlab-worker"
-            mkdir -p "${MW_DIR}/matlab-wave" "${MW_DIR}/wine"
+            mkdir -p "${MW_DIR}/matlab-wave"
 
             pull_with_retry
 
