@@ -70,7 +70,7 @@ class FaultAnalysis(Base):
     # 结果
     result_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
-    # 上传的判别输入文件（判别系统字段名 -> 共享卷内相对路径），由判别任务读取
+    # 上传的判别输入文件（新记录为 MinIO 对象元数据；历史记录保留 VFS 相对路径）
     upload_files: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     # 进度（0-100，异步判别任务执行过程中递增）

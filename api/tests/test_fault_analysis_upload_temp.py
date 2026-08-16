@@ -31,6 +31,13 @@ def db_session(tmp_path, monkeypatch):
     session = SessionLocal()
     shim = SimpleNamespace(file_vfs_root=str(tmp_path / "vfs"))
     monkeypatch.setattr(fault_analysis_service, "get_settings", lambda: shim)
+    stored: dict[str, bytes] = {}
+    def fake_put_object(key: str, data: bytes, content_type: str | None = None) -> str:
+        stored[key] = data
+        return key
+
+    monkeypatch.setattr(fault_analysis_service, "put_object", fake_put_object)
+    session._test_minio_objects = stored
     yield session
     session.close()
 
@@ -218,9 +225,9 @@ def test_assemble_ledger_csv_writes_csv(db_session) -> None:
         db_session, "fa-ledger-1", made["line_id"]
     )
     assert row_count == 1
-    assert relative.endswith("auto_assembled_ledger.csv")
-    path = Path(fault_analysis_service.get_settings().file_vfs_root) / relative
-    text = path.read_text(encoding="utf-8-sig")
+    assert relative["key"] == "fault-analysis/fa-ledger-1/Input/generated/auto_assembled_ledger.csv"
+    assert relative["source"] == "generated"
+    text = db_session._test_minio_objects[relative["key"]].decode("utf-8-sig")
     assert "线路名称" in text
     assert "塔号" in text
     assert "绝缘子串长度mm" in text
@@ -298,9 +305,14 @@ async def test_auto_classified_temp_uploads_preserve_all_wave_files(monkeypatch)
     def mock_resolve(temp_file_id: str, user_id: str) -> tuple[bytes, str]:
         return temp_files[temp_file_id]
 
-    def mock_store(analysis_id: str, field: str, file_name: str, content: bytes) -> str:
+    def mock_store(analysis_id: str, field: str, file_name: str, content: bytes) -> dict[str, str]:
         stored.append((analysis_id, field, file_name, content))
-        return f"fault_analysis/{analysis_id}/{field}_{file_name}"
+        return {
+            "key": f"fault-analysis/{analysis_id}/Input/{field}/{file_name}",
+            "filename": file_name,
+            "content_type": "application/octet-stream",
+            "source": "uploaded",
+        }
 
     monkeypatch.setattr(fault_analysis_api, "resolve_temp_upload", mock_resolve)
     monkeypatch.setattr(fault_analysis_api, "store_analysis_upload_file", mock_store)
@@ -312,12 +324,27 @@ async def test_auto_classified_temp_uploads_preserve_all_wave_files(monkeypatch)
         user_id="u1",
     )
 
-    assert upload_files["wave_data_file"].endswith("1 录波故障信息 雁湖线_fault_info.xlsx")
-    assert upload_files["lightning_data_file"].endswith("2 雷电定位输入模板.xlsx")
+    assert upload_files["wave_data_file"]["filename"] == "1 录波故障信息 雁湖线_fault_info.xlsx"
+    assert upload_files["lightning_data_file"]["filename"] == "2 雷电定位输入模板.xlsx"
     assert upload_files["traveling_wave_file"] == [
-        "fault_analysis/fa-1/traveling_wave_file_1号杆塔A相.txt",
-        "fault_analysis/fa-1/traveling_wave_file_1号杆塔B相.txt",
-        "fault_analysis/fa-1/traveling_wave_file_1号杆塔C相.txt",
+        {
+            "key": "fault-analysis/fa-1/Input/traveling_wave_file/1号杆塔A相.txt",
+            "filename": "1号杆塔A相.txt",
+            "content_type": "application/octet-stream",
+            "source": "uploaded",
+        },
+        {
+            "key": "fault-analysis/fa-1/Input/traveling_wave_file/1号杆塔B相.txt",
+            "filename": "1号杆塔B相.txt",
+            "content_type": "application/octet-stream",
+            "source": "uploaded",
+        },
+        {
+            "key": "fault-analysis/fa-1/Input/traveling_wave_file/1号杆塔C相.txt",
+            "filename": "1号杆塔C相.txt",
+            "content_type": "application/octet-stream",
+            "source": "uploaded",
+        },
     ]
     assert [field for _, field, _, _ in stored].count("traveling_wave_file") == 3
 
@@ -329,6 +356,7 @@ async def test_auto_classified_unknown_file_fails_clearly(monkeypatch) -> None:
         "resolve_temp_upload",
         lambda temp_file_id, user_id: (b"content", "report.docx"),
     )
+    monkeypatch.setattr(fault_analysis_api, "store_analysis_upload_file", lambda *args, **kwargs: {"key": "fault-analysis/fa-1/Input/wave_data_file/report.docx", "filename": "report.docx", "content_type": "application/octet-stream", "source": "uploaded"})
 
     with pytest.raises(HTTPException) as captured:
         await fault_analysis_api._store_auto_classified_files(

@@ -39,6 +39,14 @@ def db_session(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(fault_diagnosis_service, "get_settings", lambda: shim)
     monkeypatch.setattr(fault_analysis_service, "get_settings", lambda: shim)
+    stored: dict[str, bytes] = {}
+
+    def fake_put_object(key: str, data: bytes, content_type: str | None = None) -> str:
+        stored[key] = data
+        return key
+
+    monkeypatch.setattr(fault_diagnosis_service, "put_object", fake_put_object)
+    session._test_minio_objects = stored
     yield session
     session.close()
 
@@ -85,6 +93,10 @@ def test_generate_report_docx_after_diagnosis(db_session: Session, tmp_path: Pat
     assert output.name == "report.docx"
     # 文件落盘在 VFS 的 fault_analysis/{id} 目录下
     assert str(tmp_path / "vfs" / "fault_analysis" / item.id / "report.docx") == str(output)
+    db_session.expire_all()
+    updated = db_session.get(FaultAnalysis, item.id)
+    assert updated.result_json["artifacts"]["report_docx"] == "fault-analysis/fa-report/Output/report.docx"
+    assert db_session._test_minio_objects["fault-analysis/fa-report/Output/report.docx"]
 
 
 def test_generate_report_docx_requires_diagnosis(db_session: Session):

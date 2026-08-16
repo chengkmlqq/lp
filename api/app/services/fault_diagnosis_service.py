@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import shutil
 import logging
 import subprocess
+import tempfile
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +27,13 @@ from .fault_diagnosis_core import (
     render_markdown_summary,
 )
 from .fault_input_discovery import normalize_input_files
+from .minio_storage import (
+    FAULT_ANALYSIS_PREFIX,
+    build_fault_analysis_matlab_output_key,
+    build_fault_analysis_output_key,
+    download_object_to_file,
+    put_object,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +63,73 @@ RISK_LEVEL_LABELS: dict[str, str] = {
 
 def _has_value(value: Any) -> bool:
     return value is not None and str(value).strip() not in {"", "None", "nan", "NaN"}
+
+
+def _upload_file_ref(value: Any) -> str | None:
+    if isinstance(value, Mapping):
+        raw = value.get("key") or value.get("path")
+        return str(raw) if raw else None
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def _is_fault_analysis_object_key(value: Any) -> bool:
+    ref = _upload_file_ref(value)
+    return bool(ref and ref.startswith(FAULT_ANALYSIS_PREFIX))
+
+
+def _object_filename(key: str) -> str:
+    return Path(key).name or "input.bin"
+
+
+def _resolve_upload_ref(upload_value: Any) -> str | None:
+    if isinstance(upload_value, Mapping):
+        candidate = upload_value.get("key") or upload_value.get("path")
+        return str(candidate) if candidate else None
+    if upload_value is None:
+        return None
+    return str(upload_value)
+
+
+def _materialize_upload_value(value: Any, field: str, input_dir: Path) -> Any:
+    if _is_fault_analysis_object_key(value):
+        key = _upload_file_ref(value)
+        assert key is not None
+        target = input_dir / field / _object_filename(key)
+        return download_object_to_file(key, target).as_posix()
+    if isinstance(value, list):
+        return [_materialize_upload_value(item, field, input_dir) for item in value]
+    if isinstance(value, Mapping):
+        ref = _upload_file_ref(value)
+        return ref if ref is not None else value
+    return value
+
+
+def _materialize_upload_files(upload_files: Mapping[str, Any], input_dir: Path) -> dict[str, Any]:
+    return {
+        field: _materialize_upload_value(value, field, input_dir)
+        for field, value in upload_files.items()
+    }
+
+
+def _legacy_or_local_path(value: Any) -> Path | None:
+    ref = _resolve_upload_ref(value)
+    if not ref:
+        return None
+    candidate = Path(ref)
+    if not candidate.is_absolute():
+        candidate = Path(get_settings().file_vfs_root) / ref
+    return candidate.resolve() if candidate.is_file() else None
+
+
+def _archive_file(analysis_id: str, path: Path, *, matlab: bool = False, content_type: str | None = None) -> str:
+    key = (
+        build_fault_analysis_matlab_output_key(analysis_id, path.name)
+        if matlab
+        else build_fault_analysis_output_key(analysis_id, path.name)
+    )
+    return put_object(key, path.read_bytes(), content_type=content_type or "application/octet-stream")
 
 
 def build_fault_raw(item: FaultAnalysis) -> dict[str, Any]:
@@ -122,13 +198,7 @@ def build_manual_input(item: FaultAnalysis) -> dict[str, Any]:
 
 
 def _resolve_upload_file(upload_files: Mapping[str, Any], field: str) -> Path | None:
-    relative = upload_files.get(field)
-    if not relative:
-        return None
-    candidate = Path(str(relative))
-    if not candidate.is_absolute():
-        candidate = Path(get_settings().file_vfs_root) / str(relative)
-    return candidate.resolve() if candidate.is_file() else None
+    return _legacy_or_local_path(upload_files.get(field))
 
 
 def _resolve_upload_files(upload_files: Mapping[str, Any], field: str) -> list[Path]:
@@ -139,16 +209,13 @@ def _resolve_upload_files(upload_files: Mapping[str, Any], field: str) -> list[P
     if isinstance(relative, str):
         candidates = [relative]
     elif isinstance(relative, list):
-        candidates = [str(item) for item in relative if item]
+        candidates = [_resolve_upload_ref(item) or str(item) for item in relative if item]
     else:
-        candidates = [str(relative)]
+        candidates = [_resolve_upload_ref(relative) or str(relative)]
     resolved: list[Path] = []
     for item in candidates:
-        candidate = Path(item)
-        if not candidate.is_absolute():
-            candidate = Path(get_settings().file_vfs_root) / item
-        candidate = candidate.resolve()
-        if candidate.is_file():
+        candidate = _legacy_or_local_path(item)
+        if candidate is not None:
             resolved.append(candidate)
     return resolved
 
@@ -621,13 +688,21 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
     item.update_user = "system"
     db.commit()
 
+    run_dir = Path(tempfile.mkdtemp(prefix=f"fault-analysis-{analysis_id}-"))
     try:
-        fault_raw, lightning_raw, ledger_rows, traveling_wave_records, input_warnings = _collect_inputs(
-            item, db=db
-        )
+        original_upload_files = item.upload_files or {}
+        materialized_upload_files = _materialize_upload_files(original_upload_files, run_dir / "Input")
+        item.upload_files = materialized_upload_files
+        try:
+            fault_raw, lightning_raw, ledger_rows, traveling_wave_records, input_warnings = _collect_inputs(
+                item, db=db
+            )
+        finally:
+            item.upload_files = original_upload_files
         manual = build_manual_input(item)
-        analysis_dir = Path(get_settings().file_vfs_root) / "fault_analysis" / analysis_id
-        upload_files = item.upload_files or {}
+        analysis_dir = run_dir / "Output"
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+        upload_files = materialized_upload_files
         traveling_wave_paths = _resolve_upload_files(upload_files, "traveling_wave_file")
         logger.info(
             "Fault diagnosis inputs for %s: upload_fields=%s traveling_wave_file_count=%d",
@@ -667,6 +742,22 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
             source_paths=source_paths,
         )
         mapped = map_result_to_record(diag, item, input_warnings=input_warnings)
+        result_json = dict(mapped["result_json"])
+        result_json["upload_files"] = dict(original_upload_files)
+        artifacts = dict(result_json.get("artifacts") or {})
+        result_key = build_fault_analysis_output_key(analysis_id, "result.json")
+        artifacts["result_json"] = result_key
+        if wave_model_path is not None and wave_model_path.is_file():
+            artifacts["matlab_wave_prediction"] = _archive_file(
+                analysis_id,
+                wave_model_path,
+                matlab=True,
+                content_type="text/plain",
+            )
+        result_json["artifacts"] = artifacts
+        payload = json.dumps(result_json, ensure_ascii=False, default=str).encode("utf-8")
+        put_object(result_key, payload, content_type="application/json")
+        mapped["result_json"] = result_json
 
         item.status = "completed"
         item.risk_level = mapped["risk_level"]
@@ -686,6 +777,8 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
         item.update_user = "system"
         db.commit()
         raise
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
 
 
 def run_fault_diagnosis_with_progress(
@@ -894,7 +987,7 @@ def _confidence_source(diag: Mapping[str, Any]) -> str:
 
 
 def generate_report_docx(db: Session, analysis_id: str, template_path: Path | None = None) -> Path:
-    """生成故障分析 Word 报告并保存到 VFS。"""
+    """生成故障分析 Word 报告并归档到 MinIO Output。"""
     item = get_analysis_by_id(db, analysis_id)
     if item is None:
         raise ValueError(f"故障分析记录不存在: {analysis_id}")
@@ -916,4 +1009,19 @@ def generate_report_docx(db: Session, analysis_id: str, template_path: Path | No
         template_path = default_template if default_template.exists() else None
     
     generate_report(result, output_path, template_path=template_path, front_only=False)
+    try:
+        report_key = _archive_file(
+            analysis_id,
+            output_path,
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        item.result_json = dict(item.result_json or {})
+        artifacts = dict(item.result_json.get("artifacts") or {})
+        artifacts["report_docx"] = report_key
+        item.result_json["artifacts"] = artifacts
+        item.update_date = utcnow()
+        item.update_user = "system"
+        db.commit()
+    except Exception:
+        logger.exception("Fault diagnosis report archive failed for %s", analysis_id)
     return output_path

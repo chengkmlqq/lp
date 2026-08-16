@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -11,6 +12,7 @@ SOURCE_PREFIX = "lightning/distribution/source/"  # 原始文件
 IMAGE_PREFIX = "lightning/distribution/image/"    # 密度图
 AMPLITUDE_SOURCE_PREFIX = "lightning/amplitude/source/"  # 雷电流幅值原始波形文件
 TEMP_PREFIX = "lightning/tmp/"                    # 导入临时文件（选择文件后先上传，确认导入后再消费）
+FAULT_ANALYSIS_PREFIX = "fault-analysis/"          # 故障分析输入/输出归档
 
 
 class MinioStorageError(RuntimeError):
@@ -114,6 +116,33 @@ def delete_object(key: str) -> None:
         raise MinioStorageError(f"Failed to delete object {key}: {exc}") from exc
 
 
+def delete_prefix(prefix: str) -> int:
+    """删除 MinIO 上指定前缀下的所有对象，返回删除数量。"""
+    settings = get_settings()
+    try:
+        client = _build_client()
+        paginator = client.get_paginator("list_objects_v2")
+        deleted_count = 0
+        for page in paginator.paginate(Bucket=settings.minio_bucket, Prefix=prefix):
+            objects = [{"Key": item.get("Key", "")} for item in page.get("Contents", []) if item.get("Key")]
+            if not objects:
+                continue
+            client.delete_objects(Bucket=settings.minio_bucket, Delete={"Objects": objects, "Quiet": True})
+            deleted_count += len(objects)
+        return deleted_count
+    except MinioStorageError:
+        raise
+    except Exception as exc:
+        raise MinioStorageError(f"Failed to delete objects under {prefix}: {exc}") from exc
+
+
+def download_object_to_file(key: str, target: Path) -> Path:
+    """下载对象到本地文件，创建父目录并返回目标路径。"""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(get_object(key))
+    return target
+
+
 def build_source_key(source_file_name: str) -> str:
     """构造原始文件对象 Key：lightning/distribution/source/{uuid}_{file}"""
     safe_name = (source_file_name or "upload").strip() or "upload"
@@ -138,6 +167,30 @@ def build_temp_key(file_name: str, user_id: str) -> str:
     """
     safe_name = (file_name or "upload").strip() or "upload"
     return f"{TEMP_PREFIX}{user_id}/{uuid4().hex}_{safe_name}"
+
+
+def build_fault_analysis_input_key(analysis_id: str, field: str, file_name: str) -> str:
+    safe_name = Path((file_name or "upload").strip() or "upload").name
+    return f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/Input/{field}/{safe_name}"
+
+
+def build_fault_analysis_generated_key(analysis_id: str, file_name: str) -> str:
+    safe_name = Path((file_name or "generated.bin").strip() or "generated.bin").name
+    return f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/Input/generated/{safe_name}"
+
+
+def build_fault_analysis_output_key(analysis_id: str, file_name: str) -> str:
+    safe_name = Path((file_name or "artifact.bin").strip() or "artifact.bin").name
+    return f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/Output/{safe_name}"
+
+
+def build_fault_analysis_matlab_output_key(analysis_id: str, file_name: str) -> str:
+    safe_name = Path((file_name or "wave_module_prediction.txt").strip() or "wave_module_prediction.txt").name
+    return f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/Output/matlab/{safe_name}"
+
+
+def build_fault_analysis_prefix(analysis_id: str) -> str:
+    return f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/"
 
 
 def cleanup_expired_temp_files(

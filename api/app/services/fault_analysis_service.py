@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
@@ -20,6 +21,13 @@ from ..schemas.fault_analysis import (
     FaultAnalysisUpdateRequest,
 )
 from .fault_diagnosis_core import LEDGER_OUTPUT_FIELDS
+from .minio_storage import (
+    build_fault_analysis_generated_key,
+    build_fault_analysis_input_key,
+    build_fault_analysis_prefix,
+    delete_prefix,
+    put_object,
+)
 
 
 def serialize_summary(item: FaultAnalysis) -> FaultAnalysisSummary:
@@ -143,7 +151,7 @@ def create_analysis(
     payload: FaultAnalysisCreateRequest,
     *,
     actor: User,
-    upload_files: dict[str, str] | None = None,
+    upload_files: dict[str, Any] | None = None,
     auto_diagnose: bool = True,
 ) -> FaultAnalysisCreateResponse:
     now = utcnow()
@@ -197,16 +205,17 @@ def create_analysis(
     return FaultAnalysisCreateResponse(analysis=serialize_detail(saved))
 
 
-def store_analysis_upload_file(analysis_id: str, field: str, filename: str, content: bytes) -> str:
-    """把上传的判别输入文件保存到共享卷，返回相对 vfs 根的路径供 worker 读取。"""
-    settings = get_settings()
-    vfs_root = Path(settings.file_vfs_root)
-    analysis_dir = vfs_root / "fault_analysis" / analysis_id
-    analysis_dir.mkdir(parents=True, exist_ok=True)
+def store_analysis_upload_file(analysis_id: str, field: str, filename: str, content: bytes) -> dict[str, str]:
+    """把上传的判别输入文件保存到 MinIO，返回对象元数据。"""
     safe_name = Path(filename or f"{field}.bin").name
-    target = analysis_dir / f"{field}_{safe_name}"
-    target.write_bytes(content)
-    return target.relative_to(vfs_root).as_posix()
+    key = build_fault_analysis_input_key(analysis_id, field, filename)
+    put_object(key, content, content_type="application/octet-stream")
+    return {
+        "key": key,
+        "filename": safe_name,
+        "content_type": "application/octet-stream",
+        "source": "uploaded",
+    }
 
 
 def set_analysis_upload_files(db: Session, analysis_id: str, upload_files: dict[str, object]) -> None:
@@ -219,6 +228,25 @@ def set_analysis_upload_files(db: Session, analysis_id: str, upload_files: dict[
     item.upload_files = upload_files
     item.update_date = utcnow()
     db.commit()
+
+
+def store_analysis_generated_file(
+    analysis_id: str,
+    filename: str,
+    content: bytes,
+    *,
+    content_type: str | None = None,
+) -> dict[str, str]:
+    safe_name = Path(filename or "generated.bin").name
+    key = build_fault_analysis_generated_key(analysis_id, filename)
+    actual_content_type = content_type or "application/octet-stream"
+    put_object(key, content, content_type=actual_content_type)
+    return {
+        "key": key,
+        "filename": safe_name,
+        "content_type": actual_content_type,
+        "source": "generated",
+    }
 
 
 def ensure_line_has_towers(db: Session, line_id: str) -> None:
@@ -309,11 +337,11 @@ def assemble_ledger_csv(db: Session, analysis_id: str, line_id: str) -> tuple[st
     for row in rows:
         writer.writerow({column: row.get(column) for column in LEDGER_OUTPUT_FIELDS})
     content = buffer.getvalue().encode("utf-8-sig")
-    relative = store_analysis_upload_file(
+    relative = store_analysis_generated_file(
         analysis_id,
-        "ledger_data_file",
         "auto_assembled_ledger.csv",
         content,
+        content_type="text/csv",
     )
     return relative, len(rows)
 
@@ -356,6 +384,10 @@ def delete_analysis(db: Session, analysis_id: str) -> None:
         if upload_dir.is_dir():
             shutil.rmtree(upload_dir, ignore_errors=True)
     except OSError:
+        pass
+    try:
+        delete_prefix(build_fault_analysis_prefix(analysis_id))
+    except Exception:
         pass
 
 

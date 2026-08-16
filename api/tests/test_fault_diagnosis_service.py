@@ -70,6 +70,21 @@ def db_session(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(fault_diagnosis_service, "get_settings", lambda: shim)
     monkeypatch.setattr(fault_analysis_service, "get_settings", lambda: shim)
+    stored: dict[str, bytes] = {}
+
+    def fake_put_object(key: str, data: bytes, content_type: str | None = None) -> str:
+        stored[key] = data
+        return key
+
+    def fake_download_object_to_file(key: str, target: Path) -> Path:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(stored[key])
+        return target
+
+    monkeypatch.setattr(fault_diagnosis_service, "put_object", fake_put_object)
+    monkeypatch.setattr(fault_diagnosis_service, "download_object_to_file", fake_download_object_to_file)
+    monkeypatch.setattr(fault_analysis_service, "put_object", fake_put_object)
+    session._test_minio_objects = stored
     yield session
     session.close()
 
@@ -97,6 +112,7 @@ def test_run_fault_diagnosis_completes_and_backfills(db_session: Session):
     assert updated.confidence > 0
 
     assert isinstance(updated.result_json, dict)
+    assert updated.result_json["artifacts"]["result_json"] == "fault-analysis/fa-sample/Output/result.json"
     assert "sections" in updated.result_json
     assert updated.result_json["sections"]
     assert "diagnosis" in updated.result_json
@@ -173,11 +189,55 @@ def test_run_fault_diagnosis_with_traveling_wave_file(db_session: Session, tmp_p
 
 def test_store_upload_file_and_create_analysis(db_session: Session, tmp_path: Path):
     _sample_user(db_session)
-    relative = fault_analysis_service.store_analysis_upload_file(
+    metadata = fault_analysis_service.store_analysis_upload_file(
         "fa-upload", "wave_data_file", "a.txt", b"hello"
     )
-    assert (tmp_path / "vfs" / relative).is_file()
-    assert relative.endswith("a.txt")
+    assert metadata == {
+        "key": "fault-analysis/fa-upload/Input/wave_data_file/a.txt",
+        "filename": "a.txt",
+        "content_type": "application/octet-stream",
+        "source": "uploaded",
+    }
+    assert db_session._test_minio_objects[metadata["key"]] == b"hello"
+
+
+def test_run_fault_diagnosis_materializes_minio_input(db_session: Session):
+    _sample_user(db_session)
+    key = "fault-analysis/fa-minio/Input/traveling_wave_file/A相.txt"
+    db_session._test_minio_objects[key] = b"SampleFrequency=1000000\nCurrentDataInput=1,1,1,1,1,1,1,1\n"
+    item = FaultAnalysis(
+        id="fa-minio",
+        title="MinIO 行波测试",
+        station="某站",
+        fault_time="2023-01-01 10:00:00",
+        line_name="某线路",
+        fault_phase="AN",
+        fault_voltage_v=37.04,
+        fault_current_a=1.3,
+        max_zero_current_a=1.45,
+        status="pending",
+        result_json={},
+        upload_files={
+            "traveling_wave_file": [
+                {
+                    "key": key,
+                    "filename": "A相.txt",
+                    "content_type": "text/plain",
+                    "source": "uploaded",
+                }
+            ]
+        },
+    )
+    db_session.add(item)
+    db_session.commit()
+
+    fault_diagnosis_service.run_fault_diagnosis(db_session, item.id)
+
+    db_session.expire_all()
+    updated = db_session.get(FaultAnalysis, item.id)
+    assert updated.status == "completed"
+    assert updated.result_json["upload_files"]["traveling_wave_file"][0]["key"] == key
+    assert updated.result_json["artifacts"]["result_json"] == "fault-analysis/fa-minio/Output/result.json"
 
 
 def test_create_analysis_dispatches_and_fails_gracefully_without_broker(
