@@ -124,6 +124,7 @@
 :root[data-fquiz-theme="dark"] .admin-power-lines-line-card-title,
 :root[data-fquiz-theme="dark"] .admin-lightning-events-card > .ant-card-head,
 :root[data-fquiz-theme="dark"] .admin-lightning-events-card-title,
+:root[data-fquiz-theme="dark"] .admin-lightning-distribution-event-card-title,
 :root[data-fquiz-theme="dark"] .admin-fault-analysis-card-title,
 :root[data-fquiz-theme="dark"] .admin-fl-analysis-job-card-title {
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
@@ -3740,8 +3741,9 @@ body {
 .admin-lightning-distribution-pagination {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 0 8px;
   flex-shrink: 0;
 }
 
@@ -3771,12 +3773,18 @@ body {
   box-shadow: 0 8px 18px color-mix(in srgb, var(--fquiz-theme-text-primary) 8%, transparent);
 }
 
-.admin-lightning-distribution-event-card > .ant-card-body {
-  padding-block: 14px;
+.admin-lightning-distribution-event-card-title {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
 }
 
 .admin-lightning-distribution-event-card-actions {
   border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+}
+
+.admin-lightning-distribution-event-card > .ant-card-body {
+  padding: 0;
 }
 
 :root[data-fquiz-theme="dark"] .admin-lightning-distribution-card-view,

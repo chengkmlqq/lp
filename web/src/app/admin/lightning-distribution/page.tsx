@@ -789,8 +789,8 @@ export default function AdminLightningDistributionPage() {
         hoverable
         onClick={() => openDetail(record)}
       >
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
+        <div className="flex flex-col">
+          <div className="admin-lightning-distribution-event-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
             <ThunderboltOutlined className="text-base text-gray-500" />
             <Typography.Text strong className="truncate min-w-0">
               {record.source_file_name || "未命名文件"}
@@ -798,7 +798,7 @@ export default function AdminLightningDistributionPage() {
             <Tag color={meta.color}>{meta.label}</Tag>
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 px-4 py-3">
             <div className="flex items-center gap-2">
               <EnvironmentOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
@@ -828,7 +828,7 @@ export default function AdminLightningDistributionPage() {
             )}
           </div>
 
-          <div className="admin-lightning-distribution-event-card-actions flex justify-end pt-2 border-t border-gray-200">
+          <div className="admin-lightning-distribution-event-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
             <Space size="small">
               <Button
                 type="text"
@@ -1000,7 +1000,7 @@ export default function AdminLightningDistributionPage() {
                           />
                         </div>
                       ) : (
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                           {records.map((record) => renderRecordCard(record))}
                         </div>
                       )}

@@ -17,12 +17,13 @@ test("LP-357: lightning distribution card uses a three-section layout without an
   assert.ok(cardBlock, "应能提取 renderRecordCard 组件定义");
   assert.ok(!/title=\{</.test(cardBlock), "卡片不应再使用 antd Card title 作为标题区");
   assert.ok(!/\bextra=\{</.test(cardBlock), "卡片不应再使用 antd Card extra 放置操作菜单");
-  assert.match(cardBlock, /flex flex-col gap-3/, "卡片内容应为三段式纵向布局");
+  assert.match(cardBlock, /flex flex-col/, "卡片内容应为三段式纵向布局");
   assert.match(cardBlock, /className="admin-lightning-distribution-event-card"/, "卡片应保留 admin-lightning-distribution-event-card 容器类");
   assert.match(cardBlock, /hoverable/, "卡片应保留 hoverable");
 });
 
 test("LP-357: upper section shows icon + strong truncate title with status tag and border-b divider", () => {
+  assert.match(cardBlock, /admin-lightning-distribution-event-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200/, "标题区应使用专用类名并带 px-4 py-3 独立 padding");
   assert.match(cardBlock, /<ThunderboltOutlined className="text-base text-gray-500" \/>/, "标题区左侧应有代表地闪的图标");
   assert.match(cardBlock, /<Typography.Text strong className="truncate/, "标题区应展示强体 truncate 文件名");
   assert.match(cardBlock, /<Tag color=\{meta\.color\}>/, "状态 Tag 应保留在标题区");
@@ -30,6 +31,7 @@ test("LP-357: upper section shows icon + strong truncate title with status tag a
 });
 
 test("LP-389: middle section renders the compact fields as icon + text rows", () => {
+  assert.match(cardBlock, /flex flex-col gap-2 px-4 py-3/, "信息区应有 px-4 py-3 独立 padding");
   assert.match(cardBlock, /城市：/, "中部应保留城市信息");
   assert.match(cardBlock, /地点标签：/, "中部应保留地点标签信息");
   assert.match(cardBlock, /有效点数：/, "中部应保留有效点数信息");
@@ -51,7 +53,7 @@ test("LP-357: processing progress bar is preserved in the info section", () => {
 });
 
 test("LP-389: bottom section holds flat icon action buttons with a top border divider", () => {
-  assert.match(cardBlock, /admin-lightning-distribution-event-card-actions flex justify-end pt-2 border-t border-gray-200/, "操作区上方应有 border-t 分隔线并右对齐");
+  assert.match(cardBlock, /admin-lightning-distribution-event-card-actions flex justify-end px-4 py-2 border-t border-gray-200/, "操作区应使用专用类名并带 px-4 py-2 独立 padding");
   assert.match(cardBlock, /icon=\{<EyeOutlined \/>\}/, "底部应有详情图标按钮");
   assert.match(cardBlock, /type="text"\s*[\s\S]{0,200}size="small"/, "操作按钮应为 text 小号图标按钮");
 });
@@ -87,6 +89,37 @@ test("LP-389: card action bar keeps aligned border styling", () => {
   const block = CSS.match(/^\.admin-lightning-distribution-event-card-actions \{([^}]*)\}/m)?.[1];
   assert.ok(block, "应存在 .admin-lightning-distribution-event-card-actions 规则块");
   assert.match(block, /border-top-color: color-mix\(in srgb, var\(--fquiz-theme-primary\) 18%/, "操作栏边框应使用主色混合色");
+});
+
+test("LP-391: card body padding zeroed and title/actions sections carry themed colors", () => {
+  const bodyBlock = CSS.match(/^\.admin-lightning-distribution-event-card > \.ant-card-body \{([^}]*)\}/m)?.[1];
+  assert.ok(bodyBlock, "应存在 .admin-lightning-distribution-event-card > .ant-card-body 规则块");
+  assert.match(bodyBlock, /padding:\s*0/, "ant-card-body padding 应归零，由各区域自行控制");
+  assert.ok(!/padding-block/.test(bodyBlock), "不应再保留 padding-block 设置");
+  const titleBlock = CSS.match(/^\.admin-lightning-distribution-event-card-title \{([^}]*)\}/m)?.[1];
+  assert.ok(titleBlock, "应存在 .admin-lightning-distribution-event-card-title 规则块");
+  assert.match(titleBlock, /min-height:\s*44px/, "标题区应设置 min-height 44px");
+  assert.match(titleBlock, /background:\s*color-mix\(in srgb, var\(--fquiz-theme-primary\) 6%, transparent\)/, "标题区应使用主色淡背景");
+  const actionsBlock = CSS.match(/^\.admin-lightning-distribution-event-card-actions \{([^}]*)\}/m)?.[1];
+  assert.ok(actionsBlock, "应存在 .admin-lightning-distribution-event-card-actions 规则块");
+  assert.match(actionsBlock, /border-top-color:\s*color-mix\(in srgb, var\(--fquiz-theme-primary\) 18%/, "操作区分隔线应使用主色混色");
+  const darkTitle = /:root\[data-fquiz-theme="dark"\]\s[^{]*\.admin-lightning-distribution-event-card-title\s*[,{]/;
+  assert.match(CSS, darkTitle, "深色模式应覆盖标题区配色规则");
+  const darkActions = /:root\[data-fquiz-theme="dark"\]\s[^{]*\.admin-lightning-distribution-event-card-actions\s*[,{]/;
+  assert.match(CSS, darkActions, "深色模式应覆盖操作区分隔线规则");
+});
+
+test("LP-391: card grid shows four columns per row on xl screens", () => {
+  const gridLine = PAGE.match(/<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">/);
+  assert.ok(gridLine, "卡片 Grid 应为 4 列布局");
+  assert.ok(!/xl:grid-cols-3/.test(PAGE), "不应再保留 xl 三列布局");
+});
+
+test("LP-391: pagination bar aligns with power-lines vertical spacing", () => {
+  const paginationBlock = CSS.match(/^\.admin-lightning-distribution-pagination \{([^}]*)\}/m)?.[1];
+  assert.ok(paginationBlock, "应存在 .admin-lightning-distribution-pagination 规则块");
+  assert.match(paginationBlock, /padding:\s*12px\s+0\s+8px/, "分页容器应使用统一上下边距（顶部 12px 底部 8px）");
+  assert.match(paginationBlock, /align-items:\s*center/, "分页容器应垂直居中");
 });
 
 test("LP-357: obsolete field-row CSS and dead head styles are removed", () => {
