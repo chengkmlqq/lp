@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import logging
 import subprocess
 import traceback
 from datetime import datetime
@@ -24,6 +25,8 @@ from .fault_diagnosis_core import (
     render_markdown_summary,
 )
 from .fault_input_discovery import normalize_input_files
+
+logger = logging.getLogger(__name__)
 
 # 判别系统人工输入默认值（与交付版 config/manual_input.json 一致）
 DEFAULT_MANUAL: dict[str, Any] = {
@@ -246,7 +249,11 @@ def _try_matlab_wave_enhancement(
     内置 Python 可解释特征规则（analyze_traveling_waves 启发式分支）。
     """
     compiled_dir = (get_settings().fault_diag_matlab_compiled_dir or "").strip()
-    if not compiled_dir or not traveling_wave_records:
+    if not compiled_dir:
+        logger.info("Fault diagnosis MATLAB skipped: compiled directory is not configured")
+        return None, None
+    if not traveling_wave_records:
+        logger.info("Fault diagnosis MATLAB skipped: no traveling-wave records were loaded")
         return None, None
     # 判别系统产物：Windows mcc 编译的 .exe 经 Wine 调用；Linux mcc 编译的
     # RunWaveAnalysisModule（含完整判定模型）直接执行（fquiz-matlab-worker 镜像
@@ -254,6 +261,7 @@ def _try_matlab_wave_enhancement(
     exe_names = ("waveform_engine_v2.exe", "waveform_engine.exe", "RunWaveAnalysisModule")
     executable = next((Path(compiled_dir) / n for n in exe_names if (Path(compiled_dir) / n).is_file()), None)
     if executable is None:
+        logger.warning("Fault diagnosis MATLAB skipped: no wave module executable in %s", compiled_dir)
         return None, None
     # Wine 二进制：仅 Windows 产物需要；Linux 产物直接执行。
     wine_binary = (get_settings().wine_binary_path or "wine").strip() or "wine"
@@ -268,6 +276,7 @@ def _try_matlab_wave_enhancement(
             traveling_wave_records=list(traveling_wave_records),
         )
     except Exception:
+        logger.exception("Fault diagnosis MATLAB preliminary analysis failed for %s", analysis_id)
         return None, None
     fault = preliminary["inputs"].get("fault_record", {})
     fault_phase = "".join(
@@ -290,6 +299,7 @@ def _try_matlab_wave_enhancement(
         staged_input.mkdir(parents=True, exist_ok=False)
         output_root.mkdir(parents=True, exist_ok=True)
     except OSError:
+        logger.exception("Fault diagnosis MATLAB staging directory creation failed for %s", analysis_id)
         return None, None
     for record in traveling_wave_records:
         source = Path(str(record.get("path") or ""))
@@ -325,15 +335,24 @@ def _try_matlab_wave_enhancement(
             timeout=600,
         )
     except Exception:
+        logger.exception("Fault diagnosis MATLAB process failed for %s", analysis_id)
         return None, None
 
     latest_file = output_root / "最新结果路径.txt"
     if completed.returncode != 0 or not latest_file.is_file():
+        logger.warning(
+            "Fault diagnosis MATLAB returned no result for %s: returncode=%s latest_file=%s",
+            analysis_id,
+            completed.returncode,
+            latest_file.is_file(),
+        )
         return None, None
     latest_output = Path(latest_file.read_text(encoding="utf-8-sig").strip())
     prediction = latest_output / "wave_module_prediction.txt"
     if not prediction.is_file():
+        logger.warning("Fault diagnosis MATLAB prediction file missing for %s: %s", analysis_id, prediction)
         return None, None
+    logger.info("Fault diagnosis MATLAB completed for %s: prediction=%s", analysis_id, prediction)
     return prediction, None
 
 
@@ -608,6 +627,14 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
         )
         manual = build_manual_input(item)
         analysis_dir = Path(get_settings().file_vfs_root) / "fault_analysis" / analysis_id
+        upload_files = item.upload_files or {}
+        traveling_wave_paths = _resolve_upload_files(upload_files, "traveling_wave_file")
+        logger.info(
+            "Fault diagnosis inputs for %s: upload_fields=%s traveling_wave_file_count=%d",
+            analysis_id,
+            sorted(upload_files),
+            len(traveling_wave_paths),
+        )
 
         wave_model_path, wave_review_context = _try_matlab_wave_enhancement(
             analysis_id,
@@ -621,11 +648,11 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
         wave_model_result = load_wave_model_result(wave_model_path) if wave_model_path is not None else None
 
         source_paths = {
-            "fault": _resolve_upload_file(item.upload_files or {}, "wave_data_file"),
-            "lightning": _resolve_upload_file(item.upload_files or {}, "lightning_data_file"),
-            "ledger": _resolve_upload_file(item.upload_files or {}, "ledger_data_file"),
+            "fault": _resolve_upload_file(upload_files, "wave_data_file"),
+            "lightning": _resolve_upload_file(upload_files, "lightning_data_file"),
+            "ledger": _resolve_upload_file(upload_files, "ledger_data_file"),
             "manual": None,
-            "traveling_waves": _resolve_upload_files(item.upload_files or {}, "traveling_wave_file"),
+            "traveling_waves": traveling_wave_paths,
             "wave_model_result": wave_model_path,
         }
 

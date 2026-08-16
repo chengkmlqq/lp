@@ -331,11 +331,16 @@ export default function AdminFaultAnalysisPage() {
 
       const autoFiles = values.auto_classify_files;
       if (autoFiles && autoFiles.length > 0) {
+        const completedAutoFiles = autoFiles.filter((item) => item.status === "done" && item.temp_file_id);
+        if (completedAutoFiles.length !== autoFiles.length) {
+          throw new Error("自动识别文件尚未全部上传完成，请等待上传完成后提交");
+        }
         formData.set("auto_classify", "true");
-        for (const item of autoFiles) {
-          if (item.temp_file_id) {
-            formData.append("auto_classify_temp_file_ids", item.temp_file_id);
-          }
+        for (const item of completedAutoFiles) {
+          formData.append("auto_classify_temp_file_ids", item.temp_file_id as string);
+        }
+        if (formData.getAll("auto_classify_temp_file_ids").length !== completedAutoFiles.length) {
+          throw new Error("自动识别文件提交数量异常，请重新选择文件后提交");
         }
       }
       const fileFields: Array<[string, { temp_file_id?: string }[] | undefined]> = [

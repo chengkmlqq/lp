@@ -98,29 +98,15 @@ export function TempFileUpload({
 
   const patchValue = useCallback(
     (updater: (items: FaultAnalysisTempFile[]) => FaultAnalysisTempFile[]) => {
-      onChangeRef.current?.(updater(valueRef.current));
+      const next = updater(valueRef.current);
+      valueRef.current = next;
+      onChangeRef.current?.(next);
     },
     [],
   );
 
-  const handleSelect = useCallback(
-    (file: File) => {
-      if (maxSizeMb != null && file.size > maxSizeMb * 1024 * 1024) {
-        message.error(`${file.name} 超过 ${maxSizeMb}MB 大小限制，请重新选择`);
-        return;
-      }
-      const item: FaultAnalysisTempFile = {
-        uid: newUid(file),
-        name: file.name,
-        status: "uploading",
-        percent: 0,
-      };
-      if (multiple) {
-        patchValue((items) => [...items, item]);
-      } else {
-        patchValue(() => [item]);
-      }
-
+  const startUpload = useCallback(
+    (file: File, item: FaultAnalysisTempFile) => {
       const token = getAccessToken();
       uploadToTemp(
         file,
@@ -150,7 +136,44 @@ export function TempFileUpload({
           message.error(`${file.name} 上传失败：${text}`);
         });
     },
-    [getAccessToken, maxSizeMb, multiple, patchValue],
+    [getAccessToken, patchValue],
+  );
+
+  const buildPendingItem = useCallback(
+    (file: File): FaultAnalysisTempFile | null => {
+      if (maxSizeMb != null && file.size > maxSizeMb * 1024 * 1024) {
+        message.error(`${file.name} 超过 ${maxSizeMb}MB 大小限制，请重新选择`);
+        return null;
+      }
+      return {
+        uid: newUid(file),
+        name: file.name,
+        status: "uploading",
+        percent: 0,
+      };
+    },
+    [maxSizeMb],
+  );
+
+  const handleSelectFiles = useCallback(
+    (files: File[]) => {
+      const pairs = files
+        .map((file) => ({ file, item: buildPendingItem(file) }))
+        .filter((entry): entry is { file: File; item: FaultAnalysisTempFile } => entry.item !== null);
+      if (pairs.length === 0) {
+        return;
+      }
+      const pendingItems = pairs.map((entry) => entry.item);
+      if (multiple) {
+        patchValue((items) => [...items, ...pendingItems]);
+      } else {
+        patchValue(() => [pendingItems[pendingItems.length - 1]]);
+      }
+      for (const { file, item } of pairs) {
+        startUpload(file, item);
+      }
+    },
+    [buildPendingItem, multiple, patchValue, startUpload],
   );
 
   const removeItem = useCallback(
@@ -174,9 +197,7 @@ export function TempFileUpload({
         accept={accept}
         onChange={(event) => {
           const files = Array.from(event.target.files ?? []);
-          for (const file of files) {
-            handleSelect(file);
-          }
+          handleSelectFiles(files);
           event.target.value = "";
         }}
       />
