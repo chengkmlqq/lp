@@ -29,20 +29,20 @@ test("LP-357: upper section shows icon + strong truncate title with status tag a
   assert.match(cardBlock, /border-b border-gray-200/, "标题栏与信息区之间应有 border-b 分隔线");
 });
 
-test("LP-357: middle section renders the seven fields as icon + text rows", () => {
+test("LP-389: middle section renders the compact fields as icon + text rows", () => {
   assert.match(cardBlock, /城市：/, "中部应保留城市信息");
   assert.match(cardBlock, /地点标签：/, "中部应保留地点标签信息");
-  assert.match(cardBlock, /导入时间：/, "中部应保留导入时间信息");
   assert.match(cardBlock, /有效点数：/, "中部应保留有效点数信息");
   assert.match(cardBlock, /整体 Ng：/, "中部应保留整体 Ng 信息");
-  assert.match(cardBlock, /最大电流：/, "中部应保留最大电流信息");
-  assert.match(cardBlock, /平均电流：/, "中部应保留平均电流信息");
+  assert.doesNotMatch(cardBlock, /导入时间：/, "中部不应再展示导入时间");
+  assert.doesNotMatch(cardBlock, /最大电流：/, "中部不应再展示最大电流");
+  assert.doesNotMatch(cardBlock, /平均电流：/, "中部不应再展示平均电流");
   assert.match(cardBlock, /<EnvironmentOutlined /, "城市应带图标");
   assert.match(cardBlock, /<TagOutlined /, "地点标签应带图标");
-  assert.match(cardBlock, /<ClockCircleOutlined /, "导入时间应带图标");
   assert.match(cardBlock, /<NumberOutlined /, "有效点数应带图标");
   assert.match(cardBlock, /<ThunderboltOutlined className="text-xs text-gray-500" \/>/, "整体 Ng 应带图标");
-  assert.match(cardBlock, /<BarChartOutlined /, "最大电流/平均电流应带图标");
+  assert.doesNotMatch(cardBlock, /<ClockCircleOutlined /, "导入时间图标应移除");
+  assert.doesNotMatch(cardBlock, /<BarChartOutlined /, "最大/平均电流图标应移除");
   assert.match(cardBlock, /type="secondary" className="text-xs/, "信息行应使用次要色 text-xs 文本");
 });
 
@@ -50,22 +50,27 @@ test("LP-357: processing progress bar is preserved in the info section", () => {
   assert.match(cardBlock, /record\.status === "processing"[\s\S]{0,120}<Progress /, "处理中状态应保留进度条");
 });
 
-test("LP-357: bottom section holds icon action buttons with a top border divider", () => {
-  assert.match(cardBlock, /flex justify-end pt-2 border-t border-gray-200/, "操作区上方应有 border-t 分隔线并右对齐");
+test("LP-389: bottom section holds flat icon action buttons with a top border divider", () => {
+  assert.match(cardBlock, /admin-lightning-distribution-event-card-actions flex justify-end pt-2 border-t border-gray-200/, "操作区上方应有 border-t 分隔线并右对齐");
   assert.match(cardBlock, /icon=\{<EyeOutlined \/>\}/, "底部应有详情图标按钮");
   assert.match(cardBlock, /type="text"\s*[\s\S]{0,200}size="small"/, "操作按钮应为 text 小号图标按钮");
 });
 
-test("LP-357: detail moved out of dropdown to the Eye icon button; other actions kept in More dropdown", () => {
+test("LP-389: all actions flattened out of the dropdown menu", () => {
   assert.ok(!/key: "image"/.test(cardBlock), "下拉中不应再包含详情项");
   assert.doesNotMatch(cardBlock, /label: "详情"/, "下拉中不应再包含详情菜单项");
   assert.match(cardBlock, /openDetail\(record\)/, "详情应由 Eye 图标按钮打开");
-  assert.match(cardBlock, /label: "导入日志"/, "下拉应保留导入日志");
-  assert.match(cardBlock, /label: "绘图日志"/, "下拉应保留绘图日志");
-  assert.match(cardBlock, /label: "绘图"/, "下拉应保留绘图");
-  assert.match(cardBlock, /label: "删除"/, "下拉应保留删除");
+  assert.doesNotMatch(cardBlock, /Dropdown menu=\{\{ items: dropdownItems \}\}/, "卡片不应再使用下拉折叠菜单");
+  assert.doesNotMatch(cardBlock, /dropdownItems/, "dropdownItems 变量应被移除");
+  assert.match(cardBlock, /icon=\{<FileTextOutlined \/>\}[\s\S]{0,120}openLogViewer\(record\.task_id/, "导入日志应平铺为图标按钮");
+  assert.match(cardBlock, /openLogViewer\(record\.lp_draw_task_id/, "绘图日志应平铺为图标按钮");
+  assert.match(cardBlock, /icon=\{<ThunderboltOutlined \/>\}[\s\S]{0,140}openLpDrawModal\(record\)/, "绘图应平铺为图标按钮");
+  assert.match(cardBlock, /icon=\{<DeleteOutlined \/>\}/, "删除应平铺为危险图标按钮");
   assert.match(cardBlock, /Modal\.confirm\(/, "删除应保留二次确认弹窗");
-  assert.match(cardBlock, /danger: true as const/, "删除菜单项应标记 danger");
+  assert.match(cardBlock, /\bdanger\b/, "删除按钮应标记 danger");
+  assert.match(cardBlock, /loading=\{deleteMutation\.isPending\}/, "删除按钮应保留 loading 态");
+  const stopPropagationCount = (cardBlock.match(/event\.stopPropagation\(\)/g) ?? []).length;
+  assert.ok(stopPropagationCount >= 5, "每个操作按钮都应 stopPropagation 防冒泡");
 });
 
 test("LP-357: card container keeps aligned styling with dark theme coverage", () => {
@@ -76,6 +81,12 @@ test("LP-357: card container keeps aligned styling with dark theme coverage", ()
   assert.match(block, /box-shadow: 0 8px 18px/, "卡片应使用统一柔和阴影");
   const darkGroup = /:root\[data-fquiz-theme="dark"\]\s[^{]*\.admin-lightning-distribution-event-card\s*[^,{]*[,{]/;
   assert.match(CSS, darkGroup, "深色模式应覆盖地闪密度卡片配色规则");
+});
+
+test("LP-389: card action bar keeps aligned border styling", () => {
+  const block = CSS.match(/^\.admin-lightning-distribution-event-card-actions \{([^}]*)\}/m)?.[1];
+  assert.ok(block, "应存在 .admin-lightning-distribution-event-card-actions 规则块");
+  assert.match(block, /border-top-color: color-mix\(in srgb, var\(--fquiz-theme-primary\) 18%/, "操作栏边框应使用主色混合色");
 });
 
 test("LP-357: obsolete field-row CSS and dead head styles are removed", () => {

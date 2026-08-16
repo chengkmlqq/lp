@@ -29,11 +29,11 @@ import {
   type MenuProps,
 } from "antd";
 import {
-  BarChartOutlined,
   CheckCircleOutlined,
-  ClockCircleOutlined,
+  DeleteOutlined,
   EnvironmentOutlined,
   EyeOutlined,
+  FileTextOutlined,
   MoreOutlined,
   NumberOutlined,
   QuestionCircleOutlined,
@@ -779,51 +779,6 @@ export default function AdminLightningDistributionPage() {
   );
 
   const renderRecordCard = (record: LightningDistributionRecord) => {
-    const dropdownItems: MenuProps["items"] = [
-      ...(canReadLogs && record.task_id
-        ? [
-            {
-              key: "import-log",
-              label: "导入日志",
-              onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
-            },
-          ]
-        : []),
-      ...(canReadLogs && record.lp_draw_task_id
-        ? [
-            {
-              key: "draw-log",
-              label: "绘图日志",
-              onClick: () => openLogViewer(record.lp_draw_task_id, "绘图日志", record.source_file_name),
-            },
-          ]
-        : []),
-      ...(canManage
-        ? [
-            {
-              key: "draw-lp",
-              label: "绘图",
-              onClick: () => openLpDrawModal(record),
-            },
-            {
-              key: "delete",
-              label: "删除",
-              danger: true as const,
-              onClick: () => {
-                Modal.confirm({
-                  title: "确认删除",
-                  content: "确认删除该地闪分布记录？此操作不可恢复。",
-                  okText: "确认删除",
-                  cancelText: "取消",
-                  okButtonProps: { danger: true },
-                  onOk: () => deleteMutation.mutate(record),
-                });
-              },
-            },
-          ]
-        : []),
-    ];
-
     const meta = STATUS_META[record.status] ?? { color: "default", label: record.status };
 
     return (
@@ -857,12 +812,6 @@ export default function AdminLightningDistributionPage() {
               </Typography.Text>
             </div>
             <div className="flex items-center gap-2">
-              <ClockCircleOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
-                导入时间：{formatDateTime(record.create_date)}
-              </Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
               <NumberOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
                 有效点数：{record.valid_count}
@@ -874,24 +823,12 @@ export default function AdminLightningDistributionPage() {
                 整体 Ng：{formatNumber(record.overall_ng, 4)}
               </Typography.Text>
             </div>
-            <div className="flex items-center gap-2">
-              <BarChartOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
-                最大电流：{formatNumber(record.max_abs_current, 2)} kA
-              </Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
-              <BarChartOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
-                平均电流：{formatNumber(record.avg_abs_current, 2)} kA
-              </Typography.Text>
-            </div>
             {record.status === "processing" && (
               <Progress percent={record.progress} size="small" />
             )}
           </div>
 
-          <div className="flex justify-end pt-2 border-t border-gray-200">
+          <div className="admin-lightning-distribution-event-card-actions flex justify-end pt-2 border-t border-gray-200">
             <Space size="small">
               <Button
                 type="text"
@@ -902,15 +839,58 @@ export default function AdminLightningDistributionPage() {
                   openDetail(record);
                 }}
               />
-              {dropdownItems.length > 0 && (
-                <Dropdown menu={{ items: dropdownItems }} trigger={["click"]}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<MoreOutlined />}
-                    onClick={(event) => event.stopPropagation()}
-                  />
-                </Dropdown>
+              {canReadLogs && record.task_id && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<FileTextOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openLogViewer(record.task_id, "导入日志", record.source_file_name);
+                  }}
+                />
+              )}
+              {canReadLogs && record.lp_draw_task_id && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<FileTextOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openLogViewer(record.lp_draw_task_id, "绘图日志", record.source_file_name);
+                  }}
+                />
+              )}
+              {canManage && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<ThunderboltOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openLpDrawModal(record);
+                  }}
+                />
+              )}
+              {canManage && (
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  loading={deleteMutation.isPending}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    Modal.confirm({
+                      title: "确认删除",
+                      content: "确认删除该地闪分布记录？此操作不可恢复。",
+                      okText: "确认删除",
+                      cancelText: "取消",
+                      okButtonProps: { danger: true },
+                      onOk: () => deleteMutation.mutate(record),
+                    });
+                  }}
+                />
               )}
             </Space>
           </div>
