@@ -639,13 +639,15 @@ export default function AdminLightningCurrentsPage() {
               <ClockCircleOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">采样时间：{formatDateTime(record.event_time) || "-"}</Typography.Text>
             </div>
-            {record.status === "processing" && (
-              <Progress percent={record.progress} size="small" />
-            )}
           </div>
 
-          <div className="flex justify-end pt-2 border-t border-gray-200">
-            <Space size="small">
+          <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-200">
+            {record.status === "processing" ? (
+              <Progress percent={record.progress} size="small" className="flex-1 max-w-40" />
+            ) : (
+              <div />
+            )}
+            <Space size="small" className="shrink-0">
               <Button
                 type="text"
                 size="small"
