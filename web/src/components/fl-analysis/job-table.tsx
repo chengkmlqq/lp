@@ -101,6 +101,7 @@ export function JobTable({ jobs, loading, total, pagination, onPaginationChange,
         pageSize: pagination.pageSize,
         total,
         showSizeChanger: true,
+        pageSizeOptions: [6, 12, 24, 48],
         showTotal: (total) => `共 ${total} 条`,
         hideOnSinglePage: false,
         onChange: (page, pageSize) => {

@@ -4912,6 +4912,7 @@ body {
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  overflow-x: hidden;
   overflow-y: auto;
   gap: 12px;
 }
@@ -4923,8 +4924,9 @@ body {
 .admin-fault-analysis-pagination {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 0 8px;
   flex-shrink: 0;
 }
 

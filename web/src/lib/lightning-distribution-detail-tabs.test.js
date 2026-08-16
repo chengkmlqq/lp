@@ -25,7 +25,7 @@ test("LP-302: detail tab title keeps only file name (no status Tag)", () => {
   );
 });
 
-test("LP-302: detail view wrapped in 12px-padded scrollable container", () => {
+test("LP-302: detail view wrapped in 10px-padded scrollable container", () => {
   assert.ok(
     /<div className="admin-lightning-distribution-detail-view">/.test(SOURCE),
     "详情内容应包裹在 admin-lightning-distribution-detail-view 容器中",
@@ -34,7 +34,7 @@ test("LP-302: detail view wrapped in 12px-padded scrollable container", () => {
     /\.admin-lightning-distribution-detail-view \s*\{([^}]*)\}/,
   )?.[1];
   assert.ok(rule, "globals.css 中应存在 .admin-lightning-distribution-detail-view 规则");
-  assert.match(rule, /padding:\s*12px/, "容器应有 12px 内边距");
+  assert.match(rule, /padding:\s*10px/, "容器应保持与线路管理页详情报一致的 10px 内边距");
   assert.match(rule, /overflow-y:\s*auto/, "内容超高时应出现纵向滚动条");
 });
 

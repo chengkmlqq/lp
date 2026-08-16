@@ -35,6 +35,7 @@ import {
   EyeOutlined,
   FileOutlined,
   FileTextOutlined,
+  GlobalOutlined,
   MoreOutlined,
   NumberOutlined,
   SearchOutlined,
@@ -909,12 +910,21 @@ export default function ElevationRecordsPage() {
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">大小：{formatFileSize(record.file_size)}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
+              <GlobalOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">来源：{record.source ?? "-"}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
               <AppstoreOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">分辨率：{record.resolution_m ? `${record.resolution_m.toFixed(1)} m` : "-"}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <NumberOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">样本数：{record.sample_count.toLocaleString()}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircleOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs">解析状态：</Typography.Text>
+              <Tag color={computedParseStatus(record).color} className="text-xs">{computedParseStatus(record).label}</Tag>
             </div>
             <div className="flex items-center gap-2">
               <DeploymentUnitOutlined className="text-xs text-gray-500" />
