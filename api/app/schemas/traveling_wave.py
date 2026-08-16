@@ -26,6 +26,13 @@ class FileInput(BaseModel):
     content: str | None = None
 
 
+class TravelingWaveTempUploadResponse(BaseModel):
+    """Response of a temp-file upload (two-phase upload flow)."""
+
+    temp_file_id: str
+    file_name: str = "upload"
+
+
 class TravelingWaveAnalyzeRequest(BaseModel):
     """Request to start a traveling wave analysis job."""
 

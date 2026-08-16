@@ -79,3 +79,65 @@ def validate_upload(
             )
 
     return file
+
+
+def save_temp_upload(file: UploadFile, user_id: str) -> tuple[str, str]:
+    """通用两段式上传的第一步：把上传文件保存到临时目录。
+
+    返回 ``(temp_file_id, file_name)``，供业务端点在确认提交时引用。
+    临时文件由消费方在读取后删除，或由定时清理任务兜底清理（见
+    ``minio_storage.cleanup_expired_temp_files``）。
+    """
+    from ..services.minio_storage import build_temp_key, put_object
+
+    content = file.file.read()
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="上传文件为空",
+        )
+
+    file_name = (file.filename or "upload").strip() or "upload"
+    temp_file_id = build_temp_key(file_name, user_id)
+    put_object(temp_file_id, content, content_type="text/plain")
+    return temp_file_id, file_name
+
+
+def read_temp_upload(temp_file_id: str, user_id: str) -> bytes:
+    """通用两段式上传的第二步：按 temp_file_id 读取临时文件内容并消费删除。
+
+    临时 Key 中嵌入了 user_id，读取前校验所有权，防止跨用户引用。
+    读取成功后即删除临时对象（消费即删，清理任务兜底孤儿文件）。
+    """
+    from ..services.minio_storage import (
+        TEMP_PREFIX,
+        MinioObjectNotFoundError,
+        delete_object,
+        get_object,
+    )
+
+    temp_key = (temp_file_id or "").strip()
+    expected_prefix = f"{TEMP_PREFIX}{user_id}/"
+    if not temp_key.startswith(expected_prefix):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="temp_file_id 无效或不属于当前用户",
+        )
+
+    try:
+        content = get_object(temp_key)
+    except MinioObjectNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="临时文件不存在或已过期，请重新上传",
+        ) from None
+
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
+
+    try:
+        delete_object(temp_key)
+    except Exception:
+        pass
+
+    return content

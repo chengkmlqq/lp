@@ -1,6 +1,11 @@
 "use client";
 
-import { ReloadOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import {
+  CheckCircleOutlined,
+  ReloadOutlined,
+  ThunderboltOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Alert,
@@ -11,6 +16,7 @@ import {
   Image,
   Input,
   InputNumber,
+  Progress,
   Row,
   Select,
   Space,
@@ -18,15 +24,14 @@ import {
   Typography,
   Upload,
   type CardProps,
-  type UploadFile,
 } from "antd";
 import type { ComponentType, RefAttributes } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
-import { readApiError } from "@/lib/api";
+import { getApiBaseUrl, readApiError } from "@/lib/api";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -72,11 +77,23 @@ type TravelingWaveAnalyzeResponse = {
   log_text: string | null;
 };
 
+type TravelingWaveTempUploadResponse = {
+  temp_file_id: string;
+  file_name: string;
+};
+
+type PhaseKey = "a" | "b" | "c";
+
+type PhaseUploadState = {
+  file: File | null;
+  tempFileId: string | null;
+  progress: number;
+  status: "idle" | "uploading" | "done" | "error";
+  error: string;
+};
+
 type AnalyzeFormValues = {
   input_mode: "upload" | "path";
-  file_a?: UploadFile[];
-  file_b?: UploadFile[];
-  file_c?: UploadFile[];
   path_a?: string;
   path_b?: string;
   path_c?: string;
@@ -89,10 +106,142 @@ type AnalyzeFormValues = {
 
 const Card = AntdCard as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
+const PHASE_LABELS: Record<PhaseKey, string> = {
+  a: "A",
+  b: "B",
+  c: "C",
+};
+
+const PHASE_KEYS: PhaseKey[] = ["a", "b", "c"];
+
 const DEFAULT_FORM_VALUES: AnalyzeFormValues = {
   input_mode: "upload",
   sample_rate_hz: 1_000_000,
 };
+
+function emptyPhaseState(): PhaseUploadState {
+  return {
+    file: null,
+    tempFileId: null,
+    progress: 0,
+    status: "idle",
+    error: "",
+  };
+}
+
+function uploadToTemp(
+  file: File,
+  token: string | null,
+  onProgress: (percent: number) => void,
+  signal?: AbortSignal,
+): Promise<TravelingWaveTempUploadResponse> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const abortHandler = () => xhr.abort();
+    signal?.addEventListener("abort", abortHandler, { once: true });
+    xhr.open("POST", `${getApiBaseUrl()}/api/v1/traveling-wave/upload-temp`);
+    xhr.withCredentials = true;
+    if (token) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    }
+    xhr.upload.onprogress = (event: ProgressEvent<EventTarget>) => {
+      if (!event.lengthComputable || event.total <= 0) {
+        return;
+      }
+      onProgress(Math.min(99, Math.max(0, Math.round((event.loaded / event.total) * 100))));
+    };
+    xhr.onload = () => {
+      signal?.removeEventListener("abort", abortHandler);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const payload = JSON.parse(xhr.responseText) as TravelingWaveTempUploadResponse;
+          onProgress(100);
+          resolve(payload);
+        } catch {
+          reject(new Error("上传成功但响应解析失败，请重新选择文件"));
+        }
+        return;
+      }
+      let message = `HTTP ${xhr.status}`;
+      try {
+        const parsed = JSON.parse(xhr.responseText) as { detail?: string };
+        if (parsed?.detail?.trim()) {
+          message = parsed.detail;
+        }
+      } catch {
+        // 忽略非 JSON 响应
+      }
+      reject(new Error(message));
+    };
+    xhr.onerror = () => {
+      signal?.removeEventListener("abort", abortHandler);
+      reject(new Error("网络异常，上传失败"));
+    };
+    xhr.onabort = () => {
+      signal?.removeEventListener("abort", abortHandler);
+      reject(new Error("上传已取消"));
+    };
+    const formData = new FormData();
+    formData.append("file", file);
+    xhr.send(formData);
+  });
+}
+
+function PhaseFilePicker({
+  state,
+  onSelect,
+  onRemove,
+}: {
+  state: PhaseUploadState;
+  onSelect: (file: File) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div>
+      <Upload
+        accept=".txt,.dat"
+        showUploadList={false}
+        beforeUpload={(file) => {
+          onSelect(file as File);
+          return Upload.LIST_IGNORE;
+        }}
+      >
+        <Button icon={<UploadOutlined />} size="small">
+          选择文件
+        </Button>
+      </Upload>
+      {state.file && (
+        <div style={{ marginTop: 8 }}>
+          <Space size={6} align="center">
+            <Typography.Text
+              ellipsis
+              style={{ maxWidth: 150, fontSize: 12 }}
+              title={state.file.name}
+            >
+              {state.file.name}
+            </Typography.Text>
+            {state.status === "done" && state.tempFileId && (
+              <CheckCircleOutlined style={{ color: "#52c41a" }} />
+            )}
+            {state.status !== "idle" && (
+              <a onClick={onRemove} style={{ fontSize: 12 }}>
+                移除
+              </a>
+            )}
+          </Space>
+          {state.status === "uploading" && (
+            <Progress percent={state.progress} size="small" style={{ marginTop: 4 }} />
+          )}
+          {state.status === "error" && (
+            <Typography.Text type="danger" style={{ display: "block", fontSize: 12, marginTop: 4 }}>
+              {state.error}
+            </Typography.Text>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function formatStatusTag(status: TravelingWaveAnalyzeResponse["status"] | null | undefined) {
   if (status === "success") return <Tag color="success">成功</Tag>;
@@ -148,7 +297,7 @@ function buildParseInfoBlock(label: string, info: TravelingWaveParseResult | nul
 // ── Component ───────────────────────────────────────────────────────
 
 export default function AdminTravelingWavePage() {
-  const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
+  const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const [form] = Form.useForm<AnalyzeFormValues>();
   const [status, setStatus] = useState<TravelingWaveStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -156,6 +305,14 @@ export default function AdminTravelingWavePage() {
   const [lastValues, setLastValues] = useState<AnalyzeFormValues | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [phaseUploads, setPhaseUploads] = useState<Record<PhaseKey, PhaseUploadState>>(() => ({
+    a: emptyPhaseState(),
+    b: emptyPhaseState(),
+    c: emptyPhaseState(),
+  }));
+  const phaseUploadSeqRef = useRef<Record<PhaseKey, number>>({ a: 0, b: 0, c: 0 });
+  const phaseAbortRef = useRef<Record<PhaseKey, AbortController | null>>({ a: null, b: null, c: null });
+  const tempConsumedRef = useRef(false);
 
   const canRead = hasPermission("traveling_wave.read") || hasPermission("traveling_wave.manage");
   const canManage = hasPermission("traveling_wave.manage");
@@ -197,23 +354,40 @@ export default function AdminTravelingWavePage() {
   const analyzeMutation = useMutation({
     mutationFn: async (values: AnalyzeFormValues) => {
       if (values.input_mode === "upload") {
-        // Upload mode: use FormData
+        // 文件已先上传到临时目录，校验上传完成后携带 temp_file_id 提交
+        const selectedPhases = PHASE_KEYS.filter((phase) => phaseUploads[phase].file);
+        if (selectedPhases.length === 0) {
+          throw new Error("请先选择并上传至少一个相数据文件");
+        }
+        const incompletePhases = selectedPhases.filter(
+          (phase) => phaseUploads[phase].status !== "done" || !phaseUploads[phase].tempFileId,
+        );
+        if (incompletePhases.length > 0) {
+          const names = incompletePhases.map((phase) => `${PHASE_LABELS[phase]}相`).join("、");
+          throw new Error(`${names} 文件尚未上传完成，请等待上传后再开始分析`);
+        }
+
+        const tempIdByPhase: Record<PhaseKey, string> = {
+          a: phaseUploads.a.tempFileId as string,
+          b: phaseUploads.b.tempFileId as string,
+          c: phaseUploads.c.tempFileId as string,
+        };
         const formData = new FormData();
-        if (values.file_a?.[0]?.originFileObj) {
-          formData.append("file_a", values.file_a[0].originFileObj as Blob);
+        if (tempIdByPhase.a) {
+          formData.append("file_a_temp_id", tempIdByPhase.a);
         }
-        if (values.file_b?.[0]?.originFileObj) {
-          formData.append("file_b", values.file_b[0].originFileObj as Blob);
+        if (tempIdByPhase.b) {
+          formData.append("file_b_temp_id", tempIdByPhase.b);
         }
-        if (values.file_c?.[0]?.originFileObj) {
-          formData.append("file_c", values.file_c[0].originFileObj as Blob);
+        if (tempIdByPhase.c) {
+          formData.append("file_c_temp_id", tempIdByPhase.c);
         }
         formData.append("sample_rate_hz", String(values.sample_rate_hz));
         if (values.fault_distance_km) {
           formData.append("fault_distance_km", String(values.fault_distance_km));
         }
-        if (values.tower_no) {
-          formData.append("tower_no", values.tower_no);
+        if (values.tower_no?.trim()) {
+          formData.append("tower_no", values.tower_no.trim());
         }
 
         const response = await fetchWithAuth("/api/v1/traveling-wave/analyze/upload", {
@@ -276,6 +450,63 @@ export default function AdminTravelingWavePage() {
 
   // ── Handlers ────────────────────────────────────────────────────
 
+  const handlePhaseUpload = useCallback(
+    (phase: PhaseKey, file: File): Promise<void> => {
+      const seq = phaseUploadSeqRef.current[phase] + 1;
+      phaseUploadSeqRef.current[phase] = seq;
+      phaseAbortRef.current[phase]?.abort();
+      const controller = new AbortController();
+      phaseAbortRef.current[phase] = controller;
+
+      const applyIfCurrent = (updater: (prev: PhaseUploadState) => PhaseUploadState) => {
+        if (phaseUploadSeqRef.current[phase] !== seq) {
+          return;
+        }
+        setPhaseUploads((prev) => ({ ...prev, [phase]: updater(prev[phase]) }));
+      };
+
+      applyIfCurrent((prev) => ({
+        ...prev,
+        file,
+        tempFileId: null,
+        progress: 0,
+        status: "uploading",
+        error: "",
+      }));
+
+      return uploadToTemp(
+        file,
+        getAccessToken(),
+        (percent) => applyIfCurrent((prev) => ({ ...prev, progress: percent })),
+        controller.signal,
+      )
+        .then((payload) => {
+          applyIfCurrent((prev) => ({
+            ...prev,
+            file,
+            tempFileId: payload.temp_file_id,
+            progress: 100,
+            status: "done",
+            error: "",
+          }));
+        })
+        .catch((candidate) => {
+          applyIfCurrent((prev) => ({
+            ...prev,
+            status: "error",
+            error: candidate instanceof Error ? candidate.message : "上传失败",
+          }));
+        });
+    },
+    [getAccessToken],
+  );
+
+  const clearPhaseUpload = useCallback((phase: PhaseKey) => {
+    phaseAbortRef.current[phase]?.abort();
+    phaseUploadSeqRef.current[phase] += 1;
+    setPhaseUploads((prev) => ({ ...prev, [phase]: emptyPhaseState() }));
+  }, []);
+
   const handleAnalyze = async (values: AnalyzeFormValues) => {
     if (!canManage) {
       setError("缺少 traveling_wave.manage 权限");
@@ -284,12 +515,25 @@ export default function AdminTravelingWavePage() {
     setError("");
     setSuccess("");
     setLastValues(values);
+    if (values.input_mode === "upload" && tempConsumedRef.current) {
+      // 上一轮提交已消费临时文件，重新上传后再提交
+      await Promise.all(
+        PHASE_KEYS.map((phase) => {
+          const file = phaseUploads[phase].file;
+          return file ? handlePhaseUpload(phase, file) : Promise.resolve();
+        }),
+      );
+    }
     await analyzeMutation.mutateAsync(values);
+    if (values.input_mode === "upload") {
+      tempConsumedRef.current = true;
+    }
   };
 
   const handleReset = () => {
     setActiveJobId(null);
     form.resetFields();
+    PHASE_KEYS.forEach((phase) => clearPhaseUpload(phase));
   };
 
   const handleRetry = async () => {
@@ -300,6 +544,15 @@ export default function AdminTravelingWavePage() {
     if (!lastValues) return;
     setError("");
     setSuccess("");
+    if (lastValues.input_mode === "upload") {
+      // 临时文件在首次提交时已被消费删除，重试前需要重新上传到临时目录
+      await Promise.all(
+        PHASE_KEYS.map((phase) => {
+          const file = phaseUploads[phase].file;
+          return file ? handlePhaseUpload(phase, file) : Promise.resolve();
+        }),
+      );
+    }
     await analyzeMutation.mutateAsync(lastValues);
   };
 
@@ -394,28 +647,22 @@ export default function AdminTravelingWavePage() {
                   getFieldValue("input_mode") === "upload" ? (
                     <>
                       <Row gutter={12}>
-                        <Col xs={24} md={8}>
-                          <Form.Item name="file_a" label="A 相数据文件">
-                            <Upload maxCount={1} accept=".txt" beforeUpload={() => false}>
-                              <Button>选择文件</Button>
-                            </Upload>
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} md={8}>
-                          <Form.Item name="file_b" label="B 相数据文件">
-                            <Upload maxCount={1} accept=".txt" beforeUpload={() => false}>
-                              <Button>选择文件</Button>
-                            </Upload>
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} md={8}>
-                          <Form.Item name="file_c" label="C 相数据文件">
-                            <Upload maxCount={1} accept=".txt" beforeUpload={() => false}>
-                              <Button>选择文件</Button>
-                            </Upload>
-                          </Form.Item>
-                        </Col>
+                        {PHASE_KEYS.map((phase) => (
+                          <Col xs={24} md={8} key={phase}>
+                            <Typography.Text>{PHASE_LABELS[phase]} 相数据文件</Typography.Text>
+                            <div style={{ marginTop: 4 }}>
+                              <PhaseFilePicker
+                                state={phaseUploads[phase]}
+                                onSelect={(file) => void handlePhaseUpload(phase, file)}
+                                onRemove={() => clearPhaseUpload(phase)}
+                              />
+                            </div>
+                          </Col>
+                        ))}
                       </Row>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        选择文件后立即上传到临时目录；确认开始分析时服务端从临时目录取文件处理。
+                      </Typography.Text>
                     </>
                   ) : (
                     <>
