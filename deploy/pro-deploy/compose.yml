@@ -139,6 +139,15 @@ services:
     depends_on:
       - api
       - redis
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - worker
+      - -Q
+      - matlab-diagnostics
+      - --hostname=matlab worker@lp
+      - --loglevel=info
     env_file:
       - ./.env.prod
     environment:
