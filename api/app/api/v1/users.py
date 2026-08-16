@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Response, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 import os
@@ -173,6 +173,8 @@ def assign_roles(
 
 import imghdr
 
+from ...core.file_upload import resolve_temp_upload
+
 ALLOWED_AVATAR_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 AVATAR_STORAGE_DIR = "/app/data/avatars"
 MAX_AVATAR_SIZE = 2 * 1024 * 1024  # 2MB
@@ -181,7 +183,8 @@ MAX_AVATAR_SIZE = 2 * 1024 * 1024  # 2MB
 @router.post("/{user_id}/avatar", response_model=UserPublic)
 def upload_user_avatar(
     user_id: str,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    temp_file_id: str | None = Form(default=None),
     current_user: CurrentUser = Depends(require_permission("user.manage")),
     db: Session = Depends(get_db),
 ) -> UserPublic:
@@ -189,8 +192,20 @@ def upload_user_avatar(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # 两段式上传：选择文件后先上传到临时目录（upload-temp），确认提交时携带 temp_file_id。
+    if temp_file_id:
+        content, source_file_name = resolve_temp_upload(temp_file_id, current_user.user.id)
+    elif file is not None:
+        content = file.file.read()
+        source_file_name = file.filename or ""
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="缺少文件，请提供 file 或 temp_file_id",
+        )
+
     # Validate file extension
-    ext = Path(file.filename or "").suffix.lower()
+    ext = Path(source_file_name or "").suffix.lower()
     if ext not in ALLOWED_AVATAR_EXTENSIONS:
         allowed = ", ".join(ALLOWED_AVATAR_EXTENSIONS)
         raise HTTPException(
@@ -198,8 +213,6 @@ def upload_user_avatar(
             detail=f"Unsupported file format. Allowed: {allowed}",
         )
 
-    # Read file content
-    content = file.file.read()
     if len(content) > MAX_AVATAR_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,

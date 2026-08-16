@@ -11,6 +11,7 @@ import {
   Form,
   Input,
   Modal,
+  Progress,
   Row,
   Select,
   Space,
@@ -23,7 +24,7 @@ import {
   type CardProps,
   type MenuProps,
 } from "antd";
-import { MoreOutlined, EditOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, MoreOutlined, EditOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode, type RefAttributes } from "react";
@@ -33,7 +34,7 @@ import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { ApiError, readApiError, getApiBaseUrl } from "@/lib/api";
-import type { RoleItem, RoleListResponse, UserListResponse, UserPublic } from "@/types/auth";
+import type { RoleItem, RoleListResponse, TempUploadResponse, UserListResponse, UserPublic } from "@/types/auth";
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
@@ -76,7 +77,7 @@ const USERS_TABLE_FALLBACK_RESERVE = 220;
 const USERS_TABLE_EXTRA_HEIGHT = 15;
 
 export default function AdminUsersPage() {
-  const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
+  const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
 
@@ -92,6 +93,12 @@ export default function AdminUsersPage() {
   const [selectedCreateAvatarFile, setSelectedCreateAvatarFile] = useState<File | null>(null);
   const [createAvatarPreview, setCreateAvatarPreview] = useState<string>("");
   const [createAvatarUploading, setCreateAvatarUploading] = useState(false);
+  const [createAvatarTempFileId, setCreateAvatarTempFileId] = useState<string | null>(null);
+  const [createAvatarUploadProgress, setCreateAvatarUploadProgress] = useState(0);
+  const [createAvatarUploadError, setCreateAvatarUploadError] = useState("");
+  const [editAvatarTempFileId, setEditAvatarTempFileId] = useState<string | null>(null);
+  const [editAvatarUploadProgress, setEditAvatarUploadProgress] = useState(0);
+  const [editAvatarUploadError, setEditAvatarUploadError] = useState("");
   const [editingUser, setEditingUser] = useState<UserPublic | null>(null);
   const [resetPasswordTarget, setResetPasswordTarget] = useState<UserPublic | null>(null);
   const [assigningRolesUser, setAssigningRolesUser] = useState<UserPublic | null>(null);
@@ -222,12 +229,12 @@ export default function AdminUsersPage() {
       return response.json() as Promise<UserPublic>;
     },
     onSuccess: async (createdUser) => {
-      if (selectedCreateAvatarFile) {
+      if (createAvatarTempFileId) {
         setCreateAvatarUploading(true);
         try {
           await avatarUploadMutation.mutateAsync({
             userId: createdUser.id,
-            file: selectedCreateAvatarFile,
+            tempFileId: createAvatarTempFileId,
           });
         } catch {
           setError(new ApiError("用户已创建，但 Logo 上传失败，可在编辑中重试"));
@@ -242,6 +249,9 @@ export default function AdminUsersPage() {
       createForm.resetFields();
       setSelectedCreateAvatarFile(null);
       setCreateAvatarPreview("");
+      setCreateAvatarTempFileId(null);
+      setCreateAvatarUploadProgress(0);
+      setCreateAvatarUploadError("");
       setCreateUserModalOpen(false);
       await refreshData();
     },
@@ -368,9 +378,9 @@ export default function AdminUsersPage() {
   const [uploadingAvatarUserId, setUploadingAvatarUserId] = useState<string | null>(null);
 
   const avatarUploadMutation = useMutation({
-    mutationFn: async ({ userId, file }: { userId: string; file: File }) => {
+    mutationFn: async ({ userId, tempFileId }: { userId: string; tempFileId: string }) => {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("temp_file_id", tempFileId);
       const response = await fetchWithAuth(`/api/v1/users/${userId}/avatar`, {
         method: "POST",
         body: formData,
@@ -392,6 +402,101 @@ export default function AdminUsersPage() {
     },
     onSettled: () => setUploadingAvatarUserId(null),
   });
+
+  // 两段式头像上传：选择图片后立即上传到临时目录（展示进度条），确认提交时携带 temp_file_id。
+  const handleAvatarTempUpload = useCallback(
+    (file: File, mode: "create" | "edit") => {
+      if (mode === "create") {
+        setSelectedCreateAvatarFile(file);
+        setCreateAvatarPreview(URL.createObjectURL(file));
+        setCreateAvatarTempFileId(null);
+        setCreateAvatarUploadProgress(0);
+        setCreateAvatarUploadError("");
+      } else {
+        setEditAvatarTempFileId(null);
+        setEditAvatarUploadProgress(0);
+        setEditAvatarUploadError("");
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${getApiBaseUrl()}/api/v1/uploads/temp`);
+      xhr.withCredentials = true;
+      const token = getAccessToken();
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+      xhr.upload.onprogress = (event: ProgressEvent<EventTarget>) => {
+        if (!event.lengthComputable || event.total <= 0) {
+          return;
+        }
+        const percent = Math.min(99, Math.max(0, Math.round((event.loaded / event.total) * 100)));
+        if (mode === "create") {
+          setCreateAvatarUploadProgress(percent);
+        } else {
+          setEditAvatarUploadProgress(percent);
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          if (mode === "create") {
+            setCreateAvatarUploadProgress(100);
+          } else {
+            setEditAvatarUploadProgress(100);
+          }
+          try {
+            const payload = JSON.parse(xhr.responseText) as TempUploadResponse;
+            if (mode === "create") {
+              setCreateAvatarTempFileId(payload.temp_file_id);
+            } else if (editingUser) {
+              setEditAvatarTempFileId(payload.temp_file_id);
+              avatarUploadMutation.mutate({ userId: editingUser.id, tempFileId: payload.temp_file_id });
+            }
+          } catch {
+            const detail = "上传成功但响应解析失败，请重新选择文件";
+            if (mode === "create") {
+              setCreateAvatarUploadError(detail);
+            } else {
+              setEditAvatarUploadError(detail);
+            }
+          }
+          return;
+        }
+        let detail = `HTTP ${xhr.status}`;
+        try {
+          const parsed = JSON.parse(xhr.responseText) as { detail?: string };
+          if (parsed?.detail?.trim()) detail = parsed.detail;
+        } catch {
+          // 忽略非 JSON 响应
+        }
+        if (mode === "create") {
+          setCreateAvatarUploadError(detail);
+        } else {
+          setEditAvatarUploadError(detail);
+        }
+      };
+      xhr.onerror = () => {
+        const detail = "网络异常，上传失败";
+        if (mode === "create") {
+          setCreateAvatarUploadError(detail);
+        } else {
+          setEditAvatarUploadError(detail);
+        }
+      };
+      xhr.onabort = () => {
+        const detail = "上传已取消";
+        if (mode === "create") {
+          setCreateAvatarUploadError(detail);
+        } else {
+          setEditAvatarUploadError(detail);
+        }
+      };
+
+      const formData = new FormData();
+      formData.append("file", file);
+      xhr.send(formData);
+    },
+    [avatarUploadMutation, getAccessToken, editingUser],
+  );
 
   const validateUserIdFormat = (userId: string): string | null => {
     const trimmedId = userId.trim();
@@ -464,6 +569,11 @@ export default function AdminUsersPage() {
   const handleCreateUser = async (values: CreateUserValues) => {
     setError(null);
     setSuccess("");
+
+    if (selectedCreateAvatarFile && !createAvatarTempFileId) {
+      setError(new ApiError(createAvatarUploadError || "Logo 上传尚未完成，请等待上传完成后再创建用户"));
+      return;
+    }
 
     const payload: CreateUserValues = {
       user_id: values.user_id.trim(),
@@ -551,6 +661,9 @@ export default function AdminUsersPage() {
     setSuccess("");
     setEditUserIdValidationError("");
     setEditingUser(target);
+    setEditAvatarTempFileId(null);
+    setEditAvatarUploadProgress(0);
+    setEditAvatarUploadError("");
     editUserForm.setFieldsValue({
       user_id: target.id,
       username: target.username,
@@ -623,6 +736,9 @@ export default function AdminUsersPage() {
     createForm.resetFields();
     setSelectedCreateAvatarFile(null);
     setCreateAvatarPreview("");
+    setCreateAvatarTempFileId(null);
+    setCreateAvatarUploadProgress(0);
+    setCreateAvatarUploadError("");
     setCreateUserModalOpen(true);
   };
 
@@ -633,6 +749,9 @@ export default function AdminUsersPage() {
     createForm.resetFields();
     setSelectedCreateAvatarFile(null);
     setCreateAvatarPreview("");
+    setCreateAvatarTempFileId(null);
+    setCreateAvatarUploadProgress(0);
+    setCreateAvatarUploadError("");
   };
 
   const handleKeywordChange = (value: string) => {
@@ -1271,8 +1390,7 @@ export default function AdminUsersPage() {
               accept="image/png,image/jpeg,image/gif,image/webp"
               showUploadList={false}
               beforeUpload={(file) => {
-                setSelectedCreateAvatarFile(file);
-                setCreateAvatarPreview(URL.createObjectURL(file));
+                handleAvatarTempUpload(file, "create");
                 return false;
               }}
             >
@@ -1285,6 +1403,19 @@ export default function AdminUsersPage() {
                 {selectedCreateAvatarFile.name}
               </Typography.Text>
             )}
+            {createAvatarUploadProgress > 0 && createAvatarUploadProgress < 100 ? (
+              <Progress percent={createAvatarUploadProgress} size="small" style={{ width: 200, marginTop: 8 }} />
+            ) : null}
+            {createAvatarUploadProgress >= 100 && createAvatarTempFileId && !createAvatarUploadError ? (
+              <Typography.Text type="success" style={{ display: "block", marginTop: 8 }}>
+                <CheckCircleOutlined /> 上传完成，可以提交创建
+              </Typography.Text>
+            ) : null}
+            {createAvatarUploadError ? (
+              <Typography.Text type="danger" style={{ display: "block", marginTop: 8 }}>
+                {createAvatarUploadError}
+              </Typography.Text>
+            ) : null}
           </div>
         </div>
         <Form<CreateUserValues>
@@ -1375,7 +1506,7 @@ export default function AdminUsersPage() {
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    avatarUploadMutation.mutate({ userId: editingUser.id, file });
+                    handleAvatarTempUpload(file, "edit");
                   }
                   e.target.value = "";
                 }}
@@ -1387,6 +1518,19 @@ export default function AdminUsersPage() {
               >
                 上传头像
               </Button>
+              {editAvatarUploadProgress > 0 && editAvatarUploadProgress < 100 ? (
+                <Progress percent={editAvatarUploadProgress} size="small" style={{ width: 200, marginTop: 8 }} />
+              ) : null}
+              {editAvatarUploadProgress >= 100 && editAvatarTempFileId && !editAvatarUploadError ? (
+                <Typography.Text type="success" style={{ display: "block", marginTop: 8 }}>
+                  <CheckCircleOutlined /> 上传完成，头像已更新
+                </Typography.Text>
+              ) : null}
+              {editAvatarUploadError ? (
+                <Typography.Text type="danger" style={{ display: "block", marginTop: 8 }}>
+                  {editAvatarUploadError}
+                </Typography.Text>
+              ) : null}
             </div>
           </div>
         )}
