@@ -13,6 +13,19 @@ const PAGE = readFileSync(PAGE_FILE, "utf-8");
 
 const cardBlock = PAGE.match(/const renderRecordCard = \(record: LightningAmplitudeRecord\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
 
+test("LP-399: 筛选栏 Form.Item 与线路管理基线一致（marginBottom 0）", () => {
+  assert.match(
+    PAGE,
+    /<Form\.Item label="关键词" className="admin-filter-keyword-item" style=\{\{ marginBottom: 0 \}\}>/,
+    "关键词表单项应设置 marginBottom: 0 与基线一致",
+  );
+  assert.match(
+    PAGE,
+    /<Form\.Item style=\{\{ marginBottom: 0 \}\}>/,
+    "查询按钮表单项应设置 marginBottom: 0",
+  );
+});
+
 test("LP-355: lightning card uses a three-section layout without antd title/extra", () => {
   assert.ok(cardBlock, "应能提取 renderRecordCard 组件定义");
   assert.ok(!/title=\{</.test(cardBlock), "卡片不应再使用 antd Card title 作为标题区");

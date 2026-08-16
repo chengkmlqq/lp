@@ -2678,6 +2678,28 @@ body {
   align-items: baseline;
 }
 
+/* 深色模式：杆塔模型卡片配色与其余管理页卡片一致
+   （主色混合边框、主色渐变背景、柔和阴影、头部主色淡背景） */
+:root[data-fquiz-theme="dark"] .admin-tower-models-model-card {
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
+      var(--ant-color-bg-container) 100%
+    ) !important;
+  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-tower-models-model-card > .ant-card-head {
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-tower-models-model-card > .ant-card-body {
+  background: var(--ant-color-bg-container) !important;
+}
+
 /* LP-278: 编辑/新建模型 Modal 内部分组为 Tabs（基本信息 / 默认参数），
    与全系统“内容较多时使用动态选项卡”交互规范保持一致 */
 .admin-tower-models-modal-tabs .ant-tabs-nav {
