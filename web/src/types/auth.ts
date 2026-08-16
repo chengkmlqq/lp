@@ -927,6 +927,11 @@ export type FaultAnalysisCreateResponse = {
 export type FaultRecurrenceStrokeMode = "counterstroke" | "shielding";
 export type FaultRecurrenceResultStatus = "matched" | "no_need";
 
+export type FaultRecurrenceTempUploadResponse = {
+  temp_file_id: string;
+  file_name: string;
+};
+
 export type FaultRecurrenceDataPoint = {
   head_time_us: number;
   tail_time_us: number;

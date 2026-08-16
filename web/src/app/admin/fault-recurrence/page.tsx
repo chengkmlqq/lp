@@ -9,6 +9,7 @@ import {
   Empty,
   Form,
   InputNumber,
+  Progress,
   Select,
   Space,
   Spin,
@@ -18,16 +19,18 @@ import {
   Typography,
   message,
 } from "antd";
+import { CheckCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
-import { readApiError } from "@/lib/api";
+import { getApiBaseUrl, readApiError } from "@/lib/api";
 import type {
   FaultRecurrenceAnalyzeResponse,
   FaultRecurrenceDataPoint,
   FaultRecurrenceStrokeMode,
+  FaultRecurrenceTempUploadResponse,
 } from "@/types/auth";
 
 type FaultRecurrenceFormValues = {
@@ -88,11 +91,14 @@ type DetailTabItem = {
 
 
 export default function AdminFaultRecurrencePage() {
-  const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
+  const { user, initializing, hasPermission, fetchWithAuth, getAccessToken } = useAuth();
   const [form] = Form.useForm<FaultRecurrenceFormValues>();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const tabSeqRef = useRef(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [tempFileId, setTempFileId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
   const [resultTabs, setResultTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>("");
   const [error, setError] = useState("");
@@ -109,14 +115,17 @@ export default function AdminFaultRecurrencePage() {
   });
 
   const analyzeMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async () => {
       if (!canRead) {
         throw new Error("缺少 line/tower 相关读取权限");
+      }
+      if (!tempFileId) {
+        throw new Error("文件尚未上传完成，请先等待上传完成再开始复现");
       }
 
       const values = await form.validateFields();
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("temp_file_id", tempFileId);
       formData.append("curve_no", String(values.curve_no));
       formData.append("stroke_mode", values.stroke_mode);
       formData.append("withstand_level_ka", String(values.withstand_level_ka));
@@ -159,20 +168,80 @@ export default function AdminFaultRecurrencePage() {
     },
   });
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!nextFile) {
+      return;
+    }
+    handleTempUpload(nextFile);
+  };
+
+  const handleTempUpload = (file: File) => {
+    setSelectedFile(file);
+    setTempFileId(null);
+    setUploadProgress(0);
+    setUploadError("");
+    setError("");
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${getApiBaseUrl()}/api/v1/fault-recurrence/upload-temp`);
+    xhr.withCredentials = true;
+    const token = getAccessToken();
+    if (token) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    }
+    xhr.upload.onprogress = (event: ProgressEvent<EventTarget>) => {
+      if (!event.lengthComputable || event.total <= 0) {
+        return;
+      }
+      const percent = Math.min(99, Math.max(0, Math.round((event.loaded / event.total) * 100)));
+      setUploadProgress(percent);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        setUploadProgress(100);
+        try {
+          const payload = JSON.parse(xhr.responseText) as FaultRecurrenceTempUploadResponse;
+          setTempFileId(payload.temp_file_id);
+        } catch {
+          setUploadError("上传成功但响应解析失败，请重新选择文件");
+        }
+        return;
+      }
+      let detail = `HTTP ${xhr.status}`;
+      try {
+        const parsed = JSON.parse(xhr.responseText) as { detail?: string };
+        if (parsed?.detail?.trim()) {
+          detail = parsed.detail;
+        }
+      } catch {
+        // 忽略非 JSON 响应
+      }
+      setUploadError(detail);
+    };
+    xhr.onerror = () => setUploadError("网络异常，上传失败");
+    xhr.onabort = () => setUploadError("上传已取消");
+
+    const formData = new FormData();
+    formData.append("file", file);
+    xhr.send(formData);
+  };
+
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    setTempFileId(null);
+    setUploadProgress(0);
+    setUploadError("");
+  };
+
   const handleAnalyze = async () => {
-    if (!selectedFile) {
-      setError("请先选择基础数据文件");
+    if (!tempFileId) {
+      setError(selectedFile ? "文件尚未上传完成，请稍候或重新选择文件" : "请先选择基础数据文件");
       return;
     }
     setError("");
-    await analyzeMutation.mutateAsync(selectedFile);
-  };
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const nextFile = event.target.files?.[0] ?? null;
-    setSelectedFile(nextFile);
-    setError("");
-    event.target.value = "";
+    await analyzeMutation.mutateAsync();
   };
 
   const handleTabsEdit = (targetKey: React.MouseEvent | React.KeyboardEvent | string, action: "add" | "remove") => {
@@ -267,7 +336,7 @@ export default function AdminFaultRecurrencePage() {
                 >
                   <InputNumber min={0.0001} precision={4} className="w-full" />
                 </Form.Item>
-                <div className="flex min-w-[260px] flex-col gap-2">
+                <div className="flex min-w-[320px] flex-col gap-2">
                   <Typography.Text strong>基础数据文件</Typography.Text>
                   <Space wrap>
                     <Button onClick={() => fileInputRef.current?.click()}>
@@ -276,13 +345,29 @@ export default function AdminFaultRecurrencePage() {
                     <Typography.Text type={selectedFile ? undefined : "secondary"}>
                       {selectedFile?.name || "未选择文件"}
                     </Typography.Text>
+                    {selectedFile ? (
+                      <Button size="small" type="text" onClick={handleRemoveFile}>
+                        移除
+                      </Button>
+                    ) : null}
                   </Space>
+                  {selectedFile && uploadProgress > 0 && uploadProgress < 100 ? (
+                    <Progress percent={uploadProgress} size="small" style={{ width: 220 }} />
+                  ) : null}
+                  {selectedFile && uploadProgress >= 100 && tempFileId && !uploadError ? (
+                    <Typography.Text type="success">
+                      <CheckCircleOutlined /> 上传完成，可以开始复现
+                    </Typography.Text>
+                  ) : null}
+                  {selectedFile && uploadProgress >= 100 && !tempFileId && uploadError ? (
+                    <Typography.Text type="danger">{uploadError}</Typography.Text>
+                  ) : null}
                 </div>
                 <Space wrap>
                   <Button
                     type="primary"
                     loading={analyzeMutation.isPending}
-                    disabled={!selectedFile}
+                    disabled={!tempFileId}
                     onClick={() => {
                       void handleAnalyze();
                     }}

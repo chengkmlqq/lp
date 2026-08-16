@@ -141,3 +141,15 @@ def read_temp_upload(temp_file_id: str, user_id: str) -> bytes:
         pass
 
     return content
+
+
+def resolve_temp_upload(temp_file_id: str, user_id: str) -> tuple[bytes, str]:
+    """从临时目录读取并消费临时文件，返回 (content, source_file_name)。
+
+    基于 ``read_temp_upload`` 追加原始文件名解析：临时 Key 形如
+    ``lightning/tmp/{user_id}/{uuid}_{file_name}``，从最后一段还原原始文件名。
+    """
+    content = read_temp_upload(temp_file_id, user_id)
+    last_segment = (temp_file_id or "").strip().rsplit("/", 1)[-1]
+    source_file_name = last_segment.split("_", 1)[1] if "_" in last_segment else last_segment
+    return content, source_file_name

@@ -32,6 +32,17 @@ class FaultRecurrenceContractTest(unittest.TestCase):
         self.assertIn('"admin.fault_recurrence"', source)
         self.assertIn('"/admin/fault-recurrence"', source)
 
+    def test_upload_temp_endpoint_registered(self) -> None:
+        source = (ROOT / "app" / "api" / "v1" / "fault_recurrence.py").read_text(encoding="utf-8")
+        self.assertIn('"/upload-temp"', source)
+        self.assertIn("save_temp_upload", source)
+        self.assertIn("FaultRecurrenceTempUploadResponse", source)
+
+    def test_analyze_supports_temp_file_id(self) -> None:
+        source = (ROOT / "app" / "api" / "v1" / "fault_recurrence.py").read_text(encoding="utf-8")
+        self.assertIn("temp_file_id: str | None = Form(default=None)", source)
+        self.assertIn("resolve_temp_upload", source)
+
 
 if __name__ == "__main__":
     unittest.main()

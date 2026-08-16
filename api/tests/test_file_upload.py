@@ -94,3 +94,95 @@ class TestValidateUpload:
         f = _make_upload("towers.csv", content)
         result = validate_upload(f, allowed_exts={"csv"})
         assert result.file.read() == content
+
+
+class TestTempUpload:
+    def test_save_temp_upload_returns_temp_file_id(self, monkeypatch):
+        from app.core import file_upload
+        from app.services import minio_storage
+
+        written: dict[str, bytes] = {}
+        monkeypatch.setattr(
+            minio_storage,
+            "put_object",
+            lambda key, data, content_type=None: written.__setitem__(key, data),
+        )
+        monkeypatch.setattr(
+            minio_storage,
+            "build_temp_key",
+            lambda name, uid: f"lightning/tmp/{uid}/abc_{name}",
+        )
+
+        f = _make_upload("data.csv", b"a,b,c\n1,2,3")
+        temp_file_id, file_name = file_upload.save_temp_upload(f, "user-1")
+
+        assert temp_file_id == "lightning/tmp/user-1/abc_data.csv"
+        assert file_name == "data.csv"
+        assert written[temp_file_id] == b"a,b,c\n1,2,3"
+
+    def test_save_temp_upload_rejects_empty_file(self, monkeypatch):
+        from app.core import file_upload
+        from app.services import minio_storage
+
+        monkeypatch.setattr(minio_storage, "build_temp_key", lambda name, uid: f"lightning/tmp/{uid}/x_{name}")
+
+        f = _make_upload("empty.csv", b"")
+        with pytest.raises(HTTPException) as exc:
+            file_upload.save_temp_upload(f, "user-1")
+        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert "为空" in exc.value.detail
+
+    def test_resolve_temp_upload_rejects_other_user(self, monkeypatch):
+        from app.core import file_upload
+
+        with pytest.raises(HTTPException) as exc:
+            file_upload.resolve_temp_upload("lightning/tmp/other-user/abc_data.csv", "user-1")
+        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert "不属于当前用户" in exc.value.detail
+
+    def test_resolve_temp_upload_missing_object(self, monkeypatch):
+        from app.core import file_upload
+        from app.services import minio_storage
+
+        def missing(key: str) -> bytes:
+            raise minio_storage.MinioObjectNotFoundError("Object not found")
+
+        monkeypatch.setattr(minio_storage, "get_object", missing)
+
+        with pytest.raises(HTTPException) as exc:
+            file_upload.resolve_temp_upload("lightning/tmp/user-1/abc_data.csv", "user-1")
+        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert "不存在或已过期" in exc.value.detail
+
+    def test_resolve_temp_upload_reads_and_deletes(self, monkeypatch):
+        from app.core import file_upload
+        from app.services import minio_storage
+
+        deleted: list[str] = []
+        monkeypatch.setattr(minio_storage, "get_object", lambda key: b"a,b,c\n1,2,3")
+        monkeypatch.setattr(minio_storage, "delete_object", lambda key: deleted.append(key))
+
+        content, source_file_name = file_upload.resolve_temp_upload(
+            "lightning/tmp/user-1/abc_data.csv", "user-1"
+        )
+
+        assert content == b"a,b,c\n1,2,3"
+        assert source_file_name == "data.csv"
+        assert deleted == ["lightning/tmp/user-1/abc_data.csv"]
+
+    def test_resolve_temp_upload_delete_failure_is_swallowed(self, monkeypatch):
+        from app.core import file_upload
+        from app.services import minio_storage
+
+        monkeypatch.setattr(minio_storage, "get_object", lambda key: b"a,b,c")
+        monkeypatch.setattr(
+            minio_storage,
+            "delete_object",
+            lambda key: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+
+        content, source_file_name = file_upload.resolve_temp_upload(
+            "lightning/tmp/user-1/abc_data.csv", "user-1"
+        )
+        assert content == b"a,b,c"
+        assert source_file_name == "data.csv"

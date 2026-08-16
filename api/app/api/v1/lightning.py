@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
-from ...core.file_upload import validate_upload
+from ...core.file_upload import save_temp_upload, validate_upload
 from ...schemas.lightning import (
     LightningAmplitudeBackfillLineListResponse,
     LightningAmplitudeImportResponse,
@@ -73,15 +73,7 @@ def upload_lightning_temp_file(
 
     临时文件将在导入消费后自动删除，或由定时清理任务清理超过 24h 的孤儿文件。
     """
-    from ...services.minio_storage import build_temp_key, put_object
-
-    content = file.file.read()
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
-
-    file_name = (file.filename or "upload").strip() or "upload"
-    temp_file_id = build_temp_key(file_name, current_user.user.id)
-    put_object(temp_file_id, content, content_type="text/plain")
+    temp_file_id, file_name = save_temp_upload(file, current_user.user.id)
     return LightningTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
 
 
