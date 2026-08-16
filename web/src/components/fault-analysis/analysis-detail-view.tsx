@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Space, Tag, Typography, Spin, Dropdown, message } from "antd";
+import { Alert, Button, Space, Typography, Spin, Dropdown, message } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
@@ -223,28 +223,15 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
 
   const { sections, station, fault_datetime, fault_id } = buildSections(detail);
 
-  // 判别任务状态标签（pending/processing/completed/failed）
-  const statusMeta: Record<string, { color: string; label: string }> = {
-    pending: { color: "default", label: "判别排队中" },
-    processing: { color: "processing", label: "判别中" },
-    completed: { color: "success", label: "判别完成" },
-    failed: { color: "error", label: "判别失败" },
-  };
-  const statusTag = statusMeta[detail.status] ?? { color: "default", label: detail.status ?? "" };
-
   return (
     <div className="flex flex-col gap-4 h-full">
       <Card className="flex-1 overflow-auto">
         <div id={exportElementId}>
           <div className="border-b border-gray-200 pb-5 mb-6">
             <div className="flex items-start justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <Title level={3} className="mb-0">
-                  {fault_id} 故障分析报告
-                </Title>
-                <Tag color="orange">待复核</Tag>
-                <Tag color={statusTag.color}>{statusTag.label}</Tag>
-              </div>
+              <Title level={3} className="mb-0">
+                {fault_id} 故障分析报告
+              </Title>
               <Dropdown
                 menu={{
                   items: [

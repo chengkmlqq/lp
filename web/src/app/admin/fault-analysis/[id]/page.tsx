@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Space, Tag, Typography, Spin, Dropdown, message } from "antd";
+import { Alert, Button, Space, Typography, Spin, Dropdown, message } from "antd";
 import { ArrowLeftOutlined, DownloadOutlined } from "@ant-design/icons";
 import { useState } from "react";
 
@@ -258,12 +258,9 @@ export default function FaultAnalysisDetailPage() {
           <div id="export-content">
             <div className="border-b border-gray-200 pb-5 mb-6">
               <div className="flex items-start justify-between mb-5">
-                <div className="flex items-center gap-3">
-                  <Title level={3} className="mb-0">
-                    {fault_id} 故障分析报告
-                  </Title>
-                  <Tag color="orange">待复核</Tag>
-                </div>
+                <Title level={3} className="mb-0">
+                  {fault_id} 故障分析报告
+                </Title>
                 <Dropdown
                   menu={{
                     items: [
