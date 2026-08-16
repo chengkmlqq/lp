@@ -611,14 +611,14 @@ export default function AdminLightningCurrentsPage() {
         className="admin-lightning-events-card"
         onClick={() => openDetail(record)}
       >
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
+        <div className="flex flex-col">
+          <div className="admin-lightning-events-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
             <ThunderboltOutlined className="text-base text-gray-500" />
             <Typography.Text strong className="truncate">{record.source_file_name || "-"}</Typography.Text>
             <Tag color={meta.color}>{meta.label}</Tag>
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 px-4 py-3">
             <div className="flex items-center gap-2">
               <EnvironmentOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">城市：{record.city || "-"}</Typography.Text>
@@ -641,12 +641,10 @@ export default function AdminLightningCurrentsPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-200">
+          <div className="admin-lightning-events-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
             {record.status === "processing" ? (
-              <Progress percent={record.progress} size="small" className="flex-1 max-w-40" />
-            ) : (
-              <div />
-            )}
+              <Progress percent={record.progress} size="small" className="mr-auto flex-1 max-w-40" />
+            ) : null}
             <Space size="small" className="shrink-0">
               <Button
                 type="text"

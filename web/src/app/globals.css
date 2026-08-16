@@ -123,6 +123,7 @@
 :root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-head,
 :root[data-fquiz-theme="dark"] .admin-power-lines-line-card-title,
 :root[data-fquiz-theme="dark"] .admin-lightning-events-card > .ant-card-head,
+:root[data-fquiz-theme="dark"] .admin-lightning-events-card-title,
 :root[data-fquiz-theme="dark"] .admin-fault-analysis-card-title,
 :root[data-fquiz-theme="dark"] .admin-fl-analysis-job-card-title {
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
@@ -140,6 +141,10 @@
 }
 
 :root[data-fquiz-theme="dark"] .admin-power-lines-line-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-lightning-events-card-actions {
   border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
 }
 
@@ -3192,16 +3197,28 @@ body {
   background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
 }
 
-.admin-lightning-events-card > .ant-card-body {
-  padding-block: 14px;
+.admin-lightning-events-card-title {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
 }
 
-/* LP-311: 卡片视图分页条：与卡片列表底部保持间距 */
+.admin-lightning-events-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+}
+
+.admin-lightning-events-card > .ant-card-body {
+  padding: 0;
+}
+
+/* LP-311: 卡片视图分页条：与列表视图分页保持一致的上下边距（顶部 12px、底部 8px），
+   切换卡片/列表视图时分页组件不上下晃动 */
 .admin-lightning-events-pagination {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 0 8px;
   flex-shrink: 0;
 }
 
