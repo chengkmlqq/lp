@@ -3462,8 +3462,9 @@ body {
 }
 
 .admin-lightning-distribution-table-anchor .ant-table-body {
-  /* LP-342: 固定 min-height，不再跟随 tableScrollY，避免高度测量正反馈导致无限增长 */
-  min-height: 180px;
+  /* LP-392: min-height 由 CSS 变量驱动（与线路管理页等保持一致），
+     默认 180px 兜底，由页面注入动态高度避免表格底部空白 */
+  min-height: var(--admin-lightning-distribution-table-body-min-height, 180px);
 }
 
 /* LP-245: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
