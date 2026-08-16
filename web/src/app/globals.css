@@ -1837,6 +1837,14 @@ body {
   background: var(--ant-color-bg-container) !important;
 }
 
+.admin_roles_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin_roles_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
 /* LP-254 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
 :root[data-fquiz-theme="dark"] .admin_roles_tabs > .ant-tabs-nav {
   background: var(--ant-color-bg-container);
@@ -2506,6 +2514,14 @@ body {
 
 .admin_syslog_tabs > .ant-tabs-nav .ant-tabs-tab-active {
   background: var(--ant-color-bg-container) !important;
+}
+
+.admin_syslog_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin_syslog_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
 }
 
 /* LP-252 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
