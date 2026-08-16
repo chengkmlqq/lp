@@ -5,13 +5,10 @@ from pathlib import Path
 import pytest
 
 from app.services.fault_input_discovery import (
-    CATEGORY_LEDGER,
     CATEGORY_LIGHTNING,
     CATEGORY_TRAVELING_WAVE,
-    CATEGORY_UNKNOWN,
     CATEGORY_WAVE,
     InputDiscoveryError,
-    classify_upload_file,
     discover_one,
     discover_waveforms,
     normalize_input_files,
@@ -22,35 +19,6 @@ def _touch(directory: Path, name: str) -> Path:
     path = directory / name
     path.touch()
     return path
-
-
-class TestClassifyUploadFile:
-    def test_prefix_one_is_wave(self):
-        assert classify_upload_file("1_录波提取.xlsx") == CATEGORY_WAVE
-
-    def test_prefix_two_is_lightning(self):
-        assert classify_upload_file("2_雷电定位.csv") == CATEGORY_LIGHTNING
-
-    def test_prefix_three_is_ledger(self):
-        assert classify_upload_file("3_线路台账.csv") == CATEGORY_LEDGER
-
-    def test_traveling_wave_txt(self):
-        assert classify_upload_file("A相_1号杆塔.txt") == CATEGORY_TRAVELING_WAVE
-
-    def test_traveling_wave_json(self):
-        assert classify_upload_file("wave_currents.json") == CATEGORY_TRAVELING_WAVE
-
-    def test_unknown_prefix_and_suffix(self):
-        assert classify_upload_file("光缆监控.mp4") == CATEGORY_UNKNOWN
-
-    def test_unknown_extension_with_no_prefix(self):
-        assert classify_upload_file("random.bin") == CATEGORY_UNKNOWN
-
-    def test_empty_filename(self):
-        assert classify_upload_file("") == CATEGORY_UNKNOWN
-
-    def test_path_with_directories(self):
-        assert classify_upload_file("/some/path/2_data.csv") == CATEGORY_LIGHTNING
 
 
 class TestDiscoverOne:

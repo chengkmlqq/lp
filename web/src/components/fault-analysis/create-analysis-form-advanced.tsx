@@ -1,5 +1,5 @@
 import { Form, Input, Select, Upload, Button, FormInstance, Space, message } from "antd";
-import { UploadOutlined, FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined, AppstoreOutlined } from "@ant-design/icons";
+import { UploadOutlined, FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined } from "@ant-design/icons";
 import type { CreateFaultAnalysisFormValues } from "./types";
 import { TempFileUpload } from "./temp-file-upload";
 import { parseExcelFile, generateImportTemplate } from "@/lib/excel-import-utils";
@@ -312,30 +312,15 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       <div className="admin-fault-analysis-form-section">
         <div className="admin-fault-analysis-form-section-title">分析数据</div>
         <div className="px-1 space-y-4">
-          <div className="border border-dashed border-blue-300 rounded-lg p-4 bg-blue-50">
-            <div className="flex items-center gap-2 mb-1">
-              <AppstoreOutlined className="text-lg text-blue-600" />
-              <div className="font-semibold text-sm">自动识别文件类别</div>
-            </div>
-            <div className="text-xs text-gray-500 mb-3">
-              支持多个文件同时上传，按文件名前缀自动归类：1开头=录波、2开头=雷电定位、3开头=线路台账、TXT/JSON=行波。同类别仅保留一个文件。
-            </div>
-            <Form.Item name="auto_classify_files" className="mb-0">
-              <TempFileUpload multiple buttonLabel="选择文件（自动归类）" />
-            </Form.Item>
-          </div>
-
-          <div className="text-xs text-gray-400">或按下方分类卡片手动指定文件类别（优先级高于自动识别）</div>
-
           <div className="grid grid-cols-2 gap-4">
             <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
               <FileTextOutlined className="text-4xl text-blue-600" />
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">录波数据</div>
-                <div className="text-xs text-gray-500 mb-3">支持 .txt 格式</div>
+                <div className="text-xs text-gray-500 mb-3">支持 .txt/.json/.csv/.pdf/.xlsx 格式</div>
               </div>
               <Form.Item name="wave_data_file" className="mb-0">
-                <TempFileUpload accept=".txt" buttonLabel="选择文件" />
+                <TempFileUpload accept=".txt,.json,.csv,.pdf,.xlsx" maxSizeMb={50} buttonLabel="选择文件" />
               </Form.Item>
             </div>
 
@@ -343,10 +328,10 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               <TableOutlined className="text-4xl text-blue-600" />
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">雷电定位数据</div>
-                <div className="text-xs text-gray-500 mb-3">支持 .xls/.xlsx 格式</div>
+                <div className="text-xs text-gray-500 mb-3">支持 .xls/.xlsx/.csv 格式</div>
               </div>
               <Form.Item name="lightning_data_file" className="mb-0">
-                <TempFileUpload accept=".xls,.xlsx" buttonLabel="选择文件" />
+                <TempFileUpload accept=".xls,.xlsx,.csv" maxSizeMb={50} buttonLabel="选择文件" />
               </Form.Item>
             </div>
 
@@ -354,10 +339,10 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               <LineChartOutlined className="text-4xl text-blue-600" />
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">分布式行波数据</div>
-                <div className="text-xs text-gray-500 mb-3">支持 .csv/.dat 格式</div>
+                <div className="text-xs text-gray-500 mb-3">支持 .csv/.dat/.txt/.json 格式</div>
               </div>
               <Form.Item name="traveling_wave_file" className="mb-0">
-                <TempFileUpload accept=".csv,.dat" buttonLabel="选择文件" />
+                <TempFileUpload accept=".csv,.dat,.txt,.json" maxSizeMb={50} buttonLabel="选择文件" />
               </Form.Item>
             </div>
 
@@ -368,7 +353,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 <div className="text-xs text-gray-500 mb-3">支持图片或视频格式</div>
               </div>
               <Form.Item name="optical_data_file" className="mb-0">
-                <TempFileUpload accept="image/*,video/*" buttonLabel="选择文件" />
+                <TempFileUpload accept="image/*,video/*" maxSizeMb={50} buttonLabel="选择文件" />
               </Form.Item>
             </div>
 
@@ -376,10 +361,10 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               <TableOutlined className="text-4xl text-green-600" />
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">线路台账</div>
-                <div className="text-xs text-gray-500 mb-3">支持 .csv 格式（含线路名称/塔号）</div>
+                <div className="text-xs text-gray-500 mb-3">选择线路后由系统自动组装；上传 .csv 可覆盖</div>
               </div>
               <Form.Item name="ledger_data_file" className="mb-0">
-                <TempFileUpload accept=".csv" buttonLabel="选择文件" />
+                <TempFileUpload accept=".csv" maxSizeMb={50} buttonLabel="选择文件（可选）" />
               </Form.Item>
             </div>
           </div>

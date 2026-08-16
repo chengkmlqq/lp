@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session
 from ...core.config import get_settings
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route
-from ...core.file_upload import resolve_temp_upload, save_temp_upload
+from ...core.file_upload import (
+    resolve_temp_upload,
+    save_temp_upload,
+    validate_upload,
+    validate_upload_bytes,
+)
 from ...schemas.fault_analysis import (
     FaultAnalysisCreateRequest,
     FaultAnalysisCreateResponse,
@@ -19,9 +24,11 @@ from ...schemas.fault_analysis import (
     FaultAnalysisUpdateRequest,
 )
 from ...services.fault_analysis_service import (
+    assemble_ledger_csv,
     create_analysis,
     delete_analysis,
     dispatch_fault_diagnosis,
+    ensure_line_has_towers,
     get_analysis_by_id,
     list_analyses,
     serialize_detail,
@@ -29,19 +36,25 @@ from ...services.fault_analysis_service import (
     store_analysis_upload_file,
     update_analysis,
 )
-from ...services.fault_input_discovery import (
-    CATEGORY_FIELDS,
-    SINGLE_FILE_CATEGORIES,
-    CATEGORY_LABELS,
-    InputDiscoveryError,
-    classify_upload_file,
-)
 
 router = APIRouter(
     prefix="/fault-analysis",
     tags=["fault-analysis"],
     dependencies=[Depends(require_enabled_menu_route)],
 )
+
+# 各类判别输入文件允许的扩展名（LP-378：移除自动归类后，按独立上传组件逐一校验）。
+# 与前端各上传卡片的 accept 保持一致，后端 validate_upload 为最终底线。
+UPLOAD_ALLOWED_EXTS: dict[str, set[str]] = {
+    "wave_data_file": {"txt", "json", "csv", "pdf", "xlsx"},
+    "lightning_data_file": {"xls", "xlsx", "csv"},
+    "ledger_data_file": {"csv"},
+    "traveling_wave_file": {"csv", "dat", "txt", "json"},
+    "optical_data_file": {
+        "jpg", "jpeg", "png", "gif", "bmp", "webp",
+        "mp4", "avi", "mov", "mkv", "wmv", "flv",
+    },
+}
 
 
 @router.get("", response_model=FaultAnalysisListResponse)
@@ -126,25 +139,23 @@ async def create_fault_analysis_with_files(
     ledger_data_file: UploadFile | None = File(default=None),
     traveling_wave_file: UploadFile | None = File(default=None),
     optical_data_file: UploadFile | None = File(default=None),
-    auto_classify: bool | None = Form(default=None),
-    auto_classify_files: list[UploadFile] | None = File(default=None),
     wave_data_temp_file_id: str | None = Form(default=None),
     lightning_data_temp_file_id: str | None = Form(default=None),
     ledger_data_temp_file_id: str | None = Form(default=None),
     traveling_wave_temp_file_id: str | None = Form(default=None),
     optical_data_temp_file_id: str | None = Form(default=None),
-    auto_classify_temp_file_ids: list[str] | None = Form(default=None),
     current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> FaultAnalysisCreateResponse:
     """创建故障分析记录并附带判别输入文件（录波/雷电/台账/行波/光学）。
 
     支持两段式上传（LP-369）：先调用 upload-temp 获取 temp_file_id，
-    确认提交时传 ``*_temp_file_id``（auto_classify 用 ``auto_classify_temp_file_ids`` 列表），
-    后端从临时目录取文件并消费删除；同时保留直接上传原始文件的兼容入参。
+    确认提交时传对应 ``*_temp_file_id``，后端从临时目录取文件并消费删除；
+    同时保留直接上传原始文件的兼容入参。各类文件提交时统一做扩展名/大小校验。
 
-    auto_classify 为 True 时忽略前端表单字段名，改按文件名前缀自动归类：
-    1 开头=录波、2 开头=雷电定位、3 开头=线路台账、其余 TXT/JSON=行波。
+    台账（LP-378）：用户未上传台账文件时，按所选线路自动从系统数据组装判别台账
+    （格式转换为判别所需 CSV 结构，见 ``assemble_ledger_csv``）；线路无杆塔数据时
+    提前给出明确提示。
     """
     payload = FaultAnalysisCreateRequest(
         title=title,
@@ -176,6 +187,14 @@ async def create_fault_analysis_with_files(
         confidence=confidence,
     )
 
+    # 台账自动组装预检（LP-378）：未上传台账时需能从系统数据组装，
+    # 线路无杆塔数据则提前提示，避免落库后无法生成判别台账。
+    user_ledger_uploaded = bool(
+        ledger_data_temp_file_id or (ledger_data_file is not None and ledger_data_file.filename)
+    )
+    if not user_ledger_uploaded and line_id:
+        ensure_line_has_towers(db, line_id)
+
     # 先落库拿到记录 ID，再按 ID 持久化上传文件，最后关联并派发判别任务。
     created = create_analysis(
         db,
@@ -187,15 +206,8 @@ async def create_fault_analysis_with_files(
     analysis_id = created.analysis.id
     user_id = current_user.user.id
 
-    if auto_classify or auto_classify_temp_file_ids:
-        upload_files = await _store_auto_classified_files(
-            analysis_id,
-            uploads=auto_classify_files or [],
-            temp_file_ids=auto_classify_temp_file_ids or [],
-            user_id=user_id,
-        )
-    else:
-        upload_files: dict[str, str] = {}
+    upload_files: dict[str, str] = {}
+    try:
         for field, upload, temp_file_id in (
             ("wave_data_file", wave_data_file, wave_data_temp_file_id),
             ("lightning_data_file", lightning_data_file, lightning_data_temp_file_id),
@@ -203,83 +215,34 @@ async def create_fault_analysis_with_files(
             ("traveling_wave_file", traveling_wave_file, traveling_wave_temp_file_id),
             ("optical_data_file", optical_data_file, optical_data_temp_file_id),
         ):
+            allowed_exts = UPLOAD_ALLOWED_EXTS[field]
             if temp_file_id:
                 content, file_name = resolve_temp_upload(temp_file_id, user_id)
+                validate_upload_bytes(file_name, content, allowed_exts=allowed_exts)
                 upload_files[field] = store_analysis_upload_file(
                     analysis_id, field, file_name, content
                 )
             elif upload is not None and upload.filename:
+                validate_upload(upload, allowed_exts=allowed_exts)
                 content = await upload.read()
                 upload_files[field] = store_analysis_upload_file(
                     analysis_id, field, upload.filename, content
                 )
+
+        # 台账自动组装（LP-378）：未上传台账时按所选线路从系统数据生成判别台账 CSV。
+        if "ledger_data_file" not in upload_files and line_id:
+            relative, _ = assemble_ledger_csv(db, analysis_id, line_id)
+            upload_files["ledger_data_file"] = relative
+    except Exception:
+        # 文件校验/落盘失败时清理已创建记录，避免残留孤儿分析（LP-378）。
+        delete_analysis(db, analysis_id)
+        raise
 
     if upload_files:
         set_analysis_upload_files(db, analysis_id, upload_files)
     dispatch_fault_diagnosis(db, analysis_id)
     saved = get_analysis_by_id(db, analysis_id)
     return FaultAnalysisCreateResponse(analysis=serialize_detail(saved))
-
-
-async def _store_auto_classified_files(
-    analysis_id: str,
-    uploads: list[UploadFile],
-    temp_file_ids: list[str],
-    user_id: str,
-) -> dict[str, str | list[str]]:
-    """按文件名前缀自动归类并持久化上传文件，返回 upload_files 字典。
-
-    支持两段式上传的 temp_file_id 列表与直接上传的文件列表混用：
-    录波/雷电/台账为单文件类别：同类别上传多个文件时报错（提示保留一个）。
-    行波允许多个，保存为相对路径列表。
-    """
-    upload_files: dict[str, str | list[str]] = {}
-    seen_single: set[str] = set()
-    items: list[tuple[str, bytes]] = []
-    for temp_file_id in temp_file_ids:
-        if not temp_file_id:
-            continue
-        content, file_name = resolve_temp_upload(temp_file_id, user_id)
-        items.append((file_name, content))
-    for upload in uploads:
-        if not upload.filename:
-            continue
-        items.append((upload.filename, await upload.read()))
-
-    for file_name, content in items:
-        try:
-            category = classify_upload_file(file_name)
-            field = CATEGORY_FIELDS[category]
-        except (KeyError, InputDiscoveryError):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"无法自动识别文件类别：{file_name}。"
-                    "请按 1（录波）/2（雷电定位）/3（线路台账）前缀命名，"
-                    "或使用 TXT/JSON 行波文件。"
-                ),
-            )
-        relative = store_analysis_upload_file(analysis_id, field, file_name, content)
-        if category in SINGLE_FILE_CATEGORIES:
-            if field in seen_single:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"{CATEGORY_LABELS[category]}同一类别仅允许一个文件，"
-                        f"请保留一个（{file_name}）。"
-                    ),
-                )
-            seen_single.add(field)
-            upload_files[field] = relative
-        else:
-            existing = upload_files.get(field)
-            if isinstance(existing, list):
-                existing.append(relative)
-            elif existing:
-                upload_files[field] = [existing, relative]
-            else:
-                upload_files[field] = [relative]
-    return upload_files
 
 
 @router.put("/{analysis_id}", response_model=FaultAnalysisDetail)

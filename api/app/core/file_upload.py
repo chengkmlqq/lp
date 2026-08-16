@@ -84,6 +84,43 @@ def resolve_temp_file(temp_file_id: str, user_id: str) -> tuple[bytes, str]:
     return content, source_file_name
 
 
+def _check_upload(
+    *,
+    size_bytes: int,
+    filename: str,
+    max_mb: int | None,
+    allowed_exts: set[str] | None,
+    allowed_exts_label: str,
+) -> None:
+    """统一上传校验核心：大小上限（413）+ 扩展名白名单（400）。"""
+    if max_mb is None:
+        max_mb = get_settings().upload_max_file_size_mb
+    if max_mb <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="上传大小限制配置非法：UPLOAD_MAX_FILE_SIZE_MB 必须 > 0",
+        )
+
+    max_bytes = max_mb * 1024 * 1024
+    if size_bytes > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"文件大小 {size_bytes / (1024 * 1024):.1f}MB 超过限制 {max_mb}MB，请压缩后重新上传",
+        )
+
+    if allowed_exts:
+        filename = (filename or "").strip()
+        ext = Path(filename).suffix.lstrip(".").lower()
+        normalized_allowed = {ex.lower().lstrip(".") for ex in allowed_exts}
+        if ext not in normalized_allowed:
+            if not allowed_exts_label:
+                allowed_exts_label = "/".join(sorted(normalized_allowed))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"不支持的文件格式：{filename}，仅支持 .{allowed_exts_label}",
+            )
+
+
 def validate_upload(
     file: UploadFile | None,
     max_mb: int | None = None,
@@ -111,35 +148,37 @@ def validate_upload(
     """
     if file is None:
         return None
-    if max_mb is None:
-        max_mb = get_settings().upload_max_file_size_mb
-    if max_mb <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="上传大小限制配置非法：UPLOAD_MAX_FILE_SIZE_MB 必须 > 0",
-        )
-
-    size_bytes = _file_size_bytes(file)
-    max_bytes = max_mb * 1024 * 1024
-    if size_bytes > max_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"文件大小 {size_bytes / (1024 * 1024):.1f}MB 超过限制 {max_mb}MB，请压缩后重新上传",
-        )
-
-    if allowed_exts:
-        filename = (file.filename or "").strip()
-        ext = Path(filename).suffix.lstrip(".").lower()
-        normalized_allowed = {ex.lower().lstrip(".") for ex in allowed_exts}
-        if ext not in normalized_allowed:
-            if not allowed_exts_label:
-                allowed_exts_label = "/".join(sorted(normalized_allowed))
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"不支持的文件格式：{filename}，仅支持 .{allowed_exts_label}",
-            )
-
+    _check_upload(
+        size_bytes=_file_size_bytes(file),
+        filename=file.filename or "",
+        max_mb=max_mb,
+        allowed_exts=allowed_exts,
+        allowed_exts_label=allowed_exts_label,
+    )
     return file
+
+
+def validate_upload_bytes(
+    filename: str,
+    content: bytes,
+    max_mb: int | None = None,
+    allowed_exts: set[str] | None = None,
+    *,
+    allowed_exts_label: str = "",
+) -> None:
+    """校验已读取到内存的上传内容（temp_file_id 两段式路径复用）。
+
+    直接上传路径用 ``validate_upload``（读文件对象）；临时文件在提交时已被消费
+    读取为 ``(content, filename)``，扩展名与大小校验统一由本函数兜底，
+    防止绕过前端 accept 直接构造请求。
+    """
+    _check_upload(
+        size_bytes=len(content),
+        filename=filename or "",
+        max_mb=max_mb,
+        allowed_exts=allowed_exts,
+        allowed_exts_label=allowed_exts_label,
+    )
 
 
 def save_temp_upload(file: UploadFile, user_id: str) -> tuple[str, str]:

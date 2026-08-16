@@ -8,7 +8,6 @@ CATEGORY_WAVE = "wave"
 CATEGORY_LIGHTNING = "lightning"
 CATEGORY_LEDGER = "ledger"
 CATEGORY_TRAVELING_WAVE = "traveling_wave"
-CATEGORY_UNKNOWN = "unknown"
 
 CATEGORY_FIELDS: dict[str, str] = {
     CATEGORY_WAVE: "wave_data_file",
@@ -69,17 +68,6 @@ def discover_waveforms(input_dir: Path) -> list[Path]:
             continue
         waves.append(path)
     return waves
-
-
-def classify_upload_file(filename: str) -> str:
-    name = Path(filename or "").name
-    m = _PREFIX_RE.match(name)
-    if m:
-        return {"1": CATEGORY_WAVE, "2": CATEGORY_LIGHTNING, "3": CATEGORY_LEDGER}[m.group()]
-    suffix = Path(name).suffix.lower()
-    if suffix in TRAVELING_WAVE_SUFFIXES:
-        return CATEGORY_TRAVELING_WAVE
-    return CATEGORY_UNKNOWN
 
 
 def normalize_input_files(

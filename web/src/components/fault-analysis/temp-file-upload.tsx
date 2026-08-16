@@ -20,6 +20,8 @@ interface TempFileUploadProps {
   multiple?: boolean;
   accept?: string;
   buttonLabel?: string;
+  /** 文件大小上限（MB），选择时前端预校验（后端 validate_upload 仍为最终底线） */
+  maxSizeMb?: number;
 }
 
 function uploadToTemp(
@@ -80,6 +82,7 @@ export function TempFileUpload({
   multiple = false,
   accept,
   buttonLabel = "选择文件",
+  maxSizeMb,
 }: TempFileUploadProps) {
   const { getAccessToken } = useAuth();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -102,6 +105,10 @@ export function TempFileUpload({
 
   const handleSelect = useCallback(
     (file: File) => {
+      if (maxSizeMb != null && file.size > maxSizeMb * 1024 * 1024) {
+        message.error(`${file.name} 超过 ${maxSizeMb}MB 大小限制，请重新选择`);
+        return;
+      }
       const item: FaultAnalysisTempFile = {
         uid: newUid(file),
         name: file.name,
@@ -143,7 +150,7 @@ export function TempFileUpload({
           message.error(`${file.name} 上传失败：${text}`);
         });
     },
-    [getAccessToken, multiple, patchValue],
+    [getAccessToken, maxSizeMb, multiple, patchValue],
   );
 
   const removeItem = useCallback(

@@ -148,7 +148,6 @@ function hasUploadFiles(values: CreateFaultAnalysisFormValues): boolean {
     values.ledger_data_file,
     values.traveling_wave_file,
     values.optical_data_file,
-    values.auto_classify_files,
   ].some((fileList) => (fileList?.length ?? 0) > 0);
 }
 
@@ -316,7 +315,7 @@ export default function AdminFaultAnalysisPage() {
     const body = buildFaultAnalysisBody(values);
 
     if (hasUploadFiles(values)) {
-      if (hasPendingUploads(values.auto_classify_files) || hasPendingUploads(values.wave_data_file)
+      if (hasPendingUploads(values.wave_data_file)
         || hasPendingUploads(values.lightning_data_file) || hasPendingUploads(values.ledger_data_file)
         || hasPendingUploads(values.traveling_wave_file) || hasPendingUploads(values.optical_data_file)) {
         throw new Error("仍有文件在上传中，请等待上传完成后提交");
@@ -329,27 +328,17 @@ export default function AdminFaultAnalysisPage() {
         }
       }
 
-      const autoFiles = values.auto_classify_files;
-      if (autoFiles && autoFiles.length > 0) {
-        formData.set("auto_classify", "true");
-        for (const item of autoFiles) {
-          if (item.temp_file_id) {
-            formData.append("auto_classify_temp_file_ids", item.temp_file_id);
-          }
-        }
-      } else {
-        const fileFields: Array<[string, { temp_file_id?: string }[] | undefined]> = [
-          ["wave_data_temp_file_id", values.wave_data_file],
-          ["lightning_data_temp_file_id", values.lightning_data_file],
-          ["ledger_data_temp_file_id", values.ledger_data_file],
-          ["traveling_wave_temp_file_id", values.traveling_wave_file],
-          ["optical_data_temp_file_id", values.optical_data_file],
-        ];
-        for (const [field, list] of fileFields) {
-          const tempFileId = pickTempFileId(list);
-          if (tempFileId) {
-            formData.set(field, tempFileId);
-          }
+      const fileFields: Array<[string, { temp_file_id?: string }[] | undefined]> = [
+        ["wave_data_temp_file_id", values.wave_data_file],
+        ["lightning_data_temp_file_id", values.lightning_data_file],
+        ["ledger_data_temp_file_id", values.ledger_data_file],
+        ["traveling_wave_temp_file_id", values.traveling_wave_file],
+        ["optical_data_temp_file_id", values.optical_data_file],
+      ];
+      for (const [field, list] of fileFields) {
+        const tempFileId = pickTempFileId(list);
+        if (tempFileId) {
+          formData.set(field, tempFileId);
         }
       }
 

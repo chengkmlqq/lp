@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..core.config import get_settings
 from ..models.base import utcnow
 from ..models.fault_analysis import FaultAnalysis
-from .fault_analysis_service import get_analysis_by_id
+from .fault_analysis_service import assemble_ledger_rows, get_analysis_by_id
 from .fault_diagnosis_core import (
     InputError,
     build_diagnosis,
@@ -152,6 +152,8 @@ def _resolve_upload_files(upload_files: Mapping[str, Any], field: str) -> list[P
 
 def _collect_inputs(
     item: FaultAnalysis,
+    *,
+    db: Session | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, str]], list[dict[str, Any]], list[str]]:
     """把记录标量字段 + 上传文件组装成判别输入；单个文件解析失败时降级不抛异常。"""
     upload_files = item.upload_files or {}
@@ -199,6 +201,18 @@ def _collect_inputs(
                 warnings.append("台账文件无有效行（需包含线路名称与塔号字段）")
         except Exception as exc:
             warnings.append(f"台账文件解析失败：{exc}")
+
+    # 台账自动组装（LP-378）：无上传台账且无默认配置时，按所选线路实时从系统数据组装，
+    # 保证纯 JSON POST（无文件）创建路径同样吃到自动台账；线路无杆塔数据时给出提示。
+    if ledger_file is None and db is not None and _has_value(item.line_id):
+        try:
+            ledger_rows = assemble_ledger_rows(db, item.line_id)
+            if not ledger_rows:
+                warnings.append(
+                    f"线路「{item.line_name or item.line_id}」无杆塔数据，无法自动组装判别台账"
+                )
+        except Exception as exc:
+            warnings.append(f"台账自动组装失败：{exc}")
 
     # 行波输入：支持 TXT/JSON（含 CurrentDataInput 或采样数组），允许多文件，失败则跳过该文件。
     for wave_file in _resolve_upload_files(upload_files, "traveling_wave_file"):
@@ -589,7 +603,9 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
     db.commit()
 
     try:
-        fault_raw, lightning_raw, ledger_rows, traveling_wave_records, input_warnings = _collect_inputs(item)
+        fault_raw, lightning_raw, ledger_rows, traveling_wave_records, input_warnings = _collect_inputs(
+            item, db=db
+        )
         manual = build_manual_input(item)
         analysis_dir = Path(get_settings().file_vfs_root) / "fault_analysis" / analysis_id
 

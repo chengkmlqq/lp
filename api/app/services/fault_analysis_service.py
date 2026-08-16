@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..core.config import get_settings
 from ..models.base import utcnow
 from ..models.fault_analysis import FaultAnalysis
+from ..models.line import Line
 from ..models.user import User
 from ..schemas.fault_analysis import (
     FaultAnalysisCreateRequest,
@@ -18,6 +19,7 @@ from ..schemas.fault_analysis import (
     FaultAnalysisSummary,
     FaultAnalysisUpdateRequest,
 )
+from .fault_diagnosis_core import LEDGER_OUTPUT_FIELDS
 
 
 def serialize_summary(item: FaultAnalysis) -> FaultAnalysisSummary:
@@ -217,6 +219,103 @@ def set_analysis_upload_files(db: Session, analysis_id: str, upload_files: dict[
     item.upload_files = upload_files
     item.update_date = utcnow()
     db.commit()
+
+
+def ensure_line_has_towers(db: Session, line_id: str) -> None:
+    """校验线路存在且含杆塔数据（台账自动组装前置条件，LP-378）。
+
+    线路缺失或无杆塔数据时给出明确提示，避免创建后无法组装判别台账。
+    """
+    line = db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
+    if line is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="所选故障线路不存在",
+        )
+    if not line.towers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"线路「{line.name}」无杆塔数据，无法自动组装判别台账，请补充杆塔数据或上传台账文件",
+        )
+
+
+def assemble_ledger_rows(db: Session, line_id: str) -> list[dict[str, object]]:
+    """按线路从系统数据组装判别台账行（与 LEDGER_OUTPUT_FIELDS 16 列对齐，LP-378）。
+
+    数据源：power_line（线路名称/电压等级）、power_line_tower（塔号/地形/地闪密度/
+    海拔/杆塔模型/塔形/接地电阻/雷击风险等级/经纬度）、tower_profile（绝缘子串长度，
+    米转毫米）、tower_lightning_result（反击/绕击耐雷水平）。「直线或耐张杆塔」与
+    「塔形」同源取 tower_type，缺省时留空。
+    """
+    line = db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
+    if line is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="所选故障线路不存在",
+        )
+    rows: list[dict[str, object]] = []
+    for tower in line.towers:
+        profile = tower.profile
+        lightning = tower.lightning_result
+        insulator_mm = (
+            round(profile.insulator_length_m * 1000.0, 4)
+            if profile is not None and profile.insulator_length_m is not None
+            else None
+        )
+        rows.append(
+            {
+                "线路名称": line.name,
+                "电压等级": line.voltage_kv,
+                "塔号": tower.tower_no,
+                "地形": tower.terrain,
+                "地闪密度": tower.lightning_density,
+                "海拔m": tower.altitude_m,
+                "杆塔模型": tower.tower_model,
+                "塔形": tower.tower_type,
+                "直线或耐张杆塔": tower.tower_type,
+                "绝缘子串长度mm": insulator_mm,
+                "接地电阻": tower.ground_resistance_ohm,
+                "反击耐雷水平kA": lightning.counterstroke_withstand_ka if lightning is not None else None,
+                "绕击耐雷水平kA": lightning.shielding_withstand_ka if lightning is not None else None,
+                "雷击风险等级": tower.risk_level,
+                "经度": tower.longitude,
+                "纬度": tower.latitude,
+            }
+        )
+    return rows
+
+
+def assemble_ledger_csv(db: Session, analysis_id: str, line_id: str) -> tuple[str, int]:
+    """按线路自动组装判别台账 CSV 并写入分析目录，返回 ``(relative_path, row_count)``。
+
+    生成的 CSV 表头严格对齐 ``LEDGER_OUTPUT_FIELDS`` 16 列中文列名（判别核心
+    ``load_ledger_rows`` / ``lookup_ledger`` 读取约定）。线路无杆塔数据时抛 400。
+    """
+    rows = assemble_ledger_rows(db, line_id)
+    if not rows:
+        line = db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
+        line_name = line.name if line is not None else line_id
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"线路「{line_name}」无杆塔数据，无法自动组装判别台账，请补充杆塔数据或上传台账文件",
+        )
+
+    import csv
+    import io
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=list(LEDGER_OUTPUT_FIELDS))
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({column: row.get(column) for column in LEDGER_OUTPUT_FIELDS})
+    content = buffer.getvalue().encode("utf-8-sig")
+    relative = store_analysis_upload_file(
+        analysis_id,
+        "ledger_data_file",
+        "auto_assembled_ledger.csv",
+        content,
+    )
+    return relative, len(rows)
 
 
 def dispatch_fault_diagnosis(db: Session, analysis_id: str) -> None:
