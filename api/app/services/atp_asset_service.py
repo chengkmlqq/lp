@@ -98,6 +98,15 @@ class MaterializedRelease:
     command_steps: list[CommandStep]
 
 
+class _ResolvedTempUpload:
+    """将两段式上传解析出的 (content, file_name) 包装成上传文件兼容对象。"""
+
+    def __init__(self, *, filename: str, content: bytes) -> None:
+        self.filename = filename
+        self.content_type = mimetypes.guess_type(filename)[0]
+        self.file = io.BytesIO(content)
+
+
 def _fire_and_forget(coro: Any) -> None:
     try:
         loop = asyncio.get_running_loop()
@@ -1613,7 +1622,8 @@ def upload_asset_files(
     db: Session,
     *,
     asset_id: str,
-    files: list[Any],
+    files: list[Any] | None = None,
+    temp_file_id: str | None = None,
     actor_user_id: str,
 ) -> AtpAssetSummary:
     asset = get_asset_by_id(db, asset_id)
@@ -1665,7 +1675,27 @@ def upload_asset_files(
         driver.ensure_directory(parent_path)
         driver.write_file(target_path, content=content, content_type=content_type)
 
-    for file in files:
+    resolved_files = list(files or [])
+    if temp_file_id:
+        from ..core.file_upload import resolve_temp_upload
+
+        content, source_file_name = resolve_temp_upload(temp_file_id, actor_user_id)
+        if not content:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="临时文件为空，请重新上传")
+        resolved_files.append(
+            _ResolvedTempUpload(
+                filename=source_file_name or "model.zip",
+                content=content,
+            )
+        )
+
+    if not resolved_files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="缺少文件，请提供 files 或 temp_file_id",
+        )
+
+    for file in resolved_files:
         _write_upload_file(file, base_root=storage_root_path)
 
     asset.storage_mount_code = mount.code

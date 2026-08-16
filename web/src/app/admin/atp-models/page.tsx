@@ -9,6 +9,7 @@ import {
   Form,
   Input,
   Modal,
+  Progress,
   Row,
   Segmented,
   Select,
@@ -21,7 +22,7 @@ import {
   Upload,
   type CardProps,
 } from "antd";
-import { UploadOutlined, FolderOutlined, FileOutlined, TableOutlined, FolderOpenOutlined, HomeOutlined, DeleteOutlined, SearchOutlined, EyeOutlined } from "@ant-design/icons";
+import { UploadOutlined, FolderOutlined, FileOutlined, TableOutlined, FolderOpenOutlined, HomeOutlined, DeleteOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
 import { useRouter } from "next/navigation";
@@ -30,8 +31,8 @@ import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
-import { ApiError, readApiError } from "@/lib/api";
-import type { AtpAssetListResponse, AtpAssetSummary, AtpAssetFileListResponse, DimensionTypeTreeItem } from "@/types/auth";
+import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
+import type { AtpAssetListResponse, AtpAssetSummary, AtpAssetFileListResponse, DimensionTypeTreeItem, TempUploadResponse } from "@/types/auth";
 import type { DimensionItemListResponse } from "@/types/dimension";
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
@@ -108,7 +109,7 @@ const ATP_TABLE_FALLBACK_RESERVE = 220;
 
 export default function AtpModelsPage() {
   const router = useRouter();
-  const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
+  const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<AssetFormValues>();
   const isMobile = useMobileDetection();
@@ -117,6 +118,9 @@ export default function AtpModelsPage() {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [fileList, setFileList] = useState<File[]>([]);
+  const [tempFileId, setTempFileId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
   const [tableScrollY, setTableScrollY] = useState(ATP_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const viewMode: "table" | "card" = isMobile ? "card" : "table";
@@ -162,6 +166,9 @@ export default function AtpModelsPage() {
       if (values.files.length === 0) {
         throw new Error("请先选择模型文件");
       }
+      if (!tempFileId) {
+        throw new Error("模型文件尚未上传完成，请等待上传完成后再创建模型");
+      }
 
       const payload = {
         code: generateCode(),
@@ -185,21 +192,9 @@ export default function AtpModelsPage() {
 
       const createdAsset = await response.json();
 
-      if (values.files.length > 0) {
+      if (tempFileId) {
         const formData = new FormData();
-        const JSZip = (await import("jszip")).default;
-        const zip = new JSZip();
-        for (const file of values.files) {
-          const fullPath = (file as any).webkitRelativePath || file.name;
-          // Strip the outermost directory level
-          const pathParts = fullPath.split('/');
-          const strippedPath = pathParts.length > 1 ? pathParts.slice(1).join('/') : fullPath;
-          if (strippedPath) {
-            zip.file(strippedPath, file);
-          }
-        }
-        const zipBlob = await zip.generateAsync({ type: "blob" });
-        formData.append("files", zipBlob, "model.zip");
+        formData.append("temp_file_id", tempFileId);
 
         const uploadResponse = await fetchWithAuth(
           `/api/v1/atp/assets/${createdAsset.id}/files`,
@@ -222,6 +217,9 @@ export default function AtpModelsPage() {
       setError(null);
       setModalOpen(false);
       setFileList([]);
+      setTempFileId(null);
+      setUploadProgress(0);
+      setUploadError("");
       form.resetFields();
     },
     onError: (candidate) => {
@@ -248,10 +246,101 @@ export default function AtpModelsPage() {
     },
   });
 
+  const handleTempUpload = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) {
+        setTempFileId(null);
+        setUploadProgress(0);
+        setUploadError("");
+        return;
+      }
+      setTempFileId(null);
+      setUploadProgress(0);
+      setUploadError("");
+
+      let zipBlob: Blob;
+      try {
+        const JSZip = (await import("jszip")).default;
+        const zip = new JSZip();
+        for (const file of files) {
+          const fullPath = getUploadRelativePath(file);
+          // Strip the outermost directory level
+          const pathParts = fullPath.split('/');
+          const strippedPath = pathParts.length > 1 ? pathParts.slice(1).join('/') : fullPath;
+          if (strippedPath) {
+            zip.file(strippedPath, file);
+          }
+        }
+        zipBlob = await zip.generateAsync({ type: "blob" });
+      } catch {
+        setUploadError("模型文件打包失败，请重新选择文件夹");
+        return;
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${getApiBaseUrl()}/api/v1/uploads/temp`);
+      xhr.withCredentials = true;
+      const token = getAccessToken();
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+      xhr.upload.onprogress = (event: ProgressEvent<EventTarget>) => {
+        if (!event.lengthComputable || event.total <= 0) {
+          return;
+        }
+        const percent = Math.min(99, Math.max(0, Math.round((event.loaded / event.total) * 100)));
+        setUploadProgress(percent);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadProgress(100);
+          try {
+            const payload = JSON.parse(xhr.responseText) as TempUploadResponse;
+            setTempFileId(payload.temp_file_id);
+          } catch {
+            setUploadError("上传成功但响应解析失败，请重新选择文件夹");
+          }
+          return;
+        }
+        let message = `HTTP ${xhr.status}`;
+        try {
+          const parsed = JSON.parse(xhr.responseText) as { detail?: string };
+          if (parsed?.detail?.trim()) message = parsed.detail;
+        } catch {
+          // 忽略非 JSON 响应
+        }
+        setUploadError(message);
+      };
+      xhr.onerror = () => setUploadError("网络异常，上传失败");
+      xhr.onabort = () => setUploadError("上传已取消");
+
+      const formData = new FormData();
+      formData.append("file", zipBlob, "model.zip");
+      xhr.send(formData);
+    },
+    [getAccessToken],
+  );
+
+  useEffect(() => {
+    if (fileList.length === 0) {
+      setTempFileId(null);
+      setUploadProgress(0);
+      setUploadError("");
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void handleTempUpload(fileList);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [fileList, handleTempUpload]);
+
   const openCreateModal = useCallback(() => {
     setError(null);
     setSuccess("");
     setFileList([]);
+    setTempFileId(null);
+    setUploadProgress(0);
+    setUploadError("");
     form.setFieldsValue(EMPTY_FORM);
     setModalOpen(true);
   }, [form]);
@@ -260,6 +349,9 @@ export default function AtpModelsPage() {
     if (createAssetMutation.isPending) return;
     setModalOpen(false);
     setFileList([]);
+    setTempFileId(null);
+    setUploadProgress(0);
+    setUploadError("");
     form.resetFields();
   };
 
@@ -1233,6 +1325,7 @@ export default function AtpModelsPage() {
         destroyOnClose
         okText={createAssetMutation.isPending ? "提交中..." : "创建模型"}
         cancelText="取消"
+        okButtonProps={{ disabled: !tempFileId }}
       >
         <Form
           form={form}
@@ -1302,6 +1395,28 @@ export default function AtpModelsPage() {
                   <div style={{ marginBottom: 8, fontWeight: 500, color: '#666' }}>
                     已选择 {fileList.length} 个文件
                   </div>
+                  {uploadProgress > 0 && uploadProgress < 100 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <Progress percent={uploadProgress} size="small" />
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        正在上传到临时目录，请稍候…
+                      </Typography.Text>
+                    </div>
+                  )}
+                  {tempFileId && (
+                    <div style={{ marginBottom: 8 }}>
+                      <Typography.Text type="success">
+                        <CheckCircleOutlined /> 上传完成，可以创建模型
+                      </Typography.Text>
+                    </div>
+                  )}
+                  {uploadError && (
+                    <div style={{ marginBottom: 8 }}>
+                      <Typography.Text type="danger" style={{ fontSize: 13 }}>
+                        {uploadError}
+                      </Typography.Text>
+                    </div>
+                  )}
                   {fileList.map((file, index) => (
                     <div key={index} style={{
                       padding: '4px 0',

@@ -461,6 +461,91 @@ def test_delete_asset_removes_storage_files(tmp_path) -> None:
         session.close()
 
 
+def test_upload_asset_files_via_temp_file_id(tmp_path, monkeypatch) -> None:
+    from app.services import minio_storage
+
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        asset = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(
+                code="ATP-ASSET-TEMP",
+                name="临时目录上传模型",
+                voltage_level="110",
+                tower_type="danhuita",
+                scene_type="raoji3",
+            ),
+            actor_user_id="tester",
+        )
+        assert asset is not None
+
+        temp_key = "lightning/tmp/tester/abc123_model.zip"
+        zip_content = _build_zip(
+            {
+                "work.atp": b"ATP INPUT",
+                "nested/config.txt": b"nested config",
+            }
+        )
+        deleted: list[str] = []
+        monkeypatch.setattr(minio_storage, "get_object", lambda key: zip_content)
+        monkeypatch.setattr(minio_storage, "delete_object", lambda key: deleted.append(key))
+
+        updated = atp_asset_service.upload_asset_files(
+            session,
+            asset_id=asset.id,
+            files=None,
+            temp_file_id=temp_key,
+            actor_user_id="tester",
+        )
+
+        assert updated.storage_mount_code == "main"
+        assert updated.storage_root_path == "/atp-assets/ATP-ASSET-TEMP"
+        assert deleted == [temp_key]
+
+        asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-TEMP"
+        assert (asset_root / "work.atp").exists()
+        assert (asset_root / "nested" / "config.txt").exists()
+
+        files = atp_asset_service.list_asset_files(session, asset_id=asset.id)
+        assert any(entry.relative_path == "work.atp" and not entry.is_dir for entry in files.items)
+        assert any(entry.relative_path == "nested/config.txt" and not entry.is_dir for entry in files.items)
+    finally:
+        session.close()
+
+
+def test_upload_asset_files_missing_both_file_and_temp_id(tmp_path) -> None:
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        asset = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(
+                code="ATP-ASSET-NOFILE",
+                name="无文件模型",
+                voltage_level="110",
+                tower_type="danhuita",
+                scene_type="raoji3",
+            ),
+            actor_user_id="tester",
+        )
+        assert asset is not None
+
+        with pytest.raises(HTTPException) as exc:
+            atp_asset_service.upload_asset_files(
+                session,
+                asset_id=asset.id,
+                files=None,
+                temp_file_id=None,
+                actor_user_id="tester",
+            )
+        assert exc.value.status_code == 400
+    finally:
+        session.close()
+
+
 def test_upload_asset_files_extracts_zip_and_removes_asset_root(tmp_path) -> None:
     testing_session = _build_sessionmaker()
     session: Session = testing_session()

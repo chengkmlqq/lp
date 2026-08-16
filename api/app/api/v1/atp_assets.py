@@ -95,14 +95,23 @@ def create_atp_asset_endpoint(
 @router.post("/assets/{asset_id}/files", response_model=AtpAssetDetail)
 def upload_atp_asset_files_endpoint(
     asset_id: str,
-    files: list[UploadFile] = File(...),
+    temp_file_id: str | None = Form(default=None),
+    files: list[UploadFile] | None = File(default=None),
     current_user: CurrentUser = Depends(require_permission("atp.manage")),
     db: Session = Depends(get_db),
 ) -> AtpAssetDetail:
+    """上传模型文件到资产目录。
+
+    支持两种入参：
+    1. 传统方式：直接上传文件（files 字段，zip 或散文件）
+    2. 两段式：先调用通用 upload-temp 端点获取 temp_file_id，再提交 temp_file_id
+    临时文件在消费后自动删除，或由 24h 定时清理任务兜底。
+    """
     updated = upload_asset_files(
         db,
         asset_id=asset_id,
-        files=files,
+        files=files or [],
+        temp_file_id=temp_file_id,
         actor_user_id=current_user.user.id,
     )
     return AtpAssetDetail(**updated.model_dump())
