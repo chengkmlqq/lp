@@ -1,7 +1,7 @@
 # fquiz-matlab-worker image: Linux 版 MATLAB Runtime + 判别 celery worker
 #
 # 方案 B（Linux 原生）：基于 fquiz-mcr-base（fquiz-base + Linux 版 MATLAB
-# Runtime R2026a glnxa64，低频更新、服务器构建推送）。判别引擎为 Linux mcc
+# Runtime R2023a glnxa64，低频更新、服务器构建推送）。判别引擎为 Linux mcc
 # 编译产物（RunWaveAnalysisModule），直接执行、无需 Wine。
 #
 # - MCR：来自 fquiz-mcr-base 基础镜像（构建期安装，见 api/Dockerfile.mcrbase）

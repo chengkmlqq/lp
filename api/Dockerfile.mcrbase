@@ -1,4 +1,4 @@
-# fquiz-mcr-base: fquiz-base + Linux 版 MATLAB Runtime（R2026a glnxa64）
+# fquiz-mcr-base: fquiz-base + Linux 版 MATLAB Runtime（R2023a glnxa64）
 #
 # 低频更新的基础镜像：仅在服务器/大磁盘环境构建（GitHub runner 14G 装不下
 # Linux MCR：zip 5G + 解压 10G + 安装 10G 峰值 ~25G）。
@@ -9,8 +9,8 @@ ARG REGISTRY_NAMESPACE=ck-registry
 FROM ${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-base:latest
 
 ARG APT_MIRROR=""
-ARG MCR_VERSION=R2026a
-ARG MCR_DOWNLOAD_URL=https://ssd.mathworks.com/supportfiles/downloads/R2026a/Release/0/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2026a_glnxa64.zip
+ARG MCR_VERSION=R2023a
+ARG MCR_DOWNLOAD_URL=https://ssd.mathworks.com/supportfiles/downloads/R2023a/Release/0/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2023a_glnxa64.zip
 
 # 1) MCR 运行所需的系统库（X11/解压工具）
 RUN if [ -n "${APT_MIRROR}" ]; then \

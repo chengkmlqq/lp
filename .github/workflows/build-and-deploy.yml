@@ -206,10 +206,10 @@ jobs:
             REGISTRY=${{ env.REGISTRY }}
             REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
             APT_MIRROR=${{ vars.APT_MIRROR || '' }}
-            MCR_VERSION=${{ vars.MATLAB_MCR_VERSION || 'R2026a' }}
-            MCR_DOWNLOAD_URL=${{ vars.MATLAB_MCR_URL || 'https://ssd.mathworks.com/supportfiles/downloads/R2026a/Release/0/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2026a_glnxa64.zip' }}
+            MCR_VERSION=${{ vars.MATLAB_MCR_VERSION || 'R2023a' }}
+            MCR_DOWNLOAD_URL=${{ vars.MATLAB_MCR_URL || 'https://ssd.mathworks.com/supportfiles/downloads/R2023a/Release/0/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2023a_glnxa64.zip' }}
           tags: |
-            ${{ env.REGISTRY }}/${env.REGISTRY_NAMESPACE}/fquiz-mcr-base:latest
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/fquiz-mcr-base:latest
           cache-from: type=gha,scope=fquiz-mcr-base
           cache-to: type=gha,mode=max,scope=fquiz-mcr-base
 
