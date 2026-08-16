@@ -33,8 +33,10 @@ test("LP-358: middle section renders the elevation fields as icon + text-xs rows
   const infoFields = [
     "格式：",
     "大小：",
+    "来源：",
     "分辨率：",
     "样本数：",
+    "解析状态：",
     "关联线路：",
   ];
   for (const field of infoFields) {
@@ -42,13 +44,16 @@ test("LP-358: middle section renders the elevation fields as icon + text-xs rows
   }
   assert.match(cardBlock, /<FileTextOutlined className="text-xs text-gray-500" \/>/, "格式应带图标");
   assert.match(cardBlock, /<DatabaseOutlined /, "大小应带图标");
+  assert.match(cardBlock, /<GlobalOutlined /, "来源应带图标");
   assert.match(cardBlock, /<AppstoreOutlined /, "分辨率应带图标");
   assert.match(cardBlock, /<NumberOutlined /, "样本数应带图标");
+  assert.match(cardBlock, /<CheckCircleOutlined /, "解析状态应带图标");
   assert.match(cardBlock, /<DeploymentUnitOutlined /, "关联线路应带图标");
   assert.match(cardBlock, /type="secondary" className="text-xs/, "信息行应使用次要色 text-xs 文本");
 });
 
-test("LP-358: format tag is retained as text-xs", () => {
+test("LP-358: parse status tag keeps its color and format tag is retained as text-xs", () => {
+  assert.match(cardBlock, /<Tag color=\{computedParseStatus\(record\)\.color\} className="text-xs">/, "解析状态应保留彩色 Tag");
   assert.match(cardBlock, /<Tag className="text-xs">\{record\.file_format\.toUpperCase\(\)\}<\/Tag>/, "格式应保留 text-xs Tag");
 });
 
