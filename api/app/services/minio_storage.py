@@ -179,14 +179,28 @@ def build_fault_analysis_generated_key(analysis_id: str, file_name: str) -> str:
     return f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/Input/generated/{safe_name}"
 
 
-def build_fault_analysis_output_key(analysis_id: str, file_name: str) -> str:
+def build_fault_analysis_output_key(analysis_id: str, file_name: str, sub_dir: str | None = None) -> str:
+    """构造 Output 产物对象 Key：fault-analysis/{id}/Output[/sub_dir]/{file_name}"""
     safe_name = Path((file_name or "artifact.bin").strip() or "artifact.bin").name
-    return f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/Output/{safe_name}"
+    base = f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/Output"
+    if sub_dir:
+        base = f"{base}/{str(sub_dir).strip().strip('/')}"
+    return f"{base}/{safe_name}"
 
 
-def build_fault_analysis_matlab_output_key(analysis_id: str, file_name: str) -> str:
+def build_fault_analysis_matlab_output_key(
+    analysis_id: str, file_name: str, sub_dir: str | None = None
+) -> str:
+    """构造 MATLAB 引擎产物对象 Key：fault-analysis/{id}/Output/matlab[/sub_dir]/{file_name}
+
+    sub_dir 为单次运行的 run_id 或其下的相对路径，用于保留模块输出目录的
+    原始目录结构（如 Output/matlab/<run_id>/nested/<file>）。
+    """
     safe_name = Path((file_name or "wave_module_prediction.txt").strip() or "wave_module_prediction.txt").name
-    return f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/Output/matlab/{safe_name}"
+    base = f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/Output/matlab"
+    if sub_dir:
+        base = f"{base}/{str(sub_dir).strip().strip('/')}"
+    return f"{base}/{safe_name}"
 
 
 def build_fault_analysis_prefix(analysis_id: str) -> str:

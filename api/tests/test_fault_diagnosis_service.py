@@ -270,3 +270,80 @@ def test_create_analysis_dispatches_and_fails_gracefully_without_broker(
     assert updated.status == "failed"
     assert "error" in updated.result_json
 
+
+def test_finalize_artifacts_archives_matlab_directory_and_debug_inputs(
+    db_session: Session, tmp_path: Path
+):
+    """MATLAB 全量产物目录递归归档 + 判别中间输入 debug JSON 落盘，清单写入 artifacts。"""
+    _sample_user(db_session)
+    item = _sample_analysis(db_session)
+
+    run_output_dir = tmp_path / "module_runs" / "20260817_000000_000001"
+    run_output_dir.mkdir(parents=True)
+    (run_output_dir / "classification_result.mat").write_bytes(b"\x00MATLAB-v7\x01")
+    (run_output_dir / "classification_summary.xlsx").write_bytes(b"PK\x03\x04")
+    prediction_file = run_output_dir / "wave_module_prediction.txt"
+    prediction_file.write_text("mechanism=雷击\n", encoding="utf-8")
+    nested = run_output_dir / "sub" / "wave_input_file_list.xlsx"
+    nested.parent.mkdir(parents=True)
+    nested.write_bytes(b"PK\x03\x04")
+    (run_output_dir / "占位.txt").write_text("hello", encoding="utf-8")
+
+    result_json = fault_diagnosis_service._finalize_artifacts(
+        {"sections": [], "diagnosis": {}},
+        analysis_id=item.id,
+        wave_model_path=prediction_file,
+        matlab_output_dir=run_output_dir,
+        debug_inputs=(
+            {"station": "某站"},
+            {"query_result": "否"},
+            [{"line_name": "某线路"}],
+            [{"path": "/tmp/wave.txt"}],
+        ),
+    )
+
+    artifacts = result_json["artifacts"]
+    assert artifacts["result_json"] == f"fault-analysis/{item.id}/Output/result.json"
+    assert (
+        artifacts["matlab_wave_prediction"]
+        == f"fault-analysis/{item.id}/Output/matlab/20260817_000000_000001/wave_module_prediction.txt"
+    )
+    # MATLAB 全量产物：保持 run_id + 嵌套相对路径
+    assert artifacts["matlab_outputs"] == [
+        f"fault-analysis/{item.id}/Output/matlab/20260817_000000_000001/classification_result.mat",
+        f"fault-analysis/{item.id}/Output/matlab/20260817_000000_000001/classification_summary.xlsx",
+        f"fault-analysis/{item.id}/Output/matlab/20260817_000000_000001/sub/wave_input_file_list.xlsx",
+        f"fault-analysis/{item.id}/Output/matlab/20260817_000000_000001/wave_module_prediction.txt",
+        f"fault-analysis/{item.id}/Output/matlab/20260817_000000_000001/占位.txt",
+    ]
+    # debug 输入 JSON 落盘清单
+    assert artifacts["debug_outputs"] == [
+        f"fault-analysis/{item.id}/Output/debug/fault_raw.json",
+        f"fault-analysis/{item.id}/Output/debug/lightning_raw.json",
+        f"fault-analysis/{item.id}/Output/debug/ledger_rows.json",
+        f"fault-analysis/{item.id}/Output/debug/traveling_wave_records.json",
+    ]
+
+    minio_objects = db_session._test_minio_objects
+    assert minio_objects[artifacts["matlab_outputs"][2]] == b"PK\x03\x04"
+    assert "某站".encode("utf-8") in minio_objects[artifacts["debug_outputs"][0]]
+
+
+def test_finalize_artifacts_no_matlab_keeps_compat_artifacts(db_session: Session):
+    """未启用 MATLAB 引擎路径时，artifacts 保留 result_json，且 matlab_outputs 不存在。"""
+    _sample_user(db_session)
+    item = _sample_analysis(db_session)
+
+    result_json = fault_diagnosis_service._finalize_artifacts(
+        {"sections": [], "diagnosis": {}},
+        analysis_id=item.id,
+        wave_model_path=None,
+        matlab_output_dir=None,
+        debug_inputs=None,
+    )
+
+    artifacts = result_json["artifacts"]
+    assert artifacts == {"result_json": f"fault-analysis/{item.id}/Output/result.json"}
+    assert "matlab_outputs" not in artifacts
+    assert "debug_outputs" not in artifacts
+

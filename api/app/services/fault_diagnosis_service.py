@@ -132,6 +132,110 @@ def _archive_file(analysis_id: str, path: Path, *, matlab: bool = False, content
     return put_object(key, path.read_bytes(), content_type=content_type or "application/octet-stream")
 
 
+def _archive_matlab_run_directory(analysis_id: str, run_output_dir: Path) -> list[str]:
+    """递归归档 MATLAB 引擎单次运行的全量产物目录到 Output/matlab/<run_id>/。
+
+    保持产物目录内的原始相对路径结构（含嵌套子目录），返回全部对象 key 清单；
+    目录不存在或为空时返回空列表。
+    """
+    keys: list[str] = []
+    if not run_output_dir.is_dir():
+        return keys
+    run_id = run_output_dir.name
+    for path in sorted(run_output_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(run_output_dir)
+        sub_dir = run_id if rel.parent.as_posix() == "." else f"{run_id}/{rel.parent.as_posix()}"
+        key = build_fault_analysis_matlab_output_key(analysis_id, path.name, sub_dir=sub_dir)
+        keys.append(put_object(key, path.read_bytes()))
+    return keys
+
+
+def _archive_debug_inputs(
+    analysis_id: str,
+    *,
+    fault_raw: Mapping[str, Any],
+    lightning_raw: Mapping[str, Any],
+    ledger_rows: Sequence[Mapping[str, Any]],
+    traveling_wave_records: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    """把判别中间输入各自物化一份 JSON 归档到 Output/debug/，便于复现与排查。
+
+    返回全部对象 key 清单；任一输入为空序列/空字典时仍落一份空结构，保证清单可对齐。
+    """
+    keys: list[str] = []
+    payloads: list[tuple[str, Any]] = [
+        ("fault_raw", fault_raw),
+        ("lightning_raw", lightning_raw),
+        ("ledger_rows", ledger_rows),
+        ("traveling_wave_records", traveling_wave_records),
+    ]
+    for name, value in payloads:
+        key = build_fault_analysis_output_key(analysis_id, f"{name}.json", sub_dir="debug")
+        data = json.dumps(value, ensure_ascii=False, default=str).encode("utf-8")
+        keys.append(put_object(key, data, content_type="application/json"))
+    return keys
+
+
+def _finalize_artifacts(
+    result_json: dict[str, Any],
+    *,
+    analysis_id: str,
+    wave_model_path: Path | None,
+    matlab_output_dir: Path | None,
+    debug_inputs: tuple[
+        Mapping[str, Any], Mapping[str, Any], Sequence[Mapping[str, Any]], Sequence[Mapping[str, Any]]
+    ]
+    | None = None,
+) -> dict[str, Any]:
+    """构建最终 result_json：补全 artifacts 产物清单（result.json + MATLAB 全量 + debug）。
+
+    所有归档必须在该函数内完成，保证 run_fault_diagnosis 与
+    run_fault_diagnosis_with_progress 两条执行路径的归档逻辑完全一致。
+    """
+    artifacts = dict(result_json.get("artifacts") or {})
+    result_key = build_fault_analysis_output_key(analysis_id, "result.json")
+    artifacts["result_json"] = result_key
+    if matlab_output_dir is not None:
+        matlab_keys = _archive_matlab_run_directory(analysis_id, matlab_output_dir)
+        if matlab_keys:
+            artifacts["matlab_outputs"] = matlab_keys
+            # prediction 已含在全量归档内，直接以 run_id 作用域的 key 引用（与评审清单结构一致），
+            # 避免顶层额外上传一份重复的 wave_module_prediction.txt。
+            if wave_model_path is not None and wave_model_path.is_file():
+                prediction_rel = wave_model_path.relative_to(matlab_output_dir)
+                prediction_sub = (
+                    matlab_output_dir.name
+                    if prediction_rel.parent.as_posix() == "."
+                    else f"{matlab_output_dir.name}/{prediction_rel.parent.as_posix()}"
+                )
+                artifacts["matlab_wave_prediction"] = build_fault_analysis_matlab_output_key(
+                    analysis_id, wave_model_path.name, sub_dir=prediction_sub
+                )
+    elif wave_model_path is not None and wave_model_path.is_file():
+        # 防御分支：全量目录缺失但 prediction 文件仍存在时，保持单文件归档。
+        artifacts["matlab_wave_prediction"] = _archive_file(
+            analysis_id,
+            wave_model_path,
+            matlab=True,
+            content_type="text/plain",
+        )
+    if debug_inputs is not None:
+        fault_raw, lightning_raw, ledger_rows, traveling_wave_records = debug_inputs
+        debug_keys = _archive_debug_inputs(
+            analysis_id,
+            fault_raw=fault_raw,
+            lightning_raw=lightning_raw,
+            ledger_rows=ledger_rows,
+            traveling_wave_records=traveling_wave_records,
+        )
+        if debug_keys:
+            artifacts["debug_outputs"] = debug_keys
+    result_json["artifacts"] = artifacts
+    return result_json
+
+
 def build_fault_raw(item: FaultAnalysis) -> dict[str, Any]:
     """把 LP 故障分析记录的表单标量字段组织成判别系统 fault_raw 输入。"""
     raw: dict[str, Any] = {}
@@ -303,7 +407,7 @@ def _try_matlab_wave_enhancement(
     ledger_rows: Sequence[Mapping[str, Any]],
     traveling_wave_records: Sequence[Mapping[str, Any]],
     manual: Mapping[str, Any],
-) -> tuple[Path | None, dict[str, Any] | None]:
+) -> tuple[Path | None, Path | None]:
     """可插拔行波增强：优先调用 MATLAB Runtime 编译产物，不可用时返回 (None, None)。
 
     编译产物约定（与判别系统交付版 RunWaveAnalysisModule 输入/输出一致）：
@@ -311,6 +415,8 @@ def _try_matlab_wave_enhancement(
     - 可执行入口：目录下 RunWaveAnalysisModule（Linux 上由 mcc 编译，内嵌 MATLAB Runtime）
     - 输入：暂存目录（行波数据文件 + 录波故障相X.txt + 幅值XkA_耐雷水平YkA.txt）
     - 输出：输出根目录/最新结果路径.txt -> 本次输出目录/wave_module_prediction.txt
+    - 返回值：成功时返回 (prediction_path, output_dir_path)，其中 output_dir_path 即本次
+      运行的全部引擎产物目录（module_runs/<run_id>），供调用方整体归档到 MinIO。
 
     未配置产物、可执行文件缺失或调用失败时一律返回 (None, None)，由调用方降级到
     内置 Python 可解释特征规则（analyze_traveling_waves 启发式分支）。
@@ -420,7 +526,7 @@ def _try_matlab_wave_enhancement(
         logger.warning("Fault diagnosis MATLAB prediction file missing for %s: %s", analysis_id, prediction)
         return None, None
     logger.info("Fault diagnosis MATLAB completed for %s: prediction=%s", analysis_id, prediction)
-    return prediction, None
+    return prediction, latest_output
 
 
 def _derive_risk_level(diag: Mapping[str, Any]) -> tuple[str, list[str]]:
@@ -711,7 +817,7 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
             len(traveling_wave_paths),
         )
 
-        wave_model_path, wave_review_context = _try_matlab_wave_enhancement(
+        wave_model_path, matlab_output_dir = _try_matlab_wave_enhancement(
             analysis_id,
             analysis_dir,
             fault_raw,
@@ -738,23 +844,19 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
             lightning_raw=lightning_raw or None,
             traveling_wave_records=traveling_wave_records,
             wave_model_result=wave_model_result,
-            wave_review_context=wave_review_context,
             source_paths=source_paths,
         )
         mapped = map_result_to_record(diag, item, input_warnings=input_warnings)
         result_json = dict(mapped["result_json"])
         result_json["upload_files"] = dict(original_upload_files)
-        artifacts = dict(result_json.get("artifacts") or {})
+        result_json = _finalize_artifacts(
+            result_json,
+            analysis_id=analysis_id,
+            wave_model_path=wave_model_path,
+            matlab_output_dir=matlab_output_dir,
+            debug_inputs=(fault_raw, lightning_raw, ledger_rows, traveling_wave_records),
+        )
         result_key = build_fault_analysis_output_key(analysis_id, "result.json")
-        artifacts["result_json"] = result_key
-        if wave_model_path is not None and wave_model_path.is_file():
-            artifacts["matlab_wave_prediction"] = _archive_file(
-                analysis_id,
-                wave_model_path,
-                matlab=True,
-                content_type="text/plain",
-            )
-        result_json["artifacts"] = artifacts
         payload = json.dumps(result_json, ensure_ascii=False, default=str).encode("utf-8")
         put_object(result_key, payload, content_type="application/json")
         mapped["result_json"] = result_json
@@ -828,7 +930,7 @@ def run_fault_diagnosis_with_progress(
             len(traveling_wave_paths),
         )
 
-        wave_model_path, wave_review_context = _try_matlab_wave_enhancement(
+        wave_model_path, matlab_output_dir = _try_matlab_wave_enhancement(
             analysis_id,
             analysis_dir,
             fault_raw,
@@ -857,13 +959,25 @@ def run_fault_diagnosis_with_progress(
             lightning_raw=lightning_raw or None,
             traveling_wave_records=traveling_wave_records,
             wave_model_result=wave_model_result,
-            wave_review_context=wave_review_context,
             source_paths=source_paths,
         )
         if progress_callback:
             progress_callback(80, "processing")
 
         mapped = map_result_to_record(diag, item, input_warnings=input_warnings)
+        result_json = dict(mapped["result_json"])
+        result_json["upload_files"] = dict(upload_files)
+        result_json = _finalize_artifacts(
+            result_json,
+            analysis_id=analysis_id,
+            wave_model_path=wave_model_path,
+            matlab_output_dir=matlab_output_dir,
+            debug_inputs=(fault_raw, lightning_raw, ledger_rows, traveling_wave_records),
+        )
+        result_key = build_fault_analysis_output_key(analysis_id, "result.json")
+        payload = json.dumps(result_json, ensure_ascii=False, default=str).encode("utf-8")
+        put_object(result_key, payload, content_type="application/json")
+        mapped["result_json"] = result_json
 
         item.status = "completed"
         item.progress = 85
@@ -1022,6 +1136,11 @@ def generate_report_docx(db: Session, analysis_id: str, template_path: Path | No
         item.update_date = utcnow()
         item.update_user = "system"
         db.commit()
+        # 保持 MinIO 侧 result.json 与本地 result_json 一致，使 artifacts 清单（含 report_docx）
+        # 在文件管理/清单查询时可见。
+        result_key = build_fault_analysis_output_key(analysis_id, "result.json")
+        payload = json.dumps(item.result_json, ensure_ascii=False, default=str).encode("utf-8")
+        put_object(result_key, payload, content_type="application/json")
     except Exception:
         logger.exception("Fault diagnosis report archive failed for %s", analysis_id)
     return output_path
