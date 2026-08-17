@@ -45,3 +45,25 @@ test("LP-398: fl-analysis 任务卡片补齐浅色操作区分隔线规则（与
     "操作区分隔线应使用主色混色",
   );
 });
+
+test("LP-400: 杆塔模型卡片深色模式补齐卡片/头部/正文规则（对齐 atp-models 模型卡片）", () => {
+  const cardRule = /:root\[data-fquiz-theme="dark"\] \.admin-tower-models-model-card \{([^}]*)\}/;
+  const cardBlock = CSS.match(cardRule)?.[1];
+  assert.ok(cardBlock, "应存在深色模式杆塔模型卡片规则");
+  assert.match(cardBlock, /border-color:\s*color-mix\(in srgb, var\(--fquiz-theme-primary\)/, "深色卡片边框应使用主色混色");
+  assert.match(cardBlock, /linear-gradient/, "深色卡片背景应使用渐变");
+  assert.match(cardBlock, /!important/, "深色规则应带 !important");
+
+  const headRule = /:root\[data-fquiz-theme="dark"\] \.admin-tower-models-model-card > \.ant-card-head \{([^}]*)\}/;
+  const headBlock = CSS.match(headRule)?.[1];
+  assert.ok(headBlock, "应存在深色模式杆塔模型卡片头部规则");
+  assert.match(headBlock, /border-bottom-color:\s*color-mix\(in srgb, var\(--fquiz-theme-primary\)/, "深色卡片头部下边框应使用主色混色");
+  assert.match(headBlock, /background:\s*color-mix\(in srgb, var\(--fquiz-theme-primary\)/, "深色卡片头部背景应使用主色淡背景");
+  assert.match(headBlock, /!important/, "深色头部规则应带 !important");
+
+  const bodyRule = /:root\[data-fquiz-theme="dark"\] \.admin-tower-models-model-card > \.ant-card-body \{([^}]*)\}/;
+  const bodyBlock = CSS.match(bodyRule)?.[1];
+  assert.ok(bodyBlock, "应存在深色模式杆塔模型卡片正文规则");
+  assert.match(bodyBlock, /background:\s*var\(--ant-color-bg-container\)/, "深色卡片正文背景应为 colorBgContainer");
+  assert.match(bodyBlock, /!important/, "深色正文规则应带 !important");
+});

@@ -909,7 +909,7 @@ export default function AdminSystemMessagesPage() {
                 ) : (
                   <div className="admin-filter-bar">
                     <Form layout="inline">
-                      <Form.Item label="类型" className="admin-filter-keyword-item">
+                      <Form.Item label="类型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                         <Select<SystemMessageType | undefined>
                           value={messageTypeFilter}
                           allowClear
@@ -921,8 +921,8 @@ export default function AdminSystemMessagesPage() {
                           }}
                         />
                       </Form.Item>
-        
-                      <Form.Item label="状态" className="admin-filter-keyword-item">
+
+                      <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                         <Select<"read" | "unread" | undefined>
                           value={readStatus}
                           allowClear
@@ -937,8 +937,8 @@ export default function AdminSystemMessagesPage() {
                           }}
                         />
                       </Form.Item>
-        
-                      <Form.Item>
+
+                      <Form.Item style={{ marginBottom: 0 }}>
                         <Button
                           htmlType="button"
                           icon={<SearchOutlined />} onClick={refreshMessages} className="admin-search-btn">
