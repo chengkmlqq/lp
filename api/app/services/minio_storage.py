@@ -69,6 +69,28 @@ def put_object(key: str, data: bytes, content_type: str | None = None) -> str:
         raise MinioStorageError(f"Failed to upload object {key}: {exc}") from exc
 
 
+def list_objects(prefix: str) -> list[str]:
+    """按前缀分页列举 MinIO 对象 Key，返回所有匹配对象 Key 列表（无分页上限）。
+
+    用于导出场景按 ``Output/matlab/<run_id>/`` 前缀兜底拉取全部引擎产物。
+    """
+    settings = get_settings()
+    try:
+        client = _build_client()
+        paginator = client.get_paginator("list_objects_v2")
+        keys: list[str] = []
+        for page in paginator.paginate(Bucket=settings.minio_bucket, Prefix=prefix):
+            for item in page.get("Contents", []):
+                key = item.get("Key", "")
+                if key:
+                    keys.append(key)
+        return keys
+    except MinioStorageError:
+        raise
+    except Exception as exc:
+        raise MinioStorageError(f"Failed to list objects under {prefix}: {exc}") from exc
+
+
 def get_object(key: str) -> bytes:
     """从 MinIO 下载对象，返回字节内容。"""
     settings = get_settings()

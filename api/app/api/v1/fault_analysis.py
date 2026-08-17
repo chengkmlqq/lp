@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import io
+import re
+import zipfile
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
+
+from ...models.fault_analysis import FaultAnalysis
 
 from ...core.config import get_settings
 from ...core.database import get_db
@@ -36,7 +42,13 @@ from ...services.fault_analysis_service import (
     store_analysis_upload_file,
     update_analysis,
 )
-from ...services.minio_storage import MinioStorageError, MinioObjectNotFoundError, get_object
+from ...services.minio_storage import (
+    FAULT_ANALYSIS_PREFIX,
+    MinioStorageError,
+    MinioObjectNotFoundError,
+    get_object,
+    list_objects,
+)
 from ...services.fault_input_discovery import (
     CATEGORY_FIELDS,
     CATEGORY_LABELS,
@@ -376,4 +388,115 @@ def download_fault_analysis_report(
         report_path,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=filename,
+    )
+
+
+def _matlab_output_keys(item: FaultAnalysis) -> list[str]:
+    """按 result_json.artifacts.matlab_outputs 清单规范化出对象 Key 列表。"""
+    artifacts = ((item.result_json or {}).get("artifacts") or {})
+    raw = artifacts.get("matlab_outputs") or []
+    if isinstance(raw, (str, bytes)):
+        raw = [raw]
+    return [str(key) for key in raw if isinstance(key, (str, bytes)) and str(key).strip()]
+
+
+def _matlab_output_vfs_files(analysis_id: str) -> list[Path]:
+    """MinIO 兜底为空时，尝试 VFS 降级路径（run_fault_diagnosis_with_progress 产物目录）。
+
+    产物目录结构：{file_vfs_root}/fault_analysis/{analysis_id}/matlab_wave_analysis/module_runs/<run_id>/
+    """
+    root = Path(get_settings().file_vfs_root) / "fault_analysis" / analysis_id / "matlab_wave_analysis" / "module_runs"
+    if not root.is_dir():
+        return []
+    files: list[Path] = []
+    for run_dir in sorted(root.iterdir()):
+        if not run_dir.is_dir():
+            continue
+        for path in sorted(run_dir.rglob("*")):
+            if path.is_file():
+                files.append(path)
+    return files
+
+
+def _ascii_safe_filename(filename: str, fallback: str) -> str:
+    """把下载文件名过滤为可在 Content-Disposition 中直接使用的 ASCII 安全形式。"""
+    safe = re.sub(r'[\x00-\x1f\x7f"\\]', "_", Path(filename or fallback).name).strip() or fallback
+    return safe
+
+
+@router.get("/{analysis_id}/export-matlab", response_model=None)
+def export_fault_analysis_matlab_outputs(
+    analysis_id: str,
+    _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
+    db: Session = Depends(get_db),
+) -> object:
+    """导出 MATLAB Runtime 引擎原始产物（LP-402）。
+
+    导出内容 = MATLAB 引擎生成的真实输出文件（mat/xlsx/png/txt 全量），不再是前端/后端自拼文档：
+    - 单文件：直接以原始文件名流式返回（Content-Disposition 携带 UTF-8 filename*）
+    - 多文件：整体打包 zip 一次下载（zip 内保留 Output/matlab/<run_id>/ 下的相对路径）
+    - 无引擎产物：按 MinIO 前缀兜底列举，仍为空返回 404 明确提示「该次分析未运行引擎」
+    """
+    item = get_analysis_by_id(db, analysis_id)
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="故障分析记录不存在")
+
+    keys = _matlab_output_keys(item)
+    if not keys:
+        try:
+            keys = list_objects(f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/Output/matlab/")
+        except MinioObjectNotFoundError:
+            keys = []
+        except MinioStorageError as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    if not keys:
+        vfs_files = _matlab_output_vfs_files(analysis_id)
+        if not vfs_files:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="该次分析未运行引擎，无 MATLAB 产物可导出")
+        contents: list[tuple[str, bytes]] = [(path.name, path.read_bytes()) for path in vfs_files]
+        return _stream_matlab_output(analysis_id, contents)
+
+    contents: list[tuple[str, bytes]] = []
+    for key in keys:
+        try:
+            contents.append((key, get_object(key)))
+        except MinioObjectNotFoundError:
+            continue  # 清单中有但对象已缺失时跳过，不阻塞其余产物导出
+        except MinioStorageError as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    if not contents:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="该次分析未运行引擎，无 MATLAB 产物可导出")
+    return _stream_matlab_output(analysis_id, contents)
+
+
+def _stream_matlab_output(analysis_id: str, contents: list[tuple[str, bytes]]) -> object:
+    """把引擎产物组织为下载响应：单文件直接返回，多文件打包 zip。"""
+    if len(contents) == 1:
+        key, content = contents[0]
+        original_name = Path(key).name or f"fault_analysis_{analysis_id}_matlab_output"
+        ascii_name = _ascii_safe_filename(original_name, f"fault_analysis_{analysis_id}_matlab_output")
+        # 原始文件名（可能含中文）通过 RFC 5987 filename* 传递，兼容现代浏览器。
+        encoded = quote(original_name)
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
+            },
+        )
+
+    buffer = io.BytesIO()
+    base_prefix = f"{FAULT_ANALYSIS_PREFIX}{analysis_id}/Output/matlab/"
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for key, content in contents:
+            relative = key[len(base_prefix):] if key.startswith(base_prefix) else Path(key).name
+            archive.writestr(relative or Path(key).name, content)
+    buffer.seek(0)
+    zip_name = f"fault_analysis_{analysis_id}_matlab_outputs.zip"
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
     )
