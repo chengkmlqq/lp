@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Space, Typography, Spin, Dropdown, message } from "antd";
+import { Alert, Button, Descriptions, Space, Typography, Spin, Dropdown, Table, message } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
@@ -19,9 +19,13 @@ interface AnalysisDetailViewProps {
 }
 
 interface ReportSectionItem {
-  type: "text" | "subtitle" | "bullet" | "highlight" | "card";
+  type: "text" | "subtitle" | "bullet" | "highlight" | "card" | "table";
   text: string;
   items?: string[];
+  title?: string;
+  layout?: "grid" | "key_value";
+  columns?: string[];
+  rows?: string[][];
 }
 
 interface ReportSection {
@@ -276,96 +280,169 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
           </div>
 
           <Space direction="vertical" size={24} className="w-full">
-            {sections.map((section, sectionIndex) => (
-              <div key={sectionIndex}>
-                <div
-                  className="px-5 py-3 rounded-md mb-4"
-                  style={{
-                    background: 'var(--ant-color-primary)',
-                    color: 'var(--accent-contrast)'
-                  }}
-                >
-                  <Text
-                    className="font-semibold text-base"
-                    style={{ color: 'var(--accent-contrast)' }}
+            {sections.map((section, sectionIndex) => {
+              const descriptionsItems = section.content.filter(
+                (item) => item.type !== "table" && item.type !== "card"
+              );
+              const standaloneItems = section.content.filter(
+                (item) => item.type === "table" || item.type === "card"
+              );
+              return (
+                <div key={sectionIndex}>
+                  <div
+                    className="px-5 py-3 rounded-md mb-4"
+                    style={{
+                      background: 'var(--ant-color-primary)',
+                      color: 'var(--accent-contrast)'
+                    }}
                   >
-                    {section.title}
-                  </Text>
-                </div>
-                <Space direction="vertical" size={12} className="w-full">
-                  {section.content.map((item, itemIndex) => {
-                    if (item.type === "subtitle") {
-                      return (
-                        <Text key={itemIndex} strong className="text-sm">
-                          {item.text}
-                        </Text>
-                      );
-                    }
-                    if (item.type === "bullet") {
-                      return (
-                        <div key={itemIndex} className="ml-2">
-                          {item.items?.map((bullet, bulletIndex) => (
-                            <Paragraph
-                              key={bulletIndex}
-                              className="text-sm mb-2 text-gray-700"
-                            >
-                              • {bullet}
-                            </Paragraph>
-                          ))}
-                        </div>
-                      );
-                    }
-                    if (item.type === "highlight") {
-                      return (
-                        <Text
-                          key={itemIndex}
-                          className="text-sm text-orange-600 font-medium"
-                        >
-                          {item.text}
-                        </Text>
-                      );
-                    }
-                    if (item.type === "card") {
-                      const lines = item.text.split("\n");
-                      return (
-                        <div
-                          key={itemIndex}
-                          className="bg-gray-50 border border-gray-200 rounded-lg p-5"
-                        >
-                          {lines.map((line, lineIndex) => {
-                            const isHighlight =
-                              line.includes("建议人工复核") ||
-                              line.includes("雷击类型:");
-                            const isTitle =
-                              line === "综合判定" ||
-                              (lineIndex === 0 && !line.includes(":"));
+                    <Text
+                      className="font-semibold text-base"
+                      style={{ color: 'var(--accent-contrast)' }}
+                    >
+                      {section.title}
+                    </Text>
+                  </div>
+                  <Space direction="vertical" size={12} className="w-full">
+                    {descriptionsItems.length > 0 && (
+                      <Descriptions column={2} bordered size="small">
+                        {descriptionsItems.map((item, itemIndex) => {
+                          if (item.type === "subtitle") {
                             return (
-                              <Paragraph
-                                key={lineIndex}
-                                className={`text-sm mb-2 ${
-                                  isTitle
-                                    ? "font-semibold text-gray-900"
-                                    : isHighlight
-                                    ? "text-orange-600 font-medium"
-                                    : "text-gray-700"
-                                }`}
-                              >
-                                {line}
-                              </Paragraph>
+                              <Descriptions.Item key={itemIndex} label="" span={2}>
+                                <Text strong className="text-sm">
+                                  {item.text}
+                                </Text>
+                              </Descriptions.Item>
                             );
-                          })}
-                        </div>
-                      );
-                    }
-                    return (
-                      <Paragraph key={itemIndex} className="text-sm text-gray-700">
-                        {item.text}
-                      </Paragraph>
-                    );
-                  })}
-                </Space>
-              </div>
-            ))}
+                          }
+                          if (item.type === "highlight") {
+                            return (
+                              <Descriptions.Item key={itemIndex} label="" span={2}>
+                                <Text type="warning" className="text-sm">
+                                  {item.text}
+                                </Text>
+                              </Descriptions.Item>
+                            );
+                          }
+                          if (item.type === "bullet") {
+                            return (
+                              <Descriptions.Item key={itemIndex} label="" span={2}>
+                                {item.items?.map((bullet, bulletIndex) => (
+                                  <Paragraph
+                                    key={bulletIndex}
+                                    className="text-sm mb-2 text-gray-700"
+                                  >
+                                    • {bullet}
+                                  </Paragraph>
+                                ))}
+                              </Descriptions.Item>
+                            );
+                          }
+                          return (
+                            <Descriptions.Item key={itemIndex} label="">
+                              <Paragraph className="text-sm text-gray-700 mb-0">
+                                {item.text}
+                              </Paragraph>
+                            </Descriptions.Item>
+                          );
+                        })}
+                      </Descriptions>
+                    )}
+                    {standaloneItems.map((item, itemIndex) => {
+                      if (item.type === "card") {
+                        const lines = item.text.split("\n");
+                        return (
+                          <div
+                            key={itemIndex}
+                            className="bg-gray-50 border border-gray-200 rounded-lg p-5"
+                          >
+                            {lines.map((line, lineIndex) => {
+                              const isHighlight =
+                                line.includes("建议人工复核") ||
+                                line.includes("雷击类型:");
+                              const isTitle =
+                                line === "综合判定" ||
+                                (lineIndex === 0 && !line.includes(":"));
+                              return (
+                                <Paragraph
+                                  key={lineIndex}
+                                  className={`text-sm mb-2 ${
+                                    isTitle
+                                      ? "font-semibold text-gray-900"
+                                      : isHighlight
+                                      ? "text-orange-600 font-medium"
+                                      : "text-gray-700"
+                                  }`}
+                                >
+                                  {line}
+                                </Paragraph>
+                              );
+                            })}
+                          </div>
+                        );
+                      }
+                      if (item.type === "table") {
+                        const columns = item.columns ?? [];
+                        const rawRows = item.rows ?? [];
+                        let tableColumns = columns.map((col, index) => ({
+                          title: col,
+                          dataIndex: index,
+                          key: `${index}-${col}`,
+                        }));
+                        let tableRows: Record<string, string>[] = [];
+                        if (item.layout === "key_value" && columns.length >= 2) {
+                          const pairHead = columns[0];
+                          const valueHead = columns[1];
+                          tableColumns = [
+                            { title: pairHead, dataIndex: 0, key: "kv-key" },
+                            { title: valueHead, dataIndex: 1, key: "kv-value" },
+                          ];
+                          rawRows.forEach((row, rowIndex) => {
+                            for (let index = 0; index + 1 < row.length; index += 2) {
+                              tableRows.push({
+                                key: `r${rowIndex}-c${index}`,
+                                0: row[index] ?? "",
+                                1: row[index + 1] ?? "",
+                              });
+                            }
+                          });
+                        } else {
+                          rawRows.forEach((row, rowIndex) => {
+                            const record: Record<string, string> = { key: `r${rowIndex}` };
+                            columns.forEach((_, index) => {
+                              record[index] = row[index] ?? "";
+                            });
+                            tableRows.push(record);
+                          });
+                        }
+                        return (
+                          <div
+                            key={itemIndex}
+                            className="bg-white border border-gray-200 rounded-lg"
+                            style={{ padding: 12, overflowY: "auto" }}
+                          >
+                            {item.title ? (
+                              <Text strong className="text-sm block mb-2">
+                                {item.title}
+                              </Text>
+                            ) : null}
+                            <Table
+                              size="small"
+                              bordered
+                              pagination={false}
+                              columns={tableColumns}
+                              dataSource={tableRows}
+                            />
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
+                  </Space>
+                </div>
+              );
+            })}
           </Space>
         </div>
       </Card>
