@@ -72,6 +72,7 @@ export interface CreateFaultAnalysisFormValues {
   // 临时文件上传（LP-369：选择文件后立即上传到临时目录，携带 temp_file_id）
   wave_data_file?: FaultAnalysisTempFile[];
   lightning_data_file?: FaultAnalysisTempFile[];
+  // TODO: 后端接口兼容，表单已移除该字段，待后端清理后删除
   ledger_data_file?: FaultAnalysisTempFile[];
   traveling_wave_file?: FaultAnalysisTempFile[];
   optical_data_file?: FaultAnalysisTempFile[];

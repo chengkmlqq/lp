@@ -164,3 +164,100 @@ export function generateImportTemplate() {
   // 导出文件
   XLSX.writeFile(wb, '故障信息导入模板.xlsx');
 }
+
+/**
+ * 生成录波数据模板
+ */
+export function generateWaveDataTemplate() {
+  const headers = ['录波时间', '通道名称', '采样率(Hz)', '数据值'];
+
+  const exampleData = [
+    '2023-03-27 20:20:31.939',
+    'CH-A',
+    '10000',
+    '0.123',
+  ];
+
+  const wsData = [headers, exampleData];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  const colWidths = headers.map(() => ({ wch: 20 }));
+  ws['!cols'] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '录波数据模板');
+
+  XLSX.writeFile(wb, '录波数据模板.xlsx');
+}
+
+/**
+ * 生成雷电定位数据模板
+ */
+export function generateLightningTemplate() {
+  const headers = ['时间', '经度(°)', '纬度(°)', '雷电流幅值(kA)', '极性', '距离(km)'];
+
+  const exampleData = [
+    '2023-03-27 20:20:30',
+    '114.50476',
+    '23.79996',
+    '20.3',
+    '负',
+    '1.2',
+  ];
+
+  const wsData = [headers, exampleData];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  const colWidths = headers.map(() => ({ wch: 20 }));
+  ws['!cols'] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '雷电定位数据模板');
+
+  XLSX.writeFile(wb, '雷电定位数据模板.xlsx');
+}
+
+/**
+ * 生成行波数据模板
+ */
+export function generateWaveTemplate() {
+  const content =
+    '时间,行波幅值(mV),持续时间(us),距离(km)\n' +
+    '2023-03-27 20:20:31.939,12.34,5.6,16.51\n';
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '行波数据模板.txt';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * 生成光学监控数据模板
+ */
+export function generateOpticalTemplate() {
+  const headers = ['时间', '设备编号', '接闪位置', '安装位置', '状态'];
+
+  const exampleData = [
+    '2023-03-27 20:20:31.939',
+    'DEV-001',
+    'A',
+    '65#',
+    '正常',
+  ];
+
+  const wsData = [headers, exampleData];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  const colWidths = headers.map(() => ({ wch: 20 }));
+  ws['!cols'] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '光学监控模板');
+
+  XLSX.writeFile(wb, '光学监控模板.xlsx');
+}

@@ -2,7 +2,7 @@ import { Form, Input, Select, Upload, Button, FormInstance, Space, message } fro
 import { UploadOutlined, FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined, AppstoreOutlined } from "@ant-design/icons";
 import type { CreateFaultAnalysisFormValues } from "./types";
 import { TempFileUpload } from "./temp-file-upload";
-import { parseExcelFile, generateImportTemplate } from "@/lib/excel-import-utils";
+import { parseExcelFile, generateImportTemplate, generateWaveDataTemplate, generateLightningTemplate, generateWaveTemplate, generateOpticalTemplate } from "@/lib/excel-import-utils";
 
 interface CreateAnalysisFormAdvancedProps {
   form: FormInstance<CreateFaultAnalysisFormValues>;
@@ -38,6 +38,46 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       message.success('模板下载成功');
     } catch {
       message.error('模板下载失败');
+    }
+  };
+
+  // 下载录波数据模板
+  const handleDownloadWaveDataTemplate = () => {
+    try {
+      generateWaveDataTemplate();
+      message.success('录波数据模板下载成功');
+    } catch {
+      message.error('录波数据模板下载失败');
+    }
+  };
+
+  // 下载雷电定位数据模板
+  const handleDownloadLightningTemplate = () => {
+    try {
+      generateLightningTemplate();
+      message.success('雷电定位数据模板下载成功');
+    } catch {
+      message.error('雷电定位数据模板下载失败');
+    }
+  };
+
+  // 下载行波数据模板
+  const handleDownloadWaveTemplate = () => {
+    try {
+      generateWaveTemplate();
+      message.success('行波数据模板下载成功');
+    } catch {
+      message.error('行波数据模板下载失败');
+    }
+  };
+
+  // 下载光学监控数据模板
+  const handleDownloadOpticalTemplate = () => {
+    try {
+      generateOpticalTemplate();
+      message.success('光学监控数据模板下载成功');
+    } catch {
+      message.error('光学监控数据模板下载失败');
     }
   };
 
@@ -327,7 +367,10 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
           <div className="grid grid-cols-2 gap-4">
             <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <FileTextOutlined className="text-4xl text-blue-600" />
+              <div className="flex items-center justify-between w-full mb-1">
+                <FileTextOutlined className="text-4xl text-blue-600" />
+                <DownloadOutlined className="text-lg cursor-pointer" size={24} onClick={handleDownloadWaveDataTemplate} title="下载模板" />
+              </div>
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">录波数据</div>
                 <div className="text-xs text-gray-500 mb-3">支持 .txt/.json/.csv/.pdf/.xlsx 格式</div>
@@ -338,7 +381,10 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
             </div>
 
             <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <TableOutlined className="text-4xl text-blue-600" />
+              <div className="flex items-center justify-between w-full mb-1">
+                <TableOutlined className="text-4xl text-blue-600" />
+                <DownloadOutlined className="text-lg cursor-pointer" size={24} onClick={handleDownloadLightningTemplate} title="下载模板" />
+              </div>
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">雷电定位数据</div>
                 <div className="text-xs text-gray-500 mb-3">支持 .xls/.xlsx/.csv 格式</div>
@@ -349,7 +395,10 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
             </div>
 
             <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <LineChartOutlined className="text-4xl text-blue-600" />
+              <div className="flex items-center justify-between w-full mb-1">
+                <LineChartOutlined className="text-4xl text-blue-600" />
+                <DownloadOutlined className="text-lg cursor-pointer" size={24} onClick={handleDownloadWaveTemplate} title="下载模板" />
+              </div>
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">分布式行波数据</div>
                 <div className="text-xs text-gray-500 mb-3">支持 .csv/.dat/.txt/.json 格式</div>
@@ -360,7 +409,10 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
             </div>
 
             <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <CameraOutlined className="text-4xl text-blue-600" />
+              <div className="flex items-center justify-between w-full mb-1">
+                <CameraOutlined className="text-4xl text-blue-600" />
+                <DownloadOutlined className="text-lg cursor-pointer" size={24} onClick={handleDownloadOpticalTemplate} title="下载模板" />
+              </div>
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">光学监控数据</div>
                 <div className="text-xs text-gray-500 mb-3">支持图片或视频格式</div>
@@ -370,16 +422,6 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               </Form.Item>
             </div>
 
-            <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <TableOutlined className="text-4xl text-green-600" />
-              <div className="text-center">
-                <div className="font-semibold text-sm mb-1">线路台账</div>
-                <div className="text-xs text-gray-500 mb-3">选择线路后由系统自动组装；上传 .csv 可覆盖</div>
-              </div>
-              <Form.Item name="ledger_data_file" className="mb-0">
-                <TempFileUpload accept=".csv" maxSizeMb={50} buttonLabel="选择文件（可选）" />
-              </Form.Item>
-            </div>
           </div>
         </div>
       </div>
