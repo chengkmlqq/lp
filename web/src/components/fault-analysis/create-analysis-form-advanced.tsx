@@ -160,7 +160,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               label="故障持续时间(ms)"
               name="fault_duration"
               className="flex-1 mb-0"
-              rules={[{ required: true, message: "请输入故障持续时间" }]}
+              rules={[]}
             >
               <Input type="number" placeholder="64" />
             </Form.Item>
