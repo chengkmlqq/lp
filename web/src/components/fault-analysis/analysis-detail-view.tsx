@@ -9,7 +9,6 @@ import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { readApiError } from "@/lib/api";
 import type { FaultAnalysisDetail } from "@/types/auth";
-import { exportToPDF, exportToWord } from "@/lib/export-utils";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -172,21 +171,38 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
     },
   });
 
-  const handleExport = async (format: "pdf" | "word") => {
+  const handleExportMatlab = async () => {
     if (!detail) return;
 
     setExporting(true);
     try {
-      if (format === "pdf") {
-        await exportToPDF({ ...detail } as any, exportElementId);
-        message.success("PDF导出成功");
-      } else {
-        await exportToWord({ ...detail } as any);
-        message.success("Word文档导出成功");
+      const response = await fetchWithAuth(`/api/v1/fault-analysis/${analysisId}/export-matlab`);
+      if (!response.ok) {
+        const errMsg = await readApiError(response).catch(() => "请求失败");
+        throw new Error(errMsg);
       }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      let filename = "";
+      const encodedMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      if (encodedMatch) {
+        filename = decodeURIComponent(encodedMatch[1]);
+      } else {
+        const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+        filename = plainMatch ? plainMatch[1] : `fault_analysis_${analysisId}_matlab_outputs.zip`;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      message.success("MATLAB 引擎产物导出成功");
     } catch (error) {
       console.error("导出失败", error);
-      message.error("导出失败，请重试");
+      message.error(error instanceof Error ? error.message : "导出失败，请重试");
     } finally {
       setExporting(false);
     }
@@ -236,14 +252,9 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
                 menu={{
                   items: [
                     {
-                      key: "pdf",
-                      label: "导出为 PDF",
-                      onClick: () => handleExport("pdf"),
-                    },
-                    {
-                      key: "word",
-                      label: "导出为 Word",
-                      onClick: () => handleExport("word"),
+                      key: "matlab",
+                      label: "导出引擎产物 (ZIP)",
+                      onClick: handleExportMatlab,
                     },
                   ],
                 }}
