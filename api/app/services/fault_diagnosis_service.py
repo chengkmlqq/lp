@@ -569,6 +569,346 @@ def _derive_risk_level(diag: Mapping[str, Any]) -> tuple[str, list[str]]:
     return risk, basis
 
 
+# ---------------------------------------------------------------------------
+# 章节（sections）富结构：页面渲染与 docx 生成共用同一份数据。
+# 新增 type:"table" 内容项，用于输出页面详情页与下载 docx 的 8 张结构化表。
+# 该逻辑与 fault_diagnosis_report.py 的拼表逻辑保持字段一致，避免长期漂移。
+
+
+def _lazy_report_helpers() -> dict[str, Any]:
+    """惰加载 fault_diagnosis_report 的纯函数，避免在服务导入时强制加载 python-docx。"""
+    from . import fault_diagnosis_report as _report
+
+    return {
+        "display": _report.display,
+        "format_number": _report.format_number,
+        "value_with_unit": _report.value_with_unit,
+        "has_value": _report.has_value,
+        "safe_get": _report.safe_get,
+        "usable_text": _report.usable_text,
+        "normalize_phase": _report.normalize_phase,
+        "normalize_fault_phase_code": _report.normalize_fault_phase_code,
+        "report_identifier": _report.report_identifier,
+        "wave_fault_conclusion": _report.wave_fault_conclusion,
+        "fused_fault_conclusion": _report.fused_fault_conclusion,
+        "effective_review_decision": _report.effective_review_decision,
+        "recording_phase_sentence": _report.recording_phase_sentence,
+        "lightning_location_conclusion": _report.lightning_location_conclusion,
+        "wave_initial_type_detail": _report.wave_initial_type_detail,
+        "wave_review_summary_sentence": _report.wave_review_summary_sentence,
+        "status_display": _report.status_display,
+        "resistance_sentence": _report.resistance_sentence,
+        "actual_sources": _report.actual_sources,
+        "wave_process_summary_sentence": _report.wave_process_summary_sentence,
+        "wave_initial_review_sentence": _report.wave_initial_review_sentence,
+    }
+
+
+def _kv_table(title: str, rows: Sequence[Sequence[Any]], key_head: str = "项目", value_head: str = "内容") -> dict[str, Any]:
+    """构建 2×N 键值对布局的表格内容项（对应 docx 的 4 列「项目/内容/项目/内容」布局）。"""
+    columns = [key_head, value_head, key_head, value_head]
+    return {
+        "type": "table",
+        "layout": "key_value",
+        "title": title,
+        "columns": columns,
+        "rows": [[str(cell) for cell in row] for row in rows],
+    }
+
+
+def _grid_table(title: str, columns: Sequence[str], rows: Sequence[Sequence[Any]]) -> dict[str, Any]:
+    """构建多列表格内容项。"""
+    return {
+        "type": "table",
+        "layout": "grid",
+        "title": title,
+        "columns": list(columns),
+        "rows": [[str(cell) for cell in row] for row in rows],
+    }
+
+
+def _table1_overview(diag: Mapping[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    """表1 故障分析总览（2×2 键值对布局）。"""
+    display = report["display"]
+    report_identifier = report["report_identifier"]
+    normalize_phase = report["normalize_phase"]
+    wave_fault_conclusion = report["wave_fault_conclusion"]
+    fused_fault_conclusion = report["fused_fault_conclusion"]
+    effective_review_decision = report["effective_review_decision"]
+
+    inputs = diag.get("inputs", {})
+    fault = inputs.get("fault_record", {})
+    lightning = inputs.get("lightning", {})
+    ground = diag.get("ground_fault_summary", {})
+    resistance = diag.get("transition_resistance", {})
+    location = diag.get("fault_location", {})
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line_name = fault.get("line_name") or lightning.get("line_name")
+    station = fault.get("station") if report["usable_text"](fault.get("station")) else "未提供"
+    phase = normalize_phase(fault.get("fault_phase")) or "未提供"
+    resistance_category = (
+        "不适用"
+        if resistance.get("status") == "not_applicable"
+        else display(resistance.get("category_report_text"), "无法计算")
+    )
+    conclusion = display(ground.get("conclusion"), "待复核")
+    rows = [
+        ["报告编号", report_identifier(diag), "生成时间", generated_at],
+        ["故障线路", display(line_name), "故障时刻", display(fault.get("fault_time"))],
+        ["录波站", station, "故障相", phase],
+        ["故障性质", conclusion, "接地类型", resistance_category],
+        ["综合定位", display(location.get("result_text")), "雷击原因", fused_fault_conclusion(diag)],
+        ["行波结论", wave_fault_conclusion(diag), "总体状态", str(effective_review_decision(diag))],
+    ]
+    return _kv_table("表1 故障分析总览", rows)
+
+
+def _table2_location_sources(diag: Mapping[str, Any], report: dict[str, Any]) -> dict[str, Any] | None:
+    """表2 定位信息来源（3 列：定位来源 / 定位结果 / 对应杆塔或区段）。"""
+    display = report["display"]
+    format_number = report["format_number"]
+    location = diag.get("fault_location", {})
+    rows = []
+    for item in location.get("sources", []):
+        if not item.get("available"):
+            continue
+        distance = item.get("distance_km")
+        distance_text = (
+            f"{format_number(distance)} km" if report["has_value"](distance) else "位置记录可用"
+        )
+        rows.append([display(item.get("label")), distance_text, display(item.get("tower"))])
+    columns = ["定位来源", "定位结果", "对应杆塔/区段"]
+    return _grid_table("表2 定位信息来源", columns, rows) if rows else None
+
+
+def _table3_wave_process(
+    diag: Mapping[str, Any], report: dict[str, Any]
+) -> dict[str, Any]:
+    """表3 行波判别过程（2 列：项目 / 结果）。"""
+    display = report["display"]
+    format_number = report["format_number"]
+    wave = diag.get("traveling_wave_analysis", {})
+    model = wave.get("model_result", {})
+    review = wave.get("fault_phase_review", {})
+    active = review.get("initial_wave_active_phases") or model.get("active_phases")
+    if isinstance(active, (list, tuple)) and not isinstance(active, str):
+        active = "/".join(str(item) for item in active)
+    initial_phase = model.get("main_phase") or review.get("initial_wave_main_phase")
+    phase_display = (
+        f"行波判别故障相{initial_phase}、候补故障相{display(active)}"
+        if report["has_value"](initial_phase) or report["has_value"](active)
+        else "行波模型未输出可用的判别故障相或候补故障相信息"
+    )
+    lightning_score = model.get("ln_lightning_score")
+    non_lightning_score = model.get("ln_non_lightning_score")
+    score_text = (
+        f"模型判断雷击概率{format_number(float(lightning_score) * 100, 2)}%，"
+        f"非雷击概率{format_number(float(non_lightning_score) * 100, 2)}%"
+        if report["has_value"](lightning_score) and report["has_value"](non_lightning_score)
+        else "雷击与非雷击概率未提供"
+    )
+    fr_probability_text = report["wave_fr_probability_sentence"](model)
+    initial_basis = (
+        report["wave_ln_basis_sentence"](wave, model).rstrip("。；")
+        + report["wave_fr_basis_sentence"](wave, model).rstrip("。；")
+    )
+    candidate_text = report["wave_candidate_types_display"](model.get("candidate_types"))
+    review_result = report["wave_review_result_sentence"](wave, model, review)
+    rows = [
+        ["初判结果", f"{display(wave.get('initial_classification'))}；{phase_display}；{score_text}；{fr_probability_text}"],
+        ["初判依据", initial_basis],
+        ["允许候选", candidate_text],
+        ["修正/复核结果", review_result],
+        ["最终采用结果", report["wave_fault_conclusion"](diag)],
+    ]
+    return _grid_table("表3 行波判别过程", ["项目", "结果"], rows)
+
+
+def _table4_fusion(diag: Mapping[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    """表4 故障原因融合分析（2 列：信息来源 / 结论）。"""
+    display = report["display"]
+    wave = diag.get("traveling_wave_analysis", {})
+    rows = [
+        ["录波故障相", report["recording_phase_sentence"](diag)],
+        ["雷电定位", report["lightning_location_conclusion"](diag)],
+        [
+            "分布式行波",
+            f"行波初判为{display(wave.get('initial_classification'))}（{report['wave_initial_type_detail'](diag)}）",
+        ],
+        ["融合结论", report["wave_review_summary_sentence"](diag)],
+    ]
+    return _grid_table("表4 故障原因融合分析", ["信息来源", "结论"], rows)
+
+
+def _table5_recording(diag: Mapping[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    """表A.1 录波故障信息（2×2 键值对布局）。"""
+    display = report["display"]
+    value_with_unit = report["value_with_unit"]
+    inputs = diag.get("inputs", {})
+    fault = inputs.get("fault_record", {})
+    lightning = inputs.get("lightning", {})
+    paths = diag.get("source_paths", {})
+    line_name = fault.get("line_name") or lightning.get("line_name")
+    zero_current = fault.get("zero_sequence_current")
+    record_distance = fault.get("fault_distance_km") or lightning.get("recording_distance_km")
+    rows = [
+        ["故障时刻", display(fault.get("fault_time")), "故障线路", display(line_name)],
+        [
+            "故障相",
+            report["normalize_fault_phase_code"](fault.get("fault_phase")) or "未提供",
+            "故障持续时间",
+            value_with_unit(fault.get("duration_ms"), "ms"),
+        ],
+        ["重合闸情况", display(fault.get("reclosing")), "故障相电压", display(fault.get("phase_voltage"))],
+        [
+            "故障相电流",
+            display(fault.get("phase_current")),
+            "提取零序电流",
+            f"{display(zero_current)}（按3I₀/I₀双口径核对）",
+        ],
+        ["最大零序电流", display(zero_current), "零序补偿系数", display(fault.get("zero_sequence_compensation_k"))],
+        ["故障测距", value_with_unit(record_distance, "km"), "原始文件", display(paths.get("fault"))],
+    ]
+    return _kv_table("表A.1 录波故障信息", rows)
+
+
+def _table6_lightning(diag: Mapping[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    """表A.2 雷电流及定位信息（2×2 键值对布局）。"""
+    display = report["display"]
+    value_with_unit = report["value_with_unit"]
+    inputs = diag.get("inputs", {})
+    lightning = inputs.get("lightning", {})
+    paths = diag.get("source_paths", {})
+    rows = [
+        ["雷电流幅值", value_with_unit(lightning.get("current_ka"), "kA"), "定位时间", display(lightning.get("location_time"))],
+        [
+            "最近杆塔",
+            display(lightning.get("nearest_tower")),
+            "录波测距",
+            value_with_unit(lightning.get("recording_distance_km"), "km"),
+        ],
+        [
+            "行波测距",
+            value_with_unit(lightning.get("traveling_wave_distance_km"), "km"),
+            "定位距离",
+            value_with_unit(lightning.get("distance_to_line_km"), "km"),
+        ],
+        ["输入文件", display(paths.get("lightning")), "数据状态", "已提供" if lightning else "未提供"],
+    ]
+    return _kv_table("表A.2 雷电流及定位信息", rows)
+
+
+def _table7_ledger(diag: Mapping[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    """表A.3 线路台账匹配信息（2×2 键值对布局）。"""
+    display = report["display"]
+    value_with_unit = report["value_with_unit"]
+    inputs = diag.get("inputs", {})
+    paths = diag.get("source_paths", {})
+    ledger = inputs.get("line_ledger", {})
+    record = ledger.get("record", {}) if ledger.get("matched") else {}
+    rows = [
+        [
+            "匹配线路/杆塔",
+            f"{display(record.get('line_name'))} / {display(record.get('tower_no'))}",
+            "塔形",
+            display(record.get("tower_shape")),
+        ],
+        ["地形", display(record.get("terrain")), "海拔", value_with_unit(record.get("elevation_m"), "m")],
+        [
+            "绝缘子串长",
+            value_with_unit(record.get("insulator_length_m"), "m"),
+            "接地电阻",
+            value_with_unit(record.get("ground_resistance_ohm"), "Ω"),
+        ],
+        [
+            "绕击耐雷水平",
+            value_with_unit(record.get("shielding_failure_withstand_ka"), "kA"),
+            "反击耐雷水平",
+            value_with_unit(record.get("backflashover_withstand_ka"), "kA"),
+        ],
+        ["风险评估等级", display(record.get("lightning_risk_level")), "台账文件", display(paths.get("ledger"))],
+        [
+            "匹配状态",
+            "已匹配" if ledger.get("matched") else "未匹配",
+            "匹配说明",
+            display(ledger.get("diagnostic") or ledger.get("reason") or "线路及杆塔匹配成功"),
+        ],
+    ]
+    return _kv_table("表A.3 线路台账匹配信息", rows)
+
+
+def _table8_wave_optical(diag: Mapping[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    """表A.4 行波与光学监测信息（3 列：来源 / 主要输入 / 数据状态）。"""
+    display = report["display"]
+    safe_get = report["safe_get"]
+    inputs = diag.get("inputs", {})
+    wave = diag.get("traveling_wave_analysis", {})
+    model = wave.get("model_result", {})
+    wave_files = inputs.get("traveling_wave_files", [])
+    wave_formats = "/".join(
+        sorted(
+            {
+                Path(str(item.get("file_name") or "")).suffix.lstrip(".").upper()
+                for item in wave_files
+                if item.get("file_name")
+            }
+        )
+    ) or "未提供"
+    initial_phase = model.get("main_phase") or safe_get(wave, "fault_phase_review", "initial_wave_main_phase")
+    wave_input = (
+        f"初判：{display(wave.get('initial_classification'))}；"
+        f"初判相：{display(initial_phase)}；"
+        f"幅值信息：{report['translate_wave_text'](safe_get(wave, 'fault_phase_review', 'amplitude_band'))}；"
+        f"格式：{wave_formats}"
+    )
+    optical = inputs.get("optical", {}) or {}
+    optical_input = (
+        f"位置：{display(optical.get('location') or optical.get('device_tower'))}；"
+        f"现象/结论：{display(optical.get('result') or optical.get('conclusion'))}"
+    ) if optical else "本次未提供光学监测数据"
+    rows = [
+        ["分布式行波", wave_input, "已提供" if wave_files else "未提供"],
+        ["光学监测", optical_input, "已提供" if optical else "未提供"],
+    ]
+    return _grid_table("表A.4 行波与光学监测信息", ["来源", "主要输入", "数据状态"], rows)
+
+
+def _build_tables(
+    diag: Mapping[str, Any],
+    *,
+    risk_level: str,
+    confidence: float | None,
+    confidence_source: str,
+) -> dict[str, Any]:
+    """按 docx 8 张表的结构生成全部结构化表格内容项。"""
+    from . import fault_diagnosis_report as _report
+
+    extra_helpers = {
+        "wave_fr_probability_sentence": _report.wave_fr_probability_sentence,
+        "wave_candidate_types_display": _report.wave_candidate_types_display,
+        "wave_review_result_sentence": _report.wave_review_result_sentence,
+        "wave_ln_basis_sentence": _report.wave_ln_basis_sentence,
+        "wave_fr_basis_sentence": _report.wave_fr_basis_sentence,
+        "translate_wave_text": _report.translate_wave_text,
+    }
+    report = {**_lazy_report_helpers(), **extra_helpers}
+    tables: dict[str, Any] = {}
+    for name, builder in (
+        ("table1", _table1_overview),
+        ("table2", _table2_location_sources),
+        ("table3", _table3_wave_process),
+        ("table4", _table4_fusion),
+        ("table5", _table5_recording),
+        ("table6", _table6_lightning),
+        ("table7", _table7_ledger),
+        ("table8", _table8_wave_optical),
+    ):
+        item = builder(diag, report)
+        if item is not None:
+            tables[name] = item
+    return tables
+
+
 def _build_sections(
     diag: Mapping[str, Any],
     *,
@@ -576,7 +916,13 @@ def _build_sections(
     confidence: float | None,
     confidence_source: str,
 ) -> list[dict[str, Any]]:
-    """从判别结果生成 LP 详情页可渲染的 sections（与 analysis-detail-view 约定一致）。"""
+    """从判别结果生成 LP 详情页可渲染的 sections（与 docx 报告章节完全对齐）。
+
+    章节标题约定（与 fault_diagnosis_report.generate_report 输出一致）：
+      1 报告总览 | 2 接地故障及过渡电阻判别 | 3 故障定位 | 4 耐雷水平与雷击原因分析
+      5 分布式行波分析与故障原因融合（5.1 / 5.2） | 6 总体状态与后续意见
+      附表A 输入信息汇总（A.1~A.4）
+    """
     decision = diag.get("ground_fault_decision", {})
     ground_summary = diag.get("ground_fault_summary", {})
     resistance = diag.get("transition_resistance", {})
@@ -589,31 +935,45 @@ def _build_sections(
     inputs = diag.get("inputs", {})
     fault = inputs.get("fault_record", {}) if isinstance(inputs, Mapping) else {}
 
+    tables = _build_tables(
+        diag,
+        risk_level=risk_level,
+        confidence=confidence,
+        confidence_source=confidence_source,
+    )
+
     sections: list[dict[str, Any]] = []
 
     def text(value: Any) -> dict[str, Any]:
         return {"type": "text", "text": str(value)}
 
+    # ---- 1 报告总览 ----
     phase = str(ground_summary.get("fault_phase") or fault.get("fault_phase") or "未知")
     conclusion = str(
         ground_summary.get("conclusion")
         or f"{phase}相{decision.get('fault_kind', '无法判定')}"
     )
     confidence_text = f"{confidence:.2f}%" if confidence is not None else "未计算"
-    content: list[dict[str, Any]] = [
-        text(f"接地判别结论：{conclusion}"),
-        text(f"故障类型：{decision.get('fault_kind', '无法判定')}"),
-        text(f"故障相别：{phase}"),
-        text(f"综合置信度：{confidence_text}（来源：{confidence_source}）"),
-        text(f"风险等级：{RISK_LEVEL_LABELS.get(risk_level, risk_level)}"),
-    ]
+    content: list[dict[str, Any]] = []
+    if "table1" in tables:
+        content.append(tables["table1"])
+    content.extend(
+        [
+            text(f"接地判别结论：{conclusion}"),
+            text(f"故障类型：{decision.get('fault_kind', '无法判定')}"),
+            text(f"故障相别：{phase}"),
+            text(f"综合置信度：{confidence_text}（来源：{confidence_source}）"),
+            text(f"风险等级：{RISK_LEVEL_LABELS.get(risk_level, risk_level)}"),
+        ]
+    )
     recommendation_decision = str(recommendation.get("decision", "建议人工复核"))
     content.append(text(f"判别系统后续意见：{recommendation_decision}"))
     recommendation_reasons = recommendation.get("reasons", [])
     if recommendation_reasons:
         content.append({"type": "bullet", "items": [str(item) for item in recommendation_reasons]})
-    sections.append({"title": "一、判别结论", "content": content})
+    sections.append({"title": "1 报告总览", "content": content})
 
+    # ---- 2 接地故障及过渡电阻判别 ----
     if resistance.get("status") == "ok":
         rf_value = resistance.get("transition_resistance_ohm")
         content = [
@@ -626,18 +986,21 @@ def _build_sections(
         warnings = resistance.get("warnings", [])
         if warnings:
             content.append({"type": "bullet", "items": [str(item) for item in warnings]})
-        sections.append({"title": "二、过渡电阻计算", "content": content})
+        sections.append({"title": "2 接地故障及过渡电阻判别", "content": content})
     else:
         sections.append(
             {
-                "title": "二、过渡电阻计算",
+                "title": "2 接地故障及过渡电阻判别",
                 "content": [
-                    text(f"过渡电阻：{'不适用（仅单相接地故障计算）' if resistance.get('status') == 'not_applicable' else '无法计算'}"),
+                    text(
+                        f"过渡电阻：{'不适用（仅单相接地故障计算）' if resistance.get('status') == 'not_applicable' else '无法计算'}"
+                    ),
                     *[{"type": "bullet", "items": [str(item) for item in resistance.get("warnings", [])]}],
                 ],
             }
         )
 
+    # ---- 3 故障定位 ----
     content = [text(f"综合故障位置：{fault_location.get('result_text', '无法定位')}")]
     for source in fault_location.get("sources", []):
         tower = source.get("tower")
@@ -647,8 +1010,11 @@ def _build_sections(
         )
     if fault_location.get("evidence"):
         content.append({"type": "bullet", "items": [str(item) for item in fault_location.get("evidence", [])]})
-    sections.append({"title": "三、综合故障定位", "content": content})
+    if "table2" in tables:
+        content.append(tables["table2"])
+    sections.append({"title": "3 故障定位", "content": content})
 
+    # ---- 4 耐雷水平与雷击原因分析 ----
     lightning_conclusion = str(
         lightning_cause.get("conclusion")
         or lightning_cause.get("report_text")
@@ -665,8 +1031,12 @@ def _build_sections(
             for item in tower_analyses
         ]
         content.append({"type": "bullet", "items": items})
-    sections.append({"title": "四、耐雷水平与雷击原因初判", "content": content})
+    sections.append({"title": "4 耐雷水平与雷击原因分析", "content": content})
 
+    # ---- 5 分布式行波分析与故障原因融合（容器）----
+    sections.append({"title": "5 分布式行波分析与故障原因融合", "content": []})
+
+    # ---- 5.1 分布式行波分析 ----
     wave_conclusion = str(
         wave.get("report_conclusion")
         or wave.get("classification")
@@ -682,8 +1052,11 @@ def _build_sections(
         content.append({"type": "bullet", "items": [str(item) for item in wave.get("evidence", [])]})
     if wave.get("warnings"):
         content.append({"type": "bullet", "items": [str(item) for item in wave.get("warnings", [])]})
-    sections.append({"title": "五、分布式行波分析", "content": content})
+    if "table3" in tables:
+        content.append(tables["table3"])
+    sections.append({"title": "5.1 分布式行波分析", "content": content})
 
+    # ---- 5.2 故障原因融合 ----
     content = [
         text(f"原因融合结论：{cause_fusion.get('final_detail') or cause_fusion.get('final_mechanism') or '无法判定'}"),
         text(f"来源一致性：{cause_fusion.get('consistency', '无可用原因来源')}"),
@@ -699,13 +1072,43 @@ def _build_sections(
                 ],
             }
         )
+    if "table4" in tables:
+        content.append(tables["table4"])
     content.append({"type": "card", "text": f"后续意见：{recommendation.get('summary', '')}"})
-    sections.append({"title": "六、原因融合与建议", "content": content})
+    sections.append({"title": "5.2 故障原因融合", "content": content})
 
+    # ---- 6 总体状态与后续意见 ----
     validation_issues = validation.get("issues", [])
+    content = []
     if validation_issues:
-        items = [f"【{item.get('severity', 'info')}】{item.get('message', '')}" for item in validation_issues]
-        sections.append({"title": "七、输入校验", "content": [{"type": "bullet", "items": items}]})
+        content.append(
+            {
+                "type": "bullet",
+                "items": [f"【{item.get('severity', 'info')}】{item.get('message', '')}" for item in validation_issues],
+            }
+        )
+    if not validation_issues:
+        content.append(text("输入校验：无"))
+    sections.append({"title": "6 总体状态与后续意见", "content": content})
+
+    # ---- 附表A 输入信息汇总 ----
+    sections.append({"title": "附表A 输入信息汇总", "content": []})
+
+    # ---- A.1 录波故障信息 ----
+    if "table5" in tables:
+        sections.append({"title": "A.1 录波故障信息", "content": [tables["table5"]]})
+
+    # ---- A.2 雷电流及定位信息 ----
+    if "table6" in tables:
+        sections.append({"title": "A.2 雷电流及定位信息", "content": [tables["table6"]]})
+
+    # ---- A.3 线路台账匹配信息 ----
+    if "table7" in tables:
+        sections.append({"title": "A.3 线路台账匹配信息", "content": [tables["table7"]]})
+
+    # ---- A.4 行波与光学监测信息 ----
+    if "table8" in tables:
+        sections.append({"title": "A.4 行波与光学监测信息", "content": [tables["table8"]]})
 
     return sections
 
@@ -1125,14 +1528,14 @@ def generate_report_docx(db: Session, analysis_id: str, template_path: Path | No
     analysis_dir = vfs_root / "fault_analysis" / analysis_id
     analysis_dir.mkdir(parents=True, exist_ok=True)
     output_path = analysis_dir / "report.docx"
-    
-    result = item.result_json.get("diagnosis", {})
+
     if template_path is None:
         # 默认模板路径：api/app/templates/综合判别报告模板.docx
         default_template = Path(__file__).resolve().parent.parent / "templates" / "综合判别报告模板.docx"
         template_path = default_template if default_template.exists() else None
-    
-    generate_report(result, output_path, template_path=template_path, front_only=False)
+
+    # 传入完整 result_json（含 sections 富结构），使报告生成直接消费页面同源数据。
+    generate_report(item.result_json, output_path, template_path=template_path, front_only=False)
     try:
         report_key = _archive_file(
             analysis_id,

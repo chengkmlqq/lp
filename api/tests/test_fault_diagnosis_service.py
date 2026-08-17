@@ -271,6 +271,79 @@ def test_create_analysis_dispatches_and_fails_gracefully_without_broker(
     assert "error" in updated.result_json
 
 
+def test_sections_contain_structured_tables(db_session: Session):
+    """sections 富结构包含 docx 对应表格（type:"table"），章节标题与报告对齐。"""
+    _sample_user(db_session)
+    item = _sample_analysis(db_session)
+
+    result = fault_diagnosis_service.run_fault_diagnosis(db_session, item.id)
+    sections = result["sections"]
+
+    # 章节标题与 docx 报告对齐
+    titles = [s["title"] for s in sections]
+    assert "1 报告总览" in titles
+    assert "2 接地故障及过渡电阻判别" in titles
+    assert "3 故障定位" in titles
+    assert "4 耐雷水平与雷击原因分析" in titles
+    assert "5.1 分布式行波分析" in titles
+    assert "5.2 故障原因融合" in titles
+    assert "6 总体状态与后续意见" in titles
+    assert "A.1 录波故障信息" in titles
+    assert "A.2 雷电流及定位信息" in titles
+    assert "A.3 线路台账匹配信息" in titles
+    assert "A.4 行波与光学监测信息" in titles
+
+    tables = [
+        item
+        for section in sections
+        for item in section["content"]
+        if isinstance(item, dict) and item.get("type") == "table"
+    ]
+    # 至少包含 7 张结构化表（表2 定位信息来源仅在存在可用定位源时出现）
+    assert len(tables) >= 7
+
+    overview = next((t for t in tables if t.get("title", "").startswith("表1")), None)
+    assert overview is not None
+    assert overview["layout"] == "key_value"
+    # 2×2 键值对布局 → 4 列、不少于 5 行
+    assert len(overview["columns"]) == 4
+    assert len(overview["rows"]) >= 5
+
+
+def test_generate_report_docx_consumes_section_tables(db_session: Session, tmp_path: Path):
+    """docx 报告生成优先消费 result_json.sections 中的 table，保证与页面同源。"""
+    item = _sample_analysis(db_session)
+    fault_diagnosis_service.run_fault_diagnosis(db_session, item.id)
+    db_session.expire_all()
+    updated = db_session.get(FaultAnalysis, item.id)
+
+    from app.services import fault_diagnosis_report
+    from docx import Document
+
+    output_path = tmp_path / "report.docx"
+    fault_diagnosis_report.generate_report(
+        updated.result_json, output_path, template_path=None, front_only=False
+    )
+    assert output_path.is_file()
+
+    doc = Document(str(output_path))
+    section_tables = [
+        content
+        for section in updated.result_json["sections"]
+        for content in section.get("content", [])
+        if isinstance(content, dict) and content.get("type") == "table"
+    ]
+    # 表1 内容与 docx 第一个表格（故障分析总览）逐项一致（同一份数据源）
+    if section_tables:
+        overview = next(
+            (t for t in section_tables if t.get("title", "").startswith("表1")), None
+        )
+        if overview is not None and doc.tables:
+            doc_overview = doc.tables[0]
+            for idx, cell in enumerate(doc_overview.rows[1].cells):
+                assert str(overview["rows"][0][idx]) == cell.text
+
+
 def test_finalize_artifacts_archives_matlab_directory_and_debug_inputs(
     db_session: Session, tmp_path: Path
 ):

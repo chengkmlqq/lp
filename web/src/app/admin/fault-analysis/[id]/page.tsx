@@ -2,7 +2,16 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Space, Typography, Spin, Dropdown, message } from "antd";
+import {
+  Alert,
+  Button,
+  Space,
+  Typography,
+  Spin,
+  Dropdown,
+  Table,
+  message,
+} from "antd";
 import { ArrowLeftOutlined, DownloadOutlined } from "@ant-design/icons";
 import { useState } from "react";
 
@@ -14,9 +23,13 @@ import type { FaultAnalysisDetail } from "@/types/auth";
 const { Title, Text, Paragraph } = Typography;
 
 interface ReportSectionItem {
-  type: "text" | "subtitle" | "bullet" | "highlight" | "card";
+  type: "text" | "subtitle" | "bullet" | "highlight" | "card" | "table";
   text: string;
   items?: string[];
+  title?: string;
+  layout?: "grid" | "key_value";
+  columns?: string[];
+  rows?: string[][];
 }
 
 interface ReportSection {
@@ -382,6 +395,63 @@ export default function FaultAnalysisDetailPage() {
                                 </Paragraph>
                               );
                             })}
+                          </div>
+                        );
+                      }
+                      if (item.type === "table") {
+                        const columns = item.columns ?? [];
+                        const rawRows = item.rows ?? [];
+                        let tableColumns = columns.map((col, index) => ({
+                          title: col,
+                          dataIndex: index,
+                          key: `${index}-${col}`,
+                        }));
+                        let tableRows: Record<string, string>[] = [];
+                        if (item.layout === "key_value" && columns.length >= 2) {
+                          // 2×2 键值对布局：把每行（项目/内容/项目/内容）拆成两组键值对，
+                          // 渲染为「项目-内容」两列，与 docx 表1/A.1-A.3 数据逐项对应。
+                          const pairHead = columns[0];
+                          const valueHead = columns[1];
+                          tableColumns = [
+                            { title: pairHead, dataIndex: 0, key: "kv-key" },
+                            { title: valueHead, dataIndex: 1, key: "kv-value" },
+                          ];
+                          rawRows.forEach((row, rowIndex) => {
+                            for (let index = 0; index + 1 < row.length; index += 2) {
+                              tableRows.push({
+                                key: `r${rowIndex}-c${index}`,
+                                0: row[index] ?? "",
+                                1: row[index + 1] ?? "",
+                              });
+                            }
+                          });
+                        } else {
+                          rawRows.forEach((row, rowIndex) => {
+                            const record: Record<string, string> = { key: `r${rowIndex}` };
+                            columns.forEach((_, index) => {
+                              record[index] = row[index] ?? "";
+                            });
+                            tableRows.push(record);
+                          });
+                        }
+                        return (
+                          <div
+                            key={itemIndex}
+                            className="bg-white border border-gray-200 rounded-lg"
+                            style={{ padding: 12, overflowY: "auto" }}
+                          >
+                            {item.title ? (
+                              <Text strong className="text-sm block mb-2">
+                                {item.title}
+                              </Text>
+                            ) : null}
+                            <Table
+                              size="small"
+                              bordered
+                              pagination={false}
+                              columns={tableColumns}
+                              dataSource={tableRows}
+                            />
                           </div>
                         );
                       }
