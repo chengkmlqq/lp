@@ -910,18 +910,26 @@ def run_fault_diagnosis_with_progress(
     if progress_callback:
         progress_callback(10, "processing")
 
+    run_dir = Path(tempfile.mkdtemp(prefix=f"fault-analysis-{analysis_id}-"))
     try:
         if progress_callback:
             progress_callback(15, "processing")
-        fault_raw, lightning_raw, ledger_rows, traveling_wave_records, input_warnings = _collect_inputs(
-            item, db=db
-        )
+        original_upload_files = item.upload_files or {}
+        materialized_upload_files = _materialize_upload_files(original_upload_files, run_dir / "Input")
+        item.upload_files = materialized_upload_files
+        try:
+            fault_raw, lightning_raw, ledger_rows, traveling_wave_records, input_warnings = _collect_inputs(
+                item, db=db
+            )
+        finally:
+            item.upload_files = original_upload_files
         if progress_callback:
             progress_callback(30, "processing")
 
         manual = build_manual_input(item)
-        analysis_dir = Path(get_settings().file_vfs_root) / "fault_analysis" / analysis_id
-        upload_files = item.upload_files or {}
+        analysis_dir = run_dir / "Output"
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+        upload_files = materialized_upload_files
         traveling_wave_paths = _resolve_upload_files(upload_files, "traveling_wave_file")
         logger.info(
             "Fault diagnosis inputs for %s: upload_fields=%s traveling_wave_file_count=%d",
@@ -966,7 +974,7 @@ def run_fault_diagnosis_with_progress(
 
         mapped = map_result_to_record(diag, item, input_warnings=input_warnings)
         result_json = dict(mapped["result_json"])
-        result_json["upload_files"] = dict(upload_files)
+        result_json["upload_files"] = dict(original_upload_files)
         result_json = _finalize_artifacts(
             result_json,
             analysis_id=analysis_id,
@@ -1004,6 +1012,8 @@ def run_fault_diagnosis_with_progress(
         if progress_callback:
             progress_callback(0, "failed")
         raise
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
 
 
 def create_diagnosis_job_from_inputs(
