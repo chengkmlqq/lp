@@ -22,6 +22,7 @@ import {
   type MenuProps,
 } from "antd";
 import { MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 
 import { useAuth } from "@/components/auth-provider";
@@ -74,6 +75,17 @@ function formatNullable(value: number | string | null | undefined): string {
     return "-";
   }
   return String(value);
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) {
+    return "-";
+  }
+  const parsed = dayjs(value);
+  if (!parsed.isValid()) {
+    return "-";
+  }
+  return parsed.format("YYYY-MM-DD HH:mm:ss");
 }
 
 function getConfidenceColor(confidence: number): string {
@@ -554,12 +566,6 @@ export default function AdminFaultAnalysisPage() {
   const columns = useMemo<ColumnsType<FaultAnalysis>>(
     () => [
       {
-        title: "标题",
-        dataIndex: "title",
-        ellipsis: true,
-        render: (value: string) => formatNullable(value),
-      },
-      {
         title: "线路名称",
         dataIndex: "line_name",
         width: 160,
@@ -613,7 +619,7 @@ export default function AdminFaultAnalysisPage() {
         title: "故障时间",
         dataIndex: "fault_time",
         width: 170,
-        render: (value: string) => formatNullable(value),
+        render: (value: string) => formatDateTime(value),
       },
       {
         title: "操作",

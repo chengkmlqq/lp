@@ -1,9 +1,21 @@
 import { Badge, Button, Progress, Space, Typography } from "antd";
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
 import { Card } from "@/components/ui-antd";
 import type { FaultAnalysis } from "./types";
 
 const { Text } = Typography;
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) {
+    return "-";
+  }
+  const parsed = dayjs(value);
+  if (!parsed.isValid()) {
+    return "-";
+  }
+  return parsed.format("YYYY-MM-DD HH:mm:ss");
+}
 
 interface AnalysisCardProps {
   analysis: FaultAnalysis;
@@ -67,7 +79,7 @@ export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: A
 
           <div className="flex items-center gap-2">
             <ClockCircleOutlined className="text-gray-500 text-xs" />
-            <Text type="secondary" className="text-xs">{analysis.fault_time}</Text>
+            <Text type="secondary" className="text-xs">{formatDateTime(analysis.fault_time)}</Text>
           </div>
 
           <div className="flex items-center gap-2">
