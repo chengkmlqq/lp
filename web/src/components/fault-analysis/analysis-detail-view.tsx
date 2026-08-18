@@ -292,13 +292,14 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
                   <div
                     className="px-5 py-3 rounded-md mb-4"
                     style={{
-                      background: 'var(--ant-color-primary)',
-                      color: 'var(--accent-contrast)'
+                      background: 'var(--fquiz-theme-bg-active)',
+                      color: 'var(--fquiz-theme-text-primary)',
+                      border: '1px solid var(--fquiz-theme-border)'
                     }}
                   >
                     <Text
                       className="font-semibold text-base"
-                      style={{ color: 'var(--accent-contrast)' }}
+                      style={{ color: 'var(--fquiz-theme-text-primary)' }}
                     >
                       {section.title}
                     </Text>
