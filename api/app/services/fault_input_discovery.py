@@ -8,7 +8,6 @@ CATEGORY_WAVE = "wave"
 CATEGORY_LIGHTNING = "lightning"
 CATEGORY_LEDGER = "ledger"
 CATEGORY_TRAVELING_WAVE = "traveling_wave"
-CATEGORY_UNKNOWN = "unknown"
 
 CATEGORY_FIELDS: dict[str, str] = {
     CATEGORY_WAVE: "wave_data_file",
@@ -26,12 +25,6 @@ CATEGORY_LABELS: dict[str, str] = {
     CATEGORY_TRAVELING_WAVE: "行波数据",
 }
 
-CATEGORY_DISCOVER_SPECS: dict[str, tuple[str, set[str], str]] = {
-    CATEGORY_WAVE: ("1", {".txt", ".json", ".csv", ".pdf", ".xlsx", ".xlsm"}, "录波数据"),
-    CATEGORY_LIGHTNING: ("2", {".xlsx", ".xlsm", ".csv"}, "雷电定位数据"),
-    CATEGORY_LEDGER: ("3", {".csv", ".xlsx"}, "线路台账"),
-}
-
 TRAVELING_WAVE_SUFFIXES = {".txt", ".json"}
 
 _PREFIX_RE = re.compile(r"^[123](?:[\s._-]|$)")
@@ -43,21 +36,6 @@ class InputDiscoveryError(ValueError):
 
 def _matches_prefix(filename: str, prefix: str) -> bool:
     return bool(re.match(rf"^{re.escape(prefix)}(?:[\s._-]|$)", filename))
-
-
-def classify_upload_file(filename: str) -> str:
-    """Classify an auto-uploaded file using a delimited numeric prefix."""
-    name = Path(filename or "").name
-    match = _PREFIX_RE.match(name)
-    if match:
-        return {
-            "1": CATEGORY_WAVE,
-            "2": CATEGORY_LIGHTNING,
-            "3": CATEGORY_LEDGER,
-        }[match.group(0)[0]]
-    if Path(name).suffix.lower() in TRAVELING_WAVE_SUFFIXES:
-        return CATEGORY_TRAVELING_WAVE
-    return CATEGORY_UNKNOWN
 
 
 def discover_one(input_dir: Path, prefix: str, suffixes: set[str], label: str) -> Path | None:
