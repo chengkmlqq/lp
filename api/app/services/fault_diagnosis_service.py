@@ -500,23 +500,37 @@ def _try_matlab_wave_enhancement(
             command = [wine_binary, str(executable)]
         else:
             command = [str(executable)]
-        completed = subprocess.run(
+        # 流式读取 MATLAB stdout/stderr 并逐行转发到任务监控日志：TaskLogCapture 会实时写入
+        # Redis Stream（前端 SSE 可见），任务结束后全量上传 MinIO logs/{task_id}.log。
+        proc = subprocess.Popen(
             [*command, str(staged_input.resolve()), str(output_root.resolve())],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # 合并两流，统一逐行转发
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
             env=env,
-            timeout=600,
         )
+        try:
+            for line in proc.stdout:  # 逐行实时
+                logger.info("[MATLAB] %s", line.rstrip())
+            returncode = proc.wait(timeout=600)  # 保留原超时语义
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            logger.error("Fault diagnosis MATLAB timed out after 600s for %s", analysis_id)
+            return None, None
     except Exception:
         logger.exception("Fault diagnosis MATLAB process failed for %s", analysis_id)
         return None, None
 
     latest_file = output_root / "最新结果路径.txt"
-    if completed.returncode != 0 or not latest_file.is_file():
+    if returncode != 0 or not latest_file.is_file():
         logger.warning(
             "Fault diagnosis MATLAB returned no result for %s: returncode=%s latest_file=%s",
             analysis_id,
-            completed.returncode,
+            returncode,
             latest_file.is_file(),
         )
         return None, None
