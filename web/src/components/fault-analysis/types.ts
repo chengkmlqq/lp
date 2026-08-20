@@ -76,5 +76,4 @@ export interface CreateFaultAnalysisFormValues {
   ledger_data_file?: FaultAnalysisTempFile[];
   traveling_wave_file?: FaultAnalysisTempFile[];
   optical_data_file?: FaultAnalysisTempFile[];
-  auto_classify_files?: FaultAnalysisTempFile[];
 }
