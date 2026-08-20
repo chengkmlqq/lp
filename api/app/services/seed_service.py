@@ -528,6 +528,19 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "cacheable": False,
         "permission_code": "wine.read",
     },
+    {
+        "code": "admin.matlab_engine",
+        "name": "MATLAB引擎管理",
+        "path": "/admin/matlab-engine",
+        "icon": "ExperimentOutlined",
+        "parent_code": "admin.debug",
+        "type": "menu",
+        "sort_order": 30,
+        "status": "enabled",
+        "visible": True,
+        "cacheable": False,
+        "permission_code": "line.read",
+    },
 ]
 
 ROLE_MENU_BINDINGS: dict[str, list[str]] = {
@@ -560,6 +573,7 @@ ROLE_MENU_BINDINGS: dict[str, list[str]] = {
         "admin.debug",
         "admin.files",
         "admin.wine_runner",
+        "admin.matlab_engine",
     ],
     "user": [],
 }
