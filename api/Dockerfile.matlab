@@ -10,7 +10,7 @@
 
 ARG REGISTRY=crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com
 ARG REGISTRY_NAMESPACE=ck-registry
-FROM ${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-mcr-base:latest
+FROM ${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-mcr-base:r2023a
 
 # Linux 编译的判别引擎：外部卷挂载到 /app/matlab-wave（含 RunWaveAnalysisModule）
 RUN mkdir -p /app/matlab-wave

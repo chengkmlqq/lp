@@ -209,6 +209,7 @@ jobs:
             MCR_VERSION=${{ vars.MATLAB_MCR_VERSION || 'R2023a' }}
             MCR_DOWNLOAD_URL=${{ vars.MATLAB_MCR_URL || 'https://ssd.mathworks.com/supportfiles/downloads/R2023a/Release/0/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2023a_glnxa64.zip' }}
           tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/fquiz-mcr-base:r2023a
             ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/fquiz-mcr-base:latest
           cache-from: type=gha,scope=fquiz-mcr-base
           cache-to: type=gha,mode=max,scope=fquiz-mcr-base
@@ -230,7 +231,9 @@ jobs:
           tags: |
             ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
             ${{ steps.vars.outputs.image }}:latest
-          cache-from: type=gha,scope=fquiz-matlab-worker
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/fquiz-mcr-base:r2023a
+            type=gha,scope=fquiz-matlab-worker
           cache-to: type=gha,mode=max,scope=fquiz-matlab-worker
 
   # ───── API 镜像（无 wine，仅 amd64） ─────
@@ -528,6 +531,11 @@ jobs:
             # ── MATLAB Worker 数据卷目录（创建基础目录；Runtime 由外部流程部署，不在构建时下载/解压） ──
             MW_DIR="${DEPLOY_DIR}/deploy/pro-deploy/data/matlab-worker"
             mkdir -p "${MW_DIR}/matlab-wave"
+
+            # ── 预拉 MCR 基础镜像（固定 tag r2023a，层稳定）──
+            # 先落盘 MCR 层，再 pull matlab-worker 时 16 层 MCR 全部 Already exists（只拉代码层 ~50MB）
+            echo "预拉 fquiz-mcr-base:r2023a ..."
+            docker pull "${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-mcr-base:r2023a" >/dev/null 2>&1 || echo "[warn] mcr-base 预拉失败（忽略，matlab-worker 会全量拉）"
 
             pull_with_retry
 
