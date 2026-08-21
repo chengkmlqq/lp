@@ -544,6 +544,18 @@ jobs:
               exit 1
             fi
 
+            # ── 清理旧 matlab-worker 镜像（防止双份 17GB 镜像堆积） ──
+            # matlab-worker 每次构建 MCR 层全量变化（17GB），旧 tag 与现用 tag 镜像 ID 不同。
+            # 容器已用新镜像重建，删掉非当前 tag 的 matlab-worker 镜像，释放磁盘。
+            echo "清理旧 matlab-worker 镜像..."
+            MATLAB_IN_USE="${MATLAB_WORKER_IMAGE}"
+            docker images --format '{{.Repository}}:{{.Tag}}' | grep 'ck-registry/fquiz-matlab-worker:' | while read -r img; do
+              if [ "${img}" != "${MATLAB_IN_USE}" ]; then
+                echo "  rmi ${img}"
+                docker rmi "${img}" >/dev/null 2>&1 || echo "  (skip ${img})"
+              fi
+            done
+
             compose_run ps
 
       - name: 重启 nginx 清 DNS 缓存
