@@ -160,19 +160,6 @@ DEFAULT_ROLES: dict[str, dict[str, object]] = {
 DEFAULT_MENUS: list[dict[str, object]] = [
     # ── Top-level (parent_code=None) ─────────────────────────────────
     {
-        "code": "admin.ai_chat",
-        "name": "AI助手",
-        "path": "/admin/ai-chat",
-        "icon": "RobotOutlined",
-        "parent_code": None,
-        "type": "menu",
-        "sort_order": -10,
-        "status": "enabled",
-        "visible": True,
-        "cacheable": False,
-        "permission_code": "ai_chat.read",
-    },
-    {
         "code": "admin.power_lines",
         "name": "线路管理",
         "path": "/admin/power-lines",
@@ -540,6 +527,19 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "visible": True,
         "cacheable": False,
         "permission_code": "line.read",
+    },
+    {
+        "code": "admin.ai_chat",
+        "name": "AI助手",
+        "path": "/admin/ai-chat",
+        "icon": "RobotOutlined",
+        "parent_code": "admin.debug",
+        "type": "menu",
+        "sort_order": 40,
+        "status": "enabled",
+        "visible": True,
+        "cacheable": False,
+        "permission_code": "ai_chat.read",
     },
 ]
 
