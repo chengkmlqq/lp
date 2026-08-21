@@ -317,7 +317,7 @@ jobs:
           sbom: false
           build-args: |
             NPM_REGISTRY=${{ vars.NPM_REGISTRY || 'https://registry.npmjs.org' }}
-            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000' }}
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || '' }}
             NEXT_PUBLIC_APP_BASE_PATH=${{ vars.NEXT_PUBLIC_APP_BASE_PATH || '' }}
           tags: |
             ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
@@ -437,7 +437,7 @@ jobs:
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
           IMAGE_TAG: ${{ github.sha }}
-          NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000' }}
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL || '' }}
           FLOWER_BASIC_AUTH: ${{ secrets.FLOWER_BASIC_AUTH || vars.FLOWER_BASIC_AUTH || 'admin:admin' }}
           REGISTRY: ${{ env.REGISTRY }}
           REGISTRY_NAMESPACE: ${{ env.REGISTRY_NAMESPACE }}
