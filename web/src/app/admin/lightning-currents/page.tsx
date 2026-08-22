@@ -49,6 +49,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
+import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
@@ -172,9 +173,24 @@ export default function AdminLightningCurrentsPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
 
+  // ---- 任务日志弹窗 ----
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
+  const [logModalTitle, setLogModalTitle] = useState("任务执行日志");
+
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
   const canManage = hasPermission("lightning.manage");
+  const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
+
+  const openLogViewer = (taskId: string | null | undefined, label: string, fileName: string) => {
+    if (!taskId || !canReadLogs) {
+      return;
+    }
+    setLogModalTaskId(taskId);
+    setLogModalTitle(`${label} - ${fileName}`);
+    setLogModalOpen(true);
+  };
 
   const trimmedKeyword = searchKeyword.trim();
   const listParams = useMemo(() => {
@@ -680,12 +696,38 @@ export default function AdminLightningCurrentsPage() {
                 <Dropdown
                   menu={{
                     items: [
-                      {
-                        key: "retry",
-                        label: "重试",
-                        disabled: retryMutation.isPending,
-                        onClick: () => retryMutation.mutate(record),
-                      },
+                      ...(canManage
+                        ? [
+                            {
+                              key: "backfill",
+                              label: "回填",
+                              onClick: () => {
+                                setBackfillRecord(record);
+                                setBackfillLineIds([]);
+                                setBackfillOpen(true);
+                              },
+                            },
+                          ]
+                        : []),
+                      ...(canReadLogs && record.task_id
+                        ? [
+                            {
+                              key: "import-log",
+                              label: "导入日志",
+                              onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
+                            },
+                          ]
+                        : []),
+                      ...(record.status === "failed" && canManage
+                        ? [
+                            {
+                              key: "retry",
+                              label: "重试",
+                              disabled: retryMutation.isPending,
+                              onClick: () => retryMutation.mutate(record),
+                            },
+                          ]
+                        : []),
                     ],
                   }}
                   trigger={["click"]}
@@ -802,6 +844,15 @@ export default function AdminLightningCurrentsPage() {
                   },
                 ]
               : []),
+            ...(canReadLogs && row.task_id
+              ? [
+                  {
+                    key: "import-log",
+                    label: "导入日志",
+                    onClick: () => openLogViewer(row.task_id, "导入日志", row.source_file_name),
+                  },
+                ]
+              : []),
             ...(row.status === "failed" && canManage
               ? [
                   {
@@ -850,7 +901,7 @@ export default function AdminLightningCurrentsPage() {
         },
       },
     ],
-    [canManage, deleteMutation, retryMutation, backfillMutation, openDetail, openBackfillLines],
+    [canManage, deleteMutation, retryMutation, backfillMutation, openDetail, openBackfillLines, canReadLogs, openLogViewer],
   );
 
   if (initializing) {
@@ -1283,6 +1334,13 @@ export default function AdminLightningCurrentsPage() {
           }))}
         />
       </Modal>
+
+      <TaskLogViewerDrawer
+        taskId={logModalTaskId}
+        title={logModalTitle}
+        open={logModalOpen}
+        onClose={() => setLogModalOpen(false)}
+      />
 
     </div>
   );
