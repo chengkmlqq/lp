@@ -13,6 +13,31 @@ IMAGE_PREFIX = "lightning/distribution/image/"    # 密度图
 AMPLITUDE_SOURCE_PREFIX = "lightning/amplitude/source/"  # 雷电流幅值原始波形文件
 TEMP_PREFIX = "lightning/tmp/"                    # 导入临时文件（选择文件后先上传，确认导入后再消费）
 FAULT_ANALYSIS_PREFIX = "fault-analysis/"          # 故障分析输入/输出归档
+MATLAB_ENGINE_PREFIX = "matlab-engine/"            # MATLAB 引擎包（模块化多版本）
+
+# matlab-engine/
+#   modules/{module_slug}.json
+#   draft/{module_slug}/{version_hash}/engine.zip + manifest.json
+#   release/{module_slug}/{version_hash}/engine.zip + manifest.json
+MATLAB_ENGINE_MODULES_PREFIX = f"{MATLAB_ENGINE_PREFIX}modules/"
+MATLAB_ENGINE_DRAFT_PREFIX = f"{MATLAB_ENGINE_PREFIX}draft/"
+MATLAB_ENGINE_RELEASE_PREFIX = f"{MATLAB_ENGINE_PREFIX}release/"
+
+
+def build_matlab_engine_module_key(slug: str) -> str:
+    return f"{MATLAB_ENGINE_MODULES_PREFIX}{slug}.json"
+
+
+def build_matlab_engine_draft_prefix(slug: str, version_hash: str) -> str:
+    return f"{MATLAB_ENGINE_DRAFT_PREFIX}{slug}/{version_hash}/"
+
+
+def build_matlab_engine_release_prefix(slug: str, version_hash: str) -> str:
+    return f"{MATLAB_ENGINE_RELEASE_PREFIX}{slug}/{version_hash}/"
+
+
+def build_matlab_engine_legacy_prefix(version_hash: str) -> str:
+    return f"{MATLAB_ENGINE_PREFIX}{version_hash}/"
 
 
 class MinioStorageError(RuntimeError):

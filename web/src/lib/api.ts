@@ -208,3 +208,12 @@ export function formatErrorMessage(err: ApiError | string | null | undefined): s
   if (err == null) return "";
   return typeof err === "string" ? err : err.message;
 }
+
+export async function uploadFileWithAuth(
+  path: string,
+  file: File,
+): Promise<Response> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return fetchWithAuth(path, { method: "POST", body: formData });
+}

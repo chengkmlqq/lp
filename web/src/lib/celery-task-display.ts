@@ -16,6 +16,8 @@ const TASK_NAME_LABELS: Record<string, string> = {
   "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks": "到期定时任务派发",
   "app.tasks.scheduled_task_tasks.execute_scheduled_task_job": "定时任务执行",
   "app.tasks.wine_tasks.execute_wine_run_job": "Wine 程序执行",
+  "app.tasks.sync_matlab_engine_task.sync_matlab_engine": "同步 MATLAB 引擎（单模块兼容）",
+  "app.tasks.sync_matlab_engine_task.sync_matlab_engine_module": "同步 MATLAB 引擎到 Worker",
   "app.tasks.worker_registry_tasks.sweep_worker_registry_offline": "执行节点离线巡检",
   "app.tasks.worker_registry_tasks.flush_task_log_buffers": "任务日志缓冲落库",
 };
