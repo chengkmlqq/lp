@@ -873,7 +873,7 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
     queryKey: ["tower-detail", selectedTowerForDetail?.id],
     enabled: !!user && !!selectedTowerForDetail && towerDetailDrawerOpen && canTowerRead,
     queryFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers/${selectedTowerForDetail?.id}/detail`);
+      const response = await fetchWithAuth(`/api/v1/lines/towers/${selectedTowerForDetail?.id}/detail`);
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
