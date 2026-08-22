@@ -4,31 +4,21 @@ import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
-  Alert,
   Button,
-  Descriptions,
-  Drawer,
   Dropdown,
   Empty,
   Form,
   Input,
   Modal,
   Pagination,
-  Progress,
-  Radio,
   Segmented,
   Select,
   Space,
   Table,
-  Tabs,
-  Tag,
   Typography,
-  Upload,
-  type MenuProps,
 } from "antd";
 import {
   ApartmentOutlined,
-  CheckCircleOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
   DeploymentUnitOutlined,
@@ -38,36 +28,23 @@ import {
   MoreOutlined,
   SearchOutlined,
   SwapOutlined,
-  TableOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useMemo, useState, useEffect, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
-import { PowerLineCesiumMap } from "@/components/power-line-cesium-map";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
-import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { useMobileDetection } from "@/hooks/use-mobile-detection";
-import { getApiBaseUrl, readApiError } from "@/lib/api";
-import type { LineListResponse, LineSummary, LineTowerImportResponse, LineTowerListResponse, LineTowerSummary, TempUploadResponse, TowerCircuitSummary, TowerDetailResponse } from "@/types/auth";
+import { readApiError } from "@/lib/api";
+import type { LineListResponse, LineSummary } from "@/types/auth";
 
 type LineFormValues = {
   name: string;
   voltage_level: string | null;
 };
-
-type DetailTabItem = {
-  key: string;
-  label: ReactNode;
-  closable: boolean;
-  children: ReactNode;
-};
-
-const LIST_TAB_KEY = "list";
 
 const LINE_VOLTAGE_OPTIONS = [
   { value: "dc_500", label: "直流500kV", voltage_kv: 500 },
@@ -117,16 +94,6 @@ const EMPTY_LINE_FORM: LineFormValues = {
   voltage_level: null,
 };
 
-const TOWER_TYPE_OPTIONS = [
-  { value: "", label: "全部塔型" },
-  { value: "直线", label: "直线" },
-  { value: "耐张", label: "耐张" },
-] as const;
-
-const TOWER_TABLE_DEFAULT_PAGE_SIZE = 20;
-const TOWER_MAP_QUERY_LIMIT = 500;
-const POWER_LINES_PANEL_MIN_HEIGHT = 360;
-const POWER_LINES_MAP_MIN_HEIGHT = 240;
 const POWER_LINES_TABLE_MIN_SCROLL_Y = 180;
 const POWER_LINES_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
 const POWER_LINES_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
@@ -155,7 +122,6 @@ export default function AdminPowerLinesPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
-  const isMobile = useMobileDetection();
   const [lineForm] = Form.useForm<LineFormValues>();
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -165,16 +131,12 @@ export default function AdminPowerLinesPage() {
   const [editingLine, setEditingLine] = useState<LineSummary | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
-  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [tableScrollY, setTableScrollY] = useState(POWER_LINES_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   const canLineManage = hasPermission("line.manage");
-  const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
-  const canTowerManage = hasPermission("tower.manage");
-  const canRead = canLineRead || canTowerRead;
+  const canRead = canLineRead;
 
   const updateTableScrollHeight = useCallback(() => {
     if (typeof window === "undefined") {
@@ -339,52 +301,13 @@ export default function AdminPowerLinesPage() {
     },
   });
 
-  const openDetail = useCallback((line: LineSummary) => {
-    const key = line.id;
-    setDetailTabs((previous) => {
-      if (previous.some((tab) => tab.key === key)) {
-        setActiveTabKey(key);
-        return previous;
-      }
-      return [
-        ...previous,
-        {
-          key,
-          label: <span>{line.name}</span>,
-          closable: true,
-          children: (
-            <PowerLineDetailView
-              lineId={line.id}
-              fetchWithAuth={fetchWithAuth}
-              canTowerRead={canTowerRead}
-              canTowerManage={canTowerManage}
-              canLineManage={canLineManage}
-              onLineDeleted={async () => {
-                setDetailTabs((tabs) => tabs.filter((tab) => tab.key !== key));
-                setActiveTabKey(LIST_TAB_KEY);
-                await refreshLines();
-              }}
-            />
-          ),
-        },
-      ];
-    });
-    setActiveTabKey(key);
-  }, [fetchWithAuth, canTowerRead, canTowerManage, canLineManage, refreshLines]);
+  const openTowers = useCallback((line: LineSummary) => {
+    router.push(`/admin/power-lines/${line.id}/towers`);
+  }, [router]);
 
-  const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
-    if (action !== "remove") {
-      return;
-    }
-    const key = String(targetKey);
-    const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
-    const next = detailTabs.filter((tab) => tab.key !== key);
-    setDetailTabs(next);
-    if (activeTabKey === key) {
-      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
-      setActiveTabKey(fallback);
-    }
-  }, [detailTabs, activeTabKey]);
+  const openPreview = useCallback((line: LineSummary) => {
+    router.push(`/admin/power-lines/${line.id}/map`);
+  }, [router]);
 
   const openCreateLineModal = () => {
     setEditingLine(null);
@@ -428,139 +351,122 @@ export default function AdminPowerLinesPage() {
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
-        type="editable-card"
-        hideAdd
-        activeKey={activeTabKey}
-        onChange={setActiveTabKey}
-        onEdit={handleTabsEdit}
-        className="admin-power-lines-tabs"
-        tabBarExtraContent={
-          <Space>
-            {canLineManage && (
-              <Button type="primary" onClick={openCreateLineModal}>
-                新建线路
+      <div className="admin-power-lines-tabs">
+        <Space>
+          {canLineManage && (
+            <Button type="primary" onClick={openCreateLineModal}>
+              新建线路
+            </Button>
+          )}
+        </Space>
+      </div>
+      <div className="admin-power-lines-list-pane">
+        <div className="admin-filter-bar">
+          <Form layout="inline">
+            <Form.Item label="线路编码/名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Input
+                value={keywordInput}
+                allowClear
+                onChange={(event) => setKeywordInput(event.target.value)}
+                placeholder="按线路编码/名称筛选"
+                onPressEnter={handleSearch}
+              />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button
+                htmlType="button"
+                icon={<SearchOutlined />}
+                onClick={handleSearch}
+                className="admin-search-btn"
+              >
+                查询
               </Button>
-            )}
-          </Space>
-        }
-        items={[
-          {
-            key: LIST_TAB_KEY,
-            label: <span className="admin-power-lines-tab-title">线路管理</span>,
-            closable: false,
-            children: (
-              <div className="admin-power-lines-list-pane">
-                <div className="admin-filter-bar">
-                  <Form layout="inline">
-                    <Form.Item label="线路编码/名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                      <Input
-                        value={keywordInput}
-                        allowClear
-                        onChange={(event) => setKeywordInput(event.target.value)}
-                        placeholder="按线路编码/名称筛选"
-                        onPressEnter={handleSearch}
-                      />
-                    </Form.Item>
-                    <Form.Item style={{ marginBottom: 0 }}>
-                      <Button
-                        htmlType="button"
-                        icon={<SearchOutlined />}
-                        onClick={handleSearch}
-                        className="admin-search-btn"
-                      >
-                        查询
-                      </Button>
-                    </Form.Item>
-                  </Form>
-                  <Segmented
-                    value={viewMode}
-                    onChange={(value) => setViewMode(value as "card" | "list")}
-                    options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "list" },
-                    ]}
-                  />
-                </div>
+            </Form.Item>
+          </Form>
+          <Segmented
+            value={viewMode}
+            onChange={(value) => setViewMode(value as "card" | "list")}
+            options={[
+              { label: "卡片视图", value: "card" },
+              { label: "列表视图", value: "list" },
+            ]}
+          />
+        </div>
 
-                {lines.length === 0 ? (
-                  <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                ) : viewMode === "card" ? (
-                  <>
-                    <div className="admin-power-lines-card-scroll">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        {lines.map((line) => (
+        {lines.length === 0 ? (
+          <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        ) : viewMode === "card" ? (
+          <>
+            <div className="admin-power-lines-card-scroll">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {lines.map((line) => (
                           <PowerLineCard
                             key={line.id}
                             line={line}
                             canLineManage={canLineManage}
                             onEdit={openEditLineModal}
-                            onDetail={openDetail}
+                            onDetail={openTowers}
+                            onPreview={openPreview}
                             onDelete={() => {
-                              Modal.confirm({
-                                title: "删除线路",
-                                content: `确认删除线路 ${line.name || line.code} 吗？`,
-                                okText: "删除",
-                                cancelText: "取消",
-                                okButtonProps: { danger: true },
-                                onOk: async () => {
-                                  await deleteLineMutation.mutateAsync(line.id);
-                                },
-                              });
-                            }}
-                            deleteLoading={deleteLineMutation.isPending}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <div className="admin-power-lines-pagination">
-                      <Pagination
-                        current={pagination.current}
-                        pageSize={pagination.pageSize}
-                        total={total}
-                        onChange={(page, pageSize) => {
-                          setPagination({ current: page, pageSize });
-                        }}
-                        showSizeChanger
-                        showTotal={(total) => `共 ${total} 条`}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div
-                    ref={tableScrollAnchorRef}
-                    className="admin-power-lines-table-view"
-                    style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-                  >
+                      Modal.confirm({
+                        title: "删除线路",
+                        content: `确认删除线路 ${line.name || line.code} 吗？`,
+                        okText: "删除",
+                        cancelText: "取消",
+                        okButtonProps: { danger: true },
+                        onOk: async () => {
+                          await deleteLineMutation.mutateAsync(line.id);
+                        },
+                      });
+                    }}
+                    deleteLoading={deleteLineMutation.isPending}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="admin-power-lines-pagination">
+              <Pagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={total}
+                onChange={(page, pageSize) => {
+                  setPagination({ current: page, pageSize });
+                }}
+                showSizeChanger
+                showTotal={(total) => `共 ${total} 条`}
+              />
+            </div>
+          </>
+        ) : (
+          <div
+            ref={tableScrollAnchorRef}
+            className="admin-power-lines-table-view"
+            style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+          >
                     <PowerLineTable
                       lines={lines}
                       canLineManage={canLineManage}
                       onEdit={openEditLineModal}
-                      onDetail={openDetail}
+                      onDetail={openTowers}
+                      onPreview={openPreview}
                       onDelete={(line) => {
-                        Modal.confirm({
-                          title: "删除线路",
-                          content: `确认删除线路 ${line.name || line.code} 吗？`,
-                          okText: "删除",
-                          cancelText: "取消",
-                          okButtonProps: { danger: true },
-                          onOk: async () => {
-                            await deleteLineMutation.mutateAsync(line.id);
-                          },
-                        });
-                      }}
-                      deleteLoading={deleteLineMutation.isPending}
-                      scrollY={tableScrollY}
-                    />
-                  </div>
-                )}
-
-              </div>
-            ),
-          },
-          ...detailTabs,
-        ]}
-      />
+                Modal.confirm({
+                  title: "删除线路",
+                  content: `确认删除线路 ${line.name || line.code} 吗？`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true },
+                  onOk: async () => {
+                    await deleteLineMutation.mutateAsync(line.id);
+                  },
+                });
+              }}
+              deleteLoading={deleteLineMutation.isPending}
+              scrollY={tableScrollY}
+            />
+          </div>
+        )}
+      </div>
 
       <Modal
         title={editingLine ? "编辑线路" : "新建线路"}
@@ -608,11 +514,12 @@ interface PowerLineCardProps {
   canLineManage: boolean;
   onEdit: (line: LineSummary) => void;
   onDetail: (line: LineSummary) => void;
+  onPreview: (line: LineSummary) => void;
   onDelete: () => void;
   deleteLoading: boolean;
 }
 
-function PowerLineCard({ line, canLineManage, onEdit, onDetail, onDelete, deleteLoading }: PowerLineCardProps) {
+function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDelete, deleteLoading }: PowerLineCardProps) {
   return (
     <Card
       size="small"
@@ -655,9 +562,20 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onDelete, delete
               type="text"
               size="small"
               icon={<EyeOutlined />}
+              title="杆塔"
               onClick={(event) => {
                 event.stopPropagation();
                 onDetail(line);
+              }}
+            />
+            <Button
+              type="text"
+              size="small"
+              icon={<GlobalOutlined />}
+              title="预览"
+              onClick={(event) => {
+                event.stopPropagation();
+                onPreview(line);
               }}
             />
             <Button
@@ -694,12 +612,13 @@ interface PowerLineTableProps {
   canLineManage: boolean;
   onEdit: (line: LineSummary) => void;
   onDetail: (line: LineSummary) => void;
+  onPreview: (line: LineSummary) => void;
   onDelete: (line: LineSummary) => void;
   deleteLoading: boolean;
   scrollY?: number;
 }
 
-function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onDelete, deleteLoading, scrollY = POWER_LINES_TABLE_MIN_SCROLL_Y }: PowerLineTableProps) {
+function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onDelete, deleteLoading, scrollY = POWER_LINES_TABLE_MIN_SCROLL_Y }: PowerLineTableProps) {
   const columns: ColumnsType<LineSummary> = [
     {
       title: "线路名称",
@@ -765,7 +684,13 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onDelete, dele
               size="small"
               onClick={() => onDetail(line)}
             >
-              详情
+              杆塔
+            </Button>
+            <Button
+              size="small"
+              onClick={() => onPreview(line)}
+            >
+              预览
             </Button>
             {canLineManage && menuItems.length > 0 && (
               <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
@@ -792,641 +717,5 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onDelete, dele
       scroll={{ x: 1080, y: scrollY }}
       tableLayout="fixed"
     />
-  );
-}
-
-interface PowerLineDetailViewProps {
-  lineId: string;
-  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
-  canTowerRead: boolean;
-  canTowerManage: boolean;
-  canLineManage: boolean;
-  onLineDeleted: () => Promise<void>;
-}
-
-function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerManage, canLineManage, onLineDeleted }: PowerLineDetailViewProps) {
-  const { message: messageApi } = App.useApp();
-  const queryClient = useQueryClient();
-  const { user, getAccessToken } = useAuth();
-  const [lineDetail, setLineDetail] = useState<LineSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [towerKeyword, setTowerKeyword] = useState("");
-  const [towerTypeFilter, setTowerTypeFilter] = useState("");
-  const [towerPagination, setTowerPagination] = useState({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE });
-  const [towerViewMode, setTowerViewMode] = useState<"table" | "map">("table");
-  const [importModalOpen, setImportModalOpen] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [tempFileId, setTempFileId] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadError, setUploadError] = useState("");
-  const [towerDetailDrawerOpen, setTowerDetailDrawerOpen] = useState(false);
-  const [selectedTowerForDetail, setSelectedTowerForDetail] = useState<LineTowerSummary | null>(null);
-
-  useEffect(() => {
-    const fetchDetail = async () => {
-      try {
-        setLoading(true);
-        const response = await fetchWithAuth(`/api/v1/lines/${lineId}`);
-        if (!response.ok) {
-          throw new Error(await readApiError(response));
-        }
-        const data = (await response.json()) as LineSummary;
-        setLineDetail(data);
-        setError("");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "加载详情失败");
-      } finally {
-        setLoading(false);
-      }
-    };
-    void fetchDetail();
-  }, [lineId, fetchWithAuth]);
-
-  const towerListPath = useMemo(() => {
-    const params = new URLSearchParams();
-    params.set("limit", String(TOWER_TABLE_DEFAULT_PAGE_SIZE));
-    params.set("offset", String((towerPagination.current - 1) * TOWER_TABLE_DEFAULT_PAGE_SIZE));
-    if (towerKeyword.trim()) {
-      params.set("keyword", towerKeyword.trim());
-    }
-    if (towerTypeFilter) {
-      params.set("tower_type", towerTypeFilter);
-    }
-    const query = params.toString();
-    return `/api/v1/lines/${lineId}/towers${query ? `?${query}` : ""}`;
-  }, [lineId, towerKeyword, towerTypeFilter, towerPagination]);
-
-  const towersQuery = useQuery({
-    queryKey: [towerListPath],
-    enabled: !!canTowerRead && !!lineDetail,
-    queryFn: async () => {
-      const response = await fetchWithAuth(towerListPath);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LineTowerListResponse;
-    },
-  });
-
-  const towerDetailQuery = useQuery({
-    queryKey: ["tower-detail", selectedTowerForDetail?.id],
-    enabled: !!user && !!selectedTowerForDetail && towerDetailDrawerOpen && canTowerRead,
-    queryFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/lines/towers/${selectedTowerForDetail?.id}/detail`);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as TowerDetailResponse;
-    },
-  });
-
-  const towers = useMemo(() => towersQuery.data?.items ?? [], [towersQuery.data?.items]);
-
-  const refreshLines = useCallback(async () => {
-    await queryClient.invalidateQueries({
-      predicate: (query) =>
-        Array.isArray(query.queryKey)
-        && typeof query.queryKey[0] === "string"
-        && query.queryKey[0].startsWith("/api/v1/lines"),
-    });
-  }, [queryClient]);
-  const refreshTowers = useCallback(async () => {
-    await queryClient.invalidateQueries({
-      predicate: (query) =>
-        Array.isArray(query.queryKey)
-        && typeof query.queryKey[0] === "string"
-        && query.queryKey[0].includes("/towers"),
-    });
-  }, [queryClient]);
-  const handleTempUpload = useCallback(
-    (file: File) => {
-      setSelectedFile(file);
-      setTempFileId(null);
-      setUploadProgress(0);
-      setUploadError("");
-
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `${getApiBaseUrl()}/api/v1/uploads/temp`);
-      xhr.withCredentials = true;
-      const token = getAccessToken();
-      if (token) {
-        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      }
-      xhr.upload.onprogress = (event: ProgressEvent<EventTarget>) => {
-        if (!event.lengthComputable || event.total <= 0) {
-          return;
-        }
-        const percent = Math.min(99, Math.max(0, Math.round((event.loaded / event.total) * 100)));
-        setUploadProgress(percent);
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          setUploadProgress(100);
-          try {
-            const payload = JSON.parse(xhr.responseText) as TempUploadResponse;
-            setTempFileId(payload.temp_file_id);
-          } catch {
-            setUploadError("上传成功但响应解析失败，请重新选择文件");
-          }
-          return;
-        }
-        let message = `HTTP ${xhr.status}`;
-        try {
-          const parsed = JSON.parse(xhr.responseText) as { detail?: string };
-          if (parsed?.detail?.trim()) message = parsed.detail;
-        } catch {
-          // 忽略非 JSON 响应
-        }
-        setUploadError(message);
-      };
-      xhr.onerror = () => setUploadError("网络异常，上传失败");
-      xhr.onabort = () => setUploadError("上传已取消");
-
-      const formData = new FormData();
-      formData.append("file", file);
-      xhr.send(formData);
-    },
-    [getAccessToken],
-  );
-
-  const closeImportModal = useCallback(() => {
-    setImportModalOpen(false);
-    setSelectedFile(null);
-    setTempFileId(null);
-    setUploadProgress(0);
-    setUploadError("");
-  }, []);
-
-  const openImportModal = useCallback(() => {
-    setSelectedFile(null);
-    setTempFileId(null);
-    setUploadProgress(0);
-    setUploadError("");
-    setImportModalOpen(true);
-  }, []);
-
-  const openTowerDetailDrawer = useCallback((item: LineTowerSummary) => {
-    setSelectedTowerForDetail(item);
-    setTowerDetailDrawerOpen(true);
-  }, []);
-
-  const closeTowerDetailDrawer = useCallback(() => {
-    setTowerDetailDrawerOpen(false);
-    setSelectedTowerForDetail(null);
-  }, []);
-
-  const importMutation = useMutation({
-    mutationFn: async () => {
-      if (!canTowerManage) {
-        throw new Error("缺少 tower.manage 权限");
-      }
-      if (!tempFileId) {
-        throw new Error("文件尚未上传完成，请等待上传后再确认导入");
-      }
-      const formData = new FormData();
-      formData.append("temp_file_id", tempFileId);
-      const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers/import`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LineTowerImportResponse;
-    },
-    onSuccess: async (result) => {
-      messageApi.success(
-        `导入完成：新增 ${result.imported_count} 条，更新 ${result.updated_count} 条，跳过 ${result.skipped_count} 条`,
-      );
-      closeImportModal();
-      await refreshLines();
-      await refreshTowers();
-    },
-    onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "导入失败");
-    },
-  });
-  const exportMutation = useMutation({
-    mutationFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers/export`);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      const blob = await response.blob();
-      const contentDisposition = response.headers.get("Content-Disposition") || "";
-      const matched = contentDisposition.match(/filename=\"([^\"]+)\"/i);
-      const filename = matched?.[1] ?? "towers_export.csv";
-      return { blob, filename };
-    },
-    onSuccess: ({ blob, filename }) => {
-      const url = window.URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      window.URL.revokeObjectURL(url);
-      messageApi.success("导出成功");
-    },
-    onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "导出失败");
-    },
-  });
-
-  const towerColumns: ColumnsType<LineTowerSummary> = [
-    { title: "序号", dataIndex: "seq_no", width: 80 },
-    {
-      title: "塔号",
-      dataIndex: "tower_no",
-      width: 120,
-      render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
-    },
-    { title: "模型", dataIndex: "tower_model", width: 180, render: (value: string | null) => value || "-" },
-    { title: "塔型", dataIndex: "tower_type", width: 100, render: (value: string | null) => value || "-" },
-    {
-      title: "坐标",
-      key: "geo",
-      width: 200,
-      render: (_: unknown, row) =>
-        row.longitude !== null && row.latitude !== null
-          ? `${row.longitude.toFixed(6)}, ${row.latitude.toFixed(6)}`
-          : "-",
-    },
-    { title: "接地电阻", dataIndex: "ground_resistance_ohm", width: 100, render: (value: number | null) => value ?? "-" },
-    { title: "地闪密度", dataIndex: "lightning_density", width: 100, render: (value: number | null) => value ?? "-" },
-    {
-      title: "风险等级",
-      dataIndex: "risk_level",
-      width: 100,
-      render: (value: string | null) => {
-        if (!value) return "-";
-        const riskLevel = value.trim();
-        let color = "default";
-        if (riskLevel === "1") {
-          color = "green";
-        } else if (riskLevel === "2") {
-          color = "orange";
-        } else if (riskLevel === "3") {
-          color = "red";
-        }
-        return <Tag color={color}>{value}</Tag>;
-      },
-    },
-    {
-      title: "更新时间",
-      dataIndex: "update_date",
-      width: 180,
-      render: (value: string) => formatDateTime(value),
-    },
-    {
-      title: "操作",
-      key: "actions",
-      width: 120,
-      fixed: "right" as const,
-      render: (_: unknown, row) => (
-        <Space size="small">
-          {canTowerRead && (
-            <Button size="small" onClick={() => openTowerDetailDrawer(row)}>
-              查看详情
-            </Button>
-          )}
-        </Space>
-      ),
-    },
-  ];
-
-  if (loading) {
-    return <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[280px]" />;
-  }
-
-  if (error || !lineDetail) {
-    return (
-      <Card>
-        <Space direction="vertical" size={12}>
-          <Typography.Text type="danger">{error || "加载详情失败"}</Typography.Text>
-        </Space>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="admin-power-lines-detail-view">
-      <Card size="small" className="admin-power-line-detail-meta">
-        <Descriptions bordered size="small" column={3}>
-          <Descriptions.Item label="线路编码">{lineDetail.code || "-"}</Descriptions.Item>
-          <Descriptions.Item label="线路名称">{lineDetail.name || "-"}</Descriptions.Item>
-          <Descriptions.Item label="电压等级">{lineDetail.voltage_kv ?? "-"} kV</Descriptions.Item>
-          <Descriptions.Item label="杆塔总数">{lineDetail.tower_count}</Descriptions.Item>
-          <Descriptions.Item label="估算长度">
-            {lineDetail.estimated_length_km != null && lineDetail.estimated_length_km > 0 ? `${lineDetail.estimated_length_km.toFixed(2)} km` : "-"}
-          </Descriptions.Item>
-          <Descriptions.Item label="更新时间">{formatDateTime(lineDetail.update_date)}</Descriptions.Item>
-        </Descriptions>
-      </Card>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <Space size={8} wrap>
-          <Space.Compact size="small">
-            {canTowerManage && (
-              <Button onClick={openImportModal}>
-                导入 CSV
-              </Button>
-            )}
-            {canTowerRead && (
-              <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
-                导出 CSV
-              </Button>
-            )}
-          </Space.Compact>
-        </Space>
-        <Radio.Group
-          value={towerViewMode}
-          onChange={(e) => setTowerViewMode(e.target.value as "table" | "map")}
-          optionType="button"
-          buttonStyle="solid"
-          size="small"
-        >
-          <Radio.Button value="map" title="地图">
-            <GlobalOutlined />
-          </Radio.Button>
-          <Radio.Button value="table" title="杆塔列表">
-            <TableOutlined />
-          </Radio.Button>
-        </Radio.Group>
-      </div>
-      <div style={{ display: towerViewMode === "table" ? "block" : "none" }}>
-        <Space direction="vertical" size={12} className="w-full">
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item">
-                <Input value={towerKeyword} allowClear onChange={(event) => setTowerKeyword(event.target.value)} placeholder="按塔号/模型筛选" />
-              </Form.Item>
-              <Form.Item label="塔型" className="admin-filter-keyword-item">
-                <Select value={towerTypeFilter} options={[...TOWER_TYPE_OPTIONS]} onChange={(value) => setTowerTypeFilter(value)} />
-              </Form.Item>
-              <Form.Item>
-                <Button htmlType="button" icon={<SearchOutlined />} onClick={() => setTowerPagination({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE })} className="admin-search-btn">
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-          </div>
-          <div className="relative">
-            <Table<LineTowerSummary>
-              rowKey={(row) => row.id}
-              columns={towerColumns}
-              dataSource={towers}
-              loading={towersQuery.isFetching}
-              pagination={{
-                current: towerPagination.current,
-                pageSize: towerPagination.pageSize,
-                total: towersQuery.data?.total ?? 0,
-                showSizeChanger: true,
-                showTotal: (total) => `共 ${total} 条`,
-                hideOnSinglePage: false,
-                onChange: (page, pageSize) => {
-                  setTowerPagination({ current: page, pageSize });
-                },
-              }}
-              scroll={{ x: 1400 }}
-            />
-          </div>
-        </Space>
-      </div>
-      <div style={{ display: towerViewMode === "map" ? "block" : "none" }}>
-        <div className="flex flex-col gap-3">
-          <PowerLineCesiumMap
-            lineCode={lineDetail.code}
-            lineName={lineDetail.name}
-            towers={towers}
-            terrainDataset={null}
-            accessToken=""
-            exaggeration={1}
-            loading={towersQuery.isFetching}
-            height={500}
-          />
-        </div>
-      </div>
-
-      <Modal
-        title="导入杆塔数据"
-        open={importModalOpen}
-        onCancel={() => {
-          if (importMutation.isPending) return;
-          closeImportModal();
-        }}
-        footer={null}
-        width={520}
-        destroyOnClose
-      >
-        <div style={{ marginBottom: 16 }}>
-          <Form layout="vertical">
-            <Form.Item label="数据文件" required>
-              <Upload.Dragger
-                accept=".csv,text/csv"
-                showUploadList={false}
-                beforeUpload={(file) => {
-                  const maxMB = 50;
-                  const allowedExts = ["csv"];
-                  const ext = file.name.split(".").pop()?.toLowerCase() || "";
-                  if (file.size > maxMB * 1024 * 1024) {
-                    messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
-                    return Upload.LIST_IGNORE;
-                  }
-                  if (!allowedExts.includes(ext)) {
-                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
-                    return Upload.LIST_IGNORE;
-                  }
-                  return true;
-                }}
-                customRequest={({ file }) => handleTempUpload(file as File)}
-                onRemove={() => {
-                  setSelectedFile(null);
-                  setTempFileId(null);
-                  setUploadProgress(0);
-                  setUploadError("");
-                }}
-              >
-                {selectedFile ? (
-                  <>
-                    <p className="ant-upload-text">{selectedFile.name}</p>
-                    {uploadProgress < 100 ? (
-                      <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
-                    ) : tempFileId ? (
-                      <Typography.Text type="success">
-                        <CheckCircleOutlined /> 上传完成，可以确认导入
-                      </Typography.Text>
-                    ) : (
-                      <Typography.Text type="warning">上传中…</Typography.Text>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
-                      点击或拖拽文件到此区域上传
-                    </p>
-                    <Typography.Text type="secondary">
-                      选择文件后立即上传到临时存储，确认导入后开始解析。
-                    </Typography.Text>
-                  </>
-                )}
-                {uploadError && (
-                  <Typography.Text type="danger" style={{ display: "block", marginTop: 8 }}>
-                    {uploadError}
-                  </Typography.Text>
-                )}
-              </Upload.Dragger>
-            </Form.Item>
-          </Form>
-        </div>
-        <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
-          <Button
-            type="primary"
-            disabled={!tempFileId}
-            loading={importMutation.isPending}
-            onClick={() => importMutation.mutate()}
-          >
-            确认导入
-          </Button>
-        </div>
-      </Modal>
-      <Drawer
-        title={selectedTowerForDetail ? `杆塔详情 - ${selectedTowerForDetail.tower_no}` : "杆塔详情"}
-        open={towerDetailDrawerOpen}
-        width={720}
-        onClose={closeTowerDetailDrawer}
-        destroyOnClose
-      >
-        {towerDetailQuery.isPending ? (
-          <div className="flex items-center justify-center py-16">
-            <Typography.Text type="secondary">加载中...</Typography.Text>
-          </div>
-        ) : towerDetailQuery.isError ? (
-          <Alert
-            showIcon
-            type="error"
-            message="加载杆塔详情失败"
-            description={towerDetailQuery.error instanceof Error ? towerDetailQuery.error.message : "未知错误"}
-          />
-        ) : towerDetailQuery.data ? (
-          (() => {
-            const detail = towerDetailQuery.data;
-            const tower = detail.tower;
-            return (
-              <Tabs
-                items={[
-                  {
-                    key: "basic",
-                    label: "基本信息",
-                    children: (
-                      <Descriptions bordered size="small" column={2}>
-                        <Descriptions.Item label="塔号">{tower.tower_no}</Descriptions.Item>
-                        <Descriptions.Item label="序号">{tower.seq_no}</Descriptions.Item>
-                        <Descriptions.Item label="杆塔模型">{tower.tower_model ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="塔型">{tower.tower_type ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="线路电压等级">{tower.voltage_kv != null ? `${tower.voltage_kv} kV` : "-"}</Descriptions.Item>
-                        <Descriptions.Item label="风险等级">{tower.risk_level ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="经度">{tower.longitude != null ? tower.longitude : "-"}</Descriptions.Item>
-                        <Descriptions.Item label="纬度">{tower.latitude != null ? tower.latitude : "-"}</Descriptions.Item>
-                        <Descriptions.Item label="海拔(m)">{tower.altitude_m ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="地形">{tower.terrain ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="接地电阻(Ω)">{tower.ground_resistance_ohm ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="地闪密度">{tower.lightning_density ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="小号侧档距(m)">{tower.span_small_m ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="大号侧档距(m)">{tower.span_large_m ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="地面倾角1">{tower.slope_1 ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="地面倾角2">{tower.slope_2 ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="直线/耐张">{tower.structure_kind ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="绝缘子串长度(mm)">{tower.insulator_length_m ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="杆塔呼高(m)">{tower.call_height_m ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="避雷线高度(m)">{tower.shield_wire_height_m ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="左避雷线中距(m)">{tower.lightning_wire_left_mid_distance_m ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="右避雷线中距(m)">{tower.lightning_wire_right_mid_distance_m ?? "-"}</Descriptions.Item>
-                      </Descriptions>
-                    ),
-                  },
-                  {
-                    key: "circuits",
-                    label: "回路几何",
-                    children: detail.circuits.length === 0 ? (
-                      <Empty description="暂无回路数据" />
-                    ) : (
-                      <Table<TowerCircuitSummary>
-                        rowKey={(row) => String(row.circuit_no)}
-                        dataSource={detail.circuits}
-                        size="small"
-                        pagination={false}
-                        columns={[
-                          { title: "回路编号", dataIndex: "circuit_no", width: 80 },
-                          { title: "相序", dataIndex: "phase_sequence", render: (value: string | null) => value || "-" },
-                          { title: "上相中距(m)", dataIndex: "spacing_upper_m", render: (value: number | null) => value ?? "-" },
-                          { title: "中相中距(m)", dataIndex: "spacing_middle_m", render: (value: number | null) => value ?? "-" },
-                          { title: "下相中距(m)", dataIndex: "spacing_lower_m", render: (value: number | null) => value ?? "-" },
-                          { title: "上相高度(m)", dataIndex: "height_upper_m", render: (value: number | null) => value ?? "-" },
-                          { title: "中相高度(m)", dataIndex: "height_middle_m", render: (value: number | null) => value ?? "-" },
-                          { title: "下相高度(m)", dataIndex: "height_lower_m", render: (value: number | null) => value ?? "-" },
-                        ]}
-                      />
-                    ),
-                  },
-                  {
-                    key: "lightning",
-                    label: "防雷参数",
-                    children: detail.lightning_result ? (
-                      <Descriptions bordered size="small" column={2}>
-                        <Descriptions.Item label="反击耐雷水平(kA)">{detail.lightning_result.counterstroke_withstand_ka ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="反击跳闸率">{detail.lightning_result.counterstroke_trip_rate ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="绕击耐雷水平(kA)">{detail.lightning_result.shielding_withstand_ka ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="绕击跳闸率">{detail.lightning_result.shielding_trip_rate ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="电角度(°)">{detail.lightning_result.angle_deg ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="风险等级">{detail.lightning_result.risk_level ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="雷电流幅值 a(kA)">{detail.lightning_result.current_a_ka ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="雷电流幅值 b(kA)">{detail.lightning_result.current_b_ka ?? "-"}</Descriptions.Item>
-                      </Descriptions>
-                    ) : (
-                      <Empty description="暂无防雷参数" />
-                    ),
-                  },
-                  {
-                    key: "analysis",
-                    label: "分析建议",
-                    children: (
-                      <Space direction="vertical" size={16} className="w-full">
-                        <Descriptions bordered size="small" column={1}>
-                          <Descriptions.Item label="原因分析">{detail.analysis?.cause_analysis ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label="措施推荐">{detail.analysis?.mitigation_recommendation ?? "-"}</Descriptions.Item>
-                        </Descriptions>
-                        <Descriptions bordered size="small" column={3}>
-                          <Descriptions.Item label="直线/耐张">{tower.structure_kind ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label="绕击/反击模式">{tower.stroke_mode ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label="雷电流波形">{tower.current_type ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label="雷电流幅值 a">{tower.current_a ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label="雷电流幅值 b">{tower.current_b ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label="绝缘子串长度(mm)">{tower.insulator_length_m ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label="杆塔呼高(m)">{tower.call_height_m ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label="避雷线高度(m)">{tower.shield_wire_height_m ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label="左保护角(°)">{tower.protection_angle_left_deg ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label="右保护角(°)">{tower.protection_angle_right_deg ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label="A相避雷器">
-                            {detail.arrester?.A ? "是" : "否"}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="B相避雷器">
-                            {detail.arrester?.B ? "是" : "否"}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="C相避雷器">
-                            {detail.arrester?.C ? "是" : "否"}
-                          </Descriptions.Item>
-                        </Descriptions>
-                      </Space>
-                    ),
-                  },
-                ]}
-              />
-            );
-          })()
-        ) : null}
-      </Drawer>
-    </div>
   );
 }

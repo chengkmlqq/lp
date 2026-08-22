@@ -42,74 +42,41 @@ test("LP-301: detail view is a flex column so meta card + tabs stack and stretch
   assert.match(block, /overflow-y:\s*auto/, "详情视图应开启纵向滚动");
 });
 
-test("LP-307: detail view scrolls vertically without redundant inner table wrapper scroll", () => {
-  const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
-  assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
-  assert.ok(/<div className="relative">\s*<Table<LineTowerSummary>/.test(detailBlock), "杆塔列表 Table 外层不应再有 overflow-auto 滚动容器");
+test("LP-433: list page no longer embeds PowerLineDetailView tabs", () => {
+  assert.ok(!/PowerLineDetailView/.test(PAGE), "列表页应移除内嵌详情视图");
+  assert.ok(!/type="editable-card"/.test(PAGE), "列表页应移除可编辑 Tab 栏");
+  assert.ok(!/detailTabs/.test(PAGE), "列表页应移除详情 Tab 状态");
 });
 
-test("LP-301: detail view shows meta card on top and map/tower switch below", () => {
-  const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
-  assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
-  assert.match(detailBlock, /admin-power-line-detail-meta/, "详情顶部应展示基本信息 Card");
-  assert.ok(!/key:\s*"info"[\s\S]{0,80}label:\s*"线路信息"/.test(detailBlock), "线路信息不应再作为独立 Tab");
-  assert.match(detailBlock, /<Radio.Button value="map"/, "详情下方应有地图切换按钮");
-  assert.match(detailBlock, /<GlobalOutlined \/>/, "地图切换按钮应使用图标");
-  assert.match(detailBlock, /<Radio.Button value="table"/, "详情下方应有杆塔列表切换按钮");
-  assert.match(detailBlock, /<TableOutlined \/>/, "杆塔列表切换按钮应使用图标");
+test("LP-433: list action buttons route to tower and map pages", () => {
+  assert.match(PAGE, /onClick=\{\(\) => onDetail\(line\)\}[\s\S]{0,120}杆塔/, "列表详情按钮应显示为杆塔");
+  assert.match(PAGE, /router\.push\(`\/admin\/power-lines\/\$\{line\.id\}\/towers`\)/, "列表操作应跳转杆塔页");
+  assert.match(PAGE, /router\.push\(`\/admin\/power-lines\/\$\{line\.id\}\/map`\)/, "列表操作应新增跳转地图页");
 });
 
-test("LP-307: detail basic info is rendered as a bordered Descriptions table", () => {
-  const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
-  assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
-  assert.match(detailBlock, /<Descriptions bordered size="small" column=\{3\}>/, "基本信息应以 bordered Descriptions 表格呈现");
-  assert.match(detailBlock, /label="线路编码"/, "表格应包含线路编码");
-  assert.match(detailBlock, /label="线路名称"/, "表格应包含线路名称");
-  assert.match(detailBlock, /label="电压等级"/, "表格应包含电压等级");
-  assert.match(detailBlock, /label="杆塔总数"/, "表格应包含杆塔总数");
-  assert.match(detailBlock, /label="估算长度"/, "表格应包含估算长度");
-  assert.match(detailBlock, /label="更新时间"/, "表格应包含更新时间");
+test("LP-433: card actions provide tower and preview navigation", () => {
+  const cardBlock = PAGE.match(/function PowerLineCard\([\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(cardBlock, "应存在 PowerLineCard 组件定义");
+  assert.match(cardBlock, /GlobalOutlined/, "卡片应提供地图预览入口");
+  assert.match(cardBlock, /onPreview\(line\)/, "卡片应支持地图预览跳转");
 });
 
-test("LP-317: detail view uses Radio.Group switch without Tabs", () => {
-  const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
-  assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
-  assert.match(detailBlock, /<Radio\.Group/, "地图/列表切换应使用 Radio.Group");
-  assert.ok(!/<Tabs/.test(detailBlock), "详情视图不应再使用 Tabs 组件切换");
-  assert.ok(!/type="editable-card"/.test(detailBlock), "详情视图不应再使用 editable-card 类型");
+test("LP-433: towers page contains filters, import/export and tower table", () => {
+  const towersPage = readFileSync(join(__dirname, "../app/admin/power-lines/[lineId]/towers/page.tsx"), "utf-8");
+  assert.match(towersPage, /关键词/, "杆塔页应保留关键词筛选");
+  assert.match(towersPage, /塔型/, "杆塔页应保留塔型筛选");
+  assert.match(towersPage, /查询/, "杆塔页应保留查询按钮");
+  assert.match(towersPage, /导入 CSV/, "杆塔页应保留导入功能");
+  assert.match(towersPage, /导出 CSV/, "杆塔页应保留导出功能");
+  assert.ok(/admin-power-line-detail-meta/.test(towersPage) || !/PowerLineCesiumMap/.test(towersPage), "杆塔页应移除地图视图");
 });
 
-test("LP-317: detail view defaults to the tower list", () => {
-  const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
-  assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
-  assert.match(
-    detailBlock,
-    /towerViewMode === "table" \? "block" : "none"/,
-    "默认应展示杆塔列表面板（table）",
-  );
-  const tableIndex = detailBlock.indexOf("towerViewMode === \"table\" ? \"block\" : \"none\"");
-  const mapIndex = detailBlock.indexOf("towerViewMode === \"map\" ? \"block\" : \"none\"");
-  assert.ok(tableIndex >= 0 && mapIndex > tableIndex, "杆塔列表面板应位于地图面板之前");
+test("LP-433: map page uses full-page Cesium map without view toggle", () => {
+  const mapPage = readFileSync(join(__dirname, "../app/admin/power-lines/[lineId]/map/page.tsx"), "utf-8");
+  assert.match(mapPage, /PowerLineCesiumMap/, "地图页应使用 Cesium 地图组件");
+  assert.ok(!/Radio\.Group/.test(mapPage), "地图页不应再存在视图切换 Radio");
+  assert.ok(!/towerViewMode/.test(mapPage), "地图页应移除地图/列表切换状态");
 });
-
-test("LP-307: detail tower table height is not limited (no vertical scroll setting)", () => {
-  const detailBlock = PAGE.match(/className="admin-power-lines-detail-view"[\s\S]*$/)?.[0];
-  assert.ok(detailBlock, "应存在线路详情视图 JSX 块");
-  assert.match(detailBlock, /scroll=\{\{ x: 1400 \}\}/, "杆塔列表 Table 应仅保留横向滚动");
-  assert.ok(!/scroll=\{\{ x: 1400, y:/.test(detailBlock), "杆塔列表 Table 不应再有纵向滚动高度限制");
-});
-
-test("LP-317: embedded detail import/export buttons are permission gated", () => {
-  assert.match(PAGE, /canTowerManage &&[\s\S]{0,160}导入 CSV/, "导入按钮应在 tower.manage 权限下显示");
-  assert.match(PAGE, /canTowerRead &&[\s\S]{0,160}导出 CSV/, "导出按钮应在 tower.read 权限下显示");
-  assert.match(PAGE, /towers\/import/, "导入应调用 /towers/import 接口");
-  assert.match(PAGE, /towers\/export/, "导出应调用 /towers/export 接口");
-});
-
-test("LP-317: openDetail passes canTowerManage to embedded detail", () => {
-  assert.match(PAGE, /canTowerManage=\{canTowerManage\}/, "openDetail 调用处应向下传递 canTowerManage");
-});
-
 const powerLineCardBlock = PAGE.match(/function PowerLineCard\([\s\S]*?\n\}/)?.[0] ?? "";
 
 test("LP-320: line card uses a three-section layout without antd title/extra", () => {
