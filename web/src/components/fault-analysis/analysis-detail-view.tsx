@@ -16,6 +16,7 @@ import {
   Collapse,
   Tag,
   Tree,
+  Tabs,
 } from "antd";
 import {
   DownloadOutlined,
@@ -735,19 +736,19 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
 
   return (
     <div className="flex flex-col gap-4 h-full">
-      <Card className="flex-1 overflow-auto">
-        <div className="flex gap-2 mb-4">
-          <Button type={activeView === "report" ? "primary" : "default"} onClick={() => setActiveView("report")}>
-            查看报告
-          </Button>
-          <Button type={activeView === "process" ? "primary" : "default"} onClick={() => setActiveView("process")}>
-            计算过程
-          </Button>
-          <Button type={activeView === "artifacts" ? "primary" : "default"} onClick={() => setActiveView("artifacts")}>
-            查看产物
-          </Button>
-        </div>
-        {activeView === "report" && (
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey={activeView}
+        onChange={(key) => setActiveView(key as "report" | "process" | "artifacts")}
+        className="admin-fault-analysis-detail-tabs"
+        items={[
+          {
+            key: "report",
+            label: <span>报告</span>,
+            closable: false,
+            children: (
+              <Card className="flex-1 overflow-auto">
                 <div id={exportElementId}>
                   <div className="border-b border-gray-200 pb-5 mb-6">
                     <div className="flex items-start justify-between mb-5">
@@ -948,10 +949,23 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
             })}
           </Space>
         </div>
-        )}
-        {activeView === "process" && renderProcessContent()}
-        {activeView === "artifacts" && renderArtifactsContent()}
         </Card>
+            ),
+          },
+          {
+            key: "process",
+            label: <span>计算过程</span>,
+            closable: false,
+            children: <Card className="flex-1 overflow-auto">{renderProcessContent()}</Card>,
+          },
+          {
+            key: "artifacts",
+            label: <span>产物</span>,
+            closable: false,
+            children: <Card className="flex-1 overflow-auto">{renderArtifactsContent()}</Card>,
+          },
+        ]}
+      />
     </div>
   );
 }
