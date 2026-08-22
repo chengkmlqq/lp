@@ -510,22 +510,44 @@ jobs:
               ${COMPOSE_CMD} -p "${COMPOSE_PROJECT_NAME}" --env-file deploy/pro-deploy/.env --env-file deploy/pro-deploy/.env.prod --env-file .images.env -f deploy/pro-deploy/compose.yml "$@"
             }
 
-            pull_with_retry() {
-              local max_retries=3
-              local attempt=1
-              while true; do
-                if compose_run pull; then
-                  break
+            # 逐个检查 compose 服务引用的镜像，本地已有同 tag 则跳过，只拉缺失的。
+            pull_missing_images() {
+              local image_refs
+              image_refs=$(
+                ${COMPOSE_CMD} -p "${COMPOSE_PROJECT_NAME}" --env-file deploy/pro-deploy/.env \
+                  --env-file deploy/pro-deploy/.env.prod --env-file .images.env \
+                  -f deploy/pro-deploy/compose.yml config \
+                  | awk -F': ' '/^[[:space:]]+image:/{print $2}' | sort -u
+              )
+              local missing=0
+              local skipped=0
+              for img in ${image_refs}; do
+                if docker image inspect "${img}" >/dev/null 2>&1; then
+                  echo "[skip] 本地已存在: ${img}"
+                  skipped=$((skipped + 1))
+                else
+                  echo "[pull] 拉取: ${img}"
+                  local img_attempt=1
+                  while [ "${img_attempt}" -le 3 ]; do
+                    if docker pull "${img}" >/dev/null 2>&1; then
+                      break
+                    fi
+                    echo "[warn] pull ${img} 失败 (attempt ${img_attempt}/3), retrying..."
+                    sleep $((img_attempt * 10))
+                    img_attempt=$((img_attempt + 1))
+                  done
+                  if ! docker image inspect "${img}" >/dev/null 2>&1; then
+                    echo "[error] 镜像拉取失败: ${img}"
+                    missing=$((missing + 1))
+                  fi
                 fi
-                if [ "${attempt}" -ge "${max_retries}" ]; then
-                  echo "[error] docker compose pull failed after ${max_retries} attempts."
-                  return 1
-                fi
-                local sleep_seconds=$((attempt * 20))
-                echo "[warn] docker compose pull failed (attempt ${attempt}/${max_retries}), retrying in ${sleep_seconds}s..."
-                sleep "${sleep_seconds}"
-                attempt=$((attempt + 1))
               done
+              if [ "${missing}" -gt 0 ]; then
+                echo "[error] ${missing} 个镜像拉取失败"
+                return 1
+              fi
+              echo "[info] 镜像检查完成：跳过 ${skipped} 个已存在，拉取 ${missing} 个缺失"
+              return 0
             }
 
             # ── MATLAB Worker 数据卷目录（创建基础目录；Runtime 由外部流程部署，不在构建时下载/解压） ──
@@ -537,7 +559,7 @@ jobs:
             echo "预拉 fquiz-mcr-base:r2023a ..."
             docker pull "${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-mcr-base:r2023a" >/dev/null 2>&1 || echo "[warn] mcr-base 预拉失败（忽略，matlab-worker 会全量拉）"
 
-            pull_with_retry
+            pull_missing_images
 
             if ! compose_run up -d --remove-orphans; then
               echo "[error] docker compose up failed, collecting container diagnostics..."
