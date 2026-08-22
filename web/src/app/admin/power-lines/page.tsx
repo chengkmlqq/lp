@@ -38,6 +38,7 @@ import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
+import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { readApiError } from "@/lib/api";
 import type { LineListResponse, LineSummary } from "@/types/auth";
 

@@ -23,7 +23,7 @@ export function getApiBaseUrl(): string {
     if (typeof window !== "undefined") {
       return trimTrailingSlash(window.location.origin);
     }
-    return trimTrailingSlash(configured);
+    return "http://127.0.0.1:8000";
   }
 
   const browserHost = window.location.hostname;

@@ -27,7 +27,16 @@ const WSContext = createContext<WSContextValue | undefined>(undefined);
 
 function toWebSocketUrl(path: string): string {
   const base = getApiBaseUrl();
-  const url = new URL(path, base);
+  let url: URL;
+  try {
+    url = new URL(path, base);
+  } catch {
+    if (typeof window !== "undefined") {
+      url = new URL(path, window.location.origin);
+    } else {
+      url = new URL(path, "http://127.0.0.1:8000");
+    }
+  }
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 }
