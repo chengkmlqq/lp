@@ -614,6 +614,21 @@ export default function AdminLightningCurrentsPage() {
     },
   });
 
+  // 幅值快照：取首行 line_amplitude_backfill 关联行的幅值字段，与线路无关，仅展示一次
+  const backfillAmplitudeSnapshot = useMemo(() => {
+    const first = backfillLinesQuery.data?.items?.[0];
+    if (!first) {
+      return null;
+    }
+    return {
+      currentA: first.current_a,
+      currentB: first.current_b,
+      peakMax: first.peak_max,
+      peakMin: first.peak_min,
+      sampledEventCount: first.sampled_event_count,
+    };
+  }, [backfillLinesQuery.data]);
+
   const openBackfillLines = (record: LightningAmplitudeRecord) => {
     setBackfillLinesRecord(record);
     setBackfillLinesOpen(true);
@@ -1253,7 +1268,7 @@ export default function AdminLightningCurrentsPage() {
 
       {/* 回填线路小窗 */}
       <Modal
-        title={backfillLinesRecord ? `回填线路 - ${backfillLinesRecord.source_file_name}` : "回填线路"}
+        title={backfillLinesRecord ? `使用此幅值的线路 - ${backfillLinesRecord.source_file_name}` : "使用此幅值的线路"}
         open={backfillLinesOpen}
         onCancel={() => {
           setBackfillLinesOpen(false);
@@ -1262,89 +1277,75 @@ export default function AdminLightningCurrentsPage() {
         footer={null}
         width={640}
       >
-        <Table<LightningAmplitudeBackfillLine>
-          rowKey="line_id"
-          size="small"
-          loading={backfillLinesQuery.isFetching}
-          dataSource={backfillLinesQuery.data?.items ?? []}
-          tableLayout="fixed"
-          pagination={false}
-          scroll={{ y: 320 }}
-          columns={[
-            {
-              title: "线路编号",
-              dataIndex: "line_code",
-              key: "line_code",
-              width: 120,
-              render: (value: string | null) => value || "-",
-            },
-            {
-              title: "线路名称",
-              dataIndex: "line_name",
-              key: "line_name",
-              width: 150,
-              ellipsis: true,
-              render: (value: string | null) => value || "-",
-            },
-            {
-              title: "电压(kV)",
-              dataIndex: "voltage_kv",
-              key: "voltage_kv",
-              width: 90,
-              render: (value: number | null) => (value == null ? "-" : value),
-            },
-            {
-              title: "current_a",
-              dataIndex: "current_a",
-              key: "current_a",
-              width: 90,
-              render: (value: number | null) => formatNumber(value, 3),
-            },
-            {
-              title: "current_b",
-              dataIndex: "current_b",
-              key: "current_b",
-              width: 90,
-              render: (value: number | null) => formatNumber(value, 3),
-            },
-            {
-              title: "峰值max(kA)",
-              dataIndex: "peak_max",
-              key: "peak_max",
-              width: 100,
-              render: (value: number | null) => formatNumber(value, 3),
-            },
-            {
-              title: "峰值min(kA)",
-              dataIndex: "peak_min",
-              key: "peak_min",
-              width: 100,
-              render: (value: number | null) => formatNumber(value, 3),
-            },
-            {
-              title: "采样数",
-              dataIndex: "sampled_event_count",
-              key: "sampled_event_count",
-              width: 70,
-              render: (value: number) => value ?? 0,
-            },
-            {
-              title: "回填时间",
-              dataIndex: "prepared_at",
-              key: "prepared_at",
-              width: 150,
-              render: (value: string | null) => formatDateTime(value),
-            },
-          ]}
-          locale={{
-            emptyText: (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="该幅值尚未被任何线路回填使用"
-              />
-            ),
-          }}
-        />
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          {backfillAmplitudeSnapshot && (
+            <Descriptions size="small" bordered column={4}>
+              <Descriptions.Item label="current_a(kA)">
+                {formatNumber(backfillAmplitudeSnapshot.currentA, 3)}
+              </Descriptions.Item>
+              <Descriptions.Item label="current_b(kA)">
+                {formatNumber(backfillAmplitudeSnapshot.currentB, 3)}
+              </Descriptions.Item>
+              <Descriptions.Item label="峰值max(kA)">
+                {formatNumber(backfillAmplitudeSnapshot.peakMax, 3)}
+              </Descriptions.Item>
+              <Descriptions.Item label="峰值min(kA)">
+                {formatNumber(backfillAmplitudeSnapshot.peakMin, 3)}
+              </Descriptions.Item>
+              <Descriptions.Item label="采样数" span={4}>
+                {backfillAmplitudeSnapshot.sampledEventCount}
+              </Descriptions.Item>
+            </Descriptions>
+          )}
+          <Table<LightningAmplitudeBackfillLine>
+            rowKey="line_id"
+            size="small"
+            loading={backfillLinesQuery.isFetching}
+            dataSource={backfillLinesQuery.data?.items ?? []}
+            tableLayout="fixed"
+            pagination={false}
+            scroll={{ y: 260 }}
+            columns={[
+              {
+                title: "线路编号",
+                dataIndex: "line_code",
+                key: "line_code",
+                width: 120,
+                render: (value: string | null) => value || "-",
+              },
+              {
+                title: "线路名称",
+                dataIndex: "line_name",
+                key: "line_name",
+                width: 150,
+                ellipsis: true,
+                render: (value: string | null) => value || "-",
+              },
+              {
+                title: "电压(kV)",
+                dataIndex: "voltage_kv",
+                key: "voltage_kv",
+                width: 90,
+                render: (value: number | null) => (value == null ? "-" : value),
+              },
+              {
+                title: "回填时间",
+                dataIndex: "prepared_at",
+                key: "prepared_at",
+                width: 150,
+                render: (value: string | null) => formatDateTime(value),
+              },
+            ]}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="该幅值尚未被任何线路回填使用"
+                />
+              ),
+            }}
+          />
+        </Space>
       </Modal>
 
       {/* 回填：选择线路列表后执行回填 */}
