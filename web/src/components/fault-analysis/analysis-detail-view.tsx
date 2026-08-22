@@ -958,7 +958,6 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
             ]}
           />
         </Card>
-      </div>
     </div>
   );
 }
