@@ -163,12 +163,12 @@ async def create_fault_analysis_with_files(
     wave_data_file: UploadFile | None = File(default=None),
     lightning_data_file: UploadFile | None = File(default=None),
     ledger_data_file: UploadFile | None = File(default=None),
-    traveling_wave_file: UploadFile | None = File(default=None),
+    traveling_wave_file: list[UploadFile] | None = File(default=None),
     optical_data_file: UploadFile | None = File(default=None),
     wave_data_temp_file_id: str | None = Form(default=None),
     lightning_data_temp_file_id: str | None = Form(default=None),
     ledger_data_temp_file_id: str | None = Form(default=None),
-    traveling_wave_temp_file_id: str | None = Form(default=None),
+    traveling_wave_temp_file_id: list[str] | None = Form(default=None),
     optical_data_temp_file_id: str | None = Form(default=None),
     current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
     db: Session = Depends(get_db),
@@ -266,18 +266,37 @@ async def _store_explicit_uploads(
     upload_files: dict[str, object],
     analysis_id: str,
     user_id: str,
-    items: tuple[tuple[str, UploadFile | None, str | None], ...],
+    items: tuple[tuple[str, UploadFile | list[UploadFile] | None, str | list[str] | None], ...],
 ) -> None:
-    for field, upload, temp_file_id in items:
+    for field, uploads, temp_file_ids in items:
         allowed_exts = UPLOAD_ALLOWED_EXTS[field]
-        if temp_file_id:
+        temp_id_list = [temp_file_ids] if isinstance(temp_file_ids, str) else list(temp_file_ids or [])
+        upload_list = [uploads] if isinstance(uploads, UploadFile) else list(uploads or [])
+        if field == "traveling_wave_file":
+            stored: list[dict[str, str]] = []
+            for temp_file_id in temp_id_list:
+                content, file_name = resolve_temp_upload(temp_file_id, user_id)
+                validate_upload_bytes(file_name, content, allowed_exts=allowed_exts)
+                stored.append(store_analysis_upload_file(analysis_id, field, file_name, content))
+            for upload in upload_list:
+                if upload is not None and upload.filename:
+                    validate_upload(upload, allowed_exts=allowed_exts)
+                    content = await upload.read()
+                    stored.append(store_analysis_upload_file(analysis_id, field, upload.filename, content))
+            if stored:
+                upload_files[field] = stored
+            continue
+        for temp_file_id in temp_id_list:
             content, file_name = resolve_temp_upload(temp_file_id, user_id)
             validate_upload_bytes(file_name, content, allowed_exts=allowed_exts)
             upload_files[field] = store_analysis_upload_file(analysis_id, field, file_name, content)
-        elif upload is not None and upload.filename:
-            validate_upload(upload, allowed_exts=allowed_exts)
-            content = await upload.read()
-            upload_files[field] = store_analysis_upload_file(analysis_id, field, upload.filename, content)
+            break
+        for upload in upload_list:
+            if upload is not None and upload.filename:
+                validate_upload(upload, allowed_exts=allowed_exts)
+                content = await upload.read()
+                upload_files[field] = store_analysis_upload_file(analysis_id, field, upload.filename, content)
+                break
 
 
 @router.put("/{analysis_id}", response_model=FaultAnalysisDetail)

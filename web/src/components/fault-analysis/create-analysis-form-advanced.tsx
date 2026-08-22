@@ -593,10 +593,10 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               </div>
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">分布式行波数据</div>
-                <div className="text-xs text-gray-500 mb-3">支持 .csv/.dat/.txt/.json 格式</div>
+                <div className="text-xs text-gray-500 mb-3">支持 .csv/.dat/.txt/.json 格式，可多选（A/B/C 三相）</div>
               </div>
               <Form.Item name="traveling_wave_file" className="mb-0">
-                <TempFileUpload accept=".csv,.dat,.txt,.json" maxSizeMb={50} buttonLabel="选择文件" previewKind="traveling_wave" />
+                <TempFileUpload accept=".csv,.dat,.txt,.json" maxSizeMb={50} buttonLabel="选择文件" previewKind="traveling_wave" multiple />
               </Form.Item>
             </div>
 

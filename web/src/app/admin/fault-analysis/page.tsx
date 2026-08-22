@@ -150,6 +150,12 @@ function pickTempFileId(list: { temp_file_id?: string; status?: string }[] | und
   return item?.temp_file_id;
 }
 
+/** 从临时上传文件列表中提取所有已完成的 temp_file_id。 */
+function pickTempFileIds(list: { temp_file_id?: string; status?: string }[] | undefined): string[] | undefined {
+  const ids = list?.filter((it) => it.temp_file_id).map((it) => it.temp_file_id as string);
+  return ids?.length ? ids : undefined;
+}
+
 /** 检查是否仍存在未完成上传的文件（提交前阻塞）。 */
 function hasPendingUploads(files: { status?: string; temp_file_id?: string }[] | undefined): boolean {
   return (files ?? []).some((it) => it.status === "uploading" || (!it.temp_file_id && it.status !== "done"));
@@ -358,6 +364,15 @@ export default function AdminFaultAnalysisPage() {
         ["optical_data_temp_file_id", values.optical_data_file],
       ];
       for (const [field, list] of fileFields) {
+        if (field === "traveling_wave_temp_file_id") {
+          const tempFileIds = pickTempFileIds(list);
+          if (tempFileIds) {
+            for (const tempFileId of tempFileIds) {
+              formData.append(field, tempFileId);
+            }
+          }
+          continue;
+        }
         const tempFileId = pickTempFileId(list);
         if (tempFileId) {
           formData.set(field, tempFileId);
