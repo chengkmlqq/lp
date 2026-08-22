@@ -951,11 +951,16 @@ export default function AdminLightningCurrentsPage() {
         onEdit={handleTabsEdit}
         className="admin-lightning-currents-tabs"
         tabBarExtraContent={
-          canManage ? (
-            <Button type="primary" onClick={() => setImportModalOpen(true)}>
-              导入
+          <Space size={8}>
+            {canManage ? (
+              <Button type="primary" onClick={() => setImportModalOpen(true)}>
+                导入
+              </Button>
+            ) : null}
+            <Button>
+              <Link href="/admin/lightning-currents/backfill-history">回填记录</Link>
             </Button>
-          ) : null
+          </Space>
         }
         items={[
           {

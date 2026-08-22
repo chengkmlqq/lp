@@ -17,8 +17,10 @@ from ..core.database import SessionLocal
 from ..models.base import utcnow
 from ..models.lightning_amplitude import LightningAmplitude
 from ..models.line_amplitude_backfill import LineAmplitudeBackfill
+from ..models.lightning_current_backfill import LightningCurrentBackfillTask, LightningCurrentBackfillTower
 from ..models.lightning_distribution import LightningDistribution
 from ..models.line import Line
+from ..models.line_amplitude_backfill import LineAmplitudeBackfill
 from ..models.line_tower import LineTower
 from ..models.tower_profile import TowerProfile
 from ..schemas.lightning import (
@@ -618,8 +620,24 @@ def prepare_line_lightning_current(
     profile_map = {item.tower_id: item for item in existing_profiles}
     created_profile_count = 0
 
+    # 1. 创建回填任务记录（历史快照）
+    task = LightningCurrentBackfillTask(
+        line_id=line.id,
+        prepared_at=now,
+        prepared_by_user_id=actor_user_id,
+        region_id=normalized_region,
+        is_synthetic=bool(payload.is_synthetic),
+        source_amplitude_ids=[amp_id for amp_id in used_amplitude_ids],
+    )
+    db.add(task)
+    db.flush()  # 获取 task.id
+
     for tower in towers:
         profile = profile_map.get(tower.id)
+        prev_a = profile.current_a if profile else None
+        prev_b = profile.current_b if profile else None
+        created_now = profile is None
+
         if profile is None:
             profile = TowerProfile(
                 tower_id=tower.id,
@@ -652,6 +670,29 @@ def prepare_line_lightning_current(
         profile.extra_profile_json = extra_profile
         profile.update_date = now
         profile.update_user = actor_user_id
+
+        # 2. 记录每条杆塔回填明细（快照）
+        db.add(
+            LightningCurrentBackfillTower(
+                task_id=task.id,
+                tower_id=tower.id,
+                current_a=current_a,
+                current_b=current_b,
+                previous_current_a=prev_a,
+                previous_current_b=prev_b,
+                action="created" if created_now else "updated",
+            )
+        )
+
+    # 3. 更新任务汇总
+    task.current_a = current_a
+    task.current_b = current_b
+    task.peak_max = peak_max
+    task.peak_min = peak_min
+    task.sampled_event_count = len(peaks)
+    task.updated_tower_count = len(towers)
+    task.created_profile_count = created_profile_count
+    task.warnings = warnings
 
     line_params = dict(line.lightning_param_json or {})
     line_params["雷电流幅值a"] = current_a
@@ -1852,3 +1893,144 @@ def prepare_line_lightning_density(
         warning_count=len(warnings),
         warnings=warnings,
     )
+
+
+# ---------------------------------------------------------------------------
+# 雷电流幅值回填历史（LightningCurrentBackfillTask / Tower）
+# ---------------------------------------------------------------------------
+def _serialize_backfill_task(task: LightningCurrentBackfillTask) -> LightningCurrentBackfillTaskSummary:
+    """把回填任务 ORM 对象序列化为摘要 schema。"""
+    return LightningCurrentBackfillTaskSummary(
+        id=task.id,
+        line_id=task.line_id,
+        line_name=task.line.name if task.line else None,
+        prepared_at=task.prepared_at,
+        prepared_by=task.prepared_by_user_id,
+        current_a=task.current_a,
+        current_b=task.current_b,
+        peak_max=task.peak_max,
+        peak_min=task.peak_min,
+        sampled_event_count=task.sampled_event_count,
+        updated_tower_count=task.updated_tower_count,
+        created_profile_count=task.created_profile_count,
+        warnings=list(task.warnings or []),
+        region_id=task.region_id,
+        is_synthetic=task.is_synthetic,
+    )
+
+
+def list_lightning_current_backfill_tasks(
+    db: Session,
+    *,
+    line_id: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> LightningCurrentBackfillTaskListResponse:
+    """回填任务列表（分页 + line_id / 时间范围筛选，按 prepared_at 倒序）。"""
+    filters: list[Any] = []
+    if line_id:
+        filters.append(LightningCurrentBackfillTask.line_id == line_id)
+    if start_date:
+        try:
+            start_dt = datetime.fromisoformat(start_date)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"无效的 start_date：{start_date}，请使用 YYYY-MM-DD",
+            ) from None
+        filters.append(LightningCurrentBackfillTask.prepared_at >= start_dt)
+    if end_date:
+        try:
+            end_dt = datetime.fromisoformat(end_date)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"无效的 end_date：{end_date}，请使用 YYYY-MM-DD",
+            ) from None
+        filters.append(LightningCurrentBackfillTask.prepared_at <= end_dt)
+
+    total = db.execute(
+        select(func.count()).select_from(LightningCurrentBackfillTask).where(*filters)
+    ).scalar() or 0
+    rows = db.execute(
+        select(LightningCurrentBackfillTask)
+        .where(*filters)
+        .order_by(LightningCurrentBackfillTask.prepared_at.desc(), LightningCurrentBackfillTask.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).scalars().all()
+
+    return LightningCurrentBackfillTaskListResponse(
+        items=[_serialize_backfill_task(item) for item in rows],
+        total=total,
+    )
+
+
+def get_lightning_current_backfill_task_detail(
+    db: Session,
+    task_id: str,
+    *,
+    page: int = 1,
+    page_size: int = 200,
+) -> LightningCurrentBackfillTaskDetail:
+    """回填任务详情：任务信息 + 逐杆塔明细（分页）。"""
+    task = db.execute(
+        select(LightningCurrentBackfillTask).where(LightningCurrentBackfillTask.id == task_id)
+    ).scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="回填任务不存在")
+
+    tower_rows = db.execute(
+        select(LightningCurrentBackfillTower)
+        .where(LightningCurrentBackfillTower.task_id == task_id)
+        .order_by(LightningCurrentBackfillTower.create_date.asc(), LightningCurrentBackfillTower.id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).scalars().all()
+
+    # 批量取塔号（避免 N+1）
+    tower_ids = [row.tower_id for row in tower_rows]
+    tower_no_map: dict[str, str | None] = {}
+    if tower_ids:
+        tower_rows_by_id = db.execute(
+            select(LineTower.id, LineTower.tower_no).where(LineTower.id.in_(tower_ids))
+        ).all()
+        tower_no_map = {str(item.id): item.tower_no for item in tower_rows_by_id}
+
+    towers: list[LightningCurrentBackfillTowerDetail] = []
+    for row in tower_rows:
+        towers.append(
+            LightningCurrentBackfillTowerDetail(
+                tower_id=row.tower_id,
+                tower_no=tower_no_map.get(row.tower_id),
+                action=row.action,
+                previous_current_a=row.previous_current_a,
+                previous_current_b=row.previous_current_b,
+                current_a=row.current_a,
+                current_b=row.current_b,
+                delta_a=(row.current_a - row.previous_current_a)
+                if row.current_a is not None and row.previous_current_a is not None
+                else None,
+                delta_b=(row.current_b - row.previous_current_b)
+                if row.current_b is not None and row.previous_current_b is not None
+                else None,
+            )
+        )
+
+    return LightningCurrentBackfillTaskDetail(
+        task=_serialize_backfill_task(task),
+        towers=towers,
+    )
+
+
+def get_lightning_current_backfill_task_towers(
+    db: Session,
+    task_id: str,
+    *,
+    page: int = 1,
+    page_size: int = 200,
+) -> LightningCurrentBackfillTaskDetail:
+    """回填任务下所有杆塔回填详情（分页），返回结构与任务详情一致。"""
+    return get_lightning_current_backfill_task_detail(db, task_id, page=page, page_size=page_size)

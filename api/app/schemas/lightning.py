@@ -268,3 +268,43 @@ class LightningLinkedLineSummary(BaseModel):
 class LightningLinkedLinesResponse(BaseModel):
     items: list[LightningLinkedLineSummary]
     total: int
+
+
+class LightningCurrentBackfillTaskSummary(BaseModel):
+    id: str
+    line_id: str
+    line_name: str | None
+    prepared_at: datetime
+    prepared_by: str | None
+    current_a: float | None
+    current_b: float | None
+    peak_max: float | None
+    peak_min: float | None
+    sampled_event_count: int
+    updated_tower_count: int
+    created_profile_count: int
+    warnings: list[str]
+    region_id: str | None
+    is_synthetic: bool
+
+
+class LightningCurrentBackfillTaskListResponse(BaseModel):
+    items: list[LightningCurrentBackfillTaskSummary]
+    total: int
+
+
+class LightningCurrentBackfillTowerDetail(BaseModel):
+    tower_id: str
+    tower_no: str | None
+    action: str
+    previous_current_a: float | None
+    previous_current_b: float | None
+    current_a: float | None
+    current_b: float | None
+    delta_a: float | None
+    delta_b: float | None
+
+
+class LightningCurrentBackfillTaskDetail(BaseModel):
+    task: LightningCurrentBackfillTaskSummary
+    towers: list[LightningCurrentBackfillTowerDetail]

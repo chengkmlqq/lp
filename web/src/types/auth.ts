@@ -1494,6 +1494,46 @@ export type LightningLinkedLinesResponse = {
   total: number;
 };
 
+export type LightningCurrentBackfillTaskSummary = {
+  id: string;
+  line_id: string;
+  line_name: string | null;
+  prepared_at: string;
+  prepared_by: string | null;
+  current_a: number | null;
+  current_b: number | null;
+  peak_max: number | null;
+  peak_min: number | null;
+  sampled_event_count: number;
+  updated_tower_count: number;
+  created_profile_count: number;
+  warnings: string[];
+  region_id: string | null;
+  is_synthetic: boolean;
+};
+
+export type LightningCurrentBackfillTaskListResponse = {
+  items: LightningCurrentBackfillTaskSummary[];
+  total: number;
+};
+
+export type LightningCurrentBackfillTowerDetail = {
+  tower_id: string;
+  tower_no: string | null;
+  action: string;
+  previous_current_a: number | null;
+  previous_current_b: number | null;
+  current_a: number | null;
+  current_b: number | null;
+  delta_a: number | null;
+  delta_b: number | null;
+};
+
+export type LightningCurrentBackfillTaskDetail = {
+  task: LightningCurrentBackfillTaskSummary;
+  towers: LightningCurrentBackfillTowerDetail[];
+};
+
 export type LightningLpDrawRequest = {
   line_id: string;
   radius_km?: number | null;

@@ -15,6 +15,8 @@ from ...schemas.lightning import (
     LightningAmplitudeRecord,
     LightningAmplitudeListResponse,
     LightningAmplitudeStatusResponse,
+    LightningCurrentBackfillTaskDetail,
+    LightningCurrentBackfillTaskListResponse,
     LightningCurrentPreparationRequest,
     LightningCurrentPreparationResponse,
     LightningCurrentExceedanceResponse,
@@ -36,6 +38,9 @@ from ...services.lightning_service import (
     get_backfill_lines_for_amplitude,
     get_lightning_amplitude_detail,
     get_lightning_amplitude_status,
+    get_lightning_current_backfill_task_detail,
+    get_lightning_current_backfill_task_towers,
+    list_lightning_current_backfill_tasks,
     get_lightning_distribution_detail,
     get_lightning_distribution_image_content,
     get_lightning_distribution_lp_image_content,
@@ -412,3 +417,43 @@ def prepare_lightning_density_for_line(
     db: Session = Depends(get_db),
 ) -> LightningDensityPreparationResponse:
     return prepare_line_lightning_density(db, payload, actor_user_id=current_user.user.id)
+
+
+@router.get("/backfill-tasks", response_model=LightningCurrentBackfillTaskListResponse)
+def get_lightning_current_backfill_tasks(
+    line_id: str | None = Query(default=None),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=200),
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningCurrentBackfillTaskListResponse:
+    return list_lightning_current_backfill_tasks(
+        db,
+        line_id=line_id,
+        start_date=start_date,
+        end_date=end_date,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/backfill-tasks/{task_id}", response_model=LightningCurrentBackfillTaskDetail)
+def get_lightning_current_backfill_task_detail_endpoint(
+    task_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningCurrentBackfillTaskDetail:
+    return get_lightning_current_backfill_task_detail(db, task_id)
+
+
+@router.get("/backfill-tasks/{task_id}/towers", response_model=LightningCurrentBackfillTaskDetail)
+def get_lightning_current_backfill_task_towers_endpoint(
+    task_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=200, ge=1, le=1000),
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningCurrentBackfillTaskDetail:
+    return get_lightning_current_backfill_task_towers(db, task_id, page=page, page_size=page_size)
