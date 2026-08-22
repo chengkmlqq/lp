@@ -52,6 +52,7 @@ from .push_service import publish_topic
 
 LIGHTNING_DISTRIBUTION_TOPIC = "admin.lightning-distribution"
 LIGHTNING_AMPLITUDE_TOPIC = "admin.lightning-amplitude"
+LIGHTNING_CURRENT_BACKFILL_TOPIC = "admin.lightning-current-backfill"
 POWER_LINES_TOPIC = "admin.power-lines"
 TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "gbk", "latin-1")
 MAX_SAMPLES = 2_000_000
@@ -544,8 +545,90 @@ def prepare_line_lightning_current(
     payload: LightningCurrentPreparationRequest,
     *,
     actor_user_id: str,
+) -> LightningCurrentPreparationAsyncResponse:
+    """提交线路雷电流幅值回填任务（异步）。
+
+    API 层只做前置校验 + 创建 pending 回填任务记录 + 派发 Celery 任务，
+    立即返回 task_id。实际计算由 Celery worker 执行
+    （prepare_line_lightning_current_job，见 api/app/tasks/lightning_tasks.py）。
+    """
+    # 前置校验：线路存在
+    line = db.execute(select(Line).where(Line.id == payload.line_id)).scalar_one_or_none()
+    if not line:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="线路不存在")
+
+    # 前置校验：有可用幅值数据（避免空任务排队后才失败）
+    if not _has_usable_lightning_amplitudes(db, payload):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="未找到可用于线路雷电流拟合的幅值记录（请先导入并等待处理完成）",
+        )
+
+    now = utcnow()
+    normalized_region = _normalize_str(payload.region_id)
+    task = LightningCurrentBackfillTask(
+        line_id=line.id,
+        prepared_at=now,
+        prepared_by_user_id=actor_user_id,
+        region_id=normalized_region,
+        is_synthetic=bool(payload.is_synthetic),
+        status="pending",
+        progress=0,
+    )
+    db.add(task)
+    db.commit()
+
+    from ..core.celery_app import celery_app
+
+    celery_task = celery_app.send_task(
+        "app.tasks.lightning_tasks.prepare_line_lightning_current_job",
+        kwargs={
+            "line_id": line.id,
+            "region_id": normalized_region,
+            "is_synthetic": payload.is_synthetic,
+            "backfill_task_id": task.id,
+            "actor_user_id": actor_user_id,
+        },
+        queue="celery",
+    )
+    task.task_id = str(celery_task.id)
+    task.status = "processing"
+    db.commit()
+
+    return LightningCurrentPreparationAsyncResponse(
+        task_id=str(celery_task.id),
+        backfill_task_id=task.id,
+        line_id=line.id,
+        status="processing",
+    )
+
+
+def _has_usable_lightning_amplitudes(
+    db: Session,
+    payload: LightningCurrentPreparationRequest,
+) -> bool:
+    """校验是否存在可用于线路雷电流拟合的 completed 幅值记录。"""
+    filters: list[Any] = [
+        LightningAmplitude.status == "completed",
+        LightningAmplitude.source_object_key != "",
+    ]
+    normalized_region = _normalize_str(payload.region_id)
+    if normalized_region:
+        filters.append(LightningAmplitude.region_id == normalized_region)
+    if payload.is_synthetic is not None:
+        filters.append(LightningAmplitude.is_synthetic == payload.is_synthetic)
+    count = db.execute(select(func.count()).select_from(LightningAmplitude).where(*filters)).scalar() or 0
+    return count > 0
+
+
+def _execute_line_lightning_current_backfill(
+    db: Session,
+    payload: LightningCurrentPreparationRequest,
+    *,
+    actor_user_id: str,
+    backfill_task_id: str | None = None,
 ) -> LightningCurrentPreparationResponse:
-    """线路雷电流幅值分析（按地闪密度做法，读 MinIO 文件现算）。
+    """在 Celery worker 中执行线路雷电流幅值回填的实际计算。
 
     数据源：线路关联的 LightningAmplitude（completed）→ 按 source_object_key 从 MinIO
     下载源文件 → 实时解析落雷电流集合 → 拟合。禁止直接读库表统计字段做该分析。
@@ -562,11 +645,11 @@ def prepare_line_lightning_current(
     if not towers:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前线路没有可回填的杆塔数据")
 
+    normalized_region = _normalize_str(payload.region_id)
     filters: list[Any] = [
         LightningAmplitude.status == "completed",
         LightningAmplitude.source_object_key != "",
     ]
-    normalized_region = _normalize_str(payload.region_id)
     if normalized_region:
         filters.append(LightningAmplitude.region_id == normalized_region)
     if payload.is_synthetic is not None:
@@ -620,15 +703,23 @@ def prepare_line_lightning_current(
     profile_map = {item.tower_id: item for item in existing_profiles}
     created_profile_count = 0
 
-    # 1. 创建回填任务记录（历史快照）
-    task = LightningCurrentBackfillTask(
-        line_id=line.id,
-        prepared_at=now,
-        prepared_by_user_id=actor_user_id,
-        region_id=normalized_region,
-        is_synthetic=bool(payload.is_synthetic),
-        source_amplitude_ids=[amp_id for amp_id in used_amplitude_ids],
-    )
+    # 1. 复用/创建回填任务记录（历史快照）
+    task = None
+    if backfill_task_id:
+        task = db.execute(
+            select(LightningCurrentBackfillTask).where(LightningCurrentBackfillTask.id == backfill_task_id)
+        ).scalar_one_or_none()
+    if task is None:
+        task = LightningCurrentBackfillTask(
+            line_id=line.id,
+            prepared_at=now,
+            prepared_by_user_id=actor_user_id,
+            region_id=normalized_region,
+            is_synthetic=bool(payload.is_synthetic),
+        )
+    task.source_amplitude_ids = [amp_id for amp_id in used_amplitude_ids]
+    task.status = "processing"
+    task.progress = 30
     db.add(task)
     db.flush()  # 获取 task.id
 
@@ -748,6 +839,11 @@ def prepare_line_lightning_current(
             backfill.is_synthetic = bool(payload.is_synthetic)
             backfill.update_date = now
             backfill.update_user = actor_user_id
+    db.commit()
+
+    # 标记任务完成
+    task.status = "completed"
+    task.progress = 100
     db.commit()
 
     preparation_json = summarize_line_preparation(db, line, tower_count=len(towers))
@@ -1213,6 +1309,24 @@ def _publish_line_change(event_name: str, payload: dict[str, Any]) -> None:
             dedupe_key=f"{event_name}:{payload.get('line_id', 'unknown')}",
         )
     )
+
+
+def _publish_backfill_event(event_name: str, payload: dict[str, Any]) -> None:
+    """向 admin.lightning-current-backfill 主题推送回填任务事件（经 Redis 桥）。
+
+    供 Celery worker 使用；Web 进程场景下 publish_topic 同样可行，
+    统一走 _fire_and_forget 异步投递，失败不影响任务主体逻辑。
+    """
+    _fire_and_forget(
+        publish_topic(
+            LIGHTNING_CURRENT_BACKFILL_TOPIC,
+            name=event_name,
+            payload=payload,
+            requires_refetch=["/api/v1/lightning-currents/backfill-tasks"],
+            dedupe_key=f"{event_name}:{payload.get('backfill_task_id', payload.get('line_id', 'unknown'))}",
+        )
+    )
+
 
 def _publish_lightning_change(event_name: str, payload: dict[str, Any], topic: str = LIGHTNING_DISTRIBUTION_TOPIC, requires_refetch: list[str] | None = None) -> None:
     if requires_refetch is None:
@@ -1916,6 +2030,10 @@ def _serialize_backfill_task(task: LightningCurrentBackfillTask) -> LightningCur
         warnings=list(task.warnings or []),
         region_id=task.region_id,
         is_synthetic=task.is_synthetic,
+        status=task.status,
+        progress=task.progress,
+        task_id=task.task_id,
+        error_message=task.error_message,
     )
 
 

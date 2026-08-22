@@ -17,6 +17,7 @@ from ...schemas.lightning import (
     LightningAmplitudeStatusResponse,
     LightningCurrentBackfillTaskDetail,
     LightningCurrentBackfillTaskListResponse,
+    LightningCurrentPreparationAsyncResponse,
     LightningCurrentPreparationRequest,
     LightningCurrentPreparationResponse,
     LightningCurrentExceedanceResponse,
@@ -401,12 +402,12 @@ def get_lightning_distribution_lp_image_endpoint(
 # ---------------------------------------------------------------------------
 # 线路回填（prepare）
 # ---------------------------------------------------------------------------
-@router.post("/prepare-current", response_model=LightningCurrentPreparationResponse)
+@router.post("/prepare-current", response_model=LightningCurrentPreparationAsyncResponse)
 def prepare_lightning_current_for_line(
     payload: LightningCurrentPreparationRequest,
     current_user: CurrentUser = Depends(require_permission("lightning.manage")),
     db: Session = Depends(get_db),
-) -> LightningCurrentPreparationResponse:
+) -> LightningCurrentPreparationAsyncResponse:
     return prepare_line_lightning_current(db, payload, actor_user_id=current_user.user.id)
 
 

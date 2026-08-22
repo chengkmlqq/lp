@@ -59,6 +59,7 @@ import type {
   LightningAmplitudeImportResponse,
   LightningAmplitudeBackfillLine,
   LightningAmplitudeBackfillLineListResponse,
+  LightningCurrentPreparationAsyncResponse,
   LightningTempUploadResponse,
   LineListResponse,
   LineSummary,
@@ -163,6 +164,7 @@ export default function AdminLightningCurrentsPage() {
   const [backfillOpen, setBackfillOpen] = useState(false);
   const [backfillRecord, setBackfillRecord] = useState<LightningAmplitudeRecord | null>(null);
   const [backfillLineIds, setBackfillLineIds] = useState<string[]>([]);
+  const [backfillTaskIds, setBackfillTaskIds] = useState<string[]>([]);
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -262,6 +264,45 @@ export default function AdminLightningCurrentsPage() {
         void refreshAll();
       } else if (name === "amplitude.import_failed") {
         setError(new ApiError(payload?.error || "导入失败，请在列表中对失败记录执行重试"));
+        void refreshAll();
+      } else {
+        void refreshAll();
+      }
+    }, [refreshAll]),
+  );
+
+  useTopicSubscription(
+    "admin.lightning-current-backfill",
+    useCallback((event) => {
+      const name = event.name;
+      const payload = event.payload as {
+        backfill_task_id?: string;
+        line_id?: string;
+        task_id?: string;
+        status?: string;
+        progress?: number;
+        error?: string;
+        updated_tower_count?: number;
+        sampled_event_count?: number;
+        warning_count?: number;
+        current_a?: number;
+        current_b?: number;
+      };
+      if (name === "backfill.completed") {
+        setBackfillTaskIds((prev) => prev.filter((item) => item !== (payload.backfill_task_id || "")));
+        if (payload.sampled_event_count != null) {
+          setSuccess(
+            `回填完成：峰值 A=${formatNumber(payload.current_a, 2)}kA，B=${formatNumber(payload.current_b, 2)}kA，采样点 ${payload.sampled_event_count} 个`,
+          );
+        } else {
+          setSuccess("回填完成");
+        }
+        void refreshAll();
+      } else if (name === "backfill.failed") {
+        setBackfillTaskIds((prev) => prev.filter((item) => item !== (payload.backfill_task_id || "")));
+        setError(new ApiError(payload?.error || "线路回填失败"));
+        void refreshAll();
+      } else if (name === "backfill.started") {
         void refreshAll();
       } else {
         void refreshAll();
@@ -493,25 +534,25 @@ export default function AdminLightningCurrentsPage() {
       if (!canManage) {
         throw new Error("缺少 lightning.manage 权限");
       }
-      const failures: string[] = [];
-      let successCount = 0;
-      for (const lineId of lineIds) {
-        try {
-          const response = await fetchWithAuth("/api/v1/lightning-currents/prepare-current", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ line_id: lineId }),
-          });
+      const tasks = lineIds.map((lineId) =>
+        fetchWithAuth("/api/v1/lightning-currents/prepare-current", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ line_id: lineId }),
+        }).then((response) => {
           if (!response.ok) {
-            failures.push(`线路 ${lineId}: ${await readApiError(response)}`);
-          } else {
-            successCount += 1;
+            return readApiError(response).then((message) => ({ lineId, success: false, message }));
           }
-        } catch (candidate) {
-          failures.push(`线路 ${lineId}: ${candidate instanceof Error ? candidate.message : "回填失败"}`);
-        }
-      }
-      return { successCount, failures };
+          return response.json().then((payload) => ({ lineId, success: true, payload }));
+        }),
+      );
+      const results = await Promise.all(tasks);
+      const accepted = results.filter((item) => item.success);
+      const failures = results
+        .filter((item) => !item.success)
+        .map((item) => `${item.lineId}: ${item.message}`);
+      setBackfillTaskIds(accepted.map((item) => item.payload.backfill_task_id));
+      return { successCount: accepted.length, failures };
     },
     onSuccess: async ({ successCount, failures }) => {
       setBackfillOpen(false);
@@ -522,7 +563,7 @@ export default function AdminLightningCurrentsPage() {
         setError(new ApiError(`回填完成：成功 ${successCount} 条，失败 ${failures.length} 条（${failures.join("；")}）`));
       } else {
         setError(null);
-        setSuccess(`回填完成：成功 ${successCount} 条线路`);
+        setSuccess(`回填任务已提交（${successCount} 条线路），处理完成后将自动刷新列表`);
       }
       await refreshAll();
     },

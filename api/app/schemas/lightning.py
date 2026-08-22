@@ -217,6 +217,13 @@ class LightningCurrentPreparationResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class LightningCurrentPreparationAsyncResponse(BaseModel):
+    task_id: str
+    backfill_task_id: str
+    line_id: str
+    status: str = "pending"  # pending | processing | completed | failed
+
+
 class LightningDensityPreparationRequest(BaseModel):
     line_id: str = Field(min_length=1, max_length=64)
     region_id: str | None = Field(default=None, max_length=64)
@@ -286,6 +293,10 @@ class LightningCurrentBackfillTaskSummary(BaseModel):
     warnings: list[str]
     region_id: str | None
     is_synthetic: bool
+    status: str = "pending"
+    progress: int = 0
+    task_id: str | None = None
+    error_message: str | None = None
 
 
 class LightningCurrentBackfillTaskListResponse(BaseModel):

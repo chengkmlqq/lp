@@ -25,6 +25,13 @@ class LightningCurrentBackfillTask(Base):
     prepared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     prepared_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # ---- 异步任务状态机（LP-432）----
+    # pending|processing|completed|failed；Celery worker 更新，与 LightningAmplitude 状态机对齐
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)  # 0-100
+    task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     current_a: Mapped[float | None] = mapped_column(Float, nullable=True)
     current_b: Mapped[float | None] = mapped_column(Float, nullable=True)
     peak_max: Mapped[float | None] = mapped_column(Float, nullable=True)

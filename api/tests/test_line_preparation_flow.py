@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.database import Base
 from app.models.fl_analysis import FlAnalysisJob
 from app.models.lightning_amplitude import LightningAmplitude
+from app.models.lightning_current_backfill import LightningCurrentBackfillTask
 from app.models.line import Line
 from app.models.line_amplitude_backfill import LineAmplitudeBackfill
 from app.models.line_tower import LineTower
@@ -18,7 +19,7 @@ from app.models.tower_circuit import TowerCircuit
 from app.models.tower_lightning_result import TowerLightningResult
 from app.models.tower_profile import TowerProfile
 from app.schemas.fl_analysis import FlAnalysisJobCreateRequest
-from app.schemas.lightning import LightningCurrentPreparationRequest
+from app.schemas.lightning import LightningCurrentPreparationAsyncResponse, LightningCurrentPreparationRequest
 from app.services import fl_analysis_service, lightning_service
 
 
@@ -35,6 +36,7 @@ def _build_session() -> Session:
             TowerAnalysis.__table__,
             LightningAmplitude.__table__,
             LineAmplitudeBackfill.__table__,
+            LightningCurrentBackfillTask.__table__,
             FlAnalysisJob.__table__,
         ],
     )
@@ -89,7 +91,7 @@ def test_prepare_line_lightning_current_backfills_profiles_and_line_state(monkey
         )
         session.commit()
 
-        response = lightning_service.prepare_line_lightning_current(
+        response = lightning_service._execute_line_lightning_current_backfill(
             session,
             LightningCurrentPreparationRequest(line_id=line.id, region_id="HB"),
             actor_user_id="tester",
@@ -137,7 +139,7 @@ def test_prepare_line_lightning_current_no_data_aborts(monkeypatch) -> None:
         session.commit()
 
         with pytest.raises(HTTPException) as captured:
-            lightning_service.prepare_line_lightning_current(
+            lightning_service._execute_line_lightning_current_backfill(
                 session,
                 LightningCurrentPreparationRequest(line_id=line.id, region_id="HB"),
                 actor_user_id="tester",
@@ -145,6 +147,64 @@ def test_prepare_line_lightning_current_no_data_aborts(monkeypatch) -> None:
 
         assert captured.value.status_code == 400
         assert "未找到可用于线路雷电流拟合的幅值记录" in str(captured.value.detail)
+    finally:
+        session.close()
+
+
+def test_prepare_line_lightning_current_dispatch_creates_pending_task_and_sends(monkeypatch) -> None:
+    """异步派发：API 层创建 pending 回填任务并 send_task，立即返回 task_id。"""
+    session = _build_session()
+    try:
+        sent: dict = {}
+
+        class FakeCeleryTask:
+            def __init__(self, _id: str) -> None:
+                self.id = _id
+
+        def fake_send_task(name: str, kwargs: dict, queue: str) -> FakeCeleryTask:
+            sent["name"] = name
+            sent["kwargs"] = kwargs
+            sent["queue"] = queue
+            return FakeCeleryTask("celery-task-abc")
+
+        import app.core.celery_app as celery_app_module
+
+        monkeypatch.setattr(celery_app_module, "celery_app", fake_celery, raising=False)
+        monkeypatch.setattr(lightning_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        line = Line(code="L-100", name="异步线路", voltage_kv=220, lightning_param_json={})
+        session.add(line)
+        session.flush()
+        session.add(LineTower(line_id=line.id, seq_no=1, tower_no="N1", longitude=120.0, latitude=30.0))
+        session.add(
+            LightningAmplitude(
+                event_id="LC-010",
+                source_object_key="lightning/amplitude/source/x.csv",
+                status="completed",
+            )
+        )
+        session.commit()
+
+        response = lightning_service.prepare_line_lightning_current(
+            session,
+            LightningCurrentPreparationRequest(line_id=line.id),
+            actor_user_id="tester",
+        )
+        assert isinstance(response, LightningCurrentPreparationAsyncResponse)
+        assert response.task_id == "celery-task-abc"
+        assert response.line_id == line.id
+        assert response.status == "processing"
+
+        task_rows = session.execute(select(LightningCurrentBackfillTask)).scalars().all()
+        assert len(task_rows) == 1
+        assert task_rows[0].status == "processing"
+        assert task_rows[0].task_id == "celery-task-abc"
+        assert task_rows[0].prepared_by_user_id == "tester"
+
+        assert sent["name"] == "app.tasks.lightning_tasks.prepare_line_lightning_current_job"
+        assert sent["kwargs"]["line_id"] == line.id
+        assert sent["kwargs"]["backfill_task_id"] == task_rows[0].id
+        assert sent["queue"] == "celery"
     finally:
         session.close()
 

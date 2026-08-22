@@ -11,9 +11,11 @@ from ..core.database import SessionLocal
 from ..models.line import Line
 from ..models.line_tower import LineTower
 from ..models.lightning_amplitude import LightningAmplitude
+from ..models.lightning_current_backfill import LightningCurrentBackfillTask
 from ..models.lightning_distribution import LightningDistribution
 from ..services.lightning_service import (
     LIGHTNING_AMPLITUDE_TOPIC,
+    LIGHTNING_CURRENT_BACKFILL_TOPIC,
     LIGHTNING_DISTRIBUTION_TOPIC,
 )
 
@@ -639,6 +641,146 @@ def import_lightning_amplitude_job(
         except Exception:
             db.rollback()
         raise
+
+    finally:
+        db.close()
+
+
+def _publish_backfill_event(event_name: str, payload: dict[str, Any]) -> None:
+    """向 admin.lightning-current-backfill 主题推送回填任务事件（经 Redis 桥）。"""
+    try:
+        from ..services.ws_event_bridge import publish_ws_event_from_worker
+
+        publish_ws_event_from_worker(
+            LIGHTNING_CURRENT_BACKFILL_TOPIC,
+            name=event_name,
+            payload=payload,
+            requires_refetch=["/api/v1/lightning-currents/backfill-tasks"],
+            dedupe_key=f"{event_name}:{payload.get('backfill_task_id', payload.get('line_id', 'unknown'))}",
+        )
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# 异步线路雷电流幅值回填任务（LP-432：POST /prepare-current 异步化）
+# ---------------------------------------------------------------------------
+@celery_app.task(
+    name="app.tasks.lightning_tasks.prepare_line_lightning_current_job",
+    bind=True,
+    queue="celery",
+    max_retries=1,
+    default_retry_delay=30,
+    soft_time_limit=300,
+    time_limit=600,
+)
+def prepare_line_lightning_current_job(
+    self,
+    line_id: str,
+    region_id: str | None = None,
+    is_synthetic: bool | None = None,
+    backfill_task_id: str | None = None,
+    actor_user_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    异步执行线路雷电流幅值回填（API 已提前创建 pending 回填任务并派发本任务）。
+
+    流程：标记 processing → 复用 LightningCurrentBackfillTask 记录执行计算 →
+    推送 started / progress / completed / failed 事件。计算逻辑复用
+    services.lightning_service._execute_line_lightning_current_backfill。
+    """
+    task_id = self.request.id
+    log_parts: list[str] = [f"[{task_id}] Starting lightning current backfill: line={line_id}"]
+
+    db: Session = SessionLocal()
+    try:
+        from ..schemas.lightning import LightningCurrentPreparationRequest
+        from ..services.lightning_service import _execute_line_lightning_current_backfill
+
+        backfill_task = None
+        if backfill_task_id:
+            backfill_task = db.execute(
+                select(LightningCurrentBackfillTask).where(LightningCurrentBackfillTask.id == backfill_task_id)
+            ).scalar_one_or_none()
+            if backfill_task:
+                backfill_task.status = "processing"
+                backfill_task.progress = 10
+                backfill_task.task_id = task_id
+                db.commit()
+
+        _append_log(log_parts, task_id, f"[{task_id}] line={line_id}, backfill_task={backfill_task_id}")
+        _publish_backfill_event("backfill.started", {
+            "backfill_task_id": backfill_task_id or "",
+            "line_id": line_id,
+            "task_id": task_id,
+            "status": "processing",
+            "progress": 10,
+        })
+
+        payload = LightningCurrentPreparationRequest(
+            line_id=line_id,
+            region_id=region_id,
+            is_synthetic=is_synthetic,
+        )
+        result = _execute_line_lightning_current_backfill(
+            db,
+            payload,
+            actor_user_id=actor_user_id or "system",
+            backfill_task_id=backfill_task_id,
+        )
+        _append_log(log_parts, task_id,
+            f"[{task_id}] Completed: current_a={result.current_a}, current_b={result.current_b}, "
+            f"towers={result.updated_tower_count}"
+        )
+        _upload_log(task_id, log_parts)
+        _publish_backfill_event("backfill.completed", {
+            "backfill_task_id": backfill_task_id or "",
+            "line_id": line_id,
+            "task_id": task_id,
+            "status": "completed",
+            "progress": 100,
+            "current_a": result.current_a,
+            "current_b": result.current_b,
+            "updated_tower_count": result.updated_tower_count,
+            "sampled_event_count": result.sampled_event_count,
+            "warning_count": result.warning_count,
+            "warnings": result.warnings[:50],
+        })
+        return {
+            "status": "completed",
+            "line_id": line_id,
+            "backfill_task_id": backfill_task_id,
+            "current_a": result.current_a,
+            "current_b": result.current_b,
+            "updated_tower_count": result.updated_tower_count,
+        }
+
+    except Exception as exc:
+        import traceback
+
+        db.rollback()
+        _append_log(log_parts, task_id, f"[{task_id}] FAILED: {exc}")
+        _append_log(log_parts, task_id, traceback.format_exc())
+        _upload_log(task_id, log_parts)
+        try:
+            if backfill_task_id:
+                failed_task = db.execute(
+                    select(LightningCurrentBackfillTask).where(LightningCurrentBackfillTask.id == backfill_task_id)
+                ).scalar_one_or_none()
+                if failed_task:
+                    failed_task.status = "failed"
+                    failed_task.error_message = str(exc)
+                    db.commit()
+            _publish_backfill_event("backfill.failed", {
+                "backfill_task_id": backfill_task_id or "",
+                "line_id": line_id,
+                "task_id": task_id,
+                "status": "failed",
+                "error": str(exc),
+            })
+        except Exception:
+            db.rollback()
+        return {"status": "failed", "line_id": line_id, "backfill_task_id": backfill_task_id, "error": str(exc)}
 
     finally:
         db.close()

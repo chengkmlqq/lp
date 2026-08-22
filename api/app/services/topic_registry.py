@@ -31,6 +31,7 @@ TOPIC_RULES: dict[str, TopicRule] = {
     "admin.scheduled-tasks": TopicRule(any_permission_codes={"celery.read", "celery.manage"}),
     "admin.lightning-distribution": TopicRule(any_permission_codes={"lightning.read", "lightning.manage"}),
     "admin.lightning-amplitude": TopicRule(any_permission_codes={"lightning.read", "lightning.manage"}),
+    "admin.lightning-current-backfill": TopicRule(any_permission_codes={"lightning.read", "lightning.manage"}),
     "admin.fault-analysis": TopicRule(any_permission_codes={"line.read", "line.manage"}),
 }
 
