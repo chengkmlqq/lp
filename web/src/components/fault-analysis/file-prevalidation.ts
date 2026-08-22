@@ -366,9 +366,10 @@ async function validateTravelingWaveFile(file: File): Promise<ValidationResult> 
 
   const text = await readFileAsText(file);
   const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  const rowCount = lines.length - 1;
-  if (rowCount < 32) {
-    errors.push(`数据行数不足 32，当前 ${rowCount} 行`);
+  const dataRowCount = Math.max(lines.length - 1, 0);
+  if (lines.length === 0) {
+    errors.push("文件内容为空");
+    return { ok: false, errors, warnings, fields };
   }
   const headerLine = lines[0] || "";
   const hasPhaseA = /A/.test(headerLine);
@@ -384,7 +385,7 @@ async function validateTravelingWaveFile(file: File): Promise<ValidationResult> 
       phaseCount: [hasPhaseA, hasPhaseB, hasPhaseC].filter(Boolean).length,
     };
   }
-  extra = { format: ext, rowCount, hasPhaseA, hasPhaseB, hasPhaseC };
+  extra = { format: ext, rowCount: dataRowCount, hasPhaseA, hasPhaseB, hasPhaseC };
   return { ok: errors.length === 0, errors, warnings, fields, extra };
 }
 
