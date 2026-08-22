@@ -762,6 +762,7 @@ export default function AdminUsersPage() {
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(1);
+    void queryClient.refetchQueries({ queryKey: ["admin.users"] });
   };
 
   const queryError = useMemo<ApiError | null>(() =>

@@ -547,6 +547,12 @@ export default function AdminLightningDistributionPage() {
   const handleSearch = () => {
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
+    void queryClient.refetchQueries({
+      predicate: (query) =>
+        Array.isArray(query.queryKey)
+        && typeof query.queryKey[0] === "string"
+        && query.queryKey[0].startsWith("/api/v1/lightning-currents/distributions"),
+    });
   };
 
   // ---- 表格高度自适应（锚点高度算法，与线路管理页一致）----
