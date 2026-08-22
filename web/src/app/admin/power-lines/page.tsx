@@ -15,7 +15,9 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Typography,
+  type MenuProps,
 } from "antd";
 import {
   ApartmentOutlined,
@@ -31,8 +33,9 @@ import {
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useMemo, useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState, useEffect, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+
+import { AdminPowerLinesDetailView } from "./line-detail-view";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
@@ -95,6 +98,15 @@ const EMPTY_LINE_FORM: LineFormValues = {
   voltage_level: null,
 };
 
+type DetailTabItem = {
+  key: string;
+  label: ReactNode;
+  closable: boolean;
+  children: ReactNode;
+};
+
+const LIST_TAB_KEY = "list";
+
 const POWER_LINES_TABLE_MIN_SCROLL_Y = 180;
 const POWER_LINES_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
 const POWER_LINES_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
@@ -119,7 +131,6 @@ function resolveVoltageOptionFromKv(voltageKv: number | null): LineFormValues["v
 }
 
 export default function AdminPowerLinesPage() {
-  const router = useRouter();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
@@ -132,12 +143,15 @@ export default function AdminPowerLinesPage() {
   const [editingLine, setEditingLine] = useState<LineSummary | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [tableScrollY, setTableScrollY] = useState(POWER_LINES_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   const canLineManage = hasPermission("line.manage");
-  const canRead = canLineRead;
+  const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
+  const canRead = canLineRead || canTowerRead;
 
   const updateTableScrollHeight = useCallback(() => {
     if (typeof window === "undefined") {
@@ -302,13 +316,43 @@ export default function AdminPowerLinesPage() {
     },
   });
 
-  const openTowers = useCallback((line: LineSummary) => {
-    router.push(`/admin/power-lines/${line.id}/towers`);
-  }, [router]);
+  const openDetail = useCallback((line: LineSummary) => {
+    const key = line.id;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: <span className="admin-power-lines-tab-title">线路详情 - {line.name || line.code}</span>,
+          closable: true,
+          children: (
+            <AdminPowerLinesDetailView
+              lineId={line.id}
+              canTowerRead={canTowerRead}
+            />
+          ),
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, [canTowerRead]);
 
-  const openPreview = useCallback((line: LineSummary) => {
-    router.push(`/admin/power-lines/${line.id}/map`);
-  }, [router]);
+  const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
+    if (action !== "remove") {
+      return;
+    }
+    const key = String(targetKey);
+    const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
+    const next = detailTabs.filter((tab) => tab.key !== key);
+    setDetailTabs(next);
+    if (activeTabKey === key) {
+      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+      setActiveTabKey(fallback);
+    }
+  }, [detailTabs, activeTabKey]);
 
   const openCreateLineModal = () => {
     setEditingLine(null);
@@ -361,113 +405,179 @@ export default function AdminPowerLinesPage() {
           )}
         </Space>
       </div>
-      <div className="admin-power-lines-list-pane">
-        <div className="admin-filter-bar">
-          <Form layout="inline">
-            <Form.Item label="线路编码/名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-              <Input
-                value={keywordInput}
-                allowClear
-                onChange={(event) => setKeywordInput(event.target.value)}
-                placeholder="按线路编码/名称筛选"
-                onPressEnter={handleSearch}
-              />
-            </Form.Item>
-            <Form.Item style={{ marginBottom: 0 }}>
-              <Button
-                htmlType="button"
-                icon={<SearchOutlined />}
-                onClick={handleSearch}
-                className="admin-search-btn"
-              >
-                查询
-              </Button>
-            </Form.Item>
-          </Form>
-          <Segmented
-            value={viewMode}
-            onChange={(value) => setViewMode(value as "card" | "list")}
-            options={[
-              { label: "卡片视图", value: "card" },
-              { label: "列表视图", value: "list" },
-            ]}
-          />
-        </div>
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        onEdit={handleTabsEdit}
+        className="admin-power-lines-tabs"
+        items={[
+          {
+            key: LIST_TAB_KEY,
+            label: <span className="admin-power-lines-tab-title">线路列表</span>,
+            closable: false,
+            children: (
+              <div className="admin-power-lines-list-pane">
+                <div className="admin-filter-bar">
+                  <Form layout="inline">
+                    <Form.Item label="线路编码/名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Input
+                        value={keywordInput}
+                        allowClear
+                        onChange={(event) => setKeywordInput(event.target.value)}
+                        placeholder="按线路编码/名称筛选"
+                        onPressEnter={handleSearch}
+                      />
+                    </Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button
+                        htmlType="button"
+                        icon={<SearchOutlined />}
+                        onClick={handleSearch}
+                        className="admin-search-btn"
+                      >
+                        查询
+                      </Button>
+                    </Form.Item>
+                  </Form>
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => setViewMode(value as "card" | "list")}
+                    options={[
+                      { label: "卡片视图", value: "card" },
+                      { label: "列表视图", value: "list" },
+                    ]}
+                  />
+                </div>
 
-        {lines.length === 0 ? (
-          <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        ) : viewMode === "card" ? (
-          <>
-            <div className="admin-power-lines-card-scroll">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {lines.map((line) => (
+                {lines.length === 0 ? (
+                  <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                ) : viewMode === "card" ? (
+                  <>
+                    <div className="admin-power-lines-card-scroll">
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        {lines.map((line) => (
                           <PowerLineCard
                             key={line.id}
                             line={line}
                             canLineManage={canLineManage}
                             onEdit={openEditLineModal}
-                            onDetail={openTowers}
-                            onPreview={openPreview}
+                            onDetail={openDetail}
+                            onPreview={(target) => {
+                              setDetailTabs((previous) => {
+                                const key = `map-${target.id}`;
+                                if (previous.some((tab) => tab.key === key)) {
+                                  setActiveTabKey(key);
+                                  return previous;
+                                }
+                                return [
+                                  ...previous,
+                                  {
+                                    key,
+                                    label: <span className="admin-power-lines-tab-title">线路预览 - {target.name || target.code}</span>,
+                                    closable: true,
+                                    children: (
+                                      <AdminPowerLinesDetailView
+                                        lineId={target.id}
+                                        canTowerRead={canTowerRead}
+                                        defaultTab="map"
+                                      />
+                                    ),
+                                  },
+                                ];
+                              });
+                              setActiveTabKey(`map-${target.id}`);
+                            }}
                             onDelete={() => {
-                      Modal.confirm({
-                        title: "删除线路",
-                        content: `确认删除线路 ${line.name || line.code} 吗？`,
-                        okText: "删除",
-                        cancelText: "取消",
-                        okButtonProps: { danger: true },
-                        onOk: async () => {
-                          await deleteLineMutation.mutateAsync(line.id);
-                        },
-                      });
-                    }}
-                    deleteLoading={deleteLineMutation.isPending}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="admin-power-lines-pagination">
-              <Pagination
-                current={pagination.current}
-                pageSize={pagination.pageSize}
-                total={total}
-                onChange={(page, pageSize) => {
-                  setPagination({ current: page, pageSize });
-                }}
-                showSizeChanger
-                showTotal={(total) => `共 ${total} 条`}
-              />
-            </div>
-          </>
-        ) : (
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-power-lines-table-view"
-            style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
+                              Modal.confirm({
+                                title: "删除线路",
+                                content: `确认删除线路 ${line.name || line.code} 吗？`,
+                                okText: "删除",
+                                cancelText: "取消",
+                                okButtonProps: { danger: true },
+                                onOk: async () => {
+                                  await deleteLineMutation.mutateAsync(line.id);
+                                },
+                              });
+                            }}
+                            deleteLoading={deleteLineMutation.isPending}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="admin-power-lines-pagination">
+                      <Pagination
+                        current={pagination.current}
+                        pageSize={pagination.pageSize}
+                        total={total}
+                        onChange={(page, pageSize) => {
+                          setPagination({ current: page, pageSize });
+                        }}
+                        showSizeChanger
+                        showTotal={(total) => `共 ${total} 条`}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div
+                    ref={tableScrollAnchorRef}
+                    className="admin-power-lines-table-view"
+                    style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                  >
                     <PowerLineTable
                       lines={lines}
                       canLineManage={canLineManage}
                       onEdit={openEditLineModal}
-                      onDetail={openTowers}
-                      onPreview={openPreview}
+                      onDetail={openDetail}
+                      onPreview={(target) => {
+                        setDetailTabs((previous) => {
+                          const key = `map-${target.id}`;
+                          if (previous.some((tab) => tab.key === key)) {
+                            setActiveTabKey(key);
+                            return previous;
+                          }
+                          return [
+                            ...previous,
+                            {
+                              key,
+                              label: <span className="admin-power-lines-tab-title">线路预览 - {target.name || target.code}</span>,
+                              closable: true,
+                              children: (
+                                <AdminPowerLinesDetailView
+                                  lineId={target.id}
+                                  canTowerRead={canTowerRead}
+                                  defaultTab="map"
+                                />
+                              ),
+                            },
+                          ];
+                        });
+                        setActiveTabKey(`map-${target.id}`);
+                      }}
                       onDelete={(line) => {
-                Modal.confirm({
-                  title: "删除线路",
-                  content: `确认删除线路 ${line.name || line.code} 吗？`,
-                  okText: "删除",
-                  cancelText: "取消",
-                  okButtonProps: { danger: true },
-                  onOk: async () => {
-                    await deleteLineMutation.mutateAsync(line.id);
-                  },
-                });
-              }}
-              deleteLoading={deleteLineMutation.isPending}
-              scrollY={tableScrollY}
-            />
-          </div>
-        )}
-      </div>
+                        Modal.confirm({
+                          title: "删除线路",
+                          content: `确认删除线路 ${line.name || line.code} 吗？`,
+                          okText: "删除",
+                          cancelText: "取消",
+                          okButtonProps: { danger: true },
+                          onOk: async () => {
+                            await deleteLineMutation.mutateAsync(line.id);
+                          },
+                        });
+                      }}
+                      deleteLoading={deleteLineMutation.isPending}
+                      scrollY={tableScrollY}
+                    />
+                  </div>
+                )}
+              </div>
+            ),
+          },
+          ...detailTabs,
+        ]}
+      />
 
       <Modal
         title={editingLine ? "编辑线路" : "新建线路"}
