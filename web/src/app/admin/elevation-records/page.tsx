@@ -13,6 +13,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Pagination,
   Progress,
   Segmented,
   Select,
@@ -30,14 +31,11 @@ import {
   AppstoreOutlined,
   CheckCircleOutlined,
   CloudUploadOutlined,
-  DatabaseOutlined,
-  DeploymentUnitOutlined,
   EyeOutlined,
   FileOutlined,
   FileTextOutlined,
   GlobalOutlined,
   MoreOutlined,
-  NumberOutlined,
   SearchOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
@@ -312,10 +310,6 @@ export default function ElevationRecordsPage() {
   const [tableScrollY, setTableScrollY] = useState(ELEVATION_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedRecords, setAllLoadedRecords] = useState<ElevationFileRecordSummary[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const pageCardRef = useRef<HTMLDivElement | null>(null);
 
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -639,65 +633,6 @@ export default function ElevationRecordsPage() {
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);
 
-  // Update allLoadedRecords when records data changes in card view
-  useEffect(() => {
-    if (viewMode !== "card" || isLoading) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedRecords(() => records);
-      } else {
-        setAllLoadedRecords((prev) => {
-          if (records.length === 0) {
-            return prev;
-          }
-          const existingIds = new Set(prev.map(r => r.id));
-          const newRecords = records.filter(r => !existingIds.has(r.id));
-          return [...prev, ...newRecords];
-        });
-      }
-      setIsLoadingMore(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [records, isLoading, viewMode, cardViewPage]);
-
-  // Handle infinite scroll for card view
-  useEffect(() => {
-    if (viewMode !== "card") return;
-
-    // 卡片视图滚动加载：外层 AntCard 改为 Tabs 后，pageCardRef 挂在 list-pane 滚动容器上，
-    // 直接以容器自身作为滚动源（替代原 .ant-card-body）
-    const listPane = pageCardRef.current;
-    if (!listPane) return;
-
-    const handleScroll = () => {
-      if (isLoadingMore || isLoading) return;
-
-      const scrollTop = listPane.scrollTop;
-      const scrollHeight = listPane.scrollHeight;
-      const clientHeight = listPane.clientHeight;
-
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const total = recordsData?.total ?? 0;
-        const loadedCount = allLoadedRecords.length;
-
-        if (loadedCount < total) {
-          setIsLoadingMore(true);
-          setCardViewPage((prev) => prev + 1);
-          setPagination((prev) => ({ ...prev, current: prev.current + 1 }));
-        }
-      }
-    };
-
-    listPane.addEventListener("scroll", handleScroll);
-    return () => listPane.removeEventListener("scroll", handleScroll);
-  }, [viewMode, isLoadingMore, isLoading, recordsData?.total, allLoadedRecords.length]);
-
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -906,10 +841,6 @@ export default function ElevationRecordsPage() {
               <Tag className="text-xs">{record.file_format.toUpperCase()}</Tag>
             </div>
             <div className="flex items-center gap-2">
-              <DatabaseOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">大小：{formatFileSize(record.file_size)}</Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
               <GlobalOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">来源：{record.source ?? "-"}</Typography.Text>
             </div>
@@ -920,26 +851,6 @@ export default function ElevationRecordsPage() {
             <div className="flex items-center gap-2">
               <NumberOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">样本数：{record.sample_count.toLocaleString()}</Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircleOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs">解析状态：</Typography.Text>
-              <Tag color={computedParseStatus(record).color} className="text-xs">{computedParseStatus(record).label}</Tag>
-            </div>
-            <div className="flex items-center gap-2">
-              <DeploymentUnitOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs">关联线路：</Typography.Text>
-              <Button
-                type="link"
-                size="small"
-                style={{ padding: 0 }}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openLinkedLinesModal(record);
-                }}
-              >
-                {record.linked_line_count ?? 0} 条
-              </Button>
             </div>
           </div>
 
@@ -1001,124 +912,125 @@ export default function ElevationRecordsPage() {
             label: <span className="admin_elevation_tab_title">高程数据管理</span>,
             closable: false,
             children: (
-              <div ref={pageCardRef} className="admin_elevation_list_pane">
+              <div className="admin_elevation_list_pane">
                 <div className="admin-filter-bar">
-            <Form layout="inline" style={{ flexWrap: "nowrap" }}>
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  placeholder="搜索文件名或来源"
-                  value={keywordInput}
-                  onChange={(event) => handleKeywordChange(event.target.value)}
-                  onPressEnter={(e) => {
-                    const value = (e.target as HTMLInputElement).value;
-                    setSearchKeyword(value);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedRecords([]);
-                  }}
-                  style={{ textOverflow: "ellipsis", overflow: "hidden" }}
-                />
-              </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={() => {
-                    setSearchKeyword(keywordInput);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedRecords([]);
-                    void queryClient.refetchQueries({ queryKey: ["elevation-records"] });
-                  }}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-            <Segmented
-              value={viewMode}
-              onChange={(value) => setViewMode(value as "card" | "list")}
-              options={[
-                { label: "卡片视图", value: "card" },
-                { label: "列表视图", value: "list" },
-              ]}
-            />
-          </div>
-  
-          {viewMode === "list" ? (
-            <div
-              ref={tableScrollAnchorRef}
-              className="admin-elevation-table-anchor"
-              style={{ "--admin-elevation-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-            >
-              <Table<ElevationFileRecordSummary>
-                rowKey="id"
-                dataSource={records}
-                columns={columns}
-                loading={isLoading}
-                tableLayout="fixed"
-                pagination={{
-                  current: pagination.current,
-                  pageSize: pagination.pageSize,
-                  total: Math.max(recordsData?.total ?? 0, 1),
-                  showSizeChanger: true,
-                  pageSizeOptions: [10, 20, 50, 100],
-                  showTotal: () => `共 ${recordsData?.total ?? 0} 条`,
-                  hideOnSinglePage: false,
-                  style: { marginBottom: 0 },
-                  onChange: (page, pageSize) => {
-                    setPagination({ current: page, pageSize });
-                  },
-                }}
-                scroll={{ y: tableScrollY }}
-                locale={{
-                  emptyText: (
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="未找到符合筛选条件的高程数据。"
-                    />
-                  ),
-                }}
-              />
-            </div>
-          ) : (
-            <div className="admin-elevation-card-view">
-              {isLoading && allLoadedRecords.length === 0 ? (
-                <div className="admin-elevation-card-view-state">
-                  <Spin tip="加载中..." />
-                </div>
-              ) : allLoadedRecords.length === 0 ? (
-                <div className="admin-elevation-card-view-state">
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="未找到符合筛选条件的高程数据。"
+                  <Form layout="inline" style={{ flexWrap: "nowrap" }}>
+                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Input
+                        allowClear
+                        placeholder="搜索文件名或来源"
+                        value={keywordInput}
+                        onChange={(event) => handleKeywordChange(event.target.value)}
+                        onPressEnter={(e) => {
+                          const value = (e.target as HTMLInputElement).value;
+                          setSearchKeyword(value);
+                          setPagination((prev) => ({ ...prev, current: 1 }));
+                        }}
+                        style={{ textOverflow: "ellipsis", overflow: "hidden" }}
+                      />
+                    </Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button
+                        htmlType="button"
+                        icon={<SearchOutlined />}
+                        onClick={() => {
+                          setSearchKeyword(keywordInput);
+                          setPagination((prev) => ({ ...prev, current: 1 }));
+                          void queryClient.refetchQueries({ queryKey: ["elevation-records"] });
+                        }}
+                        className="admin-search-btn"
+                      >
+                        查询
+                      </Button>
+                    </Form.Item>
+                  </Form>
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => {
+                      setViewMode(value as "card" | "list");
+                      setPagination((prev) => ({ ...prev, current: 1 }));
+                    }}
+                    options={[
+                      { label: "卡片视图", value: "card" },
+                      { label: "列表视图", value: "list" },
+                    ]}
                   />
                 </div>
-              ) : (
-                <div className="admin-elevation-card-view-content">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    {allLoadedRecords.map((recordItem) => (
-                      renderRecordCard(recordItem)
-                    ))}
+
+                {viewMode === "list" ? (
+                  <div
+                    ref={tableScrollAnchorRef}
+                    className="admin-elevation-table-anchor"
+                    style={{ "--admin-elevation-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                  >
+                    <Table<ElevationFileRecordSummary>
+                      rowKey="id"
+                      dataSource={records}
+                      columns={columns}
+                      loading={isLoading}
+                      tableLayout="fixed"
+                      pagination={{
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: Math.max(recordsData?.total ?? 0, 1),
+                        showSizeChanger: true,
+                        pageSizeOptions: [10, 20, 50],
+                        showTotal: () => `共 ${recordsData?.total ?? 0} 条`,
+                        hideOnSinglePage: false,
+                        style: { marginBottom: 0 },
+                        onChange: (page, pageSize) => {
+                          setPagination({ current: page, pageSize });
+                        },
+                      }}
+                      scroll={{ y: tableScrollY }}
+                      locale={{
+                        emptyText: (
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description="未找到符合筛选条件的高程数据。"
+                          />
+                        ),
+                      }}
+                    />
                   </div>
-                  {isLoadingMore && (
-                    <div style={{ textAlign: "center", padding: "20px 0" }}>
-                      <Spin tip="加载更多..." />
-                    </div>
-                  )}
-                  {allLoadedRecords.length >= (recordsData?.total ?? 0) && allLoadedRecords.length > 0 && (
-                    <div style={{ textAlign: "center", padding: "20px 0" }}>
-                      <Typography.Text type="secondary">
-                        已加载全部 {allLoadedRecords.length} 条数据
-                      </Typography.Text>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+                ) : (
+                  <div className="admin-elevation-card-view">
+                    {isLoading ? (
+                      <div className="admin-elevation-card-view-state">
+                        <Spin tip="加载中..." />
+                      </div>
+                    ) : records.length === 0 ? (
+                      <div className="admin-elevation-card-view-state">
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="未找到符合筛选条件的高程数据。"
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="admin-elevation-card-view-content">
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            {records.map((recordItem) => (
+                              renderRecordCard(recordItem)
+                            ))}
+                          </div>
+                        </div>
+                        <div className="admin-power-lines-pagination">
+                          <Pagination
+                            current={pagination.current}
+                            pageSize={pagination.pageSize}
+                            total={Math.max(recordsData?.total ?? 0, 1)}
+                            showSizeChanger
+                            showTotal={(total) => `共 ${total} 条`}
+                            onChange={(page, pageSize) => {
+                              setPagination({ current: page, pageSize });
+                            }}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             ),
           },
