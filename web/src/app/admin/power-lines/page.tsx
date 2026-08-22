@@ -807,7 +807,7 @@ interface PowerLineDetailViewProps {
 function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerManage, canLineManage, onLineDeleted }: PowerLineDetailViewProps) {
   const { message: messageApi } = App.useApp();
   const queryClient = useQueryClient();
-  const { getAccessToken } = useAuth();
+  const { user, getAccessToken } = useAuth();
   const [lineDetail, setLineDetail] = useState<LineSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
