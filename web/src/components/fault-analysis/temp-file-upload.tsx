@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import { Button, Progress, Space, Typography, message } from "antd";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button, Progress, Space, Spin, Typography, message } from "antd";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
+  DownOutlined,
+  UpOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
 
@@ -12,6 +14,8 @@ import { useAuth } from "@/components/auth-provider";
 import { getApiBaseUrl } from "@/lib/api";
 import type { TempUploadResponse } from "@/types/auth";
 import type { FaultAnalysisTempFile } from "./types";
+import type { PreviewKind, ValidationResult } from "./file-prevalidation";
+import { validateFile } from "./file-prevalidation";
 
 interface TempFileUploadProps {
   value?: FaultAnalysisTempFile[];
@@ -22,6 +26,8 @@ interface TempFileUploadProps {
   buttonLabel?: string;
   /** 文件大小上限（MB），选择时前端预校验（后端 validate_upload 仍为最终底线） */
   maxSizeMb?: number;
+  /** 文件内容级预校验类型，指定后上传完成会自动解析并展示数据预览（LP-420） */
+  previewKind?: PreviewKind;
 }
 
 function uploadToTemp(
@@ -75,6 +81,187 @@ function newUid(file: File): string {
   return `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const WAVE_FIELD_LABELS: Record<string, string> = {
+  station: "故障时刻",
+  fault_time: "故障时刻",
+  line_name: "线路名称",
+  fault_phase: "故障相",
+  duration_ms: "故障持续时间",
+  reclosing: "重合闸情况",
+  phase_voltage: "故障相电压",
+  phase_current: "故障相电流",
+  zero_sequence_current: "零序电流",
+  zero_sequence_compensation_k: "零序补偿系数K",
+  line_length_km: "线路总长度L",
+  sensitive_angle_deg: "线路正序灵敏角",
+  positive_sequence_impedance_ohm: "线路正序阻抗定值",
+};
+
+const LIGHTNING_FIELD_LABELS: Record<string, string> = {
+  event_id: "事件编号",
+  line_name: "线路名称",
+  fault_time: "故障时刻",
+  query_result: "是否存在落雷记录",
+  location_time: "雷电定位时刻",
+  current_ka: "雷电流幅值",
+  nearest_tower: "最近杆塔",
+  distance_to_line_km: "雷击点距线路距离",
+  distance_to_nearest_tower_m: "距最近杆塔距离",
+  line_side_distances_km: "线路两侧距离",
+  recording_distance_km: "录波测距",
+  recording_nearest_tower: "录波测距最近杆塔",
+  traveling_wave_distance_km: "行波测距",
+  traveling_wave_nearest_tower: "行波测距最近杆塔",
+  remarks: "备注",
+};
+
+const LEDGER_FIELD_LABELS: Record<string, string> = {
+  "线路名称": "线路名称",
+  "电压等级": "电压等级",
+  "塔号": "塔号",
+  "地形": "地形",
+  "地闪密度": "地闪密度",
+  "海拔m": "海拔",
+  "杆塔模型": "杆塔模型",
+  "塔形": "塔形",
+  "直线或耐张杆塔": "直线或耐张杆塔",
+  "绝缘子串长度mm": "绝缘子串长度",
+  "接地电阻": "接地电阻",
+  "反击耐雷水平kA": "反击耐雷水平",
+  "绕击耐雷水平kA": "绕击耐雷水平",
+  "雷击风险等级": "雷击风险等级",
+  "经度": "经度",
+  "纬度": "纬度",
+};
+
+/** 预览区：根据 previewKind 渲染校验摘要（LP-420） */
+function PreviewPanel({
+  kind,
+  result,
+}: {
+  kind: PreviewKind;
+  result: ValidationResult;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const renderSummary = () => {
+    if (kind === "optical_data") {
+      const fmt = result.extra?.format as string | undefined;
+      const kindText = result.extra?.kind === "video" ? "视频" : "图片";
+      return <span>媒体文件（{kindText}{fmt ? ` · .${fmt}` : ""}），无需结构校验</span>;
+    }
+    if (kind === "traveling_wave") {
+      const count = result.extra?.sampleCount ?? result.extra?.rowCount ?? 0;
+      const phases = result.fields.phaseCount;
+      return <span>采样点 {count}，识别相 {phases ?? "-"}</span>;
+    }
+    if (kind === "ledger_data") {
+      const matched = Object.values(result.fields).filter(Boolean).length;
+      return <span>识别到台账列 {matched}/16</span>;
+    }
+    if (kind === "wave_data" || kind === "lightning_data") {
+      const matched = Object.values(result.fields).filter(Boolean).length;
+      const total = kind === "wave_data" ? Object.keys(WAVE_FIELD_LABELS).length : Object.keys(LIGHTNING_FIELD_LABELS).length;
+      return <span>识别到字段 {matched}/{total}</span>;
+    }
+    return null;
+  };
+
+  const renderDetail = () => {
+    if (kind === "optical_data") {
+      return null;
+    }
+    if (kind === "traveling_wave") {
+      const count = result.extra?.sampleCount ?? result.extra?.rowCount ?? 0;
+      const phases = result.fields;
+      return (
+        <div className="space-y-1">
+          <div>采样点数量：{count}</div>
+          <div className="flex gap-3">
+            {["A", "B", "C"].map((p) => {
+              const key = `hasPhase${p}`;
+              const hit = phases[key];
+              return (
+                <span key={p} className={hit ? "" : "text-yellow-600"}>
+                  {p} {hit ? "✓" : "✗"}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+    if (kind === "ledger_data") {
+      const missing = Object.keys(LEDGER_FIELD_LABELS).filter((key) => !result.fields[key]);
+      const matchedCount = Object.keys(LEDGER_FIELD_LABELS).length - missing.length;
+      return (
+        <div className="space-y-1">
+          <div>识别到 {matchedCount}/16 列</div>
+          {missing.length > 0 && (
+            <div className="text-yellow-600">缺失列：{missing.map((key) => LEDGER_FIELD_LABELS[key]).join("、")}</div>
+          )}
+        </div>
+      );
+    }
+    const labels = kind === "wave_data" ? WAVE_FIELD_LABELS : LIGHTNING_FIELD_LABELS;
+    const shownKeys = Object.keys(labels);
+    const matchedCount = shownKeys.filter((key) => result.fields[key]).length;
+    return (
+      <div className="space-y-1">
+        <div>
+          识别到字段 {matchedCount}/{shownKeys.length}
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          {shownKeys.map((key) => {
+            const hit = result.fields[key];
+            return (
+              <span key={key} className={hit ? "" : "text-yellow-600"}>
+                {labels[key]} {hit ? "✓" : "✗"}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  if (kind === "optical_data") {
+    return (
+      <div className="mt-1 rounded bg-gray-50 px-2 py-1 text-xs text-gray-600">
+        {renderSummary()}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1 rounded bg-gray-50 px-2 py-1 text-xs text-gray-600">
+      <button
+        type="button"
+        className="flex w-full cursor-pointer items-center justify-between text-left"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span>{renderSummary()}</span>
+        {expanded ? <UpOutlined /> : <DownOutlined />}
+      </button>
+      {expanded && <div className="mt-1">{renderDetail()}</div>}
+      {result.errors.length > 0 && (
+        <div className="mt-1 text-red-600">
+          {result.errors.map((e, i) => (
+            <div key={i}>格式错误：{e}</div>
+          ))}
+        </div>
+      )}
+      {result.warnings.length > 0 && (
+        <div className="mt-1 text-yellow-600">
+          {result.warnings.map((w, i) => (
+            <div key={i}>提示：{w}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 选择文件后立即上传到临时目录并展示进度条（LP-369，交互与地闪密度导入一致）。 */
 export function TempFileUpload({
   value = [],
@@ -83,12 +270,14 @@ export function TempFileUpload({
   accept,
   buttonLabel = "选择文件",
   maxSizeMb,
+  previewKind,
 }: TempFileUploadProps) {
   const { getAccessToken } = useAuth();
   const inputRef = useRef<HTMLInputElement | null>(null);
   // 始终读取最新 value，避免并发上传时 onProgress 回调闭包读到陈旧值。
   const valueRef = useRef<FaultAnalysisTempFile[]>(value);
   const onChangeRef = useRef(onChange);
+  const fileMapRef = useRef<Map<string, File>>(new Map());
   useEffect(() => {
     valueRef.current = value;
   }, [value]);
@@ -105,9 +294,46 @@ export function TempFileUpload({
     [],
   );
 
+  const startValidate = useCallback(
+    async (uid: string, file: File) => {
+      if (!previewKind) {
+        return;
+      }
+      patchValue((items) =>
+        items.map((it) => (it.uid === uid ? { ...it, previewing: true } : it)),
+      );
+      try {
+        const result = await validateFile(file, previewKind);
+        patchValue((items) =>
+          items.map((it) => (it.uid === uid ? { ...it, preview: result, previewing: false } : it)),
+        );
+      } catch (error) {
+        const text = error instanceof Error ? error.message : "校验失败";
+        patchValue((items) =>
+          items.map((it) =>
+            it.uid === uid
+              ? {
+                  ...it,
+                  previewing: false,
+                  preview: {
+                    ok: false,
+                    errors: [`内容校验失败：${text}`],
+                    warnings: [],
+                    fields: {},
+                  },
+                }
+              : it,
+          ),
+        );
+      }
+    },
+    [patchValue, previewKind],
+  );
+
   const startUpload = useCallback(
     (file: File, item: FaultAnalysisTempFile) => {
       const token = getAccessToken();
+      fileMapRef.current.set(item.uid, file);
       uploadToTemp(
         file,
         token,
@@ -125,6 +351,7 @@ export function TempFileUpload({
                 : it,
             ),
           );
+          startValidate(item.uid, file);
         })
         .catch((error) => {
           const text = error instanceof Error ? error.message : "上传失败";
@@ -136,7 +363,7 @@ export function TempFileUpload({
           message.error(`${file.name} 上传失败：${text}`);
         });
     },
-    [getAccessToken, patchValue],
+    [getAccessToken, patchValue, startValidate],
   );
 
   const buildPendingItem = useCallback(
@@ -178,6 +405,7 @@ export function TempFileUpload({
 
   const removeItem = useCallback(
     (uid: string) => {
+      fileMapRef.current.delete(uid);
       patchValue((items) => items.filter((it) => it.uid !== uid));
     },
     [patchValue],
@@ -233,6 +461,17 @@ export function TempFileUpload({
                   移除
                 </Button>
               </Space>
+              {item.status === "done" && previewKind && (
+                <div className="mt-1">
+                  {item.previewing && !item.preview ? (
+                    <div className="flex items-center gap-2 rounded bg-gray-50 px-2 py-1 text-xs text-gray-500">
+                      <Spin size="small" /> 正在解析文件内容...
+                    </div>
+                  ) : item.preview ? (
+                    <PreviewPanel kind={previewKind} result={item.preview} />
+                  ) : null}
+                </div>
+              )}
             </div>
           ))}
         </div>

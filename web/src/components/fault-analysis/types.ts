@@ -25,6 +25,8 @@ export interface FaultAnalysisTempFile {
   percent: number;
   temp_file_id?: string;
   error?: string;
+  preview?: import("./file-prevalidation").ValidationResult;
+  previewing?: boolean;
 }
 /** 故障分析详情动态选项卡项（LP-275：多开详情 Tab 支持） */
 export interface DetailTabItem {

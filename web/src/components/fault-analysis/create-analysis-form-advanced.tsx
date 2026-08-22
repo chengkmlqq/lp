@@ -1,7 +1,8 @@
-import { Form, Input, Select, Upload, Button, FormInstance, Space, message } from "antd";
+import { Form, Input, Select, Upload, Button, FormInstance, Space, message, Modal } from "antd";
 import { UploadOutlined, FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined } from "@ant-design/icons";
 import type { CreateFaultAnalysisFormValues } from "./types";
 import { TempFileUpload } from "./temp-file-upload";
+import type { FaultAnalysisTempFile } from "./types";
 import { parseExcelFile, generateImportTemplate, generateWaveDataTemplate, generateLightningTemplate, generateWaveTemplate, generateOpticalTemplate } from "@/lib/excel-import-utils";
 
 interface CreateAnalysisFormAdvancedProps {
@@ -81,11 +82,109 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
     }
   };
 
+  // LP-420：文件字段 + 对应 previewKind 映射
+  const FILE_KIND_MAP: Array<{
+    field: keyof Pick<
+      CreateFaultAnalysisFormValues,
+      "wave_data_file" | "lightning_data_file" | "ledger_data_file" | "traveling_wave_file" | "optical_data_file"
+    >;
+    kind: "wave_data" | "lightning_data" | "ledger_data" | "traveling_wave" | "optical_data";
+    label: string;
+  }> = [
+    { field: "wave_data_file", kind: "wave_data", label: "录波数据" },
+    { field: "lightning_data_file", kind: "lightning_data", label: "雷电定位数据" },
+    { field: "ledger_data_file", kind: "ledger_data", label: "判别台账" },
+    { field: "traveling_wave_file", kind: "traveling_wave", label: "分布式行波数据" },
+    { field: "optical_data_file", kind: "optical_data", label: "光学监控数据" },
+  ];
+
+  // LP-420：提交前置内容校验汇总
+  const handleFinish = (values: CreateFaultAnalysisFormValues) => {
+    const allErrors: string[] = [];
+    const allWarnings: string[] = [];
+    const pendingChecks: Array<{ files: FaultAnalysisTempFile[]; label: string }> = [];
+
+    for (const { field, label } of FILE_KIND_MAP) {
+      const files = values[field] ?? [];
+      if (files.length === 0) {
+        continue;
+      }
+      const filesWithPreview = files.filter((f) => !!f.preview);
+      const filesWithoutPreview = files.filter((f) => !f.preview);
+      if (filesWithoutPreview.length > 0) {
+        pendingChecks.push({ files, label });
+        continue;
+      }
+      for (const file of filesWithPreview) {
+        for (const err of file.preview?.errors ?? []) {
+          allErrors.push(`【${label}】${file.name}：${err}`);
+        }
+        for (const warn of file.preview?.warnings ?? []) {
+          allWarnings.push(`【${label}】${file.name}：${warn}`);
+        }
+      }
+    }
+
+    if (pendingChecks.length > 0) {
+      Modal.confirm({
+        title: "部分文件尚未完成内容校验",
+        content: `${pendingChecks.map((p) => p.label).join("、")} 仍有文件在解析中或尚未校验，确定要提交吗？`,
+        okText: "仍要提交",
+        cancelText: "等待校验",
+        onOk: () => onSubmit(values),
+      });
+      return;
+    }
+
+    if (allErrors.length > 0) {
+      Modal.confirm({
+        title: "以下文件存在格式错误，无法参与判别",
+        content: (
+          <div className="max-h-[300px] overflow-y-auto">
+            {allErrors.map((err, i) => (
+              <div key={i} className="mb-1 text-red-600">
+                {err}
+              </div>
+            ))}
+            <div className="mt-2 text-gray-500">请移除对应文件后重新提交。</div>
+          </div>
+        ),
+        okText: "我知道了",
+        cancelButtonProps: { style: { display: "none" } },
+        onOk: () => {},
+      });
+      return;
+    }
+
+    if (allWarnings.length > 0) {
+      Modal.confirm({
+        title: "部分文件疑似缺少字段",
+        content: (
+          <div className="max-h-[300px] overflow-y-auto">
+            {allWarnings.slice(0, 10).map((w, i) => (
+              <div key={i} className="mb-1 text-yellow-600">
+                {w}
+              </div>
+            ))}
+            {allWarnings.length > 10 && <div className="mt-1 text-gray-500">...等共 {allWarnings.length} 条提示</div>}
+            <div className="mt-2 text-gray-500">仍要提交吗？</div>
+          </div>
+        ),
+        okText: "仍要提交",
+        cancelText: "返回修改",
+        onOk: () => onSubmit(values),
+      });
+      return;
+    }
+
+    onSubmit(values);
+  };
+
   return (
     <Form
       form={form}
       layout="vertical"
-      onFinish={onSubmit}
+      onFinish={handleFinish}
       className="admin-fault-analysis-form-tabs"
     >
       {/* 上：故障线路 */}
@@ -363,7 +462,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 <div className="text-xs text-gray-500 mb-3">支持 .txt/.json/.csv/.pdf/.xlsx 格式</div>
               </div>
               <Form.Item name="wave_data_file" className="mb-0">
-                <TempFileUpload accept=".txt,.json,.csv,.pdf,.xlsx" maxSizeMb={50} buttonLabel="选择文件" />
+                <TempFileUpload accept=".txt,.json,.csv,.pdf,.xlsx" maxSizeMb={50} buttonLabel="选择文件" previewKind="wave_data" />
               </Form.Item>
             </div>
 
@@ -377,7 +476,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 <div className="text-xs text-gray-500 mb-3">支持 .xls/.xlsx/.csv 格式</div>
               </div>
               <Form.Item name="lightning_data_file" className="mb-0">
-                <TempFileUpload accept=".xls,.xlsx,.csv" maxSizeMb={50} buttonLabel="选择文件" />
+                <TempFileUpload accept=".xls,.xlsx,.csv" maxSizeMb={50} buttonLabel="选择文件" previewKind="lightning_data" />
               </Form.Item>
             </div>
 
@@ -391,7 +490,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 <div className="text-xs text-gray-500 mb-3">支持 .csv/.dat/.txt/.json 格式</div>
               </div>
               <Form.Item name="traveling_wave_file" className="mb-0">
-                <TempFileUpload accept=".csv,.dat,.txt,.json" maxSizeMb={50} buttonLabel="选择文件" />
+                <TempFileUpload accept=".csv,.dat,.txt,.json" maxSizeMb={50} buttonLabel="选择文件" previewKind="traveling_wave" />
               </Form.Item>
             </div>
 
@@ -405,7 +504,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 <div className="text-xs text-gray-500 mb-3">支持图片或视频格式</div>
               </div>
               <Form.Item name="optical_data_file" className="mb-0">
-                <TempFileUpload accept="image/*,video/*" maxSizeMb={50} buttonLabel="选择文件" />
+                <TempFileUpload accept="image/*,video/*" maxSizeMb={50} buttonLabel="选择文件" previewKind="optical_data" />
               </Form.Item>
             </div>
 
