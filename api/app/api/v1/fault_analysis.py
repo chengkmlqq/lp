@@ -419,6 +419,37 @@ def export_fault_analysis_matlab_outputs(
     return _stream_matlab_output(analysis_id, contents)
 
 
+@router.get("/{analysis_id}/artifacts/{objectKey:path}", response_model=None)
+def download_fault_analysis_artifact(
+    analysis_id: str,
+    objectKey: str,
+    _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
+    db: Session = Depends(get_db),
+) -> object:
+    """按 objectKey 下载故障分析产物（LP-418）。"""
+    item = get_analysis_by_id(db, analysis_id)
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="故障分析记录不存在")
+    object_key = str(objectKey)
+    if not object_key.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="objectKey 不能为空")
+    try:
+        content = get_object(object_key)
+    except MinioObjectNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="产物对象不存在")
+    except MinioStorageError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    filename = _ascii_safe_filename(Path(object_key).name, f"fault_analysis_{analysis_id}_artifact")
+    encoded_filename = quote(Path(object_key).name or filename)
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}; filename=\"{filename}\"",
+        },
+    )
+
+
 def _stream_matlab_output(analysis_id: str, contents: list[tuple[str, bytes]]) -> object:
     """把引擎产物组织为下载响应：单文件直接返回，多文件打包 zip。"""
     if len(contents) == 1:
