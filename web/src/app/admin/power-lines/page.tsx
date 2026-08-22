@@ -4,8 +4,10 @@ import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
+  Alert,
   Button,
   Descriptions,
+  Drawer,
   Dropdown,
   Empty,
   Form,
@@ -21,7 +23,6 @@ import {
   Tabs,
   Tag,
   Typography,
-  Alert,
   Upload,
   type MenuProps,
 } from "antd";
@@ -52,7 +53,7 @@ import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { getApiBaseUrl, readApiError } from "@/lib/api";
-import type { LineListResponse, LineSummary, LineTowerImportResponse, LineTowerListResponse, LineTowerSummary, TempUploadResponse } from "@/types/auth";
+import type { LineListResponse, LineSummary, LineTowerImportResponse, LineTowerListResponse, LineTowerSummary, TempUploadResponse, TowerCircuitSummary, TowerDetailResponse } from "@/types/auth";
 
 type LineFormValues = {
   name: string;
@@ -819,6 +820,8 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
   const [tempFileId, setTempFileId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
+  const [towerDetailDrawerOpen, setTowerDetailDrawerOpen] = useState(false);
+  const [selectedTowerForDetail, setSelectedTowerForDetail] = useState<LineTowerSummary | null>(null);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -863,6 +866,18 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
         throw new Error(await readApiError(response));
       }
       return (await response.json()) as LineTowerListResponse;
+    },
+  });
+
+  const towerDetailQuery = useQuery({
+    queryKey: ["tower-detail", selectedTowerForDetail?.id],
+    enabled: !!user && !!selectedTowerForDetail && towerDetailDrawerOpen && canTowerRead,
+    queryFn: async () => {
+      const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers/${selectedTowerForDetail?.id}/detail`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as TowerDetailResponse;
     },
   });
 
@@ -949,6 +964,16 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
     setUploadProgress(0);
     setUploadError("");
     setImportModalOpen(true);
+  }, []);
+
+  const openTowerDetailDrawer = useCallback((item: LineTowerSummary) => {
+    setSelectedTowerForDetail(item);
+    setTowerDetailDrawerOpen(true);
+  }, []);
+
+  const closeTowerDetailDrawer = useCallback(() => {
+    setTowerDetailDrawerOpen(false);
+    setSelectedTowerForDetail(null);
   }, []);
 
   const importMutation = useMutation({
@@ -1054,6 +1079,21 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
       dataIndex: "update_date",
       width: 180,
       render: (value: string) => formatDateTime(value),
+    },
+    {
+      title: "操作",
+      key: "actions",
+      width: 120,
+      fixed: "right" as const,
+      render: (_: unknown, row) => (
+        <Space size="small">
+          {canTowerRead && (
+            <Button size="small" onClick={() => openTowerDetailDrawer(row)}>
+              查看详情
+            </Button>
+          )}
+        </Space>
+      ),
     },
   ];
 
@@ -1251,6 +1291,142 @@ function PowerLineDetailView({ lineId, fetchWithAuth, canTowerRead, canTowerMana
           </Button>
         </div>
       </Modal>
+      <Drawer
+        title={selectedTowerForDetail ? `杆塔详情 - ${selectedTowerForDetail.tower_no}` : "杆塔详情"}
+        open={towerDetailDrawerOpen}
+        width={720}
+        onClose={closeTowerDetailDrawer}
+        destroyOnClose
+      >
+        {towerDetailQuery.isPending ? (
+          <div className="flex items-center justify-center py-16">
+            <Typography.Text type="secondary">加载中...</Typography.Text>
+          </div>
+        ) : towerDetailQuery.isError ? (
+          <Alert
+            showIcon
+            type="error"
+            message="加载杆塔详情失败"
+            description={towerDetailQuery.error instanceof Error ? towerDetailQuery.error.message : "未知错误"}
+          />
+        ) : towerDetailQuery.data ? (
+          (() => {
+            const detail = towerDetailQuery.data;
+            const tower = detail.tower;
+            return (
+              <Tabs
+                items={[
+                  {
+                    key: "basic",
+                    label: "基本信息",
+                    children: (
+                      <Descriptions bordered size="small" column={2}>
+                        <Descriptions.Item label="塔号">{tower.tower_no}</Descriptions.Item>
+                        <Descriptions.Item label="序号">{tower.seq_no}</Descriptions.Item>
+                        <Descriptions.Item label="杆塔模型">{tower.tower_model ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="塔型">{tower.tower_type ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="线路电压等级">{tower.voltage_kv != null ? `${tower.voltage_kv} kV` : "-"}</Descriptions.Item>
+                        <Descriptions.Item label="风险等级">{tower.risk_level ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="经度">{tower.longitude != null ? tower.longitude : "-"}</Descriptions.Item>
+                        <Descriptions.Item label="纬度">{tower.latitude != null ? tower.latitude : "-"}</Descriptions.Item>
+                        <Descriptions.Item label="海拔(m)">{tower.altitude_m ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="地形">{tower.terrain ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="接地电阻(Ω)">{tower.ground_resistance_ohm ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="地闪密度">{tower.lightning_density ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="小号侧档距(m)">{tower.span_small_m ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="大号侧档距(m)">{tower.span_large_m ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="地面倾角1">{tower.slope_1 ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="地面倾角2">{tower.slope_2 ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="直线/耐张">{tower.structure_kind ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="绝缘子串长度(mm)">{tower.insulator_length_m ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="杆塔呼高(m)">{tower.call_height_m ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="避雷线高度(m)">{tower.shield_wire_height_m ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="左避雷线中距(m)">{tower.lightning_wire_left_mid_distance_m ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="右避雷线中距(m)">{tower.lightning_wire_right_mid_distance_m ?? "-"}</Descriptions.Item>
+                      </Descriptions>
+                    ),
+                  },
+                  {
+                    key: "circuits",
+                    label: "回路几何",
+                    children: detail.circuits.length === 0 ? (
+                      <Empty description="暂无回路数据" />
+                    ) : (
+                      <Table<TowerCircuitSummary>
+                        rowKey={(row) => String(row.circuit_no)}
+                        dataSource={detail.circuits}
+                        size="small"
+                        pagination={false}
+                        columns={[
+                          { title: "回路编号", dataIndex: "circuit_no", width: 80 },
+                          { title: "相序", dataIndex: "phase_sequence", render: (value: string | null) => value || "-" },
+                          { title: "上相中距(m)", dataIndex: "spacing_upper_m", render: (value: number | null) => value ?? "-" },
+                          { title: "中相中距(m)", dataIndex: "spacing_middle_m", render: (value: number | null) => value ?? "-" },
+                          { title: "下相中距(m)", dataIndex: "spacing_lower_m", render: (value: number | null) => value ?? "-" },
+                          { title: "上相高度(m)", dataIndex: "height_upper_m", render: (value: number | null) => value ?? "-" },
+                          { title: "中相高度(m)", dataIndex: "height_middle_m", render: (value: number | null) => value ?? "-" },
+                          { title: "下相高度(m)", dataIndex: "height_lower_m", render: (value: number | null) => value ?? "-" },
+                        ]}
+                      />
+                    ),
+                  },
+                  {
+                    key: "lightning",
+                    label: "防雷参数",
+                    children: detail.lightning_result ? (
+                      <Descriptions bordered size="small" column={2}>
+                        <Descriptions.Item label="反击耐雷水平(kA)">{detail.lightning_result.counterstroke_withstand_ka ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="反击跳闸率">{detail.lightning_result.counterstroke_trip_rate ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="绕击耐雷水平(kA)">{detail.lightning_result.shielding_withstand_ka ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="绕击跳闸率">{detail.lightning_result.shielding_trip_rate ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="电角度(°)">{detail.lightning_result.angle_deg ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="风险等级">{detail.lightning_result.risk_level ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="雷电流幅值 a(kA)">{detail.lightning_result.current_a_ka ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="雷电流幅值 b(kA)">{detail.lightning_result.current_b_ka ?? "-"}</Descriptions.Item>
+                      </Descriptions>
+                    ) : (
+                      <Empty description="暂无防雷参数" />
+                    ),
+                  },
+                  {
+                    key: "analysis",
+                    label: "分析建议",
+                    children: (
+                      <Space direction="vertical" size={16} className="w-full">
+                        <Descriptions bordered size="small" column={1}>
+                          <Descriptions.Item label="原因分析">{detail.analysis?.cause_analysis ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label="措施推荐">{detail.analysis?.mitigation_recommendation ?? "-"}</Descriptions.Item>
+                        </Descriptions>
+                        <Descriptions bordered size="small" column={3}>
+                          <Descriptions.Item label="直线/耐张">{tower.structure_kind ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label="绕击/反击模式">{tower.stroke_mode ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label="雷电流波形">{tower.current_type ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label="雷电流幅值 a">{tower.current_a ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label="雷电流幅值 b">{tower.current_b ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label="绝缘子串长度(mm)">{tower.insulator_length_m ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label="杆塔呼高(m)">{tower.call_height_m ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label="避雷线高度(m)">{tower.shield_wire_height_m ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label="左保护角(°)">{tower.protection_angle_left_deg ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label="右保护角(°)">{tower.protection_angle_right_deg ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label="A相避雷器">
+                            {detail.arrester?.A ? "是" : "否"}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="B相避雷器">
+                            {detail.arrester?.B ? "是" : "否"}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="C相避雷器">
+                            {detail.arrester?.C ? "是" : "否"}
+                          </Descriptions.Item>
+                        </Descriptions>
+                      </Space>
+                    ),
+                  },
+                ]}
+              />
+            );
+          })()
+        ) : null}
+      </Drawer>
     </div>
   );
 }
