@@ -51,14 +51,6 @@ function formatNumber(value: number | null | undefined, digits = 3): string {
   return value.toFixed(digits);
 }
 
-function renderDelta(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) {
-    return "-";
-  }
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(3)}`;
-}
-
 function renderAction(action: string) {
   if (action === "created") {
     return <Tag color="blue">新建</Tag>;
