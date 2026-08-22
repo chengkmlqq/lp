@@ -567,6 +567,278 @@ async function downloadObject(fetchWithAuth: (input: RequestInfo | URL, init?: R
   URL.revokeObjectURL(url);
 }
 
+interface ReportViewProps {
+  tabKey: string;
+  exportElementId: string;
+  detail: FaultAnalysisDetail;
+  sections: { sections: ReportSection[]; station: string; fault_datetime: string; fault_id: string };
+  exportLoading: boolean;
+  onExportMatlab: () => void;
+}
+
+interface ProcessViewProps {
+  tabKey: string;
+  computationSteps: ComputationStepDef[];
+  resultJson: Record<string, unknown>;
+}
+
+interface ArtifactsViewProps {
+  tabKey: string;
+  artifactTree: ArtifactTreeNode[];
+  downloadingArtifact: string | null;
+  onDownload: (key: string) => void;
+}
+
+function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, onExportMatlab }: ReportViewProps) {
+  return (
+    <div id={exportElementId} className="py-4">
+      <div className="border-b border-gray-200 pb-5 mb-6">
+        <div className="flex items-start justify-between mb-5">
+          <Title level={3} className="mb-0">
+            {sections.fault_id} 故障分析报告
+          </Title>
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: "matlab",
+                  label: "导出引擎产物 (ZIP)",
+                  onClick: onExportMatlab,
+                },
+              ],
+            }}
+            placement="bottomRight"
+            trigger={["click"]}
+          >
+            <Button icon={<DownloadOutlined />} loading={exportLoading}>
+              导出报告
+            </Button>
+          </Dropdown>
+        </div>
+        <Text type="secondary" className="text-sm">
+          线路: {detail.line_name ?? "-"} | 录波记录厂站: {sections.station} | 故障时间:{" "}
+          {sections.fault_datetime}
+        </Text>
+      </div>
+
+      <Space direction="vertical" size={24} className="w-full">
+        {sections.sections.map((section, sectionIndex) => {
+          const descriptionsItems = section.content.filter(
+            (item) => item.type !== "table" && item.type !== "card"
+          );
+          const standaloneItems = section.content.filter(
+            (item) => item.type === "table" || item.type === "card"
+          );
+          return (
+            <div key={sectionIndex}>
+              <div
+                className="px-5 py-3 rounded-md mb-4"
+                style={{
+                  background: "var(--fquiz-theme-bg-active)",
+                  color: "var(--fquiz-theme-text-primary)",
+                  border: "1px solid var(--fquiz-theme-border)",
+                }}
+              >
+                <Text className="font-semibold text-base" style={{ color: "var(--fquiz-theme-text-primary)" }}>
+                  {section.title}
+                </Text>
+              </div>
+              <Space direction="vertical" size={12} className="w-full">
+                {descriptionsItems.length > 0 && (
+                  <Descriptions column={2} bordered size="small">
+                    {descriptionsItems.map((item, itemIndex) => {
+                      if (item.type === "subtitle") {
+                        return (
+                          <Descriptions.Item key={itemIndex} label="" span={2}>
+                            <Text strong className="text-sm">
+                              {item.text}
+                            </Text>
+                          </Descriptions.Item>
+                        );
+                      }
+                      if (item.type === "highlight") {
+                        return (
+                          <Descriptions.Item key={itemIndex} label="" span={2}>
+                            <Text type="warning" className="text-sm">
+                              {item.text}
+                            </Text>
+                          </Descriptions.Item>
+                        );
+                      }
+                      if (item.type === "bullet") {
+                        return (
+                          <Descriptions.Item key={itemIndex} label="" span={2}>
+                            {item.items?.map((bullet, bulletIndex) => (
+                              <Paragraph key={bulletIndex} className="text-sm mb-2 text-gray-700">
+                                • {bullet}
+                              </Paragraph>
+                            ))}
+                          </Descriptions.Item>
+                        );
+                      }
+                      return (
+                        <Descriptions.Item key={itemIndex} label="">
+                          <Paragraph className="text-sm text-gray-700 mb-0">
+                            {item.text}
+                          </Paragraph>
+                        </Descriptions.Item>
+                      );
+                    })}
+                  </Descriptions>
+                )}
+                {standaloneItems.map((item, itemIndex) => {
+                  if (item.type === "card") {
+                    const lines = item.text.split("\n");
+                    return (
+                      <div
+                        key={itemIndex}
+                        className="bg-gray-50 border border-gray-200 rounded-lg p-5"
+                      >
+                        {lines.map((line, lineIndex) => {
+                          const isHighlight =
+                            line.includes("建议人工复核") ||
+                            line.includes("雷击类型:");
+                          const isTitle =
+                            line === "综合判定" ||
+                            (lineIndex === 0 && !line.includes(":"));
+                          return (
+                            <Paragraph
+                              key={lineIndex}
+                              className={`text-sm mb-2 ${
+                                isTitle
+                                  ? "font-semibold text-gray-900"
+                                  : isHighlight
+                                    ? "text-orange-600 font-medium"
+                                    : "text-gray-700"
+                              }`}
+                            >
+                              {line}
+                            </Paragraph>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+                  if (item.type === "table") {
+                    const columns = item.columns ?? [];
+                    const rawRows = item.rows ?? [];
+                    let tableColumns = columns.map((col, index) => ({
+                      title: col,
+                      dataIndex: index,
+                      key: `${index}-${col}`,
+                    }));
+                    let tableRows: Record<string, string>[] = [];
+                    if ((item.layout === "key_value" || columns.length === 2) && columns.length >= 2) {
+                      const pairHead = columns[0];
+                      const valueHead = columns[1];
+                      tableColumns = [
+                        { title: pairHead, dataIndex: 0, key: "kv-key" },
+                        { title: valueHead, dataIndex: 1, key: "kv-value" },
+                      ];
+                      rawRows.forEach((row, rowIndex) => {
+                        for (let index = 0; index + 1 < row.length; index += 2) {
+                          tableRows.push({
+                            key: `r${rowIndex}-c${index}`,
+                            0: row[index] ?? "",
+                            1: row[index + 1] ?? "",
+                          });
+                        }
+                      });
+                    } else {
+                      rawRows.forEach((row, rowIndex) => {
+                        const record: Record<string, string> = { key: `r${rowIndex}` };
+                        columns.forEach((_, index) => {
+                          record[index] = row[index] ?? "";
+                        });
+                        tableRows.push(record);
+                      });
+                    }
+                    return (
+                      <div
+                        key={itemIndex}
+                        className="bg-white border border-gray-200 rounded-lg"
+                        style={{ padding: 12, overflowY: "auto" }}
+                      >
+                        {item.title ? (
+                          <Text strong className="text-sm block mb-2">
+                            {item.title}
+                          </Text>
+                        ) : null}
+                        <Table
+                          size="small"
+                          bordered
+                          pagination={false}
+                          columns={tableColumns}
+                          dataSource={tableRows}
+                        />
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+              </Space>
+            </div>
+          );
+        })}
+      </Space>
+    </div>
+  );
+}
+
+function ProcessView({ computationSteps, resultJson }: ProcessViewProps) {
+  const stepCount = computationSteps.length;
+  return (
+    <div className="py-4">
+      <Steps
+        current={stepCount - 1}
+        status="finish"
+        size="small"
+        className="mb-6"
+        items={computationSteps.map((step) => ({ title: step.title }))}
+      />
+      <Collapse
+        accordion
+        defaultActiveKey={["ground"]}
+        items={computationSteps.map((step) => ({
+          key: step.key,
+          label: step.header,
+          children: (
+            <Space direction="vertical" size={12} className="w-full">
+              <Descriptions column={2} bordered size="small">
+                {step.fields.map((field, index) => (
+                  <Descriptions.Item key={`${step.key}-${index}`} label={field.label} span={2}>
+                    {field.get(resultJson)}
+                  </Descriptions.Item>
+                ))}
+              </Descriptions>
+              {resultJson.input_warnings && (resultJson.input_warnings as unknown[]).length > 0 ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="输入警告"
+                  description={(resultJson.input_warnings as string[]).join("；")}
+                />
+              ) : null}
+            </Space>
+          ),
+        }))}
+      />
+    </div>
+  );
+}
+
+function ArtifactsView({ onDownload, downloadingArtifact, artifactTree }: ArtifactsViewProps) {
+  return (
+    <div className="py-4">
+      {artifactTree.length === 0 ? (
+        <Alert type="info" showIcon message="该记录暂无产物清单。" />
+      ) : (
+        <Tree showLine defaultExpandAll treeData={artifactTree} />
+      )}
+    </div>
+  );
+}
+
 export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewProps) {
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
@@ -665,7 +937,6 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
   const artifacts = resultJson.artifacts as Record<string, unknown> | undefined;
   const computationSteps = buildComputationSteps();
   const artifactTree = buildArtifactTree(artifacts, (key) => handleDownloadArtifact(key));
-  const stepCount = computationSteps.length;
 
   const handleDownloadArtifact = async (objectKey: string) => {
     if (!detail) return;
@@ -681,291 +952,49 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
     }
   };
 
-  const renderProcessContent = () => (
-    <div className="py-4">
-      <Steps
-        current={stepCount - 1}
-        status="finish"
-        size="small"
-        className="mb-6"
-        items={computationSteps.map((step) => ({ title: step.title }))}
-      />
-      <Collapse
-        accordion
-        defaultActiveKey={["ground"]}
-        items={computationSteps.map((step) => ({
-          key: step.key,
-          label: step.header,
-          children: (
-            <Space direction="vertical" size={12} className="w-full">
-              <Descriptions column={2} bordered size="small">
-                {step.fields.map((field, index) => (
-                  <Descriptions.Item key={`${step.key}-${index}`} label={field.label} span={2}>
-                    {field.get(resultJson)}
-                  </Descriptions.Item>
-                ))}
-              </Descriptions>
-              {resultJson.input_warnings && (resultJson.input_warnings as unknown[]).length > 0 ? (
-                <Alert
-                  type="warning"
-                  showIcon
-                  message="输入警告"
-                  description={(resultJson.input_warnings as string[]).join("；")}
-                />
-              ) : null}
-            </Space>
-          ),
-        }))}
-      />
-    </div>
-  );
-
-  const renderArtifactsContent = () => (
-    <div className="py-4">
-      {artifactTree.length === 0 ? (
-        <Alert type="info" showIcon message="该记录暂无产物清单。" />
-      ) : (
-        <Tree
-          showLine
-          defaultExpandAll
-          treeData={artifactTree}
-        />
-      )}
-    </div>
-  );
-
   return (
     <div className="flex flex-col gap-4 h-full">
-      <Tabs
-        type="editable-card"
-        hideAdd
-        activeKey={activeView}
-        onChange={(key) => setActiveView(key as "report" | "process" | "artifacts")}
-        className="admin-fault-analysis-detail-tabs"
-        items={[
-          {
-            key: "report",
-            label: <span>报告</span>,
-            closable: false,
-            children: (
-              <Card className="flex-1 overflow-auto">
-                <div id={exportElementId}>
-                  <div className="border-b border-gray-200 pb-5 mb-6">
-                    <div className="flex items-start justify-between mb-5">
-                      <Title level={3} className="mb-0">
-                        {fault_id} 故障分析报告
-              </Title>
-              <Dropdown
-                menu={{
-                  items: [
-                    {
-                      key: "matlab",
-                      label: "导出引擎产物 (ZIP)",
-                      onClick: handleExportMatlab,
-                    },
-                  ],
-                }}
-                placement="bottomRight"
-                trigger={["click"]}
-              >
-                <Button
-                  icon={<DownloadOutlined />}
-                  loading={exporting}
-                >
-                  导出报告
-                </Button>
-              </Dropdown>
-            </div>
-            <Text type="secondary" className="text-sm">
-              线路: {detail.line_name ?? "-"} | 录波记录厂站: {station} | 故障时间:{" "}
-              {fault_datetime}
-            </Text>
-          </div>
-
-          <Space direction="vertical" size={24} className="w-full">
-            {sections.map((section, sectionIndex) => {
-              const descriptionsItems = section.content.filter(
-                (item) => item.type !== "table" && item.type !== "card"
-              );
-              const standaloneItems = section.content.filter(
-                (item) => item.type === "table" || item.type === "card"
-              );
-              return (
-                <div key={sectionIndex}>
-                  <div
-                    className="px-5 py-3 rounded-md mb-4"
-                    style={{
-                      background: 'var(--fquiz-theme-bg-active)',
-                      color: 'var(--fquiz-theme-text-primary)',
-                      border: '1px solid var(--fquiz-theme-border)'
-                    }}
-                  >
-                    <Text
-                      className="font-semibold text-base"
-                      style={{ color: 'var(--fquiz-theme-text-primary)' }}
-                    >
-                      {section.title}
-                    </Text>
-                  </div>
-                  <Space direction="vertical" size={12} className="w-full">
-                    {descriptionsItems.length > 0 && (
-                      <Descriptions column={2} bordered size="small">
-                        {descriptionsItems.map((item, itemIndex) => {
-                          if (item.type === "subtitle") {
-                            return (
-                              <Descriptions.Item key={itemIndex} label="" span={2}>
-                                <Text strong className="text-sm">
-                                  {item.text}
-                                </Text>
-                              </Descriptions.Item>
-                            );
-                          }
-                          if (item.type === "highlight") {
-                            return (
-                              <Descriptions.Item key={itemIndex} label="" span={2}>
-                                <Text type="warning" className="text-sm">
-                                  {item.text}
-                                </Text>
-                              </Descriptions.Item>
-                            );
-                          }
-                          if (item.type === "bullet") {
-                            return (
-                              <Descriptions.Item key={itemIndex} label="" span={2}>
-                                {item.items?.map((bullet, bulletIndex) => (
-                                  <Paragraph
-                                    key={bulletIndex}
-                                    className="text-sm mb-2 text-gray-700"
-                                  >
-                                    • {bullet}
-                                  </Paragraph>
-                                ))}
-                              </Descriptions.Item>
-                            );
-                          }
-                          return (
-                            <Descriptions.Item key={itemIndex} label="">
-                              <Paragraph className="text-sm text-gray-700 mb-0">
-                                {item.text}
-                              </Paragraph>
-                            </Descriptions.Item>
-                          );
-                        })}
-                      </Descriptions>
-                    )}
-                    {standaloneItems.map((item, itemIndex) => {
-                      if (item.type === "card") {
-                        const lines = item.text.split("\n");
-                        return (
-                          <div
-                            key={itemIndex}
-                            className="bg-gray-50 border border-gray-200 rounded-lg p-5"
-                          >
-                            {lines.map((line, lineIndex) => {
-                              const isHighlight =
-                                line.includes("建议人工复核") ||
-                                line.includes("雷击类型:");
-                              const isTitle =
-                                line === "综合判定" ||
-                                (lineIndex === 0 && !line.includes(":"));
-                              return (
-                                <Paragraph
-                                  key={lineIndex}
-                                  className={`text-sm mb-2 ${
-                                    isTitle
-                                      ? "font-semibold text-gray-900"
-                                      : isHighlight
-                                      ? "text-orange-600 font-medium"
-                                      : "text-gray-700"
-                                  }`}
-                                >
-                                  {line}
-                                </Paragraph>
-                              );
-                            })}
-                          </div>
-                        );
-                      }
-                      if (item.type === "table") {
-                        const columns = item.columns ?? [];
-                        const rawRows = item.rows ?? [];
-                        let tableColumns = columns.map((col, index) => ({
-                          title: col,
-                          dataIndex: index,
-                          key: `${index}-${col}`,
-                        }));
-                        let tableRows: Record<string, string>[] = [];
-                        if ((item.layout === "key_value" || columns.length === 2) && columns.length >= 2) {
-                          const pairHead = columns[0];
-                          const valueHead = columns[1];
-                          tableColumns = [
-                            { title: pairHead, dataIndex: 0, key: "kv-key" },
-                            { title: valueHead, dataIndex: 1, key: "kv-value" },
-                          ];
-                          rawRows.forEach((row, rowIndex) => {
-                            for (let index = 0; index + 1 < row.length; index += 2) {
-                              tableRows.push({
-                                key: `r${rowIndex}-c${index}`,
-                                0: row[index] ?? "",
-                                1: row[index + 1] ?? "",
-                              });
-                            }
-                          });
-                        } else {
-                          rawRows.forEach((row, rowIndex) => {
-                            const record: Record<string, string> = { key: `r${rowIndex}` };
-                            columns.forEach((_, index) => {
-                              record[index] = row[index] ?? "";
-                            });
-                            tableRows.push(record);
-                          });
-                        }
-                        return (
-                          <div
-                            key={itemIndex}
-                            className="bg-white border border-gray-200 rounded-lg"
-                            style={{ padding: 12, overflowY: "auto" }}
-                          >
-                            {item.title ? (
-                              <Text strong className="text-sm block mb-2">
-                                {item.title}
-                              </Text>
-                            ) : null}
-                            <Table
-                              size="small"
-                              bordered
-                              pagination={false}
-                              columns={tableColumns}
-                              dataSource={tableRows}
-                            />
-                          </div>
-                        );
-                      }
-                      return null;
-                    })}
-                  </Space>
-                </div>
-              );
-            })}
-          </Space>
-        </div>
-        </Card>
-            ),
-          },
-          {
-            key: "process",
-            label: <span>计算过程</span>,
-            closable: false,
-            children: <Card className="flex-1 overflow-auto">{renderProcessContent()}</Card>,
-          },
-          {
-            key: "artifacts",
-            label: <span>产物</span>,
-            closable: false,
-            children: <Card className="flex-1 overflow-auto">{renderArtifactsContent()}</Card>,
-          },
-        ]}
-      />
+      <Card
+        title="故障分析详情"
+        extra={
+          <Tabs
+            activeKey={activeView}
+            onChange={(key) => setActiveView(key as "report" | "process" | "artifacts")}
+            items={[
+              { key: "report", label: "报告" },
+              { key: "process", label: "计算过程" },
+              { key: "artifacts", label: "产物" },
+            ]}
+          />
+        }
+        className="flex-1 overflow-auto"
+      >
+        {activeView === "report" && (
+          <ReportView
+            tabKey={tabKey}
+            exportElementId={exportElementId}
+            detail={detail}
+            sections={buildSections(detail)}
+            exportLoading={exporting}
+            onExportMatlab={handleExportMatlab}
+          />
+        )}
+        {activeView === "process" && (
+          <ProcessView
+            tabKey={tabKey}
+            computationSteps={computationSteps}
+            resultJson={resultJson}
+          />
+        )}
+        {activeView === "artifacts" && (
+          <ArtifactsView
+            tabKey={tabKey}
+            artifactTree={artifactTree}
+            downloadingArtifact={downloadingArtifact}
+            onDownload={handleDownloadArtifact}
+          />
+        )}
+      </Card>
     </div>
   );
 }
