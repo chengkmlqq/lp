@@ -38,7 +38,6 @@ import {
   MoreOutlined,
   NumberOutlined,
   QuestionCircleOutlined,
-  RedoOutlined,
   SearchOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
@@ -655,18 +654,6 @@ export default function AdminLightningCurrentsPage() {
                   openDetail(record);
                 }}
               />
-              {record.status === "failed" && canManage && (
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<RedoOutlined />}
-                  loading={retryMutation.isPending}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    retryMutation.mutate(record);
-                  }}
-                />
-              )}
               {canManage && (
                 <Button
                   type="text"
@@ -688,6 +675,23 @@ export default function AdminLightningCurrentsPage() {
                     });
                   }}
                 />
+              )}
+              {(record.status === "failed" && canManage) && (
+                <Dropdown
+                  menu={{
+                    items: [
+                      {
+                        key: "retry",
+                        label: "重试",
+                        disabled: retryMutation.isPending,
+                        onClick: () => retryMutation.mutate(record),
+                      },
+                    ],
+                  }}
+                  trigger={["click"]}
+                >
+                  <Button type="text" size="small" icon={<MoreOutlined />} />
+                </Dropdown>
               )}
             </Space>
           </div>

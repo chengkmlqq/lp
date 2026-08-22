@@ -839,39 +839,6 @@ export default function AdminLightningDistributionPage() {
                   openDetail(record);
                 }}
               />
-              {canReadLogs && record.task_id && (
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<FileTextOutlined />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openLogViewer(record.task_id, "导入日志", record.source_file_name);
-                  }}
-                />
-              )}
-              {canReadLogs && record.lp_draw_task_id && (
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<FileTextOutlined />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openLogViewer(record.lp_draw_task_id, "绘图日志", record.source_file_name);
-                  }}
-                />
-              )}
-              {canManage && (
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<ThunderboltOutlined />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openLpDrawModal(record);
-                  }}
-                />
-              )}
               {canManage && (
                 <Button
                   type="text"
@@ -892,6 +859,45 @@ export default function AdminLightningDistributionPage() {
                   }}
                 />
               )}
+              {(() => {
+                const extraActions: MenuProps["items"] = [
+                  ...(canManage
+                    ? [
+                        {
+                          key: "draw-lp",
+                          label: "LP 绘图",
+                          icon: <ThunderboltOutlined />,
+                          onClick: () => openLpDrawModal(record),
+                        },
+                      ]
+                    : []),
+                  ...(canReadLogs && record.task_id
+                    ? [
+                        {
+                          key: "import-log",
+                          label: "导入日志",
+                          icon: <FileTextOutlined />,
+                          onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
+                        },
+                      ]
+                    : []),
+                  ...(canReadLogs && record.lp_draw_task_id
+                    ? [
+                        {
+                          key: "draw-log",
+                          label: "绘图日志",
+                          icon: <FileTextOutlined />,
+                          onClick: () => openLogViewer(record.lp_draw_task_id, "绘图日志", record.source_file_name),
+                        },
+                      ]
+                    : []),
+                ];
+                return extraActions.length > 0 ? (
+                  <Dropdown menu={{ items: extraActions }} trigger={["click"]}>
+                    <Button type="text" size="small" icon={<MoreOutlined />} />
+                  </Dropdown>
+                ) : null;
+              })()}
             </Space>
           </div>
         </div>
