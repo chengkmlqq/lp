@@ -20,6 +20,9 @@ export function getApiBaseUrl(): string {
   try {
     parsed = new URL(configured);
   } catch {
+    if (typeof window !== "undefined") {
+      return trimTrailingSlash(window.location.origin);
+    }
     return trimTrailingSlash(configured);
   }
 
