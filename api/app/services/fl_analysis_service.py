@@ -35,7 +35,7 @@ from ..schemas.fl_analysis import (
     FlAnalysisTowerResultSummary,
 )
 from .atp_asset_service import _truncate_output
-from .fl_analysis_external import execute_external_waveform_tower_analysis, resolve_external_waveform_job
+from .fl_analysis_external import execute_binary_search_external, execute_external_waveform_tower_analysis, resolve_external_waveform_job
 from .legacy_atp_adapter import execute_legacy_atp_tower_analysis, resolve_legacy_atp_job
 from .fl_analysis_report import build_report_document, build_report_summary_payload
 from .fl_analysis_rules import (
@@ -505,13 +505,22 @@ def execute_job(job_id: str) -> None:
             elif waveform_job_type == "normal":
                 baseline_result = grade_normal_snapshot_payload(payload, execution_options=execution_options)
                 if external_job is not None:
-                    execution = execute_external_waveform_tower_analysis(
-                        external_job,
-                        job=job,
-                        snapshot=snapshot,
-                        execution_options=execution_options,
-                        baseline_result=baseline_result,
-                    )
+                    if bool(execution_options.get("binary_search")):
+                        execution = execute_binary_search_external(
+                            external_job,
+                            job=job,
+                            snapshot=snapshot,
+                            execution_options=execution_options,
+                            baseline_result=baseline_result,
+                        )
+                    else:
+                        execution = execute_external_waveform_tower_analysis(
+                            external_job,
+                            job=job,
+                            snapshot=snapshot,
+                            execution_options=execution_options,
+                            baseline_result=baseline_result,
+                        )
                     graded = execution.result_json
                     run.engine_command = run.engine_command or execution.engine_command
                     run.working_dir = run.working_dir or execution.working_dir
@@ -539,13 +548,22 @@ def execute_job(job_id: str) -> None:
             elif waveform_job_type == "tongtiao":
                 baseline_result = grade_tongtiao_snapshot_payload(payload, execution_options=execution_options)
                 if external_job is not None:
-                    execution = execute_external_waveform_tower_analysis(
-                        external_job,
-                        job=job,
-                        snapshot=snapshot,
-                        execution_options=execution_options,
-                        baseline_result=baseline_result,
-                    )
+                    if bool(execution_options.get("binary_search")):
+                        execution = execute_binary_search_external(
+                            external_job,
+                            job=job,
+                            snapshot=snapshot,
+                            execution_options=execution_options,
+                            baseline_result=baseline_result,
+                        )
+                    else:
+                        execution = execute_external_waveform_tower_analysis(
+                            external_job,
+                            job=job,
+                            snapshot=snapshot,
+                            execution_options=execution_options,
+                            baseline_result=baseline_result,
+                        )
                     graded = execution.result_json
                     run.engine_command = run.engine_command or execution.engine_command
                     run.working_dir = run.working_dir or execution.working_dir

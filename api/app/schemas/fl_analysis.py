@@ -30,6 +30,11 @@ class FlAnalysisWaveformExecutionOptions(BaseModel):
     tail_time_min_us: float = 50.0
     tail_time_max_us: float = 50.0
     tail_time_step_us: float = 1.0
+    binary_search: bool = False
+    binary_search_low_ka: float = 0.1
+    binary_search_high_ka: float = 2000.0
+    binary_search_tolerance_ka: float = 0.1
+    binary_search_max_iterations: int = 20
 
 
 class FlAnalysisRunSummary(BaseModel):

@@ -361,12 +361,113 @@ def execute_external_waveform_tower_analysis(
         working_dir=str(run_dir),
     )
     return ExternalTowerExecutionResult(
-        result_json=merged_result,
+        result_json=merged,
         engine_command=" ".join(command),
         working_dir=str(run_dir),
         stdout_text=stdout_text,
         stderr_text=stderr_text,
     )
+
+
+def execute_binary_search_external(
+    resolved_job: ResolvedExternalWaveformJob,
+    *,
+    job: FlAnalysisJob,
+    snapshot: FlAnalysisTowerSnapshot,
+    execution_options: dict[str, Any],
+    baseline_result: dict[str, Any],
+) -> ExternalTowerExecutionResult:
+    low = _coerce_positive_float(execution_options.get("binary_search_low_ka"), default=0.1)
+    high = _coerce_positive_float(execution_options.get("binary_search_high_ka"), default=2000.0)
+    tolerance = _coerce_positive_float(execution_options.get("binary_search_tolerance_ka"), default=0.1)
+    max_iterations = int(execution_options.get("binary_search_max_iterations") or 20)
+    multiplier = 0.7 if (execution_options.get("stroke_mode") or "").strip() in {"反击", "counterstrike"} else 1.0
+    if low is None or high is None or tolerance is None or low < 0 or high <= 0 or tolerance <= 0:
+        raise RuntimeError("二分迭代参数无效：电流上下限与精度阈值必须为正数")
+    if high <= low:
+        raise RuntimeError("二分迭代参数无效：上限电流必须大于下限电流")
+
+    search_history: list[dict[str, Any]] = []
+    iteration = 0
+    final_flashover_count: int | None = None
+    final_execution: ExternalTowerExecutionResult | None = None
+
+    while (high - low) >= tolerance and iteration < max_iterations:
+        iteration += 1
+        candidate = (low + high) / 2
+        adjusted_execution_options = _with_binary_search_current(execution_options, current_ka=candidate)
+        execution = execute_external_waveform_tower_analysis(
+            resolved_job,
+            job=job,
+            snapshot=snapshot,
+            execution_options=adjusted_execution_options,
+            baseline_result=baseline_result,
+        )
+        flashover_count = _coerce_flashover_count(execution.result_json)
+        search_history.append(
+            {
+                "iteration": iteration,
+                "current_ka": candidate,
+                "flashover_count": flashover_count,
+                "low": low,
+                "high": high,
+            }
+        )
+        if flashover_count > 0:
+            high = candidate
+        else:
+            low = candidate
+        final_flashover_count = flashover_count
+        final_execution = execution
+
+    withstand_ka = round(max(min(high * multiplier, high), low), 4)
+    binary_search_payload = {
+        "low_ka": low,
+        "high_ka": high,
+        "tolerance_ka": tolerance,
+        "max_iterations": max_iterations,
+        "multiplier": multiplier,
+        "iteration_count": iteration,
+        "search_history": search_history,
+        "converged": (high - low) < tolerance,
+        "final_flashover_count": final_flashover_count,
+        "final_withstand_ka": withstand_ka,
+    }
+    merged = dict(final_execution.result_json) if final_execution is not None else dict(baseline_result)
+    merged["binary_search"] = binary_search_payload
+    merged["counterstrike_withstand_ka"] = withstand_ka
+    merged["shielding_withstand_ka"] = withstand_ka
+    return ExternalTowerExecutionResult(
+        result_json=merged,
+        engine_command=final_execution.engine_command if final_execution is not None else "",
+        working_dir=final_execution.working_dir if final_execution is not None else "",
+        stdout_text=final_execution.stdout_text if final_execution is not None else None,
+        stderr_text=final_execution.stderr_text if final_execution is not None else None,
+    )
+
+
+def _with_binary_search_current(execution_options: dict[str, Any], *, current_ka: float) -> dict[str, Any]:
+    updated = dict(execution_options)
+    updated["binary_search_current_ka"] = current_ka
+    return updated
+
+
+def _coerce_flashover_count(result_json: dict[str, Any]) -> int:
+    for key in {"flashover_count", "闪络相数"}:
+        if key in result_json:
+            return _coerce_positive_int(result_json.get(key)) or 0
+    flashover_phase = result_json.get("flashover_phase")
+    if isinstance(flashover_phase, str) and flashover_phase.strip():
+        return max(1, len([item for item in flashover_phase.split(",") if str(item).strip()]))
+    return 0
+
+
+def _coerce_positive_float(value: Any, *, default: float) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
 
 
 def _build_template_context(

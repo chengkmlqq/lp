@@ -32,6 +32,10 @@ export type CreateJobFormValues = {
   tail_time_min_us: number;
   tail_time_max_us: number;
   tail_time_step_us: number;
+  binary_search: boolean;
+  binary_search_low_ka?: number;
+  binary_search_high_ka?: number;
+  binary_search_tolerance_ka?: number;
 };
 
 export type MitigationFormValues = {
@@ -137,6 +141,10 @@ export const CREATE_JOB_DEFAULTS: CreateJobFormValues = {
   tail_time_min_us: 50,
   tail_time_max_us: 50,
   tail_time_step_us: 1,
+  binary_search: false,
+  binary_search_low_ka: 0.1,
+  binary_search_high_ka: 2000,
+  binary_search_tolerance_ka: 0.1,
 };
 
 export function formatRiskLevel(value: string | null | undefined): string {

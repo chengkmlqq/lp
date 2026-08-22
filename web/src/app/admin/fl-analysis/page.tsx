@@ -283,6 +283,12 @@ export default function AdminFlAnalysisPage() {
           model_id: values.atp_model_id,
         };
       }
+      if (values.binary_search) {
+        payload.execution_options_json.binary_search = true;
+        payload.execution_options_json.binary_search_low_ka = values.binary_search_low_ka;
+        payload.execution_options_json.binary_search_high_ka = values.binary_search_high_ka;
+        payload.execution_options_json.binary_search_tolerance_ka = values.binary_search_tolerance_ka;
+      }
     }
     return payload;
   }

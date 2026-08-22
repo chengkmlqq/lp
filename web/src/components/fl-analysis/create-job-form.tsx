@@ -241,6 +241,34 @@ export function CreateJobForm({
               <InputNumber min={0.5} step={0.5} precision={2} className="w-full" />
             </Form.Item>
           </div>
+          <div className="mb-2 flex flex-col gap-1">
+            <Form.Item name="binary_search" label="二分迭代" valuePropName="checked" className="mb-0">
+              <Select
+                options={[
+                  { value: true, label: "开启" },
+                  { value: false, label: "关闭" },
+                ]}
+              />
+            </Form.Item>
+            {selectedAtpModel ? (
+              <Alert
+                type="info"
+                showIcon
+                message="开启后以雷电流为变量进行折半搜索逼近临界耐雷水平（每塔约 15~30 次 ATP 调用）。"
+              />
+            ) : null}
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <Form.Item name="binary_search_low_ka" label="二分下限(kA)">
+              <InputNumber min={0.1} step={0.1} precision={2} className="w-full" disabled={!selectedAtpModel} />
+            </Form.Item>
+            <Form.Item name="binary_search_high_ka" label="二分上限(kA)">
+              <InputNumber min={0.1} step={0.1} precision={2} className="w-full" disabled={!selectedAtpModel} />
+            </Form.Item>
+            <Form.Item name="binary_search_tolerance_ka" label="精度阈值(kA)">
+              <InputNumber min={0.01} step={0.01} precision={2} className="w-full" disabled={!selectedAtpModel} />
+            </Form.Item>
+          </div>
         </>
       ) : null}
     </Form>
