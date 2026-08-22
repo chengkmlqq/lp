@@ -894,7 +894,7 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
                           key: `${index}-${col}`,
                         }));
                         let tableRows: Record<string, string>[] = [];
-                        if (item.layout === "key_value" && columns.length >= 2) {
+                        if ((item.layout === "key_value" || columns.length === 2) && columns.length >= 2) {
                           const pairHead = columns[0];
                           const valueHead = columns[1];
                           tableColumns = [
