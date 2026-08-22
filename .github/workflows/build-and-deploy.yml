@@ -532,6 +532,15 @@ jobs:
                     if docker pull "${img}" >/dev/null 2>&1; then
                       break
                     fi
+                    # daocloud 401/失败时，自动 fallback 到 Docker Hub 官方源
+                    if [[ "${img}" == docker.m.daocloud.io/* ]]; then
+                      local fallback="${img#docker.m.daocloud.io/}"
+                      echo "[warn] daocloud 拉取失败，尝试 Docker Hub: ${fallback}"
+                      if docker pull "${fallback}" >/dev/null 2>&1; then
+                        docker tag "${fallback}" "${img}" >/dev/null 2>&1 || true
+                        break
+                      fi
+                    fi
                     echo "[warn] pull ${img} 失败 (attempt ${img_attempt}/3), retrying..."
                     sleep $((img_attempt * 10))
                     img_attempt=$((img_attempt + 1))
