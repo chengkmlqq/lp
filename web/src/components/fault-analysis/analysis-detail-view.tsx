@@ -12,7 +12,6 @@ import {
   Dropdown,
   Table,
   message,
-  Tabs,
   Steps,
   Collapse,
   Tag,
@@ -571,6 +570,7 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
   const [downloadingArtifact, setDownloadingArtifact] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<"report" | "process" | "artifacts">("report");
   const exportElementId = `analysis-export-content-${tabKey}`;
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
@@ -680,7 +680,7 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
     }
   };
 
-  const renderProcessTab = () => (
+  const renderProcessContent = () => (
     <div className="py-4">
       <Steps
         current={stepCount - 1}
@@ -719,7 +719,7 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
     </div>
   );
 
-  const renderArtifactsTab = () => (
+  const renderArtifactsContent = () => (
     <div className="py-4">
       {artifactTree.length === 0 ? (
         <Alert type="info" showIcon message="该记录暂无产物清单。" />
@@ -736,13 +736,18 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
   return (
     <div className="flex flex-col gap-4 h-full">
       <Card className="flex-1 overflow-auto">
-        <Tabs
-          defaultActiveKey="report"
-          items={[
-            {
-              key: "report",
-              label: "报告",
-              children: (
+        <div className="flex gap-2 mb-4">
+          <Button type={activeView === "report" ? "primary" : "default"} onClick={() => setActiveView("report")}>
+            查看报告
+          </Button>
+          <Button type={activeView === "process" ? "primary" : "default"} onClick={() => setActiveView("process")}>
+            计算过程
+          </Button>
+          <Button type={activeView === "artifacts" ? "primary" : "default"} onClick={() => setActiveView("artifacts")}>
+            查看产物
+          </Button>
+        </div>
+        {activeView === "report" && (
                 <div id={exportElementId}>
                   <div className="border-b border-gray-200 pb-5 mb-6">
                     <div className="flex items-start justify-between mb-5">
@@ -943,20 +948,9 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
             })}
           </Space>
         </div>
-                ),
-              },
-              {
-                key: "process",
-                label: "计算过程",
-                children: renderProcessTab(),
-              },
-              {
-                key: "artifacts",
-                label: "产物",
-                children: renderArtifactsTab(),
-              },
-            ]}
-          />
+        )}
+        {activeView === "process" && renderProcessContent()}
+        {activeView === "artifacts" && renderArtifactsContent()}
         </Card>
     </div>
   );
