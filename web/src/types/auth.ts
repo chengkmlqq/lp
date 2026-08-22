@@ -751,6 +751,47 @@ export type LineTowerListResponse = {
   total: number;
 };
 
+export type TowerBasicDetail = {
+  id: string;
+  line_id: string;
+  seq_no: number;
+  tower_no: string;
+  tower_model: string | null;
+  tower_type: string | null;
+  voltage_kv: number | null;
+  longitude: number | null;
+  latitude: number | null;
+  altitude_m: number | null;
+  terrain: string | null;
+  ground_resistance_ohm: number | null;
+  lightning_density: number | null;
+  span_small_m: number | null;
+  span_large_m: number | null;
+  slope_1: number | null;
+  slope_2: number | null;
+  risk_level: string | null;
+  current_type: string | null;
+  current_a: number | null;
+  current_b: number | null;
+  structure_kind: string | null;
+  stroke_mode: string | null;
+  insulator_length_m: number | null;
+  call_height_m: number | null;
+  protection_angle_left_deg: number | null;
+  protection_angle_right_deg: number | null;
+  shield_wire_height_m: number | null;
+  lightning_wire_left_mid_distance_m: number | null;
+  lightning_wire_right_mid_distance_m: number | null;
+};
+
+export type TowerDetailResponse = {
+  tower: TowerBasicDetail;
+  circuits: TowerCircuitSummary[];
+  arrester: Record<string, boolean>;
+  lightning_result: TowerLightningResultSummary | null;
+  analysis: TowerAnalysisSummary | null;
+};
+
 export type LineTowerImportResponse = {
   line: LineSummary;
   imported_count: number;

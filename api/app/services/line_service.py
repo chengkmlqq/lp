@@ -33,7 +33,9 @@ from ..schemas.line import (
     LineTowerUpdateRequest,
     LineUpdateRequest,
     TowerAnalysisSummary,
+    TowerBasicDetail,
     TowerCircuitSummary,
+    TowerDetailResponse,
     TowerLightningResultSummary,
     TowerProfileLightningCurrentSummary,
 )
@@ -387,6 +389,63 @@ def list_line_towers(
 
 def get_line_tower_by_id(db: Session, tower_id: str) -> LineTower | None:
     return db.execute(select(LineTower).where(LineTower.id == tower_id)).scalar_one_or_none()
+
+
+def get_tower_detail(db: Session, tower_id: str) -> TowerDetailResponse | None:
+    """聚合杆塔全量参数，供详情抽屉使用（塔本体 + 回路 + 避雷器 + 防雷结果 + 分析建议）。"""
+    tower = get_line_tower_by_id(db, tower_id)
+    if not tower:
+        return None
+    profile = tower.profile
+    arrester: dict[str, bool] = {}
+    for phase, value in (("A", profile.arrester_a if profile else None), ("B", profile.arrester_b if profile else None), ("C", profile.arrester_c if profile else None)):
+        normalized = _normalize_str(value)
+        if normalized is not None and normalized != "否":
+            arrester[phase] = True
+        else:
+            arrester[phase] = False
+    extra = profile.extra_profile_json if profile else {}
+    lightning_wire = extra.get("lightning_wire") if isinstance(extra, dict) else None
+    if not isinstance(lightning_wire, dict):
+        lightning_wire = {}
+    return TowerDetailResponse(
+        tower=TowerBasicDetail(
+            id=tower.id,
+            line_id=tower.line_id,
+            seq_no=tower.seq_no,
+            tower_no=tower.tower_no,
+            tower_model=tower.tower_model,
+            tower_type=tower.tower_type,
+            voltage_kv=tower.line.voltage_kv if tower.line else None,
+            longitude=tower.longitude,
+            latitude=tower.latitude,
+            altitude_m=tower.altitude_m,
+            terrain=tower.terrain,
+            ground_resistance_ohm=tower.ground_resistance_ohm,
+            lightning_density=tower.lightning_density,
+            span_small_m=tower.span_small_m,
+            span_large_m=tower.span_large_m,
+            slope_1=tower.slope_1,
+            slope_2=tower.slope_2,
+            risk_level=tower.risk_level,
+            current_type=profile.current_type if profile else None,
+            current_a=profile.current_a if profile else None,
+            current_b=profile.current_b if profile else None,
+            structure_kind=profile.structure_kind if profile else None,
+            stroke_mode=profile.stroke_mode if profile else None,
+            insulator_length_m=profile.insulator_length_m if profile else None,
+            call_height_m=profile.call_height_m if profile else None,
+            protection_angle_left_deg=profile.protection_angle_left_deg if profile else None,
+            protection_angle_right_deg=profile.protection_angle_right_deg if profile else None,
+            shield_wire_height_m=profile.shield_wire_height_m if profile else None,
+            lightning_wire_left_mid_distance_m=_parse_float(lightning_wire.get("left_mid_distance_m")),
+            lightning_wire_right_mid_distance_m=_parse_float(lightning_wire.get("right_mid_distance_m")),
+        ),
+        circuits=[_serialize_circuit(circuit) for circuit in tower.circuits],
+        arrester=arrester,
+        lightning_result=_serialize_lightning_result(tower.lightning_result) if tower.lightning_result else None,
+        analysis=_serialize_tower_analysis(tower.analysis) if tower.analysis else None,
+    )
 
 
 def create_line_tower(

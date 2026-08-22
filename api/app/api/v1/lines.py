@@ -17,6 +17,7 @@ from ...schemas.line import (
     LineTowerSummary,
     LineTowerUpdateRequest,
     LineUpdateRequest,
+    TowerDetailResponse,
 )
 from ...services.line_service import (
     create_line,
@@ -27,6 +28,7 @@ from ...services.line_service import (
     get_line_by_id,
     get_line_detail_summary,
     get_line_tower_by_id,
+    get_tower_detail,
     import_line_towers_from_csv,
     list_line_towers,
     list_lines,
@@ -228,3 +230,15 @@ def get_line_tower_detail(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tower not found")
     return serialize_line_tower(item)
+
+
+@router.get("/towers/{tower_id}/detail", response_model=TowerDetailResponse)
+def get_line_tower_detail_endpoint(
+    tower_id: str,
+    _: CurrentUser = Depends(require_any_permission("tower.read", "tower.manage", "line.read", "line.manage")),
+    db: Session = Depends(get_db),
+) -> TowerDetailResponse:
+    detail = get_tower_detail(db, tower_id)
+    if not detail:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tower not found")
+    return detail

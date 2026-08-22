@@ -125,6 +125,51 @@ class LineTowerSummary(BaseModel):
     update_user: str | None = None
 
 
+class TowerBasicDetail(BaseModel):
+    """杆塔详情抽屉「基本信息」Tab 的塔本体字段（含线路电压等级与专业参数）。"""
+
+    id: str
+    line_id: str
+    seq_no: int
+    tower_no: str
+    tower_model: str | None = None
+    tower_type: str | None = None
+    voltage_kv: int | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+    altitude_m: float | None = None
+    terrain: str | None = None
+    ground_resistance_ohm: float | None = None
+    lightning_density: float | None = None
+    span_small_m: float | None = None
+    span_large_m: float | None = None
+    slope_1: float | None = None
+    slope_2: float | None = None
+    risk_level: str | None = None
+    current_type: str | None = None
+    current_a: float | None = None
+    current_b: float | None = None
+    structure_kind: str | None = None
+    stroke_mode: str | None = None
+    insulator_length_m: float | None = None
+    call_height_m: float | None = None
+    protection_angle_left_deg: float | None = None
+    protection_angle_right_deg: float | None = None
+    shield_wire_height_m: float | None = None
+    lightning_wire_left_mid_distance_m: float | None = None
+    lightning_wire_right_mid_distance_m: float | None = None
+
+
+class TowerDetailResponse(BaseModel):
+    """防雷详情页杆塔聚合详情（`GET /api/v1/lines/towers/{tower_id}/detail`）。"""
+
+    tower: TowerBasicDetail
+    circuits: list[TowerCircuitSummary] = Field(default_factory=list)
+    arrester: dict[str, bool] = Field(default_factory=dict)
+    lightning_result: TowerLightningResultSummary | None = None
+    analysis: TowerAnalysisSummary | None = None
+
+
 class LineTowerListResponse(BaseModel):
     items: list[LineTowerSummary]
     total: int
