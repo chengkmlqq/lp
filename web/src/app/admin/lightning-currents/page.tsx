@@ -48,6 +48,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { LightningCurrentBackfillHistoryTable } from "@/components/lightning-current-backfill-history";
 import { Card } from "@/components/ui-antd";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -599,6 +600,26 @@ export default function AdminLightningCurrentsPage() {
     setActiveTabKey(key);
   }, [canManage, retryMutation]);
 
+  // 单条幅值记录的回填记录（动态 Tab）
+  const openBackfillHistory = useCallback((record: LightningAmplitudeRecord) => {
+    const key = `backfill-history-${record.id}`;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: <span>回填记录 - {truncateFileName(record.source_file_name)}</span>,
+          closable: true,
+          children: <LightningCurrentBackfillHistoryTable />,
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, []);
+
   // 回填线路小窗查询
   const backfillLinesQuery = useQuery<LightningAmplitudeBackfillLineListResponse>({
     queryKey: ["lightning-currents", backfillLinesRecord?.id, "backfill-lines"],
@@ -726,6 +747,18 @@ export default function AdminLightningCurrentsPage() {
                   openDetail(record);
                 }}
               />
+              {canRead && (
+                <Button
+                  type="text"
+                  size="small"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openBackfillHistory(record);
+                  }}
+                >
+                  回填记录
+                </Button>
+              )}
               {canManage && (
                 <Button
                   type="text"
@@ -928,6 +961,14 @@ export default function AdminLightningCurrentsPage() {
               >
                 详情
               </Button>
+              {canRead && (
+                <Button
+                  size="small"
+                  onClick={() => openBackfillHistory(row)}
+                >
+                  回填记录
+                </Button>
+              )}
               {canManage && (
                 <Button
                   size="small"
@@ -957,7 +998,7 @@ export default function AdminLightningCurrentsPage() {
         },
       },
     ],
-    [canManage, deleteMutation, retryMutation, backfillMutation, openDetail, openBackfillLines, canReadLogs, openLogViewer],
+    [canManage, canRead, deleteMutation, retryMutation, backfillMutation, openDetail, openBackfillLines, openBackfillHistory, canReadLogs, openLogViewer],
   );
 
   if (initializing) {
@@ -1013,9 +1054,6 @@ export default function AdminLightningCurrentsPage() {
                 导入
               </Button>
             ) : null}
-            <Button>
-              <Link href="/admin/lightning-currents/backfill-history">回填记录</Link>
-            </Button>
           </Space>
         }
         items={[
