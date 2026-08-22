@@ -4,6 +4,8 @@ import type { CreateFaultAnalysisFormValues } from "./types";
 import { TempFileUpload } from "./temp-file-upload";
 import type { FaultAnalysisTempFile } from "./types";
 import { parseExcelFile, generateImportTemplate, generateWaveDataTemplate, generateLightningTemplate, generateWaveTemplate, generateOpticalTemplate } from "@/lib/excel-import-utils";
+import * as XLSX from "xlsx";
+import { useCallback, useEffect, useState } from "react";
 
 interface CreateAnalysisFormAdvancedProps {
   form: FormInstance<CreateFaultAnalysisFormValues>;
@@ -15,6 +17,87 @@ interface CreateAnalysisFormAdvancedProps {
 }
 
 export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit, submitText = "提交分析", submitting }: CreateAnalysisFormAdvancedProps) {
+  const [extractState, setExtractState] = useState<{
+    response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string };
+    item: FaultAnalysisTempFile;
+  } | null>(null);
+
+  const waveFiles = Form.useWatch("wave_data_file", form) ?? [];
+  useEffect(() => {
+    if (!extractState) {
+      return;
+    }
+    const stillExists = waveFiles.some((f) => f.uid === extractState.item.uid);
+    if (!stillExists) {
+      setExtractState(null);
+    }
+  }, [waveFiles, extractState]);
+
+  const WAVE_FIELD_LABELS: Record<string, string> = {
+    station: "录波记录厂站",
+    fault_time: "故障时刻",
+    line_name: "故障线路名称",
+    fault_phase: "故障相",
+    duration_ms: "故障持续时间",
+    reclosing: "重合闸情况",
+    phase_voltage: "故障相电压",
+    phase_current: "故障相电流",
+    zero_sequence_current: "最大零序电流",
+    zero_sequence_compensation_k: "零序补偿系数K",
+    line_length_km: "线路总长度L",
+    sensitive_angle_deg: "线路正序灵敏角",
+    positive_sequence_impedance_ohm: "线路正序阻抗定值",
+  };
+
+  const handlePdfExtracted = useCallback((item: FaultAnalysisTempFile, response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string }) => {
+    setExtractState({ response, item });
+    const extracted = response.extracted || {};
+    form.setFieldsValue({
+      station_name: extracted.station ?? undefined,
+      fault_time: extracted.fault_time ?? undefined,
+      fault_line_name: extracted.line_name ?? undefined,
+      fault_phase: extracted.fault_phase ?? undefined,
+      fault_duration: extracted.duration_ms ?? undefined,
+      reclosure_status: extracted.reclosing ?? undefined,
+      fault_voltage: extracted.phase_voltage ?? undefined,
+      fault_current: extracted.phase_current ?? undefined,
+      max_zero_current: extracted.zero_sequence_current ?? undefined,
+      zero_compensation: extracted.zero_sequence_compensation_k ?? undefined,
+      line_length: extracted.line_length_km ?? undefined,
+      line_angle: extracted.sensitive_angle_deg ?? undefined,
+      line_impedance: extracted.positive_sequence_impedance_ohm ?? undefined,
+    });
+  }, [form]);
+
+  const handleDownloadExtracted = useCallback((response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string }) => {
+    try {
+      const wsData = [
+        ['录波记录厂站', '故障时刻', '故障线路名称', '故障相', '故障持续时间(ms)', '重合闸情况', '故障相电压', '故障相电流', '最大零序电流(A)', '零序补偿系数K', '线路总长度L(km)', '线路正序灵敏角(°)', '线路正序阻抗定值(Ω)'],
+        [
+          response.extracted.station ?? '',
+          response.extracted.fault_time ?? '',
+          response.extracted.line_name ?? '',
+          response.extracted.fault_phase ?? '',
+          response.extracted.duration_ms ?? '',
+          response.extracted.reclosing ?? '',
+          response.extracted.phase_voltage ?? '',
+          response.extracted.phase_current ?? '',
+          response.extracted.zero_sequence_current ?? '',
+          response.extracted.zero_sequence_compensation_k ?? '',
+          response.extracted.line_length_km ?? '',
+          response.extracted.sensitive_angle_deg ?? '',
+          response.extracted.positive_sequence_impedance_ohm ?? '',
+        ]
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      ws['!cols'] = wsData[0].map(() => ({ wch: 22 }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '录波提取');
+      XLSX.writeFile(wb, '录波提取结果.xlsx');
+    } catch {
+      message.error('下载录波提取结果失败');
+    }
+  }, []);
   // 处理Excel导入
   const handleExcelImport = async (file: File) => {
     try {
@@ -462,8 +545,31 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 <div className="text-xs text-gray-500 mb-3">支持 .txt/.json/.csv/.pdf/.xlsx 格式</div>
               </div>
               <Form.Item name="wave_data_file" className="mb-0">
-                <TempFileUpload accept=".txt,.json,.csv,.pdf,.xlsx" maxSizeMb={50} buttonLabel="选择文件" previewKind="wave_data" />
+                <TempFileUpload accept=".txt,.json,.csv,.pdf,.xlsx" maxSizeMb={50} buttonLabel="选择文件" previewKind="wave_data" onPdfExtracted={(item, response) => {
+                  handlePdfExtracted(item, response);
+                  message.success(response.ok ? '已自动提取并回填表单字段' : `已识别 ${13 - response.missing.length}/13 个字段，缺失字段已提示`);
+                }} />
               </Form.Item>
+              {extractState && extractState.response.extracted && (
+                <div className="mt-1 w-full rounded bg-blue-50 px-2 py-1 text-xs text-gray-700">
+                  <div className="flex items-center justify-between">
+                    <span>
+                      识别到 {13 - extractState.response.missing.length}/13 个字段
+                      {extractState.response.missing.length > 0 && (
+                        <span className="ml-1 text-yellow-600">（缺失 {extractState.response.missing.length} 个）</span>
+                      )}
+                    </span>
+                    <Button size="small" icon={<DownloadOutlined />} onClick={() => handleDownloadExtracted(extractState.response)}>
+                      下载 Excel
+                    </Button>
+                  </div>
+                  {extractState.response.missing.length > 0 && (
+                    <div className="mt-1 text-yellow-600">
+                      缺失字段：{extractState.response.missing.map((key) => WAVE_FIELD_LABELS[key] ?? key).join("、")}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">

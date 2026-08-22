@@ -171,13 +171,32 @@ async function validateWaveDataFile(file: File): Promise<ValidationResult> {
   let extra: Record<string, unknown> = {};
 
   if (ext === "pdf") {
-    return {
-      ok: true,
-      errors: [],
-      warnings: ["PDF 格式需人工核对，建议转换为 Excel 以便自动识别"],
-      fields: {},
-      extra: { format: "pdf" },
-    };
+    try {
+      const buffer = await readFileAsArrayBuffer(file);
+      const bytes = new Uint8Array(buffer).slice(0, 2048);
+      const sample = new TextDecoder("utf-8").decode(bytes);
+      const containsChinese = /[\u4e00-\u9fff]/.test(sample);
+      const isScannedPdf = sample.includes("%PDF") === false;
+      return {
+        ok: true,
+        errors: [],
+        warnings: containsChinese
+          ? ["PDF 已识别到文本内容，正在后端自动提取字段并回填表单..."]
+          : isScannedPdf
+            ? ["PDF 疑似扫描件，文本层不可用，将尝试 OCR 识别，可能较慢"]
+            : ["PDF 文本层未识别到中文，将交由后端尝试 OCR 提取"],
+        fields: {},
+        extra: { format: "pdf", containsChinese, isScannedPdf },
+      };
+    } catch {
+      return {
+        ok: true,
+        errors: [],
+        warnings: ["PDF 无法读取二进制内容，将交由后端尝试提取"],
+        fields: {},
+        extra: { format: "pdf" },
+      };
+    }
   }
 
   if (ext === "xlsx" || ext === "xls") {

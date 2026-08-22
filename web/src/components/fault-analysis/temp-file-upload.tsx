@@ -28,6 +28,8 @@ interface TempFileUploadProps {
   maxSizeMb?: number;
   /** 文件内容级预校验类型，指定后上传完成会自动解析并展示数据预览（LP-420） */
   previewKind?: PreviewKind;
+  /** PDF 提取完成后的回调，传入 (item, response)。 */
+  onPdfExtracted?: (item: FaultAnalysisTempFile, response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string }) => void;
 }
 
 function uploadToTemp(
@@ -271,6 +273,7 @@ export function TempFileUpload({
   buttonLabel = "选择文件",
   maxSizeMb,
   previewKind,
+  onPdfExtracted,
 }: TempFileUploadProps) {
   const { getAccessToken } = useAuth();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -292,6 +295,67 @@ export function TempFileUpload({
       onChangeRef.current?.(next);
     },
     [],
+  );
+
+  const callPdfExtract = useCallback(
+    async (uid: string, file: File) => {
+      const token = getAccessToken();
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/api/v1/fault-analysis/extract-wave-pdf`, {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+          credentials: "include",
+        });
+        const data = (await response.json()) as {
+          ok?: boolean;
+          extracted?: Record<string, unknown>;
+          missing?: string[];
+          ocr_used?: boolean;
+          raw_text_preview?: string;
+        };
+        patchValue((items) =>
+          items.map((it) =>
+            it.uid === uid
+              ? {
+                  ...it,
+                  pdfExtracting: false,
+                  pdfExtractError: response.ok ? null : data?.detail ?? "提取失败",
+                  pdfExtractResponse: response.ok ? data : null,
+                }
+              : it,
+          ),
+        );
+        if (response.ok) {
+          onPdfExtracted?.(
+            { uid, name: file.name, status: "done", temp_file_id: "" },
+            {
+              ok: Boolean(data.ok),
+              extracted: data.extracted ?? {},
+              missing: Array.isArray(data.missing) ? data.missing : [],
+              ocr_used: Boolean(data.ocr_used),
+              raw_text_preview: data.raw_text_preview,
+            },
+          );
+        }
+      } catch (error) {
+        patchValue((items) =>
+          items.map((it) =>
+            it.uid === uid
+              ? {
+                  ...it,
+                  pdfExtracting: false,
+                  pdfExtractError: error instanceof Error ? error.message : "提取失败",
+                  pdfExtractResponse: null,
+                }
+              : it,
+          ),
+        );
+      }
+    },
+    [getAccessToken, onPdfExtracted, patchValue],
   );
 
   const startValidate = useCallback(
@@ -333,6 +397,7 @@ export function TempFileUpload({
   const startUpload = useCallback(
     (file: File, item: FaultAnalysisTempFile) => {
       const token = getAccessToken();
+      const isPdf = (file.name.split(".").pop()?.toLowerCase() || "") === "pdf";
       fileMapRef.current.set(item.uid, file);
       uploadToTemp(
         file,
@@ -351,6 +416,15 @@ export function TempFileUpload({
                 : it,
             ),
           );
+          if (isPdf) {
+            patchValue((items) =>
+              items.map((it) =>
+                it.uid === item.uid ? { ...it, pdfExtracting: true } : it,
+              ),
+            );
+            callPdfExtract(item.uid, file);
+            return;
+          }
           startValidate(item.uid, file);
         })
         .catch((error) => {
@@ -363,7 +437,7 @@ export function TempFileUpload({
           message.error(`${file.name} 上传失败：${text}`);
         });
     },
-    [getAccessToken, patchValue, startValidate],
+    [getAccessToken, patchValue, startValidate, callPdfExtract],
   );
 
   const buildPendingItem = useCallback(

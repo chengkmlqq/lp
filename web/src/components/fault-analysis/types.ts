@@ -27,6 +27,15 @@ export interface FaultAnalysisTempFile {
   error?: string;
   preview?: import("./file-prevalidation").ValidationResult;
   previewing?: boolean;
+  pdfExtracting?: boolean;
+  pdfExtractResponse?: {
+    ok: boolean;
+    extracted: Record<string, unknown>;
+    missing: string[];
+    ocr_used: boolean;
+    raw_text_preview?: string;
+  };
+  pdfExtractError?: string;
 }
 /** 故障分析详情动态选项卡项（LP-275：多开详情 Tab 支持） */
 export interface DetailTabItem {

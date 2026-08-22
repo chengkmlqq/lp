@@ -42,6 +42,7 @@ from ...services.fault_analysis_service import (
     store_analysis_upload_file,
     update_analysis,
 )
+from ...services.fault_diagnosis_core import canonicalize_fault_fields
 from ...services.minio_storage import (
     FAULT_ANALYSIS_PREFIX,
     MinioStorageError,
@@ -49,6 +50,7 @@ from ...services.minio_storage import (
     get_object,
     list_objects,
 )
+from ...services.pdf_fault_extractor import ExtractWavePdfResponse, extract_wave_pdf
 
 router = APIRouter(
     prefix="/fault-analysis",
@@ -116,6 +118,17 @@ def upload_fault_analysis_temp_file(
     """
     temp_file_id, file_name = save_temp_upload(file, current_user.user.id)
     return FaultAnalysisTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
+
+
+@router.post("/extract-wave-pdf", response_model=None)
+async def extract_wave_pdf(
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+) -> ExtractWavePdfResponse:
+    """从录波 PDF 中提取 13 个故障字段，供前端自动回填，不回写数据库（LP-421）。"""
+    validate_upload(file, allowed_exts={"pdf"}, allowed_exts_label="pdf")
+    content = await file.read()
+    return extract_wave_pdf(content, file.filename or "upload.pdf")
 
 
 @router.post("/upload", response_model=FaultAnalysisCreateResponse)
