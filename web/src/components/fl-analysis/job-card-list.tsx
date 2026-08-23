@@ -1,14 +1,14 @@
 "use client";
 
-import { Empty, Popconfirm, Spin, Tag, Typography } from "antd";
+import { Button, Dropdown, Empty, Space, Spin, Tag, Typography } from "antd";
 import {
   ApartmentOutlined,
   ClockCircleOutlined,
+  DeleteOutlined,
   DeploymentUnitOutlined,
+  MoreOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
-
-import { Button } from "antd";
 import { Card } from "@/components/ui-antd";
 import type { FlAnalysisJobSummary } from "@/types/auth";
 
@@ -85,20 +85,40 @@ export function JobCardList({ jobs, loading, onDeleteJob }: JobCardListProps) {
                     杆塔：{job.total_tower_count} / 结果：{job.result_tower_count}
                   </Typography.Text>
                 </div>
-                <div className="mt-1 flex justify-end">
-                  <Popconfirm
-                    title="删除任务"
-                    description={`确定要删除任务“${job.job_name || lineName}”吗？该操作不可恢复。`}
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={() => onDeleteJob(job)}
-                  >
-                    <Button danger size="small" type="text" disabled={isJobLocked(job)}>
-                      删除
-                    </Button>
-                  </Popconfirm>
-                </div>
+              </div>
+
+              <div className="admin-fl-analysis-job-card-actions flex items-center justify-end px-4 py-2 border-t border-gray-200">
+                <Dropdown
+                  menu={{
+                    items: [
+                      {
+                        key: "delete",
+                        label: (
+                          <Space size={4}>
+                            <DeleteOutlined />
+                            <span>删除</span>
+                          </Space>
+                        ),
+                        danger: true,
+                        disabled: isJobLocked(job),
+                        onClick: (event) => {
+                          event.domEvent.stopPropagation();
+                          onDeleteJob(job);
+                        },
+                      },
+                    ],
+                  }}
+                  trigger={["click"]}
+                >
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MoreOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  />
+                </Dropdown>
               </div>
             </div>
           </Card>
