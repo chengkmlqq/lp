@@ -36,6 +36,7 @@ class TaskMonitorQueueItem(BaseModel):
 class TaskMonitorTaskItem(BaseModel):
     task_id: str
     name: str
+    display_name: str | None = None
     state: str
     queue_name: str | None = None
     worker: str | None = None

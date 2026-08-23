@@ -91,9 +91,18 @@ def _keyword_condition(keyword: str | None):
 
 
 def _to_task_item(r: TaskHistory) -> TaskMonitorTaskItem:
+    display_map = {
+        "app.tasks.fl_analysis_tasks.execute_fl_analysis_job": "防雷计算任务",
+        "app.tasks.lightning_tasks.prepare_line_lightning_current_job": "雷电流回填任务",
+        "app.tasks.lightning_tasks.render_lp_density_job": "地闪密度绘图任务",
+        "app.tasks.worker_registry_tasks.sweep_worker_registry_offline": "Worker 注册表清理",
+        "app.tasks.worker_registry_tasks.flush_task_log_buffers": "日志缓冲区刷新",
+        "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks": "定时任务调度",
+    }
     return TaskMonitorTaskItem(
         task_id=r.task_id,
         name=r.name or "",
+        display_name=display_map.get(r.name) if r.name else None,
         state=r.state,
         queue_name=r.queue_name,
         worker=r.worker,
