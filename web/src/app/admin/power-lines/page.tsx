@@ -367,7 +367,9 @@ export default function AdminPowerLinesPage() {
           label: <span className="admin-power-lines-tab-title">线路预览 - {line.name || line.code}</span>,
           closable: true,
           children: (
-            <PowerLineMapPanel lineId={line.id} accessToken={getAccessToken() ?? ""} />
+            <div className="flex flex-1 flex-col p-4">
+              <PowerLineMapPanel lineId={line.id} accessToken={getAccessToken() ?? ""} />
+            </div>
           ),
         },
       ];
