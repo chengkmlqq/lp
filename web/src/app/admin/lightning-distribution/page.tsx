@@ -860,7 +860,14 @@ export default function AdminLightningDistributionPage() {
                 ];
                 return extraActions.length > 0 ? (
                   <Dropdown menu={{ items: extraActions }} trigger={["click"]}>
-                    <Button type="text" size="small" icon={<MoreOutlined />} />
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<MoreOutlined />}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                    />
                   </Dropdown>
                 ) : null;
               })()}
