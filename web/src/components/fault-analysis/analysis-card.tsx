@@ -1,5 +1,5 @@
-import { Badge, Button, Progress, Space, Typography } from "antd";
-import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined, FileTextOutlined, DownloadOutlined } from "@ant-design/icons";
+import { Badge, Button, Dropdown, Progress, Space, Typography } from "antd";
+import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined, FileTextOutlined, DownloadOutlined, MoreOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Card } from "@/components/ui-antd";
 import type { FaultAnalysis } from "./types";
@@ -120,43 +120,50 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
                 event.stopPropagation();
                 onProcess?.();
               }}
-            >
-              计算过程
-            </Button>
-            <Button
-              type="text"
-              size="small"
-              icon={<DownloadOutlined />}
-              onClick={(event) => {
-                event.stopPropagation();
-                onArtifacts?.();
+            />
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "artifacts",
+                    label: "产物",
+                    icon: <DownloadOutlined />,
+                    onClick: onArtifacts,
+                  },
+                  ...(onEdit
+                    ? [
+                        {
+                          key: "edit",
+                          label: "编辑",
+                          icon: <EditOutlined />,
+                          onClick: onEdit,
+                        },
+                      ]
+                    : []),
+                  ...(onDelete
+                    ? [
+                        {
+                          key: "delete",
+                          label: "删除",
+                          danger: true,
+                          icon: <DeleteOutlined />,
+                          onClick: onDelete,
+                        },
+                      ]
+                    : []),
+                ],
               }}
+              trigger={["click"]}
             >
-              产物
-            </Button>
-            {onEdit && (
               <Button
                 type="text"
                 size="small"
-                icon={<EditOutlined />}
+                icon={<MoreOutlined />}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onEdit?.();
                 }}
               />
-            )}
-            {onDelete && (
-              <Button
-                type="text"
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onDelete?.();
-                }}
-              />
-            )}
+            </Dropdown>
           </Space>
         </div>
       </div>

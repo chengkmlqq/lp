@@ -628,19 +628,32 @@ export default function AdminFaultAnalysisPage() {
       {
         title: "操作",
         key: "actions",
-        width: 320,
+        width: 180,
         fixed: "right",
         render: (_: unknown, row) => {
-          const moreMenuItems: MenuProps["items"] = canManage
-            ? [
-                {
-                  key: "delete",
-                  label: "删除",
-                  danger: true,
-                  onClick: () => handleDelete(row.id),
-                },
-              ]
-            : [];
+          // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/计算过程），其余操作收进 ⋯ 三点下拉
+          const moreMenuItems: MenuProps["items"] = [
+            {
+              key: "artifacts",
+              label: "产物",
+              onClick: () => openDetail(row, "artifacts"),
+            },
+            ...(canManage
+              ? [
+                  {
+                    key: "edit",
+                    label: "编辑",
+                    onClick: () => handleEdit(row.id, row.title),
+                  },
+                ]
+              : []),
+            {
+              key: "delete",
+              label: "删除",
+              danger: true,
+              onClick: () => handleDelete(row.id),
+            },
+          ];
 
           return (
             <Space wrap>
@@ -650,19 +663,9 @@ export default function AdminFaultAnalysisPage() {
               <Button size="small" onClick={() => openDetail(row, "process")}>
                 计算过程
               </Button>
-              <Button size="small" onClick={() => openDetail(row, "artifacts")}>
-                产物
-              </Button>
-              {canManage && (
-                <Button size="small" onClick={() => handleEdit(row.id, row.title)}>
-                  编辑
-                </Button>
-              )}
-              {canManage && (
-                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Button size="small" icon={<MoreOutlined />} />
-                </Dropdown>
-              )}
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button size="small" icon={<MoreOutlined />} />
+              </Dropdown>
             </Space>
           );
         },
