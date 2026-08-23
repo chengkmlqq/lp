@@ -3,14 +3,12 @@
 import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import {
   Button,
-  Card,
-  Col,
   Empty,
   Form,
   Input,
   Modal,
+  Pagination,
   Progress,
-  Row,
   Segmented,
   Select,
   Space,
@@ -20,22 +18,20 @@ import {
   Breadcrumb,
   Typography,
   Upload,
-  type CardProps,
+  Alert,
 } from "antd";
-import { UploadOutlined, FolderOutlined, FileOutlined, TableOutlined, FolderOpenOutlined, HomeOutlined, DeleteOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined } from "@ant-design/icons";
+import { UploadOutlined, FolderOutlined, FileOutlined, HomeOutlined, DeleteOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { AtpModelCard } from "@/components/atp-models/atp-model-card";
 import { useAuth } from "@/components/auth-provider";
-import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
 import type { AtpAssetListResponse, AtpAssetSummary, AtpAssetFileListResponse, DimensionTypeTreeItem, TempUploadResponse } from "@/types/auth";
 import type { DimensionItemListResponse } from "@/types/dimension";
-
-const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 type AssetFormValues = {
   voltage_level: string;
@@ -104,15 +100,15 @@ function findDimensionTypeByCode(types: DimensionTypeTreeItem[], code: string): 
 }
 
 const ATP_TABLE_MIN_SCROLL_Y = 180;
-const ATP_TABLE_VIEWPORT_GAP = 40;
-const ATP_TABLE_FALLBACK_RESERVE = 220;
+const ATP_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
+const ATP_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
+const ATP_TABLE_BOTTOM_GAP = 8;
 
 export default function AtpModelsPage() {
   const router = useRouter();
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<AssetFormValues>();
-  const isMobile = useMobileDetection();
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -121,16 +117,12 @@ export default function AtpModelsPage() {
   const [tempFileId, setTempFileId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
-  const [tableScrollY, setTableScrollY] = useState(ATP_TABLE_MIN_SCROLL_Y);
-  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
-  const viewMode: "table" | "card" = isMobile ? "card" : "table";
-  const [displayMode, setDisplayMode] = useState<"list" | "file">("file");
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  const [displayMode, setDisplayMode] = useState<"list" | "file">("list");
   const [fileViewPath, setFileViewPath] = useState<string[]>([]);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedAssets, setAllLoadedAssets] = useState<AtpAssetSummary[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const pageCardRef = useRef<HTMLDivElement | null>(null);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [tableScrollY, setTableScrollY] = useState(ATP_TABLE_MIN_SCROLL_Y);
   const [error, setError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState("");
 
@@ -496,57 +488,7 @@ export default function AtpModelsPage() {
     clearSuccess: () => setSuccess(""),
   });
 
-  useEffect(() => {
-    if (viewMode !== "card" || assetsQuery.isLoading) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedAssets(() => assetItems);
-      } else {
-        setAllLoadedAssets((previous) => {
-          if (assetItems.length === 0) {
-            return previous;
-          }
-          const existingIds = new Set(previous.map((item) => item.id));
-          const newAssets = assetItems.filter((item) => !existingIds.has(item.id));
-          return [...previous, ...newAssets];
-        });
-      }
-      setIsLoadingMore(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [assetItems, assetsQuery.isLoading, viewMode, cardViewPage]);
-
-  useEffect(() => {
-    if (viewMode !== "card") return;
-
-    // LP-248: 外层 Card 已移除，pageCardRef 迁到 list-pane 容器（admin_atp_models_list_pane），
-    // 该容器自身即 overflow-y:auto 滚动容器，直接使用即可
-    const scrollContainer = pageCardRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      if (isLoadingMore || assetsQuery.isLoading) return;
-
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-
-      if (scrollTop + clientHeight >= scrollHeight - 100 && allLoadedAssets.length < assetTotal) {
-        setIsLoadingMore(true);
-        setCardViewPage((previous) => previous + 1);
-        setPagination((previous) => ({ ...previous, current: previous.current + 1 }));
-      }
-    };
-
-    scrollContainer.addEventListener("scroll", handleScroll);
-    return () => scrollContainer.removeEventListener("scroll", handleScroll);
-  }, [allLoadedAssets.length, assetTotal, assetsQuery.isLoading, isLoadingMore, viewMode]);
-
-  const updateTableScrollY = useCallback(() => {
+  const updateTableScrollHeight = useCallback(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -555,19 +497,12 @@ export default function AtpModelsPage() {
       return;
     }
 
-    const anchorTop = anchor.getBoundingClientRect().top;
-    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
-    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
-
-    let nextHeight = Math.floor(window.innerHeight - anchorTop - ATP_TABLE_FALLBACK_RESERVE);
-    if (tableWrapper) {
-      const wrapperRect = tableWrapper.getBoundingClientRect();
-      const bodyHeight = tableBody?.getBoundingClientRect().height ?? ATP_TABLE_MIN_SCROLL_Y;
-      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
-      const topGap = Math.max(0, wrapperRect.top - anchorTop);
-      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - ATP_TABLE_VIEWPORT_GAP);
-    }
-
+    const anchorHeight = anchor.getBoundingClientRect().height;
+    const tableHeader = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const tablePagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = tableHeader?.getBoundingClientRect().height ?? ATP_TABLE_ESTIMATED_HEADER_HEIGHT;
+    const paginationHeight = tablePagination?.getBoundingClientRect().height ?? ATP_TABLE_ESTIMATED_PAGINATION_HEIGHT;
+    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - ATP_TABLE_BOTTOM_GAP);
     const clampedHeight = Math.max(ATP_TABLE_MIN_SCROLL_Y, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);
@@ -576,26 +511,35 @@ export default function AtpModelsPage() {
     if (typeof window === "undefined") {
       return;
     }
-    window.requestAnimationFrame(updateTableScrollY);
-  }, [apiError, paginationCurrent, paginationPageSize, assetItems.length, assetsQuery.isFetching, displayMode, viewMode, updateTableScrollY]);
+    if (viewMode !== "list") {
+      return;
+    }
+    window.requestAnimationFrame(updateTableScrollHeight);
+  }, [assetsQuery.error, assetsQuery.isFetching, assetItems.length, updateTableScrollHeight, viewMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
+    if (viewMode !== "list") {
+      return;
+    }
 
     const onViewportChange = () => {
-      window.requestAnimationFrame(updateTableScrollY);
+      window.requestAnimationFrame(updateTableScrollHeight);
     };
 
     window.addEventListener("resize", onViewportChange);
     return () => {
       window.removeEventListener("resize", onViewportChange);
     };
-  }, [updateTableScrollY]);
+  }, [updateTableScrollHeight, viewMode]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    if (viewMode !== "list") {
       return;
     }
 
@@ -605,14 +549,14 @@ export default function AtpModelsPage() {
     }
 
     const resizeObserver = new ResizeObserver(() => {
-      window.requestAnimationFrame(updateTableScrollY);
+      window.requestAnimationFrame(updateTableScrollHeight);
     });
     resizeObserver.observe(anchor);
 
     return () => {
       resizeObserver.disconnect();
     };
-  }, [updateTableScrollY, displayMode, viewMode]);
+  }, [updateTableScrollHeight, viewMode]);
 
   const columns = useMemo<ColumnsType<AtpAssetSummary>>(
     () => [
@@ -921,93 +865,17 @@ export default function AtpModelsPage() {
     return "";
   };
 
-  const renderAtpModelCard = (item: AtpAssetSummary) => {
-    const deleteLoading = deleteMutation.isPending;
-    const rowBusy = deleteLoading;
-
-    return (
-      <AntCard
-        key={item.id}
-        className="admin-atp-models-model-card"
-        size="small"
-        hoverable
-        onClick={() => router.push(`/admin/atp-models/${item.id}`)}
-        title={
-          <Typography.Text strong ellipsis={{ tooltip: item.name }}>
-            {item.name}
-          </Typography.Text>
-        }
-        extra={
-          <Space size={4}>
-            <Button
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={(event) => {
-                event.stopPropagation();
-                router.push(`/admin/atp-models/${item.id}`);
-              }}
-            >
-              详情
-            </Button>
-            <Button
-              danger
-              size="small"
-              disabled={!canManage || rowBusy}
-              loading={deleteLoading}
-              onClick={(event) => {
-                event.stopPropagation();
-                Modal.confirm({
-                  title: "删除模型",
-                  content: "这会同时删除其文件与运行记录。",
-                  okText: "删除",
-                  cancelText: "取消",
-                  okButtonProps: { danger: true },
-                  onOk: () => deleteMutation.mutate(item.id),
-                });
-              }}
-            >
-              删除
-            </Button>
-          </Space>
-        }
-      >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
-          <div className="admin-atp-models-model-card-field">
-            <Typography.Text type="secondary">电压等级</Typography.Text>
-            <Typography.Text>{formatDimensionValue(item.voltage_level, "voltage_level")}</Typography.Text>
-          </div>
-          <div className="admin-atp-models-model-card-field">
-            <Typography.Text type="secondary">塔型</Typography.Text>
-            <Typography.Text>{formatDimensionValue(item.tower_type, "tower_type")}</Typography.Text>
-          </div>
-          <div className="admin-atp-models-model-card-field">
-            <Typography.Text type="secondary">场景</Typography.Text>
-            <Typography.Text>{formatDimensionValue(item.scene_type, "scene_type")}</Typography.Text>
-          </div>
-          <div className="admin-atp-models-model-card-field">
-            <Typography.Text type="secondary">避雷器组合</Typography.Text>
-            <Typography.Text>{formatDimensionValue(item.arrester_config, "arrester_config")}</Typography.Text>
-          </div>
-          <div className="admin-atp-models-model-card-field">
-            <Typography.Text type="secondary">更新时间</Typography.Text>
-            <Typography.Text>{formatDateTime(item.update_date)}</Typography.Text>
-          </div>
-        </Space>
-      </AntCard>
-    );
-  };
-
   if (initializing) {
     return <AdminPageLoading tip="加载 ATP 模型中..." minHeightClassName="min-h-[280px]" />;
   }
 
   if (!user || !canRead) {
     return (
-      <AntCard title="ATP 模型管理">
+      <div className="admin-atp-models-card" style={{ padding: 24 }}>
         <Typography.Text type="secondary">
           {!user ? "请先登录后再查看 ATP 模型管理。" : "当前账号无 ATP 模块权限（需要 atp.read/atp.run/atp.manage）。"}
         </Typography.Text>
-      </AntCard>
+      </div>
     );
   }
 
@@ -1017,7 +885,7 @@ export default function AtpModelsPage() {
         type="editable-card"
         hideAdd
         activeKey="list"
-        className="admin_atp_models_tabs"
+        className="admin-atp-models-tabs"
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" disabled={!canManage} onClick={openCreateModal}>
@@ -1031,283 +899,258 @@ export default function AtpModelsPage() {
             label: <span className="admin-atp-models-tab-title">ATP 模型管理</span>,
             closable: false,
             children: (
-              <div ref={pageCardRef} className="admin_atp_models_list_pane">
-                {viewMode === "card" ? (
-                  <div className="admin-filter-bar">
-                    <Form layout="inline">
-                      <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                        <Input
-                            allowClear
-                            value={keywordInput}
-                            onChange={(event) => handleKeywordChange(event.target.value)}
-                            placeholder="按编码/名称搜索"
-                            onPressEnter={() => {
-                              setSearchKeyword(keywordInput);
-                              setPagination((previous) => ({ ...previous, current: 1 }));
-                              setCardViewPage(1);
-                              void queryClient.refetchQueries({
-                                predicate: (query) =>
-                                  Array.isArray(query.queryKey)
-                                  && typeof query.queryKey[0] === "string"
-                                  && query.queryKey[0].startsWith("atp-assets"),
-                              });
-                            }}
-                          />
-                      </Form.Item>
-                      <Form.Item style={{ marginBottom: 0 }}>
-                        <Button
-                          htmlType="button"
-                          icon={<SearchOutlined />}
-                          onClick={() => {
-                            setSearchKeyword(keywordInput);
-                            setPagination((previous) => ({ ...previous, current: 1 }));
-                            setCardViewPage(1);
-                            void queryClient.refetchQueries({
-                              predicate: (query) =>
-                                Array.isArray(query.queryKey)
-                                && typeof query.queryKey[0] === "string"
-                                && query.queryKey[0].startsWith("atp-assets"),
-                            });
-                          }}
-                          className="admin-search-btn"
-                        >
-                          查询
-                        </Button>
-                      </Form.Item>
-                    </Form>
-                  </div>
-                ) : (
-                  <div className="admin-filter-bar">
-                    <Form layout="inline" style={{ flex: 'none' }}>
-                      <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                        <Input
-                          allowClear
-                          value={keywordInput}
-                          onChange={(event) => handleKeywordChange(event.target.value)}
-                          placeholder="按编码/名称搜索"
-                          onPressEnter={() => {
-                            setSearchKeyword(keywordInput);
-                            setPagination((previous) => ({ ...previous, current: 1 }));
-                            setCardViewPage(1);
-                            void queryClient.refetchQueries({
-                              predicate: (query) =>
-                                Array.isArray(query.queryKey)
-                                && typeof query.queryKey[0] === "string"
-                                && query.queryKey[0].startsWith("atp-assets"),
-                            });
-                          }}
-                        />
-                      </Form.Item>
-                    </Form>
-                    <Button
-                      htmlType="button"
-                      icon={<SearchOutlined />}
-                      onClick={() => {
-                        setSearchKeyword(keywordInput);
-                        setPagination((previous) => ({ ...previous, current: 1 }));
-                        setCardViewPage(1);
-                        void queryClient.refetchQueries({
-                          predicate: (query) =>
-                            Array.isArray(query.queryKey)
-                            && typeof query.queryKey[0] === "string"
-                            && query.queryKey[0].startsWith("atp-assets"),
-                        });
-                      }}
-                      className="admin-search-btn"
-                    >
-                      查询
-                    </Button>
-                    {!isMobile && (
-                      <div style={{ marginLeft: 'auto' }}>
-                        <Segmented
-                          value={displayMode}
-                          onChange={(value) => {
-                            setDisplayMode(value as "list" | "file");
-                            if (value === "list") {
-                              setFileViewPath([]);
-                            }
-                          }}
-                          options={[
-                            { value: "list", icon: <TableOutlined /> },
-                            { value: "file", icon: <FolderOpenOutlined /> },
-                          ]}
-                        />
-                      </div>
-                    )}
-                  </div>
+              <div className="admin-atp-models-list-pane">
+                <div className="admin-filter-bar">
+                  <Form layout="inline">
+                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Input
+                        allowClear
+                        value={keywordInput}
+                        onChange={(event) => handleKeywordChange(event.target.value)}
+                        placeholder="按编码/名称搜索"
+                        onPressEnter={() => {
+                          setSearchKeyword(keywordInput);
+                          setPagination((previous) => ({ ...previous, current: 1 }));
+                          void queryClient.refetchQueries({
+                            predicate: (query) =>
+                              Array.isArray(query.queryKey)
+                              && typeof query.queryKey[0] === "string"
+                              && query.queryKey[0].startsWith("atp-assets"),
+                          });
+                        }}
+                      />
+                    </Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button
+                        htmlType="button"
+                        icon={<SearchOutlined />}
+                        onClick={() => {
+                          setSearchKeyword(keywordInput);
+                          setPagination((previous) => ({ ...previous, current: 1 }));
+                          void queryClient.refetchQueries({
+                            predicate: (query) =>
+                              Array.isArray(query.queryKey)
+                              && typeof query.queryKey[0] === "string"
+                              && query.queryKey[0].startsWith("atp-assets"),
+                          });
+                        }}
+                        className="admin-search-btn"
+                      >
+                        查询
+                      </Button>
+                    </Form.Item>
+                    <Segmented
+                      value={viewMode}
+                      onChange={(value) => setViewMode(value as "card" | "list")}
+                      options={[
+                        { label: "卡片视图", value: "card" },
+                        { label: "列表视图", value: "list" },
+                      ]}
+                    />
+                  </Form>
+                </div>
+
+                {apiError && (
+                  <Alert
+                    type="error"
+                    showIcon
+                    message={apiError.message || "加载失败"}
+                  />
                 )}
 
-                {displayMode === "file" && viewMode === "table" ? (
-                  <div className="admin-atp-models-file-view" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-                    <div style={{ margin: "16px 0" }}>
-                      <Breadcrumb
-                        items={[
-                          {
-                            title: (
-                              <a onClick={() => handleBreadcrumbClick(-1)}>
-                                <HomeOutlined /> ATP模型
-                              </a>
-                            ),
-                          },
-                          ...fileViewPath.map((_, index) => ({
-                            title: (
-                              <a onClick={() => handleBreadcrumbClick(index)}>
-                                {getBreadcrumbLabel(index)}
-                              </a>
-                            ),
-                          })),
+                {viewMode === "list" ? (
+                  <>
+                    <div className="admin-atp-models-list-sub-bar">
+                      <Segmented
+                        value={displayMode}
+                        onChange={(value) => setDisplayMode(value as "list" | "file")}
+                        options={[
+                          { label: "列表视图", value: "list" },
+                          { label: "文件视图", value: "file" },
                         ]}
                       />
                     </div>
-                    <div style={{ flex: 1, minHeight: 0, overflow: "auto", border: "1px solid #f0f0f0", borderRadius: "4px" }}>
-                      {assetsQuery.isLoading || assetsQuery.isFetching || isFileViewLoading ? (
-                        <div style={{ textAlign: "center", padding: "40px 0" }}>
-                          <Spin tip="加载中..." />
+                    {displayMode === "file" ? (
+                      <div className="admin-atp-models-file-view" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+                        <div style={{ margin: "16px 0" }}>
+                          <Breadcrumb
+                            items={[
+                              {
+                                title: (
+                                  <a onClick={() => handleBreadcrumbClick(-1)}>
+                                    <HomeOutlined /> ATP模型
+                                  </a>
+                                ),
+                              },
+                              ...fileViewPath.map((_, index) => ({
+                                title: (
+                                  <a onClick={() => handleBreadcrumbClick(index)}>
+                                    {getBreadcrumbLabel(index)}
+                                  </a>
+                                ),
+                              })),
+                            ]}
+                          />
                         </div>
-                      ) : fileViewItems.length === 0 ? (
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="当前目录为空"
-                        />
-                      ) : (
-                        <div>
-                          {fileViewItems.map((item, index) =>
-                            item.type === "folder" ? (
-                              <div
-                                key={index}
-                                onClick={() => handleFileViewItemClick(item)}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  padding: "12px 16px",
-                                  cursor: "pointer",
-                                  borderBottom: index < fileViewItems.length - 1 ? "1px solid #f0f0f0" : "none",
-                                  transition: "background-color 0.2s",
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = "#f5f5f5";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = "transparent";
-                                }}
-                              >
-                                <FolderOutlined style={{ fontSize: "20px", color: "#faad14", marginRight: "12px" }} />
-                                <Typography.Text style={{ flex: 1 }}>{item.displayName}</Typography.Text>
-                              </div>
-                            ) : (
-                              <div
-                                key={index}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  padding: "12px 16px",
-                                  borderBottom: index < fileViewItems.length - 1 ? "1px solid #f0f0f0" : "none",
-                                }}
-                              >
-                                <FileOutlined style={{ fontSize: "20px", color: "#1890ff", marginRight: "12px" }} />
-                                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                  <div style={{ display: "flex", flexDirection: "column" }}>
-                                    <Typography.Text>{item.displayName}</Typography.Text>
-                                    <Typography.Text type="secondary" style={{ fontSize: "12px" }}>
-                                      {item.item && formatDateTime(item.item.update_date)}
-                                    </Typography.Text>
+                        <div style={{ flex: 1, minHeight: 0, overflow: "auto", border: "1px solid #f0f0f0", borderRadius: "4px" }}>
+                          {assetsQuery.isLoading || assetsQuery.isFetching || isFileViewLoading ? (
+                            <div style={{ textAlign: "center", padding: "40px 0" }}>
+                              <Spin tip="加载中..." />
+                            </div>
+                          ) : fileViewItems.length === 0 ? (
+                            <Empty
+                              image={Empty.PRESENTED_IMAGE_SIMPLE}
+                              description="当前目录为空"
+                            />
+                          ) : (
+                            <div>
+                              {fileViewItems.map((item, index) =>
+                                item.type === "folder" ? (
+                                  <div
+                                    key={index}
+                                    onClick={() => handleFileViewItemClick(item)}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      padding: "12px 16px",
+                                      cursor: "pointer",
+                                      borderBottom: index < fileViewItems.length - 1 ? "1px solid #f0f0f0" : "none",
+                                      transition: "background-color 0.2s",
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.backgroundColor = "#f5f5f5";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = "transparent";
+                                    }}
+                                  >
+                                    <FolderOutlined style={{ fontSize: "20px", color: "#faad14", marginRight: "12px" }} />
+                                    <Typography.Text style={{ flex: 1 }}>{item.displayName}</Typography.Text>
                                   </div>
-                                  {item.item && (
-                                    <Button danger size="small" disabled={!canManage}
-                                      onClick={() => {
-                                        Modal.confirm({
-                                          title: "删除模型",
-                                          content: "这会同时删除其文件与运行记录。",
-                                          okText: "删除",
-                                          cancelText: "取消",
-                                          okButtonProps: { danger: true },
-                                          onOk: () => item.item && deleteMutation.mutate(item.item.id),
-                                        });
-                                      }}
-                                    >
-                                      删除
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-                            )
+                                ) : (
+                                  <div
+                                    key={index}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      padding: "12px 16px",
+                                      borderBottom: index < fileViewItems.length - 1 ? "1px solid #f0f0f0" : "none",
+                                    }}
+                                  >
+                                    <FileOutlined style={{ fontSize: "20px", color: "#1890ff", marginRight: "12px" }} />
+                                    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                      <div style={{ display: "flex", flexDirection: "column" }}>
+                                        <Typography.Text>{item.displayName}</Typography.Text>
+                                        <Typography.Text type="secondary" style={{ fontSize: "12px" }}>
+                                          {item.item && formatDateTime(item.item.update_date)}
+                                        </Typography.Text>
+                                      </div>
+                                      {item.item && (
+                                        <Button danger size="small" disabled={!canManage}
+                                          onClick={() => {
+                                            Modal.confirm({
+                                              title: "删除模型",
+                                              content: "这会同时删除其文件与运行记录。",
+                                              okText: "删除",
+                                              cancelText: "取消",
+                                              okButtonProps: { danger: true },
+                                              onOk: () => item.item && deleteMutation.mutate(item.item.id),
+                                            });
+                                          }}
+                                        >
+                                          删除
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ) : viewMode === "table" ? (
-                  <div
-                    ref={tableScrollAnchorRef}
-                    className="admin-atp-models-table-anchor"
-                    style={{ "--admin-atp-models-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-                  >
-                    <Table<AtpAssetSummary>
-                      rowKey="id"
-                      loading={assetsQuery.isLoading || assetsQuery.isFetching}
-                      columns={columns}
-                      dataSource={assetItems}
-                      tableLayout="fixed"
-                      locale={{
-                        emptyText: (
+                      </div>
+                    ) : (
+                      <div
+                        ref={tableScrollAnchorRef}
+                        className="admin-atp-models-table-anchor"
+                        style={{ "--admin-atp-models-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                      >
+                        <Table<AtpAssetSummary>
+                          rowKey="id"
+                          loading={assetsQuery.isLoading || assetsQuery.isFetching}
+                          columns={columns}
+                          dataSource={assetItems}
+                          tableLayout="fixed"
+                          locale={{
+                            emptyText: (
+                              <Empty
+                                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                description="未找到符合筛选条件的 ATP 模型。"
+                              />
+                            ),
+                          }}
+                          pagination={{
+                            current: pagination.current,
+                            pageSize: pagination.pageSize,
+                            total: Math.max(assetTotal, 1),
+                            showSizeChanger: true,
+                            pageSizeOptions: [6, 12, 24, 48],
+                            showTotal: () => `共 ${assetTotal} 条`,
+                            hideOnSinglePage: false,
+                            onChange: (page, pageSize) => {
+                              setPagination({ current: page, pageSize });
+                            },
+                          }}
+                          scroll={{ x: 1200, y: tableScrollY }}
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="admin-atp-models-card-view">
+                    <div className="admin-atp-models-card-scroll">
+                      {assetsQuery.isLoading ? (
+                        <div className="admin-atp-models-card-view-state">
+                          <Spin tip="加载中..." />
+                        </div>
+                      ) : assetItems.length === 0 ? (
+                        <div className="admin-atp-models-card-view-state">
                           <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
                             description="未找到符合筛选条件的 ATP 模型。"
                           />
-                        ),
-                      }}
-                      pagination={{
-                        current: pagination.current,
-                        pageSize: pagination.pageSize,
-                        total: Math.max(assetTotal, 1),
-                        showSizeChanger: true,
-                        pageSizeOptions: [10, 20, 50, 100],
-                        showTotal: () => `共 ${assetTotal} 条`,
-                        hideOnSinglePage: false,
-                        style: { marginBottom: 0 },
-                        onChange: (page, pageSize) => {
-                          setPagination({ current: page, pageSize });
-                        },
-                      }}
-                      scroll={{ y: tableScrollY }}
-                    />
-                  </div>
-                ) : (
-                  <div className="admin-atp-models-card-view">
-                    {assetsQuery.isLoading && allLoadedAssets.length === 0 ? (
-                      <div className="admin-atp-models-card-view-state">
-                        <Spin tip="加载中..." />
-                      </div>
-                    ) : allLoadedAssets.length === 0 ? (
-                      <div className="admin-atp-models-card-view-state">
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="未找到符合筛选条件的 ATP 模型。"
-                        />
-                      </div>
-                    ) : (
-                      <div className="admin-atp-models-card-view-content">
-                        <Row gutter={[12, 12]}>
-                          {allLoadedAssets.map((item) => (
-                            <Col key={item.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                              {renderAtpModelCard(item)}
-                            </Col>
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          {assetItems.map((item) => (
+                            <AtpModelCard
+                              key={item.id}
+                              asset={item}
+                              canManage={canManage}
+                              deleteLoading={deleteMutation.isPending}
+                              onView={(id) => router.push(`/admin/atp-models/${id}`)}
+                              onDelete={(id) =>
+                                deleteMutation.mutate(id)
+                              }
+                            />
                           ))}
-                        </Row>
-                        {isLoadingMore && (
-                          <div style={{ textAlign: "center", padding: "20px 0" }}>
-                            <Spin tip="加载更多..." />
-                          </div>
-                        )}
-                        {allLoadedAssets.length >= assetTotal && allLoadedAssets.length > 0 && (
-                          <div style={{ textAlign: "center", padding: "20px 0" }}>
-                            <Typography.Text type="secondary">
-                              已加载全部 {allLoadedAssets.length} 条数据
-                            </Typography.Text>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="admin-atp-models-pagination">
+                      <Pagination
+                        current={pagination.current}
+                        pageSize={pagination.pageSize}
+                        total={Math.max(assetTotal, 1)}
+                        onChange={(page, pageSize) => {
+                          setPagination({ current: page, pageSize });
+                        }}
+                        showSizeChanger
+                        showTotal={() => `共 ${assetTotal} 条`}
+                        pageSizeOptions={[6, 12, 24, 48]}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
