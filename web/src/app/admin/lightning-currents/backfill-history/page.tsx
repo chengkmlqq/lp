@@ -39,18 +39,24 @@ export default function AdminLightningCurrentsBackfillHistoryPage() {
 
   if (!canRead) {
     return (
-      <Card>
-        <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">
-            你没有访问该页面的权限（需要 `lightning.read`）。
-          </Typography.Text>
-          <Button>
-            <Link href="/">返回首页</Link>
-          </Button>
-        </Space>
-      </Card>
+      <div className="p-6">
+        <Card>
+          <Space direction="vertical" size={12}>
+            <Typography.Text type="secondary">
+              你没有访问该页面的权限（需要 `lightning.read`）。
+            </Typography.Text>
+            <Button>
+              <Link href="/">返回首页</Link>
+            </Button>
+          </Space>
+        </Card>
+      </div>
     );
   }
 
-  return <LightningCurrentBackfillHistoryTable />;
+  return (
+    <div className="p-6">
+      <LightningCurrentBackfillHistoryTable />
+    </div>
+  );
 }

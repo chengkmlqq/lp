@@ -17,12 +17,14 @@ import {
   Collapse,
   Tag,
   Tree,
+  Progress,
 } from "antd";
 import { ArrowLeftOutlined, DownloadOutlined, FileTextOutlined, FileExcelOutlined, PictureOutlined } from "@ant-design/icons";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
+import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { readApiError } from "@/lib/api";
 import type { FaultAnalysisDetail } from "@/types/auth";
 
@@ -608,6 +610,9 @@ export default function FaultAnalysisDetailPage() {
   const [exporting, setExporting] = useState(false);
   const [downloadingReport, setDownloadingReport] = useState(false);
   const [downloadingArtifact, setDownloadingArtifact] = useState<string | null>(null);
+  const [wsStatus, setWsStatus] = useState<string | null>(null);
+  const [wsProgress, setWsProgress] = useState<number | null>(null);
+  const [wsError, setWsError] = useState<string | null>(null);
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
 
@@ -622,6 +627,40 @@ export default function FaultAnalysisDetailPage() {
       return (await response.json()) as FaultAnalysisDetail;
     },
   });
+
+  useTopicSubscription(
+    "admin.fault-analysis",
+    useCallback((event) => {
+      const payload = (event?.payload ?? {}) as Record<string, unknown>;
+      const eventAnalysisId = typeof payload.analysis_id === "string" ? payload.analysis_id : undefined;
+      if (!eventAnalysisId || eventAnalysisId !== analysisId) {
+        return;
+      }
+
+      if (
+        event.name === "analysis.diagnosis_progress" ||
+        event.name === "analysis.diagnosis_started" ||
+        event.name === "analysis.diagnosis_completed" ||
+        event.name === "analysis.diagnosis_failed"
+      ) {
+        if (event.name === "analysis.diagnosis_failed") {
+          setWsStatus("failed");
+          setWsProgress(0);
+          setWsError(typeof payload.error === "string" ? payload.error : "分析失败");
+        } else if (event.name === "analysis.diagnosis_completed") {
+          setWsStatus("completed");
+          setWsProgress(100);
+          setWsError(null);
+          void detailQuery.refetch();
+        } else {
+          setWsStatus(typeof payload.status === "string" && payload.status ? payload.status : "processing");
+          const progressValue = Number(payload.progress);
+          setWsProgress(Number.isNaN(progressValue) ? null : Math.max(0, Math.min(100, progressValue)));
+          setWsError(null);
+        }
+      }
+    }, [analysisId, detailQuery]),
+  );
 
   const handleExportMatlab = async () => {
     if (!detail) return;
@@ -831,6 +870,34 @@ export default function FaultAnalysisDetailPage() {
         </div>
 
         <Card>
+          {wsStatus && (
+            <div className="mb-4 px-4">
+              {wsStatus === "processing" && wsProgress != null ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <Progress
+                      percent={Math.round(wsProgress)}
+                      size="small"
+                      className="flex-1"
+                      status="active"
+                    />
+                    <Typography.Text type="secondary" className="text-xs whitespace-nowrap">
+                      分析中 {Math.round(wsProgress)}%
+                    </Typography.Text>
+                  </div>
+                  {wsStep && (
+                    <Typography.Text type="secondary" className="text-xs">
+                      {wsStep}
+                    </Typography.Text>
+                  )}
+                </div>
+              ) : wsStatus === "completed" ? (
+                <Alert type="success" showIcon message="故障分析已完成" />
+              ) : wsStatus === "failed" ? (
+                <Alert type="error" showIcon message={wsError || "故障分析失败"} />
+              ) : null}
+            </div>
+          )}
           <Tabs
             defaultActiveKey="report"
             items={[

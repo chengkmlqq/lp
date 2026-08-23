@@ -1304,11 +1304,13 @@ def run_fault_diagnosis_with_progress(
     db: Session,
     analysis_id: str,
     progress_callback: Callable[[float, str], None] | None = None,
+    step_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """执行一次完整判别，并在各阶段通过 progress_callback 上报进度。
 
     进度分段：
       10%  - 开始收集输入
+      15%  - 准备上传文件
       30%  - 输入收集完成
       50%  - 行波增强完成 / 跳过
       80%  - 综合判别完成
@@ -1326,11 +1328,15 @@ def run_fault_diagnosis_with_progress(
     db.commit()
     if progress_callback:
         progress_callback(10, "processing")
+    if step_callback:
+        step_callback("开始收集输入")
 
     run_dir = Path(tempfile.mkdtemp(prefix=f"fault-analysis-{analysis_id}-"))
     try:
         if progress_callback:
             progress_callback(15, "processing")
+        if step_callback:
+            step_callback("准备输入文件")
         original_upload_files = item.upload_files or {}
         materialized_upload_files = _materialize_upload_files(original_upload_files, run_dir / "Input")
         item.upload_files = materialized_upload_files
@@ -1342,6 +1348,8 @@ def run_fault_diagnosis_with_progress(
             item.upload_files = original_upload_files
         if progress_callback:
             progress_callback(30, "processing")
+        if step_callback:
+            step_callback("输入收集完成，正在分析")
 
         manual = build_manual_input(item)
         analysis_dir = run_dir / "Output"
@@ -1367,6 +1375,8 @@ def run_fault_diagnosis_with_progress(
         wave_model_result = load_wave_model_result(wave_model_path) if wave_model_path is not None else None
         if progress_callback:
             progress_callback(50, "processing")
+        if step_callback:
+            step_callback("行波分析完成")
 
         source_paths = {
             "fault": _resolve_upload_file(upload_files, "wave_data_file"),
@@ -1388,6 +1398,8 @@ def run_fault_diagnosis_with_progress(
         )
         if progress_callback:
             progress_callback(80, "processing")
+        if step_callback:
+            step_callback("综合判别完成，正在生成结果")
 
         mapped = map_result_to_record(diag, item, input_warnings=input_warnings)
         result_json = dict(mapped["result_json"])
@@ -1416,6 +1428,8 @@ def run_fault_diagnosis_with_progress(
         db.commit()
         if progress_callback:
             progress_callback(85, "processing")
+        if step_callback:
+            step_callback("结果回填完成")
 
         return mapped["result_json"]
     except Exception as exc:

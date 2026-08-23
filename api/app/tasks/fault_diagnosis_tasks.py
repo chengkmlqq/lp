@@ -23,32 +23,40 @@ def _publish_fault_analysis_event(event_name: str, payload: dict[str, Any]) -> N
         pass
 
 
-def _update_progress(analysis_id: str, progress: float, status: str | None = None) -> None:
-    """更新判别进度到数据库并推送 WS 事件。"""
-    try:
-        from ..core.database import SessionLocal
-        from ..models.fault_analysis import FaultAnalysis
-        from ..models.base import utcnow
+def _update_progress(analysis_id: str, progress: float, status: str | None = None, step: str | None = None) -> None:
+    """更新判别进度到数据库并推送 WS 事件。
 
-        db = SessionLocal()
+    step 仅作为当前阶段描述随 WS 事件推送；progress < 0 表示不修改数据库中的进度值。
+    """
+    if progress >= 0:
         try:
-            item = db.query(FaultAnalysis).filter(FaultAnalysis.id == analysis_id).first()
-            if item is not None:
-                item.progress = progress
-                if status is not None:
-                    item.status = status
-                item.update_date = utcnow()
-                db.commit()
-        finally:
-            db.close()
-    except Exception:
-        pass
+            from ..core.database import SessionLocal
+            from ..models.fault_analysis import FaultAnalysis
+            from ..models.base import utcnow
 
-    _publish_fault_analysis_event("analysis.diagnosis_progress", {
+            db = SessionLocal()
+            try:
+                item = db.query(FaultAnalysis).filter(FaultAnalysis.id == analysis_id).first()
+                if item is not None:
+                    item.progress = progress
+                    if status is not None:
+                        item.status = status
+                    item.update_date = utcnow()
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            pass
+
+    payload: dict[str, Any] = {
         "analysis_id": analysis_id,
-        "progress": progress,
+        "progress": max(progress, 0),
         "status": status or "",
-    })
+    }
+    if step is not None:
+        payload["step"] = step
+
+    _publish_fault_analysis_event("analysis.diagnosis_progress", payload)
 
 
 @celery_app.task(
@@ -76,9 +84,10 @@ def run_fault_diagnosis_task(self, analysis_id: str) -> dict[str, str]:
             run_fault_diagnosis_with_progress(
                 db, analysis_id,
                 progress_callback=lambda progress, status="": _update_progress(analysis_id, progress, status or None),
+                step_callback=lambda step: _update_progress(analysis_id, -1, "processing", step),
             )
             # 判别成功后生成 Word 报告
-            _update_progress(analysis_id, 90, "processing")
+            _update_progress(analysis_id, 90, "processing", "生成Word报告")
             from ..services.fault_diagnosis_service import generate_report_docx
             try:
                 generate_report_docx(db, analysis_id)

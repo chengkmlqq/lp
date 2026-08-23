@@ -184,6 +184,7 @@ export default function AdminFaultAnalysisPage() {
   const [tableScrollY, setTableScrollY] = useState(FAULT_TABLE_MIN_SCROLL_Y);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [messageApi, contextHolder] = message.useMessage();
+  const [wsProgressMap, setWsProgressMap] = useState<Record<string, { progress: number; status: string; error?: string; step?: string }>>({});
 
   // 提交进行中的 Tab key 集合（LP-348：提交中禁止关闭对应表单 Tab）
   const [submittingTabKeys, setSubmittingTabKeys] = useState<Set<string>>(() => new Set());
@@ -194,6 +195,10 @@ export default function AdminFaultAnalysisPage() {
   detailTabsRef.current = detailTabs;
   const activeTabKeyRef = useRef(activeTabKey);
   activeTabKeyRef.current = activeTabKey;
+  const searchKeywordCacheRef = useRef(searchKeyword);
+  searchKeywordCacheRef.current = searchKeyword;
+  const wsProgressCacheRef = useRef(wsProgressMap);
+  wsProgressCacheRef.current = wsProgressMap;
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage");
@@ -217,14 +222,76 @@ export default function AdminFaultAnalysisPage() {
 
   useTopicSubscription(
     "admin.fault-analysis",
-    useCallback(() => {
-      void queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
+    useCallback((event) => {
+      const payload = (event?.payload ?? {}) as Record<string, unknown>;
+      const analysisId = typeof payload.analysis_id === "string" ? payload.analysis_id : undefined;
+      // 处理进度/开始/完成/失败事件时，直接用 WS 推送覆盖该条记录的实时进度，避免整表重渲染。
+      if (
+        event.name === "analysis.diagnosis_progress" ||
+        event.name === "analysis.diagnosis_started" ||
+        event.name === "analysis.diagnosis_completed" ||
+        event.name === "analysis.diagnosis_failed"
+      ) {
+        if (analysisId) {
+          const progress =
+            event.name === "analysis.diagnosis_failed"
+              ? 0
+              : event.name === "analysis.diagnosis_completed"
+                ? 100
+                : Number(payload.progress);
+          const status =
+            event.name === "analysis.diagnosis_completed"
+              ? "completed"
+              : event.name === "analysis.diagnosis_failed"
+                ? "failed"
+                : typeof payload.status === "string" && payload.status
+                  ? payload.status
+                  : event.name === "analysis.diagnosis_started"
+                    ? "processing"
+                    : "processing";
+          setWsProgressMap((previous) => ({
+            ...previous,
+            [analysisId]: {
+              progress: Number.isNaN(progress) ? 0 : Math.max(0, Math.min(100, progress)),
+              status,
+              error: typeof payload.error === "string" ? payload.error : undefined,
+              step: typeof payload.step === "string" ? payload.step : undefined,
+            },
+          }));
+        }
+        // 进度事件密集，只增量更新，不整表刷新
+        void queryClient.setQueryData<FaultAnalysisListResponse>(["/api/v1/fault-analysis", searchKeywordCacheRef.current], (old) => {
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: old.items.map((item) => {
+              if (item.id !== analysisId || !analysisId) return item;
+              const meta = wsProgressCacheRef.current[analysisId];
+              const progress = meta ? meta.progress : item.progress ?? 0;
+              const status = meta ? meta.status : item.status;
+              return { ...item, progress, status: status as typeof item.status };
+            }),
+          };
+        });
+      } else {
+        void queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
+      }
     }, [queryClient]),
   );
 
   const analyses = useMemo(
-    () => (analysesQuery.data?.items ?? []).map(mapSummary),
-    [analysesQuery.data?.items],
+    () => (analysesQuery.data?.items ?? []).map(mapSummary).map((item) => {
+      const meta = wsProgressMap[item.id];
+      if (meta) {
+        return {
+          ...item,
+          progress: meta.progress,
+          status: meta.status as FaultAnalysis["status"],
+        };
+      }
+      return item;
+    }),
+    [analysesQuery.data?.items, wsProgressMap],
   );
   const filteredAnalyses = useMemo(() => {
     if (!searchKeyword.trim()) {
@@ -586,16 +653,26 @@ export default function AdminFaultAnalysisPage() {
       {
         title: "状态",
         dataIndex: "status",
-        width: 160,
+        width: 220,
         render: (value: FaultAnalysis["status"], row: FaultAnalysis) => {
           const meta = FAULT_STATUS_META[value] ?? { color: "default", label: value };
           const statusTag = <Tag color={meta.color}>{meta.label}</Tag>;
+          const step = wsProgressMap[row.id]?.step;
           return (
-            <Space size={6}>
-              {statusTag}
-              {row.status === "processing" && (
-                <Progress percent={Math.round(row.progress)} size="small" style={{ width: 80 }} />
-              )}
+            <Space size={6} direction="vertical" className="w-full" style={{ gap: 2 }}>
+              <Space size={6}>
+                {statusTag}
+                {row.status === "processing" && (
+                  <Progress percent={Math.round(row.progress)} size="small" style={{ width: 80 }} />
+                )}
+              </Space>
+              {row.status === "processing" && step
+                ? (
+                    <Typography.Text type="secondary" className="text-xs block">
+                      {step}
+                    </Typography.Text>
+                  )
+                : null}
             </Space>
           );
         },
