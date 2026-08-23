@@ -485,7 +485,7 @@ export default function AdminPowerLinesPage() {
                 </div>
 
                 {linesQuery.isFetching ? (
-                  <div className="admin-power-lines-loading">
+                  <div className="admin-power-lines-loading flex justify-center items-center py-12">
                     <Spin tip="加载中..." />
                   </div>
                 ) : lines.length === 0 ? (
