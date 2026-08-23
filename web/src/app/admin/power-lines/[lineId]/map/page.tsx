@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Card, Descriptions, Space, Typography } from "antd";
+import { Button, Card, Space, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import Link from "next/link";
 
@@ -96,14 +96,6 @@ export default function AdminPowerLineMapPage({ params }: { params: { lineId: st
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <Card size="small" className="admin-power-line-detail-meta">
-        <Descriptions bordered size="small" column={3}>
-          <Descriptions.Item label="线路编码">{lineDetail?.code || "-"}</Descriptions.Item>
-          <Descriptions.Item label="线路名称">{lineDetail?.name || "-"}</Descriptions.Item>
-          <Descriptions.Item label="杆塔总数">{lineDetail?.tower_count ?? 0}</Descriptions.Item>
-        </Descriptions>
-      </Card>
-
       <div className="mb-3 flex items-center gap-3">
         <Button size="small" icon={<ArrowLeftOutlined />}>
           <Link href="/admin/power-lines">返回线路列表</Link>

@@ -28,6 +28,7 @@ import {
   EyeOutlined,
   GlobalOutlined,
   MoreOutlined,
+  PlusOutlined,
   SearchOutlined,
   SwapOutlined,
   ThunderboltOutlined,
@@ -396,15 +397,6 @@ export default function AdminPowerLinesPage() {
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="admin-power-lines-tabs">
-        <Space>
-          {canLineManage && (
-            <Button type="primary" onClick={openCreateLineModal}>
-              新建线路
-            </Button>
-          )}
-        </Space>
-      </div>
       <Tabs
         type="editable-card"
         hideAdd
@@ -412,6 +404,13 @@ export default function AdminPowerLinesPage() {
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
         className="admin-power-lines-tabs"
+        tabBarExtraContent={
+          canLineManage ? (
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateLineModal}>
+              新建线路
+            </Button>
+          ) : null
+        }
         items={[
           {
             key: LIST_TAB_KEY,
