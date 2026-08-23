@@ -23,7 +23,7 @@ import {
 } from "antd";
 import { CheckCircleOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
@@ -74,6 +74,8 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
   const [uploadError, setUploadError] = useState("");
   const [towerDetailDrawerOpen, setTowerDetailDrawerOpen] = useState(false);
   const [selectedTowerForDetail, setSelectedTowerForDetail] = useState<LineTowerSummary | null>(null);
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [tableScrollY, setTableScrollY] = useState(180);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +145,8 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       return (await response.json()) as TowerDetailResponse;
     },
   });
+
+  const towers = useMemo(() => towersQuery.data?.items ?? [], [towersQuery.data?.items]);
 
   const refreshLines = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -249,6 +253,57 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     setTowerDetailDrawerOpen(false);
     setSelectedTowerForDetail(null);
   }, []);
+
+  const updateTableScrollY = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+    const anchorHeight = anchor.getBoundingClientRect().height;
+    const tableHeader = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const tablePagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = tableHeader?.getBoundingClientRect().height ?? 56;
+    const paginationHeight = tablePagination?.getBoundingClientRect().height ?? 64;
+    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - 8);
+    const clampedHeight = Math.max(180, nextHeight);
+    setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.requestAnimationFrame(updateTableScrollY);
+  }, [towers.length, towersQuery.isFetching, updateTableScrollY]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const onViewportChange = () => {
+      window.requestAnimationFrame(updateTableScrollY);
+    };
+    window.addEventListener("resize", onViewportChange);
+    return () => window.removeEventListener("resize", onViewportChange);
+  }, [updateTableScrollY]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(updateTableScrollY);
+    });
+    resizeObserver.observe(anchor);
+    return () => resizeObserver.disconnect();
+  }, [updateTableScrollY]);
 
   const importMutation = useMutation({
     mutationFn: async () => {
@@ -358,15 +413,13 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
         <Space size="small">
           {canTowerReadLocal && (
             <Button size="small" onClick={() => openTowerDetailDrawer(row)}>
-              查看详情
+              详情
             </Button>
           )}
         </Space>
       ),
     },
   ];
-
-  const towers = useMemo(() => towersQuery.data?.items ?? [], [towersQuery.data?.items]);
 
   if (initializing || lineLoading) {
     return <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[280px]" />;
@@ -386,13 +439,6 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
 
   return (
     <div className="flex flex-1 flex-col p-4">
-      <Card size="small" className="admin-power-line-detail-meta">
-        <Descriptions bordered size="small" column={3}>
-          <Descriptions.Item label="线路编码">{lineDetail.code}</Descriptions.Item>
-          <Descriptions.Item label="线路名称">{lineDetail.name}</Descriptions.Item>
-          <Descriptions.Item label="杆塔总数">{towersQuery.data?.total ?? 0}</Descriptions.Item>
-        </Descriptions>
-      </Card>
 
       <div className="admin-filter-bar mt-3">
         <Form layout="inline" className="flex flex-wrap items-center gap-2">
@@ -438,7 +484,11 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
         </Form>
       </div>
 
-      <div className="relative mt-3 flex-1 min-h-0">
+      <div
+        ref={tableScrollAnchorRef}
+        className="admin-power-line-detail-table-anchor"
+        style={{ "--admin-power-line-detail-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+      >
         <Table<LineTowerSummary>
           rowKey={(row) => row.id}
           columns={towerColumns}
@@ -455,7 +505,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
               setTowerPagination({ current: page, pageSize });
             },
           }}
-          scroll={{ x: 1400 }}
+          scroll={{ x: 1400, y: tableScrollY }}
         />
       </div>
 

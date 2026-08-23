@@ -5692,6 +5692,29 @@ body {
   flex-shrink: 0;
 }
 
+/* line-detail-view: 线路详情页杆塔表格锚点，参考主列表表格高度自适应 */
+.admin-power-line-detail-table-anchor {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-power-line-detail-table-anchor .ant-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.admin-power-line-detail-table-anchor .ant-table {
+  min-width: 1080px;
+}
+
+.admin-power-line-detail-table-anchor .ant-table-body {
+  min-height: var(--admin-power-line-detail-table-body-min-height, 180px);
+}
+
 /* LP-297: 详情视图内容区增加 10px padding；LP-301: 改为 flex 纵向布局，
    上方基本信息 Card + 下方地图/杆塔列表 Tabs 撑满可用高度 */
 .admin-power-lines-detail-view {
