@@ -32,6 +32,7 @@ from ..schemas.lightning import (
     LightningAmplitudeStatusResponse,
     LightningCurrentPreparationRequest,
     LightningCurrentPreparationResponse,
+    LightningCurrentPreparationAsyncResponse,
     LightningCurrentBackfillTaskSummary,
     LightningCurrentBackfillTaskListResponse,
     LightningCurrentBackfillTaskDetail,
