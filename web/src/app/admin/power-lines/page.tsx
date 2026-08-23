@@ -17,6 +17,7 @@ import {
   Spin,
   Table,
   Tabs,
+  Tooltip,
   Typography,
   type MenuProps,
 } from "antd";
