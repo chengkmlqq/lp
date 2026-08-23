@@ -435,6 +435,30 @@ def execute_external_waveform_tower_analysis(
     env = os.environ.copy()
     env.update(resolved_job.environment)
 
+    # 持久化修复：Wine d 盘映射 + startup 文件
+    wine_profile = Path(os.path.expanduser("~")) / ".wine"
+    wine_dosdevices = wine_profile / "dosdevices"
+    wine_dosdevices.mkdir(parents=True, exist_ok=True)
+    atp_root = Path("/app/data/wine/ATP")
+    d_drive = wine_dosdevices / "d:"
+    if not d_drive.exists() or not d_drive.is_symlink():
+        if d_drive.exists() or d_drive.is_symlink():
+            d_drive.unlink()
+        d_drive.symlink_to(atp_root)
+    # 兼容模板 INCLUDE 路径：D:\ATP\500\ganzi\fanji\M1\*.lib
+    legacy_lib_dir = Path("/ATP/500/ganzi/fanji/M1")
+    legacy_lib_dir.mkdir(parents=True, exist_ok=True)
+    for lib_name in ("short.lib", "dahao.lib", "long.lib", "xiaohao.lib"):
+        target = legacy_lib_dir / lib_name
+        src = atp_root / "templates" / "fanji" / lib_name
+        if src.exists() and not target.exists():
+            target.symlink_to(src.resolve())
+    # 确保运行目录有 startup，ATP 启动必需
+    startup_src = atp_root / "startup"
+    startup_dst = run_dir / "startup"
+    if startup_src.exists() and not startup_dst.exists():
+        startup_dst.write_bytes(startup_src.read_bytes())
+
     try:
         result = subprocess.run(
             command,
