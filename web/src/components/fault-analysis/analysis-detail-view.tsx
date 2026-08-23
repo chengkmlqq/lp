@@ -954,7 +954,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView }: Analysis
 
   return (
     <div className="flex flex-col gap-4 h-full">
-      <Card title="故障分析详情" className="flex-1 overflow-auto">
+      <Card className="flex-1 overflow-auto">
         {activeView === "report" && (
           <ReportView
             tabKey={tabKey}
