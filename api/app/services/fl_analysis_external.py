@@ -629,7 +629,7 @@ def _prepare_run_directory(
 
 
 def _build_command(*, adapter: str, input_path: Path, extra_args: list[str]) -> list[str]:
-    if adapter == "wine":
+    if adapter in ("wine", "atp"):
         wine_binary, engine_path, error = _resolve_wine_engine_executable()
         if error or not wine_binary or not engine_path:
             raise RuntimeError(error or "Wine ATP engine unavailable")
