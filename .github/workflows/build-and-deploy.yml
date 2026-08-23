@@ -528,6 +528,11 @@ jobs:
                 else
                   echo "[pull] 拉取: ${img}"
                   local img_attempt=1
+                  local is_base=false
+                  # 基础镜像（redis/nginx/minio/pgvector）拉取失败不阻断部署
+                  if [[ "${img}" == *"redis:"* || "${img}" == *"nginx:"* || "${img}" == *"minio:"* || "${img}" == *"pgvector:"* ]]; then
+                    is_base=true
+                  fi
                   while [ "${img_attempt}" -le 3 ]; do
                     if docker pull "${img}" >/dev/null 2>&1; then
                       break
@@ -546,8 +551,12 @@ jobs:
                     img_attempt=$((img_attempt + 1))
                   done
                   if ! docker image inspect "${img}" >/dev/null 2>&1; then
-                    echo "[error] 镜像拉取失败: ${img}"
-                    missing=$((missing + 1))
+                    if [ "${is_base}" = true ]; then
+                      echo "[warn] 基础镜像拉取失败，但跳过不阻断部署: ${img}"
+                    else
+                      echo "[error] 镜像拉取失败: ${img}"
+                      missing=$((missing + 1))
+                    fi
                   fi
                 fi
               done
