@@ -7,7 +7,6 @@ import {
   Alert,
   Button,
   Descriptions,
-  Dropdown,
   Empty,
   Form,
   Input,
@@ -31,11 +30,9 @@ import {
   AppstoreOutlined,
   CheckCircleOutlined,
   CloudUploadOutlined,
-  EyeOutlined,
   FileOutlined,
   FileTextOutlined,
   GlobalOutlined,
-  MoreOutlined,
   NumberOutlined,
   SearchOutlined,
   UploadOutlined,
@@ -44,7 +41,6 @@ import type { ColumnsType } from "antd/es/table";
 
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
-import { ElevationPreviewCesiumMap } from "@/components/elevation-preview-cesium-map";
 import { ElevationTowerView } from "@/components/elevation-tower-view";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { getApiBaseUrl, readApiError } from "@/lib/api";
@@ -102,58 +98,6 @@ type LineSummary = {
 
 type LineListResponse = {
   items?: LineSummary[];
-};
-
-type ElevationPreviewPoint = {
-  longitude: number;
-  latitude: number;
-  altitude_m: number;
-};
-
-type ElevationPreviewHeightGrid = {
-  rows: number;
-  cols: number;
-  west: number;
-  south: number;
-  east: number;
-  north: number;
-  heights: (number | null)[];
-};
-
-type ElevationPreviewDiagnostics = {
-  source_crs: string | null;
-  source_bounds_min_x: number | null;
-  source_bounds_max_x: number | null;
-  source_bounds_min_y: number | null;
-  source_bounds_max_y: number | null;
-  wgs84_bounds_min_lon: number | null;
-  wgs84_bounds_max_lon: number | null;
-  wgs84_bounds_min_lat: number | null;
-  wgs84_bounds_max_lat: number | null;
-  raster_width: number | null;
-  raster_height: number | null;
-  target_samples: number | null;
-  sampling_step: number | null;
-  scanned_candidates: number | null;
-  valid_preview_count: number | null;
-  skip_read_error: number;
-  skip_masked: number;
-  skip_nodata: number;
-  skip_nonfinite: number;
-  skip_sample_transform_error: number;
-  sample_tx_first_error: string | null;
-  skip_sample_out_of_range: number;
-};
-
-type ElevationFileRecordPreviewResponse = {
-  record: ElevationFileRecordSummary;
-  preview_mode: "point_cloud" | "height_grid";
-  total_points: number;
-  sampled_points: number;
-  points: ElevationPreviewPoint[];
-  height_grid?: ElevationPreviewHeightGrid | null;
-  diagnostics: ElevationPreviewDiagnostics | null;
-  warnings: string[];
 };
 
 type ElevationFileRecordTaskResponse = {
@@ -319,8 +263,6 @@ export default function ElevationRecordsPage() {
   const [uploadError, setUploadError] = useState("");
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<ElevationFileRecordSummary | null>(null);
-  const [previewModalOpen, setPreviewModalOpen] = useState(false);
-  const [previewData, setPreviewData] = useState<ElevationFileRecordPreviewResponse | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -527,21 +469,6 @@ export default function ElevationRecordsPage() {
     },
     onError: (error) => {
       message.error(readMutationError(error, "创建任务失败"));
-    },
-  });
-
-  // Preview mutation
-  const previewMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await fetchWithAuth(`/api/v1/elevation/records/${id}/preview?max_points=1500`);
-      return readJsonResponse<ElevationFileRecordPreviewResponse>(response);
-    },
-    onSuccess: (data) => {
-      setPreviewData(data);
-      setPreviewModalOpen(true);
-    },
-    onError: (error) => {
-      message.error(readMutationError(error, "预览失败"));
     },
   });
 
@@ -753,14 +680,7 @@ export default function ElevationRecordsPage() {
         const deleting = deleteMutation.isPending && deletingId === row.id;
         const rowBusy = analyzing || deleting;
 
-        const moreMenuItems: MenuProps["items"] = [
-          {
-            key: "preview",
-            label: "预览",
-            disabled: rowBusy,
-            onClick: () => previewMutation.mutate(row.id),
-          },
-        ];
+        const moreMenuItems: MenuProps["items"] = [];
 
         return (
           <Space wrap>
@@ -785,10 +705,6 @@ export default function ElevationRecordsPage() {
             >
               删除
             </Button>
-
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button size="small" disabled={rowBusy} icon={<MoreOutlined />} />
-            </Dropdown>
           </Space>
         );
       },
@@ -799,26 +715,6 @@ export default function ElevationRecordsPage() {
     const analyzing = analyzeMutation.isPending && analyzingId === record.id;
     const deleting = deleteMutation.isPending && deletingId === record.id;
     const rowBusy = analyzing || deleting;
-
-    const moreMenuItems: MenuProps["items"] = [
-      { type: "divider" },
-      {
-        key: "delete",
-        label: "删除",
-        danger: true,
-        disabled: rowBusy,
-        onClick: () => {
-          Modal.confirm({
-            title: "确认删除",
-            content: `确定要删除文件 "${record.file_name}" 吗？`,
-            okText: "删除",
-            cancelText: "取消",
-            okButtonProps: { danger: true },
-            onOk: () => deleteMutation.mutate(record.id),
-          });
-        },
-      },
-    ];
 
     return (
       <Card
@@ -860,16 +756,6 @@ export default function ElevationRecordsPage() {
               <Button
                 type="text"
                 size="small"
-                icon={<EyeOutlined />}
-                disabled={rowBusy}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  previewMutation.mutate(record.id);
-                }}
-              />
-              <Button
-                type="text"
-                size="small"
                 icon={<CloudUploadOutlined />}
                 disabled={rowBusy}
                 onClick={(event) => {
@@ -877,15 +763,6 @@ export default function ElevationRecordsPage() {
                   openTowerTab(record);
                 }}
               />
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button
-                  type="text"
-                  size="small"
-                  disabled={rowBusy}
-                  icon={<MoreOutlined />}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              </Dropdown>
             </Space>
           </div>
         </div>
@@ -1174,51 +1051,6 @@ export default function ElevationRecordsPage() {
             />
           </Form.Item>
         </Form>
-      </Modal>
-
-      {/* Preview Modal */}
-      <Modal
-        title="高程数据预览"
-        open={previewModalOpen}
-        onCancel={() => {
-          setPreviewModalOpen(false);
-          setPreviewData(null);
-        }}
-        footer={null}
-        width="80%"
-        style={{ top: 20 }}
-      >
-        {previewData && (
-          <div>
-            <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="文件名">{previewData.record?.file_name}</Descriptions.Item>
-              <Descriptions.Item label="格式">{previewData.record?.file_format}</Descriptions.Item>
-              <Descriptions.Item label="总点数">{previewData.total_points?.toLocaleString()}</Descriptions.Item>
-              <Descriptions.Item label="采样点数">{previewData.sampled_points?.toLocaleString()}</Descriptions.Item>
-              <Descriptions.Item label="地形状态">{previewData.record?.terrain_status}</Descriptions.Item>
-            </Descriptions>
-            <div className="min-w-0 rounded-md border border-slate-200 p-3">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <Typography.Text strong>地形预览</Typography.Text>
-                <Tag color={statusTagColor(previewData.record.terrain_status)}>{previewData.record.terrain_status}</Tag>
-              </div>
-              <ElevationPreviewCesiumMap
-                dataset={{
-                  id: previewData.record.id,
-                  name: previewData.record.file_name,
-                  terrain_status: previewData.record.terrain_status,
-                  terrain_url_template: previewData.record.terrain_url_template,
-                  terrain_bounds: previewData.record.terrain_bounds,
-                  terrain_metadata: previewData.record.terrain_metadata,
-                }}
-                accessToken={getAccessToken()}
-                points={previewData.points}
-                heightGrid={previewData.height_grid ?? null}
-                height={430}
-              />
-            </div>
-          </div>
-        )}
       </Modal>
 
       {/* 关联线路小窗 */}
