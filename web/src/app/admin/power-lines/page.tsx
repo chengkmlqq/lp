@@ -35,6 +35,7 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useMemo, useState, useEffect, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 
 import { AdminPowerLinesDetailView } from "./line-detail-view";
 
@@ -184,6 +185,7 @@ export default function AdminPowerLinesPage() {
       window.removeEventListener("resize", onViewportChange);
     };
   }, [updateTableScrollHeight]);
+  const router = useRouter();
   const lineListPath = useMemo(() => {
     const params = new URLSearchParams();
     params.set("limit", String(paginationPageSize));
@@ -463,31 +465,9 @@ export default function AdminPowerLinesPage() {
                             canLineManage={canLineManage}
                             onEdit={openEditLineModal}
                             onDetail={openDetail}
-                            onPreview={(target) => {
-                              setDetailTabs((previous) => {
-                                const key = `map-${target.id}`;
-                                if (previous.some((tab) => tab.key === key)) {
-                                  setActiveTabKey(key);
-                                  return previous;
-                                }
-                                return [
-                                  ...previous,
-                                  {
-                                    key,
-                                    label: <span className="admin-power-lines-tab-title">线路预览 - {target.name || target.code}</span>,
-                                    closable: true,
-                                    children: (
-                                      <AdminPowerLinesDetailView
-                                        lineId={target.id}
-                                        canTowerRead={canTowerRead}
-                                        defaultTab="map"
-                                      />
-                                    ),
-                                  },
-                                ];
-                              });
-                              setActiveTabKey(`map-${target.id}`);
-                            }}
+                              onPreview={(target) => {
+                                router.push(`/admin/power-lines/${target.id}/map`);
+                              }}
                             onDelete={() => {
                               Modal.confirm({
                                 title: "删除线路",
@@ -530,29 +510,7 @@ export default function AdminPowerLinesPage() {
                       onEdit={openEditLineModal}
                       onDetail={openDetail}
                       onPreview={(target) => {
-                        setDetailTabs((previous) => {
-                          const key = `map-${target.id}`;
-                          if (previous.some((tab) => tab.key === key)) {
-                            setActiveTabKey(key);
-                            return previous;
-                          }
-                          return [
-                            ...previous,
-                            {
-                              key,
-                              label: <span className="admin-power-lines-tab-title">线路预览 - {target.name || target.code}</span>,
-                              closable: true,
-                              children: (
-                                <AdminPowerLinesDetailView
-                                  lineId={target.id}
-                                  canTowerRead={canTowerRead}
-                                  defaultTab="map"
-                                />
-                              ),
-                            },
-                          ];
-                        });
-                        setActiveTabKey(`map-${target.id}`);
+                        router.push(`/admin/power-lines/${target.id}/map`);
                       }}
                       onDelete={(line) => {
                         Modal.confirm({
@@ -671,16 +629,6 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
             <Button
               type="text"
               size="small"
-              icon={<EyeOutlined />}
-              title="杆塔"
-              onClick={(event) => {
-                event.stopPropagation();
-                onDetail(line);
-              }}
-            />
-            <Button
-              type="text"
-              size="small"
               icon={<GlobalOutlined />}
               title="预览"
               onClick={(event) => {
@@ -692,24 +640,50 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
               type="text"
               size="small"
               icon={<EditOutlined />}
+              title="编辑"
               onClick={(event) => {
                 event.stopPropagation();
                 onEdit(line);
               }}
             />
-            {canLineManage && (
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "towers",
+                    label: "杆塔",
+                    onClick: (event) => {
+                      event.domEvent.stopPropagation();
+                      onDetail(line);
+                    },
+                  },
+                  ...(canLineManage
+                    ? [
+                        {
+                          key: "delete",
+                          label: "删除",
+                          danger: true,
+                          disabled: deleteLoading,
+                          onClick: (event) => {
+                            event.domEvent.stopPropagation();
+                            onDelete();
+                          },
+                        },
+                      ]
+                    : []),
+                ],
+              }}
+              trigger={["click"]}
+            >
               <Button
                 type="text"
                 size="small"
-                danger
-                icon={<DeleteOutlined />}
-                loading={deleteLoading}
+                icon={<MoreOutlined />}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onDelete();
                 }}
               />
-            )}
+            </Dropdown>
           </Space>
         </div>
       </div>
@@ -768,45 +742,36 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
     {
       title: "操作",
       key: "actions",
-      width: 160,
+      width: 120,
       fixed: "right" as const,
       render: (_, line) => {
-        const menuItems: MenuProps["items"] = canLineManage
-          ? [
-              {
-                key: "delete",
-                label: "删除",
-                danger: true,
-                onClick: () => onDelete(line),
-              },
-            ]
-          : [];
+        const menuItems: MenuProps["items"] = [
+          {
+            key: "towers",
+            label: "杆塔",
+            onClick: () => onDetail(line),
+          },
+          ...(canLineManage
+            ? [
+                {
+                  key: "delete",
+                  label: "删除",
+                  danger: true,
+                  onClick: () => onDelete(line),
+                },
+              ]
+            : []),
+        ];
 
         return (
           <Space size={4}>
-            <Button
-              size="small"
-              onClick={() => onEdit(line)}
-            >
+            <Button size="small" icon={<GlobalOutlined />} onClick={() => onPreview(line)} />
+            <Button size="small" onClick={() => onEdit(line)}>
               编辑
             </Button>
-            <Button
-              size="small"
-              onClick={() => onDetail(line)}
-            >
-              杆塔
-            </Button>
-            <Button
-              size="small"
-              onClick={() => onPreview(line)}
-            >
-              预览
-            </Button>
-            {canLineManage && menuItems.length > 0 && (
-              <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
-                <Button size="small" icon={<MoreOutlined />} />
-              </Dropdown>
-            )}
+            <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
+              <Button size="small" icon={<MoreOutlined />} />
+            </Dropdown>
           </Space>
         );
       },
