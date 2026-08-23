@@ -87,6 +87,7 @@ def _set_param(db: Session, key: str, value: str, *, actor_user_id: str | None =
         )
         db.add(param)
     db.flush()
+    db.commit()
 
 
 def _compute_hash(data: bytes) -> str:
