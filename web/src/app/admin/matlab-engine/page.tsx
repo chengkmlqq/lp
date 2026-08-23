@@ -672,7 +672,6 @@ export default function AdminMatlabEnginePage() {
         width: 180,
         fixed: "right" as const,
         render: (_: unknown, record: MatlabVersion) => {
-          // 统一 UI 规范：默认仅展示 2 个直接按钮（查看文件/回退），其余操作收进 ⋯ 三点下拉
           const moreMenuItems: MenuProps["items"] = [
             ...(record === draft && canManage
               ? [
@@ -818,224 +817,260 @@ export default function AdminMatlabEnginePage() {
     );
   };
 
-  return (
-    <div ref={containerRef} className="admin-matlab-page-body">
-      {/* Left: module panel */}
-      {!isMobile ? (
-        <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
-          <AntCard
-            className="admin-matlab-tree-card"
-            style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-            bodyStyle={{ flex: 1, padding: 0 }}
-          >
+  // ---- Render left panel (module list) ----
+  const renderLeftPanel = () => (
+    <>
+      <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
+        <AntCard
+          className="admin-matlab-tree-card"
+          style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
+          bodyStyle={{ flex: 1, padding: 0 }}
+        >
+          {canManage && (
             <div className="admin-matlab-sider-header">
               <div className="admin-matlab-sider-title">模块列表</div>
-              {canManage && (
-                <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreateModule}>
-                  新建模块
-                </Button>
-              )}
+              <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreateModule}>
+                新建模块
+              </Button>
             </div>
-            <div className="admin-matlab-sider-search">
-              <Input
-                className="admin-matlab-search-input"
-                placeholder="按模块名/标识/描述筛选"
-                prefix={<SearchOutlined />}
-                value={moduleKeyword}
-                onChange={(e) => setModuleKeyword(e.target.value)}
-                allowClear
-              />
-            </div>
-            <div className="admin-matlab-sider-menu">
-              {modulesQuery.isLoading ? (
-                <div style={{ textAlign: "center", padding: "24px" }}>
-                  <Spin />
-                </div>
-              ) : modules.length === 0 ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无模块" />
-              ) : (
-                modules.map((item) => (
-                  <div
-                    key={item.slug}
-                    className={`admin-matlab-module-item ${selectedSlug === item.slug ? "admin-matlab-module-item--active" : ""}`}
-                    onClick={() => setSelectedSlug(item.slug)}
-                  >
-                    <div className="admin-matlab-module-info">
-                      <div className="admin-matlab-module-name">{item.name}</div>
-                      <div className="admin-matlab-module-slug">{item.slug}</div>
-                    </div>
+          )}
+          <div className="admin-matlab-sider-search">
+            <Input
+              className="admin-matlab-search-input"
+              placeholder="按模块名/标识/描述筛选"
+              prefix={<SearchOutlined />}
+              value={moduleKeyword}
+              onChange={(e) => setModuleKeyword(e.target.value)}
+              allowClear
+            />
+          </div>
+          <div className="admin-matlab-sider-menu">
+            {modulesQuery.isLoading ? (
+              <div style={{ textAlign: "center", padding: "24px" }}>
+                <Spin />
+              </div>
+            ) : modules.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无模块" />
+            ) : (
+              modules.map((item) => (
+                <div
+                  key={item.slug}
+                  className={`admin-matlab-module-item ${selectedSlug === item.slug ? "admin-matlab-module-item--active" : ""}`}
+                  onClick={() => setSelectedSlug(item.slug)}
+                >
+                  <div className="admin-matlab-module-info">
+                    <div className="admin-matlab-module-name">{item.name}</div>
+                    <div className="admin-matlab-module-slug">{item.slug}</div>
                   </div>
-                ))
-              )}
-            </div>
-          </AntCard>
-        </div>
-      ) : null}
+                </div>
+              ))
+            )}
+          </div>
+        </AntCard>
+      </div>
+      <div className="admin-menus-resize-handle" onMouseDown={handleResizeStart}>
+        <div className="admin-menus-resize-handle-line" />
+      </div>
+    </>
+  );
 
-      {!isMobile ? (
-        <div className="admin-matlab-resize-handle" onMouseDown={handleResizeStart}>
-          <div className="admin-matlab-resize-handle-line" />
-        </div>
-      ) : null}
-
-      {/* Right: detail panel */}
-      <div className="admin-matlab-main">
-        {!selectedModule ? (
+  // ---- Render right panel (version list) ----
+  const renderRightPanel = () => {
+    if (!selectedModule) {
+      return (
+        <div className="admin-menus-main">
           <Card>
             <Typography.Text type="secondary">请在左侧选择一个模块查看详情。</Typography.Text>
           </Card>
-        ) : (
-          <Space direction="vertical" size={12} style={{ width: "100%" }}>
-            {/* Title bar: module name + Tag (left), actions (right) */}
-            <div className="admin-matlab-header">
-              <Space className="min-w-0" size={12}>
-                <Typography.Text strong className="admin-matlab-header-title">
-                  {selectedModule.name}
-                </Typography.Text>
-                <Tag color="blue">{selectedModule.slug}</Tag>
-              </Space>
-              <Space size={8} wrap>
-                <Button
-                  icon={<CloudSyncOutlined />}
-                  onClick={() => handleSync()}
-                  loading={syncMutation.isPending}
-                  disabled={!canManage || syncMutation.isPending || !currentRelease}
-                >
-                  同步到 Worker
-                </Button>
-                {canManage && (
-                  <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
-                    上传新包
-                  </Button>
-                )}
-              </Space>
-            </div>
+        </div>
+      );
+    }
 
-            {/* Filter bar (mirrors menus page) */}
-            <div className="admin-filter-bar">
-              <Form layout="inline">
-                <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                  <Input
-                    allowClear
-                    value={versionKeywordInput}
-                    onChange={(event) => setVersionKeywordInput(event.target.value)}
-                    placeholder="版本号 / Hash / 变更日志 / 发布人"
-                    onPressEnter={() => handleVersionSearch()}
-                  />
-                </Form.Item>
-                <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                  <Select<"draft" | "released">
-                    value={versionStatus}
-                    allowClear
-                    placeholder="全部"
-                    onChange={handleVersionStatusChange}
-                    options={[
-                      { value: "draft", label: "草稿" },
-                      { value: "released", label: "已发布" },
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item style={{ marginBottom: 0 }}>
-                  <Button
-                    htmlType="button"
-                    icon={<SearchOutlined />}
-                    onClick={() => handleVersionSearch()}
-                    className="admin-search-btn"
-                  >
-                    查询
-                  </Button>
-                </Form.Item>
-              </Form>
-            </div>
-
-            {/* View toggle: table / card */}
-            <div className="admin-matlab-view-bar">
-              <Space size={8}>
-                <Button
-                  size="small"
-                  type={viewMode === "table" ? "primary" : "default"}
-                  onClick={() => setViewMode("table")}
-                  disabled={viewMode === "table"}
-                >
-                  表格
-                </Button>
-                <Button
-                  size="small"
-                  type={viewMode === "card" ? "primary" : "default"}
-                  onClick={() => setViewMode("card")}
-                  disabled={viewMode === "card"}
-                >
-                  卡片
-                </Button>
-              </Space>
-            </div>
-
-            {viewMode === "table" ? (
-              <div
-                ref={tableScrollAnchorRef}
-                className="admin-matlab-table-anchor"
-                style={{ "--admin-matlab-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+    return (
+      <div className="admin-menus-main">
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          {/* Title bar */}
+          <div className="admin-matlab-header">
+            <Space className="min-w-0" size={12}>
+              <Typography.Text strong className="admin-matlab-header-title">
+                {selectedModule.name}
+              </Typography.Text>
+              <Tag color="blue">{selectedModule.slug}</Tag>
+            </Space>
+            <Space size={8} wrap>
+              <Button
+                icon={<CloudSyncOutlined />}
+                onClick={handleSync}
+                loading={syncMutation.isPending}
+                disabled={!canManage || syncMutation.isPending || !currentRelease}
               >
-                <Table<MatlabVersion>
-                  rowKey="version_hash"
-                  dataSource={filteredVersions}
-                  columns={columns}
-                  loading={versionsQuery.isFetching}
-                  tableLayout="fixed"
-                  scroll={{ y: tableScrollY }}
-                  pagination={{
-                    current: pagination.current,
-                    pageSize: pagination.pageSize,
-                    total: Math.max(filteredVersions.length, 1),
-                    showSizeChanger: true,
-                    pageSizeOptions: [10, 20, 50, 100],
-                    showTotal: () => `共 ${filteredVersions.length} 条`,
-                    hideOnSinglePage: false,
-                    style: { marginBottom: 0 },
-                    onChange: (page, pageSize) => {
-                      setPagination({ current: page, pageSize });
-                    },
-                  }}
-                  locale={{
-                    emptyText: (
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的版本。" />
-                    ),
-                  }}
+                同步到 Worker
+              </Button>
+              {canManage && (
+                <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
+                  上传新包
+                </Button>
+              )}
+            </Space>
+          </div>
+
+          {/* Filter bar (mirrors menus page) */}
+          <div className="admin-filter-bar">
+            <Form layout="inline">
+              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                <Input
+                  allowClear
+                  value={versionKeywordInput}
+                  onChange={(event) => setVersionKeywordInput(event.currentTarget.value)}
+                  placeholder="版本号 / Hash / 变更日志 / 发布人"
+                  onPressEnter={() => handleVersionSearch()}
                 />
-              </div>
-            ) : (
-              <div className="admin-matlab-card-view">
-                {versionsQuery.isLoading && filteredVersions.length === 0 ? (
-                  <div className="admin-matlab-card-view-state">
-                    <Spin tip="加载中..." />
-                  </div>
-                ) : filteredVersions.length === 0 ? (
-                  <div className="admin-matlab-card-view-state">
+              </Form.Item>
+              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                <Select<"draft" | "released">
+                  value={versionStatus}
+                  allowClear
+                  placeholder="全部"
+                  onChange={handleVersionStatusChange}
+                  options={[
+                    { value: "draft", label: "草稿" },
+                    { value: "released", label: "已发布" },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Button
+                  htmlType="button"
+                  icon={<SearchOutlined />}
+                  onClick={() => handleVersionSearch()}
+                  className="admin-search-btn"
+                >
+                  查询
+                </Button>
+              </Form.Item>
+            </Form>
+          </div>
+
+          {/* View toggle */}
+          <div className="admin-matlab-view-bar">
+            <Space size={8}>
+              <Button
+                size="small"
+                type={viewMode === "table" ? "primary" : "default"}
+                onClick={() => setViewMode("table")}
+                disabled={viewMode === "table"}
+              >
+                表格
+              </Button>
+              <Button
+                size="small"
+                type={viewMode === "card" ? "primary" : "default"}
+                onClick={() => setViewMode("card")}
+                disabled={viewMode === "card"}
+              >
+                卡片
+              </Button>
+            </Space>
+          </div>
+
+          {viewMode === "table" ? (
+            <div
+              ref={tableScrollAnchorRef}
+              className="admin-matlab-table-anchor"
+              style={{ "--admin-matlab-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+            >
+              <Table<MatlabVersion>
+                rowKey="version_hash"
+                dataSource={filteredVersions}
+                columns={columns}
+                loading={versionsQuery.isFetching}
+                tableLayout="fixed"
+                scroll={{ y: tableScrollY }}
+                pagination={{
+                  current: pagination.current,
+                  pageSize: pagination.pageSize,
+                  total: Math.max(filteredVersions.length, 1),
+                  showSizeChanger: true,
+                  pageSizeOptions: [10, 20, 50, 100],
+                  showTotal: () => `共 ${filteredVersions.length} 条`,
+                  hideOnSinglePage: false,
+                  style: { marginBottom: 0 },
+                  onChange: (page, pageSize) => {
+                    setPagination({ current: page, pageSize });
+                  },
+                }}
+                locale={{
+                  emptyText: (
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的版本。" />
-                  </div>
-                ) : (
-                  <div className="admin-matlab-card-view-content">
-                    <Row gutter={[12, 12]}>
-                      {filteredVersions.map((item) => (
-                        <Col
-                          key={`${item.version_hash}-${item === draft ? "draft" : "release"}`}
-                          xs={24}
-                          sm={24}
-                          md={12}
-                          lg={8}
-                          xl={6}
-                        >
-                          {renderVersionCard(item)}
-                        </Col>
-                      ))}
-                    </Row>
-                  </div>
-                )}
-              </div>
-            )}
-          </Space>
-        )}
+                  ),
+                }}
+              />
+            </div>
+          ) : (
+            <div className="admin-matlab-card-view">
+              {versionsQuery.isLoading && filteredVersions.length === 0 ? (
+                <div className="admin-matlab-card-view-state">
+                  <Spin tip="加载中..." />
+                </div>
+              ) : filteredVersions.length === 0 ? (
+                <div className="admin-matlab-card-view-state">
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的版本。" />
+                </div>
+              ) : (
+                <div className="admin-matlab-card-view-content">
+                  <Row gutter={[12, 12]}>
+                    {filteredVersions.map((item) => (
+                      <Col
+                        key={`${item.version_hash}-${item === draft ? "draft" : "release"}`}
+                        xs={24}
+                        sm={24}
+                        md={12}
+                        lg={8}
+                        xl={6}
+                      >
+                        {renderVersionCard(item)}
+                      </Col>
+                    ))}
+                  </Row>
+                </div>
+              )}
+            </div>
+          )}
+        </Space>
       </div>
+    );
+  };
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <Tabs
+        type="editable-card"
+        hideAdd
+        defaultActiveKey="list"
+        className="admin-matlab-tabs"
+        tabBarExtraContent={
+          canManage ? (
+            <Button type="primary" onClick={openCreateModule}>
+              新建模块
+            </Button>
+          ) : null
+        }
+        items={[
+          {
+            key: "list",
+            label: <span className="admin-matlab-tab-title">MATLAB 引擎管理</span>,
+            closable: false,
+            children: (
+              <div className="admin-menus-list-pane">
+                <div ref={containerRef} className="admin-menus-page-body">
+                  {!isMobile ? renderLeftPanel() : null}
+                  {renderRightPanel()}
+                </div>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <Modal
         title={editingModule ? `编辑模块：${editingModule.name}` : "新建模块"}
