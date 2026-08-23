@@ -144,7 +144,7 @@ def import_lightning_distribution_job(
     不再向任何明细表 INSERT 落雷数据。
     """
     task_id = self.request.id
-    log_parts: list[str] = [f"[{task_id}] Starting distribution import: {distribution_id}"]
+    log_parts: list[str] = [f"[{task_id}] 地闪分布导入任务启动（distribution_id={distribution_id}）"]
 
     db: Session = SessionLocal()
     try:
@@ -155,7 +155,8 @@ def import_lightning_distribution_job(
             select(LightningDistribution).where(LightningDistribution.id == distribution_id)
         ).scalar_one_or_none()
         if not dist:
-            _append_log(log_parts, task_id, f"[{task_id}] Distribution {distribution_id} not found, aborting")
+            _append_log(log_parts, task_id,
+                f"[{task_id}] 未找到地闪分布记录（id={distribution_id}），任务终止")
             _upload_log(task_id, log_parts)
             return {"status": "failed", "error": "distribution not found"}
 
@@ -164,7 +165,10 @@ def import_lightning_distribution_job(
         dist.progress = 5
         dist.task_id = task_id
         db.commit()
-        _append_log(log_parts, task_id, f"[{task_id}] source_object_key={dist.source_object_key}")
+        _append_log(log_parts, task_id,
+            f"[{task_id}] 开始导入地闪分布，文件：{dist.source_file_name}，"
+            f"地点：{dist.region_id or '-'}（{dist.city or '-'}），年份：{dist.event_year}"
+        )
         _publish_distribution_event("distribution.import_started", {
             "distribution_id": dist.id,
             "status": dist.status,
@@ -176,6 +180,9 @@ def import_lightning_distribution_job(
         content = minio_storage.get_object(dist.source_object_key)
         text = lightning_statistics.decode_text_bytes(content)
         total_lines = len(text.splitlines())
+        _append_log(log_parts, task_id,
+            f"[{task_id}] 已下载源文件，共 {total_lines} 行原始数据，开始解析与校验"
+        )
 
         # ---- 3. 解析 + 校验 ----
         dist.stage = "validating"
@@ -204,8 +211,8 @@ def import_lightning_distribution_job(
             "progress": 50,
         })
         _append_log(log_parts, task_id,
-            f"[{task_id}] Parsed {len(strikes)} strikes, skipped={skipped_count}, "
-            f"warnings={len(warnings)}"
+            f"[{task_id}] 解析完成：有效落雷 {len(strikes)} 条，跳过 {skipped_count} 条"
+            f"（无法识别），预警 {len(warnings)} 条"
         )
 
         # ---- 4. 统计 ----
@@ -235,13 +242,16 @@ def import_lightning_distribution_job(
             "progress": 75,
         })
         _append_log(log_parts, task_id,
-            f"[{task_id}] Stats: area={stats['area_km2']:.3f}km², "
-            f"Ng={stats['overall_ng']:.4f}"
+            f"[{task_id}] 统计完成：面积 {stats['area_km2']:.3f}km²，统计年限 {stats['data_years']}，"
+            f"整体地闪密度 Ng={stats['overall_ng']:.4f}，最大电流 {stats['max_abs_current']:.2f}kA，"
+            f"平均电流 {stats['avg_abs_current']:.2f}kA，正极性 {stats['positive_count']} 条 / "
+            f"负极性 {stats['negative_count']} 条 / 未知 {stats['unknown_count']} 条"
         )
 
         # ---- 5. 出图（内部阶段） ----
         dist.stage = "rendering"
         db.commit()
+        _append_log(log_parts, task_id, f"[{task_id}] 开始渲染地闪密度图（均匀网格）…")
         png = lightning_statistics.render_density_image(
             strikes,
             grid_size_km=float(dist.grid_size_km or 1.0),
@@ -253,9 +263,11 @@ def import_lightning_distribution_job(
             minio_storage.put_object(image_key, png, content_type="image/png")
             dist.image_object_key = image_key
             dist.lp_image_object_key = None  # 重新导入后旧 LP 分区图失效
-            _append_log(log_parts, task_id, f"[{task_id}] Image uploaded to {image_key}")
+            _append_log(log_parts, task_id,
+                f"[{task_id}] 密度图渲染完成并已上传 ({image_key})"
+            )
         else:
-            _append_log(log_parts, task_id, f"[{task_id}] matplotlib unavailable, skip image rendering")
+            _append_log(log_parts, task_id, f"[{task_id}] matplotlib 不可用，跳过密度图渲染")
 
         dist.status = "completed"
         dist.progress = 100
@@ -272,6 +284,10 @@ def import_lightning_distribution_job(
         })
 
         _upload_log(task_id, log_parts)
+        _append_log(log_parts, task_id,
+            f"[{task_id}] 地闪分布导入完成：有效 {len(strikes)} 条，跳过 {skipped_count} 条，"
+            f"预警 {len(warnings)} 条，Ng={dist.overall_ng:.4f}"
+        )
         return {
             "status": "completed",
             "distribution_id": dist.id,
@@ -284,7 +300,7 @@ def import_lightning_distribution_job(
         import traceback
 
         db.rollback()
-        _append_log(log_parts, task_id, f"[{task_id}] FAILED: {exc}")
+        _append_log(log_parts, task_id, f"[{task_id}] 任务执行失败：{exc}")
         _append_log(log_parts, task_id, traceback.format_exc())
         _upload_log(task_id, log_parts)
         try:
@@ -349,7 +365,7 @@ def render_lp_density_job(
 ) -> dict[str, Any]:
     """按 LP 桌面端 Voronoi 分区算法，为指定线路关联的分布绘制分区密度图并传 MinIO。"""
     task_id = self.request.id
-    log_parts = [f"[{task_id}] Starting LP density draw: dist={distribution_id} line={line_id}"]
+    log_parts: list[str] = [f"[{task_id}] LP 分区绘图任务启动（distribution={distribution_id}, line={line_id}）"]
 
     db: Session = SessionLocal()
     try:
@@ -360,20 +376,32 @@ def render_lp_density_job(
             select(LightningDistribution).where(LightningDistribution.id == distribution_id)
         ).scalar_one_or_none()
         if not dist:
+            _append_log(log_parts, task_id,
+                f"[{task_id}] 未找到地闪分布记录（id={distribution_id}），任务终止")
             _upload_log(task_id, log_parts); return {"status": "failed", "error": "distribution not found"}
         if dist.status != "completed":
+            _append_log(log_parts, task_id,
+                f"[{task_id}] 地闪分布尚未完成导入（status={dist.status}），无法绘图")
             _upload_log(task_id, log_parts); return {"status": "failed", "error": "distribution not completed"}
         # 持久化绘图任务 task_id，供刷新页面后追溯绘图日志（LP-261）
         dist.lp_draw_task_id = task_id
         db.commit()
+        _append_log(log_parts, task_id,
+            f"[{task_id}] 地闪分布已完成导入，准备为线路绘制 LP 分区密度图"
+        )
 
         line = db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
         if not line:
+            _append_log(log_parts, task_id, f"[{task_id}] 未找到线路记录（line_id={line_id}）")
             _upload_log(task_id, log_parts); return {"status": "failed", "error": "line not found"}
 
         group_size, radius_km_resolved, _ = _resolve_params_for_voltage(line.voltage_kv)
         if radius_km is not None:
             radius_km_resolved = radius_km
+        _append_log(log_parts, task_id,
+            f"[{task_id}] 线路 {line.name}（{line.code}，{line.voltage_kv}kV），"
+            f"分组大小={group_size}，缓冲半径={radius_km_resolved}km"
+        )
 
         towers = db.execute(
             select(LineTower).where(LineTower.line_id == line.id)
@@ -381,7 +409,12 @@ def render_lp_density_job(
         ).scalars().all()
         geo = [t for t in towers if t.longitude is not None and t.latitude is not None]
         if not geo:
+            _append_log(log_parts, task_id, f"[{task_id}] 线路 {line.name} 无带经纬度杆塔，无法绘图")
             _upload_log(task_id, log_parts); return {"status": "failed", "error": "no geo towers"}
+        _append_log(log_parts, task_id,
+            f"[{task_id}] 线路共 {len(towers)} 座杆塔，其中 {len(geo)} 座有经纬度，"
+            f"将按每组 {group_size} 座生成 {((len(geo) + group_size - 1) // group_size)} 个 Voronoi 分区"
+        )
 
         groups = []
         for i in range(0, len(geo), group_size):
@@ -396,7 +429,11 @@ def render_lp_density_job(
         text = lightning_statistics.decode_text_bytes(content)
         all_strikes = lightning_statistics.parse_distribution_content(text)
         if not all_strikes:
+            _append_log(log_parts, task_id, f"[{task_id}] 源文件中未解析到有效落雷数据")
             _upload_log(task_id, log_parts); return {"status": "failed", "error": "no strikes"}
+        _append_log(log_parts, task_id,
+            f"[{task_id}] 源文件解析到 {len(all_strikes)} 条落雷数据，开始按线路包围盒裁剪"
+        )
 
         # 裁剪到线路包围盒 + radius 缓冲
         DEG = 111.32
@@ -411,34 +448,51 @@ def render_lp_density_job(
                    and min_lat <= float(s["lat"]) <= max_lat
                    and min_lon <= float(s["lon"]) <= max_lon]
         if not strikes:
+            _append_log(log_parts, task_id,
+                f"[{task_id}] 裁剪到线路包围盒后无落雷数据（源数据 {len(all_strikes)} 条，"
+                f"包围盒：[{min_lat:.4f},{min_lon:.4f}] ~ [{max_lat:.4f},{max_lon:.4f}]）"
+            )
             _upload_log(task_id, log_parts); return {"status": "failed", "error": "no strikes in bbox"}
+        _append_log(log_parts, task_id,
+            f"[{task_id}] 包围盒裁剪后剩余 {len(strikes)} 条落雷，开始计算 Voronoi 分区"
+        )
 
         data_years = max(float(dist.data_years or 1.0), 1e-6)
         cells = lightning_statistics.compute_lp_voronoi_cells(groups, radius_km_resolved)
         if not cells:
+            _append_log(log_parts, task_id, f"[{task_id}] Voronoi 分区计算失败")
             _upload_log(task_id, log_parts); return {"status": "failed", "error": "no voronoi cells"}
+        _append_log(log_parts, task_id,
+            f"[{task_id}] Voronoi 分区生成完成（{len(cells)} 个分区），开始渲染 LP 分区密度图"
+        )
 
         png = lightning_statistics.render_lp_density_image(
             strikes, cells, data_years=data_years, radius_km=radius_km_resolved, title=line.name,
         )
         if not png:
+            _append_log(log_parts, task_id, f"[{task_id}] matplotlib 不可用，无法渲染 LP 分区图")
             _upload_log(task_id, log_parts); return {"status": "failed", "error": "matplotlib unavailable"}
+        _append_log(log_parts, task_id, f"[{task_id}] LP 分区密度图渲染完成，开始上传 MinIO…")
 
         build_key = f"lightning/dist/lp/{distribution_id}/{task_id}.png"
         minio_storage.put_object(build_key, png, content_type="image/png")
         dist.lp_image_object_key = build_key
         dist.update_user = actor_user_id
         db.commit()
+        _append_log(log_parts, task_id, f"[{task_id}] LP 分区密度图已上传（{build_key}）")
         _publish_distribution_event("distribution.lp_draw_completed", {
             "distribution_id": dist.id, "status": "completed", "has_lp_image": True,
         })
         _upload_log(task_id, log_parts)
+        _append_log(log_parts, task_id,
+            f"[{task_id}] LP 分区密度图绘制完成（distribution={distribution_id}, line={line_id}）"
+        )
         return {"status": "completed", "distribution_id": dist.id}
 
     except Exception as exc:
         db.rollback()
         import traceback
-        _append_log(log_parts, task_id, f"[{task_id}] FAILED: {exc}")
+        _append_log(log_parts, task_id, f"[{task_id}] LP 绘图任务执行失败：{exc}")
         _append_log(log_parts, task_id, traceback.format_exc())
         _upload_log(task_id, log_parts)
         try:
@@ -493,7 +547,7 @@ def import_lightning_amplitude_job(
     失败路径：异常 → status=failed + error_message + progress 保留 → 前端展示失败原因，可点「重试」。
     """
     task_id = self.request.id
-    log_parts: list[str] = [f"[{task_id}] Starting amplitude import: {amplitude_id}"]
+    log_parts: list[str] = [f"[{task_id}] 开始导入雷电流幅值：{amplitude_id}"]
 
     db: Session = SessionLocal()
     try:
@@ -512,15 +566,15 @@ def import_lightning_amplitude_job(
             select(LightningAmplitude).where(LightningAmplitude.id == amplitude_id)
         ).scalar_one_or_none()
         if not amp:
-            _append_log(log_parts, task_id, f"[{task_id}] Amplitude {amplitude_id} not found, aborting")
+            _append_log(log_parts, task_id, f"[{task_id}] 未找到幅值记录（{amplitude_id}），终止任务")
             _upload_log(task_id, log_parts)
             return {"status": "failed", "error": "amplitude not found"}
 
+        _append_log(log_parts, task_id, f"[{task_id}] 源文件对象键：{amp.source_object_key}，文件名：{amp.source_file_name}")
         amp.status = "processing"
         amp.progress = 10
         amp.task_id = task_id
         db.commit()
-        _append_log(log_parts, task_id, f"[{task_id}] source_object_key={amp.source_object_key}")
         _publish_amplitude_event("amplitude.import_started", {
             "amplitude_id": amp.id,
             "status": amp.status,
@@ -528,11 +582,19 @@ def import_lightning_amplitude_job(
         })
 
         # ---- 2. 从 MinIO 下载原始文件 ----
+        log_parts.append(f"[{task_id}] 开始从 MinIO 下载源文件（{amp.source_object_key}）")
         content = minio_storage.get_object(amp.source_object_key)
+        log_parts.append(f"[{task_id}] MinIO 下载完成，字节数：{len(content)}")
         text = _decode_text_bytes(content)
+        log_parts.append(f"[{task_id}] 文件解码完成，文本行数：{len(text.splitlines())}")
 
         # ---- 3. 解析 + 校验 ----
+        log_parts.append(f"[{task_id}] 开始解析电流序列...")
         parsed = _parse_current_series(text)
+        log_parts.append(f"[{task_id}] 解析完成，采样点数量：{len(parsed.currents_ka)}，解析警告数：{len(parsed.warnings)}")
+        if parsed.warnings:
+            for warning in parsed.warnings[:5]:
+                log_parts.append(f"[{task_id}] 解析警告：{warning}")
         if len(parsed.currents_ka) < 2:
             raise ValueError("有效采样点数量不足（至少需要 2 个点）")
         if len(parsed.currents_ka) > MAX_SAMPLES:
@@ -544,21 +606,36 @@ def import_lightning_amplitude_job(
             "amplitude_id": amp.id,
             "progress": 30,
         })
-        _append_log(log_parts, task_id,
-            f"[{task_id}] Parsed {len(parsed.currents_ka)} samples, "
-            f"warnings={len(parsed.warnings)}"
-        )
+        _append_log(log_parts, task_id, f"[{task_id}] 解析校验通过，采样点数：{len(parsed.currents_ka)}")
 
         # ---- 4. 时间轴 ----
+        log_parts.append(f"[{task_id}] 开始构建时间轴...")
         time_axis_us, inferred_interval_us, inferred_fs_hz, time_warnings = _build_time_axis(
             parsed.time_us,
             sample_interval_us=amp.sample_interval_us,
             sample_count=len(parsed.currents_ka),
         )
+        log_parts.append(f"[{task_id}] 时间轴构建完成，采样间隔：{inferred_interval_us}us，采样频率：{inferred_fs_hz}Hz")
+        if time_warnings:
+            for warning in time_warnings[:5]:
+                log_parts.append(f"[{task_id}] 时间轴警告：{warning}")
         warnings = [*parsed.warnings, *time_warnings]
 
-        # ---- 5. 特征提取（复用现有纯函数，不写 Sample 表）----
+        # ---- 5. 特征提取 ----
+        log_parts.append(f"[{task_id}] 开始提取波形特征参数...")
         features = _extract_wave_features(parsed.currents_ka, time_axis_us, inferred_interval_us)
+        log_parts.append(
+            f"[{task_id}] 特征提取完成："
+            f"峰值电流={features.peak_current_ka}kA，"
+            f"绝对峰值={features.peak_abs_current_ka}kA，"
+            f"波形分类={features.wave_shape}，"
+            f"极性={features.polarity}，"
+            f"波前时间T1={features.wavefront_time_t1_us}us，"
+            f"半峰值时间T2={features.half_value_time_t2_us}us，"
+            f"陡度={features.steepness_ka_per_us}kA/us，"
+            f"I²t={features.action_integral_j_ohm}J/Ω，"
+            f"多重回击数={features.stroke_count}"
+        )
         amp.progress = 70
         db.commit()
         _publish_amplitude_event("amplitude.import_progress", {
@@ -567,8 +644,10 @@ def import_lightning_amplitude_job(
         })
 
         # ---- 6. 统计回写 ----
+        log_parts.append(f"[{task_id}] 开始回写特征数据到数据库...")
         if not amp.event_id:
             amp.event_id = _generate_event_id()
+            log_parts.append(f"[{task_id}] 自动生成事件编号：{amp.event_id}")
         amp.sample_count = len(parsed.currents_ka)
         amp.sample_interval_us = inferred_interval_us
         amp.sampling_frequency_hz = inferred_fs_hz
@@ -592,8 +671,9 @@ def import_lightning_amplitude_job(
         amp.progress = 100
         db.commit()
         _append_log(log_parts, task_id,
-            f"[{task_id}] Completed: peak={amp.peak_abs_current_ka}kA, "
-            f"samples={amp.sample_count}, shape={amp.wave_shape}"
+            f"[{task_id}] 导入完成：绝对峰值={amp.peak_abs_current_ka}kA，"
+            f"采样点数={amp.sample_count}，波形={amp.wave_shape}，"
+            f"极性={amp.polarity}，多重回击={amp.stroke_count}次"
         )
         _upload_log(task_id, log_parts)
 
@@ -622,8 +702,8 @@ def import_lightning_amplitude_job(
         import traceback
 
         db.rollback()
-        _append_log(log_parts, task_id, f"[{task_id}] FAILED: {exc}")
-        _append_log(log_parts, task_id, traceback.format_exc())
+        _append_log(log_parts, task_id, f"[{task_id}] 导入失败：{exc}")
+        _append_log(log_parts, task_id, f"[{task_id}] 异常堆栈：{traceback.format_exc()}")
         _upload_log(task_id, log_parts)
         try:
             amp = db.execute(
@@ -690,12 +770,26 @@ def prepare_line_lightning_current_job(
     services.lightning_service._execute_line_lightning_current_backfill。
     """
     task_id = self.request.id
-    log_parts: list[str] = [f"[{task_id}] Starting lightning current backfill: line={line_id}"]
+    log_parts: list[str] = [f"[{task_id}] 开始线路雷电流幅值回填：线路ID={line_id}"]
 
     db: Session = SessionLocal()
     try:
         from ..schemas.lightning import LightningCurrentPreparationRequest
         from ..services.lightning_service import _execute_line_lightning_current_backfill
+
+        # 查询线路信息
+        line = db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
+        log_parts.append(
+            f"[{task_id}] 线路信息：编号={line.code if line else 'N/A'}，名称={line.name if line else 'N/A'}"
+            if line
+            else f"[{task_id}] 线路未找到：{line_id}"
+        )
+
+        # 查询杆塔数量
+        tower_count = db.execute(
+            select(sa_func.count()).select_from(LineTower).where(LineTower.line_id == line_id)
+        ).scalar() or 0
+        log_parts.append(f"[{task_id}] 线路杆塔数：{tower_count}基")
 
         backfill_task = None
         if backfill_task_id:
@@ -707,8 +801,9 @@ def prepare_line_lightning_current_job(
                 backfill_task.progress = 10
                 backfill_task.task_id = task_id
                 db.commit()
+                log_parts.append(f"[{task_id}] 回填任务记录已更新为 processing（ID={backfill_task_id}）")
 
-        _append_log(log_parts, task_id, f"[{task_id}] line={line_id}, backfill_task={backfill_task_id}")
+        _append_log(log_parts, task_id, f"[{task_id}] 回填参数：region_id={region_id}，is_synthetic={is_synthetic}")
         _publish_backfill_event("backfill.started", {
             "backfill_task_id": backfill_task_id or "",
             "line_id": line_id,
@@ -722,14 +817,26 @@ def prepare_line_lightning_current_job(
             region_id=region_id,
             is_synthetic=is_synthetic,
         )
+        log_parts.append(f"[{task_id}] 开始执行回填计算（查询幅值记录→MinIO下载→解析→拟合→更新杆塔）...")
         result = _execute_line_lightning_current_backfill(
             db,
             payload,
             actor_user_id=actor_user_id or "system",
             backfill_task_id=backfill_task_id,
         )
+        log_parts.append(
+            f"[{task_id}] 回填计算完成："
+            f"幅值a={result.current_a}kA，幅值b={result.current_b}kA，"
+            f"峰值max={result.peak_max}kA，峰值min={result.peak_min}kA，"
+            f"采样事件数={result.sampled_event_count}，"
+            f"更新杆塔数={result.updated_tower_count}，"
+            f"警告数={len(result.warnings)}"
+        )
+        if result.warnings:
+            for warning in result.warnings[:10]:
+                log_parts.append(f"[{task_id}] 回填警告：{warning}")
         _append_log(log_parts, task_id,
-            f"[{task_id}] Completed: current_a={result.current_a}, current_b={result.current_b}, "
+            f"[{task_id}] 回填完成：current_a={result.current_a}, current_b={result.current_b}, "
             f"towers={result.updated_tower_count}"
         )
         _upload_log(task_id, log_parts)
@@ -759,8 +866,8 @@ def prepare_line_lightning_current_job(
         import traceback
 
         db.rollback()
-        _append_log(log_parts, task_id, f"[{task_id}] FAILED: {exc}")
-        _append_log(log_parts, task_id, traceback.format_exc())
+        _append_log(log_parts, task_id, f"[{task_id}] 回填失败：{exc}")
+        _append_log(log_parts, task_id, f"[{task_id}] 异常堆栈：{traceback.format_exc()}")
         _upload_log(task_id, log_parts)
         try:
             if backfill_task_id:
