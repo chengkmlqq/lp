@@ -682,6 +682,11 @@ export default function AdminLightningDistributionPage() {
         fixed: "right",
         render: (_: unknown, row) => {
           const moreMenuItems: MenuProps["items"] = [
+            {
+              key: "backfill-history",
+              label: "回填记录",
+              onClick: () => openLinkedLinesModal(row),
+            },
             ...(canReadLogs && row.task_id
               ? [
                   {
@@ -831,6 +836,12 @@ export default function AdminLightningDistributionPage() {
               )}
               {(() => {
                 const extraActions: MenuProps["items"] = [
+                  {
+                    key: "backfill-history",
+                    label: "回填记录",
+                    icon: <FileTextOutlined />,
+                    onClick: () => openLinkedLinesModal(record),
+                  },
                   ...(canManage
                     ? [
                         {
