@@ -340,25 +340,7 @@ export default function AdminLightningCurrentsPage() {
       return;
     }
     window.requestAnimationFrame(updateTableScrollY);
-  }, [error, listError, records.length, recordsQuery.isFetching, updateTableScrollY, viewMode]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (viewMode !== "list") {
-      return;
-    }
-
-    const onViewportChange = () => {
-      window.requestAnimationFrame(updateTableScrollY);
-    };
-
-    window.addEventListener("resize", onViewportChange);
-    return () => {
-      window.removeEventListener("resize", onViewportChange);
-    };
-  }, [updateTableScrollY, viewMode]);
+  }, [records.length, recordsQuery.isFetching, updateTableScrollY, viewMode]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof ResizeObserver === "undefined") {
@@ -381,7 +363,7 @@ export default function AdminLightningCurrentsPage() {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [updateTableScrollY, viewMode]);
+  }, [updateTableScrollY, viewMode, records.length, recordsQuery.isFetching]);
 
   // 导入中进度直接通过订阅消息 + 表格“状态”列展示，不弹进度条轮询弹窗
 

@@ -3054,8 +3054,14 @@ body {
   flex: 1;
   flex-direction: column;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: hidden;
   padding: 12px;
+}
+
+/* LP-465: 表格锚点允许收缩，避免被表格内容撑开 */
+.lightning-table-anchor {
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .lightning-table-anchor .ant-table-body {
