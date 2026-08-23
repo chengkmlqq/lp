@@ -1067,13 +1067,8 @@ export default function ElevationRecordsPage() {
               accept=".tif,.tiff,.zip"
               showUploadList={false}
               beforeUpload={(file) => {
-                const maxMB = 50;
                 const allowedExts = ["tif", "tiff", "zip"];
                 const ext = file.name.split(".").pop()?.toLowerCase() || "";
-                if (file.size > maxMB * 1024 * 1024) {
-                  message.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
-                  return Upload.LIST_IGNORE;
-                }
                 if (!allowedExts.includes(ext)) {
                   message.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
                   return Upload.LIST_IGNORE;
