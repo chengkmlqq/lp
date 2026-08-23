@@ -14,6 +14,7 @@ import {
   Segmented,
   Select,
   Space,
+  Spin,
   Table,
   Tabs,
   Typography,
@@ -475,7 +476,11 @@ export default function AdminPowerLinesPage() {
                   />
                 </div>
 
-                {lines.length === 0 ? (
+                {linesQuery.isFetching ? (
+                  <div className="admin-power-lines-loading">
+                    <Spin tip="加载中..." />
+                  </div>
+                ) : lines.length === 0 ? (
                   <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : viewMode === "card" ? (
                   <>
