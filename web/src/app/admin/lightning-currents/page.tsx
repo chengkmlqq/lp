@@ -717,10 +717,6 @@ export default function AdminLightningCurrentsPage() {
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">城市：{record.city || "-"}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
-              <HomeOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">安装位置：{record.install_position || "-"}</Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
               <AppstoreOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">传感器型号：{record.sensor_model || "-"}</Typography.Text>
             </div>
