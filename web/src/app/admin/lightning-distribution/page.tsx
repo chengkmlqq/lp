@@ -1615,7 +1615,7 @@ function DrawLpModal({
   onSubmitted: (taskId: string, fileName: string) => void;
 }) {
   return (
-    <Modal title="绘制 LP 分区地闪密度图" open={open} onCancel={onClose} footer={null} width={560} destroyOnClose>
+    <Modal title="线路回填" open={open} onCancel={onClose} footer={null} width={560} destroyOnClose>
       {/* key 随分布记录变化强制重挂载，避免残留上一分布选中的线路 / 提交结果 */}
       <DrawLpBody key={data?.id ?? "empty"} open={open} data={data} fetchWithAuth={fetchWithAuth} onSubmitted={onSubmitted} />
     </Modal>
@@ -1680,18 +1680,44 @@ function DrawLpBody({
   const drawMutation = useMutation({
     mutationFn: async () => {
       if (!lineId) throw new Error("请先选择线路");
-      const body: Record<string, unknown> = { line_id: lineId };
-      const resp = await fetchWithAuth(
-        `/api/v1/lightning-currents/distributions/${data?.id}/draw-lp`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
-      );
-      if (!resp.ok) throw new Error(await readApiError(resp));
-      return (await resp.json()) as LightningLpDrawResponse;
+      const body = { line_id: lineId };
+      const results: string[] = [];
+
+      // 1. 绘图任务
+      try {
+        const drawResp = await fetchWithAuth(
+          `/api/v1/lightning-currents/distributions/${data?.id}/draw-lp`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+        );
+        if (drawResp.ok) {
+          const p = (await drawResp.json()) as LightningLpDrawResponse;
+          results.push(`绘图任务已提交（ID: ${p.task_id}）`);
+        }
+      } catch {
+        results.push("绘图任务提交失败");
+      }
+
+      // 2. 线路密度回填
+      try {
+        const densityResp = await fetchWithAuth(
+          `/api/v1/lightning-currents/prepare-density`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+        );
+        if (densityResp.ok) {
+          results.push("密度回填完成");
+        } else {
+          results.push("密度回填失败");
+        }
+      } catch {
+        results.push("密度回填提交失败");
+      }
+
+      return results.join("；");
     },
-    onSuccess: (p) => {
+    onSuccess: (msg) => {
       setError("");
-      setSuccess(`LP 绘图任务已提交（任务ID: ${p.task_id}）。完成后请在详情弹窗查看。`);
-      onSubmitted(p.task_id, data?.source_file_name || "绘图");
+      setSuccess(msg);
+      onSubmitted("", data?.source_file_name || "回填");
     },
     onError: (e) => {
       setSuccess("");
@@ -1731,7 +1757,7 @@ function DrawLpBody({
       </Form>
       <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
         <Button type="primary" loading={drawMutation.isPending} onClick={() => drawMutation.mutate()}>
-          提交绘图
+          提交回填
         </Button>
       </div>
       {success && <Typography.Paragraph type="success" style={{ marginTop: 12 }}>{success}</Typography.Paragraph>}
