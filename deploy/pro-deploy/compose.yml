@@ -172,28 +172,7 @@ services:
       - ./data/matlab-worker/matlab-wave:/app/matlab-wave
     restart: unless-stopped
     logging: *default-logging
-  ctb-worker:
-    image: ${CTB_WORKER_IMAGE}
-    command:
-      - celery
-      - -A
-      - ctb_worker.celery_app
-      - worker
-      - --hostname=地形转换worker@lp
-      - --loglevel=INFO
-      - --concurrency=1
-      - --queues=ctb
-    depends_on:
-      - redis
-    environment:
-      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
-      TERRAIN_ROOT: /data/terrain
-    volumes:
-      - ./data/app:/data/app
-      - ./data/terrain:/data/terrain
-    restart: unless-stopped
-    logging: *default-logging
+  # ctb-worker 已下线：地形瓦片不再自动构建，代码目录 services/ctb-worker/ 仅保留存档。
 
   celery-beat:
     image: ${API_IMAGE}

@@ -90,26 +90,27 @@ services:
     networks:
       - deploy_default
 
-  ctb-worker:
-    image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/ctb-worker:latest
-    container_name: lp-ctb-worker
-    command:
-      - celery
-      - -A
-      - ctb_worker.celery_app
-      - worker
-      - --loglevel=INFO
-      - --concurrency=1
-      - --queues=ctb
-    environment:
-      CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
-      CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
-      TERRAIN_ROOT: /data/app/terrain
-    volumes:
-      - ./data/app:/data/app
-    restart: unless-stopped
-    networks:
-      - deploy_default
+  # ctb-worker:
+  # 保留代码目录 services/ctb-worker/，但不再自动运行地形瓦片构建。
+  # image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/ctb-worker:latest
+  # container_name: lp-ctb-worker
+  # command:
+  #   - celery
+  #   - -A
+  #   - ctb_worker.celery_app
+  #   - worker
+  #   - --loglevel=INFO
+  #   - --concurrency=1
+  #   - --queues=ctb
+  # environment:
+  #   CELERY_BROKER_URL: redis://:Cp990803@redis:6379/0
+  #   CELERY_RESULT_BACKEND: redis://:Cp990803@redis:6379/1
+  #   TERRAIN_ROOT: /data/app/terrain
+  # volumes:
+  #   - ./data/app:/data/app
+  # restart: unless-stopped
+  # networks:
+  #   - deploy_default
 
   celery-beat:
     image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/fquiz-api:latest

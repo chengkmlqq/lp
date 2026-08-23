@@ -135,7 +135,6 @@ class TestIsSystemTask:
             "app.tasks.worker_registry_tasks.sweep_worker_registry_offline",
             "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks",
             "app.tasks.log_cleanup_tasks.cleanup_expired_task_logs",
-            "app.tasks.elevation_tasks.report_ctb_task_state",
         ],
     )
     def test_hits_blacklist(self, task_name):

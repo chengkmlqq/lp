@@ -715,64 +715,9 @@ def queue_file_record_terrain_build(
             detail="当前文件格式不支持地形瓦片生成"
         )
 
-    if item.terrain_status == "processing" or (item.terrain_status == "pending" and item.terrain_task_id):
-        return ElevationFileRecordTerrainBuildResponse(
-            record=serialize_file_record(item),
-            task_id=item.terrain_task_id,
-            queued=False,
-            detail="地形瓦片任务已存在，无需重复提交。",
-            warnings=[],
-        )
-
-    item.terrain_status = "pending"
-    item.terrain_error_message = None
-    item.terrain_root_path = None
-    item.terrain_url_template = None
-    item.terrain_min_zoom = None
-    item.terrain_max_zoom = None
-    item.terrain_bounds = None
-    item.terrain_metadata = None
-    item.update_user = actor.id
-    item.update_date = utcnow()
-    db.commit()
-
-    try:
-        from ..tasks.elevation_tasks import build_elevation_file_record_terrain_job
-        task = build_elevation_file_record_terrain_job.delay(item.id, actor.id)
-    except Exception as exc:
-        item.terrain_status = "failed"
-        item.terrain_error_message = str(exc)
-        item.terrain_task_id = None
-        item.update_user = actor.id
-        item.update_date = utcnow()
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"地形瓦片任务派发失败: {exc}"
-        ) from exc
-
-    item.terrain_task_id = str(task.id)
-    item.update_user = actor.id
-    item.update_date = utcnow()
-    db.commit()
-
-    saved = get_file_record_by_id(db, record_id)
-    if not saved:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="地形瓦片任务保存失败"
-        )
-
-    _publish_elevation_change(
-        "elevation.file_record.terrain.queued",
-        {"action": "file_record_terrain_queued", "file_record_id": saved.id, "task_id": saved.terrain_task_id},
-    )
-    return ElevationFileRecordTerrainBuildResponse(
-        record=serialize_file_record(saved),
-        task_id=saved.terrain_task_id,
-        queued=True,
-        detail="地形瓦片任务已提交，等待执行。",
-        warnings=[],
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="地形瓦片自动构建已下线，不再接受新的构建任务。",
     )
 
 

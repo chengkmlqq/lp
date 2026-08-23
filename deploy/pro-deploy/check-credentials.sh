@@ -79,7 +79,7 @@ for c in lp-api-1 lp-celery-worker-1 lp-celery-beat-1; do
 done
 
 echo "== 检查 Redis 密码（broker URL 内嵌） =="
-for c in lp-api-1 lp-celery-worker-1 lp-celery-beat-1 lp-ctb-worker-1 lp-flower-1; do
+for c in lp-api-1 lp-celery-worker-1 lp-celery-beat-1 lp-flower-1; do
   check_container "$c" "Redis broker URL" \
     CELERY_BROKER_URL "redis://:${EXPECT_REDIS_PASSWORD}@redis:6379/0"
 done
