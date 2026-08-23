@@ -75,3 +75,23 @@ from . import worker_signals as _worker_signals  # noqa: F401,E402
 from . import task_history_signals as _task_history_signals  # noqa: F401,E402
 # Ensure TaskLogCapture is installed at worker startup (root handler + stdout/stderr Tee).
 from . import task_log_capture as _task_log_capture  # noqa: F401,E402
+# Re-install TaskLogCapture after Celery clears logging on the forked worker process.
+# Celery's setup_logging may wipe root handlers; re-install guarantees capture works.
+from celery.signals import worker_process_init
+
+
+def _reinstall_task_log_capture(**kwargs):  # type: ignore[no-untyped-def]
+    import logging as _logging
+
+    from .config import get_settings as _get_settings
+
+    root = _logging.getLogger()
+    root_has_capture = any(
+        type(h).__name__ == "_CaptureHandler" for h in root.handlers
+    )
+    if not root_has_capture:
+        _task_log_capture.TaskLogCapture.install(force=True)
+
+
+worker_process_init.connect(_reinstall_task_log_capture, weak=False)
+worker_process_init.connect(_task_log_capture._register_setup_logging_receiver, weak=False)
