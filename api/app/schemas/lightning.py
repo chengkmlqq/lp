@@ -87,6 +87,25 @@ class LightningAmplitudeRecord(BaseModel):
     update_user: str | None = None
 
 
+class LightningAmplitudeUpdateRequest(BaseModel):
+    """雷电流幅值记录元信息更新请求（仅允许修改可编辑元信息字段）。"""
+    event_id: str | None = None
+    event_time: datetime | None = None
+    sample_interval_us: float | None = None
+    location_tag: str | None = None
+    city: str | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+    altitude_m: float | None = None
+    sensor_model: str | None = None
+    install_position: str | None = None
+    weather_level: str | None = None
+    pressure_hpa: float | None = None
+    humidity_percent: float | None = None
+    is_synthetic: bool | None = None
+    notes: str | None = None
+
+
 class LightningAmplitudeListResponse(BaseModel):
     items: list[LightningAmplitudeRecord]
     total: int

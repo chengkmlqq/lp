@@ -1368,6 +1368,24 @@ export type LightningAmplitudeStatusResponse = {
   record: LightningAmplitudeRecord | null;
 };
 
+export type LightningAmplitudeUpdateRequest = {
+  event_id: string | null;
+  event_time: string | null;
+  sample_interval_us: number | null;
+  location_tag: string | null;
+  city: string | null;
+  longitude: number | null;
+  latitude: number | null;
+  altitude_m: number | null;
+  sensor_model: string | null;
+  install_position: string | null;
+  weather_level: string | null;
+  pressure_hpa: number | null;
+  humidity_percent: number | null;
+  is_synthetic: boolean;
+  notes: string | null;
+};
+
 export type LightningCurrentPreparationResponse = {
   line: LineSummary;
   current_a: number;

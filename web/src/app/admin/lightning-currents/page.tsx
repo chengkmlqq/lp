@@ -18,6 +18,7 @@ import {
   Segmented,
   Select,
   Space,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -32,6 +33,7 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
+  EditOutlined,
   EnvironmentOutlined,
   EyeOutlined,
   FileTextOutlined,
@@ -59,11 +61,13 @@ import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
 import type {
-  LightningAmplitudeRecord,
-  LightningAmplitudeListResponse,
-  LightningAmplitudeImportResponse,
   LightningAmplitudeBackfillLine,
   LightningAmplitudeBackfillLineListResponse,
+  LightningAmplitudeImportResponse,
+  LightningAmplitudeListResponse,
+  LightningAmplitudeRecord,
+  LightningAmplitudeStatusResponse,
+  LightningAmplitudeUpdateRequest,
   LightningCurrentPreparationAsyncResponse,
   LightningTempUploadResponse,
   LineListResponse,
@@ -82,16 +86,25 @@ type DetailTabItem = {
 const LIST_TAB_KEY = "list";
 
 type ImportFormValues = {
-  sample_interval_us: number;
+  event_id: string;
+  sample_interval_us: number | null;
   city: string;
   sensor_model: string;
   install_position: string;
   notes: string;
   location_tag: string;
   event_time: dayjs.Dayjs | null;
+  longitude: number | null;
+  latitude: number | null;
+  altitude_m: number | null;
+  weather_level: string;
+  pressure_hpa: number | null;
+  humidity_percent: number | null;
+  is_synthetic: boolean;
 };
 
 const INITIAL_IMPORT_VALUES: ImportFormValues = {
+  event_id: "",
   sample_interval_us: 1,
   city: "",
   sensor_model: "",
@@ -99,6 +112,13 @@ const INITIAL_IMPORT_VALUES: ImportFormValues = {
   notes: "",
   location_tag: "",
   event_time: null,
+  longitude: null,
+  latitude: null,
+  altitude_m: null,
+  weather_level: "",
+  pressure_hpa: null,
+  humidity_percent: null,
+  is_synthetic: false,
 };
 
 const STATUS_META: Record<string, { color: string; label: string }> = {
@@ -184,6 +204,11 @@ export default function AdminLightningCurrentsPage() {
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
   const [logModalTitle, setLogModalTitle] = useState("任务执行日志");
+
+  // ---- 编辑弹窗 ----
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editRecord, setEditRecord] = useState<LightningAmplitudeRecord | null>(null);
+  const [editForm] = Form.useForm<ImportFormValues>();
 
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
   const canManage = hasPermission("lightning.manage");
@@ -560,6 +585,60 @@ export default function AdminLightningCurrentsPage() {
     },
   });
 
+  const editMutation = useMutation({
+    mutationFn: async (values: LightningAmplitudeUpdateRequest) => {
+      if (!canManage) {
+        throw new Error("缺少 lightning.manage 权限");
+      }
+      if (!editRecord) {
+        throw new Error("未选择记录");
+      }
+      const response = await fetchWithAuth(`/api/v1/lightning-currents/amplitudes/${editRecord.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LightningAmplitudeRecord;
+    },
+    onSuccess: async () => {
+      setError(null);
+      setSuccess("雷电流幅值记录元信息已更新");
+      setEditModalOpen(false);
+      setEditRecord(null);
+      editForm.resetFields();
+      await refreshAll();
+    },
+    onError: (candidate) => {
+      setSuccess("");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "更新失败"));
+    },
+  });
+
+  const openEditModal = useCallback((record: LightningAmplitudeRecord) => {
+    setEditRecord(record);
+    editForm.setFieldsValue({
+      event_id: record.event_id,
+      event_time: record.event_time ? dayjs(record.event_time) : null,
+      sample_interval_us: record.sample_interval_us ?? 1,
+      city: record.city || "",
+      location_tag: record.location_tag || "",
+      sensor_model: record.sensor_model || "",
+      install_position: record.install_position || "",
+      notes: record.notes || "",
+      longitude: record.longitude,
+      latitude: record.latitude,
+      altitude_m: record.altitude_m,
+      weather_level: record.weather_level || "",
+      pressure_hpa: record.pressure_hpa,
+      humidity_percent: record.humidity_percent,
+      is_synthetic: record.is_synthetic,
+    });
+    setEditModalOpen(true);
+  }, [editForm]);
+
   const openDetail = useCallback((record: LightningAmplitudeRecord) => {
     const key = record.id;
     setDetailTabs((previous) => {
@@ -731,6 +810,19 @@ export default function AdminLightningCurrentsPage() {
                   }}
                 />
               </AntTooltip>
+              {canManage && (
+                <AntTooltip title="编辑元信息">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openEditModal(record);
+                    }}
+                  />
+                </AntTooltip>
+              )}
               {canManage && (
                 <AntTooltip title="回填">
                   <Button
@@ -937,6 +1029,16 @@ export default function AdminLightningCurrentsPage() {
               {canManage && (
                 <Button
                   size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => openEditModal(row)}
+                  disabled={editMutation.isPending}
+                >
+                  编辑
+                </Button>
+              )}
+              {canManage && (
+                <Button
+                  size="small"
                   onClick={() => {
                     setBackfillRecord(row);
                     setBackfillLineIds([]);
@@ -955,7 +1057,7 @@ export default function AdminLightningCurrentsPage() {
         },
       },
     ],
-    [canManage, canRead, deleteMutation, backfillMutation, openDetail, openBackfillLines, openBackfillHistory, canReadLogs, openLogViewer],
+    [canManage, canRead, deleteMutation, backfillMutation, editMutation, openEditModal, openDetail, openBackfillLines, openBackfillHistory, canReadLogs, openLogViewer],
   );
 
   if (initializing) {
@@ -1341,6 +1443,115 @@ export default function AdminLightningCurrentsPage() {
             }}
           />
         </Space>
+      </Modal>
+
+      {/* 编辑雷电流幅值元信息 */}
+      <Modal
+        title={editRecord ? `编辑元信息 - ${editRecord.source_file_name}` : "编辑元信息"}
+        open={editModalOpen}
+        onCancel={() => {
+          setEditModalOpen(false);
+          setEditRecord(null);
+          editForm.resetFields();
+        }}
+        onOk={async () => {
+          try {
+            const values = await editForm.validateFields();
+            const payload: LightningAmplitudeUpdateRequest = {
+              event_id: values.event_id || null,
+              event_time: values.event_time ? values.event_time.format("YYYY-MM-DDTHH:mm:ss") : null,
+              sample_interval_us: values.sample_interval_us ?? null,
+              city: values.city || null,
+              location_tag: values.location_tag || null,
+              sensor_model: values.sensor_model || null,
+              install_position: values.install_position || null,
+              notes: values.notes || null,
+              longitude: values.longitude ?? null,
+              latitude: values.latitude ?? null,
+              altitude_m: values.altitude_m ?? null,
+              weather_level: values.weather_level || null,
+              pressure_hpa: values.pressure_hpa ?? null,
+              humidity_percent: values.humidity_percent ?? null,
+              is_synthetic: values.is_synthetic,
+            };
+            editMutation.mutate(payload);
+          } catch {
+            // 表单校验失败时不提交
+          }
+        }}
+        confirmLoading={editMutation.isPending}
+        okText="保存"
+        cancelText="取消"
+        width={800}
+        destroyOnClose
+      >
+        <Form<ImportFormValues> form={editForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Form.Item name="city" label="城市">
+              <Select
+                showSearch
+                placeholder="请搜索选择城市"
+                filterOption={(input, option) => {
+                  const keyword = input.toLowerCase().trim();
+                  const data = option?.["data-data"] as CityOption | undefined;
+                  if (!data) return false;
+                  return (
+                    data.label.includes(input)
+                    || data.pinyin.includes(keyword)
+                    || data.initials.includes(keyword)
+                  );
+                }}
+                options={CHINESE_CITIES.map((item) => ({
+                  label: item.label,
+                  value: item.label,
+                  "data-data": item,
+                }))}
+              />
+            </Form.Item>
+            <Form.Item name="location_tag" label="采样地点">
+              <Input placeholder="例如 XX变电站、XX区域" />
+            </Form.Item>
+            <Form.Item name="install_position" label="安装位置">
+              <Input placeholder="例如 楼顶避雷针" />
+            </Form.Item>
+            <Form.Item name="sensor_model" label="传感器型号">
+              <Input placeholder="例如 LCS-1000" />
+            </Form.Item>
+            <Form.Item name="sample_interval_us" label="采样间隔(us)">
+              <InputNumber style={{ width: "100%" }} min={0.000001} precision={6} />
+            </Form.Item>
+            <Form.Item name="event_time" label="采样时间">
+              <DatePicker className="w-full" showTime placeholder="选择日期时间" />
+            </Form.Item>
+            <Form.Item name="event_id" label="事件编号">
+              <Input placeholder="自定义事件编号" />
+            </Form.Item>
+            <Form.Item name="weather_level" label="天气等级">
+              <Input placeholder="例如 雷暴、大雨" />
+            </Form.Item>
+            <Form.Item name="longitude" label="经度">
+              <InputNumber style={{ width: "100%" }} placeholder="例如 120.123" />
+            </Form.Item>
+            <Form.Item name="latitude" label="纬度">
+              <InputNumber style={{ width: "100%" }} placeholder="例如 30.456" />
+            </Form.Item>
+            <Form.Item name="altitude_m" label="海拔(m)">
+              <InputNumber style={{ width: "100%" }} placeholder="例如 50" />
+            </Form.Item>
+            <Form.Item name="pressure_hpa" label="气压(hPa)">
+              <InputNumber style={{ width: "100%" }} placeholder="例如 1013.25" />
+            </Form.Item>
+            <Form.Item name="humidity_percent" label="湿度(%)">
+              <InputNumber style={{ width: "100%" }} min={0} max={100} placeholder="0-100" />
+            </Form.Item>
+            <Form.Item name="is_synthetic" label="是否合成数据" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+          </div>
+          <Form.Item name="notes" label="备注">
+            <Input.TextArea rows={2} placeholder="可填写天气背景、场景备注等" />
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* 回填：选择线路列表后执行回填 */}

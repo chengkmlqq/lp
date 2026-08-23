@@ -30,6 +30,7 @@ from ..schemas.lightning import (
     LightningAmplitudeRecord,
     LightningAmplitudeListResponse,
     LightningAmplitudeStatusResponse,
+    LightningAmplitudeUpdateRequest,
     LightningCurrentPreparationRequest,
     LightningCurrentPreparationResponse,
     LightningCurrentPreparationAsyncResponse,
@@ -486,6 +487,52 @@ def delete_lightning_amplitude(db: Session, amplitude_id: str) -> dict[str, bool
         requires_refetch=["/api/v1/lightning-currents/amplitudes"],
     )
     return {"success": True}
+
+
+def update_lightning_amplitude(
+    db: Session,
+    amplitude_id: str,
+    payload: LightningAmplitudeUpdateRequest,
+    actor_user_id: str,
+) -> LightningAmplitudeRecord:
+    """更新雷电流幅值记录的元数据信息（仅允许修改可编辑元信息字段）。"""
+    amp = get_lightning_amplitude_by_id(db, amplitude_id)
+    if not amp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流幅值记录不存在")
+
+    # 逐字段更新（仅更新非 None 的字段）
+    update_fields = {
+        "event_id": payload.event_id,
+        "event_time": payload.event_time,
+        "sample_interval_us": payload.sample_interval_us,
+        "location_tag": payload.location_tag,
+        "city": payload.city,
+        "longitude": payload.longitude,
+        "latitude": payload.latitude,
+        "altitude_m": payload.altitude_m,
+        "sensor_model": payload.sensor_model,
+        "install_position": payload.install_position,
+        "weather_level": payload.weather_level,
+        "pressure_hpa": payload.pressure_hpa,
+        "humidity_percent": payload.humidity_percent,
+        "is_synthetic": payload.is_synthetic,
+        "notes": payload.notes,
+    }
+    for field_name, value in update_fields.items():
+        if value is not None:
+            setattr(amp, field_name, value)
+
+    amp.update_user = actor_user_id
+    db.commit()
+    db.refresh(amp)
+
+    _publish_lightning_change(
+        "lightning.updated",
+        {"event_id": amp.id, "message": f"更新雷电流幅值记录：{amp.source_file_name}"},
+        topic=LIGHTNING_AMPLITUDE_TOPIC,
+        requires_refetch=["/api/v1/lightning-currents/amplitudes"],
+    )
+    return _serialize_amplitude(amp)
 
 
 def get_peak_exceedance_curve(

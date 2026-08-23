@@ -10,21 +10,22 @@ from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
 from ...core.file_upload import save_temp_upload, validate_upload
 from ...schemas.lightning import (
+    LightningAmplitudeBackfillLine,
     LightningAmplitudeBackfillLineListResponse,
     LightningAmplitudeImportResponse,
     LightningAmplitudeRecord,
     LightningAmplitudeListResponse,
     LightningAmplitudeStatusResponse,
+    LightningAmplitudeUpdateRequest,
     LightningCurrentBackfillTaskDetail,
     LightningCurrentBackfillTaskListResponse,
+    LightningCurrentBackfillTowerDetail,
     LightningCurrentPreparationAsyncResponse,
     LightningCurrentPreparationRequest,
     LightningCurrentPreparationResponse,
+    LightningCurrentExceedancePoint,
     LightningCurrentExceedanceResponse,
-    LightningDistributionImportResponse,
-    LightningDistributionRecord,
-    LightningDistributionListResponse,
-    LightningDistributionStatusResponse,
+    LightningCurrentBackfillTaskSummary,
     LightningDensityPreparationRequest,
     LightningDensityPreparationResponse,
     LightningLpDrawRequest,
@@ -57,6 +58,7 @@ from ...services.lightning_service import (
     retry_lightning_amplitude,
     retry_lightning_distribution,
     trigger_lp_density_draw,
+    update_lightning_amplitude,
 )
 
 router = APIRouter(
@@ -142,6 +144,17 @@ def get_lightning_amplitude_backfill_lines_endpoint(
 ) -> LightningAmplitudeBackfillLineListResponse:
     """回填线路小窗：展示该幅值被哪些线路的回填使用过（按 prepared_at 倒序）。"""
     return get_backfill_lines_for_amplitude(db, amplitude_id)
+
+
+@router.patch("/amplitudes/{amplitude_id}", response_model=LightningAmplitudeRecord)
+def patch_lightning_amplitude_endpoint(
+    amplitude_id: str,
+    payload: LightningAmplitudeUpdateRequest,
+    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningAmplitudeRecord:
+    """更新雷电流幅值记录的元数据信息（仅允许修改可编辑元信息字段）。"""
+    return update_lightning_amplitude(db, amplitude_id, payload, actor_user_id=current_user.user.id)
 
 
 @router.get("/amplitudes/{amplitude_id}/status", response_model=LightningAmplitudeStatusResponse)
