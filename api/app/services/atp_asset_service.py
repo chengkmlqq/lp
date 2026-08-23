@@ -25,6 +25,7 @@ from ..core.config import get_settings
 from ..models.atp_asset import AtpAsset, AtpAssetRelease, AtpAssetRun
 from ..models.base import utcnow
 from ..models.file_storage import FileStorageMount
+from ..models.dimension_item import DimensionItem
 from ..schemas.atp_asset import (
     AtpAssetCreateRequest,
     AtpAssetDetail,
@@ -647,8 +648,27 @@ def serialize_asset(
     last_run_status: str | None,
     last_run_date: datetime | None,
     active_release: AtpAssetRelease | None,
+    db: Session | None = None,
 ) -> AtpAssetSummary:
     fallback_release = active_release or (item.releases[0] if item.releases else None)
+    
+    # 从维度项解析中文标签（code → name 映射）
+    dimension_label_cache: dict[tuple[str, str], str] = {}
+    def _resolve_label(dimension_type: str, code: str | None) -> str | None:
+        if not code or not db:
+            return None
+        cache_key = (dimension_type, code)
+        if cache_key in dimension_label_cache:
+            return dimension_label_cache[cache_key]
+        label = db.scalar(
+            select(DimensionItem.name).where(
+                DimensionItem.dimension_type == dimension_type,
+                DimensionItem.code == code,
+            )
+        )
+        dimension_label_cache[cache_key] = label if label else code
+        return dimension_label_cache[cache_key]
+    
     return AtpAssetSummary(
         id=item.id,
         code=item.code,
@@ -656,9 +676,13 @@ def serialize_asset(
         description=item.description,
         status=item.status,  # type: ignore[arg-type]
         voltage_level=item.voltage_level,
+        voltage_level_label=_resolve_label("voltage_level", item.voltage_level),
         tower_type=item.tower_type,
+        tower_type_label=_resolve_label("tower_type", item.tower_type),
         scene_type=item.scene_type,
+        scene_type_label=_resolve_label("scenario", item.scene_type),
         arrester_config=item.arrester_config,
+        arrester_config_label=_resolve_label("arrester_combination", item.arrester_config),
         storage_mount_code=item.storage_mount_code or (fallback_release.storage_mount_code if fallback_release else None),
         storage_root_path=item.storage_root_path or (fallback_release.storage_root_path if fallback_release else None),
         latest_release_no=item.latest_release_no,
@@ -869,6 +893,7 @@ def list_assets(
                 last_run_status=last_run_map.get(item.id, (None, None))[0],
                 last_run_date=last_run_map.get(item.id, (None, None))[1],
                 active_release=active_release_map.get(item.id),
+                db=db,
             )
             for item in items
         ],
@@ -923,7 +948,7 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
         return None
 
     _publish_change("asset.created", {"action": "created", "asset_id": saved.id})
-    return serialize_asset(saved, release_count=0, run_count=0, last_run_status=None, last_run_date=None, active_release=None)
+    return serialize_asset(saved, release_count=0, run_count=0, last_run_status=None, last_run_date=None, active_release=None, db=db)
 
 
 def upload_asset_archive(
@@ -1078,6 +1103,7 @@ def update_asset(
         last_run_status=saved.runs[0].status if saved.runs else None,
         last_run_date=saved.runs[0].create_date if saved.runs else None,
         active_release=active_release,
+        db=db,
     )
 
 
@@ -1473,6 +1499,7 @@ def activate_release(db: Session, *, release_id: str, actor_user_id: str) -> Atp
         last_run_status=asset.runs[0].status if asset.runs else None,
         last_run_date=asset.runs[0].create_date if asset.runs else None,
         active_release=release,
+        db=db,
     )
 
 
@@ -1714,6 +1741,7 @@ def upload_asset_files(
         last_run_status=saved.runs[0].status if saved.runs else None,
         last_run_date=saved.runs[0].create_date if saved.runs else None,
         active_release=next((release for release in saved.releases if release.is_active), None),
+        db=db,
     )
 
 

@@ -134,6 +134,7 @@ def get_atp_asset_detail(
         last_run_status=item.runs[0].status if item.runs else None,
         last_run_date=item.runs[0].create_date if item.runs else None,
         active_release=active_release,
+        db=db,
     )
     return AtpAssetDetail(**detail.model_dump())
 

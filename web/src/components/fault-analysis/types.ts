@@ -5,12 +5,10 @@ export interface FaultAnalysis {
   title: string;
   description: string;
   status: "pending" | "processing" | "completed" | "failed";
-  risk_level: "low" | "medium" | "high" | "critical";
-  tower_count: number;
   line_name: string;
   fault_time: string;
-  fault_type: string;
-  confidence: number;
+  fault_phase: string;
+  reclosure_status: string;
   progress: number;
   created_at: string;
   updated_at: string;

@@ -86,14 +86,13 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
 
           <div className="flex items-center gap-2">
             <ThunderboltOutlined className="text-gray-500 text-xs" />
-            <Text type="secondary" className="text-xs">{analysis.fault_type}</Text>
+            <Text type="secondary" className="text-xs">故障项：{analysis.fault_phase || '-'}</Text>
           </div>
-          <Text
-            style={{ color: confidenceColor }}
-            className="text-xs font-medium"
-          >
-            综合置信度 S={analysis.confidence}% {confidenceIcon}
-          </Text>
+
+          <div className="flex items-center gap-2">
+            <DeploymentUnitOutlined className="text-gray-500 text-xs" />
+            <Text type="secondary" className="text-xs">重合闸：{analysis.reclosure_status || '-'}</Text>
+          </div>
         </div>
 
         <div className="admin-fault-analysis-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">

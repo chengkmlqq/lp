@@ -58,13 +58,6 @@ const FAULT_STATUS_META: Record<FaultAnalysis["status"], { color: string; label:
   failed: { color: "error", label: "失败" },
 };
 
-const FAULT_RISK_META: Record<FaultAnalysis["risk_level"], { color: string; label: string }> = {
-  low: { color: "success", label: "低风险" },
-  medium: { color: "warning", label: "中风险" },
-  high: { color: "error", label: "高风险" },
-  critical: { color: "error", label: "严重" },
-};
-
 const FAULT_TABLE_MIN_SCROLL_Y = 180;
 const FAULT_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
 const FAULT_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
@@ -101,12 +94,10 @@ function mapSummary(item: FaultAnalysisListResponse["items"][0]): FaultAnalysis 
     title: item.title ?? "",
     description: item.description ?? "",
     status: item.status as FaultAnalysis["status"],
-    risk_level: item.risk_level as FaultAnalysis["risk_level"],
-    tower_count: 0, // not stored in the current fault_analysis model
     line_name: item.line_name ?? "",
     fault_time: item.fault_time ?? "",
-    fault_type: item.fault_type ?? "",
-    confidence: item.confidence ?? 0,
+    fault_phase: item.fault_phase ?? "",
+    reclosure_status: item.reclosure_status ?? "",
     progress: item.progress ?? 0,
     created_at: item.create_date,
     updated_at: item.update_date,
@@ -644,63 +635,22 @@ export default function AdminFaultAnalysisPage() {
         render: (value: string) => formatNullable(value),
       },
       {
-        title: "故障类型",
-        dataIndex: "fault_type",
-        width: 140,
-        ellipsis: true,
-        render: (value: string) => formatNullable(value),
-      },
-      {
-        title: "状态",
-        dataIndex: "status",
-        width: 220,
-        render: (value: FaultAnalysis["status"], row: FaultAnalysis) => {
-          const meta = FAULT_STATUS_META[value] ?? { color: "default", label: value };
-          const statusTag = <Tag color={meta.color}>{meta.label}</Tag>;
-          const step = wsProgressMap[row.id]?.step;
-          return (
-            <Space size={6} direction="vertical" className="w-full" style={{ gap: 2 }}>
-              <Space size={6}>
-                {statusTag}
-                {row.status === "processing" && (
-                  <Progress percent={Math.round(row.progress)} size="small" style={{ width: 80 }} />
-                )}
-              </Space>
-              {row.status === "processing" && step
-                ? (
-                    <Typography.Text type="secondary" className="text-xs block">
-                      {step}
-                    </Typography.Text>
-                  )
-                : null}
-            </Space>
-          );
-        },
-      },
-      {
-        title: "风险等级",
-        dataIndex: "risk_level",
-        width: 100,
-        render: (value: FaultAnalysis["risk_level"]) => {
-          const meta = FAULT_RISK_META[value] ?? { color: "default", label: value };
-          return <Tag color={meta.color}>{meta.label}</Tag>;
-        },
-      },
-      {
-        title: "综合置信度",
-        dataIndex: "confidence",
-        width: 110,
-        render: (value: number) => (
-          <Text style={{ color: getConfidenceColor(value) }} strong>
-            {value ?? 0}%
-          </Text>
-        ),
-      },
-      {
-        title: "故障时间",
+        title: "故障时刻",
         dataIndex: "fault_time",
         width: 170,
         render: (value: string) => formatDateTime(value),
+      },
+      {
+        title: "故障项",
+        dataIndex: "fault_phase",
+        width: 120,
+        render: (value: string) => formatNullable(value),
+      },
+      {
+        title: "重合闸情况",
+        dataIndex: "reclosure_status",
+        width: 120,
+        render: (value: string) => formatNullable(value),
       },
       {
         title: "操作",

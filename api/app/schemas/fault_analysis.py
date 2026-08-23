@@ -19,11 +19,9 @@ class FaultAnalysisSummary(BaseModel):
     line_id: str | None = None
     line_name: str | None = None
     status: str = "pending"
-    risk_level: str | None = None
     fault_time: str | None = None
-    fault_type: str | None = None
     fault_phase: str | None = None
-    confidence: float | None = None
+    reclosure_status: str | None = None
     station: str | None = None
     lightning_current_ka: float | None = None
     wave_distance_km: float | None = None

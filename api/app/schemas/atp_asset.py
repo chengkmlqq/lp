@@ -19,9 +19,13 @@ class AtpAssetSummary(BaseModel):
     description: str
     status: AtpAssetStatus
     voltage_level: str | None = None
+    voltage_level_label: str | None = None
     tower_type: str | None = None
+    tower_type_label: str | None = None
     scene_type: str | None = None
+    scene_type_label: str | None = None
     arrester_config: str | None = None
+    arrester_config_label: str | None = None
     storage_mount_code: str | None = None
     storage_root_path: str | None = None
     latest_release_no: int = 0

@@ -932,6 +932,7 @@ export type FaultAnalysisSummary = {
   fault_type: string | null;
   fault_phase: string | null;
   confidence: number | null;
+  reclosure_status: string | null;
   station: string | null;
   lightning_current_ka: number | null;
   wave_distance_km: number | null;
