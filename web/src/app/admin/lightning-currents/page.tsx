@@ -614,7 +614,7 @@ export default function AdminLightningCurrentsPage() {
           key,
           label: <span>回填记录 - {truncateFileName(record.source_file_name)}</span>,
           closable: true,
-          children: <LightningCurrentBackfillHistoryTable />,
+          children: <LightningCurrentBackfillHistoryTable amplitudeId={record.id} />,
         },
       ];
     });
