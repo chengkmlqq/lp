@@ -5,6 +5,7 @@ import {
   App,
   Alert,
   Button,
+  Card,
   Descriptions,
   Drawer,
   Empty,
@@ -373,63 +374,71 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
 
   if (lineError || !lineDetail) {
     return (
-      <Card>
-        <Space direction="vertical" size={12}>
-          <Typography.Text type="danger">{lineError || "加载线路失败"}</Typography.Text>
-        </Space>
-      </Card>
+      <div className="flex flex-1 flex-col p-4">
+        <Card size="small" className="admin-power-line-detail-meta">
+          <Space direction="vertical" size={12}>
+            <Typography.Text type="danger">{lineError || "加载线路失败"}</Typography.Text>
+          </Space>
+        </Card>
+      </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <Space size={8} wrap>
-          <Form layout="inline" className="flex flex-wrap items-center gap-2">
-            <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-              <Input
-                value={towerKeyword}
-                allowClear
-                onChange={(event) => setTowerKeyword(event.target.value)}
-                placeholder="按塔号/模型筛选"
-              />
-            </Form.Item>
-            <Form.Item label="塔型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-              <Select
-                value={towerTypeFilter}
-                options={[...TOWER_TYPE_OPTIONS]}
-                onChange={(value) => setTowerTypeFilter(value)}
-              />
-            </Form.Item>
+    <div className="flex flex-1 flex-col p-4">
+      <Card size="small" className="admin-power-line-detail-meta">
+        <Descriptions bordered size="small" column={3}>
+          <Descriptions.Item label="线路编码">{lineDetail.code}</Descriptions.Item>
+          <Descriptions.Item label="线路名称">{lineDetail.name}</Descriptions.Item>
+          <Descriptions.Item label="杆塔总数">{towersQuery.data?.total ?? 0}</Descriptions.Item>
+        </Descriptions>
+      </Card>
+
+      <div className="admin-filter-bar mt-3">
+        <Form layout="inline" className="flex flex-wrap items-center gap-2">
+          <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+            <Input
+              value={towerKeyword}
+              allowClear
+              onChange={(event) => setTowerKeyword(event.target.value)}
+              placeholder="按塔号/模型筛选"
+            />
+          </Form.Item>
+          <Form.Item label="塔型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+            <Select
+              value={towerTypeFilter}
+              options={[...TOWER_TYPE_OPTIONS]}
+              onChange={(value) => setTowerTypeFilter(value)}
+            />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button
+              htmlType="button"
+              icon={<SearchOutlined />}
+              onClick={() =>
+                setTowerPagination({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE })
+              }
+              className="admin-search-btn"
+            >
+              查询
+            </Button>
+          </Form.Item>
+          {canTowerManage && (
             <Form.Item style={{ marginBottom: 0 }}>
-              <Button
-                htmlType="button"
-                icon={<SearchOutlined />}
-                onClick={() =>
-                  setTowerPagination({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE })
-                }
-                className="admin-search-btn"
-              >
-                查询
+              <Button onClick={openImportModal}>导入 CSV</Button>
+            </Form.Item>
+          )}
+          {canTowerRead && (
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
+                导出 CSV
               </Button>
             </Form.Item>
-            {canTowerManage && (
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button onClick={openImportModal}>导入 CSV</Button>
-              </Form.Item>
-            )}
-            {canTowerReadLocal && (
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
-                  导出 CSV
-                </Button>
-              </Form.Item>
-            )}
-          </Form>
-        </Space>
+          )}
+        </Form>
       </div>
 
-      <div className="relative">
+      <div className="relative mt-3 flex-1 min-h-0">
         <Table<LineTowerSummary>
           rowKey={(row) => row.id}
           columns={towerColumns}

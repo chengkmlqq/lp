@@ -8,7 +8,7 @@ import { ArrowLeftOutlined } from "@ant-design/icons";
 import Link from "next/link";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
-import { PowerLineCesiumMap } from "@/components/power-line-cesium-map";
+import { PowerLineMapPanel } from "@/components/power-line-map-panel";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import type { LineSummary, LineTowerListResponse, LineTowerSummary } from "@/types/auth";
@@ -18,7 +18,7 @@ const MAP_HEADER_ESTIMATED_HEIGHT = 220;
 
 export default function AdminPowerLineMapPage() {
   const { lineId } = useParams<{ lineId: string }>();
-  const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
+  const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
 
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
@@ -105,16 +105,7 @@ export default function AdminPowerLineMapPage() {
       </div>
 
       <div className="relative min-h-0 flex-1">
-        <PowerLineCesiumMap
-          lineCode={lineDetail?.code}
-          lineName={lineDetail?.name}
-          towers={towers}
-          terrainDataset={null}
-          accessToken=""
-          exaggeration={1}
-          loading={mapTowersQuery.isFetching || lineDetailQuery.isFetching}
-          height={mapHeight}
-        />
+        <PowerLineMapPanel lineId={lineId} accessToken={getAccessToken() ?? ""} />
       </div>
     </div>
   );

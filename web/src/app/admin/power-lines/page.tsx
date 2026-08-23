@@ -41,6 +41,7 @@ import { AdminPowerLinesDetailView } from "./line-detail-view";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { PowerLineMapPanel } from "@/components/power-line-map-panel";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -133,7 +134,7 @@ function resolveVoltageOptionFromKv(voltageKv: number | null): LineFormValues["v
 }
 
 export default function AdminPowerLinesPage() {
-  const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
+  const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
   const [lineForm] = Form.useForm<LineFormValues>();
@@ -343,6 +344,28 @@ export default function AdminPowerLinesPage() {
     setActiveTabKey(key);
   }, [canTowerRead]);
 
+  const openPreview = useCallback((line: LineSummary) => {
+    const key = `preview-${line.id}`;
+    setDetailTabs((previous) => {
+      const existing = previous.find((tab) => tab.key === key);
+      if (existing) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: <span className="admin-power-lines-tab-title">线路预览 - {line.name || line.code}</span>,
+          closable: true,
+          children: (
+            <PowerLineMapPanel lineId={line.id} accessToken={getAccessToken() ?? ""} />
+          ),
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, [getAccessToken]);
+
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
       return;
@@ -465,9 +488,7 @@ export default function AdminPowerLinesPage() {
                             canLineManage={canLineManage}
                             onEdit={openEditLineModal}
                             onDetail={openDetail}
-                              onPreview={(target) => {
-                                router.push(`/admin/power-lines/${target.id}/map`);
-                              }}
+                            onPreview={openPreview}
                             onDelete={() => {
                               Modal.confirm({
                                 title: "删除线路",
@@ -509,9 +530,7 @@ export default function AdminPowerLinesPage() {
                       canLineManage={canLineManage}
                       onEdit={openEditLineModal}
                       onDetail={openDetail}
-                      onPreview={(target) => {
-                        router.push(`/admin/power-lines/${target.id}/map`);
-                      }}
+                      onPreview={openPreview}
                       onDelete={(line) => {
                         Modal.confirm({
                           title: "删除线路",
@@ -624,7 +643,19 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
           </div>
         </div>
 
-        <div className="admin-power-lines-line-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
+        <div className="admin-power-lines-line-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+          <Space size="small">
+            <Button
+              type="text"
+              size="small"
+              icon={<ApartmentOutlined />}
+              title="杆塔"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDetail(line);
+              }}
+            />
+          </Space>
           <Space size="small">
             <Button
               type="text"
@@ -636,25 +667,16 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
                 onPreview(line);
               }}
             />
-            <Button
-              type="text"
-              size="small"
-              icon={<EditOutlined />}
-              title="编辑"
-              onClick={(event) => {
-                event.stopPropagation();
-                onEdit(line);
-              }}
-            />
             <Dropdown
               menu={{
                 items: [
                   {
-                    key: "towers",
-                    label: "杆塔",
+                    key: "edit",
+                    label: "编辑",
+                    icon: <EditOutlined />,
                     onClick: (event) => {
                       event.domEvent.stopPropagation();
-                      onDetail(line);
+                      onEdit(line);
                     },
                   },
                   ...(canLineManage
@@ -747,9 +769,9 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
       render: (_, line) => {
         const menuItems: MenuProps["items"] = [
           {
-            key: "towers",
-            label: "杆塔",
-            onClick: () => onDetail(line),
+            key: "edit",
+            label: "编辑",
+            onClick: () => onEdit(line),
           },
           ...(canLineManage
             ? [
@@ -765,9 +787,11 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
 
         return (
           <Space size={4}>
-            <Button size="small" icon={<GlobalOutlined />} onClick={() => onPreview(line)} />
-            <Button size="small" onClick={() => onEdit(line)}>
-              编辑
+            <Button size="small" onClick={() => onDetail(line)}>
+              杆塔
+            </Button>
+            <Button size="small" onClick={() => onPreview(line)}>
+              预览
             </Button>
             <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
               <Button size="small" icon={<MoreOutlined />} />

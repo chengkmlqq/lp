@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -23,11 +24,12 @@ import {
   Upload,
 } from "antd";
 import {
+  ArrowLeftOutlined,
   CheckCircleOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
@@ -48,7 +50,6 @@ const TOWER_TYPE_OPTIONS = [
   { value: "直线", label: "直线" },
   { value: "耐张", label: "耐张" },
 ] as const;
-
 const TOWER_TABLE_DEFAULT_PAGE_SIZE = 20;
 
 function formatDateTime(value: string | null | undefined): string {
@@ -371,71 +372,77 @@ export default function AdminPowerLineTowersPage() {
 
   if (lineError || !lineDetail) {
     return (
-      <Card>
-        <Space direction="vertical" size={12}>
-          <Typography.Text type="danger">{lineError || "加载线路失败"}</Typography.Text>
-        </Space>
-      </Card>
+      <div className="flex flex-1 flex-col p-4">
+        <Card size="small" className="admin-power-line-detail-meta">
+          <Space direction="vertical" size={12}>
+            <Typography.Text type="danger">{lineError || "加载线路失败"}</Typography.Text>
+          </Space>
+        </Card>
+      </div>
     );
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <Card size="small" className="admin-power-line-detail-meta">
-        <Descriptions bordered size="small" column={3}>
-          <Descriptions.Item label="线路编码">{lineDetail.code}</Descriptions.Item>
-          <Descriptions.Item label="线路名称">{lineDetail.name}</Descriptions.Item>
-          <Descriptions.Item label="杆塔总数">{towersQuery.data?.total ?? 0}</Descriptions.Item>
-        </Descriptions>
-      </Card>
-
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="flex flex-1 flex-col p-4">
+      <div className="admin-power-line-detail-meta mb-3 flex items-center justify-between gap-3">
         <Space size={8} wrap>
-          <Form layout="inline" className="flex flex-wrap items-center gap-2">
-            <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-              <Input
-                value={towerKeyword}
-                allowClear
-                onChange={(event) => setTowerKeyword(event.target.value)}
-                placeholder="按塔号/模型筛选"
-              />
-            </Form.Item>
-            <Form.Item label="塔型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-              <Select
-                value={towerTypeFilter}
-                options={[...TOWER_TYPE_OPTIONS]}
-                onChange={(value) => setTowerTypeFilter(value)}
-              />
-            </Form.Item>
-            <Form.Item style={{ marginBottom: 0 }}>
-              <Button
-                htmlType="button"
-                icon={<SearchOutlined />}
-                onClick={() =>
-                  setTowerPagination({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE })
-                }
-                className="admin-search-btn"
-              >
-                查询
-              </Button>
-            </Form.Item>
-            {canTowerManage && (
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button onClick={openImportModal}>导入 CSV</Button>
-              </Form.Item>
-            )}
-            {canTowerRead && (
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
-                  导出 CSV
-                </Button>
-              </Form.Item>
-            )}
-          </Form>
+          <Typography.Text strong>线路杆塔</Typography.Text>
+          <Typography.Text type="secondary">
+            {lineDetail ? `${lineDetail.code} / ${lineDetail.name}` : ""}
+          </Typography.Text>
+        </Space>
+        <Space size={8} wrap>
+          <Button size="small" icon={<ArrowLeftOutlined />}>
+            <Link href="/admin/power-lines">返回线路列表</Link>
+          </Button>
         </Space>
       </div>
 
-      <div className="relative">
+      <div className="admin-filter-bar">
+        <Form layout="inline" className="flex flex-wrap items-center gap-2">
+          <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+            <Input
+              value={towerKeyword}
+              allowClear
+              onChange={(event) => setTowerKeyword(event.target.value)}
+              placeholder="按塔号/模型筛选"
+            />
+          </Form.Item>
+          <Form.Item label="塔型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+            <Select
+              value={towerTypeFilter}
+              options={[...TOWER_TYPE_OPTIONS]}
+              onChange={(value) => setTowerTypeFilter(value)}
+            />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button
+              htmlType="button"
+              icon={<SearchOutlined />}
+              onClick={() =>
+                setTowerPagination({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE })
+              }
+              className="admin-search-btn"
+            >
+              查询
+            </Button>
+          </Form.Item>
+          {canTowerManage && (
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button onClick={openImportModal}>导入 CSV</Button>
+            </Form.Item>
+          )}
+          {canTowerRead && (
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
+                导出 CSV
+              </Button>
+            </Form.Item>
+          )}
+        </Form>
+      </div>
+
+      <div className="relative mt-3 flex-1 min-h-0">
         <Table<LineTowerSummary>
           rowKey={(row) => row.id}
           columns={towerColumns}
