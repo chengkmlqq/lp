@@ -28,6 +28,7 @@ from ...schemas.lightning import (
     LightningCurrentBackfillTaskSummary,
     LightningDensityPreparationRequest,
     LightningDensityPreparationResponse,
+    LightningDistributionImportResponse,
     LightningLpDrawRequest,
     LightningLpDrawResponse,
     LightningLinkedLineSummary,
