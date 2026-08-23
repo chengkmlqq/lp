@@ -33,7 +33,7 @@ import {
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useMemo, useState, useEffect, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
 import { AdminPowerLinesDetailView } from "./line-detail-view";
 
