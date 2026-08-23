@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     wine_max_timeout_seconds: int = 1800
 
     atp_engine_mode: Literal["wine", "native"] = "wine"
-    atp_engine_executable: str = "atp/tpbig.exe"
+    atp_engine_executable: str = "ATP/tpbig.exe"
     atp_storage_root: str = "./data/wine/atp-models"
     atp_engine_workdir: str = "runs"
     atp_engine_default_timeout_seconds: int = 600
