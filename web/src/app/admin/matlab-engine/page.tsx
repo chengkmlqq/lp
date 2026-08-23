@@ -13,7 +13,6 @@ import {
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Alert,
   Button,
   Card,
   Col,
@@ -29,6 +28,7 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
   Typography,
   Upload,
@@ -136,8 +136,7 @@ export default function AdminMatlabEnginePage() {
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
-  const [viewPreference, setViewPreference] = useState<"table" | "card" | null>(null);
-  const viewMode: "table" | "card" = viewPreference ?? (isMobile ? "card" : "table");
+  const [viewMode, setViewMode] = useState<"table" | "card">(isMobile ? "card" : "table");
 
   const canManage = hasPermission("line.manage");
   const canRead = hasPermission("line.read") || canManage;
@@ -549,7 +548,7 @@ export default function AdminMatlabEnginePage() {
                   onOk: () => handleRollback(item),
                 });
               },
-            } as MenuProps["items"][number],
+            } as const,
           ]
         : []),
     ];
@@ -670,40 +669,154 @@ export default function AdminMatlabEnginePage() {
       {
         title: "操作",
         key: "actions",
-        width: 200,
+        width: 180,
         fixed: "right" as const,
-        render: (_: unknown, record: MatlabVersion) => (
-          <Space wrap>
-            {record === draft && canManage ? (
-              <Button type="primary" size="small" onClick={openPublishModal}>
-                发布
+        render: (_: unknown, record: MatlabVersion) => {
+          // 统一 UI 规范：默认仅展示 2 个直接按钮（查看文件/回退），其余操作收进 ⋯ 三点下拉
+          const moreMenuItems: MenuProps["items"] = [
+            ...(record === draft && canManage
+              ? [
+                  {
+                    key: "publish",
+                    label: "发布",
+                    onClick: () => openPublishModal(),
+                  },
+                ]
+              : []),
+            {
+              key: "preview",
+              label: "查看文件列表",
+              onClick: () => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || []),
+            },
+            ...(canManage && record !== draft
+              ? [
+                  {
+                    key: "rollback",
+                    label: "回退",
+                    danger: true,
+                    onClick: () => {
+                      Modal.confirm({
+                        title: "回退到此版本",
+                        content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
+                        okText: "回退",
+                        cancelText: "取消",
+                        okButtonProps: { danger: true },
+                        onOk: () => handleRollback(record),
+                      });
+                    },
+                  },
+                ]
+              : []),
+          ];
+
+          return (
+            <Space wrap>
+              <Button size="small" onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}>
+                查看文件
               </Button>
-            ) : null}
-            <Button
-              size="small"
-              onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}
-            >
-              查看文件
-            </Button>
-            {canManage && record !== draft && (
-              <Popconfirm
-                title="回退到此版本"
-                description="此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。"
-                onConfirm={() => handleRollback(record)}
-                okText="回退"
-                cancelText="取消"
-              >
-                <Button size="small" icon={<RollbackOutlined />}>
-                  回退
-                </Button>
-              </Popconfirm>
-            )}
-          </Space>
-        ),
+              {canManage && record !== draft && (
+                <Popconfirm
+                  title="回退到此版本"
+                  description="此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。"
+                  onConfirm={() => handleRollback(record)}
+                  okText="回退"
+                  cancelText="取消"
+                >
+                  <Button size="small" icon={<RollbackOutlined />}>
+                    回退
+                  </Button>
+                </Popconfirm>
+              )}
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button size="small" icon={<MoreOutlined />} />
+              </Dropdown>
+            </Space>
+          );
+        },
       },
     ],
     [canManage, draft, handleRollback, openPublishModal],
   );
+
+  const renderModuleCard = (item: MatlabModule) => {
+    const moreMenuItems: MenuProps["items"] = [
+      {
+        key: "edit",
+        label: "编辑",
+        icon: <EditOutlined />,
+        onClick: () => openEditModule(item),
+      },
+      {
+        key: "delete",
+        label: "删除",
+        icon: <DeleteOutlined />,
+        danger: true,
+        onClick: () => {
+          Modal.confirm({
+            title: `确认删除模块"${item.name}"吗？`,
+            okText: "删除",
+            cancelText: "取消",
+            okButtonProps: { danger: true },
+            onOk: () => deleteModule(item),
+          });
+        },
+      },
+    ];
+
+    return (
+      <AntCard
+        key={item.slug}
+        className="admin-matlab-module-card"
+        size="small"
+        hoverable
+        onClick={() => setSelectedSlug(item.slug)}
+        title={
+          <Space className="min-w-0" size={8}>
+            <Typography.Text strong className="truncate">{item.name}</Typography.Text>
+            <Tag color="blue" className="truncate">{item.slug}</Tag>
+          </Space>
+        }
+        extra={
+          canManage ? (
+            <Space size={4}>
+              <Button
+                type="text"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openEditModule(item);
+                }}
+              />
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MoreOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </Dropdown>
+            </Space>
+          ) : null
+        }
+      >
+        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+          <div className="admin-matlab-version-field">
+            <Typography.Text type="secondary">描述</Typography.Text>
+            <Typography.Text ellipsis={{ tooltip: item.description || "-" }}>{item.description || "-"}</Typography.Text>
+          </div>
+          <div className="admin-matlab-version-field">
+            <Typography.Text type="secondary">Worker 部署路径</Typography.Text>
+            <Typography.Text ellipsis={{ tooltip: item.worker_deploy_path || "-" }}>{item.worker_deploy_path || "-"}</Typography.Text>
+          </div>
+          <div className="admin-matlab-version-field">
+            <Typography.Text type="secondary">必需文件</Typography.Text>
+            <Typography.Text ellipsis={{ tooltip: (item.required_files || []).join(", ") || "-" }}>{(item.required_files || []).join(", ") || "-"}</Typography.Text>
+          </div>
+        </Space>
+      </AntCard>
+    );
+  };
 
   return (
     <div ref={containerRef} className="admin-matlab-page-body">
@@ -741,53 +854,18 @@ export default function AdminMatlabEnginePage() {
               ) : modules.length === 0 ? (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无模块" />
               ) : (
-                modules.map((item) => {
-                  const moreMenuItems: MenuProps["items"] = [
-                    {
-                      key: "edit",
-                      label: "编辑",
-                      icon: <EditOutlined />,
-                      onClick: () => openEditModule(item),
-                    },
-                    {
-                      key: "delete",
-                      label: "删除",
-                      icon: <DeleteOutlined />,
-                      danger: true,
-                      onClick: () => {
-                        Modal.confirm({
-                          title: `确认删除模块“${item.name}”吗？`,
-                          okText: "删除",
-                          cancelText: "取消",
-                          okButtonProps: { danger: true },
-                          onOk: () => deleteModule(item),
-                        });
-                      },
-                    },
-                  ];
-                  return (
-                    <div
-                      key={item.slug}
-                      className={`admin-matlab-module-item ${selectedSlug === item.slug ? "admin-matlab-module-item--active" : ""}`}
-                      onClick={() => setSelectedSlug(item.slug)}
-                    >
-                      <div className="admin-matlab-module-info">
-                        <div className="admin-matlab-module-name">{item.name}</div>
-                        <div className="admin-matlab-module-slug">{item.slug}</div>
-                      </div>
-                      {canManage && (
-                        <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={<MoreOutlined />}
-                            onClick={(event) => event.stopPropagation()}
-                          />
-                        </Dropdown>
-                      )}
+                modules.map((item) => (
+                  <div
+                    key={item.slug}
+                    className={`admin-matlab-module-item ${selectedSlug === item.slug ? "admin-matlab-module-item--active" : ""}`}
+                    onClick={() => setSelectedSlug(item.slug)}
+                  >
+                    <div className="admin-matlab-module-info">
+                      <div className="admin-matlab-module-name">{item.name}</div>
+                      <div className="admin-matlab-module-slug">{item.slug}</div>
                     </div>
-                  );
-                })
+                  </div>
+                ))
               )}
             </div>
           </AntCard>
@@ -801,7 +879,7 @@ export default function AdminMatlabEnginePage() {
       ) : null}
 
       {/* Right: detail panel */}
-      <div ref={tableScrollAnchorRef} className="admin-matlab-main">
+      <div className="admin-matlab-main">
         {!selectedModule ? (
           <Card>
             <Typography.Text type="secondary">请在左侧选择一个模块查看详情。</Typography.Text>
@@ -876,7 +954,7 @@ export default function AdminMatlabEnginePage() {
                 <Button
                   size="small"
                   type={viewMode === "table" ? "primary" : "default"}
-                  onClick={() => setViewPreference("table")}
+                  onClick={() => setViewMode("table")}
                   disabled={viewMode === "table"}
                 >
                   表格
@@ -884,7 +962,7 @@ export default function AdminMatlabEnginePage() {
                 <Button
                   size="small"
                   type={viewMode === "card" ? "primary" : "default"}
-                  onClick={() => setViewPreference("card")}
+                  onClick={() => setViewMode("card")}
                   disabled={viewMode === "card"}
                 >
                   卡片
@@ -894,6 +972,7 @@ export default function AdminMatlabEnginePage() {
 
             {viewMode === "table" ? (
               <div
+                ref={tableScrollAnchorRef}
                 className="admin-matlab-table-anchor"
                 style={{ "--admin-matlab-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
               >
@@ -910,7 +989,7 @@ export default function AdminMatlabEnginePage() {
                     total: Math.max(filteredVersions.length, 1),
                     showSizeChanger: true,
                     pageSizeOptions: [10, 20, 50, 100],
-                    showTotal: (total) => `共 ${total} 条`,
+                    showTotal: () => `共 ${filteredVersions.length} 条`,
                     hideOnSinglePage: false,
                     style: { marginBottom: 0 },
                     onChange: (page, pageSize) => {
@@ -961,8 +1040,9 @@ export default function AdminMatlabEnginePage() {
       <Modal
         title={editingModule ? `编辑模块：${editingModule.name}` : "新建模块"}
         open={moduleModalOpen}
-        onOk={() => saveModule()}
         onCancel={closeModuleModal}
+        onOk={() => saveModule()}
+        confirmLoading={false}
         okText={editingModule ? "保存" : "创建"}
         cancelText="取消"
         destroyOnClose
@@ -1035,8 +1115,8 @@ export default function AdminMatlabEnginePage() {
       <Modal
         title="发布版本"
         open={publishModalOpen}
-        onOk={() => handlePublish()}
         onCancel={() => setPublishModalOpen(false)}
+        onOk={() => handlePublish()}
         okText="发布"
         cancelText="取消"
         destroyOnClose
