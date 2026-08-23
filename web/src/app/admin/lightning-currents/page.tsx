@@ -776,7 +776,7 @@ export default function AdminLightningCurrentsPage() {
                               onClick: () => {
                                 Modal.confirm({
                                   title: "删除记录",
-                                  content: `确认删除记录 ${record.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
+                                  content: `确认删除记录 ${record.source_file_name} 吗？`,
                                   okText: "删除",
                                   cancelText: "取消",
                                   okButtonProps: { danger: true },
@@ -924,7 +924,7 @@ export default function AdminLightningCurrentsPage() {
                     onClick: () => {
                       Modal.confirm({
                         title: "删除记录",
-                        content: `确认删除记录 ${row.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
+                        content: `确认删除记录 ${row.source_file_name} 吗？`,
                         okText: "删除",
                         cancelText: "取消",
                         okButtonProps: { danger: true },
