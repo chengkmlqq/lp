@@ -747,83 +747,78 @@ export default function AdminLightningCurrentsPage() {
                   openDetail(record);
                 }}
               />
-              {canRead && (
-                <Button
-                  type="text"
-                  size="small"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openBackfillHistory(record);
-                  }}
-                >
-                  回填记录
-                </Button>
-              )}
               {canManage && (
                 <Button
                   type="text"
                   size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  loading={deleteMutation.isPending}
                   onClick={(event) => {
                     event.stopPropagation();
-                    Modal.confirm({
-                      title: "删除记录",
-                      content: `确认删除记录 ${record.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
-                      okText: "删除",
-                      cancelText: "取消",
-                      okButtonProps: { danger: true },
-                      onOk: async () => {
-                        await deleteMutation.mutateAsync(record);
-                      },
-                    });
+                    setBackfillRecord(record);
+                    setBackfillLineIds([]);
+                    setBackfillOpen(true);
                   }}
-                />
-              )}
-              {(record.status === "failed" && canManage) && (
-                <Dropdown
-                  menu={{
-                    items: [
-                      ...(canManage
-                        ? [
-                            {
-                              key: "backfill",
-                              label: "回填",
-                              onClick: () => {
-                                setBackfillRecord(record);
-                                setBackfillLineIds([]);
-                                setBackfillOpen(true);
-                              },
-                            },
-                          ]
-                        : []),
-                      ...(canReadLogs && record.task_id
-                        ? [
-                            {
-                              key: "import-log",
-                              label: "导入日志",
-                              onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
-                            },
-                          ]
-                        : []),
-                      ...(record.status === "failed" && canManage
-                        ? [
-                            {
-                              key: "retry",
-                              label: "重试",
-                              disabled: retryMutation.isPending,
-                              onClick: () => retryMutation.mutate(record),
-                            },
-                          ]
-                        : []),
-                    ],
-                  }}
-                  trigger={["click"]}
                 >
-                  <Button type="text" size="small" icon={<MoreOutlined />} />
-                </Dropdown>
+                  回填
+                </Button>
               )}
+              <Dropdown
+                menu={{
+                  items: [
+                    ...(canManage
+                      ? [
+                          {
+                            key: "delete",
+                            label: "删除",
+                            disabled: deleteMutation.isPending,
+                            onClick: () => {
+                              Modal.confirm({
+                                title: "删除记录",
+                                content: `确认删除记录 ${record.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
+                                okText: "删除",
+                                cancelText: "取消",
+                                okButtonProps: { danger: true },
+                                onOk: async () => {
+                                  await deleteMutation.mutateAsync(record);
+                                },
+                              });
+                            },
+                          },
+                        ]
+                      : []),
+                    ...(canRead
+                      ? [
+                          {
+                            key: "backfill-history",
+                            label: "回填记录",
+                            onClick: () => openBackfillHistory(record),
+                          },
+                        ]
+                      : []),
+                    ...(canReadLogs && record.task_id
+                      ? [
+                          {
+                            key: "import-log",
+                            label: "导入日志",
+                            onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
+                          },
+                        ]
+                      : []),
+                    ...(canManage
+                      ? [
+                          {
+                            key: "retry",
+                            label: "重试",
+                            disabled: retryMutation.isPending,
+                            onClick: () => retryMutation.mutate(record),
+                          },
+                        ]
+                      : []),
+                  ],
+                }}
+                trigger={["click"]}
+              >
+                <Button type="text" size="small" icon={<MoreOutlined />} />
+              </Dropdown>
             </Space>
           </div>
         </div>
@@ -917,19 +912,35 @@ export default function AdminLightningCurrentsPage() {
         width: 200,
         fixed: "right",
         render: (_: unknown, row) => {
-          // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/删除），其余条件操作收进 ⋯ 三点下拉
+          // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/回填），其余操作收进 ⋯ 三点下拉
           const moreMenuItems: MenuProps["items"] = [
             ...(canManage
               ? [
                   {
-                    key: "backfill",
-                    label: "回填",
-                    disabled: backfillMutation.isPending,
+                    key: "delete",
+                    label: "删除",
+                    disabled: deleteMutation.isPending,
                     onClick: () => {
-                      setBackfillRecord(row);
-                      setBackfillLineIds([]);
-                      setBackfillOpen(true);
+                      Modal.confirm({
+                        title: "删除记录",
+                        content: `确认删除记录 ${row.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
+                        okText: "删除",
+                        cancelText: "取消",
+                        okButtonProps: { danger: true },
+                        onOk: async () => {
+                          await deleteMutation.mutateAsync(row);
+                        },
+                      });
                     },
+                  },
+                ]
+              : []),
+            ...(canRead
+              ? [
+                  {
+                    key: "backfill-history",
+                    label: "回填记录",
+                    onClick: () => openBackfillHistory(row),
                   },
                 ]
               : []),
@@ -942,7 +953,7 @@ export default function AdminLightningCurrentsPage() {
                   },
                 ]
               : []),
-            ...(row.status === "failed" && canManage
+            ...(canManage
               ? [
                   {
                     key: "retry",
@@ -955,39 +966,20 @@ export default function AdminLightningCurrentsPage() {
           ];
           return (
             <Space wrap>
-              <Button
-                size="small"
-                onClick={() => openDetail(row)}
-              >
+              <Button size="small" onClick={() => openDetail(row)}>
                 详情
               </Button>
-              {canRead && (
-                <Button
-                  size="small"
-                  onClick={() => openBackfillHistory(row)}
-                >
-                  回填记录
-                </Button>
-              )}
               {canManage && (
                 <Button
                   size="small"
-                  danger
-                  loading={deleteMutation.isPending}
                   onClick={() => {
-                    Modal.confirm({
-                      title: "删除记录",
-                      content: `确认删除记录 ${row.source_file_name} 吗？将同时删除 MinIO 上的源文件。`,
-                      okText: "删除",
-                      cancelText: "取消",
-                      okButtonProps: { danger: true },
-                      onOk: async () => {
-                        await deleteMutation.mutateAsync(row);
-                      },
-                    });
+                    setBackfillRecord(row);
+                    setBackfillLineIds([]);
+                    setBackfillOpen(true);
                   }}
+                  disabled={backfillMutation.isPending}
                 >
-                  删除
+                  回填
                 </Button>
               )}
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
