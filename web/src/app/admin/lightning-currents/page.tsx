@@ -771,6 +771,24 @@ export default function AdminLightningCurrentsPage() {
                 <Dropdown
                   menu={{
                     items: [
+                      ...(canRead
+                        ? [
+                            {
+                              key: "backfill-history",
+                              label: "回填记录",
+                              onClick: () => openBackfillHistory(record),
+                            },
+                          ]
+                        : []),
+                      ...(canReadLogs && record.task_id
+                        ? [
+                            {
+                              key: "import-log",
+                              label: "导入日志",
+                              onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
+                            },
+                          ]
+                        : []),
                       ...(canManage
                         ? [
                             {
@@ -789,24 +807,6 @@ export default function AdminLightningCurrentsPage() {
                                   },
                                 });
                               },
-                            },
-                          ]
-                        : []),
-                      ...(canRead
-                        ? [
-                            {
-                              key: "backfill-history",
-                              label: "回填记录",
-                              onClick: () => openBackfillHistory(record),
-                            },
-                          ]
-                        : []),
-                      ...(canReadLogs && record.task_id
-                        ? [
-                            {
-                              key: "import-log",
-                              label: "导入日志",
-                              onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
                             },
                           ]
                         : []),
