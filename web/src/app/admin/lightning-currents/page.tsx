@@ -717,7 +717,7 @@ export default function AdminLightningCurrentsPage() {
               <Progress percent={record.progress} size="small" className="mr-auto flex-1 max-w-40" />
             ) : null}
             <Space size="small" className="shrink-0">
-              <AntTooltip title="查看详情">
+              <AntTooltip title="详情">
                 <Button
                   type="text"
                   size="small"

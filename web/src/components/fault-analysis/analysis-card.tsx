@@ -103,7 +103,7 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
             <div />
           )}
           <Space size="small" className="flex-wrap">
-            <Tooltip title="查看详情">
+            <Tooltip title="详情">
               <Button
                 type="text"
                 size="small"

@@ -505,11 +505,17 @@ def execute_job(job_id: str) -> None:
                 summary["external_model_name"] = legacy_external_job.template_dir.name
                 summary["external_version_id"] = legacy_external_job.template_identifier
                 summary["external_version_no"] = 1
-        for snapshot in snapshots:
+        for idx, snapshot in enumerate(snapshots, start=1):
             payload = {
                 "base_tower_json": snapshot.base_tower_json or {},
                 "profile_json": snapshot.profile_json or {},
             }
+            logger.info(
+                "[ATP] 开始处理杆塔 %s（第 %d/%d 根）",
+                snapshot.tower_no,
+                idx,
+                len(snapshots),
+            )
             if job.job_type == "scenario":
                 payload["profile_json"] = _apply_scenario_profile_json_overrides(snapshot.profile_json or {})
             source_result = source_result_map.get(snapshot.tower_id)
