@@ -717,15 +717,17 @@ export default function AdminLightningCurrentsPage() {
               <Progress percent={record.progress} size="small" className="mr-auto flex-1 max-w-40" />
             ) : null}
             <Space size="small" className="shrink-0">
-              <Button
-                type="text"
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openDetail(record);
-                }}
-              />
+              <Tooltip title="查看详情">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openDetail(record);
+                  }}
+                />
+              </Tooltip>
               {canManage && (
                 <AntTooltip title="回填">
                   <Button

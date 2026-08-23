@@ -805,34 +805,38 @@ export default function AdminLightningDistributionPage() {
 
           <div className="admin-lightning-distribution-event-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
             <Space size="small">
-              <Button
-                type="text"
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openDetail(record);
-                }}
-              />
-              {canManage && (
+              <Tooltip title="查看详情">
                 <Button
                   type="text"
                   size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  loading={deleteMutation.isPending}
+                  icon={<EyeOutlined />}
                   onClick={(event) => {
                     event.stopPropagation();
-                    Modal.confirm({
-                      title: "确认删除",
-                      content: "确认删除该地闪分布记录？此操作不可恢复。",
-                      okText: "确认删除",
-                      cancelText: "取消",
-                      okButtonProps: { danger: true },
-                      onOk: () => deleteMutation.mutate(record),
-                    });
+                    openDetail(record);
                   }}
                 />
+              </Tooltip>
+              {canManage && (
+                <Tooltip title="删除">
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    loading={deleteMutation.isPending}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      Modal.confirm({
+                        title: "确认删除",
+                        content: "确认删除该地闪分布记录？此操作不可恢复。",
+                        okText: "确认删除",
+                        cancelText: "取消",
+                        okButtonProps: { danger: true },
+                        onOk: () => deleteMutation.mutate(record),
+                      });
+                    }}
+                  />
+                </Tooltip>
               )}
               {(() => {
                 const extraActions: MenuProps["items"] = [

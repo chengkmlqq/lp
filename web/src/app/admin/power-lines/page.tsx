@@ -660,26 +660,28 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
 
         <div className="admin-power-lines-line-card-actions flex items-center justify-end px-4 py-2 border-t border-gray-200">
           <Space size="small">
-            <Button
-              type="text"
-              size="small"
-              icon={<ApartmentOutlined />}
-              title="杆塔"
-              onClick={(event) => {
-                event.stopPropagation();
-                onDetail(line);
-              }}
-            />
-            <Button
-              type="text"
-              size="small"
-              icon={<GlobalOutlined />}
-              title="预览"
-              onClick={(event) => {
-                event.stopPropagation();
-                onPreview(line);
-              }}
-            />
+            <Tooltip title="杆塔">
+              <Button
+                type="text"
+                size="small"
+                icon={<ApartmentOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDetail(line);
+                }}
+              />
+            </Tooltip>
+            <Tooltip title="预览">
+              <Button
+                type="text"
+                size="small"
+                icon={<GlobalOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPreview(line);
+                }}
+              />
+            </Tooltip>
             <Dropdown
               menu={{
                 items: [

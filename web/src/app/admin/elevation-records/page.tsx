@@ -21,6 +21,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   Upload,
   message,
@@ -753,17 +754,19 @@ export default function ElevationRecordsPage() {
 
           <div className="admin-elevation-record-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
             <Space size="small">
-              <Button
-                type="text"
-                size="small"
-                icon={<CloudUploadOutlined />}
-                disabled={rowBusy}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openTowerTab(record);
-                }}
-              />
-            </Space>
+                          <Tooltip title="应用">
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<CloudUploadOutlined />}
+                              disabled={rowBusy}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openTowerTab(record);
+                              }}
+                            />
+                          </Tooltip>
+                        </Space>
           </div>
         </div>
       </Card>
