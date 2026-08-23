@@ -87,7 +87,7 @@ def upload_elevation_temp_file(
     上传进度，表单确认提交时携带 temp_file_id，服务端从临时目录取文件再入库；
     临时文件消费后删除，或由定时清理任务兜底清理。
     """
-    validate_upload(file, allowed_exts={"tif", "tiff", "zip"}, allowed_exts_label="tif/tiff/zip")
+    validate_upload(file, max_mb=500, allowed_exts={"tif", "tiff", "zip"}, allowed_exts_label="tif/tiff/zip")
     temp_file_id, file_name = save_temp_upload(file, current_user.user.id)
     return ElevationTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
 
@@ -103,7 +103,7 @@ def create_elevation_file_record(
     current_user: CurrentUser = Depends(require_permission("elevation.manage")),
     db: Session = Depends(get_db),
 ) -> ElevationFileRecordUploadResponse:
-    validate_upload(file, allowed_exts={"tif", "tiff", "zip"}, allowed_exts_label="tif/tiff/zip")
+    validate_upload(file, max_mb=500, allowed_exts={"tif", "tiff", "zip"}, allowed_exts_label="tif/tiff/zip")
     payload = ElevationFileRecordCreateRequest(
         source=source,
         mount_code=mount_code,
