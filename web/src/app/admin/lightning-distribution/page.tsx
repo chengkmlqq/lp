@@ -166,6 +166,10 @@ export default function AdminLightningDistributionPage() {
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
 
+  const openLpDrawModal = useCallback((record: LightningDistributionRecord) => {
+    setLpDrawRow(record);
+  }, []);
+
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [activeImportId, setActiveImportId] = useState<string | null>(null);
