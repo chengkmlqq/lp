@@ -26,7 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { useRouter } from "next/navigation";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
-import { AtpModelCard } from "@/components/atp-models/atp-model-card";
+import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
@@ -939,6 +939,8 @@ export default function AtpModelsPage() {
                         查询
                       </Button>
                     </Form.Item>
+                  </Form>
+                  <div className="flex items-center">
                     <Segmented
                       value={viewMode}
                       onChange={(value) => setViewMode(value as "card" | "list")}
@@ -947,7 +949,7 @@ export default function AtpModelsPage() {
                         { label: "列表视图", value: "list" },
                       ]}
                     />
-                  </Form>
+                  </div>
                 </div>
 
                 {apiError && (
@@ -1109,33 +1111,15 @@ export default function AtpModelsPage() {
                 ) : (
                   <div className="admin-atp-models-card-view">
                     <div className="admin-atp-models-card-scroll">
-                      {assetsQuery.isLoading ? (
-                        <div className="admin-atp-models-card-view-state">
-                          <Spin tip="加载中..." />
-                        </div>
-                      ) : assetItems.length === 0 ? (
-                        <div className="admin-atp-models-card-view-state">
-                          <Empty
-                            image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description="未找到符合筛选条件的 ATP 模型。"
-                          />
-                        </div>
-                      ) : (
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                          {assetItems.map((item) => (
-                            <AtpModelCard
-                              key={item.id}
-                              asset={item}
-                              canManage={canManage}
-                              deleteLoading={deleteMutation.isPending}
-                              onView={(id) => router.push(`/admin/atp-models/${id}`)}
-                              onDelete={(id) =>
-                                deleteMutation.mutate(id)
-                              }
-                            />
-                          ))}
-                        </div>
-                      )}
+                      <AtpModelCardList
+                        assets={assetItems}
+                        loading={assetsQuery.isLoading || assetsQuery.isFetching}
+                        canManage={canManage}
+                        deleteLoading={deleteMutation.isPending}
+                        onView={(id) => router.push(`/admin/atp-models/${id}`)}
+                        onDelete={(id) => deleteMutation.mutate(id)}
+                        dimensionLabelMap={dimensionLabelMap}
+                      />
                     </div>
 
                     <div className="admin-atp-models-pagination">
