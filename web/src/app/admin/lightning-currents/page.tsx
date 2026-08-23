@@ -717,7 +717,7 @@ export default function AdminLightningCurrentsPage() {
               <Progress percent={record.progress} size="small" className="mr-auto flex-1 max-w-40" />
             ) : null}
             <Space size="small" className="shrink-0">
-              <Tooltip title="查看详情">
+              <AntTooltip title="查看详情">
                 <Button
                   type="text"
                   size="small"
@@ -727,7 +727,7 @@ export default function AdminLightningCurrentsPage() {
                     openDetail(record);
                   }}
                 />
-              </Tooltip>
+              </AntTooltip>
               {canManage && (
                 <AntTooltip title="回填">
                   <Button
@@ -794,14 +794,16 @@ export default function AdminLightningCurrentsPage() {
                   }}
                   trigger={["click"]}
                 >
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<MoreOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                    }}
-                  />
+                  <AntTooltip title="更多操作">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<MoreOutlined />}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                    />
+                  </AntTooltip>
                 </Dropdown>
               </div>
             </Space>

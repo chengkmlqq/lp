@@ -742,7 +742,9 @@ export default function AdminLightningDistributionPage() {
               )}
               {moreMenuItems.length > 0 && (
                 <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Button size="small" icon={<MoreOutlined />} />
+                  <Tooltip title="更多操作">
+                    <Button size="small" icon={<MoreOutlined />} />
+                  </Tooltip>
                 </Dropdown>
               )}
             </Space>
