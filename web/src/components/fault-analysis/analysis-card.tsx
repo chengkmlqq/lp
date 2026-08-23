@@ -1,4 +1,4 @@
-import { Badge, Button, Dropdown, Progress, Space, Typography } from "antd";
+import { Badge, Button, Dropdown, Progress, Space, Tooltip, Typography } from "antd";
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined, FileTextOutlined, DownloadOutlined, MoreOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Card } from "@/components/ui-antd";
@@ -103,24 +103,28 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
             <div />
           )}
           <Space size="small" className="flex-wrap">
-            <Button
-              type="text"
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={(event) => {
-                event.stopPropagation();
-                onView?.();
-              }}
-            />
-            <Button
-              type="text"
-              size="small"
-              icon={<FileTextOutlined />}
-              onClick={(event) => {
-                event.stopPropagation();
-                onProcess?.();
-              }}
-            />
+            <Tooltip title="查看详情">
+              <Button
+                type="text"
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onView?.();
+                }}
+              />
+            </Tooltip>
+            <Tooltip title="计算过程">
+              <Button
+                type="text"
+                size="small"
+                icon={<FileTextOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onProcess?.();
+                }}
+              />
+            </Tooltip>
             <Dropdown
               menu={{
                 items: [
