@@ -73,3 +73,5 @@ celery_app.conf.update(
 from . import worker_signals as _worker_signals  # noqa: F401,E402
 # Register task lifecycle signals for persistent task history in PostgreSQL.
 from . import task_history_signals as _task_history_signals  # noqa: F401,E402
+# Ensure TaskLogCapture is installed at worker startup (root handler + stdout/stderr Tee).
+from . import task_log_capture as _task_log_capture  # noqa: F401,E402
