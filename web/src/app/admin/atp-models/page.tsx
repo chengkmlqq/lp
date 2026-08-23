@@ -15,12 +15,11 @@ import {
   Spin,
   Table,
   Tabs,
-  Breadcrumb,
   Typography,
   Upload,
   Alert,
 } from "antd";
-import { UploadOutlined, FolderOutlined, FileOutlined, HomeOutlined, DeleteOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined } from "@ant-design/icons";
+import { UploadOutlined, DeleteOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
@@ -30,7 +29,7 @@ import { AtpModelDetailTab } from "@/components/atp-models/atp-model-detail-tab"
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
-import type { AtpAssetListResponse, AtpAssetSummary, AtpAssetFileListResponse, DimensionTypeTreeItem, TempUploadResponse } from "@/types/auth";
+import type { AtpAssetListResponse, AtpAssetSummary, DimensionTypeTreeItem, TempUploadResponse } from "@/types/auth";
 import type { DimensionItemListResponse } from "@/types/dimension";
 
 type AssetFormValues = {
@@ -117,8 +116,6 @@ export default function AtpModelsPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
-  const [displayMode, setDisplayMode] = useState<"list" | "file">("list");
-  const [fileViewPath, setFileViewPath] = useState<string[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
   const [detailTabs, setDetailTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>("list");
@@ -445,39 +442,6 @@ export default function AtpModelsPage() {
   const sceneTypeOptions = dimensionOptionMap.scene_type;
   const arresterConfigOptions = dimensionOptionMap.arrester_config;
 
-  // File view mode needs ALL assets to build the dimension tree correctly.
-  // The paginated query only fetches 20 items which may all be from one voltage level.
-  // API max limit is 200, so we page through to get all items.
-  const fileViewAssetsQuery = useQuery({
-    queryKey: ["atp-assets-all", trimmedKeyword],
-    enabled: Boolean(user && canRead && displayMode === "file"),
-    queryFn: async () => {
-      const limit = 200;
-      let offset = 0;
-      let allItems: AtpAssetSummary[] = [];
-      while (true) {
-        const params = new URLSearchParams();
-        params.set("limit", String(limit));
-        params.set("offset", String(offset));
-        if (trimmedKeyword) {
-          params.set("keyword", trimmedKeyword);
-        }
-        const response = await fetchWithAuth(`/api/v1/atp/assets?${params.toString()}`);
-        if (!response.ok) {
-          throw new Error(await readApiError(response));
-        }
-        const data = (await response.json()) as AtpAssetListResponse;
-        allItems = allItems.concat(data.items);
-        if (data.items.length < limit) break;
-        offset += limit;
-      }
-      return { items: allItems, total: allItems.length } as AtpAssetListResponse;
-    },
-  });
-  const fileViewAssetItems = useMemo(
-    () => fileViewAssetsQuery.data?.items ?? assetItems,
-    [fileViewAssetsQuery.data?.items, assetItems],
-  );
   const assetTotal = assetsQuery.data?.total ?? 0;
   const queryError = useMemo<ApiError | null>(() => assetsQuery.error instanceof Error ? new ApiError(assetsQuery.error.message) : null, [assetsQuery.error]);
   const apiError = error || queryError;
@@ -651,226 +615,6 @@ export default function AtpModelsPage() {
     [canManage, deleteMutation, formatDimensionValue, openDetailById],
   );
 
-  type FileViewItem = {
-    type: "folder" | "file";
-    name: string;
-    displayName: string;
-    value: string;
-    item?: AtpAssetSummary;
-    isDir?: boolean;
-    relativePath?: string;
-  };
-
-  const matchingAssets = useMemo(() => {
-    if (fileViewPath.length < 4) {
-      return [];
-    }
-
-    const voltage = fileViewPath[0];
-    const tower = fileViewPath[1];
-    const scene = fileViewPath[2];
-    const arrester = fileViewPath[3];
-
-    return fileViewAssetItems.filter(
-      (item) =>
-        (item.voltage_level || "未分类") === voltage &&
-        (item.tower_type || "未分类") === tower &&
-        (item.scene_type || "未分类") === scene &&
-        (item.arrester_config || "未分类") === arrester
-    );
-  }, [fileViewAssetItems, fileViewPath]);
-
-  const filesQueries = useQueries({
-    queries: matchingAssets.map((asset) => ({
-      queryKey: ["atp-asset-files", asset.id],
-      enabled: Boolean(user && canRead && displayMode === "file" && fileViewPath.length >= 4),
-      queryFn: async () => {
-        const response = await fetchWithAuth(`/api/v1/atp/assets/${asset.id}/files`);
-        if (!response.ok) {
-          return { asset_id: asset.id, release_id: null, storage_mount_code: "", storage_root_path: "", items: [], total: 0 } satisfies AtpAssetFileListResponse;
-        }
-        return (await response.json()) as AtpAssetFileListResponse;
-      },
-    })),
-  });
-
-  const isFileViewLoading = displayMode === "file" && fileViewPath.length >= 4 && filesQueries.some((query) => query.isLoading);
-
-  const fileViewItems = useMemo<FileViewItem[]>(() => {
-    const currentLevel = fileViewPath.length;
-
-    if (currentLevel === 0) {
-      const voltageSet = new Set<string>();
-      fileViewAssetItems.forEach((item) => {
-        const voltage = item.voltage_level || "未分类";
-        voltageSet.add(voltage);
-      });
-      return Array.from(voltageSet)
-        .sort((a, b) => a.localeCompare(b, "zh-CN"))
-        .map((voltage) => ({
-          type: "folder" as const,
-          name: voltage,
-          displayName: formatDimensionValue(voltage, "voltage_level"),
-          value: voltage,
-        }));
-    }
-
-    if (currentLevel === 1) {
-      const voltage = fileViewPath[0];
-      const towerSet = new Set<string>();
-      fileViewAssetItems
-        .filter((item) => (item.voltage_level || "未分类") === voltage)
-        .forEach((item) => {
-          const tower = item.tower_type || "未分类";
-          towerSet.add(tower);
-        });
-      return Array.from(towerSet)
-        .sort((a, b) => a.localeCompare(b, "zh-CN"))
-        .map((tower) => ({
-          type: "folder" as const,
-          name: tower,
-          displayName: formatDimensionValue(tower, "tower_type"),
-          value: tower,
-        }));
-    }
-
-    if (currentLevel === 2) {
-      const voltage = fileViewPath[0];
-      const tower = fileViewPath[1];
-      const sceneSet = new Set<string>();
-      fileViewAssetItems
-        .filter(
-          (item) =>
-            (item.voltage_level || "未分类") === voltage &&
-            (item.tower_type || "未分类") === tower
-        )
-        .forEach((item) => {
-          const scene = item.scene_type || "未分类";
-          sceneSet.add(scene);
-        });
-      return Array.from(sceneSet)
-        .sort((a, b) => a.localeCompare(b, "zh-CN"))
-        .map((scene) => ({
-          type: "folder" as const,
-          name: scene,
-          displayName: formatDimensionValue(scene, "scene_type"),
-          value: scene,
-        }));
-    }
-
-    if (currentLevel === 3) {
-      const voltage = fileViewPath[0];
-      const tower = fileViewPath[1];
-      const scene = fileViewPath[2];
-      const arresterSet = new Set<string>();
-      fileViewAssetItems
-        .filter(
-          (item) =>
-            (item.voltage_level || "未分类") === voltage &&
-            (item.tower_type || "未分类") === tower &&
-            (item.scene_type || "未分类") === scene
-        )
-        .forEach((item) => {
-          const arrester = item.arrester_config || "未分类";
-          arresterSet.add(arrester);
-        });
-      return Array.from(arresterSet)
-        .sort((a, b) => a.localeCompare(b, "zh-CN"))
-        .map((arrester) => ({
-          type: "folder" as const,
-          name: arrester,
-          displayName: formatDimensionValue(arrester, "arrester_config"),
-          value: arrester,
-        }));
-    }
-
-    if (currentLevel >= 4) {
-      if (filesQueries.some((query) => query.isLoading)) {
-        return [];
-      }
-
-      const allFiles: Array<{ name: string; relativePath: string; isDir: boolean }> = [];
-      filesQueries.forEach((query, index) => {
-        const asset = matchingAssets[index];
-        if (!asset || !query.data?.items) {
-          return;
-        }
-        query.data.items.forEach((file) => {
-          allFiles.push({
-            name: file.name,
-            relativePath: file.relative_path,
-            isDir: file.is_dir,
-          });
-        });
-      });
-
-      if (currentLevel === 4) {
-        const rootFiles = allFiles.filter((file) => !file.relativePath.includes("/"));
-
-        const fileMap = new Map<string, typeof rootFiles[0]>();
-        rootFiles.forEach((file) => {
-          if (!fileMap.has(file.name) || file.isDir) {
-            fileMap.set(file.name, file);
-          }
-        });
-
-        return Array.from(fileMap.values())
-          .sort((a, b) => {
-            if (a.isDir === b.isDir) return a.name.localeCompare(b.name, "zh-CN");
-            return a.isDir ? -1 : 1;
-          })
-          .map((file) => ({
-            type: file.isDir ? ("folder" as const) : ("file" as const),
-            name: file.name,
-            displayName: file.name,
-            value: file.relativePath,
-            isDir: file.isDir,
-            relativePath: file.relativePath,
-          }));
-      }
-
-      const pathInAsset = fileViewPath.slice(4).join("/");
-      const prefix = pathInAsset + "/";
-
-      const filesInPath = allFiles.filter((file) => {
-        if (!file.relativePath.startsWith(prefix)) {
-          return false;
-        }
-        const remainder = file.relativePath.substring(prefix.length);
-        return !remainder.includes("/");
-      });
-
-      const fileMap = new Map<string, typeof filesInPath[0]>();
-      filesInPath.forEach((file) => {
-        if (!fileMap.has(file.name) || file.isDir) {
-          fileMap.set(file.name, file);
-        }
-      });
-
-      return Array.from(fileMap.values())
-        .sort((a, b) => {
-          if (a.isDir === b.isDir) return a.name.localeCompare(b.name, "zh-CN");
-          return a.isDir ? -1 : 1;
-        })
-        .map((file) => ({
-          type: file.isDir ? ("folder" as const) : ("file" as const),
-          name: file.name,
-          displayName: file.name,
-          value: file.relativePath,
-          isDir: file.isDir,
-          relativePath: file.relativePath,
-        }));
-    }
-
-    return [];
-  }, [assetItems, fileViewPath, matchingAssets, filesQueries, formatDimensionValue]);
-
-  const handleFileViewItemClick = (item: FileViewItem) => {
-    if (item.type === "folder") {
-      setFileViewPath([...fileViewPath, item.name]);
-    }
-  };
-
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
       return;
@@ -888,25 +632,6 @@ export default function AtpModelsPage() {
       return next;
     });
   }, []);
-
-  const handleBreadcrumbClick = (index: number) => {
-    if (index === -1) {
-      setFileViewPath([]);
-    } else {
-      setFileViewPath(fileViewPath.slice(0, index + 1));
-    }
-  };
-
-  const getBreadcrumbLabel = (index: number): string => {
-    if (index === 0) return formatDimensionValue(fileViewPath[0], "voltage_level");
-    if (index === 1) return formatDimensionValue(fileViewPath[1], "tower_type");
-    if (index === 2) return formatDimensionValue(fileViewPath[2], "scene_type");
-    if (index === 3) return formatDimensionValue(fileViewPath[3], "arrester_config");
-    if (index >= 4) {
-      return fileViewPath[index];
-    }
-    return "";
-  };
 
   if (initializing) {
     return <AdminPageLoading tip="加载 ATP 模型中..." minHeightClassName="min-h-[280px]" />;
@@ -1006,153 +731,40 @@ export default function AtpModelsPage() {
                 )}
 
                 {viewMode === "list" ? (
-                  <>
-                    <div className="admin-atp-models-list-sub-bar">
-                      <Segmented
-                        value={displayMode}
-                        onChange={(value) => setDisplayMode(value as "list" | "file")}
-                        options={[
-                          { label: "列表视图", value: "list" },
-                          { label: "文件视图", value: "file" },
-                        ]}
-                      />
-                    </div>
-                    {displayMode === "file" ? (
-                      <div className="admin-atp-models-file-view" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-                        <div style={{ margin: "16px 0" }}>
-                          <Breadcrumb
-                            items={[
-                              {
-                                title: (
-                                  <a onClick={() => handleBreadcrumbClick(-1)}>
-                                    <HomeOutlined /> ATP模型
-                                  </a>
-                                ),
-                              },
-                              ...fileViewPath.map((_, index) => ({
-                                title: (
-                                  <a onClick={() => handleBreadcrumbClick(index)}>
-                                    {getBreadcrumbLabel(index)}
-                                  </a>
-                                ),
-                              })),
-                            ]}
+                  <div
+                    ref={tableScrollAnchorRef}
+                    className="admin-atp-models-table-anchor"
+                    style={{ "--admin-atp-models-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                  >
+                    <Table<AtpAssetSummary>
+                      rowKey="id"
+                      loading={assetsQuery.isLoading || assetsQuery.isFetching}
+                      columns={columns}
+                      dataSource={assetItems}
+                      tableLayout="fixed"
+                      locale={{
+                        emptyText: (
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description="未找到符合筛选条件的 ATP 模型。"
                           />
-                        </div>
-                        <div style={{ flex: 1, minHeight: 0, overflow: "auto", border: "1px solid #f0f0f0", borderRadius: "4px" }}>
-                          {assetsQuery.isLoading || assetsQuery.isFetching || isFileViewLoading ? (
-                            <div style={{ textAlign: "center", padding: "40px 0" }}>
-                              <Spin tip="加载中..." />
-                            </div>
-                          ) : fileViewItems.length === 0 ? (
-                            <Empty
-                              image={Empty.PRESENTED_IMAGE_SIMPLE}
-                              description="当前目录为空"
-                            />
-                          ) : (
-                            <div>
-                              {fileViewItems.map((item, index) =>
-                                item.type === "folder" ? (
-                                  <div
-                                    key={index}
-                                    onClick={() => handleFileViewItemClick(item)}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      padding: "12px 16px",
-                                      cursor: "pointer",
-                                      borderBottom: index < fileViewItems.length - 1 ? "1px solid #f0f0f0" : "none",
-                                      transition: "background-color 0.2s",
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = "#f5f5f5";
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = "transparent";
-                                    }}
-                                  >
-                                    <FolderOutlined style={{ fontSize: "20px", color: "#faad14", marginRight: "12px" }} />
-                                    <Typography.Text style={{ flex: 1 }}>{item.displayName}</Typography.Text>
-                                  </div>
-                                ) : (
-                                  <div
-                                    key={index}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      padding: "12px 16px",
-                                      borderBottom: index < fileViewItems.length - 1 ? "1px solid #f0f0f0" : "none",
-                                    }}
-                                  >
-                                    <FileOutlined style={{ fontSize: "20px", color: "#1890ff", marginRight: "12px" }} />
-                                    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                      <div style={{ display: "flex", flexDirection: "column" }}>
-                                        <Typography.Text>{item.displayName}</Typography.Text>
-                                        <Typography.Text type="secondary" style={{ fontSize: "12px" }}>
-                                          {item.item && formatDateTime(item.item.update_date)}
-                                        </Typography.Text>
-                                      </div>
-                                      {item.item && (
-                                        <Button danger size="small" disabled={!canManage}
-                                          onClick={() => {
-                                            Modal.confirm({
-                                              title: "删除模型",
-                                              content: "这会同时删除其文件与运行记录。",
-                                              okText: "删除",
-                                              cancelText: "取消",
-                                              okButtonProps: { danger: true },
-                                              onOk: () => item.item && deleteMutation.mutate(item.item.id),
-                                            });
-                                          }}
-                                        >
-                                          删除
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-                                )
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        ref={tableScrollAnchorRef}
-                        className="admin-atp-models-table-anchor"
-                        style={{ "--admin-atp-models-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-                      >
-                        <Table<AtpAssetSummary>
-                          rowKey="id"
-                          loading={assetsQuery.isLoading || assetsQuery.isFetching}
-                          columns={columns}
-                          dataSource={assetItems}
-                          tableLayout="fixed"
-                          locale={{
-                            emptyText: (
-                              <Empty
-                                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                description="未找到符合筛选条件的 ATP 模型。"
-                              />
-                            ),
-                          }}
-                          pagination={{
-                            current: pagination.current,
-                            pageSize: pagination.pageSize,
-                            total: Math.max(assetTotal, 1),
-                            showSizeChanger: true,
-                            pageSizeOptions: [6, 12, 24, 48],
-                            showTotal: () => `共 ${assetTotal} 条`,
-                            hideOnSinglePage: false,
-                            onChange: (page, pageSize) => {
-                              setPagination({ current: page, pageSize });
-                            },
-                          }}
-                          scroll={{ x: 1200, y: tableScrollY }}
-                        />
-                      </div>
-                    )}
-                  </>
+                        ),
+                      }}
+                      pagination={{
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: Math.max(assetTotal, 1),
+                        showSizeChanger: true,
+                        pageSizeOptions: [6, 12, 24, 48],
+                        showTotal: () => `共 ${assetTotal} 条`,
+                        hideOnSinglePage: false,
+                        onChange: (page, pageSize) => {
+                          setPagination({ current: page, pageSize });
+                        },
+                      }}
+                      scroll={{ x: 1200, y: tableScrollY }}
+                    />
+                  </div>
                 ) : (
                   <div className="admin-atp-models-card-view">
                     <div className="admin-atp-models-card-scroll">
