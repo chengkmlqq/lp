@@ -207,6 +207,18 @@ def get_elevation_file_record_linked_lines(
     return get_linked_lines_for_file_record(db, record_id=record_id)
 
 
+@router.get("/records/{record_id}/jobs", response_model=ElevationApplyJobListResponse)
+def get_elevation_file_record_jobs(
+    record_id: str,
+    status: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    _: CurrentUser = Depends(require_any_permission("elevation.read", "elevation.manage")),
+    db: Session = Depends(get_db),
+) -> ElevationApplyJobListResponse:
+    """查询单个高程文件的所有回填任务记录。"""
+    return list_jobs(db, line_id=None, status_filter=status, limit=limit, file_record_id=record_id)
+
+
 @router.get("/records/{record_id}/analysis-status", response_model=ElevationFileRecordTaskStatusResponse)
 def get_elevation_file_record_analysis_status(
     record_id: str,

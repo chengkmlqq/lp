@@ -34,6 +34,7 @@ import {
   FileOutlined,
   FileTextOutlined,
   GlobalOutlined,
+  HistoryOutlined,
   NumberOutlined,
   SearchOutlined,
   UploadOutlined,
@@ -43,6 +44,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { ElevationTowerView } from "@/components/elevation-tower-view";
+import { ElevationBackfillHistoryTable } from "@/components/elevation-backfill-history";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { getApiBaseUrl, readApiError } from "@/lib/api";
 import type { ElevationDatasetTerrainStatus } from "@/types/auth";
@@ -488,6 +490,44 @@ export default function ElevationRecordsPage() {
     setLinkedLinesModalOpen(true);
   };
 
+  // 打开回填弹窗
+  const openApplyModal = useCallback((record: ElevationFileRecordSummary) => {
+    setSelectedRecord(record);
+    applyForm.setFieldsValue({
+      file_record_id: record.id,
+      line_id: "",
+      mode: "fill_null_only",
+    });
+    setApplyModalOpen(true);
+  }, [applyForm]);
+
+  // 打开回填记录 Tab
+  const openBackfillHistoryTab = useCallback((record: ElevationFileRecordSummary) => {
+    const key = `backfill-history-${record.id}`;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: (
+            <Space size={6}>
+              <span>{record.file_name}</span>
+              <Tag color="geekblue">回填记录</Tag>
+            </Space>
+          ),
+          closable: true,
+          children: (
+            <ElevationBackfillHistoryTable recordId={record.id} />
+          ),
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, []);
+
   // 打开回填数据 Tab（key 用 towers-{record.id} 去重，已存在只切换）
   const openTowerTab = useCallback((record: ElevationFileRecordSummary) => {
     const key = `towers-${record.id}`;
@@ -688,9 +728,17 @@ export default function ElevationRecordsPage() {
             <Button
               size="small"
               disabled={rowBusy}
-              onClick={() => openTowerTab(row)}
+              onClick={() => openApplyModal(row)}
             >
               回填
+            </Button>
+
+            <Button
+              size="small"
+              disabled={rowBusy}
+              onClick={() => openBackfillHistoryTab(row)}
+            >
+              回填记录
             </Button>
 
             <Button danger size="small" loading={deleting} disabled={rowBusy}
