@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Empty, Spin, Table, Tag } from "antd";
+import { Button, Empty, Spin, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { FlAnalysisJobSummary } from "@/types/auth";
@@ -20,9 +20,24 @@ type JobTableProps = {
   pagination: { current: number; pageSize: number };
   onPaginationChange: (pagination: { current: number; pageSize: number }) => void;
   scrollY?: number;
+  onDeleteJob?: (job: FlAnalysisJobSummary) => void;
 };
 
-export function JobTable({ jobs, loading, total, pagination, onPaginationChange, scrollY }: JobTableProps) {
+const LOCKED_STATUSES = new Set(["queued", "running"]);
+
+function isJobLocked(job: FlAnalysisJobSummary) {
+  return LOCKED_STATUSES.has(job.status);
+}
+
+export function JobTable({
+  jobs,
+  loading,
+  total,
+  pagination,
+  onPaginationChange,
+  scrollY,
+  onDeleteJob,
+}: JobTableProps) {
   const columns = useMemo<ColumnsType<FlAnalysisJobSummary>>(() => [
     {
       title: "任务名",
@@ -84,7 +99,28 @@ export function JobTable({ jobs, loading, total, pagination, onPaginationChange,
       ellipsis: true,
       render: (value: string | null) => value || "-",
     },
-  ], []);
+    ...(onDeleteJob
+      ? [
+          {
+            title: "操作",
+            key: "operation",
+            width: 90,
+            align: "center" as const,
+            render: (_value: unknown, job: FlAnalysisJobSummary) => (
+              <Button
+                danger
+                type="link"
+                size="small"
+                disabled={isJobLocked(job)}
+                onClick={() => onDeleteJob(job)}
+              >
+                删除
+              </Button>
+            ),
+          },
+        ]
+      : []),
+  ], [onDeleteJob]);
 
   if (loading) {
     return <Spin />;

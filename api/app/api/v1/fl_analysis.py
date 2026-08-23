@@ -17,6 +17,7 @@ from ...schemas.fl_analysis import (
 from ...schemas.tower_profile import TowerProfileDetail, TowerProfileUpsertRequest
 from ...services.fl_analysis_service import (
     create_job,
+    delete_job,
     download_result_csv,
     download_report_document,
     get_job_by_id,
@@ -136,3 +137,12 @@ def start_fl_analysis_job(
     db: Session = Depends(get_db),
 ) -> FlAnalysisJobStartResponse:
     return start_job(db, job_id, actor=current_user.user)
+
+
+@router.delete("/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_fl_analysis_job(
+    job_id: str,
+    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    db: Session = Depends(get_db),
+) -> None:
+    delete_job(db, job_id=job_id, actor=current_user.user)

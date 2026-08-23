@@ -126,6 +126,24 @@ def serialize_tower_result(item: FlAnalysisTowerResult) -> FlAnalysisTowerResult
     )
 
 
+def delete_job(db: Session, *, job_id: str, actor: User) -> None:
+    job = get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="防雷分析任务不存在")
+    if job.status in {"queued", "running"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="任务已在排队或执行中，无法删除")
+    db.execute(delete(FlAnalysisTowerResult).where(FlAnalysisTowerResult.job_id == job.id))
+    db.execute(delete(FlAnalysisTowerSnapshot).where(FlAnalysisTowerSnapshot.job_id == job.id))
+    db.execute(delete(FlAnalysisRun).where(FlAnalysisRun.job_id == job.id))
+    db.delete(job)
+    db.commit()
+
+    _publish_change(
+        "fl_analysis.job.deleted",
+        {"action": "job_deleted", "job_id": job_id, "line_id": job.line_id},
+    )
+
+
 def get_job_by_id(db: Session, job_id: str) -> FlAnalysisJob | None:
     return db.execute(select(FlAnalysisJob).where(FlAnalysisJob.id == job_id)).scalar_one_or_none()
 

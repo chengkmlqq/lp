@@ -1,6 +1,6 @@
 "use client";
 
-import { Empty, Spin, Tag, Typography } from "antd";
+import { Empty, Popconfirm, Spin, Tag, Typography } from "antd";
 import {
   ApartmentOutlined,
   ClockCircleOutlined,
@@ -8,6 +8,7 @@ import {
   ThunderboltOutlined,
 } from "@ant-design/icons";
 
+import { Button } from "antd";
 import { Card } from "@/components/ui-antd";
 import type { FlAnalysisJobSummary } from "@/types/auth";
 
@@ -21,9 +22,16 @@ import {
 type JobCardListProps = {
   jobs: FlAnalysisJobSummary[];
   loading: boolean;
+  onDeleteJob: (job: FlAnalysisJobSummary) => void;
 };
 
-export function JobCardList({ jobs, loading }: JobCardListProps) {
+const LOCKED_STATUSES = new Set(["queued", "running"]);
+
+function isJobLocked(job: FlAnalysisJobSummary) {
+  return LOCKED_STATUSES.has(job.status);
+}
+
+export function JobCardList({ jobs, loading, onDeleteJob }: JobCardListProps) {
   if (loading) {
     return <Spin />;
   }
@@ -76,6 +84,20 @@ export function JobCardList({ jobs, loading }: JobCardListProps) {
                   <Typography.Text type="secondary" className="text-xs">
                     杆塔：{job.total_tower_count} / 结果：{job.result_tower_count}
                   </Typography.Text>
+                </div>
+                <div className="mt-1 flex justify-end">
+                  <Popconfirm
+                    title="删除任务"
+                    description={`确定要删除任务“${job.job_name || lineName}”吗？该操作不可恢复。`}
+                    okText="删除"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => onDeleteJob(job)}
+                  >
+                    <Button danger size="small" type="text" disabled={isJobLocked(job)}>
+                      删除
+                    </Button>
+                  </Popconfirm>
                 </div>
               </div>
             </div>

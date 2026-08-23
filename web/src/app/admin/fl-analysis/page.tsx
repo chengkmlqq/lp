@@ -11,6 +11,7 @@ import {
   Input,
   Modal,
   Pagination,
+  Popconfirm,
   Segmented,
   Space,
   Tabs,
@@ -38,6 +39,7 @@ import type {
   AtpAssetListResponse,
   FlAnalysisJobDetail,
   FlAnalysisJobListResponse,
+  FlAnalysisJobSummary,
   LineListResponse,
 } from "@/types/auth";
 
@@ -312,6 +314,27 @@ export default function AdminFlAnalysisPage() {
     },
   });
 
+  const deleteJobMutation = useMutation({
+    mutationFn: async (job: FlAnalysisJobSummary) => {
+      const response = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${job.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return job;
+    },
+    onSuccess: async (job) => {
+      setError("");
+      await invalidateFlAnalysisQueries();
+      messageApi.success(`已删除防雷分析任务：${job.job_name || job.line_name || job.id}`);
+    },
+    onError: (candidate) => {
+      setError(candidate instanceof Error ? candidate.message : "防雷分析任务删除失败");
+    },
+  });
+
+
   if (initializing) {
     return <AdminPageLoading tip="初始化中..." minHeightClassName="min-h-[280px]" />;
   }
@@ -398,12 +421,12 @@ export default function AdminFlAnalysisPage() {
                   />
                 </div>
 
-                {jobs.length === 0 ? (
+                 {jobs.length === 0 ? (
                   <Empty description="暂无防雷分析任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : viewMode === "card" ? (
                   <>
                     <div className="admin-power-lines-card-scroll">
-                      <JobCardList jobs={jobs} loading={jobsQuery.isLoading} />
+                      <JobCardList jobs={jobs} loading={jobsQuery.isLoading} onDeleteJob={(job) => deleteJobMutation.mutate(job)} />
                     </div>
                     <div className="admin-power-lines-pagination">
                       <Pagination
@@ -431,6 +454,7 @@ export default function AdminFlAnalysisPage() {
                       pagination={pagination}
                       onPaginationChange={(next) => setPagination(next)}
                       scrollY={tableScrollY}
+                      onDeleteJob={(job) => deleteJobMutation.mutate(job)}
                     />
                   </div>
                 )}
