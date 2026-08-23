@@ -48,7 +48,6 @@ const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLD
 
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
-import { TowerDensityView } from "@/components/lightning-tower-density-view";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { getApiBaseUrl, readApiError } from "@/lib/api";
@@ -474,35 +473,9 @@ export default function AdminLightningDistributionPage() {
     setActiveTabKey(key);
   }, [fetchWithAuth, canReadLogs, openLogViewer]);
 
-  // 打开「杆塔数据」Tab（key 前缀 `towers-<id>` 去重，避免重复点击叠加 Tab）
-  const openTowerTab = useCallback((record: LightningDistributionRecord) => {
-    const tabKey = `towers-${record.id}`;
-    setDetailTabs((previous) => {
-      if (previous.some((tab) => tab.key === tabKey)) {
-        return previous;
-      }
-      return [
-        ...previous,
-        {
-          key: tabKey,
-          label: (
-            <Space size={6}>
-              <span>杆塔数据</span>
-              <Tag>{truncateFileName(record.source_file_name)}</Tag>
-            </Space>
-          ),
-          closable: true,
-          children: (
-            <TowerDensityView
-              distributionId={record.id}
-              fetchWithAuth={fetchWithAuth}
-            />
-          ),
-        },
-      ];
-    });
-    setActiveTabKey(tabKey);
-  }, [fetchWithAuth]);
+  const openLinkedLinesModal = useCallback((record: LightningDistributionRecord) => {
+    setLinkedLinesRow(record);
+  }, []);
 
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
@@ -517,14 +490,6 @@ export default function AdminLightningDistributionPage() {
       setActiveTabKey(fallback);
     }
   }, [detailTabs, activeTabKey]);
-
-  const openLpDrawModal = (record: LightningDistributionRecord) => {
-    setLpDrawRow(record);
-  };
-
-  const openLinkedLinesModal = useCallback((record: LightningDistributionRecord) => {
-    setLinkedLinesRow(record);
-  }, []);
 
   const closeImportModal = () => {
     setImportModalOpen(false);
@@ -713,11 +678,6 @@ export default function AdminLightningDistributionPage() {
         fixed: "right",
         render: (_: unknown, row) => {
           const moreMenuItems: MenuProps["items"] = [
-            {
-              key: "tower-data",
-              label: "杆塔数据",
-              onClick: () => openTowerTab(row),
-            },
             ...(canReadLogs && row.task_id
               ? [
                   {
@@ -781,7 +741,7 @@ export default function AdminLightningDistributionPage() {
         },
       },
     ],
-    [canManage, deleteMutation, openDetail, openTowerTab, openLinkedLinesModal, openLogViewer, canReadLogs],
+    [canManage, deleteMutation, openDetail, openLinkedLinesModal, openLogViewer, canReadLogs],
   );
 
   const renderRecordCard = (record: LightningDistributionRecord) => {
