@@ -94,4 +94,3 @@ def _reinstall_task_log_capture(**kwargs):  # type: ignore[no-untyped-def]
 
 
 worker_process_init.connect(_reinstall_task_log_capture, weak=False)
-worker_process_init.connect(_task_log_capture._register_setup_logging_receiver, weak=False)
