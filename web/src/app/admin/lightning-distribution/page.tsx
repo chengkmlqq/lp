@@ -704,7 +704,7 @@ export default function AdminLightningDistributionPage() {
               ? [
                   {
                     key: "draw-lp",
-                    label: "绘图",
+                    label: "回填",
                     onClick: () => openLpDrawModal(row),
                   },
                 ]
@@ -835,7 +835,7 @@ export default function AdminLightningDistributionPage() {
                     ? [
                         {
                           key: "draw-lp",
-                          label: "LP 绘图",
+                          label: "回填",
                           icon: <ThunderboltOutlined />,
                           onClick: () => openLpDrawModal(record),
                         },
