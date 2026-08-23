@@ -1,5 +1,5 @@
 import { Badge, Button, Progress, Space, Typography } from "antd";
-import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined } from "@ant-design/icons";
+import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined, FileTextOutlined, DownloadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Card } from "@/components/ui-antd";
 import type { FaultAnalysis } from "./types";
@@ -21,6 +21,8 @@ interface AnalysisCardProps {
   analysis: FaultAnalysis;
   selected?: boolean;
   onView?: () => void;
+  onProcess?: () => void;
+  onArtifacts?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
 }
@@ -44,7 +46,7 @@ const getConfidenceIcon = (confidence: number) => {
   return "❌";
 };
 
-export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: AnalysisCardProps) {
+export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifacts, onEdit, onDelete }: AnalysisCardProps) {
   const status = statusConfig[analysis.status];
   const confidenceColor = getConfidenceColor(analysis.confidence);
   const confidenceIcon = getConfidenceIcon(analysis.confidence);
@@ -100,7 +102,7 @@ export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: A
           ) : (
             <div />
           )}
-          <Space size="small">
+          <Space size="small" className="flex-wrap">
             <Button
               type="text"
               size="small"
@@ -110,6 +112,28 @@ export function AnalysisCard({ analysis, selected, onView, onEdit, onDelete }: A
                 onView?.();
               }}
             />
+            <Button
+              type="text"
+              size="small"
+              icon={<FileTextOutlined />}
+              onClick={(event) => {
+                event.stopPropagation();
+                onProcess?.();
+              }}
+            >
+              计算过程
+            </Button>
+            <Button
+              type="text"
+              size="small"
+              icon={<DownloadOutlined />}
+              onClick={(event) => {
+                event.stopPropagation();
+                onArtifacts?.();
+              }}
+            >
+              产物
+            </Button>
             {onEdit && (
               <Button
                 type="text"

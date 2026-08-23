@@ -516,8 +516,11 @@ export default function AdminFaultAnalysisPage() {
   // ---- LP-275: 动态详情选项卡 ----
   // 点击卡片「查看」时新增/激活对应详情 Tab；以分析 id 去重，
   // 同一分析反复点击不会叠加重复 Tab，便于多开对比。
-  const openDetail = useCallback((record: { id: string; title?: string; fault_type?: string }) => {
-    const tabKey = record.id;
+  const openDetail = useCallback((record: { id: string; title?: string; fault_type?: string }, defaultView?: "report" | "process" | "artifacts") => {
+    const tabKey = defaultView ? `${record.id}-${defaultView}` : record.id;
+    const tabLabel = defaultView
+      ? `${record.title || `故障分析 ${record.id.slice(0, 8)}`} - ${defaultView === "process" ? "计算过程" : defaultView === "artifacts" ? "产物" : "报告"}`
+      : record.title || `故障分析 ${record.id.slice(0, 8)}`;
     setDetailTabs((previous) => {
       if (previous.some((tab) => tab.key === tabKey)) {
         return previous;
@@ -526,12 +529,13 @@ export default function AdminFaultAnalysisPage() {
         ...previous,
         {
           key: tabKey,
-          label: <span>{record.title || `故障分析 ${record.id.slice(0, 8)}`}</span>,
+          label: <span>{tabLabel}</span>,
           closable: true,
           children: (
             <AnalysisDetailView
-              analysisId={tabKey}
+              analysisId={record.id}
               tabKey={tabKey}
+              defaultView={defaultView || "report"}
             />
           ),
         } satisfies DetailTabItem,
@@ -624,7 +628,7 @@ export default function AdminFaultAnalysisPage() {
       {
         title: "操作",
         key: "actions",
-        width: 180,
+        width: 320,
         fixed: "right",
         render: (_: unknown, row) => {
           const moreMenuItems: MenuProps["items"] = canManage
@@ -642,6 +646,12 @@ export default function AdminFaultAnalysisPage() {
             <Space wrap>
               <Button size="small" onClick={() => openDetail(row)}>
                 详情
+              </Button>
+              <Button size="small" onClick={() => openDetail(row, "process")}>
+                计算过程
+              </Button>
+              <Button size="small" onClick={() => openDetail(row, "artifacts")}>
+                产物
               </Button>
               {canManage && (
                 <Button size="small" onClick={() => handleEdit(row.id, row.title)}>
@@ -807,6 +817,14 @@ export default function AdminFaultAnalysisPage() {
                           onView={(id) => {
                             const record = analyses.find((item) => item.id === id);
                             openDetail(record ?? { id });
+                          }}
+                          onProcess={(id) => {
+                            const record = analyses.find((item) => item.id === id);
+                            openDetail(record ?? { id }, "process");
+                          }}
+                          onArtifacts={(id) => {
+                            const record = analyses.find((item) => item.id === id);
+                            openDetail(record ?? { id }, "artifacts");
                           }}
                           onEdit={canManage ? handleEdit : undefined}
                           onDelete={canManage ? handleDelete : undefined}

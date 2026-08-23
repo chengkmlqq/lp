@@ -16,7 +16,6 @@ import {
   Collapse,
   Tag,
   Tree,
-  Tabs,
 } from "antd";
 import {
   DownloadOutlined,
@@ -36,6 +35,7 @@ interface AnalysisDetailViewProps {
   analysisId: string;
   /** 唯一标识，用作导出容器 DOM id 前缀（多开详情 Tab 时避免重复 id） */
   tabKey: string;
+  defaultView?: "report" | "process" | "artifacts";
 }
 
 interface ReportSectionItem {
@@ -839,11 +839,11 @@ function ArtifactsView({ onDownload, downloadingArtifact, artifactTree }: Artifa
   );
 }
 
-export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewProps) {
+export function AnalysisDetailView({ analysisId, tabKey, defaultView }: AnalysisDetailViewProps) {
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
   const [downloadingArtifact, setDownloadingArtifact] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<"report" | "process" | "artifacts">("report");
+  const [activeView] = useState<"report" | "process" | "artifacts">(defaultView ?? "report");
   const exportElementId = `analysis-export-content-${tabKey}`;
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
@@ -954,21 +954,7 @@ export function AnalysisDetailView({ analysisId, tabKey }: AnalysisDetailViewPro
 
   return (
     <div className="flex flex-col gap-4 h-full">
-      <Card
-        title="故障分析详情"
-        extra={
-          <Tabs
-            activeKey={activeView}
-            onChange={(key) => setActiveView(key as "report" | "process" | "artifacts")}
-            items={[
-              { key: "report", label: "报告" },
-              { key: "process", label: "计算过程" },
-              { key: "artifacts", label: "产物" },
-            ]}
-          />
-        }
-        className="flex-1 overflow-auto"
-      >
+      <Card title="故障分析详情" className="flex-1 overflow-auto">
         {activeView === "report" && (
           <ReportView
             tabKey={tabKey}
