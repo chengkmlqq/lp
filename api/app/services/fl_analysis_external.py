@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -411,12 +414,20 @@ def execute_external_waveform_tower_analysis(
         baseline_result=baseline_result,
     )
     atp_text = resolved_job.atp_text
+    logger.info(
+        "[ATP] 开始执行外部波形分析：job=%s, snapshot=%s, 模型=%s, 适配器=%s",
+        job.id,
+        snapshot.id,
+        resolved_job.asset.code,
+        resolved_job.adapter,
+    )
 
     rendered_text = render_atp_template(
         atp_text,
         context=context,
         parameter_bindings=resolved_job.parameter_bindings,
     )
+    logger.info("[ATP] 模板渲染完成，输入文件大小=%d 字节", len(rendered_text))
 
     run_dir = _prepare_run_directory(job=job, snapshot=snapshot, resolved_job=resolved_job)
     release_no = resolved_job.release.release_no if resolved_job.release is not None else 0
@@ -426,6 +437,7 @@ def execute_external_waveform_tower_analysis(
         release_no=release_no,
     )
     input_path.write_text(rendered_text, encoding="utf-8")
+    logger.info("[ATP] 输入文件已写入：%s", input_path)
 
     command = _build_command(
         adapter=resolved_job.adapter,
@@ -434,6 +446,7 @@ def execute_external_waveform_tower_analysis(
     )
     env = os.environ.copy()
     env.update(resolved_job.environment)
+    logger.info("[ATP] 执行命令：%s，工作目录：%s", " ".join(command), run_dir)
 
     # 持久化修复：Wine d 盘映射 + startup 文件
     wine_profile = Path(os.path.expanduser("~")) / ".wine"
@@ -445,7 +458,7 @@ def execute_external_waveform_tower_analysis(
         if d_drive.exists() or d_drive.is_symlink():
             d_drive.unlink()
         d_drive.symlink_to(atp_root)
-    # 兼容模板 INCLUDE 路径：D:\ATP\500\ganzi\fanji\M1\*.lib
+    # 兼容模板 INCLUDE 路径：D:\\ATP\\500\\ganzi\\fanji\\M1\\*.lib
     legacy_lib_dir = Path("/ATP/500/ganzi/fanji/M1")
     legacy_lib_dir.mkdir(parents=True, exist_ok=True)
     for lib_name in ("short.lib", "dahao.lib", "long.lib", "xiaohao.lib"):
@@ -472,25 +485,40 @@ def execute_external_waveform_tower_analysis(
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
+        logger.error("[ATP] 执行超时：%s，超时时间=%ds", snapshot.tower_no, resolved_job.timeout_seconds)
         raise RuntimeError(
             f"{snapshot.tower_no} 外部 ATP/Wine 执行超时（{resolved_job.timeout_seconds}s）"
         ) from exc
     except OSError as exc:
+        logger.error("[ATP] 启动失败：%s，错误=%s", snapshot.tower_no, exc)
         raise RuntimeError(f"{snapshot.tower_no} 外部 ATP/Wine 启动失败: {exc}") from exc
 
+    logger.info(
+        "[ATP] 执行完成：%s，退出码=%d",
+        snapshot.tower_no,
+        result.returncode,
+    )
     stdout_text = _truncate_output(result.stdout)
-    stderr_text = _truncate_output(result.stderr)
+    stderr_text = _truncate_output(result.stderr) or ""
+    if stdout_text:
+        logger.debug("[ATP] 标准输出（%s 前200行）：\n%s", snapshot.tower_no, stdout_text[:2000])
+    if stderr_text:
+        logger.debug("[ATP] 错误输出（%s 前200行）：\n%s", snapshot.tower_no, stderr_text[:2000])
+
     if result.returncode != 0:
+        logger.error("[ATP] 执行失败：%s，退出码=%d，stderr=%s", snapshot.tower_no, result.returncode, stderr_text[:500])
         raise RuntimeError(
             f"{snapshot.tower_no} 外部 ATP/Wine 执行失败，退出码 {result.returncode}"
         )
 
+    logger.info("[ATP] 开始解析结果：%s，期望结果文件=%s", snapshot.tower_no, resolved_job.result_file)
     parsed_payload = _read_external_result_payload(
         contract=resolved_job.contract,
         stdout_text=result.stdout,
         run_dir=run_dir,
         result_file=resolved_job.result_file,
     )
+    logger.info("[ATP] 结果解析完成：%s，payload_keys=%s", snapshot.tower_no, list(parsed_payload.keys())[:10])
     merged_result = _merge_external_result(
         baseline_result=baseline_result,
         external_payload=parsed_payload,
