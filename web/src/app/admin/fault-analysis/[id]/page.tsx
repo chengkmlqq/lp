@@ -976,10 +976,19 @@ export default function FaultAnalysisDetailPage() {
                         if (item.type === "table") {
                           const columns = item.columns ?? [];
                           const rawRows = item.rows ?? [];
-                          let tableColumns: { title: string; key: string; render?: (value: unknown, record: Record<string, unknown>) => React.ReactNode }[];
-                          let tableRows: Record<string, unknown>[];
-                          if (item.layout === "key_value" && columns.length >= 2) {
-                            // 双列键值对：columns = [项目, 内容, 项目, 内容]（4 列），每行 2 组键值左右并排。
+                          const titleText = (item.title || "").toLowerCase();
+                          const isDualColumnTable =
+                            (item.layout as string) === "key_value" ||
+                            (item.layout as string) === "two_column" ||
+                            titleText.includes("台账") ||
+                            titleText.includes("雷电定位") ||
+                            titleText.includes("雷电流") ||
+                            titleText.includes("录波") ||
+                            titleText.includes("定位") ||
+                            titleText.includes("故障信息");
+                          let tableColumns: { title: string; key: string; render?: (value: unknown, record: Record<string, unknown>) => React.ReactNode }[] = [];
+                          let tableRows: Record<string, unknown>[] = [];
+                          if (isDualColumnTable && columns.length >= 2) {
                             const keyHead = columns[0] || "项目";
                             const valueHead = columns[1] || "内容";
                             tableColumns = [
@@ -996,13 +1005,14 @@ export default function FaultAnalysisDetailPage() {
                               },
                               { title: valueHead, key: "right-value", render: (_, record) => <Paragraph className="text-sm text-gray-700 mb-0">{record["right-value"] as string}</Paragraph> },
                             ];
-                            tableRows = rawRows.map((row, rowIndex) => ({
-                              key: `r${rowIndex}`,
-                              "left-key": row[0] ?? "",
-                              "left-value": row[1] ?? "",
-                              "right-key": row[2] ?? "",
-                              "right-value": row[3] ?? "",
-                            }));
+                            tableRows = rawRows.map((row, rowIndex) => {
+                              const record: Record<string, unknown> = { key: `r${rowIndex}` };
+                              record["left-key"] = row[0] ?? "";
+                              record["left-value"] = row[1] ?? "";
+                              record["right-key"] = row[2] ?? "";
+                              record["right-value"] = row[3] ?? "";
+                              return record;
+                            });
                           } else {
                             tableColumns = columns.map((col, index) => ({
                               title: col,
