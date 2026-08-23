@@ -85,9 +85,13 @@ def _reinstall_task_log_capture(**kwargs):  # type: ignore[no-untyped-def]
 
     from .config import get_settings as _get_settings
 
-    # Re-import task_history_signals to ensure signal handlers are registered
-    # in the forked worker child process (Celery prefork loses parent imports).
+    # Re-import task_history_signals and explicitly register its signal handlers
+    # in the forked worker child process. Celery prefork inherits sys.modules cache,
+    # so a plain import won't re-execute module-level @signals.connect decorators.
     from . import task_history_signals as _ths  # noqa: F401
+
+    # Force re-registration of signal handlers in this process
+    _ths._register_setup_logging_receiver()
 
     root = _logging.getLogger()
     root_has_capture = any(
