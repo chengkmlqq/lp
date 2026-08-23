@@ -2,7 +2,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Button, Card, Space, Typography } from "antd";
-import { ArrowLeftOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useMemo } from "react";
 
@@ -85,13 +84,6 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="mb-3 flex items-center gap-3">
-        <Button size="small" icon={<ArrowLeftOutlined />}>
-          <Link href="/admin/power-lines">返回线路列表</Link>
-        </Button>
-        <Typography.Text strong>线路走向预览</Typography.Text>
-      </div>
-
       <div className="relative min-h-0 flex-1">
         <PowerLineCesiumMap
           lineCode={lineDetail?.code}

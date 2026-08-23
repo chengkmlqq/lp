@@ -16,6 +16,7 @@ from ..models.atp_asset import AtpAsset, AtpAssetRelease
 from ..models.base import utcnow
 from ..models.fl_analysis import FlAnalysisJob, FlAnalysisTowerSnapshot
 from .atp_asset_service import (
+    _normalize_optional_str,
     _normalize_relative_path,
     _resolve_engine_workdir,
     _resolve_mount,
@@ -23,6 +24,7 @@ from .atp_asset_service import (
     _resolve_timeout,
     _resolve_wine_engine_executable,
     _truncate_output,
+    _walk_storage_tree,
 )
 from .storage_driver import (
     StorageDriverError,
@@ -143,13 +145,23 @@ def _safe_entry_filename(raw_name: str | None, *, asset_code: str, release_no: i
 class ResolvedExternalWaveformJob:
     adapter: str
     asset: AtpAsset
-    release: AtpAssetRelease
+    release: AtpAssetRelease | None
+    entry_file: str
+    result_file: str | None
+    storage_mount_code: str
+    storage_root_path: str
     atp_text: str
     timeout_seconds: int
     extra_args: list[str]
     environment: dict[str, str]
     contract: dict[str, Any]
     parameter_bindings: dict[str, Any]
+
+    @property
+    def asset_root_mode(self) -> bool:
+        """True when the job resolves directly from the asset's own file tree
+        (no release/version involved)."""
+        return self.release is None
 
 
 @dataclass(slots=True)
@@ -195,6 +207,86 @@ def _resolve_release_atp_text(
     return atp_text
 
 
+def _resolve_asset_worktree(
+    db: Session,
+    *,
+    asset: AtpAsset,
+) -> dict[str, Any]:
+    """Resolve an executable file tree directly from the asset's own storage.
+
+    The ATP model management page no longer has a release/version concept:
+    assets are created by uploading files straight into the asset root
+    (``/atp-assets/<code>``). This helper walks that root and auto-detects
+    the entry ``.atp`` file, mirroring release payload preparation.
+
+    Returns a dict compatible with the release-prepared payload::
+
+        {
+            "entry_file": str,
+            "result_file": str | None,
+            "storage_mount_code": str,
+            "storage_root_path": str,
+            "atp_text": str,
+            "manifest": dict,
+            "warnings": list[str],
+        }
+    """
+    mount_code = _normalize_optional_str(asset.storage_mount_code) or "main"
+    root_path = normalize_virtual_path(
+        _normalize_optional_str(asset.storage_root_path) or f"/atp-assets/{asset.code.strip()}"
+    )
+    mount = _resolve_mount(db, mount_code)
+    driver = build_storage_driver(mount.backend, mount)
+
+    try:
+        tree = _walk_storage_tree(driver, root_path)
+    except HTTPException as exc:
+        raise RuntimeError(
+            f"ATP 资产缺少可执行模板文件: {asset.code}（{root_path} 无可用文件）"
+        ) from exc
+
+    atp_files = sorted(path for path in tree.file_paths if path.lower().endswith(".atp"))
+    entry_file = "work.atp" if "work.atp" in tree.file_paths else (atp_files[0] if atp_files else None)
+    if entry_file is None:
+        raise RuntimeError(f"ATP 资产缺少可执行模板文件: {asset.code}（根目录未找到 work.atp 或 .atp 文件）")
+
+    warnings: list[str] = []
+    result_file = _normalize_relative_path(
+        next(
+            (path for path in ("work.lis", "work.pl4") if path in tree.file_paths),
+            None,
+        )
+    )
+
+    entry_path = normalize_virtual_path(f"{root_path.rstrip('/')}/{entry_file}")
+    try:
+        read_result = driver.read_file(entry_path)
+    except (HTTPException, StorageDriverError) as exc:
+        raise RuntimeError(f"ATP 资产缺少可执行模板: {asset.code}（{entry_file}）") from exc
+    atp_text = read_result.content.decode("utf-8", errors="replace")
+    if not atp_text.strip():
+        raise RuntimeError(f"ATP 资产缺少可执行模板: {asset.code}（{entry_file}）")
+
+    manifest = {
+        "file_count": len(tree.files),
+        "directory_count": len(tree.directories),
+        "max_depth": tree.max_depth,
+        "detected_entry_file": entry_file,
+        "sample_files": [path for path in sorted(tree.file_paths)[:20]],
+        "storage_mount_code": mount.code,
+        "storage_root_path": root_path,
+    }
+    return {
+        "entry_file": entry_file,
+        "result_file": result_file,
+        "storage_mount_code": mount.code,
+        "storage_root_path": root_path,
+        "atp_text": atp_text,
+        "manifest": manifest,
+        "warnings": warnings,
+    }
+
+
 def resolve_external_waveform_job(
     db: Session,
     *,
@@ -216,16 +308,32 @@ def resolve_external_waveform_job(
 
     release_id = str(config.get("release_id") or config.get("version_id") or "").strip() or None
     release_no = _coerce_positive_int(config.get("release_no") or config.get("version_no"))
-    release = _resolve_target_release(
-        db,
-        asset=asset,
-        release_id=release_id,
-        release_no=release_no,
-    )
+    release = None
+    worktree: dict[str, Any] | None = None
+    if release_id or release_no is not None:
+        # Explicit version requested (legacy jobs / explicit overrides): resolve the release.
+        release = _resolve_target_release(
+            db,
+            asset=asset,
+            release_id=release_id,
+            release_no=release_no,
+        )
+        atp_text = _resolve_release_atp_text(db, asset=asset, release=release)
+        entry_file = _normalize_relative_path(release.entry_file) or "work.atp"
+        result_file = _normalize_relative_path(release.result_file)
+        storage_mount_code = release.storage_mount_code or "main"
+        storage_root_path = release.storage_root_path
+        manifest_contract = _read_object(release.manifest_json.get("fl_analysis"))
+    else:
+        # No version concept: use the asset's own file tree directly.
+        worktree = _resolve_asset_worktree(db, asset=asset)
+        atp_text = worktree["atp_text"]
+        entry_file = worktree["entry_file"]
+        result_file = worktree["result_file"]
+        storage_mount_code = worktree["storage_mount_code"]
+        storage_root_path = worktree["storage_root_path"]
+        manifest_contract = {}
 
-    atp_text = _resolve_release_atp_text(db, asset=asset, release=release)
-
-    manifest_contract = _read_object(release.manifest_json.get("fl_analysis"))
     adapter_contract = {
         key: value
         for key, value in config.items()
@@ -260,6 +368,10 @@ def resolve_external_waveform_job(
         adapter=adapter,
         asset=asset,
         release=release,
+        entry_file=entry_file,
+        result_file=result_file,
+        storage_mount_code=storage_mount_code,
+        storage_root_path=storage_root_path,
         atp_text=atp_text,
         timeout_seconds=timeout_seconds,
         extra_args=extra_args,
@@ -307,10 +419,11 @@ def execute_external_waveform_tower_analysis(
     )
 
     run_dir = _prepare_run_directory(job=job, snapshot=snapshot, resolved_job=resolved_job)
+    release_no = resolved_job.release.release_no if resolved_job.release is not None else 0
     input_path = run_dir / _safe_entry_filename(
-        resolved_job.release.entry_file,
+        resolved_job.entry_file,
         asset_code=resolved_job.asset.code,
-        release_no=resolved_job.release.release_no,
+        release_no=release_no,
     )
     input_path.write_text(rendered_text, encoding="utf-8")
 
@@ -352,6 +465,7 @@ def execute_external_waveform_tower_analysis(
         contract=resolved_job.contract,
         stdout_text=result.stdout,
         run_dir=run_dir,
+        result_file=resolved_job.result_file,
     )
     merged_result = _merge_external_result(
         baseline_result=baseline_result,
@@ -361,7 +475,7 @@ def execute_external_waveform_tower_analysis(
         working_dir=str(run_dir),
     )
     return ExternalTowerExecutionResult(
-        result_json=merged,
+        result_json=merged_result,
         engine_command=" ".join(command),
         working_dir=str(run_dir),
         stdout_text=stdout_text,
@@ -633,15 +747,16 @@ def _read_external_result_payload(
     contract: dict[str, Any],
     stdout_text: str,
     run_dir: Path,
+    result_file: str | None = None,
 ) -> dict[str, Any]:
-    result_file = str(contract.get("result_file") or "").strip()
+    resolved_result_file = result_file or str(contract.get("result_file") or "").strip() or None
     source_text: str
-    if result_file:
-        result_path = (run_dir / result_file).resolve(strict=False)
+    if resolved_result_file:
+        result_path = (run_dir / resolved_result_file).resolve(strict=False)
         if not result_path.is_relative_to(run_dir.resolve(strict=False)):
-            raise RuntimeError(f"外部结果文件越界: {result_file}")
+            raise RuntimeError(f"外部结果文件越界: {resolved_result_file}")
         if not result_path.exists():
-            raise RuntimeError(f"外部 ATP/Wine 未生成结果文件: {result_file}")
+            raise RuntimeError(f"外部 ATP/Wine 未生成结果文件: {resolved_result_file}")
         source_text = result_path.read_text(encoding="utf-8", errors="replace")
     else:
         source_text = stdout_text
@@ -747,7 +862,7 @@ def _merge_external_result(
     engine_command: str,
     working_dir: str,
 ) -> dict[str, Any]:
-    merged = dict(baseline_result)
+    merged: dict[str, Any] = dict(baseline_result)
     workflow = {
         **_read_object(baseline_result.get("workflow")),
         **_read_object(external_payload.get("workflow")),
@@ -774,8 +889,12 @@ def _merge_external_result(
         "asset_id": resolved_job.asset.id,
         "asset_code": resolved_job.asset.code,
         "asset_name": resolved_job.asset.name,
-        "release_id": resolved_job.release.id,
-        "release_no": resolved_job.release.release_no,
+        "release_id": resolved_job.release.id if resolved_job.release is not None else None,
+        "release_no": resolved_job.release.release_no if resolved_job.release is not None else None,
+        "entry_file": resolved_job.entry_file,
+        "result_file": resolved_job.result_file,
+        "storage_mount_code": resolved_job.storage_mount_code,
+        "storage_root_path": resolved_job.storage_root_path,
         "engine_command": engine_command,
         "working_dir": working_dir,
         "executed_at": utcnow().isoformat(),

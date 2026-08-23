@@ -596,7 +596,7 @@ export function PowerLineCesiumMap({
           message={`地形瓦片加载失败，已回退到平面模式：${terrainError}`}
         />
       ) : null}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="admin-filter-bar flex-wrap">
         <Checkbox checked={colorByRisk} onChange={(event) => setColorByRisk(event.target.checked)}>
           按风险着色
         </Checkbox>
