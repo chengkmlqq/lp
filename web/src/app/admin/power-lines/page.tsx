@@ -662,24 +662,22 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
               type="text"
               size="small"
               icon={<ApartmentOutlined />}
+              title="杆塔"
               onClick={(event) => {
                 event.stopPropagation();
                 onDetail(line);
               }}
-            >
-              杆塔
-            </Button>
+            />
             <Button
               type="text"
               size="small"
               icon={<GlobalOutlined />}
+              title="预览"
               onClick={(event) => {
                 event.stopPropagation();
                 onPreview(line);
               }}
-            >
-              预览
-            </Button>
+            />
             <Dropdown
               menu={{
                 items: [
@@ -820,10 +818,10 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
 
         return (
           <Space size={4}>
-            <Button size="small" icon={<ApartmentOutlined />} onClick={() => onDetail(line)}>
+            <Button size="small" onClick={() => onDetail(line)}>
               杆塔
             </Button>
-            <Button size="small" icon={<GlobalOutlined />} onClick={() => onPreview(line)}>
+            <Button size="small" onClick={() => onPreview(line)}>
               预览
             </Button>
             <Dropdown menu={{ items: menuItems }} trigger={["click"]}>

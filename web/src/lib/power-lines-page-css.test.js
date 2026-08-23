@@ -112,16 +112,18 @@ test("LP-353: title bar is separated from basic info by a bottom border divider"
 });
 
 test("LP-320: bottom section holds icon action buttons with a top border divider", () => {
-  assert.match(powerLineCardBlock, /flex justify-end px-4 py-2 border-t border-gray-200/, "操作区上方应有 border-t 分隔线并右对齐");
-  assert.match(powerLineCardBlock, /icon=\{<EyeOutlined \/>\}/, "底部应有详情图标按钮");
+  assert.match(powerLineCardBlock, /flex items-center justify-end px-4 py-2 border-t border-gray-200/, "操作区上方应有 border-t 分隔线并右对齐");
+  assert.match(powerLineCardBlock, /icon=\{<ApartmentOutlined \/>\}/, "底部应有杆塔图标按钮");
+  assert.match(powerLineCardBlock, /icon=\{<GlobalOutlined \/>\}/, "底部应有预览图标按钮");
+  assert.ok(!/^\s*杆塔\s*$/.test(powerLineCardBlock), "卡片外露按钮不应带文字");
   assert.match(powerLineCardBlock, /type="text"\s*[\s\S]{0,200}size="small"/, "操作按钮应为 text 小号图标按钮");
 });
 
 test("LP-320: delete action is icon button gated by canLineManage", () => {
-  assert.match(powerLineCardBlock, /icon=\{<EditOutlined \/>\}/, "底部应有编辑图标按钮");
-  assert.match(powerLineCardBlock, /icon=\{<DeleteOutlined \/>\}/, "底部应有删除图标按钮");
-  assert.match(powerLineCardBlock, /\{canLineManage &&[\s\S]{0,200}icon=\{<DeleteOutlined \/>\}/, "删除按钮仅在 canLineManage 时显示");
-  assert.match(powerLineCardBlock, /\bdanger\b/, "删除按钮应标记 danger");
+  assert.match(powerLineCardBlock, /key: "edit"/, "编辑操作应保留（收在更多菜单内）");
+  assert.match(powerLineCardBlock, /key: "delete"/, "删除操作应保留（收在更多菜单内）");
+  assert.match(powerLineCardBlock, /\.\.\.\(canLineManage\s*\?[\s\S]{0,400}key: "delete"/, "删除菜单项仅在 canLineManage 时显示");
+  assert.match(powerLineCardBlock, /danger: true/, "删除菜单项应标记 danger");
 });
 
 test("LP-320: card and list view pagination share consistent vertical spacing", () => {
@@ -145,8 +147,18 @@ test("LP-365: line card body padding is zeroed so dividers span the full card wi
 test("LP-365: three card sections carry independent padding", () => {
   assert.match(powerLineCardBlock, /admin-power-lines-line-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200/, "标题栏应有 px-4 py-3 独立 padding");
   assert.match(powerLineCardBlock, /flex flex-col gap-2 px-4 py-3/, "信息区应有 px-4 py-3 独立 padding");
-  assert.match(powerLineCardBlock, /admin-power-lines-line-card-actions flex justify-end px-4 py-2 border-t border-gray-200/, "按钮区应有 px-4 py-2 独立 padding");
+  assert.match(powerLineCardBlock, /admin-power-lines-line-card-actions flex items-center justify-end px-4 py-2 border-t border-gray-200/, "按钮区应有 px-4 py-2 独立 padding");
   assert.ok(!/gap-3/.test(powerLineCardBlock), "外层不再依赖 gap-3 承担间距");
+});
+
+test("a1ff92c: card exposed buttons are icon-only with tooltip, list action buttons are text-only", () => {
+  assert.match(powerLineCardBlock, /title="杆塔"/, "卡片杆塔图标按钮应有 title 提示");
+  assert.match(powerLineCardBlock, /title="预览"/, "卡片预览图标按钮应有 title 提示");
+  const tableBlock = PAGE.match(/function PowerLineTable\([\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(tableBlock, "应能提取 PowerLineTable 组件定义");
+  assert.ok(!/icon=\{/.test(tableBlock.match(/<Space size=\{4\}>[\s\S]*?<\/Space>/)?.[0] ?? ""), "列表操作列直接按钮不应带 icon 属性");
+  assert.match(tableBlock, /<Button size="small" onClick=\{\(\) => onDetail\(line\)\}>\s*杆塔/, "列表杆塔按钮应为纯文字");
+  assert.match(tableBlock, /<Button size="small" onClick=\{\(\) => onPreview\(line\)\}>\s*预览/, "列表预览按钮应为纯文字");
 });
 
 test("LP-365: action bar divider uses themed border color in light and dark themes", () => {
