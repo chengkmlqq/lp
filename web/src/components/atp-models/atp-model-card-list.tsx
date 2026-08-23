@@ -7,11 +7,17 @@ interface AtpModelCardListProps {
   loading?: boolean;
   canManage: boolean;
   deleteLoading: boolean;
-  onView: (id: string) => void;
+  onView: (asset: AtpAssetSummary) => void;
   onDelete: (id: string) => void;
+  dimensionLabelMap?: {
+    voltage_level?: Map<string, string>;
+    tower_type?: Map<string, string>;
+    scene_type?: Map<string, string>;
+    arrester_config?: Map<string, string>;
+  };
 }
 
-export function AtpModelCardList({ assets, loading, canManage, deleteLoading, onView, onDelete }: AtpModelCardListProps) {
+export function AtpModelCardList({ assets, loading, canManage, deleteLoading, onView, onDelete, dimensionLabelMap }: AtpModelCardListProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -36,6 +42,7 @@ export function AtpModelCardList({ assets, loading, canManage, deleteLoading, on
           deleteLoading={deleteLoading}
           onView={onView}
           onDelete={onDelete}
+          dimensionLabelMap={dimensionLabelMap}
         />
       ))}
     </div>

@@ -1,9 +1,8 @@
 "use client";
 
 import { Button, Modal, Typography } from "antd";
-import { EyeOutlined, DeleteOutlined } from "@ant-design/icons";
+import { EyeOutlined } from "@ant-design/icons";
 import { useCallback } from "react";
-import { useRouter } from "next/navigation";
 
 import type { AtpAssetSummary } from "@/types/auth";
 
@@ -13,7 +12,7 @@ interface AtpModelCardProps {
   asset: AtpAssetSummary;
   canManage: boolean;
   deleteLoading: boolean;
-  onView: (id: string) => void;
+  onView: (asset: AtpAssetSummary) => void;
   onDelete: (id: string) => void;
   /** 维度 code → 中文名 的映射（塔型/场景/避雷器组合等） */
   dimensionLabelMap?: {
@@ -33,12 +32,11 @@ function formatDimension(
 }
 
 export function AtpModelCard({ asset, canManage, deleteLoading, onView, onDelete, dimensionLabelMap }: AtpModelCardProps) {
-  const router = useRouter();
   const rowBusy = deleteLoading;
 
   const handleView = useCallback(() => {
-    router.push(`/admin/atp-models/${asset.id}`);
-  }, [router, asset.id]);
+    onView(asset);
+  }, [onView, asset]);
 
   const handleDelete = useCallback(() => {
     Modal.confirm({
@@ -123,7 +121,7 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onDelete
           icon={<EyeOutlined />}
           onClick={(event) => {
             event.stopPropagation();
-            onView(asset.id);
+            onView(asset);
           }}
         >
           详情

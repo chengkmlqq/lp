@@ -22,11 +22,11 @@ import {
 } from "antd";
 import { UploadOutlined, FolderOutlined, FileOutlined, HomeOutlined, DeleteOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
+import { AtpModelDetailTab } from "@/components/atp-models/atp-model-detail-tab";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
@@ -105,7 +105,6 @@ const ATP_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
 const ATP_TABLE_BOTTOM_GAP = 8;
 
 export default function AtpModelsPage() {
-  const router = useRouter();
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<AssetFormValues>();
@@ -121,6 +120,8 @@ export default function AtpModelsPage() {
   const [displayMode, setDisplayMode] = useState<"list" | "file">("list");
   const [fileViewPath, setFileViewPath] = useState<string[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
+  const [detailTabs, setDetailTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>("list");
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(ATP_TABLE_MIN_SCROLL_Y);
   const [error, setError] = useState<ApiError | null>(null);
@@ -558,6 +559,30 @@ export default function AtpModelsPage() {
     };
   }, [updateTableScrollHeight, viewMode]);
 
+  const openDetail = useCallback((asset: { id: string; name: string }) => {
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === asset.id)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key: asset.id,
+          label: <span className="admin-atp-models-tab-title">模型详情 - {asset.name || asset.id}</span>,
+          assetId: asset.id,
+        },
+      ];
+    });
+    setActiveTabKey(asset.id);
+  }, []);
+
+  const openDetailById = useCallback((id: string) => {
+    const asset = assetItems.find((item) => item.id === id);
+    if (asset) {
+      openDetail(asset);
+    }
+  }, [assetItems, openDetail]);
+
   const columns = useMemo<ColumnsType<AtpAssetSummary>>(
     () => [
       {
@@ -601,7 +626,7 @@ export default function AtpModelsPage() {
 
           return (
             <Space size={4}>
-              <Button size="small" icon={<EyeOutlined />} type="link" onClick={() => router.push(`/admin/atp-models/${item.id}`)}>
+              <Button size="small" icon={<EyeOutlined />} type="link" onClick={() => openDetailById(item.id)}>
                 详情
               </Button>
               <Button danger size="small" icon={<DeleteOutlined />} loading={deleteLoading} disabled={!canManage || rowBusy}
@@ -623,7 +648,7 @@ export default function AtpModelsPage() {
         },
       },
     ],
-    [canManage, deleteMutation, formatDimensionValue],
+    [canManage, deleteMutation, formatDimensionValue, openDetailById],
   );
 
   type FileViewItem = {
@@ -846,6 +871,24 @@ export default function AtpModelsPage() {
     }
   };
 
+  const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
+    if (action !== "remove") {
+      return;
+    }
+    const key = String(targetKey);
+    setDetailTabs((previous) => {
+      const removedIndex = previous.findIndex((tab) => tab.key === key);
+      const next = previous.filter((tab) => tab.key !== key);
+      setActiveTabKey((current) => {
+        if (current !== key) {
+          return current;
+        }
+        return next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? "list";
+      });
+      return next;
+    });
+  }, []);
+
   const handleBreadcrumbClick = (index: number) => {
     if (index === -1) {
       setFileViewPath([]);
@@ -884,7 +927,9 @@ export default function AtpModelsPage() {
       <Tabs
         type="editable-card"
         hideAdd
-        activeKey="list"
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        onEdit={handleTabsEdit}
         className="admin-atp-models-tabs"
         tabBarExtraContent={
           canManage ? (
@@ -1116,7 +1161,7 @@ export default function AtpModelsPage() {
                         loading={assetsQuery.isLoading || assetsQuery.isFetching}
                         canManage={canManage}
                         deleteLoading={deleteMutation.isPending}
-                        onView={(id) => router.push(`/admin/atp-models/${id}`)}
+                        onView={(asset) => openDetail(asset)}
                         onDelete={(id) => deleteMutation.mutate(id)}
                         dimensionLabelMap={dimensionLabelMap}
                       />
@@ -1140,8 +1185,24 @@ export default function AtpModelsPage() {
               </div>
             ),
           },
+          ...detailTabs.map((tab) => ({
+            key: tab.key,
+            label: tab.label,
+            closable: true,
+            children: (
+              <AtpModelDetailTab
+                assetId={tab.assetId}
+                onNavigateBack={() => {
+                  if (activeTabKey === tab.key) {
+                    setActiveTabKey("list");
+                  }
+                  setDetailTabs((previous) => previous.filter((item) => item.key !== tab.key));
+                }}
+              />
+            ),
+          })),
         ]}
-      />
+        />
 
       <Modal
         title="新建 ATP 模型"

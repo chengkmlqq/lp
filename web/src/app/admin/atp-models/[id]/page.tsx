@@ -1,18 +1,15 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Descriptions, Empty, Space, Spin, Tabs, Table, Tag, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
-import { useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import AtpCircuitPreview from "@/components/atp-circuit-preview";
 import { readApiError } from "@/lib/api";
 import type { AtpAssetSummary, AtpAssetFileListResponse, AtpAssetReleaseListResponse, AtpAssetRunListResponse } from "@/types/auth";
-
-const { Text } = Typography;
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -61,7 +58,6 @@ const RUN_COLUMNS = [
 
 function ATPAssetDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const assetId = params.id as string;
 
@@ -173,7 +169,7 @@ function ATPAssetDetailPage() {
   return (
     <div className="flex flex-col gap-4">
       <Space align="center" size={8}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => router.push("/admin/atp-models")}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => window.history.back()}>
           返回
         </Button>
         <Typography.Title level={4} style={{ margin: 0 }}>
