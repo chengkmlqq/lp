@@ -187,96 +187,111 @@ export default function AdminTaskMonitorPage() {
   }, [reconnectLogEventSource]);
 
   const handleViewLog = useCallback(async (taskId: string, cancelledRef?: { current: boolean }) => {
-    const cancelled = cancelledRef ?? { current: false };
-    setLogModalTaskId(taskId);
-    setLogModalVisible(true);
-    logModalVisibleRef.current = true;
-    if (!cancelledRef) {
-      // 首次打开时重置重连状态
-      setLogModalLoading(true);
-      setLogModalContent("");
-      setLogModalStatus("");
-      logLastEventIdRef.current = "";
-      logRetryDelayRef.current = 1;
-    }
-    setLogModalStreaming(false);
-    closeLogEventSource();
-
-    try {
-      // 1. 先签发一次性 ticket（复用 /api/v1/ws/ticket）
-      const ticketRes = await fetchWithAuth("/api/v1/ws/ticket", { method: "POST" });
-      if (!ticketRes.ok) {
-        const errorText = await readApiError(ticketRes);
-        throw new Error(errorText || "获取日志凭证失败");
-      }
-      const ticketPayload = (await ticketRes.json()) as { ticket: string };
-      if (!ticketPayload.ticket) {
-        throw new Error("获取日志凭证失败");
-      }
-
-      // 2. 建立 SSE 连接（EventSource 无法自定义 Authorization header，走 ticket 查询参数）
-      const params = new URLSearchParams({ ticket: ticketPayload.ticket });
-      // 断线重连：重建连接后浏览器不会自动带 Last-Event-ID header，须显式传查询参数，
-      // 后端 sse 端点同时兼容 header 与 lastEventId 查询参数两种来源
-      if (logLastEventIdRef.current) {
-        params.set("lastEventId", logLastEventIdRef.current);
-      }
-      const es = new EventSource(
-        `${API_BASE_URL}/api/v1/admin/task-logs/${encodeURIComponent(taskId)}/sse?${params.toString()}`,
-      );
-      logEventSourceRef.current = es;
-
-      es.onopen = () => {
-        if (cancelled.current) return;
-        logRetryDelayRef.current = 1;
-        setLogModalLoading(false);
-        setLogModalStreaming(true);
+      const cancelled = cancelledRef ?? { current: false };
+      setLogModalTaskId(taskId);
+      setLogModalVisible(true);
+      logModalVisibleRef.current = true;
+      if (!cancelledRef) {
+        // 首次打开时重置重连状态
+        setLogModalLoading(true);
+        setLogModalContent("");
         setLogModalStatus("");
-      };
+        logLastEventIdRef.current = "";
+        logRetryDelayRef.current = 1;
+      }
+      setLogModalStreaming(false);
+      closeLogEventSource();
 
-      es.onmessage = (e) => {
-        if (cancelled.current) return;
-        if (e.lastEventId) {
-          logLastEventIdRef.current = e.lastEventId;
-        }
-        try {
-          const data = JSON.parse(e.data) as { line?: string; lines?: string };
-          const linesText = data.lines;
-          const singleLine = data.line;
-          if (linesText) {
-            setLogModalContent(linesText);
-          } else if (singleLine) {
-            setLogModalContent((prev) => (prev ? `${prev}\n${singleLine}` : singleLine));
+      // 先尝试 REST API 拉取全量日志（快速返回已有日志）
+      try {
+        const logResp = await fetchWithAuth(`/api/v1/admin/task-logs/${encodeURIComponent(taskId)}`);
+        if (logResp.ok) {
+          const logData = (await logResp.json()) as { log_content?: string };
+          if (logData.log_content) {
+            setLogModalContent(logData.log_content);
+            setLogModalLoading(false);
+            if (cancelled.current) return;
           }
-        } catch {
-          // 忽略无法解析的 SSE 数据
         }
-      };
+      } catch {
+        // REST 失败继续走 SSE
+      }
 
-      es.addEventListener("done", () => {
-        if (cancelled.current) return;
-        es.close();
-        logEventSourceRef.current = null;
-        setLogModalStreaming(false);
-        setLogModalStatus("任务已完成");
-      });
+      try {
+        // 1. 先签发一次性 ticket（复用 /api/v1/ws/ticket）
+        const ticketRes = await fetchWithAuth("/api/v1/ws/ticket", { method: "POST" });
+        if (!ticketRes.ok) {
+          const errorText = await readApiError(ticketRes);
+          throw new Error(errorText || "获取日志凭证失败");
+        }
+        const ticketPayload = (await ticketRes.json()) as { ticket: string };
+        if (!ticketPayload.ticket) {
+          throw new Error("获取日志凭证失败");
+        }
 
-      es.addEventListener("error", (e) => {
-        if (cancelled.current) return;
-        // error 事件也可能由 `event: error` 自定义事件触发（服务端推送的明确错误）
-        const eventSourceError = e as MessageEvent<string>;
-        try {
-          const data = JSON.parse(eventSourceError.data ?? "") as { message?: string };
-          if (data.message) {
-            setLogModalContent(data.message);
-            setLogModalStreaming(false);
-            return;
+        // 2. 建立 SSE 连接（EventSource 无法自定义 Authorization header，走 ticket 查询参数）
+        const params = new URLSearchParams({ ticket: ticketPayload.ticket });
+        // 断线重连：重建连接后浏览器不会自动带 Last-Event-ID header，须显式传查询参数，
+        // 后端 sse 端点同时兼容 header 与 lastEventId 查询参数两种来源
+        if (logLastEventIdRef.current) {
+          params.set("lastEventId", logLastEventIdRef.current);
+        }
+        const es = new EventSource(
+          `${API_BASE_URL}/api/v1/admin/task-logs/${encodeURIComponent(taskId)}/sse?${params.toString()}`,
+        );
+        logEventSourceRef.current = es;
+
+        es.onopen = () => {
+          if (cancelled.current) return;
+          logRetryDelayRef.current = 1;
+          setLogModalLoading(false);
+          setLogModalStreaming(true);
+          setLogModalStatus("");
+        };
+
+        es.onmessage = (e) => {
+          if (cancelled.current) return;
+          if (e.lastEventId) {
+            logLastEventIdRef.current = e.lastEventId;
           }
-        } catch {
-          // 普通连接错误：关闭旧连接，重新取票并重建连接（ticket 已过期 / 连接中断）
-        }
-        reconnectLogEventSourceRef.current?.(cancelled, taskId);
-      });
+          try {
+            const data = JSON.parse(e.data) as { line?: string; lines?: string };
+            const linesText = data.lines;
+            const singleLine = data.line;
+            if (linesText) {
+              setLogModalContent(linesText);
+            } else if (singleLine) {
+              setLogModalContent((prev) => (prev ? `${prev}\n${singleLine}` : singleLine));
+            }
+          } catch {
+            // 忽略无法解析的 SSE 数据
+          }
+        };
+
+        es.addEventListener("done", () => {
+          if (cancelled.current) return;
+          es.close();
+          logEventSourceRef.current = null;
+          setLogModalStreaming(false);
+          setLogModalStatus("任务已完成");
+        });
+
+        es.addEventListener("error", (e) => {
+          if (cancelled.current) return;
+          // error 事件也可能由 `event: error` 自定义事件触发（服务端推送的明确错误）
+          const eventSourceError = e as MessageEvent<string>;
+          try {
+            const data = JSON.parse(eventSourceError.data ?? "") as { message?: string };
+            if (data.message) {
+              setLogModalContent(data.message);
+              setLogModalStreaming(false);
+              return;
+            }
+          } catch {
+            // 普通连接错误：关闭旧连接，重新取票并重建连接（ticket 已过期 / 连接中断）
+          }
+          reconnectLogEventSourceRef.current?.(cancelled, taskId);
+        });
     } catch (error) {
       if (cancelled.current) return;
       const errorMessage = error instanceof Error ? error.message : "获取日志失败";
