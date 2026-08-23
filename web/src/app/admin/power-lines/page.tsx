@@ -159,11 +159,11 @@ export default function AdminPowerLinesPage() {
 
   const updateTableScrollHeight = useCallback(() => {
     if (typeof window === "undefined") {
-      return;
+      return POWER_LINES_TABLE_MIN_SCROLL_Y;
     }
     const anchor = tableScrollAnchorRef.current;
     if (!anchor) {
-      return;
+      return POWER_LINES_TABLE_MIN_SCROLL_Y;
     }
     const anchorHeight = anchor.getBoundingClientRect().height;
     const header = anchor.querySelector<HTMLElement>(".ant-table-header");
@@ -171,8 +171,7 @@ export default function AdminPowerLinesPage() {
     const headerHeight = header?.getBoundingClientRect().height ?? POWER_LINES_TABLE_ESTIMATED_HEADER_HEIGHT;
     const paginationHeight = pagination?.getBoundingClientRect().height ?? POWER_LINES_TABLE_ESTIMATED_PAGINATION_HEIGHT;
     const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - POWER_LINES_TABLE_BOTTOM_GAP);
-    const clampedHeight = Math.max(POWER_LINES_TABLE_MIN_SCROLL_Y, nextHeight);
-    setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
+    return Math.max(POWER_LINES_TABLE_MIN_SCROLL_Y, nextHeight);
   }, []);
 
   useEffect(() => {
@@ -231,7 +230,13 @@ export default function AdminPowerLinesPage() {
   const total = linesQuery.data?.total ?? 0;
 
   useEffect(() => {
-    const frameId = window.requestAnimationFrame(updateTableScrollHeight);
+    if (typeof window === "undefined") {
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      const nextHeight = updateTableScrollHeight();
+      setTableScrollY(nextHeight);
+    });
     return () => {
       window.cancelAnimationFrame(frameId);
     };
@@ -246,7 +251,10 @@ export default function AdminPowerLinesPage() {
       return;
     }
     const resizeObserver = new ResizeObserver(() => {
-      window.requestAnimationFrame(updateTableScrollHeight);
+      window.requestAnimationFrame(() => {
+        const nextHeight = updateTableScrollHeight();
+        setTableScrollY(nextHeight);
+      });
     });
     resizeObserver.observe(anchor);
     return () => {
@@ -648,37 +656,41 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
           </div>
         </div>
 
-        <div className="admin-power-lines-line-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+        <div className="admin-power-lines-line-card-actions flex items-center justify-end px-4 py-2 border-t border-gray-200">
           <Space size="small">
             <Button
               type="text"
               size="small"
               icon={<ApartmentOutlined />}
-              title="杆塔"
               onClick={(event) => {
                 event.stopPropagation();
                 onDetail(line);
               }}
-            />
-          </Space>
-          <Space size="small">
+            >
+              杆塔
+            </Button>
             <Button
               type="text"
               size="small"
               icon={<GlobalOutlined />}
-              title="预览"
               onClick={(event) => {
                 event.stopPropagation();
                 onPreview(line);
               }}
-            />
+            >
+              预览
+            </Button>
             <Dropdown
               menu={{
                 items: [
                   {
                     key: "edit",
-                    label: "编辑",
-                    icon: <EditOutlined />,
+                    label: (
+                      <Space size={4}>
+                        <EditOutlined />
+                        <span>编辑</span>
+                      </Space>
+                    ),
                     onClick: (event) => {
                       event.domEvent.stopPropagation();
                       onEdit(line);
@@ -688,7 +700,12 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
                     ? [
                         {
                           key: "delete",
-                          label: "删除",
+                          label: (
+                            <Space size={4}>
+                              <DeleteOutlined />
+                              <span>删除</span>
+                            </Space>
+                          ),
                           danger: true,
                           disabled: deleteLoading,
                           onClick: (event) => {
@@ -735,13 +752,14 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
       title: "线路名称",
       dataIndex: "name",
       key: "name",
-      flex: 1,
+      width: 160,
+      ellipsis: { showTitle: true },
     },
     {
       title: "电压等级",
       dataIndex: "voltage_kv",
       key: "voltage_kv",
-      width: 100,
+      width: 110,
       render: (value: number | null) => `${value ?? "-"} kV`,
     },
     {
@@ -763,26 +781,36 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
       title: "更新时间",
       dataIndex: "update_date",
       key: "update_date",
-      width: 180,
+      width: 160,
       render: (value: string) => formatDateTime(value),
     },
     {
       title: "操作",
       key: "actions",
-      width: 120,
-      fixed: "right" as const,
+      width: 180,
+      fixed: "right",
       render: (_, line) => {
         const menuItems: MenuProps["items"] = [
           {
             key: "edit",
-            label: "编辑",
+            label: (
+              <Space size={4}>
+                <EditOutlined />
+                <span>编辑</span>
+              </Space>
+            ),
             onClick: () => onEdit(line),
           },
           ...(canLineManage
             ? [
                 {
                   key: "delete",
-                  label: "删除",
+                  label: (
+                    <Space size={4}>
+                      <DeleteOutlined />
+                      <span>删除</span>
+                    </Space>
+                  ),
                   danger: true,
                   onClick: () => onDelete(line),
                 },
@@ -792,10 +820,10 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
 
         return (
           <Space size={4}>
-            <Button size="small" onClick={() => onDetail(line)}>
+            <Button size="small" icon={<ApartmentOutlined />} onClick={() => onDetail(line)}>
               杆塔
             </Button>
-            <Button size="small" onClick={() => onPreview(line)}>
+            <Button size="small" icon={<GlobalOutlined />} onClick={() => onPreview(line)}>
               预览
             </Button>
             <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
@@ -812,13 +840,14 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
       rowKey="id"
       columns={columns}
       dataSource={lines}
+      sticky
       pagination={{
         hideOnSinglePage: false,
         showSizeChanger: true,
         pageSizeOptions: [6, 12, 24, 48],
         showTotal: (total) => `共 ${total} 条`,
       }}
-      scroll={{ x: 1080, y: scrollY }}
+      scroll={{ x: 1080 }}
       tableLayout="fixed"
     />
   );

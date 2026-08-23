@@ -5663,6 +5663,17 @@ body {
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-power-lines-table-view .ant-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.admin-power-lines-table-view .ant-table {
+  min-width: 1080px;
 }
 
 .admin-power-lines-table-view .ant-table-body {
