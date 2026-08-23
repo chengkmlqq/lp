@@ -811,19 +811,6 @@ export default function AdminLightningCurrentsPage() {
                 />
               </AntTooltip>
               {canManage && (
-                <AntTooltip title="编辑元信息">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EditOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openEditModal(record);
-                    }}
-                  />
-                </AntTooltip>
-              )}
-              {canManage && (
                 <AntTooltip title="回填">
                   <Button
                     type="text"
@@ -838,54 +825,61 @@ export default function AdminLightningCurrentsPage() {
                   />
                 </AntTooltip>
               )}
-              {canRead && (
-                <AntTooltip title="回填记录">
+              <Dropdown
+                menu={{
+                  items: [
+                    ...(canManage
+                      ? [
+                          {
+                            key: "edit",
+                            label: "编辑",
+                            onClick: () => openEditModal(record),
+                          },
+                        ]
+                      : []),
+                    ...(canRead
+                      ? [
+                          {
+                            key: "backfill-history",
+                            label: "回填记录",
+                            onClick: () => openBackfillHistory(record),
+                          },
+                        ]
+                      : []),
+                    ...(canReadLogs && record.task_id
+                      ? [
+                          {
+                            key: "import-log",
+                            label: "导入日志",
+                            onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
+                          },
+                        ]
+                      : []),
+                    ...(canManage
+                      ? [
+                          {
+                            key: "delete",
+                            label: "删除",
+                            danger: true,
+                            onClick: async () => {
+                              await deleteMutation.mutateAsync(record);
+                            },
+                          },
+                        ]
+                      : []),
+                  ],
+                }}
+                trigger={["click"]}
+              >
+                <AntTooltip title="更多">
                   <Button
                     type="text"
                     size="small"
-                    icon={<HistoryOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openBackfillHistory(record);
-                    }}
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
                   />
                 </AntTooltip>
-              )}
-              {canReadLogs && record.task_id ? (
-                <AntTooltip title="导入日志">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<FileTextOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openLogViewer(record.task_id, "导入日志", record.source_file_name);
-                    }}
-                  />
-                </AntTooltip>
-              ) : null}
-              {canManage ? (
-                <Popconfirm
-                  title="删除记录"
-                  description={`确认删除记录 ${record.source_file_name} 吗？`}
-                  okText="删除"
-                  cancelText="取消"
-                  okButtonProps={{ danger: true }}
-                  onConfirm={async () => {
-                    await deleteMutation.mutateAsync(record);
-                  }}
-                >
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                    }}
-                  />
-                </Popconfirm>
-              ) : null}
+              </Dropdown>
             </Space>
           </div>
         </div>
@@ -981,6 +975,16 @@ export default function AdminLightningCurrentsPage() {
         render: (_: unknown, row) => {
           // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/回填），其余操作收进 ⋯ 三点下拉
           const moreMenuItems: MenuProps["items"] = [
+            ...(canManage
+              ? [
+                  {
+                    key: "edit",
+                    label: "编辑",
+                    onClick: () => openEditModal(row),
+                    disabled: editMutation.isPending,
+                  },
+                ]
+              : []),
             ...(canRead
               ? [
                   {
@@ -1026,16 +1030,6 @@ export default function AdminLightningCurrentsPage() {
               <Button size="small" onClick={() => openDetail(row)}>
                 详情
               </Button>
-              {canManage && (
-                <Button
-                  size="small"
-                  icon={<EditOutlined />}
-                  onClick={() => openEditModal(row)}
-                  disabled={editMutation.isPending}
-                >
-                  编辑
-                </Button>
-              )}
               {canManage && (
                 <Button
                   size="small"
