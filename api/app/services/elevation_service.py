@@ -41,6 +41,16 @@ from .storage_driver import StorageDriverError, StorageInvalidPathError, Storage
 
 ELEVATION_TOPIC = "admin.elevation"
 POWER_LINES_TOPIC = "admin.power-lines"
+
+
+def _log_task(task_id: str, text: str) -> None:
+    try:
+        from ..core.task_log_capture import TaskLogCapture
+        buffer = TaskLogCapture.get(task_id)
+        if buffer is not None:
+            buffer.write(text)
+    except Exception:
+        pass
 NEAREST_MATCH_MAX_DISTANCE_M = 2000.0
 ELEVATION_FILE_EXT_FORMAT_MAP = {
     ".tif": "tif",
@@ -452,8 +462,10 @@ def execute_apply_job(job_id: str, actor_user_id: str | None = None) -> None:
     try:
         job = get_job_by_id(db, job_id)
         if not job:
+            _log_task(job_id, f"高程回填任务未找到 job 记录（job_id={job_id}），任务终止")
             return
         if job.status in {"success", "failed"}:
+            _log_task(job_id, f"高程回填任务 job_id={job_id} 已处于终态（{job.status}），跳过重复执行")
             return
         resolved_actor_user_id = actor_user_id or job.create_user or job.update_user
 
@@ -461,6 +473,7 @@ def execute_apply_job(job_id: str, actor_user_id: str | None = None) -> None:
         job.started_at = utcnow()
         job.update_date = utcnow()
         db.commit()
+        _log_task(job_id, f"高程回填任务开始执行：job_id={job_id}, mode={job.mode}")
         _publish_elevation_change(
             "elevation.job.running",
             {
@@ -480,6 +493,7 @@ def execute_apply_job(job_id: str, actor_user_id: str | None = None) -> None:
             job.finished_at = utcnow()
             job.update_date = utcnow()
             db.commit()
+            _log_task(job_id, f"高程回填任务异常：job_id={job_id}, 线路或文件记录不存在")
             _publish_elevation_change(
                 "elevation.job.failed",
                 {
@@ -491,7 +505,7 @@ def execute_apply_job(job_id: str, actor_user_id: str | None = None) -> None:
             )
             return
 
-        file_format = _resolve_elevation_file_format(elevation_source)
+        _log_task(job_id, f"高程回填任务读取文件并开始采样：job_id={job_id}, line_id={line.id}, file_record_id={file_record.id}")
         stats, warnings = _apply_raster_to_line_towers(
             db,
             line_id=line.id,
@@ -499,7 +513,13 @@ def execute_apply_job(job_id: str, actor_user_id: str | None = None) -> None:
             mode=job.mode,
         )
 
+        _log_task(
+            job_id,
+            f"高程回填任务采样完成：job_id={job_id}, 更新={stats['updated_tower_count']}, 跳过={stats['skipped_tower_count']}, 缺坐标={stats['missing_geo_count']}, 未命中={stats['unmatched_count']}",
+        )
         warning_note = "; ".join(warnings[:5]) if warnings else None
+        if warning_note:
+            _log_task(job_id, f"高程回填任务警告：{warning_note}")
         job.updated_tower_count = stats["updated_tower_count"]
         job.skipped_tower_count = stats["skipped_tower_count"]
         job.missing_geo_count = stats["missing_geo_count"]
@@ -510,6 +530,7 @@ def execute_apply_job(job_id: str, actor_user_id: str | None = None) -> None:
         job.update_date = utcnow()
         line.update_date = utcnow()
         line.update_user = resolved_actor_user_id
+        _log_task(job_id, f"高程回填任务开始记录准备来源：job_id={job_id}, line_id={line.id}")
         record_line_preparation_source(
             line,
             component="ground_slope",
@@ -544,6 +565,7 @@ def execute_apply_job(job_id: str, actor_user_id: str | None = None) -> None:
         )
     except Exception as exc:
         db.rollback()
+        _log_task(job_id, f"高程回填任务执行失败：job_id={job_id}, 错误={exc}")
         failed = get_job_by_id(db, job_id)
         if failed:
             failed.status = "failed"
@@ -1235,13 +1257,17 @@ def _fire_and_forget(coro: object) -> None:
 
 def execute_file_record_analysis_job(*, record_id: str, actor_user_id: str | None) -> None:
     """Execute analysis job for a single elevation file record."""
+    task_id = record_id  # 记录ID作为task上下文标识
     db = SessionLocal()
     try:
         from .elevation_file_record_service import get_file_record_by_id
 
         item = get_file_record_by_id(db, record_id)
         if not item:
+            _log_task(task_id, f"高程文件分析任务未找到记录：record_id={record_id}，任务终止")
             return
+
+        _log_task(task_id, f"高程文件分析任务开始：record_id={record_id}, file_name={item.file_name}, file_format={item.file_format}")
 
         item.analysis_status = "running"
         item.analysis_error_message = None
@@ -1263,6 +1289,7 @@ def execute_file_record_analysis_job(*, record_id: str, actor_user_id: str | Non
             item.analysis_finished_at = utcnow()
             item.update_date = utcnow()
             db.commit()
+            _log_task(task_id, "高程文件分析任务失败：未找到可用用户执行分析")
             _publish_elevation_change(
                 "elevation.file_record.analysis.failed",
                 {"action": "file_record_analysis_failed", "file_record_id": item.id},
@@ -1278,11 +1305,13 @@ def execute_file_record_analysis_job(*, record_id: str, actor_user_id: str | Non
             # Update source if not set
             if item.source is None:
                 item.source = "ASTER GDEM" if gdem_info["source_type"] in ["gdemv2", "gdemv3"] else item.source
+            _log_task(task_id, f"检测到 GDEM 数据集：source_type={gdem_info['source_type']}, resolution={gdem_info['resolution_m']}m")
 
         # Perform analysis using the same logic as dataset analysis
         mount = _require_mount(db, item.mount_code)
         driver = _build_driver_or_400(mount)
 
+        _log_task(task_id, f"正在读取高程文件：{item.file_path}")
         try:
             read_result = driver.read_file(item.file_path)
         except Exception as exc:
@@ -1290,6 +1319,8 @@ def execute_file_record_analysis_job(*, record_id: str, actor_user_id: str | Non
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"文件不存在: {item.file_path}"
             ) from exc
+
+        _log_task(task_id, f"高程文件读取成功，大小={len(read_result.content)} 字节")
 
         # Analyze based on file format
         if item.file_format in RASTER_FILE_FORMATS:
@@ -1306,6 +1337,7 @@ def execute_file_record_analysis_job(*, record_id: str, actor_user_id: str | Non
                 import rasterio
                 from rasterio.warp import calculate_default_transform, transform_bounds
 
+                _log_task(task_id, "正在解析栅格文件元信息（波段、投影、边界）…")
                 with rasterio.open(tmp_path) as src:
                     # Get bounds in WGS84
                     if src.crs and src.crs.to_epsg() != 4326:
@@ -1323,11 +1355,16 @@ def execute_file_record_analysis_job(*, record_id: str, actor_user_id: str | Non
                     item.bbox_max_lon = float(bounds[2])
                     item.bbox_min_lat = float(bounds[1])
                     item.bbox_max_lat = float(bounds[3])
+                    _log_task(
+                        task_id,
+                        f"栅格解析完成：样本数={sample_count}，边界=[{bounds[0]:.6f}, {bounds[1]:.6f}, {bounds[2]:.6f}, {bounds[3]:.6f}]",
+                    )
             finally:
                 os.unlink(tmp_path)
 
         saved = get_file_record_by_id(db, record_id)
         if saved is None:
+            _log_task(task_id, "高程文件分析任务异常：保存分析结果时文件记录已不存在")
             return
         saved.analysis_status = "success"
         saved.analysis_error_message = None
@@ -1335,12 +1372,16 @@ def execute_file_record_analysis_job(*, record_id: str, actor_user_id: str | Non
         saved.update_date = utcnow()
         saved.update_user = actor.id
         db.commit()
+        _log_task(task_id, "高程文件分析任务执行成功")
         _publish_elevation_change(
             "elevation.file_record.analysis.success",
             {"action": "file_record_analysis_success", "file_record_id": saved.id},
         )
     except Exception as exc:
+        import traceback
         from .elevation_file_record_service import get_file_record_by_id
+        _log_task(task_id, f"高程文件分析任务执行失败：record_id={record_id}, 错误={exc}")
+        _log_task(task_id, f"失败堆栈：{traceback.format_exc()}")
         failed = get_file_record_by_id(db, record_id)
         if failed is not None:
             failed.analysis_status = "failed"
