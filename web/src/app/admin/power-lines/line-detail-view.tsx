@@ -141,8 +141,6 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     },
   });
 
-  const towers = useMemo(() => towersQuery.data?.items ?? [], [towersQuery.data?.items]);
-
   const refreshLines = useCallback(async () => {
     await queryClient.invalidateQueries({
       predicate: (query) =>
