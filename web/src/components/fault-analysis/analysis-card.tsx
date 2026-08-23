@@ -128,7 +128,10 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
                     key: "artifacts",
                     label: "产物",
                     icon: <DownloadOutlined />,
-                    onClick: onArtifacts,
+                    onClick: (info) => {
+                      info.domEvent?.stopPropagation();
+                      onArtifacts?.();
+                    },
                   },
                   ...(onEdit
                     ? [
@@ -136,7 +139,10 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
                           key: "edit",
                           label: "编辑",
                           icon: <EditOutlined />,
-                          onClick: onEdit,
+                          onClick: (info) => {
+                            info.domEvent?.stopPropagation();
+                            onEdit();
+                          },
                         },
                       ]
                     : []),
@@ -147,7 +153,10 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
                           label: "删除",
                           danger: true,
                           icon: <DeleteOutlined />,
-                          onClick: onDelete,
+                          onClick: (info) => {
+                            info.domEvent?.stopPropagation();
+                            onDelete();
+                          },
                         },
                       ]
                     : []),
