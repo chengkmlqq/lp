@@ -415,8 +415,9 @@ def execute_external_waveform_tower_analysis(
     )
     atp_text = resolved_job.atp_text
     logger.info(
-        "[ATP] 开始执行外部波形分析：job=%s, snapshot=%s, 模型=%s, 适配器=%s",
+        "[ATP] 开始执行外部波形分析：job=%s, 杆塔=%s(%s), 模型=%s, 适配器=%s",
         job.id,
+        snapshot.tower_no,
         snapshot.id,
         resolved_job.asset.code,
         resolved_job.adapter,

@@ -4,6 +4,7 @@ import asyncio
 import csv
 import io
 import json
+import logging
 import time
 from collections.abc import Callable
 from datetime import datetime
@@ -12,6 +13,8 @@ from typing import Any
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from ..core.database import SessionLocal
 from ..models.base import utcnow
