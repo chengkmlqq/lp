@@ -22,8 +22,9 @@ import {
   Tag,
   Typography,
   Upload,
+  Dropdown,
 } from "antd";
-import { ApartmentOutlined, CheckCircleOutlined, SearchOutlined } from "@ant-design/icons";
+import { ApartmentOutlined, CheckCircleOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
@@ -521,39 +522,49 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       key: "actions",
       width: 180,
       fixed: "right" as const,
-      render: (_: unknown, row) => (
-        <Space size="small">
-          {canTowerReadLocal && (
-            <Button size="small" onClick={() => openTowerDetailDrawer(row)}>
-              详情
-            </Button>
-          )}
-          {canTowerReadLocal && (
-            <Button size="small" onClick={() => openEditTowerModal(row)}>
-              编辑
-            </Button>
-          )}
-          {canTowerManage && (
-            <Button
-              size="small"
-              danger
-              loading={deleteTowerMutation.isPending}
-              onClick={() => {
-                Modal.confirm({
-                  title: "确认删除该杆塔？",
-                  content: `将删除杆塔 ${row.tower_no}，此操作不可恢复。`,
-                  okText: "确认删除",
-                  cancelText: "取消",
-                  okButtonProps: { danger: true },
-                  onOk: () => deleteTowerMutation.mutate(row),
-                });
-              }}
-            >
-              删除
-            </Button>
-          )}
-        </Space>
-      ),
+      render: (_: unknown, row) => {
+        const menuItems: MenuProps["items"] = [
+          ...(canTowerManage
+            ? [
+                {
+                  key: "delete",
+                  label: "删除",
+                  danger: true,
+                  onClick: () => {
+                    Modal.confirm({
+                      title: "确认删除该杆塔？",
+                      content: `将删除杆塔 ${row.tower_no}，此操作不可恢复。`,
+                      okText: "确认删除",
+                      cancelText: "取消",
+                      okButtonProps: { danger: true },
+                      onOk: () => deleteTowerMutation.mutate(row),
+                    });
+                  },
+                },
+              ]
+            : []),
+        ];
+
+        return (
+          <Space size="small">
+            {canTowerReadLocal && (
+              <Button size="small" onClick={() => openTowerDetailDrawer(row)}>
+                详情
+              </Button>
+            )}
+            {canTowerReadLocal && (
+              <Button size="small" onClick={() => openEditTowerModal(row)}>
+                编辑
+              </Button>
+            )}
+            {menuItems.length > 0 && (
+              <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
+                <Button size="small" icon={<MoreOutlined />} />
+              </Dropdown>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
