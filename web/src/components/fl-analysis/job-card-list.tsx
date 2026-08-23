@@ -23,6 +23,8 @@ type JobCardListProps = {
   jobs: FlAnalysisJobSummary[];
   loading: boolean;
   onDeleteJob: (job: FlAnalysisJobSummary) => void;
+  canReadLogs?: boolean;
+  onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
 };
 
 const LOCKED_STATUSES = new Set(["queued", "running"]);
@@ -31,7 +33,7 @@ function isJobLocked(job: FlAnalysisJobSummary) {
   return LOCKED_STATUSES.has(job.status);
 }
 
-export function JobCardList({ jobs, loading, onDeleteJob }: JobCardListProps) {
+export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog }: JobCardListProps) {
   if (loading) {
     return <Spin />;
   }
@@ -87,7 +89,22 @@ export function JobCardList({ jobs, loading, onDeleteJob }: JobCardListProps) {
                 </div>
               </div>
 
-              <div className="admin-fl-analysis-job-card-actions flex items-center justify-end px-4 py-2 border-t border-gray-200">
+              <div className="admin-fl-analysis-job-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+                <Space>
+                  {canReadLogs ? (
+                    <Button
+                      type="link"
+                      size="small"
+                      disabled={!job.task_id}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenLog?.(job.task_id, "任务执行日志", job.job_name || job.line_name || job.line_code || "防雷任务");
+                      }}
+                    >
+                      查看日志
+                    </Button>
+                  ) : null}
+                </Space>
                 <Dropdown
                   menu={{
                     items: [

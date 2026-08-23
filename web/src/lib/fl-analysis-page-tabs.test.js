@@ -107,6 +107,23 @@ test("LP-377: 列表视图 Table 列包含 任务名/线路/类型/状态/创建
   assert.match(TABLE, /scroll=\{\{ x: 1200, y: scrollY \}\}/, "表格应绑定动态纵向滚动高度");
 });
 
+test("LP-xxx: 防雷计算任务列表支持查看日志", () => {
+  assert.ok(PAGE.includes("TaskLogViewerDrawer"), "页面应引入 TaskLogViewerDrawer");
+  assert.ok(PAGE.includes("canReadLogs"), "页面应声明 celery 日志读取权限");
+  assert.ok(
+    PAGE.includes('canReadLogs={canReadLogs} onOpenLog={openLogViewer}'),
+    "页面应向下传递日志读取能力",
+  );
+  assert.ok(
+    CARD.includes("查看日志") && CARD.includes("onOpenLog?."),
+    "卡片视图应在有权限时提供「查看日志」入口",
+  );
+  assert.ok(
+    TABLE.includes("查看日志") && TABLE.includes("onOpenLog(job.task_id"),
+    "列表视图应在有权限时提供「查看日志」入口",
+  );
+});
+
 test("LP-377: 任务卡片 grid 列数对齐线路管理（md:2 xl:4）", () => {
   assert.ok(
     CARD.includes('md:grid-cols-2 xl:grid-cols-4'),

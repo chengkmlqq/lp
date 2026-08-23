@@ -21,6 +21,7 @@ import { SearchOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { Card } from "@/components/ui-antd";
 import { CreateJobForm } from "@/components/fl-analysis/create-job-form";
 import { JobCardList } from "@/components/fl-analysis/job-card-list";
@@ -72,6 +73,19 @@ export default function AdminFlAnalysisPage() {
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage") || hasPermission("tower.manage");
   const canReadAtp = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
+  const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
+  const [logModalTitle, setLogModalTitle] = useState("任务执行日志");
+
+  const openLogViewer = useCallback((taskId: string | null | undefined, label: string, title: string) => {
+    if (!taskId || !canReadLogs) {
+      return;
+    }
+    setLogModalTaskId(taskId);
+    setLogModalTitle(`${label} - ${title}`);
+    setLogModalOpen(true);
+  }, [canReadLogs]);
 
   const linesQuery = useQuery({
     queryKey: ["/api/v1/lines"],
@@ -426,7 +440,7 @@ export default function AdminFlAnalysisPage() {
                 ) : viewMode === "card" ? (
                   <>
                     <div className="admin-power-lines-card-scroll">
-                      <JobCardList jobs={jobs} loading={jobsQuery.isLoading} onDeleteJob={(job) => deleteJobMutation.mutate(job)} />
+                      <JobCardList jobs={jobs} loading={jobsQuery.isLoading} onDeleteJob={(job) => deleteJobMutation.mutate(job)} canReadLogs={canReadLogs} onOpenLog={openLogViewer} />
                     </div>
                     <div className="admin-power-lines-pagination">
                       <Pagination
@@ -455,6 +469,8 @@ export default function AdminFlAnalysisPage() {
                       onPaginationChange={(next) => setPagination(next)}
                       scrollY={tableScrollY}
                       onDeleteJob={(job) => deleteJobMutation.mutate(job)}
+                      canReadLogs={canReadLogs}
+                      onOpenLog={openLogViewer}
                     />
                   </div>
                 )}
@@ -496,6 +512,13 @@ export default function AdminFlAnalysisPage() {
           }}
         />
       </Modal>
+
+      <TaskLogViewerDrawer
+        taskId={logModalTaskId}
+        title={logModalTitle}
+        open={logModalOpen}
+        onClose={() => setLogModalOpen(false)}
+      />
     </div>
   );
 }

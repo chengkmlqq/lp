@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Button, Empty, Spin, Table, Tag } from "antd";
+import { Button, Empty, Spin, Table, Tag, Space } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { FlAnalysisJobSummary } from "@/types/auth";
@@ -21,6 +21,8 @@ type JobTableProps = {
   onPaginationChange: (pagination: { current: number; pageSize: number }) => void;
   scrollY?: number;
   onDeleteJob?: (job: FlAnalysisJobSummary) => void;
+  canReadLogs?: boolean;
+  onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
 };
 
 const LOCKED_STATUSES = new Set(["queued", "running"]);
@@ -37,6 +39,8 @@ export function JobTable({
   onPaginationChange,
   scrollY,
   onDeleteJob,
+  canReadLogs,
+  onOpenLog,
 }: JobTableProps) {
   const columns = useMemo<ColumnsType<FlAnalysisJobSummary>>(() => [
     {
@@ -104,23 +108,35 @@ export function JobTable({
           {
             title: "操作",
             key: "operation",
-            width: 90,
+            width: 200,
             align: "center" as const,
             render: (_value: unknown, job: FlAnalysisJobSummary) => (
-              <Button
-                danger
-                type="link"
-                size="small"
-                disabled={isJobLocked(job)}
-                onClick={() => onDeleteJob(job)}
-              >
-                删除
-              </Button>
+              <Space size="small">
+                {canReadLogs && onOpenLog ? (
+                  <Button
+                    type="link"
+                    size="small"
+                    disabled={!job.task_id}
+                    onClick={() => onOpenLog(job.task_id, "任务执行日志", job.job_name || job.line_name || job.line_code || "防雷任务")}
+                  >
+                    查看日志
+                  </Button>
+                ) : null}
+                <Button
+                  danger
+                  type="link"
+                  size="small"
+                  disabled={isJobLocked(job)}
+                  onClick={() => onDeleteJob(job)}
+                >
+                  删除
+                </Button>
+              </Space>
             ),
           },
         ]
       : []),
-  ], [onDeleteJob]);
+  ], [onDeleteJob, canReadLogs, onOpenLog]);
 
   if (loading) {
     return <Spin />;
