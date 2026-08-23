@@ -976,35 +976,45 @@ export default function FaultAnalysisDetailPage() {
                         if (item.type === "table") {
                           const columns = item.columns ?? [];
                           const rawRows = item.rows ?? [];
-                          let tableColumns = columns.map((col, index) => ({
-                            title: col,
-                            dataIndex: index,
-                            key: `${index}-${col}`,
-                          }));
-                          let tableRows: Record<string, string>[] = [];
+                          let tableColumns: { title: string; key: string; render?: (value: unknown, record: Record<string, unknown>) => React.ReactNode }[];
+                          let tableRows: Record<string, unknown>[];
                           if (item.layout === "key_value" && columns.length >= 2) {
-                            const pairHead = columns[0];
-                            const valueHead = columns[1];
+                            // 双列键值对：columns = [项目, 内容, 项目, 内容]（4 列），每行 2 组键值左右并排。
+                            const keyHead = columns[0] || "项目";
+                            const valueHead = columns[1] || "内容";
                             tableColumns = [
-                              { title: pairHead, dataIndex: 0, key: "kv-key" },
-                              { title: valueHead, dataIndex: 1, key: "kv-value" },
+                              {
+                                title: keyHead,
+                                key: "left-key",
+                                render: (_, record) => <Text strong className="text-sm">{record["left-key"] as string}</Text>,
+                              },
+                              { title: valueHead, key: "left-value", render: (_, record) => <Paragraph className="text-sm text-gray-700 mb-0">{record["left-value"] as string}</Paragraph> },
+                              {
+                                title: keyHead,
+                                key: "right-key",
+                                render: (_, record) => <Text strong className="text-sm">{record["right-key"] as string}</Text>,
+                              },
+                              { title: valueHead, key: "right-value", render: (_, record) => <Paragraph className="text-sm text-gray-700 mb-0">{record["right-value"] as string}</Paragraph> },
                             ];
-                            rawRows.forEach((row, rowIndex) => {
-                              for (let index = 0; index + 1 < row.length; index += 2) {
-                                tableRows.push({
-                                  key: `r${rowIndex}-c${index}`,
-                                  0: row[index] ?? "",
-                                  1: row[index + 1] ?? "",
-                                });
-                              }
-                            });
+                            tableRows = rawRows.map((row, rowIndex) => ({
+                              key: `r${rowIndex}`,
+                              "left-key": row[0] ?? "",
+                              "left-value": row[1] ?? "",
+                              "right-key": row[2] ?? "",
+                              "right-value": row[3] ?? "",
+                            }));
                           } else {
-                            rawRows.forEach((row, rowIndex) => {
-                              const record: Record<string, string> = { key: `r${rowIndex}` };
+                            tableColumns = columns.map((col, index) => ({
+                              title: col,
+                              dataIndex: index,
+                              key: `${index}-${col}`,
+                            }));
+                            tableRows = rawRows.map((row, rowIndex) => {
+                              const record: Record<string, unknown> = { key: `r${rowIndex}` };
                               columns.forEach((_, index) => {
                                 record[index] = row[index] ?? "";
                               });
-                              tableRows.push(record);
+                              return record;
                             });
                           }
                           return (
