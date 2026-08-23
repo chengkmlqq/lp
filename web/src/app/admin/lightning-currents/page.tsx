@@ -13,6 +13,7 @@ import {
   InputNumber,
   Modal,
   Pagination,
+  Popconfirm,
   Progress,
   Segmented,
   Select,
@@ -33,6 +34,8 @@ import {
   DeleteOutlined,
   EnvironmentOutlined,
   EyeOutlined,
+  FileTextOutlined,
+  HistoryOutlined,
   HomeOutlined,
   InboxOutlined,
   MoreOutlined,
@@ -743,69 +746,54 @@ export default function AdminLightningCurrentsPage() {
                   />
                 </AntTooltip>
               )}
-              <div
-                onClick={(event) => {
-                  event.stopPropagation();
-                }}
-              >
-                <Dropdown
-                  menu={{
-                    items: [
-                      ...(canRead
-                        ? [
-                            {
-                              key: "backfill-history",
-                              label: "回填记录",
-                              onClick: () => openBackfillHistory(record),
-                            },
-                          ]
-                        : []),
-                      ...(canReadLogs && record.task_id
-                        ? [
-                            {
-                              key: "import-log",
-                              label: "导入日志",
-                              onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
-                            },
-                          ]
-                        : []),
-                      ...(canManage
-                        ? [
-                            {
-                              key: "delete",
-                              label: "删除",
-                              disabled: deleteMutation.isPending,
-                              onClick: () => {
-                                Modal.confirm({
-                                  title: "删除记录",
-                                  content: `确认删除记录 ${record.source_file_name} 吗？`,
-                                  okText: "删除",
-                                  cancelText: "取消",
-                                  okButtonProps: { danger: true },
-                                  onOk: async () => {
-                                    await deleteMutation.mutateAsync(record);
-                                  },
-                                });
-                              },
-                            },
-                          ]
-                        : []),
-                    ],
+              {canRead && (
+                <AntTooltip title="回填记录">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<HistoryOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openBackfillHistory(record);
+                    }}
+                  />
+                </AntTooltip>
+              )}
+              {canReadLogs && record.task_id ? (
+                <AntTooltip title="导入日志">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<FileTextOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openLogViewer(record.task_id, "导入日志", record.source_file_name);
+                    }}
+                  />
+                </AntTooltip>
+              ) : null}
+              {canManage ? (
+                <Popconfirm
+                  title="删除记录"
+                  description={`确认删除记录 ${record.source_file_name} 吗？`}
+                  okText="删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={async () => {
+                    await deleteMutation.mutateAsync(record);
                   }}
-                  trigger={["click"]}
                 >
-                  <AntTooltip title="更多操作">
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<MoreOutlined />}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                      }}
-                    />
-                  </AntTooltip>
-                </Dropdown>
-              </div>
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  />
+                </Popconfirm>
+              ) : null}
             </Space>
           </div>
         </div>
