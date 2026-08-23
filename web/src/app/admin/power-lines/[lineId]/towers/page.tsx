@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
@@ -59,11 +59,11 @@ function formatDateTime(value: string | null | undefined): string {
   return parsed.length >= 19 ? parsed.slice(0, 19) : parsed;
 }
 
-export default function AdminPowerLineTowersPage({ params }: { params: { lineId: string } }) {
+export default function AdminPowerLineTowersPage() {
+  const { lineId } = useParams<{ lineId: string }>();
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
-  const lineId = params.lineId;
 
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Card, Space, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
@@ -15,9 +16,9 @@ import type { LineSummary, LineTowerListResponse, LineTowerSummary } from "@/typ
 const TOWER_MAP_QUERY_LIMIT = 500;
 const MAP_HEADER_ESTIMATED_HEIGHT = 220;
 
-export default function AdminPowerLineMapPage({ params }: { params: { lineId: string } }) {
+export default function AdminPowerLineMapPage() {
+  const { lineId } = useParams<{ lineId: string }>();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
-  const lineId = params.lineId;
 
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
