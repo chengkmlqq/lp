@@ -764,7 +764,12 @@ export default function AdminLightningDistributionPage() {
         className="admin-lightning-distribution-event-card"
         size="small"
         hoverable
-        onClick={() => openDetail(record)}
+        onClick={(event) => {
+          if ((event.target as HTMLElement | null)?.closest(".ant-dropdown")) {
+            return;
+          }
+          openDetail(record);
+        }}
       >
         <div className="flex flex-col">
           <div className="admin-lightning-distribution-event-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
