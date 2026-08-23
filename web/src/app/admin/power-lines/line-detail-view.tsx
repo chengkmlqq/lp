@@ -13,6 +13,8 @@ import {
   Input,
   Modal,
   Progress,
+  Row,
+  Col,
   Select,
   Space,
   Table,
@@ -21,7 +23,7 @@ import {
   Typography,
   Upload,
 } from "antd";
-import { CheckCircleOutlined, SearchOutlined } from "@ant-design/icons";
+import { ApartmentOutlined, CheckCircleOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
@@ -74,6 +76,23 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
   const [uploadError, setUploadError] = useState("");
   const [towerDetailDrawerOpen, setTowerDetailDrawerOpen] = useState(false);
   const [selectedTowerForDetail, setSelectedTowerForDetail] = useState<LineTowerSummary | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingTower, setEditingTower] = useState<LineTowerSummary | null>(null);
+  const [towerForm, setTowerForm] = useState<{
+    tower_no?: string;
+    tower_model?: string;
+    tower_type?: string;
+    longitude?: number | null;
+    latitude?: number | null;
+    altitude_m?: number | null;
+    ground_resistance_ohm?: number | null;
+    lightning_density?: number | null;
+    risk_level?: string;
+    span_small_m?: number | null;
+    span_large_m?: number | null;
+    slope_1?: number | null;
+    slope_2?: number | null;
+  }>({});
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(180);
 
@@ -254,6 +273,99 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     setSelectedTowerForDetail(null);
   }, []);
 
+  const openEditTowerModal = useCallback((item: LineTowerSummary) => {
+    setEditingTower(item);
+    setTowerForm({
+      tower_no: item.tower_no ?? "",
+      tower_model: item.tower_model ?? "",
+      tower_type: item.tower_type ?? "",
+      longitude: item.longitude,
+      latitude: item.latitude,
+      altitude_m: item.altitude_m,
+      ground_resistance_ohm: item.ground_resistance_ohm,
+      lightning_density: item.lightning_density,
+      risk_level: item.risk_level ?? "",
+      span_small_m: item.span_small_m,
+      span_large_m: item.span_large_m,
+      slope_1: item.slope_1,
+      slope_2: item.slope_2,
+    });
+    setEditModalOpen(true);
+  }, []);
+
+  const setFormValue = useCallback(
+    (key: keyof typeof towerForm, value: string | number | null) => {
+      setTowerForm((prev) => ({ ...prev, [key]: value }));
+    },
+    [],
+  );
+
+  const updateTowerMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingTower) {
+        throw new Error("未选择待编辑杆塔");
+      }
+      if (!canTowerManage) {
+        throw new Error("缺少 tower.manage 权限");
+      }
+      const payload: Record<string, unknown> = {};
+      if (towerForm.tower_no !== undefined) payload.tower_no = towerForm.tower_no;
+      if (towerForm.tower_model !== undefined) payload.tower_model = towerForm.tower_model || null;
+      if (towerForm.tower_type !== undefined) payload.tower_type = towerForm.tower_type || null;
+      if (towerForm.longitude !== undefined) payload.longitude = towerForm.longitude;
+      if (towerForm.latitude !== undefined) payload.latitude = towerForm.latitude;
+      if (towerForm.altitude_m !== undefined) payload.altitude_m = towerForm.altitude_m;
+      if (towerForm.ground_resistance_ohm !== undefined) payload.ground_resistance_ohm = towerForm.ground_resistance_ohm;
+      if (towerForm.lightning_density !== undefined) payload.lightning_density = towerForm.lightning_density;
+      if (towerForm.risk_level !== undefined) payload.risk_level = towerForm.risk_level || null;
+      if (towerForm.span_small_m !== undefined) payload.span_small_m = towerForm.span_small_m;
+      if (towerForm.span_large_m !== undefined) payload.span_large_m = towerForm.span_large_m;
+      if (towerForm.slope_1 !== undefined) payload.slope_1 = towerForm.slope_1;
+      if (towerForm.slope_2 !== undefined) payload.slope_2 = towerForm.slope_2;
+
+      const response = await fetchWithAuth(`/api/v1/lines/towers/${editingTower.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      messageApi.success("杆塔已更新");
+      setEditModalOpen(false);
+      setEditingTower(null);
+      await refreshTowers();
+    },
+    onError: (candidate) => {
+      messageApi.error(candidate instanceof Error ? candidate.message : "更新失败");
+    },
+  });
+
+  const deleteTowerMutation = useMutation({
+    mutationFn: async (item: LineTowerSummary) => {
+      if (!canTowerManage) {
+        throw new Error("缺少 tower.manage 权限");
+      }
+      const response = await fetchWithAuth(`/api/v1/lines/towers/${item.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      messageApi.success("杆塔已删除");
+      await refreshTowers();
+    },
+    onError: (candidate) => {
+      messageApi.error(candidate instanceof Error ? candidate.message : "删除失败");
+    },
+  });
+
   const updateTableScrollY = useCallback(() => {
     if (typeof window === "undefined") {
       return;
@@ -407,13 +519,37 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     {
       title: "操作",
       key: "actions",
-      width: 120,
+      width: 180,
       fixed: "right" as const,
       render: (_: unknown, row) => (
         <Space size="small">
           {canTowerReadLocal && (
             <Button size="small" onClick={() => openTowerDetailDrawer(row)}>
               详情
+            </Button>
+          )}
+          {canTowerReadLocal && (
+            <Button size="small" onClick={() => openEditTowerModal(row)}>
+              编辑
+            </Button>
+          )}
+          {canTowerManage && (
+            <Button
+              size="small"
+              danger
+              loading={deleteTowerMutation.isPending}
+              onClick={() => {
+                Modal.confirm({
+                  title: "确认删除该杆塔？",
+                  content: `将删除杆塔 ${row.tower_no}，此操作不可恢复。`,
+                  okText: "确认删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true },
+                  onOk: () => deleteTowerMutation.mutate(row),
+                });
+              }}
+            >
+              删除
             </Button>
           )}
         </Space>
@@ -439,8 +575,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
 
   return (
     <div className="flex flex-1 flex-col p-4">
-
-      <div className="admin-filter-bar mt-3">
+      <div className="admin-filter-bar">
         <Form layout="inline" className="flex flex-wrap items-center gap-2">
           <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
             <Input
@@ -535,7 +670,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                     return Upload.LIST_IGNORE;
                   }
                   if (!allowedExts.includes(ext)) {
-                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                    messageApi.error("不支持的文件格式，仅支持 .csv");
                     return Upload.LIST_IGNORE;
                   }
                   return true;
@@ -589,6 +724,188 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
           >
             确认导入
           </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        title={editingTower ? `编辑杆塔 - ${editingTower.tower_no}` : "编辑杆塔"}
+        open={editModalOpen}
+        onCancel={() => {
+          if (updateTowerMutation.isPending) return;
+          setEditModalOpen(false);
+          setEditingTower(null);
+        }}
+        footer={null}
+        width={720}
+        destroyOnClose
+      >
+        <Form layout="vertical">
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item label="塔号" required>
+                <Input value={towerForm.tower_no} onChange={(e) => setFormValue("tower_no", e.target.value)} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="塔型">
+                <Select
+                  value={towerForm.tower_type}
+                  allowClear
+                  options={[
+                    { value: "直线", label: "直线" },
+                    { value: "耐张", label: "耐张" },
+                  ]}
+                  onChange={(value) => setFormValue("tower_type", value)}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="模型">
+                <Input value={towerForm.tower_model} onChange={(e) => setFormValue("tower_model", e.target.value)} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="风险等级">
+                <Select
+                  value={towerForm.risk_level}
+                  allowClear
+                  options={[
+                    { value: "1", label: "1" },
+                    { value: "2", label: "2" },
+                    { value: "3", label: "3" },
+                  ]}
+                  onChange={(value) => setFormValue("risk_level", value)}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="经度">
+                <Input
+                  type="number"
+                  value={towerForm.longitude ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("longitude", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="纬度">
+                <Input
+                  type="number"
+                  value={towerForm.latitude ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("latitude", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="海拔(m)">
+                <Input
+                  type="number"
+                  value={towerForm.altitude_m ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("altitude_m", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="接地电阻(Ω)">
+                <Input
+                  type="number"
+                  value={towerForm.ground_resistance_ohm ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("ground_resistance_ohm", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="地闪密度">
+                <Input
+                  type="number"
+                  value={towerForm.lightning_density ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("lightning_density", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="小号侧档距(m)">
+                <Input
+                  type="number"
+                  value={towerForm.span_small_m ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("span_small_m", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="大号侧档距(m)">
+                <Input
+                  type="number"
+                  value={towerForm.span_large_m ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("span_large_m", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="地面倾角1">
+                <Input
+                  type="number"
+                  value={towerForm.slope_1 ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("slope_1", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="地面倾角2">
+                <Input
+                  type="number"
+                  value={towerForm.slope_2 ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value.trim() === "" ? null : Number(e.target.value);
+                    setFormValue("slope_2", Number.isNaN(value as number) ? null : value);
+                  }}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+        <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+          <Space>
+            <Button
+              onClick={() => {
+                setEditModalOpen(false);
+                setEditingTower(null);
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              type="primary"
+              loading={updateTowerMutation.isPending}
+              onClick={() => updateTowerMutation.mutate()}
+            >
+              保存
+            </Button>
+          </Space>
         </div>
       </Modal>
 
