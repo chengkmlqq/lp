@@ -3,8 +3,6 @@ set -e
 
 # ============================================================
 # fquiz API Docker Entrypoint
-# Ensures static assets (tpbig.exe) are available at runtime
-# locations, even when the /app/data volume is a fresh bind mount.
 # ============================================================
 
 STATIC_ROOT="/app/static/wine"
@@ -34,6 +32,20 @@ if [ -f "${STATIC_ROOT}/ATP/tpbig.exe" ]; then
     if [ ! -f "${DATA_ROOT}/atp-models/tpbig.exe" ] || ! cmp -s "${STATIC_ROOT}/ATP/tpbig.exe" "${DATA_ROOT}/atp-models/tpbig.exe"; then
         cp "${STATIC_ROOT}/ATP/tpbig.exe" "${DATA_ROOT}/atp-models/tpbig.exe"
         echo "entrypoint: initialized ${DATA_ROOT}/atp-models/tpbig.exe"
+    fi
+fi
+
+# --- Wine 初始化 (celery-worker) ---
+if command -v wine >/dev/null 2>&1; then
+    export WINEPREFIX=/root/.wine
+    export WINEARCH=win32
+    export XDG_RUNTIME_DIR=/tmp/.xdg
+    mkdir -p /tmp/.xdg /root/.wine/dosdevices
+    rm -f /root/.wine/dosdevices/d:
+    ln -sf /app/data/wine/ATP /root/.wine/dosdevices/d:
+    if [ ! -d /root/.wine/drive_c ]; then
+        echo "entrypoint: 初始化 Wine 配置..."
+        timeout 300 wine wineboot --init || echo "entrypoint: wineboot --init 失败，继续启动..."
     fi
 fi
 
