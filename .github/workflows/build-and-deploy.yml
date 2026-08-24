@@ -156,11 +156,20 @@ jobs:
   # 沿用上次构建的 tag，避免每次部署拉取 17.6GB 全量镜像。
   build-matlab-worker:
     needs: [build-base]
-    if: ${{ hashFiles('api/Dockerfile.matlab', 'api/app/services/fault_diagnosis*.py', 'api/app/services/fl_analysis*.py') != '' }}
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: 检查是否需构建（仅 Dockerfile.matlab 或判别相关代码变更时）
+        id: check
+        shell: bash
+        run: |
+          if git diff --quiet HEAD~1 HEAD -- api/Dockerfile.matlab api/app/services/fault_diagnosis*.py api/app/services/fl_analysis*.py; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 清理 runner 磁盘（Linux MCR 构建峰值 ~25G，需先释放预装工具空间）
         uses: jlumbroso/free-disk-space@main
