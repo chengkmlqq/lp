@@ -153,11 +153,12 @@ jobs:
           cache-to: type=gha,mode=max,scope=fquiz-worker
 
   # ───── MATLAB Worker 镜像（fquiz-mcr-base + 判别系统，Linux 原生） ─────
-  # 消费 matlab-diagnostics 队列，判别任务专用；Linux 版 MATLAB Runtime 由
-  # fquiz-mcr-base 基础镜像提供（本 job 先构建推送），判别引擎为 Linux mcc
-  # 编译产物（RunWaveAnalysisModule），直接执行、无需 Wine。
+  # MATLAB Runtime 基础镜像 fquiz-mcr-base 基本不变；matlab-worker 镜像仅在
+  # Dockerfile.matlab 或 api/services/ 中判别相关代码变更时重新构建，否则
+  # 沿用上次构建的 tag，避免每次部署拉取 17.6GB 全量镜像。
   build-matlab-worker:
     needs: [build-base]
+    if: ${{ hashFiles('api/Dockerfile.matlab', 'api/app/services/fault_diagnosis*.py', 'api/app/services/fl_analysis*.py') != '' }}
     runs-on: ubuntu-latest
 
     steps:
