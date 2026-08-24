@@ -458,17 +458,15 @@ def execute_external_waveform_tower_analysis(
     wine_profile = Path(os.path.expanduser("~")) / ".wine"
     wine_dosdevices = wine_profile / "dosdevices"
     wine_dosdevices.mkdir(parents=True, exist_ok=True)
-    # 确保 Wine 配置完整（drive_c、system.reg 等），缺少时自动初始化
+    # 确保 Wine 配置完整（drive_c、system.reg 等），缺少时不能自动初始化
+    # wineboot --init 在容器环境不稳定，改为持久化 Wine 配置到宿主机
     if not (wine_profile / "drive_c").is_dir():
-        logger.info("[ATP] 初始化 Wine 配置：%s", wine_profile)
-        tmp_dir = Path("/tmp")
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-        _ = subprocess.run(
-            ["wineboot", "--init"],
-            cwd=str(wine_profile),
-            capture_output=True,
-            timeout=60,
-            check=False,
+        raise RuntimeError(
+            "Wine 配置不完整（缺少 drive_c）。请手动初始化：\n"
+            "  docker exec lp-celery-worker-1 rm -rf /root/.wine\n"
+            "  docker exec lp-celery-worker-1 mkdir -p /root/.wine/dosdevices\n"
+            "  docker exec lp-celery-worker-1 ln -sf /app/data/wine/ATP /root/.wine/dosdevices/d:\n"
+            "  docker exec lp-celery-worker-1 WINEPREFIX=/root/.wine wineboot --init\n"
         )
     atp_root = Path("/app/data/wine/ATP")
     d_drive = wine_dosdevices / "d:"
