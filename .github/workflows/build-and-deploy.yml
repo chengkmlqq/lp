@@ -407,7 +407,7 @@ jobs:
           username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
           port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
           timeout: 120s
-          command_timeout: 10m
+          command_timeout: 60m
           key: ${{ secrets.SERVER_SSH_KEY }}
           password: ${{ secrets.SERVER_PASSWORD }}
           envs: DEPLOY_PATH
@@ -451,7 +451,7 @@ jobs:
           username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
           port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
           timeout: 120s
-          command_timeout: 45m
+          command_timeout: 90m
           key: ${{ secrets.SERVER_SSH_KEY }}
           password: ${{ secrets.SERVER_PASSWORD }}
           envs: DEPLOY_PATH,IMAGE_TAG,NEXT_PUBLIC_API_BASE_URL,FLOWER_BASIC_AUTH,REGISTRY,REGISTRY_NAMESPACE,REGISTRY_USERNAME,REGISTRY_PASSWORD,CTB_WORKER_IMAGE
