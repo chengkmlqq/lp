@@ -452,6 +452,8 @@ def execute_external_waveform_tower_analysis(
     )
     env = os.environ.copy()
     env.update(resolved_job.environment)
+    # Wine 在容器环境需要 XDG_RUNTIME_DIR，否则 wineserver 启动失败
+    env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
     logger.info("[ATP] 执行命令：%s，工作目录：%s", " ".join(command), run_dir)
 
     # 持久化修复：Wine 配置初始化 + d 盘映射 + startup 文件
