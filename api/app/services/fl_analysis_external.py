@@ -813,9 +813,13 @@ def _read_external_result_payload(
         result_path = (run_dir / resolved_result_file).resolve(strict=False)
         if not result_path.is_relative_to(run_dir.resolve(strict=False)):
             raise RuntimeError(f"外部结果文件越界: {resolved_result_file}")
-        if not result_path.exists():
-            raise RuntimeError(f"外部 ATP/Wine 未生成结果文件: {resolved_result_file}")
-        source_text = result_path.read_text(encoding="utf-8", errors="replace")
+        if result_path.exists():
+            source_text = result_path.read_text(encoding="utf-8", errors="replace")
+        else:
+            # 结果文件未生成，回退到 stdout（某些 ATP 模板输出到 stdout 而非文件）
+            source_text = stdout_text or ""
+            if not source_text:
+                raise RuntimeError(f"外部 ATP/Wine 未生成结果文件且无 stdout: {resolved_result_file}")
     else:
         source_text = stdout_text
 
