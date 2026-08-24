@@ -454,10 +454,22 @@ def execute_external_waveform_tower_analysis(
     env.update(resolved_job.environment)
     logger.info("[ATP] 执行命令：%s，工作目录：%s", " ".join(command), run_dir)
 
-    # 持久化修复：Wine d 盘映射 + startup 文件
+    # 持久化修复：Wine 配置初始化 + d 盘映射 + startup 文件
     wine_profile = Path(os.path.expanduser("~")) / ".wine"
     wine_dosdevices = wine_profile / "dosdevices"
     wine_dosdevices.mkdir(parents=True, exist_ok=True)
+    # 确保 Wine 配置完整（drive_c、system.reg 等），缺少时自动初始化
+    if not (wine_profile / "drive_c").is_dir():
+        logger.info("[ATP] 初始化 Wine 配置：%s", wine_profile)
+        tmp_dir = Path("/tmp")
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        _ = subprocess.run(
+            ["wineboot", "--init"],
+            cwd=str(wine_profile),
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
     atp_root = Path("/app/data/wine/ATP")
     d_drive = wine_dosdevices / "d:"
     if not d_drive.exists() or not d_drive.is_symlink():
