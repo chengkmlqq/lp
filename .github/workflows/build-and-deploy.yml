@@ -121,7 +121,6 @@ jobs:
         run: |
           NS="${{ env.REGISTRY_NAMESPACE }}"
           echo "image=${{ env.REGISTRY }}/${NS}/fquiz-worker" >> "$GITHUB_OUTPUT"
-          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: 安装 Buildx
         uses: docker/setup-buildx-action@v4
@@ -147,7 +146,6 @@ jobs:
             REGISTRY=${{ env.REGISTRY }}
             REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
           tags: |
-            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
             ${{ steps.vars.outputs.image }}:latest
           cache-from: type=gha,scope=fquiz-worker
           cache-to: type=gha,mode=max,scope=fquiz-worker
@@ -181,7 +179,6 @@ jobs:
         run: |
           NS="${{ env.REGISTRY_NAMESPACE }}"
           echo "image=${{ env.REGISTRY }}/${NS}/fquiz-matlab-worker" >> "$GITHUB_OUTPUT"
-          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: 安装 Buildx
         uses: docker/setup-buildx-action@v4
@@ -230,7 +227,6 @@ jobs:
             REGISTRY_NAMESPACE=${{ env.REGISTRY_NAMESPACE }}
             APT_MIRROR=${{ vars.APT_MIRROR || '' }}
           tags: |
-            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
             ${{ steps.vars.outputs.image }}:latest
           cache-from: |
             type=registry,ref=${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/fquiz-mcr-base:r2023a
@@ -251,7 +247,6 @@ jobs:
         run: |
           NS="${{ env.REGISTRY_NAMESPACE }}"
           echo "image=${{ env.REGISTRY }}/${NS}/fquiz-api" >> "$GITHUB_OUTPUT"
-          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: 安装 Buildx
         uses: docker/setup-buildx-action@v4
@@ -279,7 +274,6 @@ jobs:
             PIP_INDEX_URL=${{ secrets.PIP_INDEX_URL || vars.PIP_INDEX_URL || 'https://pypi.org/simple' }}
             PIP_DEFAULT_TIMEOUT=${{ vars.PIP_DEFAULT_TIMEOUT || '120' }}
           tags: |
-            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
             ${{ steps.vars.outputs.image }}:latest
           cache-from: type=gha,scope=fquiz-api
           cache-to: type=gha,mode=max,scope=fquiz-api
@@ -297,7 +291,6 @@ jobs:
         run: |
           NS="${{ env.REGISTRY_NAMESPACE }}"
           echo "image=${{ env.REGISTRY }}/${NS}/fquiz-web" >> "$GITHUB_OUTPUT"
-          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: 安装 Buildx
         uses: docker/setup-buildx-action@v4
@@ -324,7 +317,6 @@ jobs:
             NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || '' }}
             NEXT_PUBLIC_APP_BASE_PATH=${{ vars.NEXT_PUBLIC_APP_BASE_PATH || '' }}
           tags: |
-            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
             ${{ steps.vars.outputs.image }}:latest
           cache-from: type=gha,scope=fquiz-web
           cache-to: type=gha,mode=max,scope=fquiz-web
@@ -342,7 +334,6 @@ jobs:
         run: |
           NS="${{ env.REGISTRY_NAMESPACE }}"
           echo "image=${{ env.REGISTRY }}/${NS}/ctb-worker" >> "$GITHUB_OUTPUT"
-          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: 安装 Buildx
         uses: docker/setup-buildx-action@v4
@@ -365,262 +356,8 @@ jobs:
           provenance: false
           sbom: false
           tags: |
-            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
             ${{ steps.vars.outputs.image }}:latest
           cache-from: type=gha,scope=ctb-worker
           cache-to: type=gha,mode=max,scope=ctb-worker
 
   # ───── 部署到生产服务器 ─────
-  deploy:
-    runs-on: ubuntu-latest
-    needs: [build-api, build-worker, build-web, build-ctb-worker, build-matlab-worker]
-    if: github.ref == 'refs/heads/dev'
-
-    steps:
-      - name: 校验部署参数
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
-          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
-          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
-          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          [ -n "${SERVER_HOST}" ] || { echo "::error::缺少 SERVER_HOST（请在 Secrets 或 Variables 中配置）"; exit 1; }
-          [ -n "${SERVER_USER}" ] || { echo "::error::缺少 SERVER_USER（请在 Secrets 或 Variables 中配置）"; exit 1; }
-          if [ -z "${SERVER_SSH_KEY}" ] && [ -z "${SERVER_PASSWORD}" ]; then
-            echo "::error::缺少登录凭据：请至少配置 SERVER_SSH_KEY 或 SERVER_PASSWORD"
-            exit 1
-          fi
-          [ -n "${REGISTRY_USERNAME}" ] || { echo "::error::缺少 REGISTRY_USERNAME"; exit 1; }
-          [ -n "${REGISTRY_PASSWORD}" ] || { echo "::error::缺少 REGISTRY_PASSWORD"; exit 1; }
-
-      - name: 拉取代码
-        uses: actions/checkout@v6
-
-      - name: 准备远端部署目录
-        uses: appleboy/ssh-action@v1.2.0
-        env:
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
-        with:
-          host: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
-          port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
-          timeout: 120s
-          command_timeout: 60m
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          envs: DEPLOY_PATH
-          script: |
-            set -euo pipefail
-            DEPLOY_DIR="${DEPLOY_PATH:-/opt/lp}"
-            mkdir -p "${DEPLOY_DIR}"
-            # 备份真实的生产环境变量（SCP 会从仓库覆盖它）
-            if [ -f "${DEPLOY_DIR}/deploy/pro-deploy/.env.prod" ]; then
-              cp "${DEPLOY_DIR}/deploy/pro-deploy/.env.prod" "/tmp/lp_env_prod_backup"
-              echo "已备份 .env.prod"
-            fi
-
-      - name: 同步 deploy/pro-deploy 配置到服务器
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
-          port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          timeout: 120s
-          command_timeout: 10m
-          source: "deploy/pro-deploy"
-          target: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH || '/opt/lp' }}
-          overwrite: true
-
-      - name: 通过 SSH 拉取并更新容器
-        uses: appleboy/ssh-action@v1.2.0
-        env:
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
-          IMAGE_TAG: ${{ github.sha }}
-          NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL || '' }}
-          FLOWER_BASIC_AUTH: ${{ secrets.FLOWER_BASIC_AUTH || vars.FLOWER_BASIC_AUTH || 'admin:admin' }}
-          REGISTRY: ${{ env.REGISTRY }}
-          REGISTRY_NAMESPACE: ${{ env.REGISTRY_NAMESPACE }}
-          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
-        with:
-          host: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
-          port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
-          timeout: 120s
-          command_timeout: 90m
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          envs: DEPLOY_PATH,IMAGE_TAG,NEXT_PUBLIC_API_BASE_URL,FLOWER_BASIC_AUTH,REGISTRY,REGISTRY_NAMESPACE,REGISTRY_USERNAME,REGISTRY_PASSWORD,CTB_WORKER_IMAGE
-          script: |
-            set -euo pipefail
-            export DOCKER_CLIENT_TIMEOUT="${DOCKER_CLIENT_TIMEOUT:-600}"
-            export COMPOSE_HTTP_TIMEOUT="${COMPOSE_HTTP_TIMEOUT:-600}"
-
-            DEPLOY_DIR="${DEPLOY_PATH:-/opt/lp}"
-            cd "${DEPLOY_DIR}"
-
-            # 恢复真实的生产环境变量
-            if [ -f "/tmp/lp_env_prod_backup" ]; then
-              cp "/tmp/lp_env_prod_backup" deploy/pro-deploy/.env.prod
-              echo "已恢复 .env.prod 备份"
-            fi
-
-            [ -f deploy/pro-deploy/compose.yml ] || { echo "[error] deploy/pro-deploy/compose.yml 不存在"; exit 1; }
-            [ -f deploy/pro-deploy/.env ] || { echo "[error] deploy/pro-deploy/.env 不存在"; exit 1; }
-            [ -f deploy/pro-deploy/.env.prod ] || { echo "[error] deploy/pro-deploy/.env.prod 不存在"; exit 1; }
-
-            mkdir -p \
-              deploy/pro-deploy/data/postgres \
-              deploy/pro-deploy/data/redis \
-              deploy/pro-deploy/data/minio \
-              deploy/pro-deploy/data/app/celery
-
-            # 直接构造镜像名称（当前构建 job 无 outputs，用 env 变量拼接）
-            API_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-api"
-            WEB_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-web"
-            CTB_WORKER_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/ctb-worker"
-            WORKER_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-worker"
-            MATLAB_WORKER_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-matlab-worker"
-            {
-              echo "API_IMAGE=${API_IMAGE}:${IMAGE_TAG}"
-              echo "WEB_IMAGE=${WEB_IMAGE}:${IMAGE_TAG}"
-              echo "CTB_WORKER_IMAGE=${CTB_WORKER_IMAGE}:${IMAGE_TAG}"
-              echo "WORKER_IMAGE=${WORKER_IMAGE}:${IMAGE_TAG}"
-              echo "MATLAB_WORKER_IMAGE=${MATLAB_WORKER_IMAGE}:${IMAGE_TAG}"
-              echo "NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}"
-              echo "NEXT_PUBLIC_APP_BASE_PATH="
-              echo "FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH}"
-            } > .images.env
-
-            echo "${REGISTRY_PASSWORD}" | docker login "${REGISTRY}" -u "${REGISTRY_USERNAME}" --password-stdin
-
-            COMPOSE_CMD="docker compose"
-            if ! docker compose version >/dev/null 2>&1; then
-              COMPOSE_CMD="docker-compose"
-            fi
-
-            COMPOSE_PROJECT_NAME="$(awk -F= '/^COMPOSE_PROJECT_NAME=/{print $2; exit}' deploy/pro-deploy/.env | tr -d '[:space:]')"
-            COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-fquiz}"
-
-            compose_run() {
-              ${COMPOSE_CMD} -p "${COMPOSE_PROJECT_NAME}" --env-file deploy/pro-deploy/.env --env-file deploy/pro-deploy/.env.prod --env-file .images.env -f deploy/pro-deploy/compose.yml "$@"
-            }
-
-            # 逐个检查 compose 服务引用的镜像，本地已有同 tag 则跳过，只拉缺失的。
-            pull_missing_images() {
-              local image_refs
-              image_refs=$(
-                ${COMPOSE_CMD} -p "${COMPOSE_PROJECT_NAME}" --env-file deploy/pro-deploy/.env \
-                  --env-file deploy/pro-deploy/.env.prod --env-file .images.env \
-                  -f deploy/pro-deploy/compose.yml config \
-                  | awk -F': ' '/^[[:space:]]+image:/{print $2}' | sort -u
-              )
-              local missing=0
-              local skipped=0
-              for img in ${image_refs}; do
-                if docker image inspect "${img}" >/dev/null 2>&1; then
-                  echo "[skip] 本地已存在: ${img}"
-                  skipped=$((skipped + 1))
-                else
-                  echo "[pull] 拉取: ${img}"
-                  local img_attempt=1
-                  local is_base=false
-                  # 基础镜像（redis/nginx/minio/pgvector）拉取失败不阻断部署
-                  if [[ "${img}" == *"redis:"* || "${img}" == *"nginx:"* || "${img}" == *"minio:"* || "${img}" == *"pgvector:"* ]]; then
-                    is_base=true
-                  fi
-                  while [ "${img_attempt}" -le 3 ]; do
-                    if docker pull "${img}" >/dev/null 2>&1; then
-                      break
-                    fi
-                    # daocloud 401/失败时，自动 fallback 到 Docker Hub 官方源
-                    if [[ "${img}" == docker.m.daocloud.io/* ]]; then
-                      local fallback="${img#docker.m.daocloud.io/}"
-                      echo "[warn] daocloud 拉取失败，尝试 Docker Hub: ${fallback}"
-                      if docker pull "${fallback}" >/dev/null 2>&1; then
-                        docker tag "${fallback}" "${img}" >/dev/null 2>&1 || true
-                        break
-                      fi
-                    fi
-                    echo "[warn] pull ${img} 失败 (attempt ${img_attempt}/3), retrying..."
-                    sleep $((img_attempt * 10))
-                    img_attempt=$((img_attempt + 1))
-                  done
-                  if ! docker image inspect "${img}" >/dev/null 2>&1; then
-                    if [ "${is_base}" = true ]; then
-                      echo "[warn] 基础镜像拉取失败，但跳过不阻断部署: ${img}"
-                    else
-                      echo "[error] 镜像拉取失败: ${img}"
-                      missing=$((missing + 1))
-                    fi
-                  fi
-                fi
-              done
-              if [ "${missing}" -gt 0 ]; then
-                echo "[error] ${missing} 个镜像拉取失败"
-                return 1
-              fi
-              echo "[info] 镜像检查完成：跳过 ${skipped} 个已存在，拉取 ${missing} 个缺失"
-              return 0
-            }
-
-            # ── MATLAB Worker 数据卷目录（创建基础目录；Runtime 由外部流程部署，不在构建时下载/解压） ──
-            MW_DIR="${DEPLOY_DIR}/deploy/pro-deploy/data/matlab-worker"
-            mkdir -p "${MW_DIR}/matlab-wave"
-
-            # ── 预拉 MCR 基础镜像（固定 tag r2023a，层稳定）──
-            # 先落盘 MCR 层，再 pull matlab-worker 时 16 层 MCR 全部 Already exists（只拉代码层 ~50MB）
-            echo "预拉 fquiz-mcr-base:r2023a ..."
-            docker pull "${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-mcr-base:r2023a" >/dev/null 2>&1 || echo "[warn] mcr-base 预拉失败（忽略，matlab-worker 会全量拉）"
-
-            pull_missing_images
-
-            if ! compose_run up -d --remove-orphans; then
-              echo "[error] docker compose up failed, collecting container diagnostics..."
-              compose_run ps || true
-              compose_run logs --no-color --tail 300 api || true
-              compose_run logs --no-color --tail 200 db || true
-              compose_run logs --no-color --tail 200 redis || true
-              compose_run logs --no-color --tail 200 celery-worker || true
-              compose_run logs --no-color --tail 200 celery-beat || true
-              compose_run logs --no-color --tail 200 ctb-worker || true
-              compose_run logs --no-color --tail 200 flower || true
-              exit 1
-            fi
-
-            # ── 清理旧 matlab-worker 镜像（防止双份 17GB 镜像堆积） ──
-            # matlab-worker 每次构建 MCR 层全量变化（17GB），旧 tag 与现用 tag 镜像 ID 不同。
-            # 容器已用新镜像重建，删掉非当前 tag 的 matlab-worker 镜像，释放磁盘。
-            echo "清理旧 matlab-worker 镜像..."
-            MATLAB_IN_USE="${MATLAB_WORKER_IMAGE}"
-            docker images --format '{{.Repository}}:{{.Tag}}' | grep 'ck-registry/fquiz-matlab-worker:' | while read -r img; do
-              if [ "${img}" != "${MATLAB_IN_USE}" ]; then
-                echo "  rmi ${img}"
-                docker rmi "${img}" >/dev/null 2>&1 || echo "  (skip ${img})"
-              fi
-            done
-
-            compose_run ps
-
-      - name: 重启 nginx 清 DNS 缓存
-        uses: appleboy/ssh-action@v1.2.0
-        env:
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
-        with:
-          host: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
-          port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
-          timeout: 60s
-          command_timeout: 30s
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          envs: DEPLOY_PATH
-          script: |
-            DEPLOY_DIR="${DEPLOY_PATH:-/opt/lp}"
-            cd "${DEPLOY_DIR}"
-            docker compose -p "$(awk -F= '/^COMPOSE_PROJECT_NAME=/{print $2; exit}' deploy/pro-deploy/.env | tr -d '[:space:]')" -f deploy/pro-deploy/compose.yml restart proxy
