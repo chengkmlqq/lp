@@ -354,6 +354,11 @@ def resolve_external_waveform_job(
         **_read_object(manifest_contract.get("parameter_bindings")),
         **_read_object(config.get("parameter_bindings")),
     }
+    # Some ATP templates use fixed parameter names like REHG______=28.8.
+    # If parameter_bindings also contains REHGI, the template renderer will
+    # replace the REHGI token with the string "REHG______", breaking the
+    # assignment. Drop REHGI from bindings so the template's fixed value wins.
+    parameter_bindings.pop("REHGI", None)
     contract = {
         **manifest_contract,
         **adapter_contract,
