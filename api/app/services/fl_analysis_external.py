@@ -457,7 +457,7 @@ def execute_external_waveform_tower_analysis(
     env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
     logger.info("[ATP] 执行命令：%s，工作目录：%s", " ".join(command), run_dir)
     # 同时输出到 stderr，确保 docker logs 可见
-    print(f"[ATP][STDOUT] 执行命令：{' '.join(command)}，工作目录：{run_dir}", file=sys.stderr, flush=True)
+    print(f"[ATP][STDOUT] 执行命令：{' '.join(command)}，工作目录：{run_dir}", file=sys.stdout, flush=True)
 
     # 持久化修复：Wine 配置初始化 + d 盘映射 + startup 文件
     wine_prefix = os.environ.get("WINEPREFIX") or str(Path(os.path.expanduser("~")) / ".wine")
@@ -500,13 +500,13 @@ def execute_external_waveform_tower_analysis(
         )
     except subprocess.TimeoutExpired as exc:
         logger.error("[ATP] 执行超时：%s，超时时间=%ds", snapshot.tower_no, resolved_job.timeout_seconds)
-        print(f"[ATP][TIMEOUT] 杆塔 {snapshot.tower_no} 超时，超时时间={resolved_job.timeout_seconds}s", file=sys.stderr, flush=True)
+        print(f"[ATP][TIMEOUT] 杆塔 {snapshot.tower_no} 超时，超时时间={resolved_job.timeout_seconds}s", file=sys.stdout, flush=True)
         raise RuntimeError(
             f"{snapshot.tower_no} 外部 ATP/Wine 执行超时（{resolved_job.timeout_seconds}s）"
         ) from exc
     except OSError as exc:
         logger.error("[ATP] 启动失败：%s，错误=%s", snapshot.tower_no, exc)
-        print(f"[ATP][ERROR] 杆塔 {snapshot.tower_no} 启动失败: {exc}", file=sys.stderr, flush=True)
+        print(f"[ATP][ERROR] 杆塔 {snapshot.tower_no} 启动失败: {exc}", file=sys.stdout, flush=True)
         raise RuntimeError(f"{snapshot.tower_no} 外部 ATP/Wine 启动失败: {exc}") from exc
 
     logger.info(
@@ -514,15 +514,15 @@ def execute_external_waveform_tower_analysis(
         snapshot.tower_no,
         result.returncode,
     )
-    print(f"[ATP] 执行完成：{snapshot.tower_no}，退出码={result.returncode}", file=sys.stderr, flush=True)
+    print(f"[ATP] 执行完成：{snapshot.tower_no}，退出码={result.returncode}", file=sys.stdout, flush=True)
     stdout_text = _truncate_output(result.stdout)
     stderr_text = _truncate_output(result.stderr) or ""
     if stdout_text:
         logger.debug("[ATP] 标准输出（%s 前200行）：\n%s", snapshot.tower_no, stdout_text[:2000])
-        print(f"[ATP][STDOUT] {snapshot.tower_no}:\n{stdout_text[:500]}", file=sys.stderr, flush=True)
+        print(f"[ATP][STDOUT] {snapshot.tower_no}:\n{stdout_text[:500]}", file=sys.stdout, flush=True)
     if stderr_text:
         logger.debug("[ATP] 错误输出（%s 前200行）：\n%s", snapshot.tower_no, stderr_text[:2000])
-        print(f"[ATP][STDERR] {snapshot.tower_no}:\n{stderr_text[:500]}", file=sys.stderr, flush=True)
+        print(f"[ATP][STDERR] {snapshot.tower_no}:\n{stderr_text[:500]}", file=sys.stdout, flush=True)
 
     if result.returncode != 0:
         logger.error("[ATP] 执行失败：%s，退出码=%d，stderr=%s", snapshot.tower_no, result.returncode, stderr_text[:500])
