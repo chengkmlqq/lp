@@ -10,10 +10,10 @@ function isLoopbackHost(hostname: string): boolean {
 
 export function getApiBaseUrl(): string {
   const configured =
-    process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "http://127.0.0.1:8000";
+    process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "";
 
   if (typeof window === "undefined") {
-    return trimTrailingSlash(configured);
+    return trimTrailingSlash(configured || "http://127.0.0.1:8000");
   }
 
   let parsed: URL;
