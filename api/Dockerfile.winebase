@@ -20,5 +20,5 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
     && dpkg-query -W -f='${Status}' wine32:i386 | grep -q "install ok installed" \
     && mkdir -p /root/.wine/dosdevices \
     && ln -sf /app/data/wine/ATP /root/.wine/dosdevices/d: \
-    && wine wineboot --init \
+    && XDG_RUNTIME_DIR=/tmp WINEDLLOVERRIDES=winemenubuilder.exe=d wine wineboot --init \
     && rm -rf /var/lib/apt/lists/*
