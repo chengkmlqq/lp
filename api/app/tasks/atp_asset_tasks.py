@@ -4,7 +4,7 @@ from ..core.celery_app import celery_app
 from ..services.atp_asset_service import execute_asset_run_job, process_release_archive_upload
 
 
-@celery_app.task(name="app.tasks.atp_asset_tasks.execute_atp_asset_run_job", bind=True)
+@celery_app.task(name="app.tasks.atp_asset_tasks.execute_atp_asset_run_job", bind=True, queue="wine")
 def execute_atp_asset_run_job(
     self,
     run_id: str,

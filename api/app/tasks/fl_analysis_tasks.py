@@ -4,7 +4,7 @@ from ..core.celery_app import celery_app
 from ..services.fl_analysis_service import execute_job
 
 
-@celery_app.task(name="app.tasks.fl_analysis_tasks.execute_fl_analysis_job", bind=True)
+@celery_app.task(name="app.tasks.fl_analysis_tasks.execute_fl_analysis_job", bind=True, queue="wine")
 def execute_fl_analysis_job(self, job_id: str) -> dict[str, str]:
     task_id = self.request.id
     log_parts: list[str] = [f"[{task_id}] Starting FL analysis job {job_id}"]
