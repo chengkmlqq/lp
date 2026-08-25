@@ -443,7 +443,7 @@ def execute_external_waveform_tower_analysis(
         asset_code=resolved_job.asset.code,
         release_no=release_no,
     )
-    input_path.write_text(rendered_text, encoding="utf-8")
+    input_path.write_text(rendered_text, encoding="gbk")
     logger.info("[ATP] 输入文件已写入：%s", input_path)
 
     command = _build_command(
