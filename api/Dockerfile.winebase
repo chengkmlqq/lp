@@ -1,25 +1,14 @@
 # wine-base 镜像：基于现成 pywine（Python 3.10 + Wine），已包含完整的 wineboot --init
 FROM tobix/pywine:3.10
 
-# 安装系统依赖（与 fquiz-base 对齐）
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        curl \
-        ca-certificates \
-        gnupg2 \
-        git \
-        procps \
-        libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Wine 环境变量
-ENV WINEPREFIX="/root/.wine" \
+# Wine 已经初始化在 /opt/wineprefix，直接使用
+ENV WINEPREFIX="/opt/wineprefix" \
     WINEARCH="win32" \
     XDG_RUNTIME_DIR="/tmp" \
     WINEDLLOVERRIDES="winemenubuilder.exe=d"
 
-# 确保 Wine 配置存在（镜像自带 wineboot --init，做 d: 盘映射）
-RUN mkdir -p /root/.wine/dosdevices \
-    && ln -sf /app/data/wine/ATP /root/.wine/dosdevices/d: 2>/dev/null || true
+# 确保 d: 盘映射正确（镜像里可能已存在，保险起见）
+RUN mkdir -p /opt/wineprefix/dosdevices \
+    && ln -sf /app/data/wine/ATP /opt/wineprefix/dosdevices/d: 2>/dev/null || true
 
 WORKDIR /app

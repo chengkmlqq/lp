@@ -457,7 +457,8 @@ def execute_external_waveform_tower_analysis(
     logger.info("[ATP] 执行命令：%s，工作目录：%s", " ".join(command), run_dir)
 
     # 持久化修复：Wine 配置初始化 + d 盘映射 + startup 文件
-    wine_profile = Path(os.path.expanduser("~")) / ".wine"
+    wine_prefix = os.environ.get("WINEPREFIX") or str(Path(os.path.expanduser("~")) / ".wine")
+    wine_profile = Path(wine_prefix)
     wine_dosdevices = wine_profile / "dosdevices"
     wine_dosdevices.mkdir(parents=True, exist_ok=True)
     # /tmp 是 Wine wineserver 必需的，缺失时自动创建
