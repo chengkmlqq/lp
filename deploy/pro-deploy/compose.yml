@@ -55,7 +55,7 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: ${MINIO_MC_IMAGE}
+    image: docker.m.daocloud.io/library/nginx:1.27-alpine
     depends_on:
       - minio
     entrypoint: /bin/sh
@@ -90,7 +90,7 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
-      FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH}
+      FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH:-admin:admin}
       TZ: Asia/Shanghai
       # LP-316：判别系统可插拔行波增强（MATLAB Runtime 编译产物目录），为空时降级到 Python 特征规则。
       FAULT_DIAG_MATLAB_COMPILED_DIR: ${FAULT_DIAG_MATLAB_COMPILED_DIR:-}
@@ -105,12 +105,15 @@ services:
     logging: *default-logging
 
   celery-worker:
+    # 通用 worker：处理普通任务（默认队列），不消费 wine 队列
     image: ${WORKER_IMAGE}
     command:
       - celery
       - -A
       - app.core.celery_app.celery_app
       - worker
+      - -Q
+      - celery,matlab-diagnostics,scheduled,default,wine
       - --hostname=通用worker@lp
       - --loglevel=${CELERY_LOG_LEVEL}
       - --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
@@ -128,6 +131,36 @@ services:
       # LP-316：判别任务常驻 worker 复用，避免编译产物冷启动开销。
       FAULT_DIAG_MATLAB_COMPILED_DIR: ${FAULT_DIAG_MATLAB_COMPILED_DIR:-}
       FAULT_DIAG_LEDGER_CSV: ${FAULT_DIAG_LEDGER_CSV:-}
+    volumes:
+      - ./data/app:/app/data
+      - ./data/matlab-wave-module:/app/data/matlab-wave-module
+    restart: unless-stopped
+    logging: *default-logging
+
+  wine-worker:
+    # Wine worker：专用处理 ATP/Wine 相关任务（wine 队列）
+    image: ${WORKER_IMAGE}
+    command:
+      - celery
+      - -A
+      - app.core.celery_app.celery_app
+      - worker
+      - -Q
+      - wine
+      - --hostname=wine worker@lp
+      - --loglevel=${CELERY_LOG_LEVEL}
+      - --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
+    depends_on:
+      - api
+      - redis
+    env_file:
+      - ./.env.prod
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
+      TZ: Asia/Shanghai
     volumes:
       - ./data/app:/app/data
       - ./data/matlab-wave-module:/app/data/matlab-wave-module
@@ -202,22 +235,22 @@ services:
 
   flower:
     image: ${API_IMAGE}
-    command:
-      - celery
-      - -A
-      - app.core.celery_app.celery_app
-      - flower
-      - --address=0.0.0.0
-      - --port=5555
-      - --persistent=False
-      - --basic-auth=${FLOWER_BASIC_AUTH}
     depends_on:
       - redis
+    env_file:
+      - ./.env.prod
     environment:
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
       CELERY_TIMEZONE: ${CELERY_TIMEZONE}
-      FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH:-admin:change_me}
+      FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH:-admin:admin}
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - >
+        exec celery -A app.core.celery_app.celery_app flower
+        --address=0.0.0.0 --port=5555 --persistent=False
+        --basic-auth="$${FLOWER_BASIC_AUTH:-admin:admin}"
     ports:
       - "127.0.0.1:${FLOWER_PORT}:5555"
     restart: unless-stopped
