@@ -3,7 +3,6 @@ FROM tobix/pywine:3.10
 
 # Wine 已经初始化在 /opt/wineprefix，直接使用
 ENV WINEPREFIX="/opt/wineprefix" \
-    WINEARCH="win32" \
     XDG_RUNTIME_DIR="/tmp" \
     WINEDLLOVERRIDES="winemenubuilder.exe=d"
 
