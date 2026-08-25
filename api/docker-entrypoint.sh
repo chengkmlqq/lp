@@ -36,17 +36,16 @@ if [ -f "${STATIC_ROOT}/ATP/tpbig.exe" ]; then
 fi
 
 # --- Wine 初始化 (celery-worker) ---
+# tobix/pywine:3.10 镜像已自带完整的 wineboot --init 配置在 /opt/wineprefix
+# 直接使用，不再重复初始化
 if command -v wine >/dev/null 2>&1; then
-    export WINEPREFIX=/root/.wine
-    export WINEARCH=win32
-    export XDG_RUNTIME_DIR=/tmp/.xdg
-    mkdir -p /tmp/.xdg /root/.wine/dosdevices
-    rm -f /root/.wine/dosdevices/d:
-    ln -sf /app/data/wine/ATP /root/.wine/dosdevices/d:
-    if [ ! -d /root/.wine/drive_c ]; then
-        echo "entrypoint: 初始化 Wine 配置..."
-        timeout 300 wine wineboot --init || echo "entrypoint: wineboot --init 失败，继续启动..."
-    fi
+    export WINEPREFIX=/opt/wineprefix
+    export XDG_RUNTIME_DIR=/tmp
+    export WINEDLLOVERRIDES=winemenubuilder.exe=d
+    mkdir -p /tmp/.xdg /opt/wineprefix/dosdevices
+    rm -f /opt/wineprefix/dosdevices/d:
+    ln -sf /app/data/wine/ATP /opt/wineprefix/dosdevices/d:
+    echo "entrypoint: Wine prefix=${WINEPREFIX}, d: -> /app/data/wine/ATP"
 fi
 
 # Execute the main container command
