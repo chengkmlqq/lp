@@ -1,31 +1,27 @@
-# wine-base 镜像：fquiz-base + wine + 预初始化好的 .wine 配置
-ARG REGISTRY=crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com
-ARG REGISTRY_NAMESPACE=ck-registry
-FROM ${REGISTRY}/${REGISTRY_NAMESPACE}/fquiz-base:latest
+# wine-base 镜像：基于现成 pywine（Python 3.10 + Wine），已包含完整的 wineboot --init
+FROM tobix/pywine:3.10
 
-# apt 源镜像，默认空 = 官方源（海外 CI runner）
-ARG APT_MIRROR=""
-
-RUN if [ -n "${APT_MIRROR}" ]; then \
-        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
-        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list 2>/dev/null; \
-    fi; \
-    dpkg --add-architecture i386 \
-    && apt-get update \
+# 安装系统依赖（与 fquiz-base 对齐）
+RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        wine \
-        wine32:i386 \
-    && command -v wine >/dev/null \
-    && dpkg-query -W -f='${Status}' wine32:i386 | grep -q "install ok installed" \
+        curl \
+        ca-certificates \
+        gnupg2 \
+        git \
+        procps \
+        libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 预初始化 Wine 配置，避免首次运行时 wineboot 卡住
-ENV WINEPREFIX=/root/.wine \
-    WINEARCH=win32 \
-    XDG_RUNTIME_DIR=/tmp \
+# 安装 pip 依赖（Python 3.10 自带，升级 pip）
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# 确保 Wine 配置完整（镜像自带 wineboot --init，做 d: 盘映射）
+RUN mkdir -p /root/.wine/dosdevices \
+    && ln -sf /app/data/wine/ATP /root/.wine/dosdevices/d: 2>/dev/null || true
+
+ENV WINEPREFIX="/root/.wine" \
+    WINEARCH="win32" \
+    XDG_RUNTIME_DIR="/tmp" \
     WINEDLLOVERRIDES="winemenubuilder.exe=d"
-RUN mkdir -p /tmp /root/.wine/dosdevices \
-    && ln -sf /app/data/wine/ATP /root/.wine/dosdevices/d: 2>/dev/null || true \
-    && wine wineboot --init 2>&1 | tail -5 || true
 
 WORKDIR /app
