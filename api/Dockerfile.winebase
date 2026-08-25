@@ -13,7 +13,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 pip 依赖（Python 3.10 自带，升级 pip）
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel || python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # 确保 Wine 配置完整（镜像自带 wineboot --init，做 d: 盘映射）
 RUN mkdir -p /root/.wine/dosdevices \
