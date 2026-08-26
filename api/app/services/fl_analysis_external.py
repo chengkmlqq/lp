@@ -13,15 +13,11 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 from fastapi import HTTPException
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
-from ..models.atp_asset import AtpAsset, AtpAssetRelease
+from ..models.atp_asset import AtpAsset
 from ..models.base import utcnow
 from ..models.fl_analysis import FlAnalysisJob, FlAnalysisTowerSnapshot
 from .atp_asset_service import (
-    _normalize_optional_str,
-    _normalize_relative_path,
     _resolve_engine_workdir,
     _resolve_mount,
     _resolve_native_engine_executable,
@@ -65,91 +61,13 @@ def get_asset_by_id(db: Session, asset_id: str) -> AtpAsset | None:
     return db.execute(select(AtpAsset).where(AtpAsset.id == asset_id)).scalar_one_or_none()
 
 
-def _resolve_target_release(
-    db: Session,
-    *,
-    asset: AtpAsset,
-    release_id: str | None = None,
-    release_no: int | None = None,
-) -> AtpAssetRelease:
-    """Resolve target release from asset."""
-    if release_id:
-        matched = db.execute(
-            select(AtpAssetRelease).where(
-                AtpAssetRelease.asset_id == asset.id,
-                AtpAssetRelease.id == release_id,
-            )
-        ).scalar_one_or_none()
-        if not matched:
-            raise RuntimeError(f"指定的 ATP 资产版本不存在: {release_id}")
-        return matched
 
-    if release_no is not None:
-        matched = db.execute(
-            select(AtpAssetRelease).where(
-                AtpAssetRelease.asset_id == asset.id,
-                AtpAssetRelease.release_no == release_no,
-            )
-        ).scalar_one_or_none()
-        if not matched:
-            raise RuntimeError(f"指定的 ATP 资产版本不存在: release_no={release_no}")
-        return matched
-
-    # Use active release
-    if asset.active_release_no is not None:
-        matched = db.execute(
-            select(AtpAssetRelease).where(
-                AtpAssetRelease.asset_id == asset.id,
-                AtpAssetRelease.release_no == asset.active_release_no,
-            )
-        ).scalar_one_or_none()
-        if matched:
-            return matched
-
-    # Fall back to latest release
-    matched = db.execute(
-        select(AtpAssetRelease)
-        .where(AtpAssetRelease.asset_id == asset.id)
-        .order_by(AtpAssetRelease.release_no.desc())
-    ).first()
-    if matched:
-        return matched[0]
-
-    raise RuntimeError(f"ATP 资产没有可用的版本: {asset.code}")
-
-
-def _safe_entry_filename(raw_name: str | None, *, asset_code: str, release_no: int) -> str:
-    """Generate safe entry filename."""
-    import os
-    import re
-    from pathlib import Path
-
-    FILENAME_SANITIZE_PATTERN = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
-    fallback = f"{asset_code}_v{release_no}.atp"
-    if not raw_name:
-        return fallback
-
-    filename = Path(raw_name).name.strip()
-    if not filename:
-        return fallback
-
-    cleaned = FILENAME_SANITIZE_PATTERN.sub("_", filename)
-    cleaned = cleaned.strip("._")
-    if not cleaned:
-        return fallback
-
-    if len(cleaned) > 220:
-        stem, suffix = os.path.splitext(cleaned)
-        cleaned = f"{stem[:200]}{suffix[:20]}"
-
-    return cleaned
 
 
 @dataclass(slots=True)
 class ResolvedExternalWaveformJob:
     adapter: str
     asset: AtpAsset
-    release: AtpAssetRelease | None
     entry_file: str
     result_file: str | None
     storage_mount_code: str
@@ -161,12 +79,6 @@ class ResolvedExternalWaveformJob:
     contract: dict[str, Any]
     parameter_bindings: dict[str, Any]
 
-    @property
-    def asset_root_mode(self) -> bool:
-        """True when the job resolves directly from the asset's own file tree
-        (no release/version involved)."""
-        return self.release is None
-
 
 @dataclass(slots=True)
 class ExternalTowerExecutionResult:
@@ -177,38 +89,7 @@ class ExternalTowerExecutionResult:
     stderr_text: str | None
 
 
-def _resolve_release_atp_text(
-    db: Session,
-    *,
-    asset: AtpAsset,
-    release: AtpAssetRelease,
-) -> str:
-    """Resolve executable ATP template text for a release.
 
-    Prefer ``manifest_json.atp_text`` when present; otherwise fall back to
-    reading the release's entry file from storage. Raises RuntimeError with
-    asset code + release number when no template content is available.
-    """
-    manifest = release.manifest_json or {}
-    atp_text = manifest.get("atp_text", "")
-    if atp_text.strip():
-        return atp_text
-
-    entry_file = _normalize_relative_path(release.entry_file) or "work.atp"
-    entry_path = normalize_virtual_path(f"{release.storage_root_path.rstrip('/')}/{entry_file}")
-    try:
-        mount = _resolve_mount(db, release.storage_mount_code)
-        driver = build_storage_driver(mount.backend, mount)
-        read_result = driver.read_file(entry_path)
-    except (HTTPException, StorageDriverError) as exc:
-        raise RuntimeError(
-            f"ATP 资产版本缺少可执行模板: {asset.code} v{release.release_no}（{entry_file}）"
-        ) from exc
-
-    atp_text = read_result.content.decode("utf-8", errors="replace")
-    if not atp_text.strip():
-        raise RuntimeError(f"ATP 资产版本缺少可执行模板: {asset.code} v{release.release_no}")
-    return atp_text
 
 
 def _resolve_asset_worktree(
@@ -218,12 +99,11 @@ def _resolve_asset_worktree(
 ) -> dict[str, Any]:
     """Resolve an executable file tree directly from the asset's own storage.
 
-    The ATP model management page no longer has a release/version concept:
-    assets are created by uploading files straight into the asset root
+    Assets are created by uploading files straight into the asset root
     (``/atp-assets/<code>``). This helper walks that root and auto-detects
-    the entry ``.atp`` file, mirroring release payload preparation.
+    the entry ``.atp`` file.
 
-    Returns a dict compatible with the release-prepared payload::
+    Returns a dict compatible with the run payload::
 
         {
             "entry_file": str,
@@ -310,33 +190,13 @@ def resolve_external_waveform_job(
     if asset is None:
         raise RuntimeError(f"指定的 ATP 资产不存在: {asset_id}")
 
-    release_id = str(config.get("release_id") or config.get("version_id") or "").strip() or None
-    release_no = _coerce_positive_int(config.get("release_no") or config.get("version_no"))
-    release = None
-    worktree: dict[str, Any] | None = None
-    if release_id or release_no is not None:
-        # Explicit version requested (legacy jobs / explicit overrides): resolve the release.
-        release = _resolve_target_release(
-            db,
-            asset=asset,
-            release_id=release_id,
-            release_no=release_no,
-        )
-        atp_text = _resolve_release_atp_text(db, asset=asset, release=release)
-        entry_file = _normalize_relative_path(release.entry_file) or "work.atp"
-        result_file = _normalize_relative_path(release.result_file)
-        storage_mount_code = release.storage_mount_code or "main"
-        storage_root_path = release.storage_root_path
-        manifest_contract = _read_object(release.manifest_json.get("fl_analysis"))
-    else:
-        # No version concept: use the asset's own file tree directly.
-        worktree = _resolve_asset_worktree(db, asset=asset)
-        atp_text = worktree["atp_text"]
-        entry_file = worktree["entry_file"]
-        result_file = worktree["result_file"]
-        storage_mount_code = worktree["storage_mount_code"]
-        storage_root_path = worktree["storage_root_path"]
-        manifest_contract = {}
+    worktree = _resolve_asset_worktree(db, asset=asset)
+    atp_text = worktree["atp_text"]
+    entry_file = worktree["entry_file"]
+    result_file = worktree["result_file"]
+    storage_mount_code = worktree["storage_mount_code"]
+    storage_root_path = worktree["storage_root_path"]
+    manifest_contract = _read_object(worktree.get("manifest", {}).get("fl_analysis"))
 
     adapter_contract = {
         key: value
@@ -376,7 +236,6 @@ def resolve_external_waveform_job(
     return ResolvedExternalWaveformJob(
         adapter=adapter,
         asset=asset,
-        release=release,
         entry_file=entry_file,
         result_file=result_file,
         storage_mount_code=storage_mount_code,
@@ -442,12 +301,7 @@ def execute_external_waveform_tower_analysis(
     logger.info("[ATP] 模板渲染完成，输入文件大小=%d 字节", len(rendered_text))
 
     run_dir = _prepare_run_directory(job=job, snapshot=snapshot, resolved_job=resolved_job)
-    release_no = resolved_job.release.release_no if resolved_job.release is not None else 0
-    input_path = run_dir / _safe_entry_filename(
-        resolved_job.entry_file,
-        asset_code=resolved_job.asset.code,
-        release_no=release_no,
-    )
+    input_path = run_dir / resolved_job.entry_file
     input_path.write_text(rendered_text, encoding="gbk", errors="replace")
     logger.info("[ATP] 输入文件已写入：%s", input_path)
 
@@ -969,8 +823,6 @@ def _merge_external_result(
         "asset_id": resolved_job.asset.id,
         "asset_code": resolved_job.asset.code,
         "asset_name": resolved_job.asset.name,
-        "release_id": resolved_job.release.id if resolved_job.release is not None else None,
-        "release_no": resolved_job.release.release_no if resolved_job.release is not None else None,
         "entry_file": resolved_job.entry_file,
         "result_file": resolved_job.result_file,
         "storage_mount_code": resolved_job.storage_mount_code,

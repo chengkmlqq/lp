@@ -496,8 +496,6 @@ def execute_job(job_id: str) -> None:
                 summary["external_model_id"] = external_job.asset.id
                 summary["external_model_code"] = external_job.asset.code
                 summary["external_model_name"] = external_job.asset.name
-                summary["external_version_id"] = external_job.release.id if external_job.release is not None else None
-                summary["external_version_no"] = external_job.release.release_no if external_job.release is not None else None
             elif job.external_adapter == "legacy_atp":
                 legacy_external_job = resolve_legacy_atp_job(
                     adapter_config_json=job.adapter_config_json or {},

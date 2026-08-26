@@ -6,7 +6,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 AtpAssetStatus = Literal["draft", "enabled", "disabled", "archived"]
-AtpAssetReleaseStatus = Literal["draft", "released", "archived"]
 AtpAssetRunnerKind = Literal["atp", "egm", "hybrid"]
 AtpAssetRunStatus = Literal["pending", "running", "success", "failed"]
 AtpAssetEngineMode = Literal["wine", "native"]
@@ -28,13 +27,6 @@ class AtpAssetSummary(BaseModel):
     arrester_config_label: str | None = None
     storage_mount_code: str | None = None
     storage_root_path: str | None = None
-    latest_release_no: int = 0
-    active_release_no: int | None = None
-    active_release_id: str | None = None
-    active_release_tag: str | None = None
-    storage_mount_code: str | None = None
-    storage_root_path: str | None = None
-    release_count: int = 0
     run_count: int = 0
     last_run_status: AtpAssetRunStatus | None = None
     last_run_date: datetime | None = None
@@ -78,81 +70,6 @@ class AtpAssetUpdateRequest(BaseModel):
     storage_root_path: str | None = Field(default=None, max_length=2048)
 
 
-class AtpAssetReleaseSummary(BaseModel):
-    id: str
-    asset_id: str
-    asset_code: str
-    asset_name: str
-    release_no: int
-    release_tag: str | None = None
-    status: AtpAssetReleaseStatus
-    voltage_level: str
-    tower_type: str
-    scene_type: str
-    scenario_code: str | None = None
-    runner_kind: AtpAssetRunnerKind
-    storage_mount_code: str
-    storage_root_path: str
-    entry_file: str | None = None
-    result_file: str | None = None
-    egm_subdir: str | None = None
-    egm_result_file: str | None = None
-    preprocess_script: str | None = None
-    postprocess_script: str | None = None
-    content_hash: str
-    is_active: bool
-    create_date: datetime
-    create_user: str | None = None
-    update_date: datetime
-    update_user: str | None = None
-
-
-class AtpAssetReleaseDetail(AtpAssetReleaseSummary):
-    manifest_json: dict[str, Any] = Field(default_factory=dict)
-    validation_json: dict[str, Any] = Field(default_factory=dict)
-
-
-class AtpAssetReleaseListResponse(BaseModel):
-    items: list[AtpAssetReleaseSummary]
-    total: int
-
-
-class AtpAssetReleaseCreateRequest(BaseModel):
-    release_tag: str | None = Field(default=None, max_length=64)
-    status: AtpAssetReleaseStatus = "released"
-    voltage_level: str = Field(min_length=1, max_length=16)
-    tower_type: str = Field(min_length=1, max_length=64)
-    scene_type: str = Field(min_length=1, max_length=32)
-    scenario_code: str | None = Field(default=None, max_length=64)
-    runner_kind: AtpAssetRunnerKind = "atp"
-    storage_mount_code: str = Field(default="main", min_length=1, max_length=64)
-    storage_root_path: str = Field(min_length=1, max_length=2048)
-    entry_file: str | None = Field(default=None, max_length=255)
-    result_file: str | None = Field(default=None, max_length=255)
-    egm_subdir: str | None = Field(default=None, max_length=255)
-    egm_result_file: str | None = Field(default=None, max_length=255)
-    preprocess_script: str | None = Field(default=None, max_length=255)
-    postprocess_script: str | None = Field(default=None, max_length=255)
-
-
-class AtpAssetReleaseUpdateRequest(BaseModel):
-    release_tag: str | None = Field(default=None, max_length=64)
-    status: AtpAssetReleaseStatus | None = None
-    voltage_level: str | None = Field(default=None, min_length=1, max_length=16)
-    tower_type: str | None = Field(default=None, min_length=1, max_length=64)
-    scene_type: str | None = Field(default=None, min_length=1, max_length=32)
-    scenario_code: str | None = Field(default=None, max_length=64)
-    runner_kind: AtpAssetRunnerKind | None = None
-    storage_mount_code: str | None = Field(default=None, min_length=1, max_length=64)
-    storage_root_path: str | None = Field(default=None, min_length=1, max_length=2048)
-    entry_file: str | None = Field(default=None, max_length=255)
-    result_file: str | None = Field(default=None, max_length=255)
-    egm_subdir: str | None = Field(default=None, max_length=255)
-    egm_result_file: str | None = Field(default=None, max_length=255)
-    preprocess_script: str | None = Field(default=None, max_length=255)
-    postprocess_script: str | None = Field(default=None, max_length=255)
-
-
 class AtpAssetFileEntry(BaseModel):
     relative_path: str
     name: str
@@ -164,7 +81,6 @@ class AtpAssetFileEntry(BaseModel):
 
 class AtpAssetFileListResponse(BaseModel):
     asset_id: str
-    release_id: str | None = None
     storage_mount_code: str
     storage_root_path: str
     items: list[AtpAssetFileEntry]
@@ -203,7 +119,6 @@ class AtpTopology(BaseModel):
 
 class AtpTopologyResponse(BaseModel):
     asset_id: str
-    release_id: str | None = None
     topology: AtpTopology
 
 
@@ -212,9 +127,6 @@ class AtpAssetRunSummary(BaseModel):
     asset_id: str
     asset_code: str
     asset_name: str
-    release_id: str
-    release_no: int
-    release_tag: str | None = None
     status: AtpAssetRunStatus
     engine_mode: AtpAssetEngineMode
     runner_kind: AtpAssetRunnerKind
@@ -253,11 +165,6 @@ class AtpAssetRunRequest(BaseModel):
     extra_args: list[str] = Field(default_factory=list, max_length=32)
     environment: dict[str, str] = Field(default_factory=dict, max_length=16)
     dry_run: bool = False
-
-
-class AtpAssetReleaseUploadResponse(BaseModel):
-    task_id: str
-    status: str
 
 
 class AtpEngineStatusResponse(BaseModel):

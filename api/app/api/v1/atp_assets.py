@@ -10,11 +10,6 @@ from ...schemas.atp_asset import (
     AtpAssetDetail,
     AtpAssetFileListResponse,
     AtpAssetListResponse,
-    AtpAssetReleaseCreateRequest,
-    AtpAssetReleaseDetail,
-    AtpAssetReleaseListResponse,
-    AtpAssetReleaseUpdateRequest,
-    AtpAssetReleaseUploadResponse,
     AtpAssetRunDetail,
     AtpAssetRunListResponse,
     AtpAssetRunRequest,
@@ -23,27 +18,17 @@ from ...schemas.atp_asset import (
     AtpTopologyResponse,
 )
 from ...services.atp_asset_service import (
-    activate_release,
     create_asset,
-    create_release,
-    create_release_from_archive,
     delete_asset,
     get_asset_by_id,
     get_asset_topology,
     get_engine_status,
-    get_release_by_id,
     get_run_detail,
     list_assets,
-    list_asset_files,
-    list_release_files,
-    list_releases,
     list_runs,
-    run_release,
     serialize_asset,
-    serialize_release_detail,
     upload_asset_files,
     update_asset,
-    update_release,
 )
 
 router = APIRouter(prefix="/atp", tags=["atp-assets"], dependencies=[Depends(require_enabled_menu_route)])
@@ -126,14 +111,11 @@ def get_atp_asset_detail(
     item = get_asset_by_id(db, asset_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
-    active_release = next((release for release in item.releases if release.is_active), None)
     detail = serialize_asset(
         item,
-        release_count=len(item.releases),
         run_count=len(item.runs),
         last_run_status=item.runs[0].status if item.runs else None,
         last_run_date=item.runs[0].create_date if item.runs else None,
-        active_release=active_release,
         db=db,
     )
     return AtpAssetDetail(**detail.model_dump())
@@ -164,133 +146,7 @@ def delete_atp_asset_endpoint(
     return {"success": True}
 
 
-@router.get("/assets/{asset_id}/files", response_model=AtpAssetFileListResponse)
-def get_atp_asset_files(
-    asset_id: str,
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetFileListResponse:
-    return list_asset_files(db, asset_id=asset_id)
 
-
-@router.get("/assets/{asset_id}/releases", response_model=AtpAssetReleaseListResponse)
-def get_atp_asset_releases(
-    asset_id: str,
-    limit: int = Query(default=200, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetReleaseListResponse:
-    if not get_asset_by_id(db, asset_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
-    return list_releases(db, asset_id=asset_id, limit=limit, offset=offset)
-
-
-@router.post("/assets/{asset_id}/releases", response_model=AtpAssetReleaseDetail)
-def create_atp_asset_release_endpoint(
-    asset_id: str,
-    payload: AtpAssetReleaseCreateRequest,
-    current_user: CurrentUser = Depends(require_permission("atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetReleaseDetail:
-    return create_release(db, asset_id=asset_id, payload=payload, actor_user_id=current_user.user.id)
-
-
-@router.post("/assets/{asset_id}/releases/upload", response_model=AtpAssetReleaseUploadResponse)
-def upload_atp_asset_release_endpoint(
-    asset_id: str,
-    release_tag: str | None = Form(default=None),
-    archive: UploadFile = File(...),
-    current_user: CurrentUser = Depends(require_permission("atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetReleaseUploadResponse:
-    from ...tasks.atp_asset_tasks import process_release_archive_upload_task
-
-    try:
-        archive_content = archive.file.read()
-    finally:
-        try:
-            archive.file.close()
-        except Exception:
-            pass
-
-    task = process_release_archive_upload_task.delay(
-        asset_id=asset_id,
-        release_tag=release_tag,
-        archive_filename=archive.filename or "release.zip",
-        archive_content=archive_content,
-        actor_user_id=current_user.user.id,
-    )
-
-    return AtpAssetReleaseUploadResponse(task_id=task.id, status="processing")
-
-
-@router.get("/releases", response_model=AtpAssetReleaseListResponse)
-def get_atp_release_list(
-    active_only: bool = Query(default=False),
-    status_filter: str | None = Query(default=None, alias="status"),
-    limit: int = Query(default=200, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetReleaseListResponse:
-    return list_releases(
-        db,
-        active_only=active_only,
-        status_filter=status_filter,
-        limit=limit,
-        offset=offset,
-    )
-
-
-@router.get("/releases/{release_id}", response_model=AtpAssetReleaseDetail)
-def get_atp_release_detail(
-    release_id: str,
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetReleaseDetail:
-    item = get_release_by_id(db, release_id)
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Release not found")
-    return serialize_release_detail(item)
-
-
-@router.patch("/releases/{release_id}", response_model=AtpAssetReleaseDetail)
-def update_atp_release_endpoint(
-    release_id: str,
-    payload: AtpAssetReleaseUpdateRequest,
-    current_user: CurrentUser = Depends(require_permission("atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetReleaseDetail:
-    return update_release(db, release_id=release_id, payload=payload, actor_user_id=current_user.user.id)
-
-
-@router.post("/releases/{release_id}/activate", response_model=AtpAssetDetail)
-def activate_atp_release_endpoint(
-    release_id: str,
-    current_user: CurrentUser = Depends(require_permission("atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetDetail:
-    detail = activate_release(db, release_id=release_id, actor_user_id=current_user.user.id)
-    return AtpAssetDetail(**detail.model_dump())
-
-
-@router.get("/releases/{release_id}/files", response_model=AtpAssetFileListResponse)
-def get_atp_release_files(
-    release_id: str,
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetFileListResponse:
-    return list_release_files(db, release_id=release_id)
-
-
-@router.get("/assets/{asset_id}/files", response_model=AtpAssetFileListResponse)
-def get_atp_asset_files(
-    asset_id: str,
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetFileListResponse:
-    return list_asset_files(db, asset_id=asset_id)
 
 
 @router.get("/assets/{asset_id}/topology", response_model=AtpTopologyResponse)
@@ -302,27 +158,7 @@ def get_atp_asset_topology(
     return get_asset_topology(db, asset_id=asset_id)
 
 
-@router.get("/releases/{release_id}/runs", response_model=AtpAssetRunListResponse)
-def get_atp_release_runs(
-    release_id: str,
-    limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetRunListResponse:
-    if not get_release_by_id(db, release_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Release not found")
-    return list_runs(db, release_id=release_id, limit=limit, offset=offset)
 
-
-@router.post("/releases/{release_id}/runs", response_model=AtpAssetRunDetail)
-def run_atp_release_endpoint(
-    release_id: str,
-    payload: AtpAssetRunRequest,
-    current_user: CurrentUser = Depends(require_any_permission("atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpAssetRunDetail:
-    return run_release(db, release_id=release_id, payload=payload, actor_user_id=current_user.user.id)
 
 
 @router.get("/runs/{run_id}", response_model=AtpAssetRunDetail)

@@ -8,7 +8,7 @@ import { useMemo } from "react";
 import { useAuth } from "@/components/auth-provider";
 import AtpCircuitPreview from "@/components/atp-circuit-preview";
 import { readApiError } from "@/lib/api";
-import type { AtpAssetSummary, AtpAssetFileListResponse, AtpAssetReleaseListResponse, AtpAssetRunListResponse } from "@/types/auth";
+import type { AtpAssetSummary, AtpAssetFileListResponse, AtpAssetRunListResponse } from "@/types/auth";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -22,33 +22,8 @@ function formatNumber(value: number | null | undefined): string {
   return value.toLocaleString("zh-CN");
 }
 
-const RELEASE_COLUMNS = [
-  { title: "版本号", dataIndex: "release_no", key: "release_no", width: 90 },
-  { title: "标签", dataIndex: "release_tag", key: "release_tag", width: 120, render: (v: string | null) => v || "-" },
-  {
-    title: "状态",
-    dataIndex: "status",
-    key: "status",
-    width: 100,
-    render: (v: string) => {
-      const color = v === "released" ? "green" : v === "draft" ? "blue" : "default";
-      return <Tag color={color}>{v}</Tag>;
-    },
-  },
-  { title: "入口文件", dataIndex: "entry_file", key: "entry_file", render: (v: string | null) => v || "-" },
-  {
-    title: "激活",
-    dataIndex: "is_active",
-    key: "is_active",
-    width: 90,
-    render: (v: boolean) => (v ? <Tag color="gold">激活</Tag> : <Tag>未激活</Tag>),
-  },
-  { title: "创建时间", dataIndex: "create_date", key: "create_date", width: 170, render: (v: string) => formatDateTime(v) },
-];
-
 const RUN_COLUMNS = [
   { title: "状态", dataIndex: "status", key: "status", width: 110, render: (v: string) => <Tag color={v === "success" ? "green" : v === "failed" ? "red" : "blue"}>{v}</Tag> },
-  { title: "版本号", dataIndex: "release_no", key: "release_no", width: 90 },
   { title: "引擎", dataIndex: "engine_mode", key: "engine_mode", width: 90 },
   { title: "退出码", dataIndex: "exit_code", key: "exit_code", width: 90, render: (v: number | null) => (v == null ? "-" : v) },
   { title: "耗时(ms)", dataIndex: "duration_ms", key: "duration_ms", width: 110, render: (v: number | null) => (v == null ? "-" : formatNumber(v)) },
@@ -85,7 +60,6 @@ export function AtpModelDetailTab({ assetId, onNavigateBack }: AtpModelDetailTab
       if (!response.ok) {
         return {
           asset_id: assetId,
-          release_id: null,
           storage_mount_code: "",
           storage_root_path: "",
           items: [],
@@ -93,18 +67,6 @@ export function AtpModelDetailTab({ assetId, onNavigateBack }: AtpModelDetailTab
         } satisfies AtpAssetFileListResponse;
       }
       return (await response.json()) as AtpAssetFileListResponse;
-    },
-  });
-
-  const releasesQuery = useQuery({
-    queryKey: ["/api/v1/atp/assets", assetId, "releases"],
-    enabled: Boolean(user && canRead && assetId),
-    queryFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/releases?limit=200`);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as AtpAssetReleaseListResponse;
     },
   });
 
@@ -122,7 +84,6 @@ export function AtpModelDetailTab({ assetId, onNavigateBack }: AtpModelDetailTab
 
   const asset = assetQuery.data;
   const files = filesQuery.data?.items ?? [];
-  const releases = releasesQuery.data?.items ?? [];
   const runs = runsQuery.data?.items ?? [];
 
   const tabs = useMemo(
@@ -131,19 +92,6 @@ export function AtpModelDetailTab({ assetId, onNavigateBack }: AtpModelDetailTab
         key: "topology",
         label: "电路预览",
         children: <AtpCircuitPreview assetId={assetId} height={520} />,
-      },
-      {
-        key: "versions",
-        label: `版本 (${releases.length})`,
-        children: (
-          <Table
-            rowKey="id"
-            columns={RELEASE_COLUMNS}
-            dataSource={releases}
-            loading={releasesQuery.isLoading}
-            pagination={releases.length > 10 ? { pageSize: 10, showTotal: (t) => `共 ${t} 条` } : false}
-          />
-        ),
       },
       {
         key: "files",
@@ -180,19 +128,19 @@ export function AtpModelDetailTab({ assetId, onNavigateBack }: AtpModelDetailTab
         ) : (
           <Table
             rowKey="id"
+            loading={runsQuery.isLoading}
             columns={RUN_COLUMNS}
             dataSource={runs}
-            loading={runsQuery.isLoading}
             pagination={runs.length > 10 ? { pageSize: 10, showTotal: (t) => `共 ${t} 条` } : false}
           />
         ),
       },
     ],
-    [assetId, releases, files, runs, releasesQuery.isLoading, filesQuery.isLoading, runsQuery.isLoading],
+    [assetId, files, runs, filesQuery.isLoading, runsQuery.isLoading],
   );
 
   if (initializing) {
-    return <Card><div style={{ textAlign: "center", padding: "40px 0" }}><Spin tip="加载 ATP 模型详情中..." /></div></Card>;
+    return <Card><div style={{ textAlign: "center", padding: "40px 0" }}><Spin tip="加载中..." /></div></Card>;
   }
 
   if (!user) {

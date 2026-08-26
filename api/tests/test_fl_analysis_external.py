@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
-from app.models.atp_asset import AtpAsset, AtpAssetRelease, AtpAssetRun
+from app.models.atp_asset import AtpAsset, AtpAssetRun
 from app.models.file_storage import FileIndexEntry, FileStorageBackend, FileStorageMount
 from app.models.fl_analysis import (
     FlAnalysisJob,
@@ -66,7 +66,6 @@ def _build_sessionmaker():
             FileStorageMount.__table__,
             FileIndexEntry.__table__,
             AtpAsset.__table__,
-            AtpAssetRelease.__table__,
             AtpAssetRun.__table__,
         ],
     )
@@ -158,7 +157,7 @@ def _seed_line_and_towers(session: Session) -> Line:
     return line
 
 
-def _seed_release(
+def _seed_asset(
     session: Session,
     *,
     tmp_path: Path,
@@ -166,7 +165,7 @@ def _seed_release(
     manifest_json: dict[str, object] | None = None,
     entry_file: str = "work.atp",
     template: str | None = None,
-) -> tuple[AtpAsset, AtpAssetRelease]:
+) -> AtpAsset:
     if template is not None:
         asset_root = tmp_path / "vfs" / "atp-assets" / code
         asset_root.mkdir(parents=True, exist_ok=True)
@@ -183,29 +182,10 @@ def _seed_release(
         scene_type="fanji",
         storage_mount_code="main",
         storage_root_path=f"/atp-assets/{code}",
-        latest_release_no=1,
-        active_release_no=1,
     )
     session.add(asset)
     session.flush()
-
-    release = AtpAssetRelease(
-        asset_id=asset.id,
-        release_no=1,
-        status="released",
-        voltage_level="110",
-        tower_type="ganzi",
-        scene_type="fanji",
-        storage_mount_code="main",
-        storage_root_path=f"/atp-assets/{code}",
-        entry_file=entry_file,
-        manifest_json=manifest_json or {},
-        content_hash="x",
-        is_active=True,
-    )
-    session.add(release)
-    session.flush()
-    return asset, release
+    return asset
 
 
 def test_render_atp_template_supports_binding_formats_and_defaults() -> None:
@@ -235,7 +215,7 @@ def test_resolve_external_job_uses_manifest_atp_text(tmp_path) -> None:
     session: Session = testing_session()
     try:
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset, release = _seed_release(
+        asset = _seed_asset(
             session,
             tmp_path=tmp_path,
             code="fl-manifest-asset",
@@ -249,12 +229,11 @@ def test_resolve_external_job_uses_manifest_atp_text(tmp_path) -> None:
         resolved = fl_analysis_external.resolve_external_waveform_job(
             session,
             external_adapter="atp",
-            adapter_config_json={"model_id": asset.id, "release_id": release.id},
+            adapter_config_json={"model_id": asset.id},
         )
 
         assert resolved.adapter == "atp"
         assert resolved.asset.code == "fl-manifest-asset"
-        assert resolved.release.release_no == 1
         assert resolved.atp_text == "R={{profile.current_head_time_us}}"
         assert resolved.contract["result_file"] == "result.json"
     finally:
@@ -266,7 +245,7 @@ def test_resolve_external_job_falls_back_to_storage_entry_file(tmp_path) -> None
     session: Session = testing_session()
     try:
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset, release = _seed_release(
+        asset = _seed_asset(
             session,
             tmp_path=tmp_path,
             code="fl-storage-asset",
@@ -279,7 +258,7 @@ def test_resolve_external_job_falls_back_to_storage_entry_file(tmp_path) -> None
         resolved = fl_analysis_external.resolve_external_waveform_job(
             session,
             external_adapter="wine",
-            adapter_config_json={"model_id": asset.id, "release_id": release.id},
+            adapter_config_json={"model_id": asset.id},
         )
 
         assert resolved.adapter == "wine"
@@ -289,12 +268,12 @@ def test_resolve_external_job_falls_back_to_storage_entry_file(tmp_path) -> None
         session.close()
 
 
-def test_resolve_external_job_missing_template_reports_asset_code_and_release(tmp_path) -> None:
+def test_resolve_external_job_missing_template_reports_asset_code(tmp_path) -> None:
     testing_session = _build_sessionmaker()
     session: Session = testing_session()
     try:
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset, release = _seed_release(
+        asset = _seed_asset(
             session,
             tmp_path=tmp_path,
             code="fl-missing-template",
@@ -302,11 +281,11 @@ def test_resolve_external_job_missing_template_reports_asset_code_and_release(tm
         )
         session.commit()
 
-        with pytest.raises(RuntimeError, match="ATP 资产版本缺少可执行模板: fl-missing-template v1"):
+        with pytest.raises(RuntimeError, match="ATP 资产缺少可执行模板文件: fl-missing-template"):
             fl_analysis_external.resolve_external_waveform_job(
                 session,
                 external_adapter="atp",
-                adapter_config_json={"model_id": asset.id, "release_id": release.id},
+                adapter_config_json={"model_id": asset.id},
             )
     finally:
         session.close()
@@ -318,17 +297,11 @@ def test_resolve_external_job_asset_root_missing_template(tmp_path) -> None:
     session: Session = testing_session()
     try:
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset = AtpAsset(
+        asset = _seed_asset(
+            session,
+            tmp_path=tmp_path,
             code="fl-asset-empty",
-            name="资产 fl-asset-empty",
-            description="",
-            status="enabled",
-            storage_mount_code="main",
-            storage_root_path="/atp-assets/fl-asset-empty",
-            latest_release_no=0,
-            active_release_no=None,
         )
-        session.add(asset)
         session.commit()
 
         with pytest.raises(RuntimeError, match="ATP 资产缺少可执行模板文件: fl-asset-empty"):
@@ -347,7 +320,7 @@ def test_create_job_with_selected_model_stores_external_adapter(tmp_path) -> Non
     try:
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
         line = _seed_line_and_towers(session)
-        asset, _release = _seed_release(
+        asset = _seed_asset(
             session,
             tmp_path=tmp_path,
             code="fl-create-asset",
@@ -381,7 +354,7 @@ def test_create_job_missing_template_returns_400_with_asset_info(tmp_path) -> No
     try:
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
         line = _seed_line_and_towers(session)
-        asset, release = _seed_release(
+        asset = _seed_asset(
             session,
             tmp_path=tmp_path,
             code="fl-create-missing",
@@ -397,13 +370,13 @@ def test_create_job_missing_template_returns_400_with_asset_info(tmp_path) -> No
                     job_name="普通计算-ATP",
                     job_type="normal",
                     external_adapter="atp",
-                    adapter_config_json={"model_id": asset.id, "release_id": release.id},
+                    adapter_config_json={"model_id": asset.id},
                     execution_options_json=WAVEFORM_OPTIONS,
                 ),
                 actor=SimpleNamespace(id="tester"),
             )
         assert exc_info.value.status_code == 400
-        assert "fl-create-missing v1" in str(exc_info.value.detail)
+        assert "fl-create-missing" in str(exc_info.value.detail)
     finally:
         session.close()
 
@@ -439,7 +412,7 @@ def test_execute_job_runs_external_adapter_and_backfills_results(tmp_path, monke
     try:
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
         line = _seed_line_and_towers(session)
-        asset, _release = _seed_release(
+        asset = _seed_asset(
             session,
             tmp_path=tmp_path,
             code="fl-execute-asset",
@@ -476,7 +449,7 @@ def test_execute_job_runs_external_adapter_and_backfills_results(tmp_path, monke
             assert saved_job.status == "success"
             assert saved_job.result_summary_json["adapter_status"] == "executed"
             assert saved_job.result_summary_json["external_model_code"] == "fl-execute-asset"
-            assert saved_job.result_summary_json["external_version_no"] == 1
+            assert saved_job.result_summary_json["external_version_no"] is None
 
             result_row = verify_session.execute(
                 select(FlAnalysisTowerResult).where(FlAnalysisTowerResult.job_id == created.job.id)
@@ -534,8 +507,6 @@ def _seed_asset_without_release(
         scene_type="fanji",
         storage_mount_code="main",
         storage_root_path=f"/atp-assets/{code}",
-        latest_release_no=0,
-        active_release_no=None,
     )
     session.add(asset)
     session.flush()
@@ -570,35 +541,6 @@ def test_resolve_external_job_asset_root_mode_without_release(tmp_path) -> None:
         assert resolved.storage_root_path == f"/atp-assets/fl-asset-root"
         assert resolved.atp_text == ASSET_ROOT_TEMPLATE_SCRIPT
         assert resolved.contract.get("result_file") is None
-    finally:
-        session.close()
-
-
-def test_resolve_external_job_explicit_release_still_works(tmp_path) -> None:
-    """Explicit release_id/version_id keeps using the release record (backward compat)."""
-    testing_session = _build_sessionmaker()
-    session: Session = testing_session()
-    try:
-        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset, release = _seed_release(
-            session,
-            tmp_path=tmp_path,
-            code="fl-explicit-release",
-            manifest_json={"atp_text": "R={{profile.current_head_time_us}}"},
-            template=ATP_TEMPLATE_SCRIPT,
-        )
-        session.commit()
-
-        resolved = fl_analysis_external.resolve_external_waveform_job(
-            session,
-            external_adapter="atp",
-            adapter_config_json={"model_id": asset.id, "release_id": release.id},
-        )
-
-        assert resolved.asset_root_mode is False
-        assert resolved.release is not None
-        assert resolved.release.release_no == 1
-        assert resolved.atp_text == "R={{profile.current_head_time_us}}"
     finally:
         session.close()
 

@@ -4,17 +4,15 @@ import io
 from pathlib import Path
 import zipfile
 
-from fastapi import HTTPException
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core import database as core_database
 from app.core.database import Base
-from app.models.atp_asset import AtpAsset, AtpAssetRelease, AtpAssetRun
+from app.models.atp_asset import AtpAsset, AtpAssetRun
 from app.models.file_storage import FileIndexEntry, FileStorageBackend, FileStorageMount
 from app.models.user import User
-from app.schemas.atp_asset import AtpAssetCreateRequest, AtpAssetReleaseCreateRequest, AtpAssetRunRequest
+from app.schemas.atp_asset import AtpAssetCreateRequest, AtpAssetRunRequest
 from app.services import atp_asset_service
 
 
@@ -28,7 +26,6 @@ def _build_sessionmaker():
             FileIndexEntry.__table__,
             User.__table__,
             AtpAsset.__table__,
-            AtpAssetRelease.__table__,
             AtpAssetRun.__table__,
         ],
     )
@@ -74,15 +71,10 @@ class _DummyUploadFile:
         self.file = io.BytesIO(content)
 
 
-def test_create_release_auto_detects_entry_file_and_manifest(tmp_path) -> None:
+def test_create_asset_and_upload_archive(tmp_path) -> None:
     testing_session = _build_sessionmaker()
     session: Session = testing_session()
     try:
-        release_root = tmp_path / "vfs" / "atp-library" / "demo-release"
-        release_root.mkdir(parents=True)
-        (release_root / "work.atp").write_text("ATP INPUT", encoding="utf-8")
-        (release_root / "README.txt").write_text("docs", encoding="utf-8")
-
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
         asset = atp_asset_service.create_asset(
             session,
@@ -91,51 +83,10 @@ def test_create_release_auto_detects_entry_file_and_manifest(tmp_path) -> None:
         )
         assert asset is not None
 
-        created = atp_asset_service.create_release(
+        uploaded = atp_asset_service.upload_asset_archive(
             session,
             asset_id=asset.id,
-            payload=AtpAssetReleaseCreateRequest(
-                voltage_level="220",
-                tower_type="sihuita",
-                scene_type="raoji3",
-                runner_kind="atp",
-                storage_mount_code="main",
-                storage_root_path="/atp-library/demo-release",
-            ),
-            actor_user_id="tester",
-        )
-
-        assert created.entry_file == "work.atp"
-        assert created.is_active is True
-        assert created.manifest_json["file_count"] == 2
-        assert created.validation_json["entry_file_exists"] is True
-    finally:
-        session.close()
-
-
-def test_create_release_from_archive_extracts_zip_and_inherits_asset_dimensions(tmp_path) -> None:
-    testing_session = _build_sessionmaker()
-    session: Session = testing_session()
-    try:
-        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset = atp_asset_service.create_asset(
-            session,
-            AtpAssetCreateRequest(
-                code="ATP-ASSET-UPLOAD",
-                name="ZIP 导入模型",
-                voltage_level="220",
-                tower_type="sihuita",
-                scene_type="raoji3",
-            ),
-            actor_user_id="tester",
-        )
-        assert asset is not None
-
-        created = atp_asset_service.create_release_from_archive(
-            session,
-            asset_id=asset.id,
-            release_tag="首版",
-            archive_filename="release.zip",
+            archive_filename="model.zip",
             archive_content=_build_zip(
                 {
                     "work.atp": b"ATP INPUT",
@@ -145,99 +96,8 @@ def test_create_release_from_archive_extracts_zip_and_inherits_asset_dimensions(
             actor_user_id="tester",
         )
 
-        assert created.release_no == 1
-        assert created.release_tag == "首版"
-        assert created.storage_root_path == "/atp-library/220/sihuita/r1"
-        assert created.entry_file == "work.atp"
-        assert created.runner_kind == "hybrid"
-        assert created.voltage_level == "220"
-        assert created.tower_type == "sihuita"
-        assert created.scene_type == "raoji3"
-        assert (tmp_path / "vfs" / "atp-library" / "220" / "sihuita" / "r1" / "work.atp").exists()
-        assert (tmp_path / "vfs" / "atp-library" / "220" / "sihuita" / "r1" / "EGM" / "config.txt").exists()
-    finally:
-        session.close()
-
-
-def test_create_release_from_archive_requires_asset_dimensions(tmp_path) -> None:
-    testing_session = _build_sessionmaker()
-    session: Session = testing_session()
-    try:
-        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset = atp_asset_service.create_asset(
-            session,
-            AtpAssetCreateRequest(code="ATP-ASSET-MISSING", name="缺维度模型"),
-            actor_user_id="tester",
-        )
-        assert asset is not None
-
-        with pytest.raises(HTTPException, match="电压等级、塔型和场景"):
-            atp_asset_service.create_release_from_archive(
-                session,
-                asset_id=asset.id,
-                release_tag="r1",
-                archive_filename="release.zip",
-                archive_content=_build_zip({"work.atp": b"ATP INPUT"}),
-                actor_user_id="tester",
-            )
-    finally:
-        session.close()
-
-
-def test_create_release_from_archive_detects_storage_path_conflict(tmp_path) -> None:
-    testing_session = _build_sessionmaker()
-    session: Session = testing_session()
-    try:
-        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-
-        # Create first asset and upload a release
-        asset1 = atp_asset_service.create_asset(
-            session,
-            AtpAssetCreateRequest(
-                code="ATP-ASSET-001",
-                name="模型1",
-                voltage_level="220",
-                tower_type="sihuita",
-                scene_type="raoji3",
-            ),
-            actor_user_id="tester",
-        )
-        assert asset1 is not None
-
-        release1 = atp_asset_service.create_release_from_archive(
-            session,
-            asset_id=asset1.id,
-            release_tag="v1",
-            archive_filename="release.zip",
-            archive_content=_build_zip({"work.atp": b"ATP INPUT 1"}),
-            actor_user_id="tester",
-        )
-        assert release1.storage_root_path == "/atp-library/220/sihuita/r1"
-
-        # Create second asset with same voltage_level and tower_type
-        asset2 = atp_asset_service.create_asset(
-            session,
-            AtpAssetCreateRequest(
-                code="ATP-ASSET-002",
-                name="模型2",
-                voltage_level="220",
-                tower_type="sihuita",
-                scene_type="raoji3",
-            ),
-            actor_user_id="tester",
-        )
-        assert asset2 is not None
-
-        # Try to upload a release for asset2 - should conflict because path is same
-        with pytest.raises(HTTPException, match="存储路径冲突"):
-            atp_asset_service.create_release_from_archive(
-                session,
-                asset_id=asset2.id,
-                release_tag="v1",
-                archive_filename="release.zip",
-                archive_content=_build_zip({"work.atp": b"ATP INPUT 2"}),
-                actor_user_id="tester",
-            )
+        assert uploaded.success is True
+        assert uploaded.storage_root_path == "/atp-assets/ATP-ASSET-001"
     finally:
         session.close()
 
@@ -273,98 +133,22 @@ def test_upload_asset_archive_and_list_asset_files(tmp_path) -> None:
 
         files = atp_asset_service.list_asset_files(session, asset_id=asset.id)
         assert files.asset_id == asset.id
-        assert files.release_id is None
+        assert files.storage_mount_code == "main"
         assert files.total == 3
         assert [item.relative_path for item in files.items] == ["docs", "docs/readme.txt", "work.atp"]
     finally:
         session.close()
 
 
-def test_list_asset_files_falls_back_to_latest_release(tmp_path) -> None:
+def test_run_asset_dry_run_materializes_directory(tmp_path, monkeypatch) -> None:
     testing_session = _build_sessionmaker()
+    monkeypatch.setattr(atp_asset_service, "settings")
     session: Session = testing_session()
     try:
-        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset = atp_asset_service.create_asset(
-            session,
-            AtpAssetCreateRequest(
-                code="ATP-ASSET-LEGACY-FALLBACK",
-                name="旧版本模型",
-                voltage_level="220",
-                tower_type="sihuita",
-                scene_type="raoji3",
-            ),
-            actor_user_id="tester",
-        )
-        assert asset is not None
-
-        release = atp_asset_service.create_release_from_archive(
-            session,
-            asset_id=asset.id,
-            release_tag="v1",
-            archive_filename="release.zip",
-            archive_content=_build_zip({"work.atp": b"ATP INPUT", "docs/readme.txt": b"docs"}),
-            actor_user_id="tester",
-        )
-
-        files = atp_asset_service.list_asset_files(session, asset_id=asset.id)
-        assert files.asset_id == asset.id
-        assert files.release_id == release.id
-        assert files.total == 3
-        assert [item.relative_path for item in files.items] == ["docs", "docs/readme.txt", "work.atp"]
-    finally:
-        session.close()
-
-
-def test_list_assets_paginates_after_filtering(tmp_path) -> None:
-    testing_session = _build_sessionmaker()
-    session: Session = testing_session()
-    try:
-        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        for index in range(4):
-            created = atp_asset_service.create_asset(
-                session,
-                AtpAssetCreateRequest(
-                    code=f"ATP-ASSET-PAGE-{index}",
-                    name=f"分页模型 {index}",
-                    voltage_level="220",
-                    tower_type="sihuita",
-                    scene_type="fanji",
-                    arrester_config="M123",
-                ),
-                actor_user_id="tester",
-            )
-            assert created is not None
-            assert created.arrester_config == "M123"
-
-        result = atp_asset_service.list_assets(
-            session,
-            keyword="分页模型",
-            status_filter=None,
-            voltage_level=None,
-            tower_type=None,
-            scene_type=None,
-            limit=2,
-            offset=1,
-        )
-
-        assert result.total == 4
-        assert len(result.items) == 2
-        assert [item.code for item in result.items] == ["ATP-ASSET-PAGE-2", "ATP-ASSET-PAGE-1"]
-        assert [item.arrester_config for item in result.items] == ["M123", "M123"]
-    finally:
-        session.close()
-
-
-def test_run_release_dry_run_materializes_directory(tmp_path, monkeypatch) -> None:
-    testing_session = _build_sessionmaker()
-    monkeypatch.setattr(core_database, "SessionLocal", testing_session)
-    session: Session = testing_session()
-    try:
-        release_root = tmp_path / "vfs" / "atp-library" / "runtime-release"
-        release_root.mkdir(parents=True)
-        (release_root / "work.atp").write_text("ATP INPUT", encoding="utf-8")
-        (release_root / "tpbig.exe").write_text("binary", encoding="utf-8")
+        asset_root = tmp_path / "vfs" / "atp-assets" / "runtime-asset"
+        asset_root.mkdir(parents=True)
+        (asset_root / "work.atp").write_text("ATP INPUT", encoding="utf-8")
+        (asset_root / "tpbig.exe").write_text("binary", encoding="utf-8")
 
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
         asset = atp_asset_service.create_asset(
@@ -373,17 +157,11 @@ def test_run_release_dry_run_materializes_directory(tmp_path, monkeypatch) -> No
             actor_user_id="tester",
         )
         assert asset is not None
-        release = atp_asset_service.create_release(
+        atp_asset_service.upload_asset_archive(
             session,
             asset_id=asset.id,
-            payload=AtpAssetReleaseCreateRequest(
-                voltage_level="500",
-                tower_type="ganzi",
-                scene_type="fanji",
-                runner_kind="atp",
-                storage_mount_code="main",
-                storage_root_path="/atp-library/runtime-release",
-            ),
+            archive_filename="model.zip",
+            archive_content=_build_zip({"work.atp": b"ATP INPUT", "tpbig.exe": b"binary"}),
             actor_user_id="tester",
         )
 
@@ -394,9 +172,9 @@ def test_run_release_dry_run_materializes_directory(tmp_path, monkeypatch) -> No
         monkeypatch.setattr(atp_asset_service, "_resolve_binary", lambda value: "/usr/bin/wine" if value == "wine" else None)
         monkeypatch.setattr(atp_asset_service, "_publish_change", lambda *args, **kwargs: None)
 
-        result = atp_asset_service.run_release(
+        result = atp_asset_service.execute_asset_run_job(
             session,
-            release_id=release.id,
+            asset_id=asset.id,
             payload=AtpAssetRunRequest(dry_run=True),
             actor_user_id="tester",
         )
@@ -431,170 +209,65 @@ def test_delete_asset_removes_storage_files(tmp_path) -> None:
         )
         assert asset is not None
 
-        # Create a release with files
-        release = atp_asset_service.create_release_from_archive(
+        atp_asset_service.upload_asset_archive(
             session,
             asset_id=asset.id,
-            release_tag="v1",
-            archive_filename="release.zip",
+            archive_filename="model.zip",
             archive_content=_build_zip({
                 "work.atp": b"ATP INPUT",
                 "README.txt": b"documentation",
             }),
             actor_user_id="tester",
         )
-        assert release.storage_root_path == "/atp-library/500/danhuita/r1"
 
-        # Verify files exist before deletion
-        storage_path = tmp_path / "vfs" / "atp-library" / "500" / "danhuita" / "r1"
-        assert storage_path.exists()
-        assert (storage_path / "work.atp").exists()
-        assert (storage_path / "README.txt").exists()
+        asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-DELETE-TEST"
+        assert asset_root.exists()
+        assert (asset_root / "work.atp").exists()
+        assert (asset_root / "README.txt").exists()
 
-        # Delete the asset
         deleted = atp_asset_service.delete_asset(session, asset.id)
         assert deleted is True
 
-        # Verify files are deleted
-        assert not storage_path.exists()
+        assert not asset_root.exists()
     finally:
         session.close()
 
 
-def test_upload_asset_files_via_temp_file_id(tmp_path, monkeypatch) -> None:
-    from app.services import minio_storage
-
+def test_list_assets_paginates_after_filtering(tmp_path) -> None:
     testing_session = _build_sessionmaker()
     session: Session = testing_session()
     try:
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset = atp_asset_service.create_asset(
-            session,
-            AtpAssetCreateRequest(
-                code="ATP-ASSET-TEMP",
-                name="临时目录上传模型",
-                voltage_level="110",
-                tower_type="danhuita",
-                scene_type="raoji3",
-            ),
-            actor_user_id="tester",
-        )
-        assert asset is not None
-
-        temp_key = "lightning/tmp/tester/abc123_model.zip"
-        zip_content = _build_zip(
-            {
-                "work.atp": b"ATP INPUT",
-                "nested/config.txt": b"nested config",
-            }
-        )
-        deleted: list[str] = []
-        monkeypatch.setattr(minio_storage, "get_object", lambda key: zip_content)
-        monkeypatch.setattr(minio_storage, "delete_object", lambda key: deleted.append(key))
-
-        updated = atp_asset_service.upload_asset_files(
-            session,
-            asset_id=asset.id,
-            files=None,
-            temp_file_id=temp_key,
-            actor_user_id="tester",
-        )
-
-        assert updated.storage_mount_code == "main"
-        assert updated.storage_root_path == "/atp-assets/ATP-ASSET-TEMP"
-        assert deleted == [temp_key]
-
-        asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-TEMP"
-        assert (asset_root / "work.atp").exists()
-        assert (asset_root / "nested" / "config.txt").exists()
-
-        files = atp_asset_service.list_asset_files(session, asset_id=asset.id)
-        assert any(entry.relative_path == "work.atp" and not entry.is_dir for entry in files.items)
-        assert any(entry.relative_path == "nested/config.txt" and not entry.is_dir for entry in files.items)
-    finally:
-        session.close()
-
-
-def test_upload_asset_files_missing_both_file_and_temp_id(tmp_path) -> None:
-    testing_session = _build_sessionmaker()
-    session: Session = testing_session()
-    try:
-        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset = atp_asset_service.create_asset(
-            session,
-            AtpAssetCreateRequest(
-                code="ATP-ASSET-NOFILE",
-                name="无文件模型",
-                voltage_level="110",
-                tower_type="danhuita",
-                scene_type="raoji3",
-            ),
-            actor_user_id="tester",
-        )
-        assert asset is not None
-
-        with pytest.raises(HTTPException) as exc:
-            atp_asset_service.upload_asset_files(
+        for index in range(4):
+            created = atp_asset_service.create_asset(
                 session,
-                asset_id=asset.id,
-                files=None,
-                temp_file_id=None,
+                AtpAssetCreateRequest(
+                    code=f"ATP-ASSET-PAGE-{index}",
+                    name=f"分页模型 {index}",
+                    voltage_level="220",
+                    tower_type="fanji",
+                    scene_type="raoji3",
+                    arrester_config="M123",
+                ),
                 actor_user_id="tester",
             )
-        assert exc.value.status_code == 400
-    finally:
-        session.close()
+            assert created is not None
+            assert created.arrester_config == "M123"
 
-
-def test_upload_asset_files_extracts_zip_and_removes_asset_root(tmp_path) -> None:
-    testing_session = _build_sessionmaker()
-    session: Session = testing_session()
-    try:
-        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset = atp_asset_service.create_asset(
+        result = atp_asset_service.list_assets(
             session,
-            AtpAssetCreateRequest(
-                code="ATP-ASSET-FILES",
-                name="资产文件上传",
-                voltage_level="220",
-                tower_type="sihuita",
-                scene_type="raoji3",
-            ),
-            actor_user_id="tester",
-        )
-        assert asset is not None
-
-        updated = atp_asset_service.upload_asset_files(
-            session,
-            asset_id=asset.id,
-            files=[
-                _DummyUploadFile(
-                    "model.zip",
-                    _build_zip(
-                        {
-                            "work.atp": b"ATP INPUT",
-                            "nested/config.txt": b"nested config",
-                        }
-                    ),
-                )
-            ],
-            actor_user_id="tester",
+            keyword="分页模型",
+            status_filter=None,
+            voltage_level=None,
+            tower_type=None,
+            scene_type=None,
+            limit=2,
+            offset=1,
         )
 
-        assert updated.storage_mount_code == "main"
-        assert updated.storage_root_path == "/atp-assets/ATP-ASSET-FILES"
-
-        asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-FILES"
-        assert (asset_root / "work.atp").exists()
-        assert (asset_root / "nested" / "config.txt").exists()
-
-        files = atp_asset_service.list_asset_files(session, asset_id=asset.id)
-        assert files.release_id is None
-        assert files.storage_root_path == "/atp-assets/ATP-ASSET-FILES"
-        assert any(entry.relative_path == "work.atp" and not entry.is_dir for entry in files.items)
-        assert any(entry.relative_path == "nested/config.txt" and not entry.is_dir for entry in files.items)
-
-        assert atp_asset_service.delete_asset(session, asset.id) is True
-        assert not asset_root.exists()
+        assert result.total == 4
+        assert len(result.items) == 2
+        assert [item.code for item in result.items] == ["ATP-ASSET-PAGE-2", "ATP-ASSET-PAGE-1"]
+        assert [item.arrester_config for item in result.items] == ["M123", "M123"]
     finally:
         session.close()

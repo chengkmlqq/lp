@@ -1117,7 +1117,6 @@ export type AtpEngineStatusResponse = {
 };
 
 export type AtpAssetStatus = "draft" | "enabled" | "disabled" | "archived" | "processing";
-export type AtpAssetReleaseStatus = "draft" | "released" | "archived";
 export type AtpAssetRunnerKind = "atp" | "egm" | "hybrid";
 export type AtpAssetRunStatus = "pending" | "running" | "success" | "failed";
 
@@ -1133,11 +1132,6 @@ export type AtpAssetSummary = {
   arrester_config: string | null;
   storage_mount_code: string | null;
   storage_root_path: string | null;
-  latest_release_no: number;
-  active_release_no: number | null;
-  active_release_id: string | null;
-  active_release_tag: string | null;
-  release_count: number;
   run_count: number;
   last_run_status: AtpAssetRunStatus | null;
   last_run_date: string | null;
@@ -1152,45 +1146,6 @@ export type AtpAssetListResponse = {
   total: number;
 };
 
-export type AtpAssetReleaseSummary = {
-  id: string;
-  asset_id: string;
-  asset_code: string;
-  asset_name: string;
-  release_no: number;
-  release_tag: string | null;
-  status: AtpAssetReleaseStatus;
-  voltage_level: string;
-  tower_type: string;
-  scene_type: string;
-  scenario_code: string | null;
-  runner_kind: AtpAssetRunnerKind;
-  storage_mount_code: string;
-  storage_root_path: string;
-  entry_file: string | null;
-  result_file: string | null;
-  egm_subdir: string | null;
-  egm_result_file: string | null;
-  preprocess_script: string | null;
-  postprocess_script: string | null;
-  content_hash: string;
-  is_active: boolean;
-  create_date: string;
-  create_user: string | null;
-  update_date: string;
-  update_user: string | null;
-};
-
-export type AtpAssetReleaseDetail = AtpAssetReleaseSummary & {
-  manifest_json: Record<string, unknown>;
-  validation_json: Record<string, unknown>;
-};
-
-export type AtpAssetReleaseListResponse = {
-  items: AtpAssetReleaseSummary[];
-  total: number;
-};
-
 export type AtpAssetFileEntry = {
   relative_path: string;
   name: string;
@@ -1202,7 +1157,6 @@ export type AtpAssetFileEntry = {
 
 export type AtpAssetFileListResponse = {
   asset_id: string;
-  release_id: string | null;
   storage_mount_code: string;
   storage_root_path: string;
   items: AtpAssetFileEntry[];
@@ -1222,9 +1176,6 @@ export type AtpAssetRunSummary = {
   asset_id: string;
   asset_code: string;
   asset_name: string;
-  release_id: string;
-  release_no: number;
-  release_tag: string | null;
   status: AtpAssetRunStatus;
   engine_mode: AtpEngineMode;
   runner_kind: AtpAssetRunnerKind;
@@ -1282,7 +1233,6 @@ export type AtpTopology = {
 
 export type AtpTopologyResponse = {
   asset_id: string;
-  release_id: string | null;
   topology: AtpTopology;
 };
 

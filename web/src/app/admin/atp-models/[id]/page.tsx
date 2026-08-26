@@ -9,7 +9,7 @@ import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import AtpCircuitPreview from "@/components/atp-circuit-preview";
 import { readApiError } from "@/lib/api";
-import type { AtpAssetSummary, AtpAssetFileListResponse, AtpAssetReleaseListResponse, AtpAssetRunListResponse } from "@/types/auth";
+import type { AtpAssetSummary, AtpAssetFileListResponse, AtpAssetRunListResponse } from "@/types/auth";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -23,33 +23,8 @@ function formatNumber(value: number | null | undefined): string {
   return value.toLocaleString("zh-CN");
 }
 
-const RELEASE_COLUMNS = [
-  { title: "版本号", dataIndex: "release_no", key: "release_no", width: 90 },
-  { title: "标签", dataIndex: "release_tag", key: "release_tag", width: 120, render: (v: string | null) => v || "-" },
-  {
-    title: "状态",
-    dataIndex: "status",
-    key: "status",
-    width: 100,
-    render: (v: string) => {
-      const color = v === "released" ? "green" : v === "draft" ? "blue" : "default";
-      return <Tag color={color}>{v}</Tag>;
-    },
-  },
-  { title: "入口文件", dataIndex: "entry_file", key: "entry_file", render: (v: string | null) => v || "-" },
-  {
-    title: "激活",
-    dataIndex: "is_active",
-    key: "is_active",
-    width: 90,
-    render: (v: boolean) => (v ? <Tag color="gold">激活</Tag> : <Tag>未激活</Tag>),
-  },
-  { title: "创建时间", dataIndex: "create_date", key: "create_date", width: 170, render: (v: string) => formatDateTime(v) },
-];
-
 const RUN_COLUMNS = [
   { title: "状态", dataIndex: "status", key: "status", width: 110, render: (v: string) => <Tag color={v === "success" ? "green" : v === "failed" ? "red" : "blue"}>{v}</Tag> },
-  { title: "版本号", dataIndex: "release_no", key: "release_no", width: 90 },
   { title: "引擎", dataIndex: "engine_mode", key: "engine_mode", width: 90 },
   { title: "退出码", dataIndex: "exit_code", key: "exit_code", width: 90, render: (v: number | null) => (v == null ? "-" : v) },
   { title: "耗时(ms)", dataIndex: "duration_ms", key: "duration_ms", width: 110, render: (v: number | null) => (v == null ? "-" : formatNumber(v)) },
@@ -75,18 +50,6 @@ function ATPAssetDetailPage() {
     },
   });
 
-  const releasesQuery = useQuery({
-    queryKey: ["/api/v1/atp/assets", assetId, "releases"],
-    enabled: Boolean(user && canRead && assetId),
-    queryFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/releases?limit=200`);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as AtpAssetReleaseListResponse;
-    },
-  });
-
   const filesQuery = useQuery({
     queryKey: ["/api/v1/atp/assets", assetId, "files"],
     enabled: Boolean(user && canRead && assetId),
@@ -95,7 +58,6 @@ function ATPAssetDetailPage() {
       if (!response.ok) {
         return {
           asset_id: assetId,
-          release_id: null,
           storage_mount_code: "",
           storage_root_path: "",
           items: [],
@@ -107,33 +69,18 @@ function ATPAssetDetailPage() {
   });
 
   const runsQuery = useQuery({
-    queryKey: ["/api/v1/atp/assets", assetId, "releases", "runs"],
+    queryKey: ["/api/v1/atp/assets", assetId, "runs"],
     enabled: Boolean(user && canRead && assetId),
     queryFn: async () => {
-      const allRuns: AtpAssetRunListResponse["items"] = [];
-      // 遍历所有 release 拉取运行记录（每 release 最多 100 条）
-      const releases = releasesQuery.data?.items ?? [];
-      for (const release of releases.slice(0, 10)) {
-        const response = await fetchWithAuth(`/api/v1/atp/releases/${release.id}/runs?limit=100`);
-        if (response.ok) {
-          const data = (await response.json()) as AtpAssetRunListResponse;
-          allRuns.push(...data.items);
-        }
+      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/runs?limit=100`);
+      if (!response.ok) {
+        return { items: [], total: 0 } satisfies AtpAssetRunListResponse;
       }
-      // 去重 + 按创建时间倒序
-      const seen = new Set<string>();
-      const unique = allRuns.filter((run) => {
-        if (seen.has(run.id)) return false;
-        seen.add(run.id);
-        return true;
-      });
-      unique.sort((a, b) => new Date(b.create_date).getTime() - new Date(a.create_date).getTime());
-      return { items: unique, total: unique.length } satisfies AtpAssetRunListResponse;
+      return (await response.json()) as AtpAssetRunListResponse;
     },
   });
 
   const asset = assetQuery.data;
-  const releases = releasesQuery.data?.items ?? [];
   const files = filesQuery.data?.items ?? [];
   const runs = runsQuery.data?.items ?? [];
 
@@ -204,12 +151,6 @@ function ATPAssetDetailPage() {
               { key: "tower", label: "塔型", children: asset.tower_type || "-" },
               { key: "scene", label: "场景", children: asset.scene_type || "-" },
               { key: "arrester", label: "避雷器组合", children: asset.arrester_config || "-" },
-              {
-                key: "active_release",
-                label: "激活版本",
-                children: asset.active_release_tag ? `v${asset.active_release_no} (${asset.active_release_tag})` : asset.active_release_no ? `v${asset.active_release_no}` : "-",
-              },
-              { key: "release_count", label: "版本数", children: asset.release_count },
               { key: "run_count", label: "运行次数", children: asset.run_count },
               { key: "last_run", label: "最近运行", children: asset.last_run_status ? `${asset.last_run_status} · ${formatDateTime(asset.last_run_date)}` : "-" },
               { key: "storage", label: "存储挂载", children: asset.storage_mount_code || "-" },
@@ -226,19 +167,6 @@ function ATPAssetDetailPage() {
               key: "topology",
               label: "电路预览",
               children: <AtpCircuitPreview assetId={assetId} height={520} />,
-            },
-            {
-              key: "versions",
-              label: `版本 (${releases.length})`,
-              children: (
-                <Table
-                  rowKey="id"
-                  columns={RELEASE_COLUMNS}
-                  dataSource={releases}
-                  loading={releasesQuery.isLoading}
-                  pagination={releases.length > 10 ? { pageSize: 10, showTotal: (t) => `共 ${t} 条` } : false}
-                />
-              ),
             },
             {
               key: "files",
@@ -268,9 +196,9 @@ function ATPAssetDetailPage() {
               ) : (
                 <Table
                   rowKey="id"
+                  loading={runsQuery.isLoading}
                   columns={RUN_COLUMNS}
                   dataSource={runs}
-                  loading={runsQuery.isLoading}
                   pagination={runs.length > 10 ? { pageSize: 10, showTotal: (t) => `共 ${t} 条` } : false}
                 />
               ),
