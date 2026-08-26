@@ -16,11 +16,12 @@ import {
   SwapOutlined,
   ApartmentOutlined,
 } from "@ant-design/icons";
+import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  App,
   Button,
-  Card,
   Col,
   Dropdown,
   Empty,
@@ -40,17 +41,16 @@ import {
   Tooltip,
   Typography,
   Upload,
-  type CardProps,
   type MenuProps,
 } from "antd";
 import type { UploadFile } from "antd/es/upload";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { Card } from "@/components/ui-antd";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { ApiError } from "@/lib/api";
 import {
   createMatlabModule,
@@ -64,8 +64,6 @@ import {
   uploadMatlabDraft,
 } from "@/lib/matlab-engine-api";
 import type { MatlabModule, MatlabVersion } from "@/types/matlab-engine";
-
-const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 type ModuleFormValues = {
   name: string;
@@ -106,10 +104,14 @@ function formatSize(bytes: number): string {
 }
 
 function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "-";
-  return parsed.toLocaleString();
+  if (!value) {
+    return "-";
+  }
+  const parsed = dayjs(value);
+  if (!parsed.isValid()) {
+    return "-";
+  }
+  return parsed.format("YYYY-MM-DD HH:mm:ss");
 }
 
 export default function AdminMatlabEnginePage() {
@@ -526,10 +528,12 @@ export default function AdminMatlabEnginePage() {
 
   if (!user || !canRead) {
     return (
-      <Card title="MATLAB 程序管理">
-        <Typography.Text type="secondary">
-          {!user ? "请先登录后访问。" : "当前账号无权限（需要 line.read）。"}
-        </Typography.Text>
+      <Card title="MATLAB 引擎管理">
+        <Space direction="vertical" size={12}>
+          <Typography.Text type="secondary">
+            {!user ? "请先登录后访问。" : "当前账号无权限（需要 line.read）。"}
+          </Typography.Text>
+        </Space>
       </Card>
     );
   }
@@ -571,25 +575,26 @@ export default function AdminMatlabEnginePage() {
     ];
 
     return (
-      <AntCard
+      <Card
         key={`${item.version_hash}-${isDraft ? "draft" : "release"}`}
         className="admin-matlab-version-card"
         size="small"
         hoverable
         onClick={() => openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || [])}
       >
-        <div className="admin-matlab-version-card-title">
-          <CodeOutlined className="admin-matlab-version-card-title-icon" />
-          <Typography.Text strong className="admin-matlab-version-card-title-text truncate">
-            {item.version_tag || "未命名版本"}
-          </Typography.Text>
-          <div className="flex flex-shrink-0 items-center gap-2">
-            <Tag color={statusConfig.color}>{statusConfig.text}</Tag>
+        <div className="flex flex-col">
+          <div className="admin-matlab-version-card-title">
+            <CodeOutlined className="admin-matlab-version-card-title-icon" />
+            <Typography.Text strong className="admin-matlab-version-card-title-text truncate">
+              {item.version_tag || "未命名版本"}
+            </Typography.Text>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <Tag color={statusConfig.color}>{statusConfig.text}</Tag>
+            </div>
           </div>
-        </div>
-        <div className="admin-matlab-version-card-body">
-          <div className="admin-matlab-version-field">
-            <SwapOutlined className="admin-matlab-version-field-icon" />
+          <div className="admin-matlab-version-card-body">
+            <div className="admin-matlab-version-field">
+<SwapOutlined className="admin-matlab-version-field-icon" />
             <Typography.Text type="secondary" className="admin-matlab-version-field-content text-xs">
               变更日志：{item.changelog || "-"}
             </Typography.Text>
@@ -611,19 +616,20 @@ export default function AdminMatlabEnginePage() {
             <Typography.Text className="admin-matlab-version-field-content text-xs">
               大小：{formatSize(item.size_bytes)}
             </Typography.Text>
+            </div>
+          </div>
+          <div className="admin-matlab-version-card-actions">
+            {isDraft && canManage && (
+              <Button type="primary" size="small" onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
+                发布
+              </Button>
+            )}
+            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+              <Button type="text" size="small" icon={<MoreOutlined />} onClick={(event) => event.stopPropagation()} />
+            </Dropdown>
           </div>
         </div>
-        <div className="admin-matlab-version-card-actions">
-          {isDraft && canManage && (
-            <Button type="primary" size="small" onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
-              发布
-            </Button>
-          )}
-          <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-            <Button type="text" size="small" icon={<MoreOutlined />} onClick={(event) => event.stopPropagation()} />
-          </Dropdown>
-        </div>
-      </AntCard>
+      </Card>
     );
   };
 
@@ -778,66 +784,68 @@ export default function AdminMatlabEnginePage() {
     ];
 
     return (
-      <AntCard
+      <Card
         key={item.slug}
         className="admin-matlab-module-card"
         size="small"
         hoverable
         onClick={() => setSelectedSlug(item.slug)}
       >
-        <div className="admin-matlab-module-card-title">
-          <DeploymentUnitOutlined className="admin-matlab-module-card-title-icon" />
-          <Typography.Text strong className="admin-matlab-module-card-title-text truncate">
-            {item.name}
-          </Typography.Text>
-          <Tag color="blue" className="flex-shrink-0 truncate max-w-[120px]">{item.slug}</Tag>
-        </div>
-        <div className="admin-matlab-module-card-body">
-          <div className="admin-matlab-version-field">
-            <EditOutlined className="admin-matlab-version-field-icon" />
-            <Typography.Text className="admin-matlab-version-field-content text-xs">
-              描述：{item.description || "-"}
+        <div className="flex flex-col">
+          <div className="admin-matlab-module-card-title">
+            <DeploymentUnitOutlined className="admin-matlab-module-card-title-icon" />
+            <Typography.Text strong className="admin-matlab-module-card-title-text truncate">
+              {item.name}
             </Typography.Text>
+            <Tag color="blue" className="flex-shrink-0 truncate max-w-[120px]">{item.slug}</Tag>
           </div>
-          <div className="admin-matlab-version-field">
-            <ApartmentOutlined className="admin-matlab-version-field-icon" />
-            <Typography.Text className="admin-matlab-version-field-content text-xs">
-              部署路径：{item.worker_deploy_path || "-"}
-            </Typography.Text>
+          <div className="admin-matlab-module-card-body">
+            <div className="admin-matlab-version-field">
+              <EditOutlined className="admin-matlab-version-field-icon" />
+              <Typography.Text type="secondary" className="admin-matlab-version-field-content text-xs">
+                描述：{item.description || "-"}
+              </Typography.Text>
+            </div>
+            <div className="admin-matlab-version-field">
+              <ApartmentOutlined className="admin-matlab-version-field-icon" />
+              <Typography.Text className="admin-matlab-version-field-content text-xs">
+                部署路径：{item.worker_deploy_path || "-"}
+              </Typography.Text>
+            </div>
+            <div className="admin-matlab-version-field">
+              <InboxOutlined className="admin-matlab-version-field-icon" />
+              <Typography.Text className="admin-matlab-version-field-content text-xs">
+                必需文件：{(item.required_files || []).join(", ") || "-"}
+              </Typography.Text>
+            </div>
           </div>
-          <div className="admin-matlab-version-field">
-            <InboxOutlined className="admin-matlab-version-field-icon" />
-            <Typography.Text className="admin-matlab-version-field-content text-xs">
-              必需文件：{(item.required_files || []).join(", ") || "-"}
-            </Typography.Text>
+          <div className="admin-matlab-module-card-actions">
+            {canManage && (
+              <Space size={4}>
+                <Tooltip title="编辑">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openEditModule(item);
+                    }}
+                  />
+                </Tooltip>
+                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </Dropdown>
+              </Space>
+            )}
           </div>
         </div>
-        <div className="admin-matlab-module-card-actions">
-          {canManage && (
-            <Space size={4}>
-              <Tooltip title="编辑">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<EditOutlined />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openEditModule(item);
-                  }}
-                />
-              </Tooltip>
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<MoreOutlined />}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              </Dropdown>
-            </Space>
-          )}
-        </div>
-      </AntCard>
+      </Card>
     );
   };
 
@@ -845,7 +853,7 @@ export default function AdminMatlabEnginePage() {
   const renderLeftPanel = () => (
     <>
       <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
-        <AntCard
+        <Card
           className="admin-matlab-tree-card"
           style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
           bodyStyle={{ flex: 1, padding: 0 }}
@@ -902,7 +910,7 @@ export default function AdminMatlabEnginePage() {
               ))
             )}
           </div>
-        </AntCard>
+        </Card>
       </div>
       <div className="admin-matlab-resize-handle" onMouseDown={handleResizeStart}>
         <div className="admin-matlab-resize-handle-line" />
@@ -984,17 +992,15 @@ export default function AdminMatlabEnginePage() {
                   查询
                 </Button>
               </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Segmented
-                  value={viewMode}
-                  onChange={(value) => setViewMode(value as "table" | "card")}
-                  options={[
-                    { label: "卡片视图", value: "card" },
-                    { label: "列表视图", value: "table" },
-                  ]}
-                />
-              </Form.Item>
             </Form>
+            <Segmented
+              value={viewMode}
+              onChange={(value) => setViewMode(value as "table" | "card")}
+              options={[
+                { label: "卡片视图", value: "card" },
+                { label: "列表视图", value: "table" },
+              ]}
+            />
           </div>
 
           {apiError && (
