@@ -1114,7 +1114,7 @@ export type AtpEngineStatusResponse = {
   error: string | null;
 };
 
-export type AtpAssetStatus = "draft" | "enabled" | "disabled" | "archived";
+export type AtpAssetStatus = "draft" | "enabled" | "disabled" | "archived" | "processing";
 export type AtpAssetReleaseStatus = "draft" | "released" | "archived";
 export type AtpAssetRunnerKind = "atp" | "egm" | "hybrid";
 export type AtpAssetRunStatus = "pending" | "running" | "success" | "failed";
