@@ -23,7 +23,6 @@ import {
   Table,
   Tabs,
   Tag,
-  Text,
   Tooltip as AntTooltip,
   Typography,
   Upload,
@@ -776,7 +775,7 @@ export default function AdminLightningCurrentsPage() {
             <Typography.Text strong className="truncate">{record.source_file_name || "-"}</Typography.Text>
             <div className="flex flex-shrink-0 items-center gap-2">
               <Badge status={meta.color} />
-              <Text type="secondary" className="text-xs">{meta.label}</Text>
+              <Typography.Text type="secondary" className="text-xs">{meta.label}</Typography.Text>
             </div>
           </div>
 
