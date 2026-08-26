@@ -86,10 +86,10 @@ test("LP-320: line card uses a three-section layout without antd title/extra", (
   assert.match(powerLineCardBlock, /flex flex-col/, "卡片内容应为三段式纵向布局");
 });
 
-test("LP-320: upper section shows a line icon next to the title without status badge", () => {
+test("LP-320: upper section shows a line icon next to the title with status badge", () => {
   assert.match(powerLineCardBlock, /<DeploymentUnitOutlined /, "标题区左侧应有代表线路的图标");
-  assert.match(powerLineCardBlock, /<Typography.Text strong/, "标题区应展示线路名称");
-  assert.ok(!/<Badge/.test(powerLineCardBlock), "线路暂无状态,卡片不应显示状态 Badge");
+  assert.match(powerLineCardBlock, /<Typography\.Text strong/, "标题区应展示线路名称");
+  assert.match(powerLineCardBlock, /<Badge status=/, "卡片应显示状态 Badge");
 });
 
 test("LP-320: middle section renders basic info as icon + text rows", () => {
@@ -112,7 +112,7 @@ test("LP-353: title bar is separated from basic info by a bottom border divider"
 });
 
 test("LP-320: bottom section holds icon action buttons with a top border divider", () => {
-  assert.match(powerLineCardBlock, /flex items-center justify-end px-4 py-2 border-t border-gray-200/, "操作区上方应有 border-t 分隔线并右对齐");
+  assert.match(powerLineCardBlock, /flex items-center justify-between px-4 py-2 border-t border-gray-200/, "操作区上方应有 border-t 分隔线");
   assert.match(powerLineCardBlock, /icon=\{<ApartmentOutlined \/>\}/, "底部应有杆塔图标按钮");
   assert.match(powerLineCardBlock, /icon=\{<GlobalOutlined \/>\}/, "底部应有预览图标按钮");
   assert.ok(!/^\s*杆塔\s*$/.test(powerLineCardBlock), "卡片外露按钮不应带文字");
@@ -147,7 +147,7 @@ test("LP-365: line card body padding is zeroed so dividers span the full card wi
 test("LP-365: three card sections carry independent padding", () => {
   assert.match(powerLineCardBlock, /admin-power-lines-line-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200/, "标题栏应有 px-4 py-3 独立 padding");
   assert.match(powerLineCardBlock, /flex flex-col gap-2 px-4 py-3/, "信息区应有 px-4 py-3 独立 padding");
-  assert.match(powerLineCardBlock, /admin-power-lines-line-card-actions flex items-center justify-end px-4 py-2 border-t border-gray-200/, "按钮区应有 px-4 py-2 独立 padding");
+  assert.match(powerLineCardBlock, /admin-power-lines-line-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200/, "按钮区应有 px-4 py-2 独立 padding");
   assert.ok(!/gap-3/.test(powerLineCardBlock), "外层不再依赖 gap-3 承担间距");
 });
 

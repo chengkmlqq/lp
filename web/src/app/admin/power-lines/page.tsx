@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
+  Badge,
   Button,
   Dropdown,
   Empty,
@@ -11,6 +12,7 @@ import {
   Input,
   Modal,
   Pagination,
+  Progress,
   Segmented,
   Select,
   Space,
@@ -99,6 +101,13 @@ const LINE_VOLTAGE_KV_TO_DEFAULT_OPTION: Partial<Record<number, (typeof LINE_VOL
   800: "dc_800",
   1000: "dc_1000",
 };
+const STATUS_CONFIG: Record<string, { color: string; text: string }> = {
+  pending: { color: "default", text: "待处理" },
+  processing: { color: "processing", text: "处理中" },
+  completed: { color: "success", text: "已完成" },
+  failed: { color: "error", text: "失败" },
+};
+
 const EMPTY_LINE_FORM: LineFormValues = {
   name: "",
   voltage_level: null,
@@ -134,6 +143,10 @@ function resolveVoltageOptionFromKv(voltageKv: number | null): LineFormValues["v
     return null;
   }
   return LINE_VOLTAGE_KV_TO_DEFAULT_OPTION[voltageKv] ?? null;
+}
+
+function resolveLineStatusConfig(status: string): { color: string; text: string } {
+  return STATUS_CONFIG[status] ?? { color: "default", text: status || "-" };
 }
 
 export default function AdminPowerLinesPage() {
@@ -633,6 +646,7 @@ interface PowerLineCardProps {
 }
 
 function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDelete, deleteLoading }: PowerLineCardProps) {
+  const statusConfig = resolveLineStatusConfig(line.status);
   return (
     <Card
       size="small"
@@ -643,7 +657,11 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
       <div className="flex flex-col">
         <div className="admin-power-lines-line-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
           <DeploymentUnitOutlined className="text-base text-gray-500" />
-          <Typography.Text strong className="truncate">{line.name}</Typography.Text>
+          <Typography.Text strong className="truncate flex-1">{line.name}</Typography.Text>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Badge status={statusConfig.color as "default" | "processing" | "success" | "error"} />
+            <Typography.Text type="secondary" className="text-xs">{statusConfig.text}</Typography.Text>
+          </div>
         </div>
 
         <div className="flex flex-col gap-2 px-4 py-3">
@@ -669,7 +687,10 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
           </div>
         </div>
 
-        <div className="admin-power-lines-line-card-actions flex items-center justify-end px-4 py-2 border-t border-gray-200">
+        <div className="admin-power-lines-line-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+          {line.status === "processing" ? (
+            <Progress percent={Math.round(line.progress)} size="small" className="mr-auto flex-1 max-w-40" />
+          ) : null}
           <Space size="small">
             <Tooltip title="杆塔">
               <Button

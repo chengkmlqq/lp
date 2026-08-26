@@ -149,6 +149,10 @@
   border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
 }
 
+:root[data-fquiz-theme="dark"] .admin-power-lines-line-card-actions .ant-progress-text {
+  color: var(--ant-color-text-secondary) !important;
+}
+
 :root[data-fquiz-theme="dark"] .admin-lightning-events-card-actions {
   border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
 }

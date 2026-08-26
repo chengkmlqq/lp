@@ -650,6 +650,8 @@ export type LineSummary = {
   code: string;
   name: string;
   voltage_kv: number | null;
+  status: string;
+  progress: number;
   phase_sequence_json: Record<string, unknown>;
   arrester_install_json: Record<string, unknown>;
   lightning_param_json: Record<string, unknown>;
