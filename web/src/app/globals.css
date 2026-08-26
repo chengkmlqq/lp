@@ -306,15 +306,6 @@
   box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
 }
 
-:root[data-fquiz-theme="dark"] .admin-matlab-version-card > .ant-card-head {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-matlab-version-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
 :root[data-fquiz-theme="dark"] .admin-matlab-module-card {
   border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
   background:
@@ -326,13 +317,15 @@
   box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
 }
 
-:root[data-fquiz-theme="dark"] .admin-matlab-module-card > .ant-card-head {
+:root[data-fquiz-theme="dark"] .admin-matlab-version-card-title,
+:root[data-fquiz-theme="dark"] .admin-matlab-module-card-title {
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
   background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
 }
 
-:root[data-fquiz-theme="dark"] .admin-matlab-module-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
+:root[data-fquiz-theme="dark"] .admin-matlab-version-card-actions,
+:root[data-fquiz-theme="dark"] .admin-matlab-module-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
 }
 
 :root[data-fquiz-theme="dark"] .admin-matlab-card-view,
@@ -1445,7 +1438,7 @@ body {
   align-items: baseline;
 }
 
-/* LP-481: MATLAB 管理页视觉与滚动布局对齐线路/菜单管理页规范 */
+/* LP-484: MATLAB 管理页视觉与布局对齐线路管理页规范 */
 .admin-matlab-tabs {
   display: flex;
   flex: 1;
@@ -1546,16 +1539,6 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-}
-
-.admin-matlab-page-body {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  display: flex;
-  gap: 0;
-  overflow: hidden;
-  padding: 0;
 }
 
 .admin-matlab-tree-card {
@@ -1752,21 +1735,15 @@ body {
   box-shadow: 0 8px 18px color-mix(in srgb, var(--fquiz-theme-text-primary) 8%, transparent);
 }
 
-.admin-matlab-version-card > .ant-card-head {
-  min-height: 44px;
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
-}
-
 .admin-matlab-version-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
 }
 
 .admin-matlab-version-field {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
+  display: flex;
+  align-items: center;
   gap: 8px;
-  align-items: baseline;
+  margin-bottom: 8px;
 }
 
 /* LP-482: Module card visual style - align with power-lines line card */
@@ -1789,7 +1766,116 @@ body {
 }
 
 .admin-matlab-module-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
+}
+
+.admin-matlab-module-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+  min-height: 44px;
+}
+
+.admin-matlab-module-card-title-icon {
+  color: var(--ant-color-text-secondary);
+  font-size: 16px;
+}
+
+.admin-matlab-module-card-title-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-matlab-module-card-body {
+  padding: 12px 16px;
+}
+
+.admin-matlab-module-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+}
+
+/* LP-484: Version card visual style - align with power-lines line card */
+.admin-matlab-version-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+  min-height: 44px;
+}
+
+.admin-matlab-version-card-title-icon {
+  color: var(--ant-color-text-secondary);
+  font-size: 16px;
+}
+
+.admin-matlab-version-card-title-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-matlab-version-card-body {
+  padding: 12px 16px;
+}
+
+.admin-matlab-version-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+}
+
+.admin-matlab-version-field-icon {
+  color: var(--ant-color-text-secondary);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.admin-matlab-version-field-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* LP-484: Module card visual style - align with power-lines line card */
+.admin-matlab-module-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+  min-height: 44px;
+}
+
+.admin-matlab-module-card-title-icon {
+  color: var(--ant-color-text-secondary);
+  font-size: 16px;
+}
+
+.admin-matlab-module-card-title-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-matlab-module-card-body {
+  padding: 12px 16px;
+}
+
+.admin-matlab-module-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
 }
 
 /* LP-482: Table anchor flex/scroll styles */

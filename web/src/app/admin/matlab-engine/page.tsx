@@ -1,16 +1,20 @@
 "use client";
 
 import {
+  ClockCircleOutlined,
   CloudSyncOutlined,
-  EyeOutlined,
+  DeleteOutlined,
+  DeploymentUnitOutlined,
+  EditOutlined,
   InboxOutlined,
   MoreOutlined,
-  EditOutlined,
   PlusOutlined,
   RollbackOutlined,
   SearchOutlined,
   UploadOutlined,
-  DeleteOutlined,
+  CodeOutlined,
+  SwapOutlined,
+  ApartmentOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -25,7 +29,6 @@ import {
   List,
   Modal,
   Pagination,
-  Popconfirm,
   Row,
   Segmented,
   Select,
@@ -91,8 +94,9 @@ const DEFAULT_PUBLISH_FORM_VALUES: PublishFormValues = {
 };
 
 const TABLE_MIN_SCROLL_Y = 180;
-const TABLE_VIEWPORT_GAP = 40;
-const TABLE_FALLBACK_RESERVE = 220;
+const TABLE_ESTIMATED_HEADER_HEIGHT = 56;
+const TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
+const TABLE_BOTTOM_GAP = 8;
 
 function formatSize(bytes: number): string {
   if (!bytes) return "-";
@@ -128,9 +132,8 @@ export default function AdminMatlabEnginePage() {
   const [previewFiles, setPreviewFiles] = useState<string[]>([]);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
 
-  // Left panel: module keyword (real-time filter)
+  const [moduleKeywordInput, setModuleKeywordInput] = useState("");
   const [moduleKeyword, setModuleKeyword] = useState("");
-  // Right panel: version filter (keyword + status, applied on 查询)
   const [versionKeywordInput, setVersionKeywordInput] = useState("");
   const [versionKeyword, setVersionKeyword] = useState("");
   const [versionStatus, setVersionStatus] = useState<"draft" | "released" | undefined>(undefined);
@@ -454,39 +457,44 @@ export default function AdminMatlabEnginePage() {
     setPagination((prev) => ({ ...prev, current: 1 }));
   }, [versionKeywordInput]);
 
+  const handleModuleSearch = useCallback(() => {
+    setModuleKeyword(moduleKeywordInput);
+  }, [moduleKeywordInput]);
+
   const handleVersionStatusChange = useCallback((value: "draft" | "released" | undefined) => {
     setVersionStatus(value);
     setPagination((prev) => ({ ...prev, current: 1 }));
   }, []);
 
   const updateTableScrollY = useCallback(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return TABLE_MIN_SCROLL_Y;
     const anchor = tableScrollAnchorRef.current;
-    if (!anchor) return;
-    const anchorTop = anchor.getBoundingClientRect().top;
-    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
-    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
-    let nextHeight = Math.floor(window.innerHeight - anchorTop - TABLE_FALLBACK_RESERVE);
-    if (tableWrapper) {
-      const wrapperRect = tableWrapper.getBoundingClientRect();
-      const bodyHeight = tableBody?.getBoundingClientRect().height ?? TABLE_MIN_SCROLL_Y;
-      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
-      const topGap = Math.max(0, wrapperRect.top - anchorTop);
-      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - TABLE_VIEWPORT_GAP);
-    }
-    const clampedHeight = Math.max(TABLE_MIN_SCROLL_Y, nextHeight);
-    setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
+    if (!anchor) return TABLE_MIN_SCROLL_Y;
+    const anchorHeight = anchor.getBoundingClientRect().height;
+    const header = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const pagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = header?.getBoundingClientRect().height ?? TABLE_ESTIMATED_HEADER_HEIGHT;
+    const paginationHeight = pagination?.getBoundingClientRect().height ?? TABLE_ESTIMATED_PAGINATION_HEIGHT;
+    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - TABLE_BOTTOM_GAP);
+    return Math.max(TABLE_MIN_SCROLL_Y, nextHeight);
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.requestAnimationFrame(updateTableScrollY);
-  }, [filteredVersions.length, versionsQuery.isFetching, viewMode, updateTableScrollY]);
+    const frameId = window.requestAnimationFrame(() => {
+      const nextHeight = updateTableScrollY();
+      setTableScrollY((previous) => (Math.abs(previous - nextHeight) <= 1 ? previous : nextHeight));
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [updateTableScrollY, viewMode, filteredVersions.length, versionsQuery.isFetching]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onViewportChange = () => {
-      window.requestAnimationFrame(updateTableScrollY);
+      window.requestAnimationFrame(() => {
+        const nextHeight = updateTableScrollY();
+        setTableScrollY((previous) => (Math.abs(previous - nextHeight) <= 1 ? previous : nextHeight));
+      });
     };
     window.addEventListener("resize", onViewportChange);
     return () => window.removeEventListener("resize", onViewportChange);
@@ -497,7 +505,10 @@ export default function AdminMatlabEnginePage() {
     const anchor = tableScrollAnchorRef.current;
     if (!anchor) return;
     const resizeObserver = new ResizeObserver(() => {
-      window.requestAnimationFrame(updateTableScrollY);
+      window.requestAnimationFrame(() => {
+        const nextHeight = updateTableScrollY();
+        setTableScrollY((previous) => (Math.abs(previous - nextHeight) <= 1 ? previous : nextHeight));
+      });
     });
     resizeObserver.observe(anchor);
     return () => resizeObserver.disconnect();
@@ -531,10 +542,11 @@ export default function AdminMatlabEnginePage() {
 
   const renderVersionCard = (item: MatlabVersion) => {
     const isDraft = item === draft;
+    const statusConfig = isDraft ? { color: "warning", text: "草稿" } : { color: "success", text: "已发布" };
     const moreMenuItems: MenuProps["items"] = [
       {
         key: "preview",
-        label: isDraft ? "查看文件列表" : "查看文件",
+        label: "查看文件列表",
         onClick: () => openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []),
       },
       ...(canManage && !isDraft
@@ -565,61 +577,52 @@ export default function AdminMatlabEnginePage() {
         size="small"
         hoverable
         onClick={() => openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || [])}
-        title={
-          <Space className="min-w-0" size={8}>
-            <Typography.Text strong>{item.version_tag || "未命名版本"}</Typography.Text>
-            <Tag color={isDraft ? "warning" : "success"}>{isDraft ? "草稿" : "已发布"}</Tag>
-          </Space>
-        }
-        extra={
-          <Space size={4}>
-            {isDraft && canManage && (
-              <Tooltip title="发布">
-                <Button
-                  type="primary"
-                  size="small"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openPublishModal();
-                  }}
-                >
-                  发布
-                </Button>
-              </Tooltip>
-            )}
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button
-                type="text"
-                size="small"
-                icon={<MoreOutlined />}
-                onClick={(event) => event.stopPropagation()}
-              />
-            </Dropdown>
-          </Space>
-        }
       >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+        <div className="admin-matlab-version-card-title">
+          <CodeOutlined className="admin-matlab-version-card-title-icon" />
+          <Typography.Text strong className="admin-matlab-version-card-title-text truncate">
+            {item.version_tag || "未命名版本"}
+          </Typography.Text>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Tag color={statusConfig.color}>{statusConfig.text}</Tag>
+          </div>
+        </div>
+        <div className="admin-matlab-version-card-body">
           <div className="admin-matlab-version-field">
-            <Typography.Text type="secondary">Hash</Typography.Text>
-            <Typography.Text copyable={{ text: item.version_hash }}>{item.version_hash}</Typography.Text>
+            <SwapOutlined className="admin-matlab-version-field-icon" />
+            <Typography.Text type="secondary" className="admin-matlab-version-field-content text-xs">
+              变更日志：{item.changelog || "-"}
+            </Typography.Text>
           </div>
           <div className="admin-matlab-version-field">
-            <Typography.Text type="secondary">变更日志</Typography.Text>
-            <Typography.Text ellipsis={{ tooltip: item.changelog || "-" }}>{item.changelog || "-"}</Typography.Text>
+            <ClockCircleOutlined className="admin-matlab-version-field-icon" />
+            <Typography.Text className="admin-matlab-version-field-content text-xs">
+              发布时间：{formatDateTime(item.upload_time)}
+            </Typography.Text>
           </div>
           <div className="admin-matlab-version-field">
-            <Typography.Text type="secondary">发布时间</Typography.Text>
-            <Typography.Text>{formatDateTime(item.upload_time)}</Typography.Text>
+            <EditOutlined className="admin-matlab-version-field-icon" />
+            <Typography.Text className="admin-matlab-version-field-content text-xs">
+              发布人：{item.uploaded_by_name || item.uploaded_by || "-"}
+            </Typography.Text>
           </div>
           <div className="admin-matlab-version-field">
-            <Typography.Text type="secondary">发布人</Typography.Text>
-            <Typography.Text>{item.uploaded_by_name || item.uploaded_by || "-"}</Typography.Text>
+            <InboxOutlined className="admin-matlab-version-field-icon" />
+            <Typography.Text className="admin-matlab-version-field-content text-xs">
+              大小：{formatSize(item.size_bytes)}
+            </Typography.Text>
           </div>
-          <div className="admin-matlab-version-field">
-            <Typography.Text type="secondary">大小</Typography.Text>
-            <Typography.Text>{formatSize(item.size_bytes)}</Typography.Text>
-          </div>
-        </Space>
+        </div>
+        <div className="admin-matlab-version-card-actions">
+          {isDraft && canManage && (
+            <Button type="primary" size="small" onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
+              发布
+            </Button>
+          )}
+          <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+            <Button type="text" size="small" icon={<MoreOutlined />} onClick={(event) => event.stopPropagation()} />
+          </Dropdown>
+        </div>
       </AntCard>
     );
   };
@@ -676,7 +679,7 @@ export default function AdminMatlabEnginePage() {
       {
         title: "操作",
         key: "actions",
-        width: 180,
+        width: 200,
         fixed: "right" as const,
         render: (_: unknown, record: MatlabVersion) => {
           const moreMenuItems: MenuProps["items"] = [
@@ -716,22 +719,27 @@ export default function AdminMatlabEnginePage() {
           ];
 
           return (
-            <Space wrap>
+            <Space size={4}>
               <Button size="small" onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}>
                 查看文件
               </Button>
               {canManage && record !== draft && (
-                <Popconfirm
-                  title="回退到此版本"
-                  description="此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。"
-                  onConfirm={() => handleRollback(record)}
-                  okText="回退"
-                  cancelText="取消"
+                <Button
+                  size="small"
+                  icon={<RollbackOutlined />}
+                  onClick={() => {
+                    Modal.confirm({
+                      title: "回退到此版本",
+                      content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
+                      okText: "回退",
+                      cancelText: "取消",
+                      okButtonProps: { danger: true },
+                      onOk: () => handleRollback(record),
+                    });
+                  }}
                 >
-                  <Button size="small" icon={<RollbackOutlined />}>
-                    回退
-                  </Button>
-                </Popconfirm>
+                  回退
+                </Button>
               )}
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" icon={<MoreOutlined />} />
@@ -776,14 +784,36 @@ export default function AdminMatlabEnginePage() {
         size="small"
         hoverable
         onClick={() => setSelectedSlug(item.slug)}
-        title={
-          <Space className="min-w-0" size={8}>
-            <Typography.Text strong className="truncate">{item.name}</Typography.Text>
-            <Tag color="blue" className="truncate">{item.slug}</Tag>
-          </Space>
-        }
-        extra={
-          canManage ? (
+      >
+        <div className="admin-matlab-module-card-title">
+          <DeploymentUnitOutlined className="admin-matlab-module-card-title-icon" />
+          <Typography.Text strong className="admin-matlab-module-card-title-text truncate">
+            {item.name}
+          </Typography.Text>
+          <Tag color="blue" className="flex-shrink-0 truncate max-w-[120px]">{item.slug}</Tag>
+        </div>
+        <div className="admin-matlab-module-card-body">
+          <div className="admin-matlab-version-field">
+            <EditOutlined className="admin-matlab-version-field-icon" />
+            <Typography.Text className="admin-matlab-version-field-content text-xs">
+              描述：{item.description || "-"}
+            </Typography.Text>
+          </div>
+          <div className="admin-matlab-version-field">
+            <ApartmentOutlined className="admin-matlab-version-field-icon" />
+            <Typography.Text className="admin-matlab-version-field-content text-xs">
+              部署路径：{item.worker_deploy_path || "-"}
+            </Typography.Text>
+          </div>
+          <div className="admin-matlab-version-field">
+            <InboxOutlined className="admin-matlab-version-field-icon" />
+            <Typography.Text className="admin-matlab-version-field-content text-xs">
+              必需文件：{(item.required_files || []).join(", ") || "-"}
+            </Typography.Text>
+          </div>
+        </div>
+        <div className="admin-matlab-module-card-actions">
+          {canManage && (
             <Space size={4}>
               <Tooltip title="编辑">
                 <Button
@@ -805,23 +835,8 @@ export default function AdminMatlabEnginePage() {
                 />
               </Dropdown>
             </Space>
-          ) : null
-        }
-      >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
-          <div className="admin-matlab-version-field">
-            <Typography.Text type="secondary">描述</Typography.Text>
-            <Typography.Text ellipsis={{ tooltip: item.description || "-" }}>{item.description || "-"}</Typography.Text>
-          </div>
-          <div className="admin-matlab-version-field">
-            <Typography.Text type="secondary">Worker 部署路径</Typography.Text>
-            <Typography.Text ellipsis={{ tooltip: item.worker_deploy_path || "-" }}>{item.worker_deploy_path || "-"}</Typography.Text>
-          </div>
-          <div className="admin-matlab-version-field">
-            <Typography.Text type="secondary">必需文件</Typography.Text>
-            <Typography.Text ellipsis={{ tooltip: (item.required_files || []).join(", ") || "-" }}>{(item.required_files || []).join(", ") || "-"}</Typography.Text>
-          </div>
-        </Space>
+          )}
+        </div>
       </AntCard>
     );
   };
@@ -844,14 +859,26 @@ export default function AdminMatlabEnginePage() {
             </div>
           )}
           <div className="admin-matlab-sider-search">
-            <Input
-              className="admin-matlab-search-input"
-              placeholder="按模块名/标识/描述筛选"
-              prefix={<SearchOutlined />}
-              value={moduleKeyword}
-              onChange={(e) => setModuleKeyword(e.target.value)}
-              allowClear
-            />
+            <Space direction="vertical" size={8} style={{ width: "100%" }}>
+              <Input
+                className="admin-matlab-search-input"
+                placeholder="按模块名/标识/描述搜索"
+                prefix={<SearchOutlined />}
+                value={moduleKeywordInput}
+                onChange={(e) => setModuleKeywordInput(e.target.value)}
+                onPressEnter={handleModuleSearch}
+                allowClear
+              />
+              <Button
+                htmlType="button"
+                icon={<SearchOutlined />}
+                onClick={handleModuleSearch}
+                block
+                size="small"
+              >
+                搜索
+              </Button>
+            </Space>
           </div>
           <div className="admin-matlab-sider-menu">
             {modulesQuery.isLoading ? (
