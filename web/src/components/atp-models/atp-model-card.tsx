@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Card, Modal, Space, Typography } from "antd";
+import { Badge, Button, Card, Modal, Progress, Space, Typography } from "antd";
 import {
   ApartmentOutlined,
   ClockCircleOutlined,
@@ -37,8 +37,19 @@ function formatDimension(
   return map?.get(value) ?? value;
 }
 
+const assetStatusConfig = {
+  draft: { text: "草稿", color: "default" as const },
+  enabled: { text: "启用", color: "success" as const },
+  disabled: { text: "禁用", color: "default" as const },
+  archived: { text: "归档", color: "default" as const },
+  processing: { text: "处理中", color: "processing" as const },
+};
+
+const getAssetStatus = (status: string) => assetStatusConfig[status as keyof typeof assetStatusConfig] ?? assetStatusConfig.draft;
+
 export function AtpModelCard({ asset, canManage, deleteLoading, onView, onDelete, dimensionLabelMap }: AtpModelCardProps) {
   const rowBusy = deleteLoading;
+  const status = getAssetStatus(asset.status);
 
   const handleView = useCallback(() => {
     onView(asset);
@@ -66,6 +77,10 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onDelete
         <Typography.Text strong className="truncate" style={{ flex: 1 }}>
           {asset.name}
         </Typography.Text>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <Badge status={status.color} />
+          <Text type="secondary" className="text-xs">{status.text}</Text>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 px-4 py-3">
@@ -87,7 +102,12 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onDelete
         </div>
       </div>
 
-      <div className="admin-atp-models-card-actions flex items-center justify-end px-4 py-2">
+      <div className="admin-atp-models-card-actions flex items-center justify-between px-4 py-2">
+        {asset.status === "processing" ? (
+          <Progress percent={undefined} size="small" className="flex-1 max-w-40" />
+        ) : (
+          <div />
+        )}
         <Space size="small">
           <Button
             size="small"
