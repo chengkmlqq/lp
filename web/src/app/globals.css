@@ -311,6 +311,26 @@
   background: var(--ant-color-bg-container) !important;
 }
 
+:root[data-fquiz-theme="dark"] .admin-matlab-module-card {
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
+      var(--ant-color-bg-container) 100%
+    ) !important;
+  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-matlab-module-card > .ant-card-head {
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-matlab-module-card > .ant-card-body {
+  background: var(--ant-color-bg-container) !important;
+}
+
 :root[data-fquiz-theme="dark"] .admin-matlab-card-view,
 :root[data-fquiz-theme="dark"] .admin-matlab-card-view-content {
   background: transparent !important;
@@ -1743,6 +1763,58 @@ body {
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
+}
+
+/* LP-482: Module card visual style - align with power-lines line card */
+.admin-matlab-module-card {
+  height: 100%;
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--fquiz-theme-bg-container) 96%, var(--fquiz-theme-primary) 4%) 0%,
+      var(--fquiz-theme-bg-container) 100%
+    );
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--fquiz-theme-text-primary) 8%, transparent);
+}
+
+.admin-matlab-module-card > .ant-card-head {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-matlab-module-card > .ant-card-body {
+  padding-block: 14px;
+}
+
+/* LP-482: Table anchor flex/scroll styles */
+.admin-matlab-table-anchor {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-matlab-table-anchor .ant-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.admin-matlab-table-anchor .ant-table {
+  min-width: 1080px;
+}
+
+/* LP-482: Card view pagination */
+.admin-matlab-card-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 8px;
+  flex-shrink: 0;
 }
 
 

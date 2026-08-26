@@ -14,6 +14,7 @@ import {
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -23,8 +24,10 @@ import {
   Input,
   List,
   Modal,
+  Pagination,
   Popconfirm,
   Row,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -478,7 +481,7 @@ export default function AdminMatlabEnginePage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.requestAnimationFrame(updateTableScrollY);
-  }, [filteredVersions.length, versionsQuery.isFetching, updateTableScrollY]);
+  }, [filteredVersions.length, versionsQuery.isFetching, viewMode, updateTableScrollY]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -714,25 +717,21 @@ export default function AdminMatlabEnginePage() {
 
           return (
             <Space wrap>
-              <Tooltip title="查看文件">
-                <Button
-                  size="small"
-                  icon={<EyeOutlined />}
-                  onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}
-                />
-              </Tooltip>
+              <Button size="small" onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}>
+                查看文件
+              </Button>
               {canManage && record !== draft && (
-                <Tooltip title="回退">
-                  <Popconfirm
-                    title="回退到此版本"
-                    description="此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。"
-                    onConfirm={() => handleRollback(record)}
-                    okText="回退"
-                    cancelText="取消"
-                  >
-                    <Button size="small" icon={<RollbackOutlined />} />
-                  </Popconfirm>
-                </Tooltip>
+                <Popconfirm
+                  title="回退到此版本"
+                  description="此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。"
+                  onConfirm={() => handleRollback(record)}
+                  okText="回退"
+                  cancelText="取消"
+                >
+                  <Button size="small" icon={<RollbackOutlined />}>
+                    回退
+                  </Button>
+                </Popconfirm>
               )}
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" icon={<MoreOutlined />} />
@@ -924,7 +923,7 @@ export default function AdminMatlabEnginePage() {
             </Space>
           </div>
 
-          {/* Filter bar (mirrors menus page) */}
+          {/* Filter bar */}
           <div className="admin-filter-bar">
             <Form layout="inline">
               <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -958,30 +957,27 @@ export default function AdminMatlabEnginePage() {
                   查询
                 </Button>
               </Form.Item>
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Segmented
+                  value={viewMode}
+                  onChange={(value) => setViewMode(value as "table" | "card")}
+                  options={[
+                    { label: "卡片视图", value: "card" },
+                    { label: "列表视图", value: "table" },
+                  ]}
+                />
+              </Form.Item>
             </Form>
           </div>
 
-          {/* View toggle */}
-          <div className="admin-matlab-view-bar">
-            <Space size={8}>
-              <Button
-                size="small"
-                type={viewMode === "table" ? "primary" : "default"}
-                onClick={() => setViewMode("table")}
-                disabled={viewMode === "table"}
-              >
-                表格
-              </Button>
-              <Button
-                size="small"
-                type={viewMode === "card" ? "primary" : "default"}
-                onClick={() => setViewMode("card")}
-                disabled={viewMode === "card"}
-              >
-                卡片
-              </Button>
-            </Space>
-          </div>
+          {apiError && (
+            <Alert
+              type="error"
+              showIcon
+              message={apiError.message || "加载失败"}
+              style={{ marginBottom: 16 }}
+            />
+          )}
 
           {viewMode === "table" ? (
             <div
@@ -996,19 +992,6 @@ export default function AdminMatlabEnginePage() {
                 loading={versionsQuery.isFetching}
                 tableLayout="fixed"
                 scroll={{ y: tableScrollY }}
-                pagination={{
-                  current: pagination.current,
-                  pageSize: pagination.pageSize,
-                  total: Math.max(filteredVersions.length, 1),
-                  showSizeChanger: true,
-                  pageSizeOptions: [10, 20, 50, 100],
-                  showTotal: () => `共 ${filteredVersions.length} 条`,
-                  hideOnSinglePage: false,
-                  style: { marginBottom: 0 },
-                  onChange: (page, pageSize) => {
-                    setPagination({ current: page, pageSize });
-                  },
-                }}
                 locale={{
                   emptyText: (
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的版本。" />
@@ -1016,36 +999,52 @@ export default function AdminMatlabEnginePage() {
                 }}
               />
             </div>
-          ) : (
-            <div className="admin-matlab-card-view">
-              {versionsQuery.isLoading && filteredVersions.length === 0 ? (
-                <div className="admin-matlab-card-view-state">
-                  <Spin tip="加载中..." />
-                </div>
-              ) : filteredVersions.length === 0 ? (
-                <div className="admin-matlab-card-view-state">
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的版本。" />
-                </div>
               ) : (
-                <div className="admin-matlab-card-view-content">
-                  <Row gutter={[12, 12]}>
-                    {filteredVersions.map((item) => (
-                      <Col
-                        key={`${item.version_hash}-${item === draft ? "draft" : "release"}`}
-                        xs={24}
-                        sm={24}
-                        md={12}
-                        lg={8}
-                        xl={6}
-                      >
-                        {renderVersionCard(item)}
-                      </Col>
-                    ))}
-                  </Row>
+                <div className="admin-matlab-card-view">
+                  {versionsQuery.isLoading && filteredVersions.length === 0 ? (
+                    <div className="admin-matlab-card-view-state">
+                      <Spin tip="加载中..." />
+                    </div>
+                  ) : filteredVersions.length === 0 ? (
+                    <div className="admin-matlab-card-view-state">
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的版本。" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="admin-matlab-card-view-content">
+                        <Row gutter={[12, 12]}>
+                          {filteredVersions
+                            .slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize)
+                            .map((item) => (
+                              <Col
+                                key={`${item.version_hash}-${item === draft ? "draft" : "release"}`}
+                                xs={24}
+                                sm={24}
+                                md={12}
+                                lg={8}
+                                xl={6}
+                              >
+                                {renderVersionCard(item)}
+                              </Col>
+                            ))}
+                        </Row>
+                      </div>
+                      <div className="admin-matlab-card-pagination">
+                        <Pagination
+                          current={pagination.current}
+                          pageSize={pagination.pageSize}
+                          total={filteredVersions.length}
+                          onChange={(page, pageSize) => {
+                            setPagination({ current: page, pageSize });
+                          }}
+                          showSizeChanger
+                          showTotal={(total) => `共 ${total} 条`}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
-            </div>
-          )}
         </Space>
       </div>
     );
