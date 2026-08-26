@@ -1680,7 +1680,15 @@ def _normalize_execution_options(job_type: str, execution_options: dict[str, Any
         normalized["tail_time_min_us"] = _normalize_positive_number(normalized.get("tail_time_min_us"), default=50.0)
         normalized["tail_time_max_us"] = _normalize_positive_number(normalized.get("tail_time_max_us"), default=50.0)
         normalized["tail_time_step_us"] = _normalize_positive_number(normalized.get("tail_time_step_us"), default=1.0)
-        normalized.pop("selected_tower_ids", None)
+        if job_type == "tongtiao":
+            include_tower_ids = normalized.get("include_tower_ids") or normalized.get("selected_tower_ids") or []
+            if isinstance(include_tower_ids, list):
+                normalized["selected_tower_ids"] = list(dict.fromkeys(str(item).strip() for item in include_tower_ids if str(item).strip()))
+            else:
+                normalized["selected_tower_ids"] = []
+        else:
+            normalized.pop("selected_tower_ids", None)
+            normalized.pop("include_tower_ids", None)
         normalized.pop("source_job_id", None)
         normalized.pop("source_run_id", None)
         normalized.pop("mitigation_job_id", None)

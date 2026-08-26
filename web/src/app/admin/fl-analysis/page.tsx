@@ -292,7 +292,15 @@ export default function AdminFlAnalysisPage() {
         tail_time_min_us: values.tail_time_min_us,
         tail_time_max_us: values.tail_time_max_us,
         tail_time_step_us: values.tail_time_step_us,
+        fanji_naleishuiping_method: values.fanji_naleishuiping_method,
+        raoji_naleishuiping_method: values.raoji_naleishuiping_method,
+        fanji_tzl_method: values.fanji_tzl_method,
+        raoji_tzl_method: values.raoji_tzl_method,
+        include_tower_ids: values.include_tower_ids,
       };
+      if (values.job_type === "tongtiao") {
+        payload.execution_options_json.selected_tower_ids = values.include_tower_ids;
+      }
       if (values.atp_model_id) {
         payload.external_adapter = "atp";
         payload.adapter_config_json = {

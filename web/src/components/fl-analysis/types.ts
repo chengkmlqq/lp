@@ -36,6 +36,11 @@ export type CreateJobFormValues = {
   binary_search_low_ka?: number;
   binary_search_high_ka?: number;
   binary_search_tolerance_ka?: number;
+  fanji_naleishuiping_method: "guicheng" | "atp";
+  raoji_naleishuiping_method: "guicheng" | "atp";
+  fanji_tzl_method: "none" | "guicheng" | "egm";
+  raoji_tzl_method: "none" | "guicheng" | "egm";
+  include_tower_ids: string[];
 };
 
 export type MitigationFormValues = {
@@ -145,6 +150,11 @@ export const CREATE_JOB_DEFAULTS: CreateJobFormValues = {
   binary_search_low_ka: 0.1,
   binary_search_high_ka: 2000,
   binary_search_tolerance_ka: 0.1,
+  fanji_naleishuiping_method: "guicheng",
+  raoji_naleishuiping_method: "guicheng",
+  fanji_tzl_method: "none",
+  raoji_tzl_method: "none",
+  include_tower_ids: [],
 };
 
 export function formatRiskLevel(value: string | null | undefined): string {

@@ -22,8 +22,6 @@ import {
 } from "./types";
 import { useFlDimensionOptions, type FlDimensionOption } from "./use-fl-dimensions";
 
-// 硬编码回退选项（维度管理 API 加载失败时兜底，避免页面功能中断）
-// 与 migrations/seed_fl_analysis_dimensions.sql 中维度值 code/name 对齐
 const JOB_TYPE_FALLBACK_OPTIONS: FlDimensionOption[] = [
   { value: "normal", label: "普通计算" },
   { value: "tongtiao", label: "同跳计算" },
@@ -44,6 +42,15 @@ const ALTITUDE_CORRECTION_FALLBACK_OPTIONS: FlDimensionOption[] = [
   { value: "formula1", label: "推荐公式1" },
   { value: "formula2", label: "推荐公式2" },
 ];
+const NALEISHUIPING_METHOD_FALLBACK_OPTIONS: FlDimensionOption[] = [
+  { value: "guicheng", label: "规程" },
+  { value: "atp", label: "ATP" },
+];
+const TZL_METHOD_FALLBACK_OPTIONS: FlDimensionOption[] = [
+  { value: "none", label: "无" },
+  { value: "guicheng", label: "规程" },
+  { value: "egm", label: "EGM" },
+];
 
 type CreateJobFormProps = {
   form: FormInstance<CreateJobFormValues>;
@@ -58,6 +65,13 @@ type CreateJobFormProps = {
   engineQueryData: AtpEngineStatusResponse | undefined;
   onSubmit: (values: CreateJobFormValues) => void;
 };
+
+function useSelectOptions(
+  dimensionOptions: FlDimensionOption[],
+  fallbackOptions: FlDimensionOption[],
+): FlDimensionOption[] {
+  return dimensionOptions.length > 0 ? dimensionOptions : fallbackOptions;
+}
 
 export function CreateJobForm({
   form,
@@ -74,17 +88,22 @@ export function CreateJobForm({
 }: CreateJobFormProps) {
   const selectedLinePreparation = readLinePreparation(selectedLine);
   const { optionMap, isLoading: dimensionsLoading } = useFlDimensionOptions();
-  // 维度管理 API 返回启用项；加载失败时回退到静态选项
-  const jobTypeOptions = optionMap.job_type.length > 0 ? optionMap.job_type : JOB_TYPE_FALLBACK_OPTIONS;
-  const currentWaveformOptions = optionMap.current_waveform.length > 0
-    ? optionMap.current_waveform
-    : CURRENT_WAVEFORM_FALLBACK_OPTIONS;
-  const flashoverMethodOptions = optionMap.flashover_method.length > 0
-    ? optionMap.flashover_method
-    : FLASHOVER_METHOD_FALLBACK_OPTIONS;
-  const altitudeCorrectionOptions = optionMap.altitude_correction.length > 0
-    ? optionMap.altitude_correction
-    : ALTITUDE_CORRECTION_FALLBACK_OPTIONS;
+
+  const jobTypeOptions = useSelectOptions(optionMap.job_type, JOB_TYPE_FALLBACK_OPTIONS);
+  const currentWaveformOptions = useSelectOptions(optionMap.current_waveform, CURRENT_WAVEFORM_FALLBACK_OPTIONS);
+  const flashoverMethodOptions = useSelectOptions(optionMap.flashover_method, FLASHOVER_METHOD_FALLBACK_OPTIONS);
+  const altitudeCorrectionOptions = useSelectOptions(optionMap.altitude_correction, ALTITUDE_CORRECTION_FALLBACK_OPTIONS);
+  const fanjiNaleishuipingMethodOptions = useSelectOptions(optionMap.fanji_naleishuiping_method, NALEISHUIPING_METHOD_FALLBACK_OPTIONS);
+  const raojiNaleishuipingMethodOptions = useSelectOptions(optionMap.raoji_naleishuiping_method, NALEISHUIPING_METHOD_FALLBACK_OPTIONS);
+  const fanjiTzlMethodOptions = useSelectOptions(optionMap.fanji_tzl_method, TZL_METHOD_FALLBACK_OPTIONS);
+  const raojiTzlMethodOptions = useSelectOptions(optionMap.raoji_tzl_method, TZL_METHOD_FALLBACK_OPTIONS);
+
+  const isNormal = selectedJobType === "normal";
+  const isTongtiao = selectedJobType === "tongtiao";
+  const showWaveformBlock = isNormal || isTongtiao;
+  const showNormalBlock = isNormal;
+  const showTongtiaoBlock = isTongtiao;
+  const showAdvancedBlock = isNormal || isTongtiao;
 
   return (
     <Form<CreateJobFormValues>
@@ -93,70 +112,74 @@ export function CreateJobForm({
       initialValues={CREATE_JOB_DEFAULTS}
       onFinish={onSubmit}
     >
-      <Form.Item name="job_name" label="任务名">
-        <Input
-          placeholder={selectedLine
-            ? `${selectedLine.name || selectedLine.code}-${formatJobType(selectedJobType)}`
-            : `${formatJobType(selectedJobType)}任务`}
-        />
-      </Form.Item>
+      <div className="fl-form-section">
+        <div className="fl-form-section-title">基础信息</div>
+        <Form.Item name="job_name" label="任务名">
+          <Input
+            placeholder={selectedLine
+              ? `${selectedLine.name || selectedLine.code}-${formatJobType(selectedJobType)}`
+              : `${formatJobType(selectedJobType)}任务`}
+          />
+        </Form.Item>
 
-      <Form.Item name="job_type" label="任务类型" rules={[{ required: true, message: "请选择任务类型" }]}>
-        <Select
-          loading={dimensionsLoading}
-          options={jobTypeOptions}
-        />
-      </Form.Item>
+        <Form.Item name="job_type" label="任务类型" rules={[{ required: true, message: "请选择任务类型" }]}>
+          <Select
+            loading={dimensionsLoading}
+            options={jobTypeOptions}
+          />
+        </Form.Item>
 
-      <Form.Item
-        name="line_id"
-        label="线路"
-        rules={[{ required: true, message: "请选择线路" }]}
-      >
-        <Select
-          showSearch
-          optionFilterProp="label"
-          placeholder="选择线路"
-          loading={linesLoading}
-          options={lines.map((item) => ({
-            value: item.id,
-            label: `${item.name || item.code} / ${item.code}`,
-          }))}
-        />
-      </Form.Item>
+        <Form.Item
+          name="line_id"
+          label="线路"
+          rules={[{ required: true, message: "请选择线路" }]}
+        >
+          <Select
+            showSearch
+            optionFilterProp="label"
+            placeholder="选择线路"
+            loading={linesLoading}
+            options={lines.map((item) => ({
+              value: item.id,
+              label: `${item.name || item.code} / ${item.code}`,
+            }))}
+          />
+        </Form.Item>
 
-      {selectedLine ? (
-        <Alert
-          type={selectedLinePreparation.all_ready ? "success" : "warning"}
-          showIcon
-          message={selectedLinePreparation.all_ready ? "参数准备已完成" : `当前线路缺少：${selectedLinePreparation.missing_items.join("、")}`}
-          description={
-            <Space size={[8, 8]} wrap>
-              {[
-                selectedLinePreparation.lightning_current,
-                selectedLinePreparation.lightning_density,
-                selectedLinePreparation.ground_slope,
-              ].map((item) => {
-                const source = readObject(item.source);
-                const preparedAt = readOptionalString(source, "prepared_at");
-                const currentA = readOptionalNumber(readObject(item.values), "current_a");
-                const currentB = readOptionalNumber(readObject(item.values), "current_b");
-                const suffix = item.key === "lightning_current" && currentA !== null && currentB !== null
-                  ? ` (${currentA.toFixed(3)} / ${currentB.toFixed(3)})`
-                  : "";
-                return (
-                  <Tag key={item.key} color={preparationColor(item.ready)}>
-                    {`${item.label}${suffix} ${item.tower_ready_count}/${item.tower_total_count}${preparedAt ? ` @ ${formatDateTime(preparedAt)}` : ""}`}
-                  </Tag>
-                );
-              })}
-            </Space>
-          }
-        />
-      ) : null}
+        {selectedLine ? (
+          <Alert
+            type={selectedLinePreparation.all_ready ? "success" : "warning"}
+            showIcon
+            message={selectedLinePreparation.all_ready ? "参数准备已完成" : `当前线路缺少：${selectedLinePreparation.missing_items.join("、")}`}
+            description={
+              <Space size={[8, 8]} wrap>
+                {[
+                  selectedLinePreparation.lightning_current,
+                  selectedLinePreparation.lightning_density,
+                  selectedLinePreparation.ground_slope,
+                ].map((item) => {
+                  const source = readObject(item.source);
+                  const preparedAt = readOptionalString(source, "prepared_at");
+                  const currentA = readOptionalNumber(readObject(item.values), "current_a");
+                  const currentB = readOptionalNumber(readObject(item.values), "current_b");
+                  const suffix = item.key === "lightning_current" && currentA !== null && currentB !== null
+                    ? ` (${currentA.toFixed(3)} / ${currentB.toFixed(3)})`
+                    : "";
+                  return (
+                    <Tag key={item.key} color={preparationColor(item.ready)}>
+                      {`${item.label}${suffix} ${item.tower_ready_count}/${item.tower_total_count}${preparedAt ? ` @ ${formatDateTime(preparedAt)}` : ""}`}
+                    </Tag>
+                  );
+                })}
+              </Space>
+            }
+          />
+        ) : null}
+      </div>
 
-      {selectedJobType === "normal" || selectedJobType === "tongtiao" ? (
-        <>
+      {showWaveformBlock ? (
+        <div className="fl-form-section">
+          <div className="fl-form-section-title">ATP模型</div>
           <Alert
             type="info"
             showIcon
@@ -169,32 +192,101 @@ export function CreateJobForm({
               message={atpModelsError instanceof Error ? atpModelsError.message : "ATP 模型列表加载失败"}
             />
           ) : null}
-          <>
-            <Form.Item
-              name="atp_model_id"
-              label="ATP模型"
-              rules={[{ required: false, message: "请选择 ATP 模型" }]}
-            >
+          <Form.Item
+            name="atp_model_id"
+            label="ATP模型"
+            rules={[{ required: false, message: "请选择 ATP 模型" }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              loading={atpModelsLoading}
+              placeholder="选择 ATP 模型（可选，不选则走规则近似计算）"
+              options={atpModels.map((item) => ({
+                value: item.id,
+                label: `${item.name} / ${item.code}`,
+              }))}
+            />
+          </Form.Item>
+          {selectedAtpModel ? (
+            <Alert
+              type="info"
+              showIcon
+              message={`执行模式：Wine / ATP`}
+              description={`当前模型：${selectedAtpModel.name} / ${selectedAtpModel.code}。执行时默认使用该模型的当前模板。`}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      {showNormalBlock ? (
+        <div className="fl-form-section">
+          <div className="fl-form-section-title">普通计算专属参数</div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Form.Item name="fanji_naleishuiping_method" label="反击耐雷水平" rules={[{ required: true, message: "请选择反击耐雷水平方法" }]}>
               <Select
-                showSearch
-                optionFilterProp="label"
-                loading={atpModelsLoading}
-                placeholder="选择 ATP 模型（可选，不选则走规则近似计算）"
-                options={atpModels.map((item) => ({
-                  value: item.id,
-                  label: `${item.name} / ${item.code}`,
-                }))}
+                loading={dimensionsLoading}
+                options={fanjiNaleishuipingMethodOptions}
               />
             </Form.Item>
-            {selectedAtpModel ? (
-              <Alert
-                type="info"
-                showIcon
-                message={`执行模式：Wine / ATP`}
-                description={`当前模型：${selectedAtpModel.name} / ${selectedAtpModel.code}。执行时默认使用该模型的当前模板。`}
+            <Form.Item name="raoji_naleishuiping_method" label="绕击耐雷水平" rules={[{ required: true, message: "请选择绕击耐雷水平方法" }]}>
+              <Select
+                loading={dimensionsLoading}
+                options={raojiNaleishuipingMethodOptions}
               />
-            ) : null}
-          </>
+            </Form.Item>
+            <Form.Item name="fanji_tzl_method" label="反击跳闸率" rules={[{ required: true, message: "请选择反击跳闸率方法" }]}>
+              <Select
+                loading={dimensionsLoading}
+                options={fanjiTzlMethodOptions}
+              />
+            </Form.Item>
+            <Form.Item name="raoji_tzl_method" label="绕击跳闸率" rules={[{ required: true, message: "请选择绕击跳闸率方法" }]}>
+              <Select
+                loading={dimensionsLoading}
+                options={raojiTzlMethodOptions}
+              />
+            </Form.Item>
+          </div>
+        </div>
+      ) : null}
+
+      {showTongtiaoBlock ? (
+        <div className="fl-form-section">
+          <div className="fl-form-section-title">同跳计算专属参数</div>
+          <Alert
+            type="info"
+            showIcon
+            message="耐雷水平固定为 ATP 模型计算。"
+          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <Form.Item name="fanji_tzl_method" label="反击跳闸率" rules={[{ required: true, message: "请选择反击跳闸率方法" }]}>
+              <Select
+                loading={dimensionsLoading}
+                options={fanjiTzlMethodOptions}
+              />
+            </Form.Item>
+            <Form.Item name="raoji_tzl_method" label="绕击跳闸率" rules={[{ required: true, message: "请选择绕击跳闸率方法" }]}>
+              <Select
+                loading={dimensionsLoading}
+                options={raojiTzlMethodOptions}
+              />
+            </Form.Item>
+            <Form.Item name="include_tower_ids" label="包含杆塔ID" className="md:col-span-2">
+              <Select
+                mode="tags"
+                tokenSeparators={[","]}
+                placeholder="输入杆塔ID后回车，支持多个"
+                options={[]}
+              />
+            </Form.Item>
+          </div>
+        </div>
+      ) : null}
+
+      {showWaveformBlock ? (
+        <div className="fl-form-section">
+          <div className="fl-form-section-title">ATP模型参数</div>
           <div className="grid gap-3 md:grid-cols-2">
             <Form.Item name="current_waveform" label="雷电流波形">
               <Select
@@ -241,6 +333,12 @@ export function CreateJobForm({
               <InputNumber min={0.5} step={0.5} precision={2} className="w-full" />
             </Form.Item>
           </div>
+        </div>
+      ) : null}
+
+      {showAdvancedBlock ? (
+        <div className="fl-form-section">
+          <div className="fl-form-section-title">高级参数</div>
           <div className="mb-2 flex flex-col gap-1">
             <Form.Item name="binary_search" label="二分迭代" valuePropName="checked" className="mb-0">
               <Select
@@ -269,7 +367,7 @@ export function CreateJobForm({
               <InputNumber min={0.01} step={0.01} precision={2} className="w-full" disabled={!selectedAtpModel} />
             </Form.Item>
           </div>
-        </>
+        </div>
       ) : null}
     </Form>
   );

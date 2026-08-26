@@ -9,6 +9,10 @@ export const FL_DIMENSION_FIELD_TO_TYPE_CODE = {
   current_waveform: "current_waveform",
   flashover_method: "flashover_method",
   altitude_correction: "altitude_correction",
+  fanji_naleishuiping_method: "fanji_naleishuiping_method",
+  raoji_naleishuiping_method: "raoji_naleishuiping_method",
+  fanji_tzl_method: "fanji_tzl_method",
+  raoji_tzl_method: "raoji_tzl_method",
 } as const;
 
 export type FlDimensionField = keyof typeof FL_DIMENSION_FIELD_TO_TYPE_CODE;

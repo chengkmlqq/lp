@@ -420,6 +420,11 @@ def execute_external_waveform_tower_analysis(
         baseline_result=baseline_result,
     )
     atp_text = resolved_job.atp_text
+    parameter_bindings = {
+        **_read_object(resolved_job.parameter_bindings),
+        **_build_method_parameter_bindings(execution_options),
+    }
+    parameter_bindings.pop("REHGI", None)
     logger.info(
         "[ATP] 开始执行外部波形分析：job=%s, 杆塔=%s(%s), 模型=%s, 适配器=%s",
         job.id,
@@ -432,7 +437,7 @@ def execute_external_waveform_tower_analysis(
     rendered_text = render_atp_template(
         atp_text,
         context=context,
-        parameter_bindings=resolved_job.parameter_bindings,
+        parameter_bindings=parameter_bindings,
     )
     logger.info("[ATP] 模板渲染完成，输入文件大小=%d 字节", len(rendered_text))
 
@@ -1024,6 +1029,28 @@ def _coerce_scalar(value: Any) -> Any:
         return int(text)
     except ValueError:
         return text
+
+
+def _build_method_parameter_bindings(execution_options: dict[str, Any]) -> dict[str, Any]:
+    bindings: dict[str, Any] = {}
+    fanji_method = str(execution_options.get("fanji_naleishuiping_method") or "").strip().lower()
+    raoji_method = str(execution_options.get("raoji_naleishuiping_method") or "").strip().lower()
+    if fanji_method == "atp":
+        bindings["REHGF"] = {"path": "execution_options.fanji_naleishuiping_method", "default": "ATP"}
+    if raoji_method == "atp":
+        bindings["REHRF"] = {"path": "execution_options.raoji_naleishuiping_method", "default": "ATP"}
+
+    fanji_tzl = str(execution_options.get("fanji_tzl_method") or "").strip().lower()
+    raoji_tzl = str(execution_options.get("raoji_tzl_method") or "").strip().lower()
+    if fanji_tzl == "egm":
+        bindings["CAL_MODE"] = {"path": "execution_options.fanji_tzl_method", "default": "EGM"}
+    if raoji_tzl == "egm":
+        bindings["CAL_MODE"] = {"path": "execution_options.raoji_tzl_method", "default": "EGM"}
+
+    include_tower_ids = execution_options.get("selected_tower_ids") or execution_options.get("include_tower_ids")
+    if isinstance(include_tower_ids, list) and include_tower_ids:
+        bindings["INCLUDE_TOWER_IDS"] = ",".join(str(item).strip() for item in include_tower_ids if str(item).strip())
+    return bindings
 
 
 def _risk_level_from_grade(grade: int) -> str:
