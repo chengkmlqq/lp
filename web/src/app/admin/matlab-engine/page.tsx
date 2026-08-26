@@ -2,6 +2,7 @@
 
 import {
   CloudSyncOutlined,
+  EyeOutlined,
   InboxOutlined,
   MoreOutlined,
   EditOutlined,
@@ -30,6 +31,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   Upload,
   type CardProps,
@@ -569,16 +571,18 @@ export default function AdminMatlabEnginePage() {
         extra={
           <Space size={4}>
             {isDraft && canManage && (
-              <Button
-                type="primary"
-                size="small"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openPublishModal();
-                }}
-              >
-                发布
-              </Button>
+              <Tooltip title="发布">
+                <Button
+                  type="primary"
+                  size="small"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openPublishModal();
+                  }}
+                >
+                  发布
+                </Button>
+              </Tooltip>
             )}
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
               <Button
@@ -710,21 +714,25 @@ export default function AdminMatlabEnginePage() {
 
           return (
             <Space wrap>
-              <Button size="small" onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}>
-                查看文件
-              </Button>
+              <Tooltip title="查看文件">
+                <Button
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}
+                />
+              </Tooltip>
               {canManage && record !== draft && (
-                <Popconfirm
-                  title="回退到此版本"
-                  description="此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。"
-                  onConfirm={() => handleRollback(record)}
-                  okText="回退"
-                  cancelText="取消"
-                >
-                  <Button size="small" icon={<RollbackOutlined />}>
-                    回退
-                  </Button>
-                </Popconfirm>
+                <Tooltip title="回退">
+                  <Popconfirm
+                    title="回退到此版本"
+                    description="此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。"
+                    onConfirm={() => handleRollback(record)}
+                    okText="回退"
+                    cancelText="取消"
+                  >
+                    <Button size="small" icon={<RollbackOutlined />} />
+                  </Popconfirm>
+                </Tooltip>
               )}
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" icon={<MoreOutlined />} />
@@ -778,15 +786,17 @@ export default function AdminMatlabEnginePage() {
         extra={
           canManage ? (
             <Space size={4}>
-              <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openEditModule(item);
-                }}
-              />
+              <Tooltip title="编辑">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openEditModule(item);
+                  }}
+                />
+              </Tooltip>
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button
                   type="text"
@@ -846,11 +856,11 @@ export default function AdminMatlabEnginePage() {
           </div>
           <div className="admin-matlab-sider-menu">
             {modulesQuery.isLoading ? (
-              <div style={{ textAlign: "center", padding: "24px" }}>
-                <Spin />
+              <div className="admin-matlab-module-loading flex justify-center items-center py-12">
+                <Spin tip="加载中..." />
               </div>
             ) : modules.length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无模块" />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无模块数据" />
             ) : (
               modules.map((item) => (
                 <div
@@ -868,8 +878,8 @@ export default function AdminMatlabEnginePage() {
           </div>
         </AntCard>
       </div>
-      <div className="admin-menus-resize-handle" onMouseDown={handleResizeStart}>
-        <div className="admin-menus-resize-handle-line" />
+      <div className="admin-matlab-resize-handle" onMouseDown={handleResizeStart}>
+        <div className="admin-matlab-resize-handle-line" />
       </div>
     </>
   );
@@ -878,7 +888,7 @@ export default function AdminMatlabEnginePage() {
   const renderRightPanel = () => {
     if (!selectedModule) {
       return (
-        <div className="admin-menus-main">
+        <div className="admin-matlab-main">
           <Card>
             <Typography.Text type="secondary">请在左侧选择一个模块查看详情。</Typography.Text>
           </Card>
@@ -887,7 +897,7 @@ export default function AdminMatlabEnginePage() {
     }
 
     return (
-      <div className="admin-menus-main">
+      <div className="admin-matlab-main">
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           {/* Title bar */}
           <div className="admin-matlab-header">
@@ -1061,8 +1071,8 @@ export default function AdminMatlabEnginePage() {
             label: <span className="admin-matlab-tab-title">MATLAB 引擎管理</span>,
             closable: false,
             children: (
-              <div className="admin-menus-list-pane">
-                <div ref={containerRef} className="admin-menus-page-body">
+              <div className="admin-matlab-list-pane">
+                <div ref={containerRef} className="admin-matlab-page-body">
                   {!isMobile ? renderLeftPanel() : null}
                   {renderRightPanel()}
                 </div>
