@@ -2,7 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import {
+  Alert,
   Button,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -17,9 +19,9 @@ import {
   Tabs,
   Typography,
   Upload,
-  Alert,
+  type MenuProps,
 } from "antd";
-import { UploadOutlined, DeleteOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, PlusOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, DeleteOutlined, EyeOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
@@ -345,9 +347,10 @@ export default function AtpModelsPage() {
     form.resetFields();
   };
 
-  const handleKeywordChange = (value: string) => {
-    setKeywordInput(value);
-  };
+  const handleSearch = useCallback(() => {
+    setSearchKeyword(keywordInput);
+    setPagination((previous) => ({ ...previous, current: 1 }));
+  }, [keywordInput]);
 
   const assetItems = useMemo(() => assetsQuery.data?.items ?? [], [assetsQuery.data?.items]);
 
@@ -550,13 +553,6 @@ export default function AtpModelsPage() {
   const columns = useMemo<ColumnsType<AtpAssetSummary>>(
     () => [
       {
-        title: "名称",
-        dataIndex: "name",
-        key: "name",
-        width: 160,
-        ellipsis: { showTitle: true },
-      },
-      {
         title: "电压等级",
         dataIndex: "voltage_level",
         width: 120,
@@ -667,7 +663,7 @@ export default function AtpModelsPage() {
         className="admin-atp-models-tabs"
         tabBarExtraContent={
           canManage ? (
-            <Button type="primary" onClick={openCreateModal} icon={<PlusOutlined />}>
+            <Button type="primary" disabled={!canManage} onClick={openCreateModal} icon={<PlusOutlined />}>
                新建模型
              </Button>
           ) : null
@@ -685,37 +681,19 @@ export default function AtpModelsPage() {
                       <Input
                         allowClear
                         value={keywordInput}
-                        onChange={(event) => handleKeywordChange(event.target.value)}
+                        onChange={(event) => setKeywordInput(event.target.value)}
                         placeholder="按编码/名称搜索"
-                        onPressEnter={() => {
-                          setSearchKeyword(keywordInput);
-                          setPagination((previous) => ({ ...previous, current: 1 }));
-                          void queryClient.refetchQueries({
-                            predicate: (query) =>
-                              Array.isArray(query.queryKey)
-                              && typeof query.queryKey[0] === "string"
-                              && query.queryKey[0].startsWith("atp-assets"),
-                          });
-                        }}
+                        onPressEnter={handleSearch}
                       />
                     </Form.Item>
                     <Form.Item style={{ marginBottom: 0 }}>
-                    <Button
-                      htmlType="button"
-                      icon={<SearchOutlined />}
-                      onClick={() => {
-                        setSearchKeyword(keywordInput);
-                        setPagination((previous) => ({ ...previous, current: 1 }));
-                        void queryClient.refetchQueries({
-                          predicate: (query) =>
-                            Array.isArray(query.queryKey)
-                            && typeof query.queryKey[0] === "string"
-                            && query.queryKey[0].startsWith("atp-assets"),
-                        });
-                      }}
-                      className="admin-search-btn"
-                    >
-                      查询
+                      <Button
+                        htmlType="button"
+                        icon={<SearchOutlined />}
+                        onClick={handleSearch}
+                        className="admin-search-btn"
+                      >
+                        查询
                       </Button>
                     </Form.Item>
                   </Form>
@@ -736,7 +714,6 @@ export default function AtpModelsPage() {
                     type="error"
                     showIcon
                     message={apiError.message || "加载失败"}
-                    style={{ marginBottom: 16 }}
                   />
                 )}
 
@@ -765,7 +742,6 @@ export default function AtpModelsPage() {
                         pageSize: pagination.pageSize,
                         total: Math.max(assetTotal, 1),
                         showSizeChanger: true,
-                        pageSizeOptions: [6, 12, 24, 48],
                         showTotal: () => `共 ${assetTotal} 条`,
                         hideOnSinglePage: false,
                         onChange: (page, pageSize) => {
@@ -776,7 +752,7 @@ export default function AtpModelsPage() {
                     />
                   </div>
                 ) : assetsQuery.isFetching ? (
-                  <div className="admin-atp-models-loading flex justify-center items-center py-12">
+                  <div className="admin-atp-models-card-view-state">
                     <Spin tip="加载中..." />
                   </div>
                 ) : assetItems.length === 0 ? (

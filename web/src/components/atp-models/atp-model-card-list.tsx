@@ -1,4 +1,3 @@
-import { Empty } from "antd";
 import { AtpModelCard } from "./atp-model-card";
 import type { AtpAssetSummary } from "@/types/auth";
 
@@ -19,7 +18,7 @@ interface AtpModelCardListProps {
 export function AtpModelCardList({ assets, canManage, deleteLoading, onView, onDelete, dimensionLabelMap }: AtpModelCardListProps) {
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {assets.map((item) => (
         <AtpModelCard
           key={item.id}

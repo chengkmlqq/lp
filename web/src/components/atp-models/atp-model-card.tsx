@@ -1,14 +1,14 @@
 "use client";
 
-import { Badge, Button, Card, Modal, Progress, Space, Tooltip, Typography } from "antd";
+import { Badge, Button, Card, Dropdown, Modal, Progress, Space, Tooltip, Typography } from "antd";
 import {
   ApartmentOutlined,
-  ArrowRightOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
+  EditOutlined,
   EyeOutlined,
   InfoCircleOutlined,
-  SwapOutlined,
+  MoreOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import { useCallback } from "react";
@@ -52,7 +52,6 @@ const getAssetStatus = (status: string) => assetStatusConfig[status as keyof typ
 export function AtpModelCard({ asset, canManage, deleteLoading, onView, onDelete, dimensionLabelMap }: AtpModelCardProps) {
   const rowBusy = deleteLoading;
   const status = getAssetStatus(asset.status);
-  const progressValue = asset.status === "processing" && typeof asset.progress === "number" ? Math.round(asset.progress) : undefined;
 
   const handleView = useCallback(() => {
     onView(asset);
@@ -76,9 +75,8 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onDelete
       className="admin-atp-models-card"
       onClick={handleView}
     >
-      <div className="admin-atp-models-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
-        <InfoCircleOutlined className="text-base text-gray-500" />
-        <Typography.Text strong className="truncate flex-1">
+      <div className="admin-atp-models-card-title flex items-center gap-2 px-4 py-3">
+        <Typography.Text strong className="truncate" style={{ flex: 1 }}>
           {asset.name}
         </Typography.Text>
         <div className="flex flex-shrink-0 items-center gap-2">
@@ -97,46 +95,51 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onDelete
           <Text type="secondary" className="text-xs">塔型：{formatDimension(asset.tower_type, dimensionLabelMap?.tower_type)}</Text>
         </div>
         <div className="admin-atp-models-card-field flex items-center gap-2">
-          <SwapOutlined className="text-xs text-gray-500" />
-          <Text type="secondary" className="text-xs">避雷器组合：{formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config)}</Text>
-        </div>
-        <div className="admin-atp-models-card-field flex items-center gap-2">
           <ClockCircleOutlined className="text-xs text-gray-500" />
           <Text type="secondary" className="text-xs">场景：{formatDimension(asset.scene_type, dimensionLabelMap?.scene_type)}</Text>
         </div>
+        <div className="admin-atp-models-card-field flex items-center gap-2">
+          <EyeOutlined className="text-xs text-gray-500" />
+          <Text type="secondary" className="text-xs">避雷器组合：{formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config)}</Text>
+        </div>
       </div>
 
-      <div className="admin-atp-models-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+      <div className="admin-atp-models-card-actions flex items-center justify-between px-4 py-2">
         {asset.status === "processing" ? (
-          <Progress percent={progressValue} size="small" className="mr-auto flex-1 max-w-40" />
-        ) : null}
-        <Space size="small">
-          <Tooltip title="详情">
-            <Button
-              size="small"
-              type="text"
-              icon={<EyeOutlined />}
-              onClick={(event) => {
-                event.stopPropagation();
+          <Progress percent={undefined} size="small" className="flex-1 max-w-40" />
+        ) : (
+          <div />
+        )}
+        <Dropdown
+          menu={{
+            items: [
+              { key: "view", label: "详情", icon: <EyeOutlined /> },
+              { key: "edit", label: "编辑", icon: <EditOutlined /> },
+              { key: "preview", label: "预览", icon: <InfoCircleOutlined /> },
+              {
+                key: "delete",
+                label: "删除",
+                icon: <DeleteOutlined />,
+                danger: true,
+                disabled: !canManage || rowBusy,
+              },
+            ],
+            onClick: ({ key }) => {
+              if (key === "view") {
                 onView(asset);
-              }}
-            />
-          </Tooltip>
-          <Tooltip title="删除">
-            <Button
-              danger
-              size="small"
-              type="text"
-              disabled={!canManage || rowBusy}
-              loading={deleteLoading}
-              onClick={(event) => {
-                event.stopPropagation();
+              } else if (key === "edit") {
+                // TODO: route to edit page / open edit modal
+              } else if (key === "preview") {
+                // TODO: open preview drawer
+              } else if (key === "delete") {
                 handleDelete();
-              }}
-              icon={<DeleteOutlined />}
-            />
-          </Tooltip>
-        </Space>
+              }
+            },
+          }}
+          trigger={["click"]}
+        >
+          <Button size="small" icon={<MoreOutlined />} onClick={(event) => event.stopPropagation()} />
+        </Dropdown>
       </div>
     </Card>
   );
