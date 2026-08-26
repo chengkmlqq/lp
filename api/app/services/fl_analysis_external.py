@@ -13,6 +13,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ..models.atp_asset import AtpAsset
 from ..models.base import utcnow
@@ -332,13 +334,32 @@ def execute_external_waveform_tower_analysis(
             d_drive.unlink()
         d_drive.symlink_to(atp_root)
     # 兼容模板 INCLUDE 路径：D:\\ATP\\500\\ganzi\\fanji\\M1\\*.lib
-    legacy_lib_dir = Path("/ATP/500/ganzi/fanji/M1")
-    legacy_lib_dir.mkdir(parents=True, exist_ok=True)
-    for lib_name in ("short.lib", "dahao.lib", "long.lib", "xiaohao.lib"):
-        target = legacy_lib_dir / lib_name
-        src = atp_root / "templates" / "fanji" / lib_name
-        if src.exists() and not target.exists():
-            target.symlink_to(src.resolve())
+    # 以及 D:\\ATP\\35\\ganzi\\raoji1\\M123\\*.lib 等任意电压等级/塔型路径
+    include_dirs: set[str] = set()
+    for line in (atp_text or "").splitlines():
+        if not line.strip().upper().startswith("$INCLUDE"):
+            continue
+        raw_path = line.split(",", 1)[1].strip() if "," in line else ""
+        raw_path = raw_path.strip().split()[0].strip("$ ") if raw_path else ""
+        if raw_path:
+            dir_path = str(Path(raw_path).parent)
+            include_dirs.add(dir_path)
+    for include_dir in include_dirs:
+        native_dir = Path(include_dir.replace("D:", "/app/data/wine/ATP").replace("\\", "/"))
+        native_dir.mkdir(parents=True, exist_ok=True)
+        for lib_name in ("short.lib", "dahao.lib", "long.lib", "xiaohao.lib"):
+            target = native_dir / lib_name
+            if target.exists():
+                continue
+            # 优先从同模板目录 symlink
+            for template_dir in atp_root.glob("templates/*"):
+                src = template_dir / lib_name
+                if src.exists():
+                    try:
+                        target.symlink_to(src.resolve())
+                    except OSError:
+                        pass
+                    break
     # 确保运行目录有 startup，ATP 启动必需
     startup_src = atp_root / "startup"
     startup_dst = run_dir / "startup"
