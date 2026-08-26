@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  Badge,
   Button,
   Descriptions,
   Empty,
@@ -201,7 +202,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-type ParseStatusInfo = { label: string; color: string };
+type ParseStatusInfo = { label: string; color: "success" | "processing" | "error" };
 
 function computedParseStatus(record: ElevationFileRecordSummary): ParseStatusInfo {
   const { analysis_status, terrain_status, status } = record;
@@ -212,7 +213,7 @@ function computedParseStatus(record: ElevationFileRecordSummary): ParseStatusInf
     terrain_status === "failed" ||
     status === "disabled"
   ) {
-    return { label: "失败", color: "red" };
+    return { label: "失败", color: "error" };
   }
 
   // Any running/processing/queued/pending → 处理中
@@ -221,11 +222,11 @@ function computedParseStatus(record: ElevationFileRecordSummary): ParseStatusInf
     processingStates.includes(analysis_status) ||
     processingStates.includes(terrain_status)
   ) {
-    return { label: "处理中", color: "blue" };
+    return { label: "处理中", color: "processing" };
   }
 
   // Otherwise → 成功（含分析完成且地形就绪或格式不支持等正常状态）
-  return { label: "成功", color: "green" };
+  return { label: "成功", color: "success" };
 }
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
@@ -764,6 +765,10 @@ export default function ElevationRecordsPage() {
     const analyzing = analyzeMutation.isPending && analyzingId === record.id;
     const deleting = deleteMutation.isPending && deletingId === record.id;
     const rowBusy = analyzing || deleting;
+    const recordStatus = computedParseStatus(record);
+    const showProgress = ["processing"].includes(record.status) ||
+      ["processing"].includes(record.analysis_status) ||
+      ["processing"].includes(record.terrain_status);
 
     return (
       <Card
@@ -777,7 +782,10 @@ export default function ElevationRecordsPage() {
           <div className="admin-elevation-record-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
             <FileOutlined className="text-base text-gray-500" />
             <Typography.Text strong className="truncate min-w-0 flex-1">{record.file_name}</Typography.Text>
-            <Tag color={statusTagColor(record.status)}>{record.status}</Tag>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <Badge status={recordStatus.color as Parameters<typeof Badge>[0]["status"]} />
+              <Typography.Text type="secondary" className="text-xs">{recordStatus.label}</Typography.Text>
+            </div>
           </div>
 
           <div className="flex flex-col gap-2 px-4 py-3">
@@ -800,7 +808,10 @@ export default function ElevationRecordsPage() {
             </div>
           </div>
 
-          <div className="admin-elevation-record-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
+          <div className={`admin-elevation-record-card-actions flex items-center px-4 py-2 border-t border-gray-200 ${showProgress ? 'justify-between' : 'justify-end'}`}>
+            {showProgress && (
+              <Progress percent={0} size="small" className="flex-1 max-w-40" showInfo={false} status="active" />
+            )}
             <Space size="small">
                           <Tooltip title="应用">
                             <Button
