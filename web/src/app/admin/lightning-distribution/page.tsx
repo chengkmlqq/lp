@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
+  Badge,
   Card,
   Descriptions,
   Dropdown,
@@ -91,7 +92,7 @@ const INITIAL_IMPORT_VALUES: ImportFormValues = {
   line_id: null,
 };
 
-const STATUS_META: Record<string, { color: string; label: string }> = {
+const STATUS_META: Record<string, { color: "default" | "processing" | "success" | "error"; label: string }> = {
   pending: { color: "default", label: "待处理" },
   processing: { color: "processing", label: "处理中" },
   completed: { color: "success", label: "已完成" },
@@ -774,10 +775,15 @@ export default function AdminLightningDistributionPage() {
         <div className="flex flex-col">
           <div className="admin-lightning-distribution-event-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
             <ThunderboltOutlined className="text-base text-gray-500" />
-            <Typography.Text strong className="truncate min-w-0">
-              {record.source_file_name || "未命名文件"}
-            </Typography.Text>
-            <Tag color={meta.color}>{meta.label}</Tag>
+            <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
+              <Typography.Text strong className="truncate min-w-0">
+                {record.source_file_name || "未命名文件"}
+              </Typography.Text>
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <Badge status={meta.color} />
+                <Typography.Text type="secondary" className="text-xs">{meta.label}</Typography.Text>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-col gap-2 px-4 py-3">
@@ -805,13 +811,15 @@ export default function AdminLightningDistributionPage() {
                 整体 Ng：{formatNumber(record.overall_ng, 4)}
               </Typography.Text>
             </div>
-            {record.status === "processing" && (
-              <Progress percent={record.progress} size="small" />
-            )}
           </div>
 
-          <div className="admin-lightning-distribution-event-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
-            <Space size="small">
+          <div className="admin-lightning-distribution-event-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+            {record.status === "processing" ? (
+              <Progress percent={record.progress} size="small" className="flex-1 max-w-40" />
+            ) : (
+              <div />
+            )}
+            <Space size="small" className="flex-wrap">
               <Tooltip title="查看详情">
                 <Button
                   type="text"
