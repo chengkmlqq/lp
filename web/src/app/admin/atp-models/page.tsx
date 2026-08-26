@@ -19,7 +19,7 @@ import {
   Upload,
   Alert,
 } from "antd";
-import { UploadOutlined, DeleteOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined } from "@ant-design/icons";
+import { UploadOutlined, DeleteOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
@@ -658,9 +658,9 @@ export default function AtpModelsPage() {
         className="admin-atp-models-tabs"
         tabBarExtraContent={
           canManage ? (
-            <Button type="primary" disabled={!canManage} onClick={openCreateModal}>
-              新建模型
-            </Button>
+            <Button type="primary" disabled={!canManage} onClick={openCreateModal} icon={<PlusOutlined />}>
+               新建模型
+             </Button>
           ) : null
         }
         items={[

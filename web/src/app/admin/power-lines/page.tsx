@@ -48,6 +48,7 @@ import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { readApiError } from "@/lib/api";
+import { Alert } from "antd";
 import type { LineListResponse, LineSummary } from "@/types/auth";
 
 type LineFormValues = {
@@ -487,6 +488,15 @@ export default function AdminPowerLinesPage() {
                   />
                 </div>
 
+                {lineError && (
+                  <Alert
+                    type="error"
+                    showIcon
+                    message={lineError || "加载失败"}
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
+
                 {linesQuery.isFetching ? (
                   <div className="admin-power-lines-loading flex justify-center items-center py-12">
                     <Spin tip="加载中..." />
@@ -850,7 +860,7 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
         pageSizeOptions: [6, 12, 24, 48],
         showTotal: (total) => `共 ${total} 条`,
       }}
-      scroll={{ x: 1080 }}
+      scroll={{ x: 1080, y: scrollY }}
       tableLayout="fixed"
     />
   );
