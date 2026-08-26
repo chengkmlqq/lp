@@ -742,9 +742,6 @@ export default function AdminMatlabEnginePage() {
 
           return (
             <Space size={4}>
-              <Button size="small" onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}>
-                查看文件
-              </Button>
               {canManage && record !== draft && (
                 <Button
                   size="small"
@@ -813,7 +810,7 @@ export default function AdminMatlabEnginePage() {
             <Typography.Text strong className="admin-matlab-module-card-title-text truncate">
               {item.name}
             </Typography.Text>
-            <Tag color="blue" className="flex-shrink-0 truncate max-w-[120px]">{item.slug}</Tag>
+            <Tag color="blue" className="flex-shrink-0 truncate max-w-[140px]">{item.slug}</Tag>
           </div>
           <div className="admin-matlab-module-card-body">
             <div className="admin-matlab-version-field">
@@ -1052,7 +1049,7 @@ export default function AdminMatlabEnginePage() {
                 scroll={{ y: tableScrollY }}
                 locale={{
                   emptyText: (
-                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的版本。" />
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无版本数据" />
                   ),
                 }}
               />
