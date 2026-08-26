@@ -427,7 +427,7 @@ def get_version_files(db: Session, slug: str, version_hash: str) -> dict[str, An
     }
 
 
-def list_versions(db: Session, slug: str) -> dict[str, Any]:
+def list_versions(db: Session, slug: str, *, limit: int | None = None, offset: int | None = None) -> dict[str, Any]:
     module = get_module(db, slug)
     versions = _load_versions(db, slug)
     draft = versions.get("draft")
@@ -437,6 +437,10 @@ def list_versions(db: Session, slug: str) -> dict[str, Any]:
             draft = dict(draft)
             draft["file_list"] = manifest.get("file_list") or draft.get("file_list") or []
     releases = versions.get("releases", [])
+    if limit is not None and offset is not None:
+        start = max(0, offset)
+        end = start + limit if limit >= 0 else len(releases)
+        releases = releases[start:end]
     for index, item in enumerate(releases):
         manifest = _load_manifest(module or {"slug": slug, "required_files": list(REQUIRED_FILES)}, item.get("version_hash", ""), "release")
         if manifest:

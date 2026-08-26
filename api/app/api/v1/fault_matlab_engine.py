@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -121,10 +121,12 @@ def get_module_versions(
     slug: str,
     _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
     db: Session = Depends(get_db),
+    limit: int | None = None,
+    offset: int | None = None,
 ) -> dict[str, Any]:
     if not get_module(db, slug):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"模块不存在: {slug}")
-    return list_versions(db, slug)
+    return list_versions(db, slug, limit=limit, offset=offset)
 
 
 @router.post("/modules/{slug}/upload")

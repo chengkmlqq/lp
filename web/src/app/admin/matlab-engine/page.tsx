@@ -19,8 +19,8 @@ import {
 import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Alert,
   App,
+  Badge,
   Button,
   Col,
   Dropdown,
@@ -50,7 +50,6 @@ import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
-import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { ApiError } from "@/lib/api";
 import {
@@ -116,6 +115,7 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 export default function AdminMatlabEnginePage() {
+  const { message: messageApi } = App.useApp();
   const { user, initializing, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
@@ -123,7 +123,6 @@ export default function AdminMatlabEnginePage() {
   const [publishForm] = Form.useForm<PublishFormValues>();
 
   const [apiError, setApiError] = useState<ApiError | null>(null);
-  const [successMessage, setSuccessMessage] = useState("");
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
 
   const [moduleModalOpen, setModuleModalOpen] = useState(false);
@@ -140,13 +139,16 @@ export default function AdminMatlabEnginePage() {
   const [versionKeywordInput, setVersionKeywordInput] = useState("");
   const [versionKeyword, setVersionKeyword] = useState("");
   const [versionStatus, setVersionStatus] = useState<"draft" | "released" | undefined>(undefined);
+  const [modulePage, setModulePage] = useState(1);
+  const [modulePageSize, setModulePageSize] = useState(12);
+  const [versionPage, setVersionPage] = useState(1);
+  const [versionPageSize, setVersionPageSize] = useState(12);
 
   const [leftPanelWidth, setLeftPanelWidth] = useState(240);
   const isResizing = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [viewMode, setViewMode] = useState<"table" | "card">(isMobile ? "card" : "table");
 
   const canManage = hasPermission("line.manage");
@@ -169,17 +171,131 @@ export default function AdminMatlabEnginePage() {
 
   const syncMutation = useMutation({
     mutationFn: async (slug: string) => syncMatlabModule(slug),
-    onMutate: () => {
-      setApiError(null);
-      setSuccessMessage("");
-    },
     onSuccess: (_data, slug) => {
-      setSuccessMessage("同步任务已提交，请等待 Worker 处理");
+      messageApi.success("同步任务已提交，请等待 Worker 处理");
       void queryClient.invalidateQueries({ queryKey: ["admin.matlab.versions", slug] });
     },
     onError: (candidate) => {
-      setSuccessMessage("");
       setApiError(new ApiError(candidate instanceof Error ? candidate.message : "同步失败"));
+    },
+  });
+
+  const deleteModuleMutation = useMutation({
+    mutationFn: async (item: MatlabModule) => deleteMatlabModule(item.slug),
+    onSuccess: async (_data, item) => {
+      messageApi.success("模块已删除");
+      await modulesQuery.refetch();
+      if (selectedSlug === item.slug) {
+        const remaining = modulesQuery.data?.filter((m) => m.slug !== item.slug) ?? [];
+        setSelectedSlug(remaining[0]?.slug ?? null);
+      }
+    },
+    onError: (candidate) => {
+      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "删除失败"));
+    },
+  });
+
+  const saveModuleMutation = useMutation({
+    mutationFn: async (values: ModuleFormValues) => {
+      const payload = {
+        name: values.name.trim(),
+        slug: values.slug?.trim() || values.name.trim(),
+        description: values.description?.trim() || "",
+        worker_deploy_path: values.worker_deploy_path?.trim() || "",
+        required_files: (values.required_files || "")
+          .split(/[\n,，]+/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+      };
+      if (editingModule) {
+        await updateMatlabModule(editingModule.slug, payload);
+        return { mode: "updated" as const, module: editingModule };
+      }
+      const created = await createMatlabModule(payload);
+      return { mode: "created" as const, module: created };
+    },
+    onSuccess: async ({ mode }) => {
+      messageApi.success(mode === "created" ? "模块已创建" : "模块已更新");
+      setModuleModalOpen(false);
+      setEditingModule(null);
+      form.resetFields();
+      await modulesQuery.refetch();
+    },
+    onError: (candidate) => {
+      if (
+        candidate
+        && typeof candidate === "object"
+        && "errorFields" in candidate
+        && Array.isArray((candidate as { errorFields?: unknown }).errorFields)
+      ) {
+        return;
+      }
+      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "保存失败"));
+    },
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: async () => {
+      const raw = fileList[0]?.originFileObj;
+      if (!raw) {
+        throw new ApiError("请先选择 ZIP 文件");
+      }
+      if (!selectedSlug) {
+        throw new ApiError("请先选择模块");
+      }
+      await uploadMatlabDraft(selectedSlug, raw);
+    },
+    onSuccess: async () => {
+      messageApi.success("上传成功");
+      setUploadModalOpen(false);
+      setFileList([]);
+      await versionsQuery.refetch();
+    },
+    onError: (candidate) => {
+      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "上传失败"));
+    },
+  });
+
+  const publishMutation = useMutation({
+    mutationFn: async (values: PublishFormValues) => {
+      if (!selectedSlug || !draft) {
+        throw new ApiError("当前没有草稿版本");
+      }
+      await publishMatlabDraft(selectedSlug, {
+        version_tag: values.version_tag.trim(),
+        changelog: values.changelog?.trim() || "",
+      });
+    },
+    onSuccess: async () => {
+      messageApi.success("发布成功");
+      setPublishModalOpen(false);
+      publishForm.resetFields();
+      await versionsQuery.refetch();
+    },
+    onError: (candidate) => {
+      if (
+        candidate
+        && typeof candidate === "object"
+        && "errorFields" in candidate
+        && Array.isArray((candidate as { errorFields?: unknown }).errorFields)
+      ) {
+        return;
+      }
+      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "发布失败"));
+    },
+  });
+
+  const rollbackMutation = useMutation({
+    mutationFn: async (version: MatlabVersion) => {
+      if (!selectedSlug) return;
+      await rollbackMatlabVersion(selectedSlug, version.version_hash);
+    },
+    onSuccess: async () => {
+      messageApi.success("已回退为新草稿，请重新发布");
+      await versionsQuery.refetch();
+    },
+    onError: (candidate) => {
+      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "回退失败"));
     },
   });
 
@@ -203,41 +319,30 @@ export default function AdminMatlabEnginePage() {
         }
 
         if (event.name === "engine.sync_completed") {
-          setSuccessMessage("同步完成");
+          messageApi.success("同步完成");
         }
         if (event.name === "engine.sync_failed") {
           setApiError(new ApiError((payload?.error as string | undefined) ?? "同步失败"));
         }
         if (event.name === "engine.draft_uploaded") {
-          setSuccessMessage("上传成功");
+          messageApi.success("上传成功");
         }
         if (event.name === "engine.published") {
-          setSuccessMessage("发布成功");
+          messageApi.success("发布成功");
         }
         if (event.name === "engine.rollbacked") {
-          setSuccessMessage("已回退");
+          messageApi.success("已回退");
         }
       },
-      [modulesQuery, refetchCurrent, selectedSlug],
+      [messageApi, modulesQuery, refetchCurrent, selectedSlug],
     ),
   );
 
-  useToastFeedback({
-    errorMessage: apiError,
-    successMessage,
-    clearError: () => setApiError(null),
-    clearSuccess: () => setSuccessMessage(""),
-  });
-
-  const modules = useMemo(() => {
-    const keyword = moduleKeyword.trim().toLowerCase();
-    const items = modulesQuery.data ?? [];
-    if (!keyword) return items;
-    return items.filter((item) => {
-      const text = `${item.name} ${item.slug} ${item.description ?? ""}`.toLowerCase();
-      return text.includes(keyword);
-    });
-  }, [modulesQuery.data, moduleKeyword]);
+  const totalModules = modules.length;
+  const modulePageSlice = useMemo(() => {
+    const start = (modulePage - 1) * modulePageSize;
+    return modules.slice(start, start + modulePageSize);
+  }, [modulePage, modulePageSize, modules]);
 
   const selectedModule = useMemo(
     () => modulesQuery.data?.find((item) => item.slug === selectedSlug) ?? null,
@@ -326,133 +431,37 @@ export default function AdminMatlabEnginePage() {
   }, [form]);
 
   const saveModule = useCallback(async () => {
-    try {
-      const values = await form.validateFields();
-      const payload = {
-        name: values.name.trim(),
-        slug: values.slug?.trim() || values.name.trim(),
-        description: values.description?.trim() || "",
-        worker_deploy_path: values.worker_deploy_path?.trim() || "",
-        required_files: (values.required_files || "")
-          .split(/[\n,，]+/)
-          .map((item) => item.trim())
-          .filter(Boolean),
-      };
-      if (editingModule) {
-        await updateMatlabModule(editingModule.slug, payload);
-        setSuccessMessage("模块已更新");
-      } else {
-        const created = await createMatlabModule(payload);
-        setSelectedSlug(created.slug);
-        setSuccessMessage("模块已创建");
-      }
-      closeModuleModal();
-      void modulesQuery.refetch();
-    } catch (candidate) {
-      if (
-        candidate
-        && typeof candidate === "object"
-        && "errorFields" in candidate
-        && Array.isArray((candidate as { errorFields?: unknown }).errorFields)
-      ) {
-        return;
-      }
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "保存失败"));
-    }
-  }, [closeModuleModal, editingModule, form, modulesQuery]);
+    const values = await form.validateFields();
+    await saveModuleMutation.mutateAsync(values);
+  }, [form, saveModuleMutation]);
 
   const deleteModule = useCallback(
     async (item: MatlabModule) => {
-      try {
-        await deleteMatlabModule(item.slug);
-        setSuccessMessage("模块已删除");
-        await modulesQuery.refetch();
-        if (selectedSlug === item.slug) {
-          const remaining = modulesQuery.data?.filter((m) => m.slug !== item.slug) ?? [];
-          setSelectedSlug(remaining[0]?.slug ?? null);
-        }
-      } catch (candidate) {
-        setApiError(new ApiError(candidate instanceof Error ? candidate.message : "删除失败"));
-      }
+      await deleteModuleMutation.mutateAsync(item);
     },
-    [modulesQuery, selectedSlug],
+    [deleteModuleMutation],
   );
 
   const handleUpload = useCallback(async () => {
-    const raw = fileList[0]?.originFileObj;
-    if (!raw) {
-      setApiError(new ApiError("请先选择 ZIP 文件"));
-      return;
-    }
-    if (!selectedSlug) {
-      setApiError(new ApiError("请先选择模块"));
-      return;
-    }
-    try {
-      await uploadMatlabDraft(selectedSlug, raw);
-      setSuccessMessage("上传成功");
-      setUploadModalOpen(false);
-      setFileList([]);
-      void versionsQuery.refetch();
-    } catch (candidate) {
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "上传失败"));
-    }
-  }, [fileList, selectedSlug, versionsQuery]);
-
-  const openPublishModal = useCallback(() => {
-    publishForm.setFieldsValue(DEFAULT_PUBLISH_FORM_VALUES);
-    setPublishModalOpen(true);
-  }, [publishForm]);
+    await uploadMutation.mutateAsync();
+  }, [uploadMutation]);
 
   const handlePublish = useCallback(async () => {
-    try {
-      const values = await publishForm.validateFields();
-      if (!selectedSlug || !draft) {
-        setApiError(new ApiError("当前没有草稿版本"));
-        return;
-      }
-      await publishMatlabDraft(selectedSlug, {
-        version_tag: values.version_tag.trim(),
-        changelog: values.changelog?.trim() || "",
-      });
-      setSuccessMessage("发布成功");
-      setPublishModalOpen(false);
-      publishForm.resetFields();
-      void versionsQuery.refetch();
-    } catch (candidate) {
-      if (
-        candidate
-        && typeof candidate === "object"
-        && "errorFields" in candidate
-        && Array.isArray((candidate as { errorFields?: unknown }).errorFields)
-      ) {
-        return;
-      }
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "发布失败"));
-    }
-  }, [draft, publishForm, selectedSlug, versionsQuery]);
+    const values = await publishForm.validateFields();
+    await publishMutation.mutateAsync(values);
+  }, [publishForm, publishMutation]);
 
   const handleRollback = useCallback(
     async (version: MatlabVersion) => {
       if (!selectedSlug) return;
-      try {
-        await rollbackMatlabVersion(selectedSlug, version.version_hash);
-        setSuccessMessage("已回退为新草稿，请重新发布");
-        void versionsQuery.refetch();
-      } catch (candidate) {
-        setApiError(new ApiError(candidate instanceof Error ? candidate.message : "回退失败"));
-      }
+      await rollbackMutation.mutateAsync(version);
     },
-    [selectedSlug, versionsQuery],
+    [rollbackMutation, selectedSlug],
   );
 
   const handleSync = useCallback(async () => {
     if (!selectedSlug) return;
-    try {
-      await syncMutation.mutateAsync(selectedSlug);
-    } catch {
-      // toast handled by mutation onError
-    }
+    await syncMutation.mutateAsync(selectedSlug);
   }, [selectedSlug, syncMutation]);
 
   const handleVersionSearch = useCallback(() => {
@@ -590,33 +599,34 @@ export default function AdminMatlabEnginePage() {
               {item.version_tag || "未命名版本"}
             </Typography.Text>
             <div className="flex flex-shrink-0 items-center gap-2">
-              <Tag color={statusConfig.color}>{statusConfig.text}</Tag>
+              <Badge status={statusConfig.color as "default" | "processing" | "success" | "error"} />
+              <Typography.Text type="secondary" className="admin-matlab-version-status-text text-xs">{statusConfig.text}</Typography.Text>
             </div>
           </div>
           <div className="admin-matlab-version-card-body">
             <div className="admin-matlab-version-field">
-<SwapOutlined className="admin-matlab-version-field-icon" />
-            <Typography.Text type="secondary" className="admin-matlab-version-field-content text-xs">
-              变更日志：{item.changelog || "-"}
-            </Typography.Text>
-          </div>
-          <div className="admin-matlab-version-field">
-            <ClockCircleOutlined className="admin-matlab-version-field-icon" />
-            <Typography.Text className="admin-matlab-version-field-content text-xs">
-              发布时间：{formatDateTime(item.upload_time)}
-            </Typography.Text>
-          </div>
-          <div className="admin-matlab-version-field">
-            <EditOutlined className="admin-matlab-version-field-icon" />
-            <Typography.Text className="admin-matlab-version-field-content text-xs">
-              发布人：{item.uploaded_by_name || item.uploaded_by || "-"}
-            </Typography.Text>
-          </div>
-          <div className="admin-matlab-version-field">
-            <InboxOutlined className="admin-matlab-version-field-icon" />
-            <Typography.Text className="admin-matlab-version-field-content text-xs">
-              大小：{formatSize(item.size_bytes)}
-            </Typography.Text>
+              <SwapOutlined className="admin-matlab-version-field-icon" />
+              <Typography.Text type="secondary" className="admin-matlab-version-field-content text-xs">
+                变更日志：{item.changelog || "-"}
+              </Typography.Text>
+            </div>
+            <div className="admin-matlab-version-field">
+              <ClockCircleOutlined className="admin-matlab-version-field-icon" />
+              <Typography.Text className="admin-matlab-version-field-content text-xs">
+                发布时间：{formatDateTime(item.upload_time)}
+              </Typography.Text>
+            </div>
+            <div className="admin-matlab-version-field">
+              <EditOutlined className="admin-matlab-version-field-icon" />
+              <Typography.Text className="admin-matlab-version-field-content text-xs">
+                发布人：{item.uploaded_by_name || item.uploaded_by || "-"}
+              </Typography.Text>
+            </div>
+            <div className="admin-matlab-version-field">
+              <InboxOutlined className="admin-matlab-version-field-icon" />
+              <Typography.Text className="admin-matlab-version-field-content text-xs">
+                大小：{formatSize(item.size_bytes)}
+              </Typography.Text>
             </div>
           </div>
           <div className="admin-matlab-version-card-actions">
@@ -641,12 +651,17 @@ export default function AdminMatlabEnginePage() {
         dataIndex: "version_tag",
         key: "version_tag",
         width: 140,
-        render: (value: string, record: MatlabVersion) => (
-          <Space size={6}>
-            <Typography.Text>{value || "-"}</Typography.Text>
-            {record === draft && <Tag color="warning">草稿</Tag>}
-          </Space>
-        ),
+        render: (value: string, record: MatlabVersion) => {
+          const isDraft = record === draft;
+          const statusConfig = isDraft ? { color: "warning", text: "草稿" } : { color: "success", text: "已发布" };
+          return (
+            <Space size={6}>
+              <Typography.Text>{value || "-"}</Typography.Text>
+              <Badge status={statusConfig.color as "default" | "processing" | "success" | "error"} />
+              <Typography.Text type="secondary" className="admin-matlab-version-status-text text-xs">{statusConfig.text}</Typography.Text>
+            </Space>
+          );
+        },
       },
       {
         title: "Hash",
@@ -894,21 +909,36 @@ export default function AdminMatlabEnginePage() {
               <div className="admin-matlab-module-loading flex justify-center items-center py-12">
                 <Spin tip="加载中..." />
               </div>
-            ) : modules.length === 0 ? (
+            ) : totalModules === 0 ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无模块数据" />
             ) : (
-              modules.map((item) => (
-                <div
-                  key={item.slug}
-                  className={`admin-matlab-module-item ${selectedSlug === item.slug ? "admin-matlab-module-item--active" : ""}`}
-                  onClick={() => setSelectedSlug(item.slug)}
-                >
-                  <div className="admin-matlab-module-info">
-                    <div className="admin-matlab-module-name">{item.name}</div>
-                    <div className="admin-matlab-module-slug">{item.slug}</div>
+              <>
+                {modulePageSlice.map((item) => (
+                  <div
+                    key={item.slug}
+                    className={`admin-matlab-module-item ${selectedSlug === item.slug ? "admin-matlab-module-item--active" : ""}`}
+                    onClick={() => setSelectedSlug(item.slug)}
+                  >
+                    <div className="admin-matlab-module-info">
+                      <div className="admin-matlab-module-name">{item.name}</div>
+                      <div className="admin-matlab-module-slug">{item.slug}</div>
+                    </div>
                   </div>
+                ))}
+                <div className="admin-matlab-module-pagination">
+                  <Pagination
+                    current={modulePage}
+                    pageSize={modulePageSize}
+                    total={totalModules}
+                    onChange={(page, pageSize) => {
+                      setModulePage(page);
+                      setModulePageSize(pageSize);
+                    }}
+                    showSizeChanger
+                    showTotal={(total) => `共 ${total} 条`}
+                  />
                 </div>
-              ))
+              </>
             )}
           </div>
         </Card>
@@ -1004,14 +1034,7 @@ export default function AdminMatlabEnginePage() {
             />
           </div>
 
-          {apiError && (
-            <Alert
-              type="error"
-              showIcon
-              message={apiError.message || "加载失败"}
-              style={{ marginBottom: 16 }}
-            />
-          )}
+          {apiError && messageApi.error(apiError.message || "加载失败")}
 
           {viewMode === "table" ? (
             <div
@@ -1094,7 +1117,7 @@ export default function AdminMatlabEnginePage() {
         className="admin-matlab-tabs"
         tabBarExtraContent={
           canManage ? (
-            <Button type="primary" onClick={openCreateModule}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModule}>
               新建模块
             </Button>
           ) : null

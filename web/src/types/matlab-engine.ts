@@ -20,10 +20,16 @@ export type MatlabVersion = {
   is_active?: boolean;
 };
 
+export type MatlabModuleListResponse = {
+  items: MatlabModule[];
+  total: number;
+};
+
 export type MatlabModuleVersionsResponse = {
   slug: string;
   draft: MatlabVersion | null;
   releases: MatlabVersion[];
+  total: number;
 };
 
 export type MatlabModuleFilesResponse = {
