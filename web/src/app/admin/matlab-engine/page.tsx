@@ -20,6 +20,7 @@ import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
+  Alert,
   Badge,
   Button,
   Col,
@@ -149,7 +150,7 @@ export default function AdminMatlabEnginePage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
-  const [viewMode, setViewMode] = useState<"table" | "card">(isMobile ? "card" : "table");
+  const [viewMode, setViewMode] = useState<"card" | "list">(isMobile ? "card" : "card");
 
   const canManage = hasPermission("line.manage");
   const canRead = hasPermission("line.read") || canManage;
@@ -621,36 +622,35 @@ export default function AdminMatlabEnginePage() {
             </div>
           </div>
 
-          <div className="admin-matlab-version-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
-            {isDraft && canManage ? (
-              <Button type="primary" size="small" onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
-                发布
-              </Button>
-            ) : (
-              <div />
-            )}
-            <Space size="small">
-              <Tooltip title="查看文件列表">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<EyeOutlined />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []);
-                  }}
-                />
-              </Tooltip>
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<MoreOutlined />}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              </Dropdown>
-            </Space>
-          </div>
+           <div className="admin-matlab-version-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+             {isDraft && canManage ? (
+               <Button type="primary" size="small" onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
+                 发布
+               </Button>
+             ) : (
+               <Space size="small">
+                 <Tooltip title="查看文件列表">
+                   <Button
+                     type="text"
+                     size="small"
+                     icon={<EyeOutlined />}
+                     onClick={(event) => {
+                       event.stopPropagation();
+                       openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []);
+                     }}
+                   />
+                 </Tooltip>
+               </Space>
+             )}
+             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+               <Button
+                 type="text"
+                 size="small"
+                 icon={<MoreOutlined />}
+                 onClick={(event) => event.stopPropagation()}
+               />
+             </Dropdown>
+           </div>
         </div>
       </Card>
     );
@@ -754,6 +754,9 @@ export default function AdminMatlabEnginePage() {
 
           return (
             <Space size={4}>
+              <Button size="small" onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}>
+                查看文件列表
+              </Button>
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" icon={<MoreOutlined />} />
               </Dropdown>
@@ -1012,17 +1015,24 @@ export default function AdminMatlabEnginePage() {
             </Form>
             <Segmented
               value={viewMode}
-              onChange={(value) => setViewMode(value as "table" | "card")}
+              onChange={(value) => setViewMode(value as "card" | "list")}
               options={[
                 { label: "卡片视图", value: "card" },
-                { label: "列表视图", value: "table" },
+                { label: "列表视图", value: "list" },
               ]}
             />
           </div>
 
-          {apiError && messageApi.error(apiError.message || "加载失败")}
+          {apiError && (
+            <Alert
+              type="error"
+              showIcon
+              message={apiError.message || "加载失败"}
+              style={{ marginBottom: 16 }}
+            />
+          )}
 
-          {viewMode === "table" ? (
+          {viewMode === "list" ? (
             <div
               ref={tableScrollAnchorRef}
               className="admin-matlab-table-anchor"
@@ -1035,60 +1045,72 @@ export default function AdminMatlabEnginePage() {
                 loading={versionsQuery.isFetching}
                 tableLayout="fixed"
                 sticky
-                scroll={{ y: tableScrollY }}
+                scroll={{ x: 1080, y: tableScrollY }}
                 locale={{
                   emptyText: (
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无版本数据" />
                   ),
                 }}
+                pagination={{
+                  hideOnSinglePage: false,
+                  showSizeChanger: true,
+                  pageSizeOptions: [6, 12, 24, 48],
+                  current: pagination.current,
+                  pageSize: pagination.pageSize,
+                  total: filteredVersions.length,
+                  onChange: (page, pageSize) => {
+                    setPagination({ current: page, pageSize });
+                  },
+                  showTotal: (total) => `共 ${total} 条`,
+                }}
               />
             </div>
-              ) : (
-                <div className="admin-matlab-card-view">
-                  {versionsQuery.isLoading && filteredVersions.length === 0 ? (
-                    <div className="admin-matlab-card-view-state">
-                      <Spin tip="加载中..." />
-                    </div>
-                  ) : filteredVersions.length === 0 ? (
-                    <div className="admin-matlab-card-view-state">
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的版本。" />
-                    </div>
-                  ) : (
-                    <>
-                      <div className="admin-matlab-card-view-content">
-                        <Row gutter={[12, 12]}>
-                          {filteredVersions
-                            .slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize)
-                            .map((item) => (
-                              <Col
-                                key={`${item.version_hash}-${item === draft ? "draft" : "release"}`}
-                                xs={24}
-                                sm={24}
-                                md={12}
-                                lg={8}
-                                xl={6}
-                              >
-                                {renderVersionCard(item)}
-                              </Col>
-                            ))}
-                        </Row>
-                      </div>
-                      <div className="admin-matlab-card-pagination">
-                        <Pagination
-                          current={pagination.current}
-                          pageSize={pagination.pageSize}
-                          total={filteredVersions.length}
-                          onChange={(page, pageSize) => {
-                            setPagination({ current: page, pageSize });
-                          }}
-                          showSizeChanger
-                          showTotal={(total) => `共 ${total} 条`}
-                        />
-                      </div>
-                    </>
-                  )}
+          ) : (
+            <div className="admin-matlab-card-view">
+              {versionsQuery.isLoading && filteredVersions.length === 0 ? (
+                <div className="admin-matlab-card-view-state">
+                  <Spin tip="加载中..." />
                 </div>
+              ) : filteredVersions.length === 0 ? (
+                <div className="admin-matlab-card-view-state">
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的版本。" />
+                </div>
+              ) : (
+                <>
+                  <div className="admin-matlab-card-view-content">
+                    <Row gutter={[12, 12]}>
+                      {filteredVersions
+                        .slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize)
+                        .map((item) => (
+                          <Col
+                            key={`${item.version_hash}-${item === draft ? "draft" : "release"}`}
+                            xs={24}
+                            sm={24}
+                            md={12}
+                            lg={8}
+                            xl={6}
+                          >
+                            {renderVersionCard(item)}
+                          </Col>
+                        ))}
+                    </Row>
+                  </div>
+                  <div className="admin-matlab-card-pagination">
+                    <Pagination
+                      current={pagination.current}
+                      pageSize={pagination.pageSize}
+                      total={filteredVersions.length}
+                      onChange={(page, pageSize) => {
+                        setPagination({ current: page, pageSize });
+                      }}
+                      showSizeChanger
+                      showTotal={(total) => `共 ${total} 条`}
+                    />
+                  </div>
+                </>
               )}
+            </div>
+          )}
         </Space>
       </div>
     );
