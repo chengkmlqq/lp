@@ -209,12 +209,14 @@ export function AtpModelDetailTab({ assetId, onNavigateBack }: AtpModelDetailTab
   ) : null;
 
   return (
-    <div className="flex flex-col gap-4">
-      {header}
-      {assetSection}
-      <Card size="small" styles={{ body: { padding: 0 } }}>
-        <Tabs items={tabs} />
-      </Card>
-    </div>
+    <Card>
+      <div className="flex flex-col gap-4">
+        {header}
+        {assetSection}
+        <Card size="small" styles={{ body: { padding: 0 } }}>
+          <Tabs items={tabs} />
+        </Card>
+      </div>
+    </Card>
   );
 }

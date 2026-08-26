@@ -550,6 +550,13 @@ export default function AtpModelsPage() {
   const columns = useMemo<ColumnsType<AtpAssetSummary>>(
     () => [
       {
+        title: "名称",
+        dataIndex: "name",
+        key: "name",
+        width: 160,
+        ellipsis: { showTitle: true },
+      },
+      {
         title: "电压等级",
         dataIndex: "voltage_level",
         width: 120,
@@ -660,7 +667,7 @@ export default function AtpModelsPage() {
         className="admin-atp-models-tabs"
         tabBarExtraContent={
           canManage ? (
-            <Button type="primary" disabled={!canManage} onClick={openCreateModal} icon={<PlusOutlined />}>
+            <Button type="primary" onClick={openCreateModal} icon={<PlusOutlined />}>
                新建模型
              </Button>
           ) : null
@@ -693,22 +700,22 @@ export default function AtpModelsPage() {
                       />
                     </Form.Item>
                     <Form.Item style={{ marginBottom: 0 }}>
-                      <Button
-                        htmlType="button"
-                        icon={<SearchOutlined />}
-                        onClick={() => {
-                          setSearchKeyword(keywordInput);
-                          setPagination((previous) => ({ ...previous, current: 1 }));
-                          void queryClient.refetchQueries({
-                            predicate: (query) =>
-                              Array.isArray(query.queryKey)
-                              && typeof query.queryKey[0] === "string"
-                              && query.queryKey[0].startsWith("atp-assets"),
-                          });
-                        }}
-                        className="admin-search-btn"
-                      >
-                        查询
+                    <Button
+                      htmlType="button"
+                      icon={<SearchOutlined />}
+                      onClick={() => {
+                        setSearchKeyword(keywordInput);
+                        setPagination((previous) => ({ ...previous, current: 1 }));
+                        void queryClient.refetchQueries({
+                          predicate: (query) =>
+                            Array.isArray(query.queryKey)
+                            && typeof query.queryKey[0] === "string"
+                            && query.queryKey[0].startsWith("atp-assets"),
+                        });
+                      }}
+                      className="admin-search-btn"
+                    >
+                      查询
                       </Button>
                     </Form.Item>
                   </Form>
@@ -729,6 +736,7 @@ export default function AtpModelsPage() {
                     type="error"
                     showIcon
                     message={apiError.message || "加载失败"}
+                    style={{ marginBottom: 16 }}
                   />
                 )}
 
@@ -757,6 +765,7 @@ export default function AtpModelsPage() {
                         pageSize: pagination.pageSize,
                         total: Math.max(assetTotal, 1),
                         showSizeChanger: true,
+                        pageSizeOptions: [6, 12, 24, 48],
                         showTotal: () => `共 ${assetTotal} 条`,
                         hideOnSinglePage: false,
                         onChange: (page, pageSize) => {
@@ -767,7 +776,7 @@ export default function AtpModelsPage() {
                     />
                   </div>
                 ) : assetsQuery.isFetching ? (
-                  <div className="admin-atp-models-card-view-state">
+                  <div className="admin-atp-models-loading flex justify-center items-center py-12">
                     <Spin tip="加载中..." />
                   </div>
                 ) : assetItems.length === 0 ? (
