@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Dropdown, Empty, Space, Spin, Tag, Typography } from "antd";
+import { Badge, Button, Dropdown, Empty, Progress, Space, Spin, Typography } from "antd";
 import {
   ApartmentOutlined,
   ClockCircleOutlined,
@@ -16,8 +16,9 @@ import {
   formatDateTime,
   formatJobType,
   mitigationMode,
-  statusColor,
 } from "./types";
+
+const { Text } = Typography;
 
 type JobCardListProps = {
   jobs: FlAnalysisJobSummary[];
@@ -28,6 +29,24 @@ type JobCardListProps = {
 };
 
 const LOCKED_STATUSES = new Set(["queued", "running"]);
+
+const statusTextMap: Record<string, string> = {
+  pending: "待处理",
+  queued: "排队中",
+  running: "处理中",
+  blocked: "阻塞",
+  success: "已完成",
+  failed: "失败",
+};
+
+const badgeStatusMap: Record<string, string> = {
+  pending: "default",
+  queued: "default",
+  running: "processing",
+  blocked: "error",
+  success: "success",
+  failed: "error",
+};
 
 function isJobLocked(job: FlAnalysisJobSummary) {
   return LOCKED_STATUSES.has(job.status);
@@ -59,7 +78,10 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
                 <Typography.Text strong className="truncate">
                   {job.job_name || lineName}
                 </Typography.Text>
-                <Tag color={statusColor(job.status)}>{job.status}</Tag>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <Badge status={badgeStatusMap[job.status] ?? "default"} />
+                  <Text type="secondary" className="text-xs">{statusTextMap[job.status] ?? job.status}</Text>
+                </div>
               </div>
 
               <div className="flex flex-col gap-2 px-4 py-3">
@@ -90,6 +112,11 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
               </div>
 
               <div className="admin-fl-analysis-job-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+                <div className="min-w-0">
+                  {job.status === "running" ? (
+                    <Progress percent={0} size="small" className="flex-1 max-w-40" />
+                  ) : null}
+                </div>
                 <Space>
                   {canReadLogs ? (
                     <Button

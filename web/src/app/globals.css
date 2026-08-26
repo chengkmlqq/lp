@@ -162,6 +162,10 @@
   border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
 }
 
+:root[data-fquiz-theme="dark"] .admin-fl-analysis-job-card-actions .ant-progress-text {
+  color: var(--ant-color-text-secondary) !important;
+}
+
 :root[data-fquiz-theme="dark"] .admin-menus-card-view,
 :root[data-fquiz-theme="dark"] .admin-menus-card-view-content {
   background: transparent !important;
