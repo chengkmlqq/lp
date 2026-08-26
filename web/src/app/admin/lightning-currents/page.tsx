@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Badge,
   Button,
   DatePicker,
   Descriptions,
@@ -22,6 +23,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Text,
   Tooltip as AntTooltip,
   Typography,
   Upload,
@@ -772,7 +774,10 @@ export default function AdminLightningCurrentsPage() {
           <div className="admin-lightning-events-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
             <ThunderboltOutlined className="text-base text-gray-500" />
             <Typography.Text strong className="truncate">{record.source_file_name || "-"}</Typography.Text>
-            <Tag color={meta.color}>{meta.label}</Tag>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <Badge status={meta.color} />
+              <Text type="secondary" className="text-xs">{meta.label}</Text>
+            </div>
           </div>
 
           <div className="flex flex-col gap-2 px-4 py-3">
@@ -796,7 +801,7 @@ export default function AdminLightningCurrentsPage() {
 
           <div className="admin-lightning-events-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
             {record.status === "processing" ? (
-              <Progress percent={record.progress} size="small" className="mr-auto flex-1 max-w-40" />
+              <Progress percent={record.progress} size="small" className="flex-1 max-w-40" />
             ) : null}
             <Space size="small" className="shrink-0">
               <AntTooltip title="详情">
