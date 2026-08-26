@@ -1,7 +1,14 @@
 "use client";
 
-import { Button, Modal, Typography } from "antd";
-import { EyeOutlined } from "@ant-design/icons";
+import { Button, Card, Modal, Space, Typography } from "antd";
+import {
+  ApartmentOutlined,
+  ClockCircleOutlined,
+  DeleteOutlined,
+  EyeOutlined,
+  InfoCircleOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
 import { useCallback } from "react";
 
 import type { AtpAssetSummary } from "@/types/auth";
@@ -14,7 +21,6 @@ interface AtpModelCardProps {
   deleteLoading: boolean;
   onView: (asset: AtpAssetSummary) => void;
   onDelete: (id: string) => void;
-  /** 维度 code → 中文名 的映射（塔型/场景/避雷器组合等） */
   dimensionLabelMap?: {
     voltage_level?: Map<string, string>;
     tower_type?: Map<string, string>;
@@ -50,95 +56,63 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onDelete
   }, [deleteLoading, onDelete, asset.id]);
 
   return (
-    <div
+    <Card
+      size="small"
+      hoverable
       className="admin-atp-models-card"
       onClick={handleView}
-      style={{
-        height: "100%",
-        cursor: "pointer",
-        border: "1px solid color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary))",
-        background:
-          "linear-gradient(180deg, color-mix(in srgb, var(--fquiz-theme-bg-container) 96%, var(--fquiz-theme-primary) 4%) 0%, var(--fquiz-theme-bg-container) 100%)",
-        boxShadow: "0 8px 18px color-mix(in srgb, var(--fquiz-theme-text-primary) 8%, transparent)",
-      }}
     >
-      <div
-        className="admin-atp-models-card-title"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "10px 12px",
-          borderBottom: "1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary))",
-          background: "color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent)",
-          minHeight: 44,
-        }}
-      >
-        <Text strong ellipsis={{ tooltip: asset.name }} style={{ flex: 1 }}>
+      <div className="admin-atp-models-card-title flex items-center gap-2 px-4 py-3">
+        <Typography.Text strong className="truncate" style={{ flex: 1 }}>
           {asset.name}
-        </Text>
+        </Typography.Text>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "12px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <Text type="secondary" style={{ width: 64, flexShrink: 0 }}>
-            电压等级
-          </Text>
-          <Text ellipsis>{formatDimension(asset.voltage_level, dimensionLabelMap?.voltage_level)}</Text>
+      <div className="flex flex-col gap-2 px-4 py-3">
+        <div className="admin-atp-models-card-field flex items-center gap-2">
+          <ThunderboltOutlined className="text-xs text-gray-500" />
+          <Text type="secondary" className="text-xs">电压等级：{formatDimension(asset.voltage_level, dimensionLabelMap?.voltage_level)}</Text>
         </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <Text type="secondary" style={{ width: 64, flexShrink: 0 }}>
-            塔型
-          </Text>
-          <Text ellipsis>{formatDimension(asset.tower_type, dimensionLabelMap?.tower_type)}</Text>
+        <div className="admin-atp-models-card-field flex items-center gap-2">
+          <ApartmentOutlined className="text-xs text-gray-500" />
+          <Text type="secondary" className="text-xs">塔型：{formatDimension(asset.tower_type, dimensionLabelMap?.tower_type)}</Text>
         </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <Text type="secondary" style={{ width: 64, flexShrink: 0 }}>
-            场景
-          </Text>
-          <Text ellipsis>{formatDimension(asset.scene_type, dimensionLabelMap?.scene_type)}</Text>
+        <div className="admin-atp-models-card-field flex items-center gap-2">
+          <ClockCircleOutlined className="text-xs text-gray-500" />
+          <Text type="secondary" className="text-xs">场景：{formatDimension(asset.scene_type, dimensionLabelMap?.scene_type)}</Text>
         </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <Text type="secondary" style={{ width: 64, flexShrink: 0 }}>
-            避雷器组合
-          </Text>
-          <Text ellipsis>{formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config)}</Text>
+        <div className="admin-atp-models-card-field flex items-center gap-2">
+          <EyeOutlined className="text-xs text-gray-500" />
+          <Text type="secondary" className="text-xs">避雷器组合：{formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config)}</Text>
         </div>
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "flex-end",
-          gap: 8,
-          padding: "10px 12px",
-          borderTop: "1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary))",
-        }}
-      >
-        <Button
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={(event) => {
-            event.stopPropagation();
-            onView(asset);
-          }}
-        >
-          详情
-        </Button>
-        <Button
-          danger
-          size="small"
-          disabled={!canManage || rowBusy}
-          loading={deleteLoading}
-          onClick={(event) => {
-            event.stopPropagation();
-            handleDelete();
-          }}
-        >
-          删除
-        </Button>
+      <div className="admin-atp-models-card-actions flex items-center justify-end px-4 py-2">
+        <Space size="small">
+          <Button
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={(event) => {
+              event.stopPropagation();
+              onView(asset);
+            }}
+          >
+            详情
+          </Button>
+          <Button
+            danger
+            size="small"
+            disabled={!canManage || rowBusy}
+            loading={deleteLoading}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleDelete();
+            }}
+          >
+            删除
+          </Button>
+        </Space>
       </div>
-    </div>
+    </Card>
   );
 }

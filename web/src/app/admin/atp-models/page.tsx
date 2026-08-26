@@ -590,7 +590,7 @@ export default function AtpModelsPage() {
 
           return (
             <Space size={4}>
-              <Button size="small" icon={<EyeOutlined />} type="link" onClick={() => openDetailById(item.id)}>
+              <Button size="small" icon={<EyeOutlined />} onClick={() => openDetailById(item.id)}>
                 详情
               </Button>
               <Button danger size="small" icon={<DeleteOutlined />} loading={deleteLoading} disabled={!canManage || rowBusy}
@@ -755,7 +755,6 @@ export default function AtpModelsPage() {
                         pageSize: pagination.pageSize,
                         total: Math.max(assetTotal, 1),
                         showSizeChanger: true,
-                        pageSizeOptions: [6, 12, 24, 48],
                         showTotal: () => `共 ${assetTotal} 条`,
                         hideOnSinglePage: false,
                         onChange: (page, pageSize) => {
@@ -789,7 +788,6 @@ export default function AtpModelsPage() {
                         }}
                         showSizeChanger
                         showTotal={() => `共 ${assetTotal} 条`}
-                        pageSizeOptions={[6, 12, 24, 48]}
                       />
                     </div>
                   </div>
