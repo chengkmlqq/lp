@@ -55,7 +55,7 @@ def _current_user_id(current_user: CurrentUser) -> str:
 
 
 def _current_user_name(current_user: CurrentUser) -> str:
-    return current_user.user.user_name
+    return getattr(current_user.user, "username", "") or getattr(current_user.user, "user_name", "") or ""
 
 
 def _handle_exc(exc: Exception) -> HTTPException:
