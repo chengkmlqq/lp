@@ -49,6 +49,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
 import { useAuth } from "@/components/auth-provider";
+import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { ApiError } from "@/lib/api";
