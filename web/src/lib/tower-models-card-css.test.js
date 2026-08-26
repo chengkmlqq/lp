@@ -24,7 +24,7 @@ test("LP-399: tower-models 卡片缺深色模式配色已补齐", () => {
 
 test("LP-399: tower-models 卡片深色模式含头部与 body 背景规则", () => {
   const darkHead = CSS.match(
-    /:root\[data-fquiz-theme="dark"\] \.admin-tower-models-model-card > \.ant-card-head \{([^}]*)\}/,
+    /:root\[data-fquiz-theme="dark"\] \.admin-tower-models-card-header \{([^}]*)\}/,
   )?.[1];
   assert.ok(darkHead, "应存在深色模式卡片头部规则");
   assert.match(darkHead, /border-bottom-color:\s*color-mix\(in srgb, var\(--fquiz-theme-primary\) 25%/, "头部下边框应使用主色混色");

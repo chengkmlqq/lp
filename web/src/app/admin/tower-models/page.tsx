@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Badge,
   Button,
   Card,
   Col,
@@ -693,6 +694,9 @@ export default function AdminTowerModelsPage() {
 
   const renderTowerModelCard = (row: TowerModelSummary) => {
     const rowBusy = isDeletingModel || isSavingModel || isUploadingImage;
+    const statusLabel = row.is_enabled ? "启用" : "禁用";
+    const statusColor = row.is_enabled ? "success" : "default";
+
     const moreMenuItems: MenuProps["items"] = [
       {
         key: "upload-image",
@@ -727,38 +731,16 @@ export default function AdminTowerModelsPage() {
         size="small"
         hoverable
         onClick={() => openEdit(row)}
-        title={
-          <Space className="min-w-0" size={8}>
-            <Typography.Text strong ellipsis={{ tooltip: row.name }}>
-              {row.name}
-            </Typography.Text>
-            <Tag color={row.is_enabled ? "green" : "default"}>{row.is_enabled ? "启用" : "禁用"}</Tag>
-          </Space>
-        }
-        extra={canManage ? (
-          <Space size={4}>
-            <Button
-              type="text"
-              size="small"
-              disabled={rowBusy}
-              icon={<EditOutlined />}
-              onClick={(event) => {
-                event.stopPropagation();
-                openEdit(row);
-              }}
-            />
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button
-                type="text"
-                size="small"
-                disabled={rowBusy}
-                icon={<MoreOutlined />}
-                onClick={(event) => event.stopPropagation()}
-              />
-            </Dropdown>
-          </Space>
-        ) : null}
       >
+        <div className="admin-tower-models-card-header">
+          <Typography.Text strong ellipsis={{ tooltip: row.name }}>
+            {row.name}
+          </Typography.Text>
+          <div className="admin-tower-models-card-status">
+            <Badge status={statusColor} />
+            <Typography.Text type="secondary">{statusLabel}</Typography.Text>
+          </div>
+        </div>
         <Space direction="vertical" size={10} style={{ width: "100%" }}>
           <div className="admin-tower-models-model-card-field">
             <Typography.Text type="secondary">模型编码</Typography.Text>
@@ -787,6 +769,34 @@ export default function AdminTowerModelsPage() {
             )}
           </div>
         </Space>
+        {canManage ? (
+          <div className="admin-tower-models-card-actions">
+            <div className="admin-tower-models-card-actions-left">
+              <div />
+            </div>
+            <Space size={4}>
+              <Button
+                type="text"
+                size="small"
+                disabled={rowBusy}
+                icon={<EditOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openEdit(row);
+                }}
+              />
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button
+                  type="text"
+                  size="small"
+                  disabled={rowBusy}
+                  icon={<MoreOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </Dropdown>
+            </Space>
+          </div>
+        ) : null}
       </AntCard>
     );
   };

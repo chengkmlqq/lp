@@ -3043,6 +3043,40 @@ body {
   align-items: baseline;
 }
 
+.admin-tower-models-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-tower-models-card-status {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-tower-models-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--ant-color-border-secondary);
+  margin-top: 2px;
+  padding: 8px 16px;
+}
+
+.admin-tower-models-card-actions-left {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  max-width: 160px;
+}
+
 /* 深色模式：杆塔模型卡片配色与其余管理页卡片一致
    （主色混合边框、主色渐变背景、柔和阴影、头部主色淡背景） */
 :root[data-fquiz-theme="dark"] .admin-tower-models-model-card {
@@ -3054,6 +3088,15 @@ body {
       var(--ant-color-bg-container) 100%
     ) !important;
   box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-tower-models-card-header {
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-tower-models-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
 }
 
 :root[data-fquiz-theme="dark"] .admin-tower-models-model-card > .ant-card-head {
