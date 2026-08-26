@@ -639,11 +639,13 @@ export default function AtpModelsPage() {
 
   if (!user || !canRead) {
     return (
-      <div className="admin-atp-models-card" style={{ padding: 24 }}>
-        <Typography.Text type="secondary">
-          {!user ? "请先登录后再查看 ATP 模型管理。" : "当前账号无 ATP 模块权限（需要 atp.read/atp.run/atp.manage）。"}
-        </Typography.Text>
-      </div>
+      <Card>
+        <Space direction="vertical" size={12}>
+          <Typography.Text type="secondary">
+            {!user ? "请先登录后再查看 ATP 模型管理。" : "当前账号无 ATP 模块权限（需要 atp.read/atp.run/atp.manage）。"}
+          </Typography.Text>
+        </Space>
+      </Card>
     );
   }
 
@@ -733,7 +735,7 @@ export default function AtpModelsPage() {
                 {viewMode === "list" ? (
                   <div
                     ref={tableScrollAnchorRef}
-                    className="admin-atp-models-table-anchor"
+                    className="admin-atp-models-table-view"
                     style={{ "--admin-atp-models-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
                   >
                     <Table<AtpAssetSummary>
@@ -764,12 +766,17 @@ export default function AtpModelsPage() {
                       scroll={{ x: 1200, y: tableScrollY }}
                     />
                   </div>
+                ) : assetsQuery.isFetching ? (
+                  <div className="admin-atp-models-card-view-state">
+                    <Spin tip="加载中..." />
+                  </div>
+                ) : assetItems.length === 0 ? (
+                  <Empty description="暂无 ATP 模型数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : (
                   <div className="admin-atp-models-card-view">
                     <div className="admin-atp-models-card-scroll">
                       <AtpModelCardList
                         assets={assetItems}
-                        loading={assetsQuery.isLoading || assetsQuery.isFetching}
                         canManage={canManage}
                         deleteLoading={deleteMutation.isPending}
                         onView={(asset) => openDetail(asset)}

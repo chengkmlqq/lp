@@ -3383,6 +3383,8 @@ body {
 }
 
 .admin-atp-models-card-title {
+  display: flex;
+  align-items: center;
   min-height: 44px;
   border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
   background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
@@ -3399,6 +3401,7 @@ body {
   border-top: 1px solid var(--ant-color-border-secondary);
   margin-top: 2px;
   padding-top: 12px;
+  flex-shrink: 0;
 }
 
 :root[data-fquiz-theme="dark"] .admin-atp-models-card {
@@ -3629,6 +3632,28 @@ body {
 }
 
 .admin-atp-models-table-anchor .ant-table-body {
+  min-height: var(--admin-atp-models-table-body-min-height, 180px);
+}
+
+.admin-atp-models-table-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-atp-models-table-view .ant-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.admin-atp-models-table-view .ant-table {
+  min-width: 1080px;
+}
+
+.admin-atp-models-table-view .ant-table-body {
   min-height: var(--admin-atp-models-table-body-min-height, 180px);
 }
 
