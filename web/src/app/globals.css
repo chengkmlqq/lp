@@ -1796,12 +1796,11 @@ body {
 .admin-matlab-module-card-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding: 8px 16px;
+  justify-content: space-between;
+  padding: 12px 16px;
   border-top: 1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
 }
 
-/* LP-484: Version card visual style - align with power-lines line card */
 .admin-matlab-version-card-title {
   display: flex;
   align-items: center;
@@ -1845,37 +1844,57 @@ body {
   min-width: 0;
 }
 
-/* LP-484: Module card visual style - align with power-lines line card */
-.admin-matlab-module-card-title {
+.admin-matlab-module-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
-  min-height: 44px;
+  justify-content: space-between;
+  padding: 10px 14px;
+  margin: 0 8px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 140ms cubic-bezier(0.2, 0, 0, 1), color 140ms cubic-bezier(0.2, 0, 0, 1);
+  color: var(--ant-color-text);
 }
 
-.admin-matlab-module-card-title-icon {
-  color: var(--ant-color-text-secondary);
-  font-size: 16px;
+.admin-matlab-module-item:hover {
+  background: var(--ant-color-bg-text-hover);
 }
 
-.admin-matlab-module-card-title-text {
+.admin-matlab-module-item--active {
+  background: color-mix(in srgb, var(--ant-color-primary) 10%, transparent);
+  color: var(--ant-color-primary);
+  font-weight: 500;
+}
+
+.admin-matlab-sider-search {
+  padding: 12px;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+  flex-shrink: 0;
+}
+
+.admin-matlab-sider-search .ant-space-vertical {
+  width: 100%;
+}
+
+.admin-matlab-card-view {
+  display: flex;
+  min-height: 0;
   flex: 1;
-  min-width: 0;
+  flex-direction: column;
 }
 
-.admin-matlab-module-card-body {
-  padding: 12px 16px;
+.admin-matlab-card-view-content {
+  min-height: 0;
+  flex: 1;
+  padding: 2px 2px 4px;
 }
 
-.admin-matlab-module-card-actions {
+.admin-matlab-card-view-state {
   display: flex;
+  min-height: 240px;
+  flex: 1;
   align-items: center;
-  justify-content: flex-end;
-  padding: 8px 16px;
-  border-top: 1px solid color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  justify-content: center;
 }
 
 /* LP-482: Table anchor flex/scroll styles */

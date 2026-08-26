@@ -141,8 +141,8 @@ export default function AdminMatlabEnginePage() {
   const [versionStatus, setVersionStatus] = useState<"draft" | "released" | undefined>(undefined);
   const [modulePage, setModulePage] = useState(1);
   const [modulePageSize, setModulePageSize] = useState(12);
-  const [versionPage, setVersionPage] = useState(1);
-  const [versionPageSize, setVersionPageSize] = useState(12);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
+  const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
 
   const [leftPanelWidth, setLeftPanelWidth] = useState(240);
   const isResizing = useRef(false);
@@ -340,9 +340,9 @@ export default function AdminMatlabEnginePage() {
 
   const totalModules = modules.length;
   const modulePageSlice = useMemo(() => {
-    const start = (modulePage - 1) * modulePageSize;
-    return modules.slice(start, start + modulePageSize);
-  }, [modulePage, modulePageSize, modules]);
+    const start = (paginationCurrent - 1) * paginationPageSize;
+    return modules.slice(start, start + paginationPageSize);
+  }, [paginationCurrent, paginationPageSize, modules]);
 
   const selectedModule = useMemo(
     () => modulesQuery.data?.find((item) => item.slug === selectedSlug) ?? null,
@@ -593,51 +593,63 @@ export default function AdminMatlabEnginePage() {
         onClick={() => openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || [])}
       >
         <div className="flex flex-col">
-          <div className="admin-matlab-version-card-title">
-            <CodeOutlined className="admin-matlab-version-card-title-icon" />
-            <Typography.Text strong className="admin-matlab-version-card-title-text truncate">
-              {item.version_tag || "未命名版本"}
-            </Typography.Text>
+          <div className="admin-matlab-version-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+            <CodeOutlined className="text-base text-gray-500" />
+            <Typography.Text strong className="truncate flex-1">{item.version_tag || "未命名版本"}</Typography.Text>
             <div className="flex flex-shrink-0 items-center gap-2">
               <Badge status={statusConfig.color as "default" | "processing" | "success" | "error"} />
-              <Typography.Text type="secondary" className="admin-matlab-version-status-text text-xs">{statusConfig.text}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs">{statusConfig.text}</Typography.Text>
             </div>
           </div>
-          <div className="admin-matlab-version-card-body">
-            <div className="admin-matlab-version-field">
-              <SwapOutlined className="admin-matlab-version-field-icon" />
-              <Typography.Text type="secondary" className="admin-matlab-version-field-content text-xs">
-                变更日志：{item.changelog || "-"}
-              </Typography.Text>
+
+          <div className="flex flex-col gap-2 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <SwapOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs">变更日志：{item.changelog || "-"}</Typography.Text>
             </div>
-            <div className="admin-matlab-version-field">
-              <ClockCircleOutlined className="admin-matlab-version-field-icon" />
-              <Typography.Text className="admin-matlab-version-field-content text-xs">
-                发布时间：{formatDateTime(item.upload_time)}
-              </Typography.Text>
+            <div className="flex items-center gap-2">
+              <ClockCircleOutlined className="text-xs text-gray-500" />
+              <Typography.Text className="text-xs">发布时间：{formatDateTime(item.upload_time)}</Typography.Text>
             </div>
-            <div className="admin-matlab-version-field">
-              <EditOutlined className="admin-matlab-version-field-icon" />
-              <Typography.Text className="admin-matlab-version-field-content text-xs">
-                发布人：{item.uploaded_by_name || item.uploaded_by || "-"}
-              </Typography.Text>
+            <div className="flex items-center gap-2">
+              <EditOutlined className="text-xs text-gray-500" />
+              <Typography.Text className="text-xs">发布人：{item.uploaded_by_name || item.uploaded_by || "-"}</Typography.Text>
             </div>
-            <div className="admin-matlab-version-field">
-              <InboxOutlined className="admin-matlab-version-field-icon" />
-              <Typography.Text className="admin-matlab-version-field-content text-xs">
-                大小：{formatSize(item.size_bytes)}
-              </Typography.Text>
+            <div className="flex items-center gap-2">
+              <InboxOutlined className="text-xs text-gray-500" />
+              <Typography.Text className="text-xs">大小：{formatSize(item.size_bytes)}</Typography.Text>
             </div>
           </div>
-          <div className="admin-matlab-version-card-actions">
-            {isDraft && canManage && (
+
+          <div className="admin-matlab-version-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+            {isDraft && canManage ? (
               <Button type="primary" size="small" onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
                 发布
               </Button>
+            ) : (
+              <div />
             )}
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button type="text" size="small" icon={<MoreOutlined />} onClick={(event) => event.stopPropagation()} />
-            </Dropdown>
+            <Space size="small">
+              <Tooltip title="查看文件列表">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []);
+                  }}
+                />
+              </Tooltip>
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MoreOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </Dropdown>
+            </Space>
           </div>
         </div>
       </Card>
@@ -742,24 +754,6 @@ export default function AdminMatlabEnginePage() {
 
           return (
             <Space size={4}>
-              {canManage && record !== draft && (
-                <Button
-                  size="small"
-                  icon={<RollbackOutlined />}
-                  onClick={() => {
-                    Modal.confirm({
-                      title: "回退到此版本",
-                      content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
-                      okText: "回退",
-                      cancelText: "取消",
-                      okButtonProps: { danger: true },
-                      onOk: () => handleRollback(record),
-                    });
-                  }}
-                >
-                  回退
-                </Button>
-              )}
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" icon={<MoreOutlined />} />
               </Dropdown>
@@ -805,36 +799,31 @@ export default function AdminMatlabEnginePage() {
         onClick={() => setSelectedSlug(item.slug)}
       >
         <div className="flex flex-col">
-          <div className="admin-matlab-module-card-title">
-            <DeploymentUnitOutlined className="admin-matlab-module-card-title-icon" />
-            <Typography.Text strong className="admin-matlab-module-card-title-text truncate">
-              {item.name}
-            </Typography.Text>
+          <div className="admin-matlab-module-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+            <DeploymentUnitOutlined className="text-base text-gray-500" />
+            <Typography.Text strong className="truncate flex-1">{item.name}</Typography.Text>
             <Tag color="blue" className="flex-shrink-0 truncate max-w-[140px]">{item.slug}</Tag>
           </div>
-          <div className="admin-matlab-module-card-body">
-            <div className="admin-matlab-version-field">
-              <EditOutlined className="admin-matlab-version-field-icon" />
-              <Typography.Text type="secondary" className="admin-matlab-version-field-content text-xs">
-                描述：{item.description || "-"}
-              </Typography.Text>
+
+          <div className="flex flex-col gap-2 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <EditOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs">描述：{item.description || "-"}</Typography.Text>
             </div>
-            <div className="admin-matlab-version-field">
-              <ApartmentOutlined className="admin-matlab-version-field-icon" />
-              <Typography.Text className="admin-matlab-version-field-content text-xs">
-                部署路径：{item.worker_deploy_path || "-"}
-              </Typography.Text>
+            <div className="flex items-center gap-2">
+              <ApartmentOutlined className="text-xs text-gray-500" />
+              <Typography.Text className="text-xs">部署路径：{item.worker_deploy_path || "-"}</Typography.Text>
             </div>
-            <div className="admin-matlab-version-field">
-              <InboxOutlined className="admin-matlab-version-field-icon" />
-              <Typography.Text className="admin-matlab-version-field-content text-xs">
-                必需文件：{(item.required_files || []).join(", ") || "-"}
-              </Typography.Text>
+            <div className="flex items-center gap-2">
+              <InboxOutlined className="text-xs text-gray-500" />
+              <Typography.Text className="text-xs">必需文件：{(item.required_files || []).join(", ") || "-"}</Typography.Text>
             </div>
           </div>
-          <div className="admin-matlab-module-card-actions">
+
+          <div className="admin-matlab-module-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+            <div />
             {canManage && (
-              <Space size={4}>
+              <Space size="small">
                 <Tooltip title="编辑">
                   <Button
                     type="text"
