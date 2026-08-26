@@ -1025,6 +1025,7 @@ export default function AdminMatlabEnginePage() {
                 columns={columns}
                 loading={versionsQuery.isFetching}
                 tableLayout="fixed"
+                sticky
                 scroll={{ y: tableScrollY }}
                 locale={{
                   emptyText: (
