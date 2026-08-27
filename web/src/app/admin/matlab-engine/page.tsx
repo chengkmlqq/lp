@@ -17,6 +17,7 @@ import {
   SwapOutlined,
   ApartmentOutlined,
 } from "@ant-design/icons";
+import Link from "next/link";
 import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -51,7 +52,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
 import { useAuth } from "@/components/auth-provider";
-import { useMobileDetection } from "@/hooks/use-mobile-detection";
+import {
+  useMobileDetection,
+} from "@/hooks/use-mobile-detection";
+import { useToastFeedback,
+} from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { ApiError } from "@/lib/api";
 import {
@@ -126,14 +131,21 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 export default function AdminMatlabEnginePage() {
-  const { message: messageApi } = App.useApp();
   const { user, initializing, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
   const [form] = Form.useForm<ModuleFormValues>();
   const [publishForm] = Form.useForm<PublishFormValues>();
 
-  const [apiError, setApiError] = useState<ApiError | null>(null);
+  const [apiError, setApiError] = useState<string>("");
+  const [success, setSuccess] = useState("");
+  useToastFeedback({
+    errorMessage: apiError,
+    successMessage: success,
+    clearError: () => setApiError(""),
+    clearSuccess: () => setSuccess(""),
+  });
+
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
 
   const [moduleModalOpen, setModuleModalOpen] = useState(false);
@@ -150,8 +162,6 @@ export default function AdminMatlabEnginePage() {
   const [versionKeywordInput, setVersionKeywordInput] = useState("");
   const [versionKeyword, setVersionKeyword] = useState("");
   const [versionStatus, setVersionStatus] = useState<"draft" | "released" | undefined>(undefined);
-  const [modulePage, setModulePage] = useState(1);
-  const [modulePageSize, setModulePageSize] = useState(12);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
 
@@ -185,18 +195,18 @@ export default function AdminMatlabEnginePage() {
   const syncMutation = useMutation({
     mutationFn: async (slug: string) => syncMatlabModule(slug),
     onSuccess: (_data, slug) => {
-      messageApi.success("同步任务已提交，请等待 Worker 处理");
+      setSuccess("同步任务已提交，请等待 Worker 处理");
       void queryClient.invalidateQueries({ queryKey: ["admin.matlab.versions", slug] });
     },
     onError: (candidate) => {
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "同步失败"));
+      setApiError(candidate instanceof Error ? candidate.message : "同步失败");
     },
   });
 
   const deleteModuleMutation = useMutation({
     mutationFn: async (item: MatlabModule) => deleteMatlabModule(item.slug),
     onSuccess: async (_data, item) => {
-      messageApi.success("模块已删除");
+      setSuccess("模块已删除");
       await modulesQuery.refetch();
       if (selectedSlug === item.slug) {
         const remaining = modulesQuery.data?.filter((m) => m.slug !== item.slug) ?? [];
@@ -204,7 +214,7 @@ export default function AdminMatlabEnginePage() {
       }
     },
     onError: (candidate) => {
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "删除失败"));
+      setApiError(candidate instanceof Error ? candidate.message : "删除失败");
     },
   });
 
@@ -228,7 +238,7 @@ export default function AdminMatlabEnginePage() {
       return { mode: "created" as const, module: created };
     },
     onSuccess: async ({ mode }) => {
-      messageApi.success(mode === "created" ? "模块已创建" : "模块已更新");
+      setSuccess(mode === "created" ? "模块已创建" : "模块已更新");
       setModuleModalOpen(false);
       setEditingModule(null);
       form.resetFields();
@@ -243,7 +253,7 @@ export default function AdminMatlabEnginePage() {
       ) {
         return;
       }
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "保存失败"));
+      setApiError(candidate instanceof Error ? candidate.message : "保存失败");
     },
   });
 
@@ -259,13 +269,13 @@ export default function AdminMatlabEnginePage() {
       await uploadMatlabDraft(selectedSlug, raw);
     },
     onSuccess: async () => {
-      messageApi.success("上传成功");
+      setSuccess("上传成功");
       setUploadModalOpen(false);
       setFileList([]);
       await versionsQuery.refetch();
     },
     onError: (candidate) => {
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "上传失败"));
+      setApiError(candidate instanceof Error ? candidate.message : "上传失败");
     },
   });
 
@@ -280,7 +290,7 @@ export default function AdminMatlabEnginePage() {
       });
     },
     onSuccess: async () => {
-      messageApi.success("发布成功");
+      setSuccess("发布成功");
       setPublishModalOpen(false);
       publishForm.resetFields();
       await versionsQuery.refetch();
@@ -294,7 +304,7 @@ export default function AdminMatlabEnginePage() {
       ) {
         return;
       }
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "发布失败"));
+      setApiError(candidate instanceof Error ? candidate.message : "发布失败");
     },
   });
 
@@ -304,11 +314,11 @@ export default function AdminMatlabEnginePage() {
       await rollbackMatlabVersion(selectedSlug, version.version_hash);
     },
     onSuccess: async () => {
-      messageApi.success("已回退为新草稿，请重新发布");
+      setSuccess("已回退为新草稿，请重新发布");
       await versionsQuery.refetch();
     },
     onError: (candidate) => {
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "回退失败"));
+      setApiError(candidate instanceof Error ? candidate.message : "回退失败");
     },
   });
 
@@ -332,22 +342,22 @@ export default function AdminMatlabEnginePage() {
         }
 
         if (event.name === "engine.sync_completed") {
-          messageApi.success("同步完成");
+          setSuccess("同步完成");
         }
         if (event.name === "engine.sync_failed") {
-          setApiError(new ApiError((payload?.error as string | undefined) ?? "同步失败"));
+          setApiError((payload?.error as string | undefined) ?? "同步失败");
         }
         if (event.name === "engine.draft_uploaded") {
-          messageApi.success("上传成功");
+          setSuccess("上传成功");
         }
         if (event.name === "engine.published") {
-          messageApi.success("发布成功");
+          setSuccess("发布成功");
         }
         if (event.name === "engine.rollbacked") {
-          messageApi.success("已回退");
+          setSuccess("已回退");
         }
       },
-      [messageApi, modulesQuery, refetchCurrent, selectedSlug],
+      [modulesQuery, refetchCurrent, selectedSlug],
     ),
   );
 
@@ -484,6 +494,7 @@ export default function AdminMatlabEnginePage() {
 
   const handleModuleSearch = useCallback(() => {
     setModuleKeyword(moduleKeywordInput);
+    setPagination((prev) => ({ ...prev, current: 1 }));
   }, [moduleKeywordInput]);
 
   const handleVersionStatusChange = useCallback((value: "draft" | "released" | undefined) => {
@@ -508,7 +519,7 @@ export default function AdminMatlabEnginePage() {
     if (typeof window === "undefined") return;
     const frameId = window.requestAnimationFrame(() => {
       const nextHeight = updateTableScrollY();
-      setTableScrollY((previous) => (Math.abs(previous - nextHeight) <= 1 ? previous : nextHeight));
+      setTableScrollY(nextHeight);
     });
     return () => window.cancelAnimationFrame(frameId);
   }, [updateTableScrollY, viewMode, filteredVersions.length, versionsQuery.isFetching]);
@@ -518,25 +529,11 @@ export default function AdminMatlabEnginePage() {
     const onViewportChange = () => {
       window.requestAnimationFrame(() => {
         const nextHeight = updateTableScrollY();
-        setTableScrollY((previous) => (Math.abs(previous - nextHeight) <= 1 ? previous : nextHeight));
+        setTableScrollY(nextHeight);
       });
     };
     window.addEventListener("resize", onViewportChange);
     return () => window.removeEventListener("resize", onViewportChange);
-  }, [updateTableScrollY]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") return;
-    const anchor = tableScrollAnchorRef.current;
-    if (!anchor) return;
-    const resizeObserver = new ResizeObserver(() => {
-      window.requestAnimationFrame(() => {
-        const nextHeight = updateTableScrollY();
-        setTableScrollY((previous) => (Math.abs(previous - nextHeight) <= 1 ? previous : nextHeight));
-      });
-    });
-    resizeObserver.observe(anchor);
-    return () => resizeObserver.disconnect();
   }, [updateTableScrollY]);
 
   useEffect(() => {
@@ -549,13 +546,27 @@ export default function AdminMatlabEnginePage() {
     return <AdminPageLoading tip="加载 MATLAB 程序管理..." minHeightClassName="min-h-[280px]" />;
   }
 
-  if (!user || !canRead) {
+  if (!user) {
     return (
       <Card title="MATLAB 引擎管理">
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">
-            {!user ? "请先登录后访问。" : "当前账号无权限（需要 `matlab.read` 或 `matlab.manage`）。"}
-          </Typography.Text>
+          <Typography.Text type="secondary">请先登录后访问。</Typography.Text>
+          <Button>
+            <Link href="/">返回首页</Link>
+          </Button>
+        </Space>
+      </Card>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <Card title="MATLAB 引擎管理">
+        <Space direction="vertical" size={12}>
+          <Typography.Text type="secondary">当前账号无权限（需要 `matlab.read` 或 `matlab.manage`）。</Typography.Text>
+          <Button>
+            <Link href="/">返回首页</Link>
+          </Button>
         </Space>
       </Card>
     );
@@ -928,12 +939,11 @@ export default function AdminMatlabEnginePage() {
                 ))}
                 <div className="admin-matlab-module-pagination">
                   <Pagination
-                    current={modulePage}
-                    pageSize={modulePageSize}
+                    current={pagination.current}
+                    pageSize={pagination.pageSize}
                     total={totalModules}
                     onChange={(page, pageSize) => {
-                      setModulePage(page);
-                      setModulePageSize(pageSize);
+                      setPagination({ current: page, pageSize });
                     }}
                     showSizeChanger
                     showTotal={(total) => `共 ${total} 条`}
@@ -1181,11 +1191,6 @@ export default function AdminMatlabEnginePage() {
     [deleteModuleMutation],
   );
 
-  const handleModulePageChange = useCallback((page: number, pageSize: number) => {
-    setModulePage(page);
-    setModulePageSize(pageSize);
-  }, []);
-
   const handleVersionPageChange = useCallback((page: number, pageSize: number) => {
     setPagination({ current: page, pageSize });
   }, []);
@@ -1373,7 +1378,7 @@ export default function AdminMatlabEnginePage() {
                       .map((item) => (
                         <div
                           key={`${item.version_hash}-${item === draft ? "draft" : "release"}`}
-                          className="md:col-span-2 xl:col-span-2"
+                           className=""
                         >
                           {renderVersionCard(item)}
                         </div>
@@ -1857,10 +1862,10 @@ export default function AdminMatlabEnginePage() {
                     </div>
                     <div className="admin-power-lines-pagination">
                       <Pagination
-                        current={modulePage}
-                        pageSize={modulePageSize}
+                        current={pagination.current}
+                        pageSize={pagination.pageSize}
                         total={totalModules}
-                        onChange={handleModulePageChange}
+                        onChange={handleVersionPageChange}
                         showSizeChanger
                         showTotal={(total) => `共 ${total} 条`}
                       />
