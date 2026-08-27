@@ -21,6 +21,7 @@ from ..models.base import utcnow
 from ..models.fl_analysis import FlAnalysisJob, FlAnalysisTowerSnapshot
 from .atp_asset_service import (
     _normalize_optional_str,
+    _normalize_relative_path,
     _resolve_engine_workdir,
     _resolve_mount,
     _resolve_native_engine_executable,
