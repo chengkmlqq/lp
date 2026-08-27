@@ -6,6 +6,7 @@ import {
   DeleteOutlined,
   DeploymentUnitOutlined,
   EditOutlined,
+  EyeOutlined,
   InboxOutlined,
   MoreOutlined,
   PlusOutlined,
@@ -92,6 +93,15 @@ const DEFAULT_PUBLISH_FORM_VALUES: PublishFormValues = {
   changelog: "",
 };
 
+type DetailTabItem = {
+  key: string;
+  label: React.ReactNode;
+  closable: boolean;
+  children: React.ReactNode;
+};
+
+const LIST_TAB_KEY = "list";
+
 const TABLE_MIN_SCROLL_Y = 180;
 const TABLE_ESTIMATED_HEADER_HEIGHT = 56;
 const TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
@@ -145,15 +155,17 @@ export default function AdminMatlabEnginePage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
 
-  const [leftPanelWidth, setLeftPanelWidth] = useState(240);
-  const isResizing = useRef(false);
+  const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const containerRef = useRef<HTMLDivElement>(null);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
   const [viewMode, setViewMode] = useState<"card" | "list">(isMobile ? "card" : "card");
+  const [leftPanelWidth, setLeftPanelWidth] = useState(240);
+  const isResizing = useRef(false);
 
-  const canManage = hasPermission("line.manage");
-  const canRead = hasPermission("line.read") || canManage;
+  const canManage = hasPermission("matlab.manage");
+  const canRead = hasPermission("matlab.read") || canManage;
 
   const modulesQuery = useQuery({
     queryKey: ["admin.matlab.modules"],
@@ -542,7 +554,7 @@ export default function AdminMatlabEnginePage() {
       <Card title="MATLAB 引擎管理">
         <Space direction="vertical" size={12}>
           <Typography.Text type="secondary">
-            {!user ? "请先登录后访问。" : "当前账号无权限（需要 line.read）。"}
+            {!user ? "请先登录后访问。" : "当前账号无权限（需要 `matlab.read` 或 `matlab.manage`）。"}
           </Typography.Text>
         </Space>
       </Card>
@@ -895,7 +907,7 @@ export default function AdminMatlabEnginePage() {
           </div>
           <div className="admin-matlab-sider-menu">
             {modulesQuery.isLoading ? (
-              <div className="admin-matlab-module-loading flex justify-center items-center py-12">
+              <div className="admin-power-lines-loading flex justify-center items-center py-12">
                 <Spin tip="加载中..." />
               </div>
             ) : totalModules === 0 ? (
@@ -1116,12 +1128,618 @@ export default function AdminMatlabEnginePage() {
     );
   };
 
+  const openDetail = useCallback((item: MatlabModule) => {
+    const key = item.slug;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: <span className="admin-matlab-tab-title">模块详情 - {item.name}</span>,
+          closable: true,
+          children: (
+            <div className="admin-matlab-list-pane">
+              <div className="admin-matlab-page-body">
+                {renderVersionPanel(item)}
+              </div>
+            </div>
+          ),
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, []);
+
+  const handleTabsEdit = useCallback(
+    (targetKey: React.MouseEvent | React.KeyboardEvent | string, action: "add" | "remove") => {
+      if (action !== "remove") {
+        return;
+      }
+      const key = String(targetKey);
+      const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
+      const next = detailTabs.filter((tab) => tab.key !== key);
+      setDetailTabs(next);
+      if (activeTabKey === key) {
+        const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+        setActiveTabKey(fallback);
+      }
+      if (key === selectedSlug) {
+        const remaining = modulesQuery.data?.filter((m) => m.slug !== key) ?? [];
+        setSelectedSlug(remaining[0]?.slug ?? null);
+      }
+    },
+    [activeTabKey, detailTabs, modulesQuery.data, selectedSlug],
+  );
+
+  const openDeleteModule = useCallback(
+    async (item: MatlabModule) => {
+      await deleteModuleMutation.mutateAsync(item);
+    },
+    [deleteModuleMutation],
+  );
+
+  const handleModulePageChange = useCallback((page: number, pageSize: number) => {
+    setModulePage(page);
+    setModulePageSize(pageSize);
+  }, []);
+
+  const handleVersionPageChange = useCallback((page: number, pageSize: number) => {
+    setPagination({ current: page, pageSize });
+  }, []);
+
+  const renderEmptyState = (description: string) => (
+    <div className="admin-matlab-card-view-state">
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={description} />
+    </div>
+  );
+
+  const renderListPanel = () => {
+    if (modulesQuery.isLoading) {
+      return renderEmptyState("加载中...");
+    }
+
+    if (totalModules === 0) {
+      return renderEmptyState("暂无模块数据");
+    }
+
+    return (
+      <div className="admin-power-lines-card-scroll">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {modulePageSlice.map((item) => (
+            <PowerLineCard
+              key={item.slug}
+              line={{
+                ...item,
+                status: "default",
+                progress: 0,
+                update_date: item.updated_at ?? null,
+                tower_count: 0,
+                estimated_length_km: null,
+                voltage_kv: null,
+              }}
+              canLineManage={canManage}
+              onEdit={openEditModule}
+              onDetail={openDetail}
+              onPreview={openPreview}
+              onDelete={() => {
+                Modal.confirm({
+                  title: "删除模块",
+                  content: `确认删除模块"${item.name}"吗？`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true },
+                  onOk: () => openDeleteModule(item),
+                });
+              }}
+              deleteLoading={deleteModuleMutation.isPending}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderVersionPanel = (moduleItem: MatlabModule) => {
+    return (
+      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        <div className="admin-matlab-header">
+          <Space className="min-w-0" size={12}>
+            <Typography.Text strong className="admin-matlab-header-title">
+              {moduleItem.name}
+            </Typography.Text>
+            <Tag color="blue">{moduleItem.slug}</Tag>
+          </Space>
+          <Space size={8} wrap>
+            <Button
+              icon={<CloudSyncOutlined />}
+              onClick={handleSync}
+              loading={syncMutation.isPending}
+              disabled={!canManage || syncMutation.isPending || !currentRelease}
+            >
+              同步到 Worker
+            </Button>
+            {canManage && (
+              <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
+                上传新包
+              </Button>
+            )}
+          </Space>
+        </div>
+
+        <div className="admin-filter-bar">
+          <Form layout="inline">
+            <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Input
+                allowClear
+                value={versionKeywordInput}
+                onChange={(event) => setVersionKeywordInput(event.currentTarget.value)}
+                placeholder="版本号 / Hash / 变更日志 / 发布人"
+                onPressEnter={() => handleVersionSearch()}
+              />
+            </Form.Item>
+            <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Select<"draft" | "released">
+                value={versionStatus}
+                allowClear
+                placeholder="全部"
+                onChange={handleVersionStatusChange}
+                options={[
+                  { value: "draft", label: "草稿" },
+                  { value: "released", label: "已发布" },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button
+                htmlType="button"
+                icon={<SearchOutlined />}
+                onClick={() => handleVersionSearch()}
+                className="admin-search-btn"
+              >
+                查询
+              </Button>
+            </Form.Item>
+          </Form>
+          <Segmented
+            value={viewMode}
+            onChange={(value) => setViewMode(value as "card" | "list")}
+            options={[
+              { label: "卡片视图", value: "card" },
+              { label: "列表视图", value: "list" },
+            ]}
+          />
+        </div>
+
+        {apiError && (
+          <Alert
+            type="error"
+            showIcon
+            message={apiError.message || "加载失败"}
+            style={{ marginBottom: 16 }}
+          />
+        )}
+
+        {viewMode === "list" ? (
+          <div
+            ref={tableScrollAnchorRef}
+            className="admin-matlab-table-anchor"
+            style={{ "--admin-matlab-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+          >
+            <Table<MatlabVersion>
+              rowKey="version_hash"
+              dataSource={filteredVersions}
+              columns={versionListColumns}
+              loading={versionsQuery.isFetching}
+              tableLayout="fixed"
+              sticky
+              scroll={{ x: 1080, y: tableScrollY }}
+              locale={{
+                emptyText: (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无版本数据" />
+                ),
+              }}
+              pagination={{
+                hideOnSinglePage: false,
+                showSizeChanger: true,
+                pageSizeOptions: [6, 12, 24, 48],
+                current: pagination.current,
+                pageSize: pagination.pageSize,
+                total: filteredVersions.length,
+                onChange: (page, pageSize) => {
+                  setPagination({ current: page, pageSize });
+                },
+                showTotal: (total) => `共 ${total} 条`,
+              }}
+            />
+          </div>
+        ) : (
+          <div className="admin-matlab-card-view">
+            {versionsQuery.isLoading && filteredVersions.length === 0 ? (
+              renderEmptyState("加载中...")
+            ) : filteredVersions.length === 0 ? (
+              renderEmptyState("未找到符合筛选条件的版本。")
+            ) : (
+              <>
+                <div className="admin-matlab-card-view-content">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    {filteredVersions
+                      .slice(
+                        (pagination.current - 1) * pagination.pageSize,
+                        pagination.current * pagination.pageSize,
+                      )
+                      .map((item) => (
+                        <div
+                          key={`${item.version_hash}-${item === draft ? "draft" : "release"}`}
+                          className="md:col-span-2 xl:col-span-2"
+                        >
+                          {renderVersionCard(item)}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+                <div className="admin-matlab-card-pagination">
+                  <Pagination
+                    current={pagination.current}
+                    pageSize={pagination.pageSize}
+                    total={filteredVersions.length}
+                    onChange={handleVersionPageChange}
+                    showSizeChanger
+                    showTotal={(total) => `共 ${total} 条`}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </Space>
+    );
+  };
+
+  const versionListColumns = useMemo(
+    () => [
+      {
+        title: "版本号",
+        dataIndex: "version_tag",
+        key: "version_tag",
+        width: 140,
+        render: (value: string, record: MatlabVersion) => {
+          const isDraft = record === draft;
+          const statusConfig = isDraft ? { color: "warning", text: "草稿" } : { color: "success", text: "已发布" };
+          return (
+            <Space size={6}>
+              <Typography.Text>{value || "-"}</Typography.Text>
+              <Badge status={statusConfig.color as "default" | "processing" | "success" | "error"} />
+              <Typography.Text type="secondary" className="admin-matlab-version-status-text text-xs">{statusConfig.text}</Typography.Text>
+            </Space>
+          );
+        },
+      },
+      {
+        title: "Hash",
+        dataIndex: "version_hash",
+        key: "version_hash",
+        width: 220,
+        render: (hash: string) => <Typography.Text copyable={{ text: hash }}>{hash}</Typography.Text>,
+      },
+      {
+        title: "变更日志",
+        dataIndex: "changelog",
+        key: "changelog",
+        ellipsis: true,
+        render: (text: string) => text || "-",
+      },
+      {
+        title: "发布时间",
+        dataIndex: "upload_time",
+        key: "upload_time",
+        width: 180,
+        render: (value: string) => formatDateTime(value),
+      },
+      {
+        title: "发布人",
+        dataIndex: "uploaded_by_name",
+        key: "uploaded_by_name",
+        width: 120,
+        render: (name: string, record: MatlabVersion) => name || record.uploaded_by || "-",
+      },
+      {
+        title: "大小",
+        dataIndex: "size_bytes",
+        key: "size_bytes",
+        width: 110,
+        render: (size: number) => formatSize(size),
+      },
+      {
+        title: "操作",
+        key: "actions",
+        width: 200,
+        fixed: "right" as const,
+        render: (_: unknown, record: MatlabVersion) => {
+          const moreMenuItems: MenuProps["items"] = [
+            ...(record === draft && canManage
+              ? [
+                  {
+                    key: "publish",
+                    label: "发布",
+                    onClick: () => openPublishModal(),
+                  },
+                ]
+              : []),
+            {
+              key: "preview",
+              label: "查看文件列表",
+              onClick: () => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || []),
+            },
+            ...(canManage && record !== draft
+              ? [
+                  {
+                    key: "rollback",
+                    label: "回退",
+                    danger: true,
+                    onClick: () => {
+                      Modal.confirm({
+                        title: "回退到此版本",
+                        content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
+                        okText: "回退",
+                        cancelText: "取消",
+                        okButtonProps: { danger: true },
+                        onOk: () => handleRollback(record),
+                      });
+                    },
+                  },
+                ]
+              : []),
+          ];
+
+          return (
+            <Space size={4}>
+              <Tooltip title="查看文件列表">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}
+                />
+              </Tooltip>
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MoreOutlined />}
+                />
+              </Dropdown>
+            </Space>
+          );
+        },
+      },
+    ],
+    [canManage, draft, handleRollback, openPublishModal],
+  );
+
+  const renderModuleCard = (item: MatlabModule) => {
+    const moreMenuItems: MenuProps["items"] = [
+      {
+        key: "edit",
+        label: "编辑",
+        icon: <EditOutlined />,
+        onClick: () => openEditModule(item),
+      },
+      {
+        key: "delete",
+        label: "删除",
+        icon: <DeleteOutlined />,
+        danger: true,
+        onClick: () => {
+          Modal.confirm({
+            title: `确认删除模块"${item.name}"吗？`,
+            okText: "删除",
+            cancelText: "取消",
+            okButtonProps: { danger: true },
+            onOk: () => openDeleteModule(item),
+          });
+        },
+      },
+    ];
+
+    return (
+      <Card
+        key={item.slug}
+        className="admin-matlab-module-card"
+        size="small"
+        hoverable
+        onClick={() => openDetail(item)}
+      >
+        <div className="flex flex-col">
+          <div className="admin-matlab-module-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+            <DeploymentUnitOutlined className="text-base text-gray-500" />
+            <Typography.Text strong className="truncate flex-1">{item.name}</Typography.Text>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <Badge status="default" />
+              <Typography.Text type="secondary" className="text-xs">模块</Typography.Text>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <EditOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs">描述：{item.description || "-"}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <ApartmentOutlined className="text-xs text-gray-500" />
+              <Typography.Text className="text-xs">部署路径：{item.worker_deploy_path || "-"}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <InboxOutlined className="text-xs text-gray-500" />
+              <Typography.Text className="text-xs">必需文件：{(item.required_files || []).join(", ") || "-"}</Typography.Text>
+            </div>
+          </div>
+
+          <div className="admin-matlab-module-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+            <Space size="small">
+              <Tooltip title="详情">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<ApartmentOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openDetail(item);
+                  }}
+                />
+              </Tooltip>
+              <Tooltip title="预览">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openPreview(`版本文件列表 (${item.name})`, []);
+                  }}
+                />
+              </Tooltip>
+            </Space>
+            {canManage && (
+              <Space size="small">
+                <Tooltip title="编辑">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openEditModule(item);
+                    }}
+                  />
+                </Tooltip>
+                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </Dropdown>
+              </Space>
+            )}
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
+  const renderVersionCard = (item: MatlabVersion) => {
+    const isDraft = item === draft;
+    const statusConfig = isDraft ? { color: "warning", text: "草稿" } : { color: "success", text: "已发布" };
+    const moreMenuItems: MenuProps["items"] = [
+      {
+        key: "preview",
+        label: "查看文件列表",
+        onClick: () => openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []),
+      },
+      ...(canManage && !isDraft
+        ? [
+            {
+              key: "rollback",
+              label: "回退",
+              danger: true,
+              onClick: () => {
+                Modal.confirm({
+                  title: "回退到此版本",
+                  content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
+                  okText: "回退",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true },
+                  onOk: () => handleRollback(item),
+                });
+              },
+            } as const,
+          ]
+        : []),
+    ];
+
+    return (
+      <Card
+        key={`${item.version_hash}-${isDraft ? "draft" : "release"}`}
+        className="admin-matlab-version-card"
+        size="small"
+        hoverable
+        onClick={() => openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || [])}
+      >
+        <div className="flex flex-col">
+          <div className="admin-matlab-version-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+            <CodeOutlined className="text-base text-gray-500" />
+            <Typography.Text strong className="truncate flex-1">{item.version_tag || "未命名版本"}</Typography.Text>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <Badge status={statusConfig.color as "default" | "processing" | "success" | "error"} />
+              <Typography.Text type="secondary" className="text-xs">{statusConfig.text}</Typography.Text>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <SwapOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs">变更日志：{item.changelog || "-"}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <ClockCircleOutlined className="text-xs text-gray-500" />
+              <Typography.Text className="text-xs">发布时间：{formatDateTime(item.upload_time)}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <EditOutlined className="text-xs text-gray-500" />
+              <Typography.Text className="text-xs">发布人：{item.uploaded_by_name || item.uploaded_by || "-"}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <InboxOutlined className="text-xs text-gray-500" />
+              <Typography.Text className="text-xs">大小：{formatSize(item.size_bytes)}</Typography.Text>
+            </div>
+          </div>
+
+          <div className="admin-matlab-version-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+            {isDraft && canManage ? (
+              <Button type="primary" size="small" onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
+                发布
+              </Button>
+            ) : (
+              <Space size="small">
+                <Tooltip title="查看文件列表">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EyeOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []);
+                    }}
+                  />
+                </Tooltip>
+              </Space>
+            )}
+            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+              <Button
+                type="text"
+                size="small"
+                icon={<MoreOutlined />}
+                onClick={(event) => event.stopPropagation()}
+              />
+            </Dropdown>
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Tabs
         type="editable-card"
         hideAdd
-        defaultActiveKey="list"
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        onEdit={handleTabsEdit}
         className="admin-matlab-tabs"
         tabBarExtraContent={
           canManage ? (
@@ -1132,18 +1750,127 @@ export default function AdminMatlabEnginePage() {
         }
         items={[
           {
-            key: "list",
+            key: LIST_TAB_KEY,
             label: <span className="admin-matlab-tab-title">MATLAB 引擎管理</span>,
             closable: false,
             children: (
               <div className="admin-matlab-list-pane">
-                <div ref={containerRef} className="admin-matlab-page-body">
-                  {!isMobile ? renderLeftPanel() : null}
-                  {renderRightPanel()}
+                <div className="admin-filter-bar">
+                  <Form layout="inline">
+                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Input
+                        value={moduleKeywordInput}
+                        allowClear
+                        onChange={(event) => setModuleKeywordInput(event.currentTarget.value)}
+                        placeholder="按模块名/标识/描述搜索"
+                        onPressEnter={handleModuleSearch}
+                      />
+                    </Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button
+                        htmlType="button"
+                        icon={<SearchOutlined />}
+                        onClick={handleModuleSearch}
+                        className="admin-search-btn"
+                      >
+                        查询
+                      </Button>
+                    </Form.Item>
+                  </Form>
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => setViewMode(value as "card" | "list")}
+                    options={[
+                      { label: "卡片视图", value: "card" },
+                      { label: "列表视图", value: "list" },
+                    ]}
+                  />
                 </div>
+
+                {apiError && (
+                  <Alert
+                    type="error"
+                    showIcon
+                    message={apiError.message || "加载失败"}
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
+
+                {viewMode === "list" ? (
+                  <div
+                    ref={tableScrollAnchorRef}
+                    className="admin-power-lines-table-view"
+                    style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                  >
+                    <PowerLineTable
+                      lines={modulePageSlice.map((item) => ({
+                        ...item,
+                        status: "default",
+                        progress: 0,
+                        update_date: item.updated_at ?? null,
+                        tower_count: 0,
+                        estimated_length_km: null,
+                        voltage_kv: null,
+                        id: item.slug,
+                        name: item.name,
+                        code: item.slug,
+                        line_id: item.slug,
+                      }))}
+                      canLineManage={canManage}
+                      onEdit={openEditModule}
+                      onDetail={openDetail}
+                      onPreview={(line) => {
+                        openPreview(`版本文件列表 (${line.name})`, []);
+                      }}
+                      onDelete={(line) => {
+                        Modal.confirm({
+                          title: "删除模块",
+                          content: `确认删除模块"${line.name}"吗？`,
+                          okText: "删除",
+                          cancelText: "取消",
+                          okButtonProps: { danger: true },
+                          onOk: async () => {
+                            await openDeleteModule({
+                              slug: line.slug,
+                              name: line.name,
+                              description: line.description,
+                              worker_deploy_path: line.worker_deploy_path,
+                              required_files: line.required_files,
+                              created_at: line.created_at,
+                              updated_at: line.updated_at,
+                            } as MatlabModule);
+                          },
+                        });
+                      }}
+                      deleteLoading={deleteModuleMutation.isPending}
+                      scrollY={tableScrollY}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="admin-power-lines-card-scroll">
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        {modulePageSlice.map((item) => (
+                          <div key={item.slug}>{renderModuleCard(item)}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="admin-power-lines-pagination">
+                      <Pagination
+                        current={modulePage}
+                        pageSize={modulePageSize}
+                        total={totalModules}
+                        onChange={handleModulePageChange}
+                        showSizeChanger
+                        showTotal={(total) => `共 ${total} 条`}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             ),
           },
+          ...detailTabs,
         ]}
       />
 
