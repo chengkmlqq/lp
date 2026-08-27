@@ -1378,7 +1378,6 @@ export default function AdminMatlabEnginePage() {
                       .map((item) => (
                         <div
                           key={`${item.version_hash}-${item === draft ? "draft" : "release"}`}
-                           className=""
                         >
                           {renderVersionCard(item)}
                         </div>
