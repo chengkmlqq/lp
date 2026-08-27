@@ -3452,6 +3452,10 @@ body {
   border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
 }
 
+:root[data-fquiz-theme="dark"] .admin-atp-models-card-actions .ant-progress-text {
+  color: var(--ant-color-text-secondary) !important;
+}
+
 .admin-wine-runner-page-card {
   display: flex;
   flex: 1;

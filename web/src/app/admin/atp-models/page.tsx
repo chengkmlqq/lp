@@ -760,11 +760,17 @@ export default function AtpModelsPage() {
                 ) : (
                   <div className="admin-atp-models-card-view">
                     <div className="admin-atp-models-card-scroll">
-                      <AtpModelCardList
+                       <AtpModelCardList
                         assets={assetItems}
                         canManage={canManage}
                         deleteLoading={deleteMutation.isPending}
                         onView={(asset) => openDetail(asset)}
+                        onEdit={(asset) => {
+                          // TODO: route to edit page / open edit modal
+                        }}
+                        onPreview={(asset) => {
+                          // TODO: open preview drawer
+                        }}
                         onDelete={(id) => deleteMutation.mutate(id)}
                         dimensionLabelMap={dimensionLabelMap}
                       />
