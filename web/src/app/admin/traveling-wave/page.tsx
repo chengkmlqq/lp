@@ -588,7 +588,7 @@ export default function AdminTravelingWavePage() {
   // ── Render ──────────────────────────────────────────────────────
 
   if (initializing) {
-    return <AdminPageLoading tip="加载行波分析中..." minHeightClassName="min-h-[280px]" />;
+    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
   }
   if (!user) {
     return (

@@ -341,7 +341,7 @@ export default function AiChatPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }

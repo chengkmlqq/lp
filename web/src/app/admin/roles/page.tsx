@@ -773,7 +773,7 @@ export default function AdminRolesPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -916,7 +916,7 @@ export default function AdminRolesPage() {
                   <div className="admin-roles-card-view">
                     {rolesQuery.isLoading && allLoadedRoles.length === 0 ? (
                       <div className="admin-roles-card-view-state">
-                        <Spin tip="加载中..." />
+                        <Spin />
                       </div>
                     ) : allLoadedRoles.length === 0 ? (
                       <div className="admin-roles-card-view-state">
@@ -936,7 +936,7 @@ export default function AdminRolesPage() {
                         </Row>
                         {isLoadingMore && (
                           <div style={{ textAlign: "center", padding: "20px 0" }}>
-                            <Spin tip="加载更多..." />
+                            <Spin />
                           </div>
                         )}
                         {allLoadedRoles.length >= (rolesQuery.data?.roles_total ?? 0) && allLoadedRoles.length > 0 && (

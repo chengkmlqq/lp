@@ -544,7 +544,7 @@ export default function AdminMatlabEnginePage() {
   }, [modulesQuery.data, selectedSlug]);
 
   if (initializing) {
-    return <AdminPageLoading tip="加载 MATLAB 程序管理..." minHeightClassName="min-h-[280px]" />;
+    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
   }
 
   if (!user) {
@@ -819,7 +819,7 @@ export default function AdminMatlabEnginePage() {
           <div className="admin-matlab-sider-menu">
             {modulesQuery.isLoading ? (
               <div className="admin-power-lines-loading flex justify-center items-center py-12">
-                <Spin tip="加载中..." />
+                <Spin />
               </div>
             ) : totalModules === 0 ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无模块数据" />
@@ -991,7 +991,7 @@ export default function AdminMatlabEnginePage() {
             <div className="admin-matlab-card-view">
               {versionsQuery.isLoading && filteredVersions.length === 0 ? (
                 <div className="admin-matlab-card-view-state">
-                  <Spin tip="加载中..." />
+                  <Spin />
                 </div>
               ) : filteredVersions.length === 0 ? (
                 <div className="admin-matlab-card-view-state">
@@ -1674,7 +1674,7 @@ export default function AdminMatlabEnginePage() {
         confirmLoading={false}
         okText={editingModule ? "保存" : "创建"}
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={760}
       >
         <Form<ModuleFormValues>
@@ -1748,7 +1748,7 @@ export default function AdminMatlabEnginePage() {
         onOk={() => handlePublish()}
         okText="发布"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
       >
         <Form<PublishFormValues>
           form={publishForm}

@@ -430,7 +430,7 @@ export default function AdminScheduledTasksPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -546,7 +546,7 @@ export default function AdminScheduledTasksPage() {
           open={editorOpen}
           onCancel={closeEditor}
           width={760}
-          destroyOnClose
+          destroyOnHidden
           footer={(
             <Space>
               <Button type="primary" loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>

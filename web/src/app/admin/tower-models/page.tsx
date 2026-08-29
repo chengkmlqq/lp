@@ -874,7 +874,7 @@ export default function AdminTowerModelsPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -1046,7 +1046,7 @@ export default function AdminTowerModelsPage() {
           <div className="admin-tower-models-card-view">
             {towerModelsQuery.isLoading && allLoadedModels.length === 0 ? (
               <div className="admin-tower-models-card-view-state">
-                <Spin tip="加载中..." />
+                <Spin />
               </div>
             ) : allLoadedModels.length === 0 ? (
               <div className="admin-tower-models-card-view-state">
@@ -1066,7 +1066,7 @@ export default function AdminTowerModelsPage() {
                 </Row>
                 {isLoadingMore && (
                   <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Spin tip="加载更多..." />
+                    <Spin />
                   </div>
                 )}
                 {allLoadedModels.length >= totalItems && allLoadedModels.length > 0 && (

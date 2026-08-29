@@ -348,7 +348,7 @@ export default function AdminWorkersPage() {
   });
 
   if (initializing) {
-    return <AdminPageLoading tip="初始化中..." minHeightClassName="min-h-[280px]" />;
+    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
   }
 
   if (!user) {
@@ -496,7 +496,7 @@ export default function AdminWorkersPage() {
                 <div className="admin-workers-card-view">
                   {overviewQuery.isLoading && filteredWorkers.length === 0 ? (
                     <div className="admin-workers-card-view-state">
-                      <Spin tip="加载中..." />
+                      <Spin />
                     </div>
                   ) : filteredWorkers.length === 0 ? (
                     <div className="admin-workers-card-view-state">
@@ -542,7 +542,7 @@ export default function AdminWorkersPage() {
           </Space>
         }
       >
-        {workerTasksQuery.isLoading && !taskOverview ? <Spin tip="任务数据加载中..." /> : null}
+        {workerTasksQuery.isLoading && !taskOverview ? <Spin /> : null}
         {!workerTasksQuery.isLoading && !taskOverview ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}

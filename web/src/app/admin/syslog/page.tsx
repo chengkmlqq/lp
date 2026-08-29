@@ -433,7 +433,7 @@ export default function AdminSyslogPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -560,7 +560,7 @@ export default function AdminSyslogPage() {
                   <div className="admin-syslog-card-view">
                     {logsQuery.isLoading && allLoadedLogs.length === 0 ? (
                       <div className="admin-syslog-card-view-state">
-                        <Spin tip="加载中..." />
+                        <Spin />
                       </div>
                     ) : allLoadedLogs.length === 0 ? (
                       <div className="admin-syslog-card-view-state">
@@ -580,7 +580,7 @@ export default function AdminSyslogPage() {
                         </Row>
                         {isLoadingMore && (
                           <div style={{ textAlign: "center", padding: "20px 0" }}>
-                            <Spin tip="加载更多..." />
+                            <Spin />
                           </div>
                         )}
                         {allLoadedLogs.length >= total && allLoadedLogs.length > 0 && (

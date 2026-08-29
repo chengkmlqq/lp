@@ -785,7 +785,7 @@ export default function AdminFilesPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip={`正在加载${pageDisplayName}页面...`} />
+        <Spin />
       </div>
     );
   }
@@ -921,7 +921,7 @@ export default function AdminFilesPage() {
         okText="确认创建"
         cancelText="取消"
         confirmLoading={createDirectoryMutation.isPending}
-        destroyOnClose
+        destroyOnHidden
         styles={{
           header: { paddingBottom: '12px', borderBottom: '1px solid var(--ant-color-border-secondary)' },
           body: { paddingTop: '20px' }
@@ -954,7 +954,7 @@ export default function AdminFilesPage() {
         okText="确认重命名"
         cancelText="取消"
         confirmLoading={renameMutation.isPending}
-        destroyOnClose
+        destroyOnHidden
         styles={{
           header: { paddingBottom: '12px', borderBottom: '1px solid var(--ant-color-border-secondary)' },
           body: { paddingTop: '20px' }
@@ -986,7 +986,7 @@ export default function AdminFilesPage() {
         okText="确认移动"
         cancelText="取消"
         confirmLoading={moveMutation.isPending}
-        destroyOnClose
+        destroyOnHidden
         styles={{
           header: { paddingBottom: '12px', borderBottom: '1px solid var(--ant-color-border-secondary)' },
           body: { paddingTop: '20px' }

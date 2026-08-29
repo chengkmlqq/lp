@@ -302,7 +302,7 @@ export default function AdminLightningMeasureRecommendPage() {
   });
 
   if (initializing) {
-    return <AdminPageLoading tip="初始化中..." minHeightClassName="min-h-[280px]" />;
+    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
   }
 
   if (!user) {

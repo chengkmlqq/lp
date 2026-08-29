@@ -937,7 +937,7 @@ export default function ElevationRecordsPage() {
                   <div className="admin-elevation-card-view">
                     {isLoading ? (
                       <div className="admin-elevation-card-view-state">
-                        <Spin tip="加载中..." />
+                        <Spin />
                       </div>
                     ) : records.length === 0 ? (
                       <div className="admin-elevation-card-view-state">

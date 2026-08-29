@@ -332,7 +332,7 @@ export default function AtpCircuitPreview({
 
         {isLoading && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.4)", zIndex: 10 }}>
-            <Spin tip="加载电路拓扑中..." />
+            <Spin />
           </div>
         )}
 

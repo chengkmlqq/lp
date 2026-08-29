@@ -874,7 +874,7 @@ export default function AdminDimensionsPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -1124,7 +1124,7 @@ export default function AdminDimensionsPage() {
               <div className="admin-system-params-card-view">
                 {listQuery.isLoading && allLoadedDimensions.length === 0 ? (
                   <div className="admin-system-params-card-view-state">
-                    <Spin tip="加载中..." />
+                    <Spin />
                   </div>
                 ) : allLoadedDimensions.length === 0 ? (
                   <div className="admin-system-params-card-view-state">
@@ -1144,7 +1144,7 @@ export default function AdminDimensionsPage() {
                     </Row>
                     {isLoadingMore && (
                       <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Spin tip="加载更多..." />
+                        <Spin />
                       </div>
                     )}
                     {allLoadedDimensions.length >= (listQuery.data?.total ?? 0) && allLoadedDimensions.length > 0 && (
@@ -1174,7 +1174,7 @@ export default function AdminDimensionsPage() {
               okText={editingDimension === null ? "创建" : "保存"}
               cancelText="取消"
               confirmLoading={saveDimensionMutation.isPending}
-              destroyOnClose
+              destroyOnHidden
             >
               <Form
                 form={dimensionForm}
@@ -1260,7 +1260,7 @@ export default function AdminDimensionsPage() {
               okText={editingTypeId === null ? "创建" : "保存"}
               cancelText="取消"
               confirmLoading={saveTypeMutation.isPending}
-              destroyOnClose
+              destroyOnHidden
             >
               <Form layout="vertical" style={{ marginTop: 16 }}>
                 <Form.Item label="类型编码" required>

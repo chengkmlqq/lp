@@ -420,7 +420,7 @@ export default function AdminPowerLinesPage() {
     setLineModalOpen(true);
   };
   if (initializing) {
-    return <AdminPageLoading tip="初始化中..." minHeightClassName="min-h-[280px]" />;
+    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
   }
   if (!user) {
     return (
@@ -512,7 +512,7 @@ export default function AdminPowerLinesPage() {
 
                 {linesQuery.isFetching ? (
                   <div className="admin-power-lines-loading flex justify-center items-center py-12">
-                    <Spin tip="加载中..." />
+                    <Spin />
                   </div>
                 ) : lines.length === 0 ? (
                   <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />

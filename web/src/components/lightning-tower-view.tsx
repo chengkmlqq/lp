@@ -176,7 +176,7 @@ export function LightningTowerView({
   if (lineQuery.isLoading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
-        <Spin tip="加载线路信息中..." />
+        <Spin />
       </div>
     );
   }

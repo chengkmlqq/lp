@@ -1060,9 +1060,7 @@ export default function AdminLightningCurrentsPage() {
 
   if (initializing) {
     return (
-      <AdminPageLoading
-        tip="初始化中..."
-        minHeightClassName="min-h-[280px]"
+      <AdminPageLoading minHeightClassName="min-h-[280px]"
       />
     );
   }
@@ -1186,7 +1184,7 @@ export default function AdminLightningCurrentsPage() {
                   <div className="admin-lightning-events-card-view">
                     {recordsQuery.isLoading && records.length === 0 ? (
                       <div className="admin-lightning-events-card-view-state">
-                        <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[180px]" />
+                        <AdminPageLoading minHeightClassName="min-h-[180px]" />
                       </div>
                     ) : records.length === 0 ? (
                       <div className="admin-lightning-events-card-view-state">
@@ -1238,7 +1236,7 @@ export default function AdminLightningCurrentsPage() {
         }}
         footer={null}
         width={800}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
           <div className="grid gap-3 md:grid-cols-2">
@@ -1481,7 +1479,7 @@ export default function AdminLightningCurrentsPage() {
         okText="保存"
         cancelText="取消"
         width={800}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form<ImportFormValues> form={editForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
           <div className="grid gap-3 md:grid-cols-2">

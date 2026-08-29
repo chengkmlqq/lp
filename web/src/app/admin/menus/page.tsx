@@ -843,7 +843,7 @@ export default function AdminMenusPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -1074,7 +1074,7 @@ export default function AdminMenusPage() {
               <div className="admin-menus-card-view">
                 {menusQuery.isLoading && allLoadedMenus.length === 0 ? (
                   <div className="admin-menus-card-view-state">
-                    <Spin tip="加载中..." />
+                    <Spin />
                   </div>
                 ) : allLoadedMenus.length === 0 ? (
                   <div className="admin-menus-card-view-state">
@@ -1094,7 +1094,7 @@ export default function AdminMenusPage() {
                     </Row>
                     {isLoadingMore && (
                       <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Spin tip="加载更多..." />
+                        <Spin />
                       </div>
                     )}
                     {allLoadedMenus.length >= filteredTotal && allLoadedMenus.length > 0 && (
@@ -1124,7 +1124,7 @@ export default function AdminMenusPage() {
         confirmLoading={createMenuMutation.isPending || updateMenuMutation.isPending}
         okText={createMenuMutation.isPending || updateMenuMutation.isPending ? "提交中..." : editingMenuId ? "保存修改" : "创建菜单"}
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={760}
       >
         <Form<MenuFormValues>

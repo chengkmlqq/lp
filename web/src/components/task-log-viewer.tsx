@@ -257,11 +257,11 @@ export function TaskLogViewerDrawer({
       width={800}
       open={open}
       onClose={handleClose}
-      destroyOnClose
+      destroyOnHidden
     >
       {loading ? (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
-          <Spin tip="加载日志中..." />
+          <Spin />
         </div>
       ) : (
         <>

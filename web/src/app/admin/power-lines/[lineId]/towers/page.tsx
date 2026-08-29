@@ -367,7 +367,7 @@ export default function AdminPowerLineTowersPage() {
   ];
 
   if (initializing || lineLoading) {
-    return <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[280px]" />;
+    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
   }
 
   if (lineError || !lineDetail) {
@@ -472,7 +472,7 @@ export default function AdminPowerLineTowersPage() {
         }}
         footer={null}
         width={520}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ marginBottom: 16 }}>
           <Form layout="vertical">
@@ -551,7 +551,7 @@ export default function AdminPowerLineTowersPage() {
         open={towerDetailDrawerOpen}
         width={720}
         onClose={closeTowerDetailDrawer}
-        destroyOnClose
+        destroyOnHidden
       >
         {towerDetailQuery.isPending ? (
           <div className="flex items-center justify-center py-16">

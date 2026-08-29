@@ -805,7 +805,7 @@ export default function AdminSystemMessagesPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -983,7 +983,7 @@ export default function AdminSystemMessagesPage() {
                   <div className="admin-system-messages-card-view">
                     {listQuery.isLoading && allLoadedMessages.length === 0 ? (
                       <div className="admin-system-messages-card-view-state">
-                        <Spin tip="加载中..." />
+                        <Spin />
                       </div>
                     ) : allLoadedMessages.length === 0 ? (
                       <div className="admin-system-messages-card-view-state">
@@ -1003,7 +1003,7 @@ export default function AdminSystemMessagesPage() {
                         </Row>
                         {isLoadingMore && (
                           <div style={{ textAlign: "center", padding: "20px 0" }}>
-                            <Spin tip="加载更多..." />
+                            <Spin />
                           </div>
                         )}
                         {allLoadedMessages.length >= (listQuery.data?.total ?? 0) && allLoadedMessages.length > 0 && (
@@ -1026,7 +1026,7 @@ export default function AdminSystemMessagesPage() {
       <Modal
         title="发送消息"
         open={createMessageModalOpen}
-        destroyOnClose
+        destroyOnHidden
         width={960}
         onCancel={closeCreateMessageModal}
         onOk={() => formApi.submit()}

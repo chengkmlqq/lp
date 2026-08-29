@@ -470,10 +470,10 @@ export function LightningCurrentBackfillHistoryTable({
           open={detailOpen}
           onClose={closeDetail}
           width={920}
-          destroyOnClose
+          destroyOnHidden
         >
           {detailQuery.isLoading && !task ? (
-            <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[240px]" />
+            <AdminPageLoading minHeightClassName="min-h-[240px]" />
           ) : task ? (
             <Space direction="vertical" size={16} className="w-full">
               <Descriptions bordered size="small" column={2}>

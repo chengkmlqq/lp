@@ -46,7 +46,7 @@ test("LP-377: 「新建任务」按钮移入 tabBarExtraContent 且仅 canManage
 test("LP-377: 登录/权限态改为 AdminPageLoading + Card + 返回首页按钮", () => {
   assert.ok(PAGE.includes("import { AdminPageLoading }"), "应引入 AdminPageLoading");
   assert.ok(
-    PAGE.includes("<AdminPageLoading tip="),
+    PAGE.includes("<AdminPageLoading"),
     "初始化中应渲染 AdminPageLoading",
   );
   assert.ok(PAGE.includes("import Link from \"next/link\""), "应引入 Link 返回首页");

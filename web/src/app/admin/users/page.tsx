@@ -1165,7 +1165,7 @@ export default function AdminUsersPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -1328,7 +1328,7 @@ export default function AdminUsersPage() {
               <div className="admin-users-card-view">
                 {usersQuery.isLoading && allLoadedUsers.length === 0 ? (
                   <div className="admin-users-card-view-state">
-                    <Spin tip="加载中..." />
+                    <Spin />
                   </div>
                 ) : allLoadedUsers.length === 0 ? (
                   <div className="admin-users-card-view-state">
@@ -1348,7 +1348,7 @@ export default function AdminUsersPage() {
                     </Row>
                     {isLoadingMore && (
                       <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Spin tip="加载更多..." />
+                        <Spin />
                       </div>
                     )}
                     {allLoadedUsers.length >= (usersQuery.data?.total ?? 0) && allLoadedUsers.length > 0 && (
@@ -1371,7 +1371,7 @@ export default function AdminUsersPage() {
       <Modal
         title="新增用户"
         open={createUserModalOpen}
-        destroyOnClose
+        destroyOnHidden
         onCancel={closeCreateUserModal}
         onOk={() => createForm.submit()}
         okText="创建用户"
@@ -1481,7 +1481,7 @@ export default function AdminUsersPage() {
       <Modal
         title={editingUser ? `编辑用户：${editingUser.username}` : "编辑用户"}
         open={!!editingUser}
-        destroyOnClose
+        destroyOnHidden
         onCancel={closeEditUserModal}
         onOk={() => editUserForm.submit()}
         okText="保存"
@@ -1583,7 +1583,7 @@ export default function AdminUsersPage() {
       <Modal
         title={resetPasswordTarget ? `重置密码：${resetPasswordTarget.username}` : "重置密码"}
         open={!!resetPasswordTarget}
-        destroyOnClose
+        destroyOnHidden
         onCancel={closeResetPasswordModal}
         onOk={() => resetPasswordForm.submit()}
         okText="确认重置"
@@ -1617,7 +1617,7 @@ export default function AdminUsersPage() {
       <Modal
         title={assigningRolesUser ? `分配角色：${assigningRolesUser.username}` : "分配角色"}
         open={!!assigningRolesUser}
-        destroyOnClose
+        destroyOnHidden
         onCancel={closeAssignRolesModal}
         onOk={handleSubmitAssignRoles}
         okText="保存"

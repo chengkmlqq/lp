@@ -198,7 +198,7 @@ export function TowerDensityView({
   if (linkedLinesQuery.isLoading && linkedLines.length === 0) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="加载关联线路中..." />
+        <Spin />
       </div>
     );
   }

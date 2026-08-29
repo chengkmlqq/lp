@@ -85,7 +85,7 @@ function ATPAssetDetailPage() {
   const runs = runsQuery.data?.items ?? [];
 
   if (initializing) {
-    return <AdminPageLoading tip="加载 ATP 模型详情中..." minHeightClassName="min-h-[280px]" />;
+    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
   }
 
   if (!user) {
@@ -132,7 +132,7 @@ function ATPAssetDetailPage() {
       {assetQuery.isLoading ? (
         <Card>
           <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <Spin tip="加载中..." />
+            <Spin />
           </div>
         </Card>
       ) : assetQuery.isError ? (

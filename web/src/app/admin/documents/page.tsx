@@ -748,7 +748,7 @@ export default function AdminDocumentsPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -1014,7 +1014,7 @@ export default function AdminDocumentsPage() {
               <div className="admin-documents-card-view">
                 {documentsLoading && allLoadedDocuments.length === 0 ? (
                   <div className="admin-documents-card-view-state">
-                    <Spin tip="加载中..." />
+                    <Spin />
                   </div>
                 ) : allLoadedDocuments.length === 0 ? (
                   <div className="admin-documents-card-view-state">
@@ -1034,7 +1034,7 @@ export default function AdminDocumentsPage() {
                     </Row>
                     {isLoadingMore && (
                       <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Spin tip="加载更多..." />
+                        <Spin />
                       </div>
                     )}
                     {allLoadedDocuments.length >= (documentsData?.total ?? 0) && allLoadedDocuments.length > 0 && (

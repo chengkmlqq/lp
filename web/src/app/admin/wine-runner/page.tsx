@@ -245,7 +245,7 @@ export default function AdminWineRunnerPage() {
   const logText = useMemo(() => formatLogText(runDetailQuery.data), [runDetailQuery.data]);
 
   if (initializing) {
-    return <AdminPageLoading tip="加载 Wine 执行器中..." minHeightClassName="min-h-[280px]" />;
+    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
   }
 
   if (!user || !canRead) {

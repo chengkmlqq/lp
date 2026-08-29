@@ -761,7 +761,7 @@ export default function AdminTaskMonitorPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -917,7 +917,7 @@ export default function AdminTaskMonitorPage() {
           <div className="admin-task-monitor-card-view">
             {cardQuery.isFetching && allLoadedTasks.length === 0 ? (
               <div className="admin-task-monitor-card-view-state">
-                <Spin tip="加载中..." />
+                <Spin />
               </div>
             ) : allLoadedTasks.length === 0 ? (
               <div className="admin-task-monitor-card-view-state">
@@ -937,7 +937,7 @@ export default function AdminTaskMonitorPage() {
                 </Row>
                 {isLoadingMore && (
                   <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Spin tip="加载更多..." />
+                    <Spin />
                   </div>
                 )}
                 {allLoadedTasks.length >= (cardQuery.data?.total ?? 0) && allLoadedTasks.length > 0 && (
@@ -962,11 +962,11 @@ export default function AdminTaskMonitorPage() {
         width={800}
         open={logModalVisible}
         onClose={handleCloseLogModal}
-        destroyOnClose
+        destroyOnHidden
       >
         {logModalLoading ? (
           <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <Spin tip="加载日志中..." />
+            <Spin />
           </div>
         ) : (
           <div

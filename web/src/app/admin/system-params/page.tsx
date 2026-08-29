@@ -1040,7 +1040,7 @@ export default function AdminSystemParamsPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -1248,7 +1248,7 @@ export default function AdminSystemParamsPage() {
             <div className="admin-system-params-card-view">
               {listQuery.isLoading && allLoadedParams.length === 0 ? (
                 <div className="admin-system-params-card-view-state">
-                  <Spin tip="加载中..." />
+                  <Spin />
                 </div>
               ) : allLoadedParams.length === 0 ? (
                 <div className="admin-system-params-card-view-state">
@@ -1268,7 +1268,7 @@ export default function AdminSystemParamsPage() {
                   </Row>
                   {isLoadingMore && (
                     <div style={{ textAlign: "center", padding: "20px 0" }}>
-                      <Spin tip="加载更多..." />
+                      <Spin />
                     </div>
                   )}
                   {allLoadedParams.length >= (listQuery.data?.total ?? 0) && allLoadedParams.length > 0 && (
@@ -1293,7 +1293,7 @@ export default function AdminSystemParamsPage() {
             okText={editingId === null ? "创建" : "保存"}
             cancelText="取消"
             confirmLoading={saveMutation.isPending}
-            destroyOnClose
+            destroyOnHidden
           >
             <Form<FormState>
               form={formApi}
@@ -1401,7 +1401,7 @@ export default function AdminSystemParamsPage() {
             okText={editingCategoryId === null ? "创建" : "保存"}
             cancelText="取消"
             confirmLoading={saveCategoryMutation.isPending}
-            destroyOnClose
+            destroyOnHidden
           >
             <Form layout="vertical" style={{ marginTop: 16 }}>
               <Form.Item label="分类名称" required>

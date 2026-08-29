@@ -140,7 +140,7 @@ export function AtpModelDetailTab({ assetId, onNavigateBack }: AtpModelDetailTab
   );
 
   if (initializing) {
-    return <Card><div style={{ textAlign: "center", padding: "40px 0" }}><Spin tip="加载中..." /></div></Card>;
+    return <Card><div style={{ textAlign: "center", padding: "40px 0" }}><Spin /></div></Card>;
   }
 
   if (!user) {
@@ -180,7 +180,7 @@ export function AtpModelDetailTab({ assetId, onNavigateBack }: AtpModelDetailTab
   const assetSection = assetQuery.isLoading ? (
     <Card>
       <div style={{ textAlign: "center", padding: "40px 0" }}>
-        <Spin tip="加载中..." />
+        <Spin />
       </div>
     </Card>
   ) : assetQuery.isError ? (

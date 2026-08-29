@@ -21,7 +21,7 @@ import {
   Upload,
   type MenuProps,
 } from "antd";
-import { CheckCircleOutlined, DeleteOutlined, EyeOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, DeleteOutlined, EyeOutlined, MoreOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
@@ -637,7 +637,7 @@ export default function AtpModelsPage() {
   }, []);
 
   if (initializing) {
-    return <AdminPageLoading tip="加载 ATP 模型中..." minHeightClassName="min-h-[280px]" />;
+    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
   }
 
   if (!user || !canRead) {
@@ -753,7 +753,7 @@ export default function AtpModelsPage() {
                   </div>
                 ) : assetsQuery.isFetching ? (
                   <div className="admin-atp-models-card-view-state">
-                    <Spin tip="加载中..." />
+                    <Spin />
                   </div>
                 ) : assetItems.length === 0 ? (
                   <Empty description="暂无 ATP 模型数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -818,7 +818,7 @@ export default function AtpModelsPage() {
         onCancel={closeModal}
         onOk={() => void form.submit()}
         confirmLoading={createAssetMutation.isPending}
-        destroyOnClose
+        destroyOnHidden
         okText={createAssetMutation.isPending ? "提交中..." : "创建模型"}
         cancelText="取消"
         okButtonProps={{ disabled: !tempFileId }}

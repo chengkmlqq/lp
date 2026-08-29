@@ -1096,7 +1096,7 @@ function DialogContent({ children, className, maxWidth }: DialogContentProps) {
   return (
     <AntModal
       className={className}
-      destroyOnClose
+      destroyOnHidden
       footer={null}
       onCancel={() => context.setOpen(false)}
       open={context.open}

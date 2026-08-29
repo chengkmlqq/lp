@@ -15,9 +15,7 @@ export default function AdminLightningCurrentsBackfillHistoryPage() {
 
   if (initializing) {
     return (
-      <AdminPageLoading
-        tip="初始化中..."
-        minHeightClassName="min-h-[280px]"
+      <AdminPageLoading minHeightClassName="min-h-[280px]"
       />
     );
   }

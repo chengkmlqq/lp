@@ -358,7 +358,7 @@ export default function AdminFlAnalysisPage() {
 
 
   if (initializing) {
-    return <AdminPageLoading tip="初始化中..." minHeightClassName="min-h-[280px]" />;
+    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
   }
 
   if (!user) {
@@ -502,7 +502,7 @@ export default function AdminFlAnalysisPage() {
         okText="创建并启动任务"
         cancelText="取消"
         confirmLoading={createJobMutation.isPending}
-        destroyOnClose={false}
+        destroyOnHidden={false}
       >
         <CreateJobForm
           form={createJobForm}

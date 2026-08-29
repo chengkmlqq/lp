@@ -569,7 +569,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
   ];
 
   if (initializing || lineLoading) {
-    return <AdminPageLoading tip="加载中..." minHeightClassName="min-h-[280px]" />;
+    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
   }
 
   if (lineError || !lineDetail) {
@@ -664,7 +664,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
         }}
         footer={null}
         width={520}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ marginBottom: 16 }}>
           <Form layout="vertical">
@@ -748,7 +748,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
         }}
         footer={null}
         width={720}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form layout="vertical">
           <Row gutter={12}>
@@ -925,7 +925,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
         open={towerDetailDrawerOpen}
         width={720}
         onClose={closeTowerDetailDrawer}
-        destroyOnClose
+        destroyOnHidden
       >
         {towerDetailQuery.isPending ? (
           <div className="flex items-center justify-center py-16">

@@ -159,7 +159,7 @@ export function ElevationTowerView({
   if (linkedLinesQuery.isLoading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
-        <Spin tip="加载关联线路中..." />
+        <Spin />
       </div>
     );
   }

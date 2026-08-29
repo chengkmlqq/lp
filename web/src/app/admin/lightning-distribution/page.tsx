@@ -915,7 +915,7 @@ export default function AdminLightningDistributionPage() {
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Spin tip="初始化中..." />
+        <Spin />
       </div>
     );
   }
@@ -1003,7 +1003,7 @@ export default function AdminLightningDistributionPage() {
                     <div className="admin-lightning-distribution-card-scroll">
                       {distributionsQuery.isLoading && records.length === 0 ? (
                         <div className="admin-lightning-distribution-card-view-state">
-                          <Spin tip="加载中..." />
+                          <Spin />
                         </div>
                       ) : records.length === 0 ? (
                         <div className="admin-lightning-distribution-card-view-state">
@@ -1190,7 +1190,7 @@ function ImportModal({
       onCancel={onClose}
       footer={null}
       width={640}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={initialValues}>
         <div className="grid gap-3 md:grid-cols-2">
@@ -1462,7 +1462,7 @@ function DistributionDetailView({
             children: (
               <div style={{ textAlign: "center", minHeight: 200 }}>
                 {imageQuery.isLoading ? (
-                  <Spin tip="加载图片中..." />
+                  <Spin />
                 ) : imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -1484,7 +1484,7 @@ function DistributionDetailView({
                   children: (
                     <div style={{ textAlign: "center", minHeight: 200 }}>
                       {lpImageQuery.isLoading ? (
-                        <Spin tip="加载 LP 分区图中..." />
+                        <Spin />
                       ) : lpImageQuery.data ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -1610,7 +1610,7 @@ function LinkedLinesModal({
       onCancel={onClose}
       footer={null}
       width={600}
-      destroyOnClose
+      destroyOnHidden
     >
       <Table<LightningLinkedLineSummary>
         rowKey="line_id"
@@ -1645,7 +1645,7 @@ function DrawLpModal({
   onSubmitted: (taskId: string, fileName: string) => void;
 }) {
   return (
-    <Modal title="线路回填" open={open} onCancel={onClose} footer={null} width={560} destroyOnClose>
+    <Modal title="线路回填" open={open} onCancel={onClose} footer={null} width={560} destroyOnHidden>
       {/* key 随分布记录变化强制重挂载，避免残留上一分布选中的线路 / 提交结果 */}
       <DrawLpBody key={data?.id ?? "empty"} open={open} data={data} fetchWithAuth={fetchWithAuth} onSubmitted={onSubmitted} />
     </Modal>
