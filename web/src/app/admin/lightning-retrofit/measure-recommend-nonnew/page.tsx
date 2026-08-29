@@ -91,7 +91,7 @@ export default function AdminLightningMeasureRecommendNonnewPage() {
     },
   });
 
-  const towerRows = useMemo(() => {
+  const computedTowerRows = useMemo(() => {
     const items = towerQuery.data?.items ?? [];
     return items.map((row) => ({
       id: row.id,
@@ -107,8 +107,8 @@ export default function AdminLightningMeasureRecommendNonnewPage() {
   const paginatedTowerRows = useMemo(() => {
     const start = (paginationCurrent - 1) * paginationPageSize;
     const end = start + paginationPageSize;
-    return towerRows.slice(start, end);
-  }, [towerRows, paginationCurrent, paginationPageSize]);
+    return computedTowerRows.slice(start, end);
+  }, [computedTowerRows, paginationCurrent, paginationPageSize]);
 
   const invalidateMeasureQueries = useCallback(async () => {
     await queryClient.invalidateQueries({
