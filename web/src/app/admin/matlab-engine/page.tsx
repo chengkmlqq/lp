@@ -361,6 +361,7 @@ export default function AdminMatlabEnginePage() {
     ),
   );
 
+  const modules = modulesQuery.data ?? [];
   const totalModules = modules.length;
   const modulePageSlice = useMemo(() => {
     const start = (paginationCurrent - 1) * paginationPageSize;
