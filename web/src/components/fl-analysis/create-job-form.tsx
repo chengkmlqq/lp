@@ -1,12 +1,13 @@
 "use client";
 
-import { Alert, Button, Form, Input, InputNumber, Select, Space, Tag } from "antd";
+import { Alert, Button, Form, Input, InputNumber, Select, Space, Tag, Card } from "antd";
 import type { FormInstance } from "antd";
 
 import { readLinePreparation } from "@/lib/line-preparation";
 import type {
   AtpAssetSummary,
   AtpEngineStatusResponse,
+  LinePreparationSummary,
   LineSummary,
 } from "@/types/auth";
 
@@ -112,7 +113,7 @@ export function CreateJobForm({
       initialValues={CREATE_JOB_DEFAULTS}
       onFinish={onSubmit}
     >
-      <div className="fl-form-section">
+      <Card size="small" className="fl-form-section">
         <div className="fl-form-section-title">基础信息</div>
         <Form.Item name="job_name" label="任务名">
           <Input
@@ -139,89 +140,47 @@ export function CreateJobForm({
             optionFilterProp="label"
             placeholder="选择线路"
             loading={linesLoading}
-            options={lines.map((item) => ({
-              value: item.id,
-              label: `${item.name || item.code} / ${item.code}`,
-            }))}
+            options={lines.map((item) => {
+              const preparation = readLinePreparation(item);
+              const statuses = [
+                preparation.lightning_current,
+                preparation.lightning_density,
+                preparation.ground_slope,
+              ];
+              return {
+                value: item.id,
+                label: item.name || item.code,
+                disabled: !preparation.all_ready,
+                optionRender: ({ value: optionValue }: { value: string }) => {
+                  const line = lines.find((current) => current.id === optionValue);
+                  const currentPreparation = line ? readLinePreparation(line) : preparation;
+                  const currentStatuses = [
+                    currentPreparation.lightning_current,
+                    currentPreparation.lightning_density,
+                    currentPreparation.ground_slope,
+                  ];
+                  return (
+                    <div className="flex flex-col gap-1">
+                      <span>{line ? line.name || line.code : item.name || item.code}</span>
+                      <Space size={[4, 4]} wrap>
+                        {currentStatuses.map((status) => (
+                          <Tag key={status.key} color={preparationColor(status.ready)}>
+                            {status.label}
+                          </Tag>
+                        ))}
+                      </Space>
+                    </div>
+                  );
+                },
+              };
+            })}
           />
         </Form.Item>
-
-        {selectedLine ? (
-          <Alert
-            type={selectedLinePreparation.all_ready ? "success" : "warning"}
-            showIcon
-            message={selectedLinePreparation.all_ready ? "参数准备已完成" : `当前线路缺少：${selectedLinePreparation.missing_items.join("、")}`}
-            description={
-              <Space size={[8, 8]} wrap>
-                {[
-                  selectedLinePreparation.lightning_current,
-                  selectedLinePreparation.lightning_density,
-                  selectedLinePreparation.ground_slope,
-                ].map((item) => {
-                  const source = readObject(item.source);
-                  const preparedAt = readOptionalString(source, "prepared_at");
-                  const currentA = readOptionalNumber(readObject(item.values), "current_a");
-                  const currentB = readOptionalNumber(readObject(item.values), "current_b");
-                  const suffix = item.key === "lightning_current" && currentA !== null && currentB !== null
-                    ? ` (${currentA.toFixed(3)} / ${currentB.toFixed(3)})`
-                    : "";
-                  return (
-                    <Tag key={item.key} color={preparationColor(item.ready)}>
-                      {`${item.label}${suffix} ${item.tower_ready_count}/${item.tower_total_count}${preparedAt ? ` @ ${formatDateTime(preparedAt)}` : ""}`}
-                    </Tag>
-                  );
-                })}
-              </Space>
-            }
-          />
-        ) : null}
-      </div>
-
-      {showWaveformBlock ? (
-        <div className="fl-form-section">
-          <div className="fl-form-section-title">ATP模型</div>
-          <Alert
-            type="info"
-            showIcon
-            message="默认通过 Wine / ATP 链路执行外部 ATP 模型计算。"
-          />
-          {atpModelsError ? (
-            <Alert
-              type="error"
-              showIcon
-              message={atpModelsError instanceof Error ? atpModelsError.message : "ATP 模型列表加载失败"}
-            />
-          ) : null}
-          <Form.Item
-            name="atp_model_id"
-            label="ATP模型"
-            rules={[{ required: false, message: "请选择 ATP 模型" }]}
-          >
-            <Select
-              showSearch
-              optionFilterProp="label"
-              loading={atpModelsLoading}
-              placeholder="选择 ATP 模型（可选，不选则走规则近似计算）"
-              options={atpModels.map((item) => ({
-                value: item.id,
-                label: `${item.name} / ${item.code}`,
-              }))}
-            />
-          </Form.Item>
-          {selectedAtpModel ? (
-            <Alert
-              type="info"
-              showIcon
-              message={`执行模式：Wine / ATP`}
-              description={`当前模型：${selectedAtpModel.name} / ${selectedAtpModel.code}。执行时默认使用该模型的当前模板。`}
-            />
-          ) : null}
-        </div>
-      ) : null}
+      </Card>
 
       {showNormalBlock ? (
-        <div className="fl-form-section">
-          <div className="fl-form-section-title">普通计算专属参数</div>
+        <Card size="small" className="fl-form-section">
+          <div className="fl-form-section-title">计算方法</div>
           <div className="grid gap-3 md:grid-cols-2">
             <Form.Item name="fanji_naleishuiping_method" label="反击耐雷水平" rules={[{ required: true, message: "请选择反击耐雷水平方法" }]}>
               <Select
@@ -248,17 +207,12 @@ export function CreateJobForm({
               />
             </Form.Item>
           </div>
-        </div>
+        </Card>
       ) : null}
 
       {showTongtiaoBlock ? (
-        <div className="fl-form-section">
-          <div className="fl-form-section-title">同跳计算专属参数</div>
-          <Alert
-            type="info"
-            showIcon
-            message="耐雷水平固定为 ATP 模型计算。"
-          />
+        <Card size="small" className="fl-form-section">
+          <div className="fl-form-section-title">计算方法</div>
           <div className="grid gap-3 md:grid-cols-2">
             <Form.Item name="fanji_tzl_method" label="反击跳闸率" rules={[{ required: true, message: "请选择反击跳闸率方法" }]}>
               <Select
@@ -281,12 +235,41 @@ export function CreateJobForm({
               />
             </Form.Item>
           </div>
-        </div>
+        </Card>
       ) : null}
 
       {showWaveformBlock ? (
-        <div className="fl-form-section">
-          <div className="fl-form-section-title">ATP模型参数</div>
+        <Card size="small" className="fl-form-section">
+          <div className="fl-form-section-title">ATP模型</div>
+          {atpModelsError ? (
+            <Alert
+              type="error"
+              showIcon
+              message={atpModelsError instanceof Error ? atpModelsError.message : "ATP 模型列表加载失败"}
+            />
+          ) : null}
+          <Form.Item
+            name="atp_model_id"
+            label="ATP模型"
+            rules={[{ required: false, message: "请选择 ATP 模型" }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              loading={atpModelsLoading}
+              placeholder="选择 ATP 模型（可选，不选则走规则近似计算）"
+              options={atpModels.map((item) => ({
+                value: item.id,
+                label: `${item.name} / ${item.code}`,
+              }))}
+            />
+          </Form.Item>
+        </Card>
+      ) : null}
+
+      {showWaveformBlock ? (
+        <Card size="small" className="fl-form-section">
+          <div className="fl-form-section-title">高级参数</div>
           <div className="grid gap-3 md:grid-cols-2">
             <Form.Item name="current_waveform" label="雷电流波形">
               <Select
@@ -333,13 +316,7 @@ export function CreateJobForm({
               <InputNumber min={0.5} step={0.5} precision={2} className="w-full" />
             </Form.Item>
           </div>
-        </div>
-      ) : null}
-
-      {showAdvancedBlock ? (
-        <div className="fl-form-section">
-          <div className="fl-form-section-title">高级参数</div>
-          <div className="mb-2 flex flex-col gap-1">
+          <div className="mt-4 flex flex-col gap-1">
             <Form.Item name="binary_search" label="二分迭代" valuePropName="checked" className="mb-0">
               <Select
                 options={[
@@ -367,7 +344,7 @@ export function CreateJobForm({
               <InputNumber min={0.01} step={0.01} precision={2} className="w-full" disabled={!selectedAtpModel} />
             </Form.Item>
           </div>
-        </div>
+        </Card>
       ) : null}
     </Form>
   );
