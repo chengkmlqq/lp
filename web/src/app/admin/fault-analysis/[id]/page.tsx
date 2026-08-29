@@ -9,7 +9,6 @@ import {
   Space,
   Typography,
   Spin,
-  Dropdown,
   Table,
   message,
   Tabs,
@@ -132,7 +131,16 @@ function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]
     sections.push({ title: "四、综合判定", content: conclusion });
   }
 
-  return { sections, station, fault_datetime: faultDatetime, fault_id: faultId };
+   return { sections, station, fault_datetime: faultDatetime, fault_id: faultId };
+}
+
+function buildReportFileName(detail: FaultAnalysisDetail): string {
+  const date = detail.fault_time ? new Date(detail.fault_time) : null;
+  const datePart = date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : "";
+  const parts = [detail.line_name, "故障分析报告"];
+  if (datePart) parts.push(datePart);
+  const raw = parts.filter((part): part is string => Boolean(part)).join("_");
+  return `${raw}.docx`;
 }
 
 interface ComputationStepDef {
@@ -607,7 +615,6 @@ export default function FaultAnalysisDetailPage() {
   const router = useRouter();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const analysisId = params.id as string;
-  const [exporting, setExporting] = useState(false);
   const [downloadingReport, setDownloadingReport] = useState(false);
   const [downloadingArtifact, setDownloadingArtifact] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<string | null>(null);
@@ -662,43 +669,6 @@ export default function FaultAnalysisDetailPage() {
     }, [analysisId, detailQuery]),
   );
 
-  const handleExportMatlab = async () => {
-    if (!detail) return;
-
-    setExporting(true);
-    try {
-      const response = await fetchWithAuth(`/api/v1/fault-analysis/${analysisId}/export-matlab`);
-      if (!response.ok) {
-        const errMsg = await readApiError(response).catch(() => "请求失败");
-        throw new Error(errMsg);
-      }
-      const blob = await response.blob();
-      const disposition = response.headers.get("Content-Disposition") ?? "";
-      let filename = "";
-      const encodedMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-      if (encodedMatch) {
-        filename = decodeURIComponent(encodedMatch[1]);
-      } else {
-        const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
-        filename = plainMatch ? plainMatch[1] : `fault_analysis_${analysisId}_matlab_outputs.zip`;
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      message.success("MATLAB 引擎产物导出成功");
-    } catch (error) {
-      console.error("导出失败", error);
-      message.error(error instanceof Error ? error.message : "导出失败，请重试");
-    } finally {
-      setExporting(false);
-    }
-  };
-
   const handleDownloadReport = async () => {
     if (!detail) return;
     setDownloadingReport(true);
@@ -709,10 +679,11 @@ export default function FaultAnalysisDetailPage() {
         throw new Error(errMsg);
       }
       const blob = await response.blob();
+      const filename = buildReportFileName(detail);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `fault_analysis_${analysisId}_report.docx`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -911,33 +882,13 @@ export default function FaultAnalysisDetailPage() {
                         <Title level={3} className="mb-0">
                           {fault_id} 故障分析报告
                         </Title>
-                        <Dropdown
-                          menu={{
-                            items: [
-                              {
-                                key: "matlab",
-                                label: "导出引擎产物 (ZIP)",
-                                onClick: handleExportMatlab,
-                              },
-                            ],
-                          }}
-                          placement="bottomRight"
-                          trigger={["click"]}
-                        >
-                          <Button
-                            icon={<DownloadOutlined />}
-                            loading={exporting}
-                          >
-                            导出报告
-                          </Button>
-                        </Dropdown>
                         <Button
                           icon={<DownloadOutlined />}
                           loading={downloadingReport}
                           disabled={!detail.result_json?.diagnosis}
                           onClick={handleDownloadReport}
                         >
-                          下载 Word 报告
+                          导出报告
                         </Button>
                       </div>
                       <Text type="secondary" className="text-sm">
