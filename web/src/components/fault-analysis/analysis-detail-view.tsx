@@ -485,38 +485,59 @@ function artifactIcon(key: string): React.ReactNode {
   return <FileTextOutlined />;
 }
 
-interface ArtifactRow {
+interface ArtifactTreeNode {
+  title: React.ReactNode;
   key: string;
-  name: string;
-  category: string;
-  path: string;
-  extension: string;
+  isLeaf?: boolean;
+  children?: ArtifactTreeNode[];
 }
 
-function buildArtifactRows(artifacts: Record<string, unknown> | undefined): ArtifactRow[] {
-  const rows: ArtifactRow[] = [];
-  if (!artifacts) {
-    return rows;
-  }
-  for (const [category, value] of Object.entries(artifacts)) {
-    const items = Array.isArray(value) ? value : [value];
-    for (const item of items) {
-      if (item == null || typeof item !== "string" || !item.trim()) {
-        continue;
+function buildArtifactTree(
+  artifacts: Record<string, unknown> | undefined,
+  onDownload: (key: string) => void,
+): ArtifactTreeNode[] {
+  const root: ArtifactTreeNode = { title: "产物", key: "__root__", children: [] };
+  const nodes = new Map<string, ArtifactTreeNode>();
+  nodes.set("__root__", root);
+  const insert = (parts: string[], fullKey: string) => {
+    let parent = root;
+    let prefix = "";
+    for (let i = 0; i < parts.length; i++) {
+      prefix = prefix ? `${prefix}/${parts[i]}` : parts[i];
+      const isFile = i === parts.length - 1;
+      if (!nodes.has(prefix)) {
+        const node: ArtifactTreeNode = {
+          title: isFile ? (
+            <span className="inline-flex items-center gap-2">
+              {artifactIcon(parts[i])}
+              {parts[i]}
+              <Button size="small" icon={<DownloadOutlined />} onClick={(e) => { e.stopPropagation(); onDownload(fullKey); }}>
+                下载
+              </Button>
+            </span>
+          ) : (
+            parts[i]
+          ),
+          key: prefix,
+          ...(isFile ? { isLeaf: true } : { children: [] }),
+        };
+        nodes.set(prefix, node);
+        parent.children!.push(node);
       }
-      const clean = item.startsWith(FAULT_ANALYSIS_KEY_PREFIX) ? item.slice(FAULT_ANALYSIS_KEY_PREFIX.length) : item;
-      const name = clean.split("/").pop() ?? clean;
-      const extension = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "-";
-      rows.push({
-        key: `${category}/${clean}`,
-        name,
-        category,
-        path: clean,
-        extension,
-      });
+      parent = nodes.get(prefix)!;
+    }
+  };
+  if (artifacts) {
+    for (const [category, value] of Object.entries(artifacts)) {
+      const keys = Array.isArray(value) ? value : [value];
+      for (const item of keys) {
+        if (item == null || typeof item !== "string" || !item.trim()) continue;
+        const clean = item.startsWith(FAULT_ANALYSIS_KEY_PREFIX) ? item : `${FAULT_ANALYSIS_KEY_PREFIX}${item}`;
+        insert(clean.split("/"), item);
+      }
     }
   }
-  return rows;
+  return root.children ?? [];
 }
 
 async function downloadObject(fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>, analysisId: string, objectKey: string) {
@@ -806,37 +827,13 @@ function ProcessView({ computationSteps, resultJson }: ProcessViewProps) {
   );
 }
 
-function ArtifactsView({ onDownload, downloadingArtifact, artifactRows }: { onDownload: (key: string) => void; downloadingArtifact: string | null; artifactRows: ArtifactRow[] }) {
-  const columns = useMemo(() => [
-    { title: "产物名称", dataIndex: "name", key: "name", width: 240, ellipsis: true },
-    { title: "产物类型", dataIndex: "category", key: "category", width: 160 },
-    { title: "文件路径", dataIndex: "path", key: "path", ellipsis: true },
-    { title: "后缀", dataIndex: "extension", key: "extension", width: 100 },
-    {
-      title: "操作",
-      key: "actions",
-      width: 120,
-      fixed: "right" as const,
-      render: (_: unknown, row: ArtifactRow) => (
-        <Button size="small" icon={<DownloadOutlined />} onClick={() => onDownload(row.path)} loading={downloadingArtifact === row.path}>
-          下载
-        </Button>
-      ),
-    },
-  ], [downloadingArtifact, onDownload]);
-
+function ArtifactsView({ onDownload, downloadingArtifact, artifactTree }: ArtifactsViewProps) {
   return (
     <div className="py-4">
-      {artifactRows.length === 0 ? (
+      {artifactTree.length === 0 ? (
         <Alert type="info" showIcon message="该记录暂无产物清单。" />
       ) : (
-        <Table<ArtifactRow>
-          rowKey="key"
-          columns={columns}
-          dataSource={artifactRows}
-          pagination={{ pageSize: 12, showSizeChanger: true, showTotal: () => `共 ${artifactRows.length} 条` }}
-          scroll={{ x: 800 }}
-        />
+        <Tree showLine defaultExpandAll treeData={artifactTree} />
       )}
     </div>
   );
@@ -846,7 +843,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView }: Analysis
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
   const [downloadingArtifact, setDownloadingArtifact] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<"report" | "process" | "artifacts">(defaultView ?? "report");
+  const [activeView] = useState<"report" | "process" | "artifacts">(defaultView ?? "report");
   const exportElementId = `analysis-export-content-${tabKey}`;
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
@@ -939,7 +936,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView }: Analysis
   const resultJson = (detail.result_json ?? {}) as Record<string, unknown>;
   const artifacts = resultJson.artifacts as Record<string, unknown> | undefined;
   const computationSteps = buildComputationSteps();
-  const artifactRows = useMemo(() => buildArtifactRows(artifacts), [artifacts]);
+  const artifactTree = buildArtifactTree(artifacts, (key) => handleDownloadArtifact(key));
 
   const handleDownloadArtifact = async (objectKey: string) => {
     if (!detail) return;
@@ -977,9 +974,10 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView }: Analysis
         )}
         {activeView === "artifacts" && (
           <ArtifactsView
-            onDownload={handleDownloadArtifact}
+            tabKey={tabKey}
+            artifactTree={artifactTree}
             downloadingArtifact={downloadingArtifact}
-            artifactRows={artifactRows}
+            onDownload={handleDownloadArtifact}
           />
         )}
       </Card>
