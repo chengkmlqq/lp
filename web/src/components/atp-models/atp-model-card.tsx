@@ -96,7 +96,6 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, 
       </div>
 
       <div className="admin-atp-models-card-body">
-        <div className="admin-atp-models-card-body">
         <div className="flex flex-col gap-2 px-4 py-3">
           <div className="admin-atp-models-card-field flex items-center gap-2">
             <ThunderboltOutlined className="text-xs text-gray-500" />
