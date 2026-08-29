@@ -2,11 +2,26 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Empty, Input, Pagination, Space, Table, Typography } from "antd";
+import {
+  Alert,
+  Button,
+  Empty,
+  Form,
+  Input,
+  Pagination,
+  Segmented,
+  Space,
+  Table,
+  Typography,
+  message,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { SearchOutlined } from "@ant-design/icons";
+
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { Card } from "@/components/ui-antd";
+import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import type {
   FlAnalysisJobDetail,
   FlAnalysisJobListResponse,
@@ -28,6 +43,7 @@ type RetrofitTaskItem = FlAnalysisJobSummary & {
 
 export default function AdminLightningRetrofitPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
+  const [messageApi, contextHolder] = message.useMessage();
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -65,6 +81,14 @@ export default function AdminLightningRetrofitPage() {
   const jobs = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data?.items]);
   const total = jobsQuery.data?.total ?? 0;
 
+  const jobListError = jobsQuery.error instanceof Error ? jobsQuery.error.message : "";
+  useToastFeedback({
+    errorMessage: jobListError,
+    successMessage: "",
+    clearError: () => {},
+    clearSuccess: () => {},
+  });
+
   const handleSearch = () => {
     setKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -78,6 +102,7 @@ export default function AdminLightningRetrofitPage() {
       throw new Error(await readApiError(response));
     }
     await jobsQuery.refetch();
+    messageApi.success(`已删除防雷改造任务：${job.job_name || job.line_name || job.id}`);
   };
 
   const columns: ColumnsType<RetrofitTaskItem> = [
@@ -136,11 +161,10 @@ export default function AdminLightningRetrofitPage() {
       align: "center" as const,
       render: (_value, job) => (
         <Space size="small">
-          <Button type="link" size="small">
+          <Button size="small" href={`/admin/lightning-retrofit/high-risk-reason?jobId=${job.id}`}>
             查看详情
           </Button>
           <Button
-            type="link"
             size="small"
             danger
             disabled={["queued", "running"].includes(job.status)}
@@ -159,130 +183,165 @@ export default function AdminLightningRetrofitPage() {
 
   if (!user) {
     return (
-      <Space direction="vertical" size={12}>
-        <Typography.Text type="secondary">请先登录后再查看防雷改造任务。</Typography.Text>
-      </Space>
+      <Card>
+        <Space direction="vertical" size={12}>
+          <Typography.Text type="secondary">请先登录后再查看防雷改造任务。</Typography.Text>
+        </Space>
+      </Card>
     );
   }
 
   if (!canRead) {
     return (
-      <Space direction="vertical" size={12}>
-        <Typography.Text type="secondary">你没有访问该页面的权限（需要 `line.read` 或 `line.manage`）。</Typography.Text>
-      </Space>
+      <Card>
+        <Space direction="vertical" size={12}>
+          <Typography.Text type="secondary">你没有访问该页面的权限（需要 `line.read` 或 `line.manage`）。</Typography.Text>
+        </Space>
+      </Card>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-col gap-6">
-        <Space className="flex-wrap">
-          <Button type="primary" href="/admin/lightning-retrofit/high-risk-reason">
-            高风险原因分析
-          </Button>
-          <Button type="primary" href="/admin/lightning-retrofit/measure-recommend">
-            改造措施推荐
-          </Button>
-          <Button type="primary" href="/admin/lightning-retrofit/measure-recommend-nonnew">
-            改造措施推荐(非建线)
-          </Button>
-        </Space>
-
-        <div className="admin-filter-bar">
-          <Space.Compact style={{ display: "inline-flex" }}>
-            <Input
-              value={keywordInput}
-              allowClear
-              onChange={(event) => setKeywordInput(event.target.value)}
-              placeholder="按任务名/线路名/线路编码筛选"
-              onPressEnter={handleSearch}
+    <>
+      {contextHolder}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="admin-fl-analysis-list-pane">
+          <div className="admin-filter-bar">
+            <Form layout="inline">
+              <Form.Item label="关键字" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                <Input
+                  value={keywordInput}
+                  allowClear
+                  onChange={(event) => setKeywordInput(event.target.value)}
+                  placeholder="按任务名/线路名/线路编码筛选"
+                  onPressEnter={handleSearch}
+                />
+              </Form.Item>
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Button
+                  htmlType="button"
+                  icon={<SearchOutlined />}
+                  onClick={handleSearch}
+                  className="admin-search-btn"
+                >
+                  查询
+                </Button>
+              </Form.Item>
+            </Form>
+            <Segmented
+              value={viewMode}
+              onChange={(value) => setViewMode(value as "card" | "list")}
+              options={[
+                { label: "卡片视图", value: "card" },
+                { label: "列表视图", value: "list" },
+              ]}
             />
-            <Button icon={<SearchOutlined />} onClick={handleSearch}>
-              查询
-            </Button>
-          </Space.Compact>
-          <Button onClick={() => setViewMode(viewMode === "card" ? "list" : "card")}>
-            {viewMode === "card" ? "列表视图" : "卡片视图"}
-          </Button>
-        </div>
+          </div>
 
-        {jobs.length === 0 ? (
-          <Empty description="暂无防雷改造任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        ) : viewMode === "card" ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {jobs.map((job) => (
-              <div
-                key={job.id}
-                className="admin-fl-analysis-job-card border border-gray-200 rounded-lg"
-              >
-                <div className="admin-fl-analysis-job-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
-                  <Typography.Text strong className="truncate">
-                    {job.job_name || job.line_name || job.line_code || "-"}
-                  </Typography.Text>
-                  <span style={{ color: statusColor(job.status) }}>{job.status}</span>
-                </div>
-                <div className="flex flex-col gap-2 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Typography.Text type="secondary" className="text-xs truncate">
-                      {job.line_name || job.line_code || "-"}
-                    </Typography.Text>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Typography.Text type="secondary" className="text-xs">
-                      创建：{formatDateTime(job.create_date)}
-                    </Typography.Text>
-                  </div>
-                </div>
-                <div className="admin-fl-analysis-job-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
-                  <Space>
-                    <Button type="link" size="small">
-                      查看详情
-                    </Button>
-                    <Button
-                      type="link"
-                      size="small"
-                      danger
-                      disabled={["queued", "running"].includes(job.status)}
-                      onClick={() => handleDeleteJob(job)}
+          {jobsQuery.error && (
+            <Alert
+              type="error"
+              showIcon
+              message={jobsQuery.error instanceof Error ? jobsQuery.error.message : "加载失败"}
+            />
+          )}
+
+          {viewMode === "list" ? (
+            <div
+              ref={tableScrollAnchorRef}
+              className="admin-fl-analysis-table-view"
+              style={{ "--admin-fl-analysis-table-body-min-height": `${tableScrollY}px` } as React.CSSProperties}
+            >
+              <Table<RetrofitTaskItem>
+                rowKey="id"
+                className="admin-fl-analysis-job-table"
+                columns={columns}
+                dataSource={jobs}
+                loading={jobsQuery.isFetching}
+                tableLayout="fixed"
+                pagination={{
+                  current: pagination.current,
+                  pageSize: pagination.pageSize,
+                  total,
+                  showSizeChanger: true,
+                  pageSizeOptions: [6, 12, 24, 48],
+                  showTotal: (total) => `共 ${total} 条`,
+                  hideOnSinglePage: false,
+                  onChange: (page, pageSize) => {
+                    setPagination({ current: page, pageSize });
+                  },
+                }}
+                scroll={{ x: 1200, y: tableScrollY }}
+                locale={{
+                  emptyText: (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无防雷改造任务" />
+                  ),
+                }}
+              />
+            </div>
+          ) : (
+            <div className="admin-fl-analysis-card-view">
+              <div className="admin-power-lines-card-scroll">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {jobs.map((job) => (
+                    <div
+                      key={job.id}
+                      className="admin-fl-analysis-job-card border border-gray-200 rounded-lg"
                     >
-                      删除
-                    </Button>
-                  </Space>
+                      <div className="admin-fl-analysis-job-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+                        <Typography.Text strong className="truncate">
+                          {job.job_name || job.line_name || job.line_code || "-"}
+                        </Typography.Text>
+                        <span style={{ color: statusColor(job.status) }}>{job.status}</span>
+                      </div>
+                      <div className="flex flex-col gap-2 px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Typography.Text type="secondary" className="text-xs truncate">
+                            {job.line_name || job.line_code || "-"}
+                          </Typography.Text>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Typography.Text type="secondary" className="text-xs">
+                            创建：{formatDateTime(job.create_date)}
+                          </Typography.Text>
+                        </div>
+                      </div>
+                      <div className="admin-fl-analysis-job-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+                        <Space>
+                          <Button size="small" href={`/admin/lightning-retrofit/high-risk-reason?jobId=${job.id}`}>
+                            查看详情
+                          </Button>
+                          <Button
+                            size="small"
+                            danger
+                            disabled={["queued", "running"].includes(job.status)}
+                            onClick={() => handleDeleteJob(job)}
+                          >
+                            删除
+                          </Button>
+                        </Space>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div
-            ref={tableScrollAnchorRef}
-            style={{ "--admin-fl-analysis-table-body-min-height": `${tableScrollY}px` } as React.CSSProperties}
-          >
-            <Table
-              rowKey="id"
-              className="admin-fl-analysis-job-table"
-              columns={columns}
-              dataSource={jobs}
-              pagination={{
-                current: pagination.current,
-                pageSize: pagination.pageSize,
-                total,
-                showSizeChanger: true,
-                pageSizeOptions: [6, 12, 24, 48],
-                showTotal: (total) => `共 ${total} 条`,
-                hideOnSinglePage: false,
-                onChange: (page, pageSize) => {
-                  setPagination({ current: page, pageSize });
-                },
-              }}
-              scroll={{ x: 1200, y: tableScrollY }}
-              locale={{
-                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无防雷改造任务" />,
-              }}
-            />
-          </div>
-        )}
+              <div className="admin-power-lines-pagination">
+                <Pagination
+                  current={pagination.current}
+                  pageSize={pagination.pageSize}
+                  total={total}
+                  onChange={(page, pageSize) => {
+                    setPagination({ current: page, pageSize });
+                  }}
+                  showSizeChanger
+                  showTotal={(total) => `共 ${total} 条`}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Alert,
   Button,
   Empty,
-  InputNumber,
-  Modal,
+  Form,
+  message,
   Pagination,
   Progress,
   Select,
@@ -14,6 +14,7 @@ import {
   Table,
   Tag,
   Typography,
+  useQueryClient,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { ArrowUpOutlined } from "@ant-design/icons";
@@ -21,17 +22,14 @@ import { ArrowUpOutlined } from "@ant-design/icons";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
+import { useTopicSubscription } from "@/hooks/use-topic-subscription";
+import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import type {
-  FlAnalysisJobDetail,
-  FlAnalysisJobListResponse,
   FlAnalysisJobSummary,
   FlAnalysisTowerResultSummary,
-  FlAnalysisTowerResultListResponse,
-  LineListResponse,
 } from "@/types/auth";
 import { readApiError } from "@/lib/api";
 import {
-  formatDateTime,
   formatJobType,
   readMitigationMode,
   riskColor,
@@ -45,21 +43,64 @@ const TABLE_BOTTOM_GAP = 8;
 
 export default function AdminLightningHighRiskReasonPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
+  const [messageApi, contextHolder] = message.useMessage();
+  const queryClient = useQueryClient();
   const [lineId, setLineId] = useState<string>("");
   const [lines, setLines] = useState<FlAnalysisJobSummary[]>([]);
   const [loadingLines, setLoadingLines] = useState(false);
-  const [riskRows, setRiskRows] = useState<FlAnalysisTowerResultSummary[]>([]);
   const [loadingRisk, setLoadingRisk] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedRow, setSelectedRow] = useState<FlAnalysisTowerResultSummary | null>(null);
+  const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
+  const [viewMode, setViewMode] = useState<"card" | "list">("list");
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage") || hasPermission("tower.manage");
 
-  const loadLines = async (nextLineId: string) => {
+  const highRiskQueryPath = useMemo(() => {
+    if (!lineId) {
+      return null;
+    }
+    const params = new URLSearchParams();
+    params.set("limit", String(paginationPageSize));
+    params.set("offset", String((paginationCurrent - 1) * paginationPageSize));
+    return `/api/v1/lightning-retrofit/high-risk-reason?line_id=${lineId}${params.toString() ? `&${params.toString()}` : ""}`;
+  }, [lineId, paginationCurrent, paginationPageSize]);
+
+  const highRiskQuery = useQuery({
+    queryKey: ["/admin/lightning-retrofit/high-risk-reason", lineId, paginationCurrent, paginationPageSize],
+    enabled: !!user && canRead && Boolean(lineId),
+    queryFn: async () => {
+      const response = await fetchWithAuth(highRiskQueryPath as string);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as {
+        items: FlAnalysisTowerResultSummary[];
+        total: number;
+      };
+    },
+  });
+
+  const riskRows = useMemo(() => highRiskQuery.data?.items ?? [], [highRiskQuery.data?.items]);
+  const total = highRiskQuery.data?.total ?? 0;
+
+  const invalidateHighRisk = useCallback(async () => {
+    await queryClient.invalidateQueries({
+      predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === "/admin/lightning-retrofit/high-risk-reason",
+    });
+  }, [queryClient]);
+
+  useTopicSubscription("admin.lightning-retrofit", useCallback(() => {
+    void invalidateHighRisk();
+  }, [invalidateHighRisk]));
+
+  const loadLines = useCallback(async (nextLineId: string) => {
     if (!nextLineId) {
       setLines([]);
-      setRiskRows([]);
       return;
     }
     setLoadingLines(true);
@@ -68,7 +109,7 @@ export default function AdminLightningHighRiskReasonPage() {
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      const data = (await response.json()) as FlAnalysisJobListResponse;
+      const data = (await response.json()) as { items: FlAnalysisJobSummary[] };
       const matched = data.items.filter((item) => item.line_id === nextLineId);
       setLines(matched);
     } catch (error) {
@@ -76,43 +117,12 @@ export default function AdminLightningHighRiskReasonPage() {
     } finally {
       setLoadingLines(false);
     }
-  };
-
-  const loadRiskRows = async (nextLineId: string) => {
-    if (!nextLineId) {
-      setRiskRows([]);
-      return;
-    }
-    setLoadingRisk(true);
-    try {
-      const response = await fetchWithAuth("/api/v1/fl-analysis/jobs?limit=200");
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      const data = (await response.json()) as FlAnalysisJobListResponse;
-      const matched = data.items.filter((item) => item.line_id === nextLineId);
-      const ids = matched.map((item) => item.id);
-      const rows: FlAnalysisTowerResultSummary[] = [];
-      await Promise.all(
-        ids.map(async (jobId) => {
-          const resultResponse = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${jobId}/results?limit=200`);
-          if (!resultResponse.ok) return;
-          const resultData = (await resultResponse.json()) as FlAnalysisTowerResultListResponse;
-          rows.push(...resultData.items);
-        }),
-      );
-      const highRiskRows = rows.filter((row) => (row.risk_level === "high" || (row.risk_level && parseInt(row.risk_level, 10) > 2)));
-      setRiskRows(highRiskRows);
-    } catch (error) {
-      setRiskRows([]);
-    } finally {
-      setLoadingRisk(false);
-    }
-  };
+  }, [fetchWithAuth]);
 
   const handleLineChange = async (nextLineId: string) => {
     setLineId(nextLineId);
-    await Promise.all([loadLines(nextLineId), loadRiskRows(nextLineId)]);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    await loadLines(nextLineId);
   };
 
   const handleExport = () => {
@@ -171,7 +181,7 @@ export default function AdminLightningHighRiskReasonPage() {
         width: 140,
         align: "center" as const,
         render: (_value, row) => (
-          <Button type="link" size="small" onClick={() => handleViewDetail(row)}>
+          <Button size="small" onClick={() => handleViewDetail(row)}>
             查看详情
           </Button>
         ),
@@ -179,6 +189,59 @@ export default function AdminLightningHighRiskReasonPage() {
     ],
     [],
   );
+
+  const updateTableScrollHeight = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+    const anchorHeight = anchor.getBoundingClientRect().height;
+    const header = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = header?.getBoundingClientRect().height ?? TABLE_HEADER_HEIGHT;
+    const paginationHeight = paginationEl?.getBoundingClientRect().height ?? TABLE_PAGINATION_HEIGHT;
+    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - TABLE_BOTTOM_GAP);
+    const clampedHeight = Math.max(TABLE_MIN_SCROLL_Y, nextHeight);
+    setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || viewMode !== "list") {
+      return;
+    }
+    const frameId = window.requestAnimationFrame(updateTableScrollHeight);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [updateTableScrollHeight, riskRows.length, viewMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof ResizeObserver === "undefined" || viewMode !== "list") {
+      return;
+    }
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(updateTableScrollHeight);
+    });
+    resizeObserver.observe(anchor);
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [updateTableScrollHeight, viewMode]);
+
+  const highRiskListError = highRiskQuery.error instanceof Error ? highRiskQuery.error.message : "";
+  useToastFeedback({
+    errorMessage: highRiskListError,
+    successMessage: "",
+    clearError: () => {},
+    clearSuccess: () => {},
+  });
 
   if (initializing) {
     return <AdminPageLoading tip="初始化中..." minHeightClassName="min-h-[280px]" />;
@@ -205,54 +268,106 @@ export default function AdminLightningHighRiskReasonPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <Typography.Title level={4} style={{ margin: 0 }}>
-        高风险原因分析
-      </Typography.Title>
+    <>
+      {contextHolder}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="admin-fl-analysis-list-pane">
+          <div className="admin-filter-bar">
+            <Form layout="inline">
+              <Form.Item label="线路" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                <Select
+                  value={lineId}
+                  onChange={handleLineChange}
+                  loading={loadingLines}
+                  placeholder="选择线路"
+                  style={{ width: 320 }}
+                  options={lines.map((line) => ({
+                    value: line.line_id || line.id,
+                    label: `${line.line_name || line.line_code || "-"}（${formatJobType(line.job_type, readMitigationMode(line))}）`,
+                  }))}
+                  showSearch
+                  optionFilterProp="label"
+                />
+              </Form.Item>
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Button
+                  htmlType="button"
+                  icon={<ArrowUpOutlined />}
+                  onClick={() => loadLines(lineId)}
+                  className="admin-search-btn"
+                >
+                  刷新
+                </Button>
+              </Form.Item>
+            </Form>
+            <Segmented
+              value={viewMode}
+              onChange={(value) => setViewMode(value as "card" | "list")}
+              options={[
+                { label: "列表视图", value: "list" },
+              ]}
+            />
+          </div>
 
-      <div className="admin-filter-bar">
-        <Select
-          value={lineId}
-          onChange={handleLineChange}
-          loading={loadingLines}
-          placeholder="选择线路"
-          style={{ width: 320 }}
-          options={[]}
-          showSearch
-          optionFilterProp="label"
-        />
-      </div>
+          {highRiskQuery.error && (
+            <Alert
+              type="error"
+              showIcon
+              message={highRiskQuery.error instanceof Error ? highRiskQuery.error.message : "加载失败"}
+            />
+          )}
 
-      {loadingRisk ? (
-        <Progress percent={0} size="small" />
-      ) : riskRows.length === 0 ? (
-        <Empty description="暂无高风险杆塔" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      ) : (
-        <div style={{ "--admin-fl-analysis-table-body-min-height": `${TABLE_MIN_SCROLL_Y}px` } as React.CSSProperties}>
-          <Table
-            rowKey="id"
-            className="admin-fl-analysis-job-table"
-            columns={columns}
-            dataSource={riskRows}
-            pagination={{
-              pageSize: 20,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50, 100],
-              showTotal: (total) => `共 ${total} 条`,
-              hideOnSinglePage: false,
-            }}
-            scroll={{ x: 1000, y: TABLE_MIN_SCROLL_Y }}
-            locale={{
-              emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无高风险杆塔" />,
-            }}
-          />
+          {!lineId ? (
+            <Empty description="请先选择线路" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ) : loadingRisk ? (
+            <div className="admin-fl-analysis-loading-bar">
+              <Progress percent={0} size="small" />
+            </div>
+          ) : viewMode === "list" ? (
+            <div
+              ref={tableScrollAnchorRef}
+              className="admin-fl-analysis-table-view"
+              style={{ "--admin-fl-analysis-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+            >
+              <Table<FlAnalysisTowerResultSummary>
+                rowKey="id"
+                className="admin-fl-analysis-job-table"
+                columns={columns}
+                dataSource={riskRows}
+                loading={highRiskQuery.isFetching}
+                tableLayout="fixed"
+                pagination={{
+                  current: pagination.current,
+                  pageSize: pagination.pageSize,
+                  total,
+                  showSizeChanger: true,
+                  pageSizeOptions: [10, 20, 50, 100],
+                  showTotal: (total) => `共 ${total} 条`,
+                  hideOnSinglePage: false,
+                  onChange: (page, pageSize) => {
+                    setPagination({ current: page, pageSize });
+                  },
+                }}
+                scroll={{ x: 1000, y: tableScrollY }}
+                locale={{
+                  emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无高风险杆塔" />,
+                }}
+              />
+            </div>
+          ) : (
+            <Card>
+              <Space direction="vertical" size={12}>
+                <Typography.Text type="secondary">高风险原因分析当前仅支持列表视图。</Typography.Text>
+              </Space>
+            </Card>
+          )}
+
+          <div className="flex justify-end">
+            <Button onClick={handleExport} disabled={!lineId || riskRows.length === 0}>
+              导出报告
+            </Button>
+          </div>
         </div>
-      )}
-
-      <div className="flex justify-end">
-        <Button onClick={handleExport} disabled={riskRows.length === 0}>
-          导出报告
-        </Button>
       </div>
 
       <Modal
@@ -279,7 +394,7 @@ export default function AdminLightningHighRiskReasonPage() {
           </Space>
         ) : null}
       </Modal>
-    </div>
+    </>
   );
 }
 
