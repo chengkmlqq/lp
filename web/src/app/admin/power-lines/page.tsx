@@ -149,7 +149,6 @@ function resolveLineStatusConfig(status: string): { color: string; text: string 
   return STATUS_CONFIG[status] ?? { color: "default", text: status || "-" };
 }
 
-export { PowerLineCard, PowerLineTable } from "./power-lines/page";
 export default function AdminPowerLinesPage() {
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
