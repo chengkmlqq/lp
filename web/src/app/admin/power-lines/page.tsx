@@ -471,12 +471,12 @@ export default function AdminPowerLinesPage() {
               <div className="admin-power-lines-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
-                    <Form.Item label="线路编码/名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label="线路名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         value={keywordInput}
                         allowClear
                         onChange={(event) => setKeywordInput(event.target.value)}
-                        placeholder="按线路编码/名称筛选"
+                        placeholder="按线路名称筛选"
                         onPressEnter={handleSearch}
                       />
                     </Form.Item>
