@@ -971,6 +971,15 @@ export default function AdminMatlabEnginePage() {
         hideAdd
         activeKey="list"
         className="admin-matlab-tabs"
+        tabBarExtraContent={
+          <Space>
+            {canManage && (
+              <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
+                上传新包
+              </Button>
+            )}
+          </Space>
+        }
         items={[
           {
             key: "list",
@@ -1120,11 +1129,6 @@ export default function AdminMatlabEnginePage() {
                             >
                               同步到 Worker
                             </Button>
-                            {canManage && (
-                              <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
-                                上传新包
-                              </Button>
-                            )}
                           </Space>
                         </div>
                       </>
