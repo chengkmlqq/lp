@@ -1918,18 +1918,14 @@ body {
 }
 
 /* LP-482: Table anchor flex/scroll styles */
-.admin-matlab-table-anchor {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  overflow: hidden;
+/* LP-521: 与参数管理页一致：表格按自然高度渲染，分页固定在表格体下方可见，外层 main 负责滚动 */
+.admin-matlab-table-anchor .ant-table-body {
+  min-height: var(--admin-matlab-table-body-min-height, 180px);
 }
 
-.admin-matlab-table-anchor .ant-table-wrapper {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
+.admin-matlab-table-anchor .ant-table-pagination {
+  /* LP-229: 顶部 margin 12px、底部 margin 0，覆盖 antd Table 内置分页默认 margin（16px 0） */
+  margin: 12px 0 0 !important;
 }
 
 .admin-matlab-table-anchor .ant-table {
