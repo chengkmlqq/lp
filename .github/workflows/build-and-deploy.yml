@@ -165,7 +165,7 @@ jobs:
         id: check
         shell: bash
         run: |
-          if git diff --quiet HEAD~1 HEAD -- api/Dockerfile.matlab api/app/services/fault_diagnosis*.py api/app/services/fl_analysis*.py; then
+          if git diff --quiet HEAD~1 HEAD -- api/Dockerfile.matlab api/app/services/fault_diagnosis*.py api/app/services/fl_analysis*.py api/app/tasks/sync_matlab_engine_task.py; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
