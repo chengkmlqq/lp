@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   Col,
+  Descriptions,
   Dropdown,
   Empty,
   Form,
@@ -35,6 +36,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
+  FileTextOutlined,
   InboxOutlined,
   MoreOutlined,
   PlusOutlined,
@@ -155,6 +157,8 @@ export default function AdminMatlabEnginePage() {
 
   const [moduleModalOpen, setModuleModalOpen] = useState(false);
   const [editingModule, setEditingModule] = useState<MatlabModule | null>(null);
+  const [detailModule, setDetailModule] = useState<MatlabModule | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -522,6 +526,11 @@ export default function AdminMatlabEnginePage() {
     setPreviewOpen(true);
   };
 
+  const openModuleDetail = useCallback((item: MatlabModule) => {
+    setDetailModule(item);
+    setDetailOpen(true);
+  }, []);
+
   const openCreateModule = useCallback(() => {
     setEditingModule(null);
     form.setFieldsValue(DEFAULT_MODULE_FORM_VALUES);
@@ -556,6 +565,51 @@ export default function AdminMatlabEnginePage() {
       await deleteModuleMutation.mutateAsync(item);
     },
     [deleteModuleMutation],
+  );
+
+  const getModuleMoreMenuItems = useCallback(
+    (item: MatlabModule): MenuProps["items"] => [
+      {
+        key: "detail",
+        label: "详情",
+        icon: <EyeOutlined />,
+        onClick: ({ domEvent }) => {
+          domEvent.stopPropagation();
+          openModuleDetail(item);
+        },
+      },
+      ...(canManage
+        ? [
+            {
+              key: "edit",
+              label: "编辑",
+              icon: <EditOutlined />,
+              onClick: ({ domEvent }) => {
+                domEvent.stopPropagation();
+                openEditModule(item);
+              },
+            },
+            {
+              key: "delete",
+              label: "删除",
+              icon: <DeleteOutlined />,
+              danger: true,
+              onClick: ({ domEvent }) => {
+                domEvent.stopPropagation();
+                Modal.confirm({
+                  title: "删除模块",
+                  content: `确认删除模块"${item.name}"吗？`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true },
+                  onOk: () => deleteModule(item),
+                });
+              },
+            },
+          ]
+        : []),
+    ],
+    [canManage, deleteModule, openEditModule, openModuleDetail],
   );
 
   const handleUpload = useCallback(async () => {
@@ -729,6 +783,13 @@ export default function AdminMatlabEnginePage() {
         key: "size_bytes",
         width: 100,
         render: (size: number) => formatSize(size),
+      },
+      {
+        title: "文件数",
+        dataIndex: "file_list",
+        key: "file_count",
+        width: 90,
+        render: (list: string[] | undefined) => (list?.length ? `${list.length} 个` : "-"),
       },
     ];
 
@@ -927,6 +988,10 @@ export default function AdminMatlabEnginePage() {
               <InboxOutlined className="text-xs text-gray-500" />
               <Typography.Text className="text-xs">大小：{formatSize(item.size_bytes)}</Typography.Text>
             </div>
+            <div className="flex items-center gap-2">
+              <FileTextOutlined className="text-xs text-gray-500" />
+              <Typography.Text className="text-xs">文件数：{item.file_list?.length ?? 0}</Typography.Text>
+            </div>
           </div>
 
           <div className="admin-matlab-version-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
@@ -1050,41 +1115,11 @@ export default function AdminMatlabEnginePage() {
                                     <div className="admin-matlab-module-name">{item.name}</div>
                                     <div className="admin-matlab-module-slug">{item.slug}</div>
                                   </div>
-                                  {canManage && (
-                                    <Dropdown
-                                      menu={{
-                                        items: [
-                                          {
-                                            key: "edit",
-                                            label: "编辑",
-                                            icon: <EditOutlined />,
-                                            onClick: ({ domEvent }) => {
-                                              domEvent.stopPropagation();
-                                              openEditModule(item);
-                                            },
-                                          },
-                                          {
-                                            key: "delete",
-                                            label: "删除",
-                                            icon: <DeleteOutlined />,
-                                            danger: true,
-                                            onClick: ({ domEvent }) => {
-                                              domEvent.stopPropagation();
-                                              Modal.confirm({
-                                                title: "删除模块",
-                                                content: `确认删除模块"${item.name}"吗？`,
-                                                okText: "删除",
-                                                cancelText: "取消",
-                                                okButtonProps: { danger: true },
-                                                onOk: () => deleteModule(item),
-                                              });
-                                            },
-                                          },
-                                        ],
-                                      }}
-                                      trigger={["click"]}
-                                    >
-                                      <span
+                                  <Dropdown
+                                    menu={{ items: getModuleMoreMenuItems(item) }}
+                                    trigger={["click"]}
+                                  >
+                                    <span
                                         className="admin-matlab-module-item-more"
                                         role="button"
                                         onMouseDown={(e) => e.stopPropagation()}
@@ -1094,7 +1129,6 @@ export default function AdminMatlabEnginePage() {
                                         <MoreOutlined />
                                       </span>
                                     </Dropdown>
-                                  )}
                                 </div>
                               ))}
                             </div>
@@ -1246,7 +1280,11 @@ export default function AdminMatlabEnginePage() {
                       <div className="admin-matlab-card-view-state">
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="请选择模块查看版本。"
+                          description={
+                            modules.length === 0
+                              ? "暂无模块，请先新建模块。"
+                              : "请在左侧选择一个模块查看版本。"
+                          }
                         />
                       </div>
                     )}
@@ -1393,6 +1431,40 @@ export default function AdminMatlabEnginePage() {
               </List.Item>
             )}
           />
+        )}
+      </Modal>
+
+      <Modal
+        title={`模块详情：${detailModule?.name ?? ""}`}
+        open={detailOpen}
+        onCancel={() => setDetailOpen(false)}
+        footer={null}
+        width={560}
+        destroyOnHidden
+      >
+        {detailModule && (
+          <Descriptions column={1} bordered size="small" labelStyle={{ width: 130 }}>
+            <Descriptions.Item label="标识">
+              <Typography.Text code>{detailModule.slug}</Typography.Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="描述">{detailModule.description || "-"}</Descriptions.Item>
+            <Descriptions.Item label="Worker 部署路径">
+              {detailModule.worker_deploy_path || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="必需文件">
+              {detailModule.required_files && detailModule.required_files.length > 0 ? (
+                <Space size={[4, 4]} wrap>
+                  {detailModule.required_files.map((file) => (
+                    <Tag key={file} style={{ marginRight: 0 }}>{file}</Tag>
+                  ))}
+                </Space>
+              ) : (
+                "-"
+              )}
+            </Descriptions.Item>
+            <Descriptions.Item label="创建时间">{formatDateTime(detailModule.created_at)}</Descriptions.Item>
+            <Descriptions.Item label="更新时间">{formatDateTime(detailModule.updated_at)}</Descriptions.Item>
+          </Descriptions>
         )}
       </Modal>
     </div>
