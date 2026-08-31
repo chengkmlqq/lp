@@ -628,6 +628,13 @@ export default function AdminFaultAnalysisPage() {
   const columns = useMemo<ColumnsType<FaultAnalysis>>(
     () => [
       {
+        title: "任务名称",
+        dataIndex: "title",
+        width: 200,
+        ellipsis: true,
+        render: (value: string) => formatNullable(value),
+      },
+      {
         title: "线路名称",
         dataIndex: "line_name",
         width: 160,
