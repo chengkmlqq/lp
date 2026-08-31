@@ -1553,6 +1553,26 @@ body {
   flex-direction: column;
   overflow: hidden;
 }
+/* 参照参数管理页：新建模块按钮置于左侧卡片底部 */
+.admin-matlab-tree-card > .ant-card-actions {
+  border-top: 1px solid var(--ant-color-border-secondary);
+  background: transparent !important;
+}
+
+.admin-matlab-tree-card > .ant-card-actions > li {
+  margin: 0 !important;
+}
+
+.admin-matlab-tree-card > .ant-card-actions .ant-btn {
+  height: 36px;
+  font-size: 13px;
+  line-height: 36px;
+}
+
+.admin-matlab-tree-card > .ant-card-actions > li:not(:last-child) {
+  border-right: none !important;
+}
+
 
 .admin-matlab-sider-header {
   display: flex;
@@ -1993,16 +2013,6 @@ body {
   color: var(--ant-color-primary);
 }
 
-/* 左侧模块列表分页 */
-.admin-matlab-module-pagination {
-  padding: 8px 12px 12px;
-  border-top: 1px solid var(--ant-color-border-secondary);
-  flex-shrink: 0;
-}
-
-.admin-matlab-module-pagination .ant-pagination {
-  justify-content: center;
-}
 
 
 .admin-workers-card-view {

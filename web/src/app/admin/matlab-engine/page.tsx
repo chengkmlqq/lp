@@ -13,7 +13,6 @@ import {
   Input,
   List,
   Modal,
-  Pagination,
   Row,
   Select,
   Skeleton,
@@ -171,8 +170,6 @@ export default function AdminMatlabEnginePage() {
   // 模块筛选（左侧栏）
   const [moduleKeywordInput, setModuleKeywordInput] = useState("");
   const [moduleKeyword, setModuleKeyword] = useState("");
-  const [modulePage, setModulePage] = useState(1);
-  const [modulePageSize, setModulePageSize] = useState(12);
 
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(MATLAB_TABLE_MIN_SCROLL_Y);
@@ -432,11 +429,6 @@ export default function AdminMatlabEnginePage() {
     });
   }, [moduleKeyword, modules]);
 
-  const modulePageSlice = useMemo(() => {
-    const start = (modulePage - 1) * modulePageSize;
-    return filteredModules.slice(start, start + modulePageSize);
-  }, [filteredModules, modulePage, modulePageSize]);
-
   const draft = versionsQuery.data?.draft ?? null;
   const releases = useMemo(() => versionsQuery.data?.releases ?? [], [versionsQuery.data]);
   const currentRelease = releases[0] ?? null;
@@ -602,7 +594,6 @@ export default function AdminMatlabEnginePage() {
 
   const handleModuleSearch = useCallback(() => {
     setModuleKeyword(moduleKeywordInput);
-    setModulePage(1);
   }, [moduleKeywordInput]);
 
   const updateTableScrollY = useCallback(() => {
@@ -980,15 +971,6 @@ export default function AdminMatlabEnginePage() {
         hideAdd
         activeKey="list"
         className="admin-matlab-tabs"
-        tabBarExtraContent={
-          <Space>
-            {canManage && (
-              <Button type="primary" onClick={openCreateModule}>
-                <PlusOutlined /> 新建模块
-              </Button>
-            )}
-          </Space>
-        }
         items={[
           {
             key: "list",
@@ -1004,7 +986,17 @@ export default function AdminMatlabEnginePage() {
                       <AntCard
                         className="admin-matlab-tree-card"
                         style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-                        bodyStyle={{ flex: 1, padding: 0 }}
+                        styles={{ body: { flex: 1, padding: 0 } }}
+                        actions={canManage ? [
+                          <Button
+                            type="text"
+                            key="add-module"
+                            onClick={openCreateModule}
+                            style={{ width: "100%", color: "var(--ant-color-primary)" }}
+                          >
+                            <PlusOutlined /> 新建模块
+                          </Button>,
+                        ] : undefined}
                       >
                         {modulesQuery.data && modulesQuery.data.length > 0 && (
                           <div className="admin-matlab-sider-search">
@@ -1029,7 +1021,7 @@ export default function AdminMatlabEnginePage() {
                               </div>
                             )}
                             <div className="admin-matlab-sider-menu">
-                              {modulePageSlice.map((item) => (
+                              {filteredModules.map((item) => (
                                 <div
                                   key={item.slug}
                                   className={`admin-matlab-module-item ${effectiveSlug === item.slug ? "admin-matlab-module-item--active" : ""}`}
@@ -1086,20 +1078,6 @@ export default function AdminMatlabEnginePage() {
                                   )}
                                 </div>
                               ))}
-                              <div className="admin-matlab-module-pagination">
-                                <Pagination
-                                  current={modulePage}
-                                  pageSize={modulePageSize}
-                                  total={filteredModules.length}
-                                  onChange={(page, pageSize) => {
-                                    setModulePage(page);
-                                    setModulePageSize(pageSize);
-                                  }}
-                                  showSizeChanger
-                                  pageSizeOptions={[12, 24, 48]}
-                                  showTotal={(total) => `共 ${total} 条`}
-                                />
-                              </div>
                             </div>
                           </>
                         ) : (
