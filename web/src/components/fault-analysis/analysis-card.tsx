@@ -63,8 +63,7 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
           <DeploymentUnitOutlined className="text-base text-gray-500" />
           <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
             <div className="flex flex-1 min-w-0 flex-col">
-              <Text strong className="truncate">{analysis.line_name}</Text>
-              <Text type="secondary" className="truncate text-xs">{analysis.title}</Text>
+              <Text strong className="truncate">{analysis.title}</Text>
             </div>
             <div className="flex flex-shrink-0 items-center gap-2">
               <Badge status={status.color} />
