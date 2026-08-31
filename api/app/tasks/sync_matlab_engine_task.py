@@ -118,6 +118,14 @@ def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_
         # 而判别服务按 compiled_dir 根目录查找可执行文件，需将内容上移一层。
         _flatten_wrapper_dir(target_dir, log_parts)
 
+        # LP-530：Windows 打的 zip 不带 Unix 权限位，解压后可执行文件无 x 位，
+        # 判别任务（非 root 用户）直接 exec 会 PermissionError，需显式补可执行位。
+        for exe_name in ("RunWaveAnalysisModule", "run_RunWaveAnalysisModule.sh"):
+            exe_path = target_dir / exe_name
+            if exe_path.is_file():
+                exe_path.chmod(0o755)
+                log_parts.append(f"[{task_id}] Set executable bit on {exe_name}")
+
         log_parts.append(f"[{task_id}] Extracted engine files to {target_dir}")
 
         exe_names = ("RunWaveAnalysisModule", "waveform_engine_v2.exe", "waveform_engine.exe")
