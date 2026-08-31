@@ -1,29 +1,11 @@
 "use client";
 
-import {
-  ClockCircleOutlined,
-  CloudSyncOutlined,
-  DeleteOutlined,
-  DeploymentUnitOutlined,
-  EditOutlined,
-  EyeOutlined,
-  InboxOutlined,
-  MoreOutlined,
-  PlusOutlined,
-  RollbackOutlined,
-  SearchOutlined,
-  UploadOutlined,
-  CodeOutlined,
-  SwapOutlined,
-  ApartmentOutlined,
-} from "@ant-design/icons";
-import dayjs from "dayjs";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  App,
-  Alert,
-  Badge,
   Button,
+  Card,
   Col,
   Dropdown,
   Empty,
@@ -33,26 +15,41 @@ import {
   Modal,
   Pagination,
   Row,
-  Segmented,
   Select,
-  Space,
+  Skeleton,
   Spin,
-  Table,
+  Space,
   Tabs,
+  Table,
   Tag,
   Tooltip,
   Typography,
   Upload,
+  type CardProps,
   type MenuProps,
+  type TableColumnsType,
 } from "antd";
+import {
+  ClockCircleOutlined,
+  CloudSyncOutlined,
+  CodeOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  EyeOutlined,
+  InboxOutlined,
+  MoreOutlined,
+  PlusOutlined,
+  SearchOutlined,
+  SwapOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
 import type { UploadFile } from "antd/es/upload";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import type { ComponentType, RefAttributes } from "react";
 
-import { AdminPageLoading } from "@/components/admin-page-loading";
-import { Card } from "@/components/ui-antd";
 import { useAuth } from "@/components/auth-provider";
-import { useMobileDetection } from "@/hooks/use-mobile-detection";
+import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
+import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { ApiError } from "@/lib/api";
 import {
   createMatlabModule,
@@ -80,6 +77,8 @@ type PublishFormValues = {
   changelog?: string;
 };
 
+type VersionStatusFilter = "draft" | "released" | undefined;
+
 const DEFAULT_MODULE_FORM_VALUES: ModuleFormValues = {
   name: "",
   slug: "",
@@ -93,10 +92,12 @@ const DEFAULT_PUBLISH_FORM_VALUES: PublishFormValues = {
   changelog: "",
 };
 
-const TABLE_MIN_SCROLL_Y = 180;
-const TABLE_ESTIMATED_HEADER_HEIGHT = 56;
-const TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
-const TABLE_BOTTOM_GAP = 8;
+const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
+
+const MATLAB_TABLE_MIN_SCROLL_Y = 180;
+const MATLAB_TABLE_VIEWPORT_GAP = 40;
+const MATLAB_TABLE_FALLBACK_RESERVE = 232;
+const MATLAB_TABLE_EXTRA_HEIGHT = 14;
 
 function formatSize(bytes: number): string {
   if (!bytes) return "-";
@@ -106,25 +107,51 @@ function formatSize(bytes: number): string {
 }
 
 function formatDateTime(value: string | null | undefined): string {
-  if (!value) {
-    return "-";
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+  const seconds = String(parsed.getSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+function versionStatusLabel(value: VersionStatusFilter): string {
+  if (value === "draft") return "草稿";
+  if (value === "released") return "已发布";
+  return "-";
+}
+
+// 状态过滤下拉的选中项/选项以 Tag 展示，颜色与表格状态列保持一致
+function versionStatusTag(value: unknown): React.ReactNode {
+  if (value === "draft") {
+    return <Tag color="orange">草稿</Tag>;
   }
-  const parsed = dayjs(value);
-  if (!parsed.isValid()) {
-    return "-";
+  if (value === "released") {
+    return <Tag color="green">已发布</Tag>;
   }
-  return parsed.format("YYYY-MM-DD HH:mm:ss");
+  return <Tag>{versionStatusLabel(undefined)}</Tag>;
 }
 
 export default function AdminMatlabEnginePage() {
-  const { message: messageApi } = App.useApp();
   const { user, initializing, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
   const [form] = Form.useForm<ModuleFormValues>();
   const [publishForm] = Form.useForm<PublishFormValues>();
 
-  const [apiError, setApiError] = useState<ApiError | null>(null);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  useToastFeedback({
+    errorMessage: error,
+    successMessage: success,
+    clearError: () => setError(""),
+    clearSuccess: () => setSuccess(""),
+  });
+
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
 
   const [moduleModalOpen, setModuleModalOpen] = useState(false);
@@ -136,250 +163,28 @@ export default function AdminMatlabEnginePage() {
   const [previewFiles, setPreviewFiles] = useState<string[]>([]);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
 
+  // 版本筛选
+  const [keywordInput, setKeywordInput] = useState("");
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [statusFilterInput, setStatusFilterInput] = useState<VersionStatusFilter>(undefined);
+  const [statusFilter, setStatusFilter] = useState<VersionStatusFilter>(undefined);
+  // 模块筛选（左侧栏）
   const [moduleKeywordInput, setModuleKeywordInput] = useState("");
   const [moduleKeyword, setModuleKeyword] = useState("");
-  const [versionKeywordInput, setVersionKeywordInput] = useState("");
-  const [versionKeyword, setVersionKeyword] = useState("");
-  const [versionStatus, setVersionStatus] = useState<"draft" | "released" | undefined>(undefined);
   const [modulePage, setModulePage] = useState(1);
   const [modulePageSize, setModulePageSize] = useState(12);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
-  const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
 
-  const [leftPanelWidth, setLeftPanelWidth] = useState(240);
-  const isResizing = useRef(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  const [tableScrollY, setTableScrollY] = useState(MATLAB_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
-  const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
-  const [viewMode, setViewMode] = useState<"card" | "list">(isMobile ? "card" : "card");
-
-  const canManage = hasPermission("line.manage");
-  const canRead = hasPermission("line.read") || canManage;
-
-  const modulesQuery = useQuery({
-    queryKey: ["admin.matlab.modules"],
-    enabled: canRead,
-    queryFn: async () => fetchMatlabModules(),
-  });
-
-  const versionsQuery = useQuery({
-    queryKey: ["admin.matlab.versions", selectedSlug],
-    enabled: Boolean(canRead && selectedSlug),
-    queryFn: async () => {
-      if (!selectedSlug) return { draft: null, releases: [] };
-      return fetchMatlabModuleVersions(selectedSlug);
-    },
-  });
-
-  const syncMutation = useMutation({
-    mutationFn: async (slug: string) => syncMatlabModule(slug),
-    onSuccess: (_data, slug) => {
-      messageApi.success("同步任务已提交，请等待 Worker 处理");
-      void queryClient.invalidateQueries({ queryKey: ["admin.matlab.versions", slug] });
-    },
-    onError: (candidate) => {
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "同步失败"));
-    },
-  });
-
-  const deleteModuleMutation = useMutation({
-    mutationFn: async (item: MatlabModule) => deleteMatlabModule(item.slug),
-    onSuccess: async (_data, item) => {
-      messageApi.success("模块已删除");
-      await modulesQuery.refetch();
-      if (selectedSlug === item.slug) {
-        const remaining = modulesQuery.data?.filter((m) => m.slug !== item.slug) ?? [];
-        setSelectedSlug(remaining[0]?.slug ?? null);
-      }
-    },
-    onError: (candidate) => {
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "删除失败"));
-    },
-  });
-
-  const saveModuleMutation = useMutation({
-    mutationFn: async (values: ModuleFormValues) => {
-      const payload = {
-        name: values.name.trim(),
-        slug: values.slug?.trim() || values.name.trim(),
-        description: values.description?.trim() || "",
-        worker_deploy_path: values.worker_deploy_path?.trim() || "",
-        required_files: (values.required_files || "")
-          .split(/[\n,，]+/)
-          .map((item) => item.trim())
-          .filter(Boolean),
-      };
-      if (editingModule) {
-        await updateMatlabModule(editingModule.slug, payload);
-        return { mode: "updated" as const, module: editingModule };
-      }
-      const created = await createMatlabModule(payload);
-      return { mode: "created" as const, module: created };
-    },
-    onSuccess: async ({ mode }) => {
-      messageApi.success(mode === "created" ? "模块已创建" : "模块已更新");
-      setModuleModalOpen(false);
-      setEditingModule(null);
-      form.resetFields();
-      await modulesQuery.refetch();
-    },
-    onError: (candidate) => {
-      if (
-        candidate
-        && typeof candidate === "object"
-        && "errorFields" in candidate
-        && Array.isArray((candidate as { errorFields?: unknown }).errorFields)
-      ) {
-        return;
-      }
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "保存失败"));
-    },
-  });
-
-  const uploadMutation = useMutation({
-    mutationFn: async () => {
-      const raw = fileList[0]?.originFileObj;
-      if (!raw) {
-        throw new ApiError("请先选择 ZIP 文件");
-      }
-      if (!selectedSlug) {
-        throw new ApiError("请先选择模块");
-      }
-      await uploadMatlabDraft(selectedSlug, raw);
-    },
-    onSuccess: async () => {
-      messageApi.success("上传成功");
-      setUploadModalOpen(false);
-      setFileList([]);
-      await versionsQuery.refetch();
-    },
-    onError: (candidate) => {
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "上传失败"));
-    },
-  });
-
-  const publishMutation = useMutation({
-    mutationFn: async (values: PublishFormValues) => {
-      if (!selectedSlug || !draft) {
-        throw new ApiError("当前没有草稿版本");
-      }
-      await publishMatlabDraft(selectedSlug, {
-        version_tag: values.version_tag.trim(),
-        changelog: values.changelog?.trim() || "",
-      });
-    },
-    onSuccess: async () => {
-      messageApi.success("发布成功");
-      setPublishModalOpen(false);
-      publishForm.resetFields();
-      await versionsQuery.refetch();
-    },
-    onError: (candidate) => {
-      if (
-        candidate
-        && typeof candidate === "object"
-        && "errorFields" in candidate
-        && Array.isArray((candidate as { errorFields?: unknown }).errorFields)
-      ) {
-        return;
-      }
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "发布失败"));
-    },
-  });
-
-  const rollbackMutation = useMutation({
-    mutationFn: async (version: MatlabVersion) => {
-      if (!selectedSlug) return;
-      await rollbackMatlabVersion(selectedSlug, version.version_hash);
-    },
-    onSuccess: async () => {
-      messageApi.success("已回退为新草稿，请重新发布");
-      await versionsQuery.refetch();
-    },
-    onError: (candidate) => {
-      setApiError(new ApiError(candidate instanceof Error ? candidate.message : "回退失败"));
-    },
-  });
-
-  const refetchCurrent = useCallback(async () => {
-    await modulesQuery.refetch();
-    if (selectedSlug) {
-      await versionsQuery.refetch();
-    }
-  }, [modulesQuery, selectedSlug, versionsQuery]);
-
-  useTopicSubscription(
-    "admin.matlab-engine",
-    useCallback(
-      (event) => {
-        const payload = event.payload as Record<string, unknown> | undefined;
-        const slug = (payload?.slug as string | undefined) ?? null;
-        if (slug === null || slug === selectedSlug) {
-          void refetchCurrent();
-        } else {
-          void modulesQuery.refetch();
-        }
-
-        if (event.name === "engine.sync_completed") {
-          messageApi.success("同步完成");
-        }
-        if (event.name === "engine.sync_failed") {
-          setApiError(new ApiError((payload?.error as string | undefined) ?? "同步失败"));
-        }
-        if (event.name === "engine.draft_uploaded") {
-          messageApi.success("上传成功");
-        }
-        if (event.name === "engine.published") {
-          messageApi.success("发布成功");
-        }
-        if (event.name === "engine.rollbacked") {
-          messageApi.success("已回退");
-        }
-      },
-      [messageApi, modulesQuery, refetchCurrent, selectedSlug],
-    ),
-  );
-
-  const modules = modulesQuery.data ?? [];
-  const totalModules = modules.length;
-  const modulePageSlice = useMemo(() => {
-    const start = (paginationCurrent - 1) * paginationPageSize;
-    return modules.slice(start, start + paginationPageSize);
-  }, [paginationCurrent, paginationPageSize, modules]);
-
-  const selectedModule = useMemo(
-    () => modulesQuery.data?.find((item) => item.slug === selectedSlug) ?? null,
-    [modulesQuery.data, selectedSlug],
-  );
-
-  const draft = versionsQuery.data?.draft ?? null;
-  const releases = versionsQuery.data?.releases ?? [];
-  const currentRelease = releases[0] ?? null;
-
-  const allVersions = useMemo(() => {
-    const items: MatlabVersion[] = [];
-    if (draft) items.push(draft);
-    items.push(...releases);
-    return items;
-  }, [draft, releases]);
-
-  const filteredVersions = useMemo(() => {
-    const keyword = versionKeyword.trim().toLowerCase();
-    let result = allVersions;
-    if (keyword) {
-      result = result.filter((item) => {
-        const text = `${item.version_tag ?? ""} ${item.version_hash} ${item.changelog ?? ""} ${item.uploaded_by_name ?? item.uploaded_by ?? ""}`.toLowerCase();
-        return text.includes(keyword);
-      });
-    }
-    if (versionStatus === "draft") {
-      result = result.filter((item) => item === draft);
-    }
-    if (versionStatus === "released") {
-      result = result.filter((item) => item !== draft);
-    }
-    return result;
-  }, [allVersions, draft, versionKeyword, versionStatus]);
+  const viewMode: "table" | "card" = isMobile ? "card" : "table";
+  const [cardViewPage, setCardViewPage] = useState(1);
+  const [allLoadedVersions, setAllLoadedVersions] = useState<MatlabVersion[]>([]);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const pageCardRef = useRef<HTMLDivElement | null>(null);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(240);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isResizing = useRef(false);
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -408,6 +213,322 @@ export default function AdminMatlabEnginePage() {
       document.removeEventListener("mouseup", handleMouseUp);
     };
   }, []);
+
+  const canRead = hasPermission("line.read") || hasPermission("line.manage");
+  const canManage = hasPermission("line.manage");
+
+  // 切换模块时统一重置版本列表相关状态（卡片视图、分页）
+  const selectModule = useCallback((slug: string | null) => {
+    setSelectedSlug(slug);
+    setCardViewPage(1);
+    setAllLoadedVersions([]);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  }, []);
+
+  const modulesQuery = useQuery({
+    queryKey: ["admin.matlab.modules"],
+    enabled: !!user && canRead,
+    queryFn: async () => fetchMatlabModules(),
+  });
+
+  const modules = useMemo(() => modulesQuery.data ?? [], [modulesQuery.data]);
+  // 当前生效的模块：优先用户显式选择，未选择时自动取第一个模块
+  const effectiveSlug = selectedSlug ?? modules[0]?.slug ?? null;
+
+  const versionsQuery = useQuery({
+    queryKey: ["admin.matlab.versions", effectiveSlug],
+    enabled: Boolean(user && canRead && effectiveSlug),
+    queryFn: async () => {
+      if (!effectiveSlug) return { draft: null, releases: [] };
+      return fetchMatlabModuleVersions(effectiveSlug);
+    },
+  });
+
+  const refreshCurrent = useCallback(async () => {
+    await modulesQuery.refetch();
+    if (effectiveSlug) {
+      await versionsQuery.refetch();
+    }
+  }, [effectiveSlug, modulesQuery, versionsQuery]);
+
+  useTopicSubscription(
+    "admin.matlab-engine",
+    useCallback(
+      (event) => {
+        if (!user || !canRead) return;
+        const payload = event.payload as Record<string, unknown> | undefined;
+        const slug = (payload?.slug as string | undefined) ?? null;
+        if (slug === null || slug === effectiveSlug) {
+          void refreshCurrent();
+        } else {
+          void modulesQuery.refetch();
+        }
+
+        if (event.name === "engine.sync_completed") {
+          setSuccess("同步完成");
+        }
+        if (event.name === "engine.sync_failed") {
+          setError((payload?.error as string | undefined) ?? "同步失败");
+        }
+        if (event.name === "engine.draft_uploaded") {
+          setSuccess("上传成功");
+        }
+        if (event.name === "engine.published") {
+          setSuccess("发布成功");
+        }
+        if (event.name === "engine.rollbacked") {
+          setSuccess("已回退");
+        }
+      },
+      [canRead, effectiveSlug, modulesQuery, refreshCurrent, user],
+    ),
+  );
+
+  const syncMutation = useMutation({
+    mutationFn: async (slug: string) => syncMatlabModule(slug),
+    onSuccess: (_data, slug) => {
+      setSuccess("同步任务已提交，请等待 Worker 处理");
+      void queryClient.invalidateQueries({ queryKey: ["admin.matlab.versions", slug] });
+    },
+    onError: (candidate) => {
+      setError(candidate instanceof Error ? candidate.message : "同步失败");
+    },
+  });
+
+  const deleteModuleMutation = useMutation({
+    mutationFn: async (item: MatlabModule) => deleteMatlabModule(item.slug),
+    onSuccess: async (_data, item) => {
+      setSuccess("模块已删除");
+      await modulesQuery.refetch();
+      // 删除的正好是当前生效模块时，清空显式选择，回落到剩余模块中的第一个
+      if (effectiveSlug === item.slug) {
+        selectModule(null);
+      }
+    },
+    onError: (candidate) => {
+      setError(candidate instanceof Error ? candidate.message : "删除失败");
+    },
+  });
+
+  const saveModuleMutation = useMutation({
+    mutationFn: async (values: ModuleFormValues) => {
+      const payload = {
+        name: values.name.trim(),
+        slug: values.slug?.trim() || values.name.trim(),
+        description: values.description?.trim() || "",
+        worker_deploy_path: values.worker_deploy_path?.trim() || "",
+        required_files: (values.required_files || "")
+          .split(/[\n,，]+/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+      };
+      if (editingModule) {
+        await updateMatlabModule(editingModule.slug, payload);
+        return { mode: "updated" as const, module: editingModule };
+      }
+      const created = await createMatlabModule(payload);
+      return { mode: "created" as const, module: created };
+    },
+    onSuccess: async ({ mode, module }) => {
+      setSuccess(mode === "created" ? "模块已创建" : "模块已更新");
+      setModuleModalOpen(false);
+      setEditingModule(null);
+      form.resetFields();
+      await modulesQuery.refetch();
+      if (mode === "created") {
+        selectModule(module.slug);
+      }
+    },
+    onError: (candidate) => {
+      if (
+        candidate
+        && typeof candidate === "object"
+        && "errorFields" in candidate
+        && Array.isArray((candidate as { errorFields?: unknown }).errorFields)
+      ) {
+        return;
+      }
+      setError(candidate instanceof Error ? candidate.message : "保存失败");
+    },
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: async () => {
+      const raw = fileList[0]?.originFileObj;
+      if (!raw) {
+        throw new ApiError("请先选择 ZIP 文件");
+      }
+      if (!effectiveSlug) {
+        throw new ApiError("请先选择模块");
+      }
+      await uploadMatlabDraft(effectiveSlug, raw);
+    },
+    onSuccess: async () => {
+      setSuccess("上传成功");
+      setUploadModalOpen(false);
+      setFileList([]);
+      await versionsQuery.refetch();
+    },
+    onError: (candidate) => {
+      setError(candidate instanceof Error ? candidate.message : "上传失败");
+    },
+  });
+
+  const publishMutation = useMutation({
+    mutationFn: async (values: PublishFormValues) => {
+      if (!effectiveSlug || !draft) {
+        throw new ApiError("当前没有草稿版本");
+      }
+      await publishMatlabDraft(effectiveSlug, {
+        version_tag: values.version_tag.trim(),
+        changelog: values.changelog?.trim() || "",
+      });
+    },
+    onSuccess: async () => {
+      setSuccess("发布成功");
+      setPublishModalOpen(false);
+      publishForm.resetFields();
+      await versionsQuery.refetch();
+    },
+    onError: (candidate) => {
+      if (
+        candidate
+        && typeof candidate === "object"
+        && "errorFields" in candidate
+        && Array.isArray((candidate as { errorFields?: unknown }).errorFields)
+      ) {
+        return;
+      }
+      setError(candidate instanceof Error ? candidate.message : "发布失败");
+    },
+  });
+
+  const rollbackMutation = useMutation({
+    mutationFn: async (version: MatlabVersion) => {
+      if (!effectiveSlug) return;
+      await rollbackMatlabVersion(effectiveSlug, version.version_hash);
+    },
+    onSuccess: async () => {
+      setSuccess("已回退为新草稿，请重新发布");
+      await versionsQuery.refetch();
+    },
+    onError: (candidate) => {
+      setError(candidate instanceof Error ? candidate.message : "回退失败");
+    },
+  });
+
+  const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
+  const selectedModule = useMemo(
+    () => modules.find((item) => item.slug === effectiveSlug) ?? null,
+    [modules, effectiveSlug],
+  );
+
+  const filteredModules = useMemo(() => {
+    const keyword = moduleKeyword.trim().toLowerCase();
+    if (!keyword) return modules;
+    return modules.filter((item) => {
+      const text = `${item.name} ${item.slug} ${item.description ?? ""}`.toLowerCase();
+      return text.includes(keyword);
+    });
+  }, [moduleKeyword, modules]);
+
+  const modulePageSlice = useMemo(() => {
+    const start = (modulePage - 1) * modulePageSize;
+    return filteredModules.slice(start, start + modulePageSize);
+  }, [filteredModules, modulePage, modulePageSize]);
+
+  const draft = versionsQuery.data?.draft ?? null;
+  const releases = useMemo(() => versionsQuery.data?.releases ?? [], [versionsQuery.data]);
+  const currentRelease = releases[0] ?? null;
+
+  const allVersions = useMemo(() => {
+    const items: MatlabVersion[] = [];
+    if (draft) items.push(draft);
+    items.push(...releases);
+    return items;
+  }, [draft, releases]);
+
+  const filteredVersions = useMemo(() => {
+    const keyword = searchKeyword.trim().toLowerCase();
+    let result = allVersions;
+    if (keyword) {
+      result = result.filter((item) => {
+        const text = `${item.version_tag ?? ""} ${item.version_hash} ${item.changelog ?? ""} ${item.uploaded_by_name ?? item.uploaded_by ?? ""}`.toLowerCase();
+        return text.includes(keyword);
+      });
+    }
+    if (statusFilter === "draft") {
+      result = result.filter((item) => item === draft);
+    }
+    if (statusFilter === "released") {
+      result = result.filter((item) => item !== draft);
+    }
+    return result;
+  }, [allVersions, draft, searchKeyword, statusFilter]);
+
+  const pageVersions = useMemo(() => {
+    const start = (paginationCurrent - 1) * paginationPageSize;
+    return filteredVersions.slice(start, start + paginationPageSize);
+  }, [filteredVersions, paginationCurrent, paginationPageSize]);
+
+  useEffect(() => {
+    if (viewMode !== "card" || versionsQuery.isLoading) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      if (cardViewPage === 1) {
+        setAllLoadedVersions(() => pageVersions);
+      } else {
+        setAllLoadedVersions((prev) => {
+          if (pageVersions.length === 0) {
+            return prev;
+          }
+          const existingHashes = new Set(prev.map((v) => v.version_hash));
+          const newVersions = pageVersions.filter((v) => !existingHashes.has(v.version_hash));
+          return [...prev, ...newVersions];
+        });
+      }
+      setIsLoadingMore(() => false);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [pageVersions, versionsQuery.isLoading, viewMode, cardViewPage]);
+
+  useEffect(() => {
+    if (viewMode !== "card") return;
+
+    const scrollContainer = pageCardRef.current;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      if (isLoadingMore || versionsQuery.isLoading) return;
+
+      const scrollTop = scrollContainer.scrollTop;
+      const scrollHeight = scrollContainer.scrollHeight;
+      const clientHeight = scrollContainer.clientHeight;
+
+      if (scrollTop + clientHeight >= scrollHeight - 100) {
+        const loadedCount = allLoadedVersions.length;
+        if (loadedCount < filteredVersions.length) {
+          setIsLoadingMore(true);
+          setCardViewPage((prev) => prev + 1);
+          setPagination((prev) => ({ ...prev, current: prev.current + 1 }));
+        }
+      }
+    };
+
+    scrollContainer.addEventListener("scroll", handleScroll);
+    return () => scrollContainer.removeEventListener("scroll", handleScroll);
+  }, [viewMode, isLoadingMore, versionsQuery.isLoading, allLoadedVersions.length, filteredVersions.length]);
+
+  const openPreview = (title: string, files: string[]) => {
+    setPreviewTitle(title);
+    setPreviewFiles(files);
+    setPreviewOpen(true);
+  };
 
   const openCreateModule = useCallback(() => {
     setEditingModule(null);
@@ -460,117 +581,307 @@ export default function AdminMatlabEnginePage() {
 
   const handleRollback = useCallback(
     async (version: MatlabVersion) => {
-      if (!selectedSlug) return;
+      if (!effectiveSlug) return;
       await rollbackMutation.mutateAsync(version);
     },
-    [rollbackMutation, selectedSlug],
+    [effectiveSlug, rollbackMutation],
   );
 
   const handleSync = useCallback(async () => {
-    if (!selectedSlug) return;
-    await syncMutation.mutateAsync(selectedSlug);
-  }, [selectedSlug, syncMutation]);
+    if (!effectiveSlug) return;
+    await syncMutation.mutateAsync(effectiveSlug);
+  }, [effectiveSlug, syncMutation]);
 
-  const handleVersionSearch = useCallback(() => {
-    setVersionKeyword(versionKeywordInput);
+  const handleQuery = useCallback(() => {
+    setSearchKeyword(keywordInput);
+    setStatusFilter(statusFilterInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
-  }, [versionKeywordInput]);
+    setCardViewPage(1);
+    setAllLoadedVersions([]);
+  }, [keywordInput, statusFilterInput]);
 
   const handleModuleSearch = useCallback(() => {
     setModuleKeyword(moduleKeywordInput);
+    setModulePage(1);
   }, [moduleKeywordInput]);
 
-  const handleVersionStatusChange = useCallback((value: "draft" | "released" | undefined) => {
-    setVersionStatus(value);
-    setPagination((prev) => ({ ...prev, current: 1 }));
-  }, []);
-
   const updateTableScrollY = useCallback(() => {
-    if (typeof window === "undefined") return TABLE_MIN_SCROLL_Y;
+    if (typeof window === "undefined") {
+      return;
+    }
     const anchor = tableScrollAnchorRef.current;
-    if (!anchor) return TABLE_MIN_SCROLL_Y;
-    const anchorHeight = anchor.getBoundingClientRect().height;
-    const header = anchor.querySelector<HTMLElement>(".ant-table-header");
-    const pagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
-    const headerHeight = header?.getBoundingClientRect().height ?? TABLE_ESTIMATED_HEADER_HEIGHT;
-    const paginationHeight = pagination?.getBoundingClientRect().height ?? TABLE_ESTIMATED_PAGINATION_HEIGHT;
-    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - TABLE_BOTTOM_GAP);
-    return Math.max(TABLE_MIN_SCROLL_Y, nextHeight);
+    if (!anchor) {
+      return;
+    }
+
+    const anchorTop = anchor.getBoundingClientRect().top;
+    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
+    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
+
+    let nextHeight = Math.floor(window.innerHeight - anchorTop - MATLAB_TABLE_FALLBACK_RESERVE);
+    if (tableWrapper) {
+      const wrapperRect = tableWrapper.getBoundingClientRect();
+      const bodyHeight = tableBody?.getBoundingClientRect().height ?? MATLAB_TABLE_MIN_SCROLL_Y;
+      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
+      const topGap = Math.max(0, wrapperRect.top - anchorTop);
+      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - MATLAB_TABLE_VIEWPORT_GAP);
+    }
+
+    const clampedHeight = Math.max(MATLAB_TABLE_MIN_SCROLL_Y, nextHeight + MATLAB_TABLE_EXTRA_HEIGHT);
+    setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const frameId = window.requestAnimationFrame(() => {
-      const nextHeight = updateTableScrollY();
-      setTableScrollY((previous) => (Math.abs(previous - nextHeight) <= 1 ? previous : nextHeight));
-    });
-    return () => window.cancelAnimationFrame(frameId);
-  }, [updateTableScrollY, viewMode, filteredVersions.length, versionsQuery.isFetching]);
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.requestAnimationFrame(updateTableScrollY);
+  }, [paginationCurrent, paginationPageSize, pageVersions.length, versionsQuery.isFetching, updateTableScrollY]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") {
+      return;
+    }
+
     const onViewportChange = () => {
-      window.requestAnimationFrame(() => {
-        const nextHeight = updateTableScrollY();
-        setTableScrollY((previous) => (Math.abs(previous - nextHeight) <= 1 ? previous : nextHeight));
-      });
+      window.requestAnimationFrame(updateTableScrollY);
     };
+
     window.addEventListener("resize", onViewportChange);
-    return () => window.removeEventListener("resize", onViewportChange);
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+    };
   }, [updateTableScrollY]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") return;
+    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
     const anchor = tableScrollAnchorRef.current;
-    if (!anchor) return;
+    if (!anchor) {
+      return;
+    }
+
     const resizeObserver = new ResizeObserver(() => {
-      window.requestAnimationFrame(() => {
-        const nextHeight = updateTableScrollY();
-        setTableScrollY((previous) => (Math.abs(previous - nextHeight) <= 1 ? previous : nextHeight));
-      });
+      window.requestAnimationFrame(updateTableScrollY);
     });
     resizeObserver.observe(anchor);
-    return () => resizeObserver.disconnect();
+
+    return () => {
+      resizeObserver.disconnect();
+    };
   }, [updateTableScrollY]);
 
-  useEffect(() => {
-    if (modulesQuery.data?.length && !selectedSlug) {
-      setSelectedSlug(modulesQuery.data[0].slug);
-    }
-  }, [modulesQuery.data, selectedSlug]);
+  const skeletonMenu = (
+    <div className="admin-matlab-skeleton-menu">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className="admin-matlab-skeleton-item"
+          style={i % 3 === 0 ? {} : { paddingLeft: 20 }}
+        >
+          <Skeleton.Input active size="small" block style={{ width: `${50 + (i % 3) * 15}%` }} />
+        </div>
+      ))}
+    </div>
+  );
 
+  const columns = useMemo<TableColumnsType<MatlabVersion>>(() => {
+    const baseColumns: TableColumnsType<MatlabVersion> = [
+      {
+        title: "版本号",
+        dataIndex: "version_tag",
+        key: "version_tag",
+        width: 150,
+        render: (value: string, record: MatlabVersion) => {
+          const isDraft = record === draft;
+          return (
+            <Space size={6} wrap>
+              <Typography.Text>{value || "-"}</Typography.Text>
+              <Tag color={isDraft ? "orange" : "green"}>{isDraft ? "草稿" : "已发布"}</Tag>
+            </Space>
+          );
+        },
+      },
+      {
+        title: "Hash",
+        dataIndex: "version_hash",
+        key: "version_hash",
+        width: 200,
+        render: (hash: string) => <Typography.Text copyable={{ text: hash }} className="font-mono text-xs">{hash}</Typography.Text>,
+      },
+      {
+        title: "变更日志",
+        dataIndex: "changelog",
+        key: "changelog",
+        ellipsis: true,
+        render: (text: string) => text || "-",
+      },
+      {
+        title: "发布时间",
+        dataIndex: "upload_time",
+        key: "upload_time",
+        width: 170,
+        render: (value: string) => formatDateTime(value),
+      },
+      {
+        title: "发布人",
+        dataIndex: "uploaded_by_name",
+        key: "uploaded_by_name",
+        width: 120,
+        render: (name: string, record: MatlabVersion) => name || record.uploaded_by || "-",
+      },
+      {
+        title: "大小",
+        dataIndex: "size_bytes",
+        key: "size_bytes",
+        width: 100,
+        render: (size: number) => formatSize(size),
+      },
+    ];
+
+    baseColumns.push({
+      title: "操作",
+      key: "actions",
+      width: 220,
+      fixed: "right",
+      render: (_, record) => {
+        const isDraft = record === draft;
+
+        const moreMenuItems: MenuProps["items"] = [
+          {
+            key: "preview",
+            label: "查看文件列表",
+            onClick: () => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || []),
+          },
+          ...(isDraft && canManage
+            ? [
+                {
+                  key: "publish",
+                  label: "发布",
+                  onClick: () => openPublishModal(),
+                } as const,
+              ]
+            : []),
+          ...(!isDraft && canManage
+            ? [
+                {
+                  key: "rollback",
+                  label: "回退",
+                  danger: true,
+                  onClick: () => {
+                    Modal.confirm({
+                      title: "回退到此版本",
+                      content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
+                      okText: "回退",
+                      cancelText: "取消",
+                      okButtonProps: { danger: true },
+                      onOk: () => handleRollback(record),
+                    });
+                  },
+                } as const,
+              ]
+            : []),
+        ];
+
+        return (
+          <Space wrap>
+            <Button
+              size="small"
+              onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}
+            >
+              查看文件列表
+            </Button>
+            {isDraft && canManage ? (
+              <Button size="small" type="primary" onClick={() => openPublishModal()}>
+                发布
+              </Button>
+            ) : !isDraft && canManage ? (
+              <Button
+                size="small"
+                danger
+                onClick={() => {
+                  Modal.confirm({
+                    title: "回退到此版本",
+                    content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
+                    okText: "回退",
+                    cancelText: "取消",
+                    okButtonProps: { danger: true },
+                    onOk: () => handleRollback(record),
+                  });
+                }}
+              >
+                回退
+              </Button>
+            ) : null}
+            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+              <Button size="small" icon={<MoreOutlined />} />
+            </Dropdown>
+          </Space>
+        );
+      },
+    });
+
+    return baseColumns;
+  }, [canManage, draft, handleRollback, openPublishModal]);
   if (initializing) {
-    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
-  }
-
-  if (!user || !canRead) {
     return (
-      <Card title="MATLAB 引擎管理">
-        <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">
-            {!user ? "请先登录后访问。" : "当前账号无权限（需要 line.read）。"}
-          </Typography.Text>
-        </Space>
-      </Card>
+      <div className="flex min-h-[240px] items-center justify-center">
+        <Spin />
+      </div>
     );
   }
 
-  const openPreview = (title: string, files: string[]) => {
-    setPreviewTitle(title);
-    setPreviewFiles(files);
-    setPreviewOpen(true);
-  };
+  if (!user) {
+    return (
+      <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
+        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问 MATLAB 引擎管理页面。</p>
+        <Link
+          href="/"
+          className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
+        >
+          返回首页
+        </Link>
+      </main>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
+        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `line.read`）。</p>
+        <Link
+          href="/"
+          className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
+        >
+          返回首页
+        </Link>
+      </main>
+    );
+  }
 
   const renderVersionCard = (item: MatlabVersion) => {
     const isDraft = item === draft;
-    const statusConfig = isDraft ? { color: "warning", text: "草稿" } : { color: "success", text: "已发布" };
+    const statusConfig = isDraft ? { color: "warning" as const, text: "草稿" } : { color: "success" as const, text: "已发布" };
+    const rowBusy = uploadMutation.isPending || publishMutation.isPending || rollbackMutation.isPending;
+
     const moreMenuItems: MenuProps["items"] = [
       {
         key: "preview",
         label: "查看文件列表",
         onClick: () => openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []),
       },
-      ...(canManage && !isDraft
+      ...(isDraft && canManage
+        ? [
+            {
+              key: "publish",
+              label: "发布",
+              onClick: () => openPublishModal(),
+            } as const,
+          ]
+        : []),
+      ...(!isDraft && canManage
         ? [
             {
               key: "rollback",
@@ -604,8 +915,7 @@ export default function AdminMatlabEnginePage() {
             <CodeOutlined className="text-base text-gray-500" />
             <Typography.Text strong className="truncate flex-1">{item.version_tag || "未命名版本"}</Typography.Text>
             <div className="flex flex-shrink-0 items-center gap-2">
-              <Badge status={statusConfig.color as "default" | "processing" | "success" | "error"} />
-              <Typography.Text type="secondary" className="text-xs">{statusConfig.text}</Typography.Text>
+              <Tag color={statusConfig.color === "warning" ? "orange" : "green"}>{statusConfig.text}</Tag>
             </div>
           </div>
 
@@ -628,513 +938,56 @@ export default function AdminMatlabEnginePage() {
             </div>
           </div>
 
-           <div className="admin-matlab-version-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
-             {isDraft && canManage ? (
-               <Button type="primary" size="small" onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
-                 发布
-               </Button>
-             ) : (
-               <Space size="small">
-                 <Tooltip title="查看文件列表">
-                   <Button
-                     type="text"
-                     size="small"
-                     icon={<EyeOutlined />}
-                     onClick={(event) => {
-                       event.stopPropagation();
-                       openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []);
-                     }}
-                   />
-                 </Tooltip>
-               </Space>
-             )}
-             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-               <Button
-                 type="text"
-                 size="small"
-                 icon={<MoreOutlined />}
-                 onClick={(event) => event.stopPropagation()}
-               />
-             </Dropdown>
-           </div>
-        </div>
-      </Card>
-    );
-  };
-
-  const columns = useMemo(
-    () => [
-      {
-        title: "版本号",
-        dataIndex: "version_tag",
-        key: "version_tag",
-        width: 140,
-        render: (value: string, record: MatlabVersion) => {
-          const isDraft = record === draft;
-          const statusConfig = isDraft ? { color: "warning", text: "草稿" } : { color: "success", text: "已发布" };
-          return (
-            <Space size={6}>
-              <Typography.Text>{value || "-"}</Typography.Text>
-              <Badge status={statusConfig.color as "default" | "processing" | "success" | "error"} />
-              <Typography.Text type="secondary" className="admin-matlab-version-status-text text-xs">{statusConfig.text}</Typography.Text>
-            </Space>
-          );
-        },
-      },
-      {
-        title: "Hash",
-        dataIndex: "version_hash",
-        key: "version_hash",
-        width: 220,
-        render: (hash: string) => <Typography.Text copyable={{ text: hash }}>{hash}</Typography.Text>,
-      },
-      {
-        title: "变更日志",
-        dataIndex: "changelog",
-        key: "changelog",
-        ellipsis: true,
-        render: (text: string) => text || "-",
-      },
-      {
-        title: "发布时间",
-        dataIndex: "upload_time",
-        key: "upload_time",
-        width: 180,
-        render: (value: string) => formatDateTime(value),
-      },
-      {
-        title: "发布人",
-        dataIndex: "uploaded_by_name",
-        key: "uploaded_by_name",
-        width: 120,
-        render: (name: string, record: MatlabVersion) => name || record.uploaded_by || "-",
-      },
-      {
-        title: "大小",
-        dataIndex: "size_bytes",
-        key: "size_bytes",
-        width: 110,
-        render: (size: number) => formatSize(size),
-      },
-      {
-        title: "操作",
-        key: "actions",
-        width: 200,
-        fixed: "right" as const,
-        render: (_: unknown, record: MatlabVersion) => {
-          const moreMenuItems: MenuProps["items"] = [
-            ...(record === draft && canManage
-              ? [
-                  {
-                    key: "publish",
-                    label: "发布",
-                    onClick: () => openPublishModal(),
-                  },
-                ]
-              : []),
-            {
-              key: "preview",
-              label: "查看文件列表",
-              onClick: () => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || []),
-            },
-            ...(canManage && record !== draft
-              ? [
-                  {
-                    key: "rollback",
-                    label: "回退",
-                    danger: true,
-                    onClick: () => {
-                      Modal.confirm({
-                        title: "回退到此版本",
-                        content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
-                        okText: "回退",
-                        cancelText: "取消",
-                        okButtonProps: { danger: true },
-                        onOk: () => handleRollback(record),
-                      });
-                    },
-                  },
-                ]
-              : []),
-          ];
-
-          return (
-            <Space size={4}>
-              <Button size="small" onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}>
-                查看文件列表
+          <div className="admin-matlab-version-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+            {isDraft && canManage ? (
+              <Button type="primary" size="small" disabled={rowBusy} onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
+                发布
               </Button>
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button size="small" icon={<MoreOutlined />} />
-              </Dropdown>
-            </Space>
-          );
-        },
-      },
-    ],
-    [canManage, draft, handleRollback, openPublishModal],
-  );
-
-  const renderModuleCard = (item: MatlabModule) => {
-    const moreMenuItems: MenuProps["items"] = [
-      {
-        key: "edit",
-        label: "编辑",
-        icon: <EditOutlined />,
-        onClick: () => openEditModule(item),
-      },
-      {
-        key: "delete",
-        label: "删除",
-        icon: <DeleteOutlined />,
-        danger: true,
-        onClick: () => {
-          Modal.confirm({
-            title: `确认删除模块"${item.name}"吗？`,
-            okText: "删除",
-            cancelText: "取消",
-            okButtonProps: { danger: true },
-            onOk: () => deleteModule(item),
-          });
-        },
-      },
-    ];
-
-    return (
-      <Card
-        key={item.slug}
-        className="admin-matlab-module-card"
-        size="small"
-        hoverable
-        onClick={() => setSelectedSlug(item.slug)}
-      >
-        <div className="flex flex-col">
-          <div className="admin-matlab-module-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
-            <DeploymentUnitOutlined className="text-base text-gray-500" />
-            <Typography.Text strong className="truncate flex-1">{item.name}</Typography.Text>
-            <Tag color="blue" className="flex-shrink-0 truncate max-w-[140px]">{item.slug}</Tag>
-          </div>
-
-          <div className="flex flex-col gap-2 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <EditOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs">描述：{item.description || "-"}</Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
-              <ApartmentOutlined className="text-xs text-gray-500" />
-              <Typography.Text className="text-xs">部署路径：{item.worker_deploy_path || "-"}</Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
-              <InboxOutlined className="text-xs text-gray-500" />
-              <Typography.Text className="text-xs">必需文件：{(item.required_files || []).join(", ") || "-"}</Typography.Text>
-            </div>
-          </div>
-
-          <div className="admin-matlab-module-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
-            <div />
-            {canManage && (
+            ) : (
               <Space size="small">
-                <Tooltip title="编辑">
+                <Tooltip title="查看文件列表">
                   <Button
                     type="text"
                     size="small"
-                    icon={<EditOutlined />}
+                    icon={<EyeOutlined />}
                     onClick={(event) => {
                       event.stopPropagation();
-                      openEditModule(item);
+                      openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []);
                     }}
                   />
                 </Tooltip>
-                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<MoreOutlined />}
-                    onClick={(event) => event.stopPropagation()}
-                  />
-                </Dropdown>
               </Space>
             )}
+            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+              <Button
+                type="text"
+                size="small"
+                icon={<MoreOutlined />}
+                onClick={(event) => event.stopPropagation()}
+              />
+            </Dropdown>
           </div>
         </div>
       </Card>
     );
   };
 
-  // ---- Render left panel (module list) ----
-  const renderLeftPanel = () => (
-    <>
-      <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
-        <Card
-          className="admin-matlab-tree-card"
-          style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-          bodyStyle={{ flex: 1, padding: 0 }}
-        >
-          {canManage && (
-            <div className="admin-matlab-sider-header">
-              <div className="admin-matlab-sider-title">模块列表</div>
-              <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreateModule}>
-                新建模块
-              </Button>
-            </div>
-          )}
-          <div className="admin-matlab-sider-search">
-            <Space direction="vertical" size={8} style={{ width: "100%" }}>
-              <Input
-                className="admin-matlab-search-input"
-                placeholder="按模块名/标识/描述搜索"
-                prefix={<SearchOutlined />}
-                value={moduleKeywordInput}
-                onChange={(e) => setModuleKeywordInput(e.target.value)}
-                onPressEnter={handleModuleSearch}
-                allowClear
-              />
-              <Button
-                htmlType="button"
-                icon={<SearchOutlined />}
-                onClick={handleModuleSearch}
-                block
-                size="small"
-              >
-                搜索
-              </Button>
-            </Space>
-          </div>
-          <div className="admin-matlab-sider-menu">
-            {modulesQuery.isLoading ? (
-              <div className="admin-matlab-module-loading flex justify-center items-center py-12">
-                <Spin />
-              </div>
-            ) : totalModules === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无模块数据" />
-            ) : (
-              <>
-                {modulePageSlice.map((item) => (
-                  <div
-                    key={item.slug}
-                    className={`admin-matlab-module-item ${selectedSlug === item.slug ? "admin-matlab-module-item--active" : ""}`}
-                    onClick={() => setSelectedSlug(item.slug)}
-                  >
-                    <div className="admin-matlab-module-info">
-                      <div className="admin-matlab-module-name">{item.name}</div>
-                      <div className="admin-matlab-module-slug">{item.slug}</div>
-                    </div>
-                  </div>
-                ))}
-                <div className="admin-matlab-module-pagination">
-                  <Pagination
-                    current={modulePage}
-                    pageSize={modulePageSize}
-                    total={totalModules}
-                    onChange={(page, pageSize) => {
-                      setModulePage(page);
-                      setModulePageSize(pageSize);
-                    }}
-                    showSizeChanger
-                    showTotal={(total) => `共 ${total} 条`}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        </Card>
-      </div>
-      <div className="admin-matlab-resize-handle" onMouseDown={handleResizeStart}>
-        <div className="admin-matlab-resize-handle-line" />
-      </div>
-    </>
-  );
-
-  // ---- Render right panel (version list) ----
-  const renderRightPanel = () => {
-    if (!selectedModule) {
-      return (
-        <div className="admin-matlab-main">
-          <Card>
-            <Typography.Text type="secondary">请在左侧选择一个模块查看详情。</Typography.Text>
-          </Card>
-        </div>
-      );
-    }
-
-    return (
-      <div className="admin-matlab-main">
-        <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          {/* Title bar */}
-          <div className="admin-matlab-header">
-            <Space className="min-w-0" size={12}>
-              <Typography.Text strong className="admin-matlab-header-title">
-                {selectedModule.name}
-              </Typography.Text>
-              <Tag color="blue">{selectedModule.slug}</Tag>
-            </Space>
-            <Space size={8} wrap>
-              <Button
-                icon={<CloudSyncOutlined />}
-                onClick={handleSync}
-                loading={syncMutation.isPending}
-                disabled={!canManage || syncMutation.isPending || !currentRelease}
-              >
-                同步到 Worker
-              </Button>
-              {canManage && (
-                <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
-                  上传新包
-                </Button>
-              )}
-            </Space>
-          </div>
-
-          {/* Filter bar */}
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  value={versionKeywordInput}
-                  onChange={(event) => setVersionKeywordInput(event.currentTarget.value)}
-                  placeholder="版本号 / Hash / 变更日志 / 发布人"
-                  onPressEnter={() => handleVersionSearch()}
-                />
-              </Form.Item>
-              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Select<"draft" | "released">
-                  value={versionStatus}
-                  allowClear
-                  placeholder="全部"
-                  onChange={handleVersionStatusChange}
-                  options={[
-                    { value: "draft", label: "草稿" },
-                    { value: "released", label: "已发布" },
-                  ]}
-                />
-              </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button
-                  htmlType="button"
-                  icon={<SearchOutlined />}
-                  onClick={() => handleVersionSearch()}
-                  className="admin-search-btn"
-                >
-                  查询
-                </Button>
-              </Form.Item>
-            </Form>
-            <Segmented
-              value={viewMode}
-              onChange={(value) => setViewMode(value as "card" | "list")}
-              options={[
-                { label: "卡片视图", value: "card" },
-                { label: "列表视图", value: "list" },
-              ]}
-            />
-          </div>
-
-          {apiError && (
-            <Alert
-              type="error"
-              showIcon
-              message={apiError.message || "加载失败"}
-              style={{ marginBottom: 16 }}
-            />
-          )}
-
-          {viewMode === "list" ? (
-            <div
-              ref={tableScrollAnchorRef}
-              className="admin-matlab-table-anchor"
-              style={{ "--admin-matlab-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-            >
-              <Table<MatlabVersion>
-                rowKey="version_hash"
-                dataSource={filteredVersions}
-                columns={columns}
-                loading={versionsQuery.isFetching}
-                tableLayout="fixed"
-                sticky
-                scroll={{ x: 1080, y: tableScrollY }}
-                locale={{
-                  emptyText: (
-                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无版本数据" />
-                  ),
-                }}
-                pagination={{
-                  hideOnSinglePage: false,
-                  showSizeChanger: true,
-                  pageSizeOptions: [6, 12, 24, 48],
-                  current: pagination.current,
-                  pageSize: pagination.pageSize,
-                  total: filteredVersions.length,
-                  onChange: (page, pageSize) => {
-                    setPagination({ current: page, pageSize });
-                  },
-                  showTotal: (total) => `共 ${total} 条`,
-                }}
-              />
-            </div>
-          ) : (
-            <div className="admin-matlab-card-view">
-              {versionsQuery.isLoading && filteredVersions.length === 0 ? (
-                <div className="admin-matlab-card-view-state">
-                  <Spin />
-                </div>
-              ) : filteredVersions.length === 0 ? (
-                <div className="admin-matlab-card-view-state">
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的版本。" />
-                </div>
-              ) : (
-                <>
-                  <div className="admin-matlab-card-view-content">
-                    <Row gutter={[12, 12]}>
-                      {filteredVersions
-                        .slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize)
-                        .map((item) => (
-                          <Col
-                            key={`${item.version_hash}-${item === draft ? "draft" : "release"}`}
-                            xs={24}
-                            sm={24}
-                            md={12}
-                            lg={8}
-                            xl={6}
-                          >
-                            {renderVersionCard(item)}
-                          </Col>
-                        ))}
-                    </Row>
-                  </div>
-                  <div className="admin-matlab-card-pagination">
-                    <Pagination
-                      current={pagination.current}
-                      pageSize={pagination.pageSize}
-                      total={filteredVersions.length}
-                      onChange={(page, pageSize) => {
-                        setPagination({ current: page, pageSize });
-                      }}
-                      showSizeChanger
-                      showTotal={(total) => `共 ${total} 条`}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </Space>
-      </div>
-    );
-  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Tabs
         type="editable-card"
         hideAdd
-        defaultActiveKey="list"
+        activeKey="list"
         className="admin-matlab-tabs"
         tabBarExtraContent={
-          canManage ? (
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModule}>
-              新建模块
-            </Button>
-          ) : null
+          <Space>
+            {canManage && (
+              <Button type="primary" onClick={openCreateModule}>
+                <PlusOutlined /> 新建模块
+              </Button>
+            )}
+          </Space>
         }
         items={[
           {
@@ -1143,9 +996,293 @@ export default function AdminMatlabEnginePage() {
             closable: false,
             children: (
               <div className="admin-matlab-list-pane">
+                {/* ===== Body Area: Two-column layout ===== */}
                 <div ref={containerRef} className="admin-matlab-page-body">
-                  {!isMobile ? renderLeftPanel() : null}
-                  {renderRightPanel()}
+                  {/* Module Sidebar */}
+                  {!isMobile && (
+                    <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
+                      <AntCard
+                        className="admin-matlab-tree-card"
+                        style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
+                        bodyStyle={{ flex: 1, padding: 0 }}
+                      >
+                        {modulesQuery.data && modulesQuery.data.length > 0 && (
+                          <div className="admin-matlab-sider-search">
+                            <Input
+                              className="admin-matlab-search-input"
+                              placeholder="搜索模块..."
+                              prefix={<SearchOutlined />}
+                              value={moduleKeywordInput}
+                              onChange={(e) => setModuleKeywordInput(e.target.value)}
+                              onPressEnter={handleModuleSearch}
+                              allowClear
+                            />
+                          </div>
+                        )}
+                        {modulesQuery.isLoading ? (
+                          skeletonMenu
+                        ) : modulesQuery.data && modulesQuery.data.length > 0 ? (
+                          <>
+                            {moduleKeyword && (
+                              <div className="admin-matlab-search-results-count">
+                                {`找到 ${filteredModules.length} 个模块`}
+                              </div>
+                            )}
+                            <div className="admin-matlab-sider-menu">
+                              {modulePageSlice.map((item) => (
+                                <div
+                                  key={item.slug}
+                                  className={`admin-matlab-module-item ${effectiveSlug === item.slug ? "admin-matlab-module-item--active" : ""}`}
+                                  onClick={() => selectModule(item.slug)}
+                                >
+                                  <div className="admin-matlab-module-info">
+                                    <div className="admin-matlab-module-name">{item.name}</div>
+                                    <div className="admin-matlab-module-slug">{item.slug}</div>
+                                  </div>
+                                  {canManage && (
+                                    <Dropdown
+                                      menu={{
+                                        items: [
+                                          {
+                                            key: "edit",
+                                            label: "编辑",
+                                            icon: <EditOutlined />,
+                                            onClick: ({ domEvent }) => {
+                                              domEvent.stopPropagation();
+                                              openEditModule(item);
+                                            },
+                                          },
+                                          {
+                                            key: "delete",
+                                            label: "删除",
+                                            icon: <DeleteOutlined />,
+                                            danger: true,
+                                            onClick: ({ domEvent }) => {
+                                              domEvent.stopPropagation();
+                                              Modal.confirm({
+                                                title: "删除模块",
+                                                content: `确认删除模块"${item.name}"吗？`,
+                                                okText: "删除",
+                                                cancelText: "取消",
+                                                okButtonProps: { danger: true },
+                                                onOk: () => deleteModule(item),
+                                              });
+                                            },
+                                          },
+                                        ],
+                                      }}
+                                      trigger={["click"]}
+                                    >
+                                      <span
+                                        className="admin-matlab-module-item-more"
+                                        role="button"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                        onDoubleClick={(e) => e.stopPropagation()}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <MoreOutlined />
+                                      </span>
+                                    </Dropdown>
+                                  )}
+                                </div>
+                              ))}
+                              <div className="admin-matlab-module-pagination">
+                                <Pagination
+                                  current={modulePage}
+                                  pageSize={modulePageSize}
+                                  total={filteredModules.length}
+                                  onChange={(page, pageSize) => {
+                                    setModulePage(page);
+                                    setModulePageSize(pageSize);
+                                  }}
+                                  showSizeChanger
+                                  pageSizeOptions={[12, 24, 48]}
+                                  showTotal={(total) => `共 ${total} 条`}
+                                />
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="admin-matlab-sider-empty">
+                            <Empty description="暂无模块" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                          </div>
+                        )}
+                      </AntCard>
+                    </div>
+                  )}
+                  {!isMobile && (
+                    <div
+                      className="admin-matlab-resize-handle"
+                      onMouseDown={handleResizeStart}
+                    >
+                      <div className="admin-matlab-resize-handle-line" />
+                    </div>
+                  )}
+                  {/* Right Panel: module header + filter + table/card-view */}
+                  <div
+                    ref={isMobile ? pageCardRef : undefined}
+                    className="admin-matlab-main"
+                  >
+                    {selectedModule && (
+                      <>
+                        {/* Module title bar */}
+                        <div className="admin-matlab-header">
+                          <Space className="min-w-0" size={12}>
+                            <Typography.Text strong className="admin-matlab-header-title">
+                              {selectedModule.name}
+                            </Typography.Text>
+                            <Tag color="blue">{selectedModule.slug}</Tag>
+                          </Space>
+                          <Space size={8} wrap>
+                            <Button
+                              icon={<CloudSyncOutlined />}
+                              onClick={handleSync}
+                              loading={syncMutation.isPending}
+                              disabled={!canManage || syncMutation.isPending || !currentRelease}
+                            >
+                              同步到 Worker
+                            </Button>
+                            {canManage && (
+                              <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
+                                上传新包
+                              </Button>
+                            )}
+                          </Space>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="admin-filter-bar">
+                      <Form layout="inline">
+                        {isMobile && (
+                          <Form.Item label="模块" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                            <Select
+                              value={effectiveSlug ?? undefined}
+                              placeholder="请选择模块"
+                              style={{ minWidth: 160 }}
+                              options={modules.map((m) => ({ label: m.name, value: m.slug }))}
+                              onChange={(value) => selectModule(value ?? null)}
+                            />
+                          </Form.Item>
+                        )}
+                        <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                          <Input
+                            allowClear
+                            placeholder="版本号 / Hash / 变更日志 / 发布人"
+                            value={keywordInput}
+                            onChange={(event) => setKeywordInput(event.target.value)}
+                            onPressEnter={handleQuery}
+                          />
+                        </Form.Item>
+                        <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                          <Select<VersionStatusFilter>
+                            value={statusFilterInput}
+                            allowClear
+                            placeholder="全部"
+                            options={[
+                              { value: "draft", label: "草稿" },
+                              { value: "released", label: "已发布" },
+                            ]}
+                            labelRender={(props) => versionStatusTag(props.value)}
+                            optionRender={(option) => versionStatusTag(option.value)}
+                            onChange={(value) => setStatusFilterInput(value)}
+                          />
+                        </Form.Item>
+                        <Form.Item style={{ marginBottom: 0 }}>
+                          <Button
+                            htmlType="button"
+                            icon={<SearchOutlined />}
+                            onClick={handleQuery}
+                            className="admin-search-btn"
+                          >
+                            查询
+                          </Button>
+                        </Form.Item>
+                      </Form>
+                    </div>
+
+                    {selectedModule && viewMode === "table" ? (
+                      <div
+                        ref={tableScrollAnchorRef}
+                        className="admin-matlab-table-anchor"
+                        style={{ "--admin-matlab-table-body-min-height": `${tableScrollY}px` } as React.CSSProperties}
+                      >
+                        <Table<MatlabVersion>
+                          rowKey="version_hash"
+                          dataSource={pageVersions}
+                          columns={columns}
+                          loading={versionsQuery.isFetching}
+                          tableLayout="fixed"
+                          pagination={{
+                            current: pagination.current,
+                            pageSize: pagination.pageSize,
+                            total: filteredVersions.length,
+                            showSizeChanger: true,
+                            pageSizeOptions: [10, 20, 50, 100],
+                            showTotal: () => `共 ${filteredVersions.length} 条`,
+                            hideOnSinglePage: false,
+                            style: { marginBottom: 0 },
+                            onChange: (page, pageSize) => {
+                              setPagination({ current: page, pageSize });
+                            },
+                          }}
+                          scroll={{ x: 1080, y: tableScrollY }}
+                          locale={{
+                            emptyText: (
+                              <Empty
+                                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                description="未找到符合筛选条件的版本。"
+                              />
+                            ),
+                          }}
+                        />
+                      </div>
+                    ) : selectedModule ? (
+                      <div className="admin-matlab-card-view">
+                        {versionsQuery.isLoading && allLoadedVersions.length === 0 ? (
+                          <div className="admin-matlab-card-view-state">
+                            <Spin />
+                          </div>
+                        ) : allLoadedVersions.length === 0 ? (
+                          <div className="admin-matlab-card-view-state">
+                            <Empty
+                              image={Empty.PRESENTED_IMAGE_SIMPLE}
+                              description="未找到符合筛选条件的版本。"
+                            />
+                          </div>
+                        ) : (
+                          <div className="admin-matlab-card-view-content">
+                            <Row gutter={[12, 12]}>
+                              {allLoadedVersions.map((item) => (
+                                <Col key={`${item.version_hash}-${item === draft ? "draft" : "release"}`} xs={24} sm={24} md={12} lg={8} xl={6}>
+                                  {renderVersionCard(item)}
+                                </Col>
+                              ))}
+                            </Row>
+                            {isLoadingMore && (
+                              <div style={{ textAlign: "center", padding: "20px 0" }}>
+                                <Spin />
+                              </div>
+                            )}
+                            {allLoadedVersions.length >= filteredVersions.length && allLoadedVersions.length > 0 && (
+                              <div style={{ textAlign: "center", padding: "20px 0" }}>
+                                <Typography.Text type="secondary">
+                                  已加载全部 {allLoadedVersions.length} 条数据
+                                </Typography.Text>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="admin-matlab-card-view-state">
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="请选择模块查看版本。"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ),
@@ -1153,110 +1290,119 @@ export default function AdminMatlabEnginePage() {
         ]}
       />
 
-      <Modal
-        title={editingModule ? `编辑模块：${editingModule.name}` : "新建模块"}
-        open={moduleModalOpen}
-        onCancel={closeModuleModal}
-        onOk={() => saveModule()}
-        confirmLoading={false}
-        okText={editingModule ? "保存" : "创建"}
-        cancelText="取消"
-        destroyOnHidden
-        width={760}
-      >
-        <Form<ModuleFormValues>
-          form={form}
-          layout="vertical"
-          initialValues={DEFAULT_MODULE_FORM_VALUES}
-          preserve={false}
+      {canManage && (
+        <Modal
+          title={editingModule ? `编辑模块：${editingModule.name}` : "新建模块"}
+          open={moduleModalOpen}
+          onCancel={closeModuleModal}
+          onOk={() => saveModule()}
+          confirmLoading={saveModuleMutation.isPending}
+          okText={editingModule ? "保存" : "创建"}
+          cancelText="取消"
+          destroyOnHidden
+          width={760}
         >
-          <Row gutter={12}>
-            <Col xs={24} md={12}>
-              <Form.Item label="模块名称" name="name" rules={[{ required: true, message: "请输入模块名称" }]}>
-                <Input placeholder="模块显示名称" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="标识" name="slug" rules={[{ required: true, message: "请输入模块标识" }]}>
-                <Input placeholder="waveform_diagnosis" disabled={Boolean(editingModule)} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="描述" name="description">
-                <Input.TextArea placeholder="模块用途说明" rows={2} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Worker 部署路径" name="worker_deploy_path">
-                <Input placeholder="/opt/worker/matlab/{module}/" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={24}>
-              <Form.Item label="必需文件" name="required_files">
-                <Input.TextArea placeholder="每行一个文件名" rows={2} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
-      </Modal>
+          <Form<ModuleFormValues>
+            form={form}
+            layout="vertical"
+            initialValues={DEFAULT_MODULE_FORM_VALUES}
+            preserve={false}
+          >
+            <Row gutter={12}>
+              <Col xs={24} md={12}>
+                <Form.Item label="模块名称" name="name" rules={[{ required: true, message: "请输入模块名称" }]}>
+                  <Input placeholder="模块显示名称" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label="标识" name="slug" rules={[{ required: true, message: "请输入模块标识" }]}>
+                  <Input placeholder="waveform_diagnosis" disabled={Boolean(editingModule)} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label="描述" name="description">
+                  <Input.TextArea placeholder="模块用途说明" rows={2} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label="Worker 部署路径" name="worker_deploy_path">
+                  <Input placeholder="/opt/worker/matlab/{module}/" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={24}>
+                <Form.Item label="必需文件" name="required_files">
+                  <Input.TextArea placeholder="每行一个文件名" rows={2} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        </Modal>
+      )}
 
-      <Modal
-        title="上传 MATLAB 引擎"
-        open={uploadModalOpen}
-        onCancel={() => {
-          setUploadModalOpen(false);
-          setFileList([]);
-        }}
-        onOk={() => handleUpload()}
-        okText="上传"
-        cancelText="取消"
-      >
-        <Upload.Dragger
-          accept=".zip"
-          maxCount={1}
-          fileList={fileList}
-          beforeUpload={() => false}
-          onChange={({ fileList: newFileList }) => setFileList(newFileList)}
+      {canManage && (
+        <Modal
+          title="上传 MATLAB 引擎"
+          open={uploadModalOpen}
+          onCancel={() => {
+            setUploadModalOpen(false);
+            setFileList([]);
+          }}
+          onOk={() => handleUpload()}
+          okText="上传"
+          cancelText="取消"
+          confirmLoading={uploadMutation.isPending}
+          destroyOnHidden
         >
-          <p className="ant-upload-drag-icon">
-            <InboxOutlined />
-          </p>
-          <p className="ant-upload-text">点击或拖拽 ZIP 文件到此处</p>
-          <p className="ant-upload-hint">
-            ZIP 包必须包含 {(selectedModule?.required_files || []).join(", ") || "必需文件"}
-          </p>
-        </Upload.Dragger>
-      </Modal>
+          <Upload.Dragger
+            accept=".zip"
+            maxCount={1}
+            fileList={fileList}
+            beforeUpload={() => false}
+            onChange={({ fileList: newFileList }) => setFileList(newFileList)}
+          >
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined />
+            </p>
+            <p className="ant-upload-text">点击或拖拽 ZIP 文件到此处</p>
+            <p className="ant-upload-hint">
+              ZIP 包必须包含 {(selectedModule?.required_files || []).join(", ") || "必需文件"}
+            </p>
+          </Upload.Dragger>
+        </Modal>
+      )}
 
-      <Modal
-        title="发布版本"
-        open={publishModalOpen}
-        onCancel={() => setPublishModalOpen(false)}
-        onOk={() => handlePublish()}
-        okText="发布"
-        cancelText="取消"
-        destroyOnHidden
-      >
-        <Form<PublishFormValues>
-          form={publishForm}
-          layout="vertical"
-          initialValues={DEFAULT_PUBLISH_FORM_VALUES}
-          preserve={false}
+      {canManage && (
+        <Modal
+          title="发布版本"
+          open={publishModalOpen}
+          onCancel={() => setPublishModalOpen(false)}
+          onOk={() => handlePublish()}
+          okText="发布"
+          cancelText="取消"
+          confirmLoading={publishMutation.isPending}
+          destroyOnHidden
         >
-          <Row gutter={12}>
-            <Col xs={24} md={12}>
-              <Form.Item label="版本号" name="version_tag" rules={[{ required: true, message: "请输入版本号" }]}>
-                <Input placeholder="版本号，如 v1.0.0" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={24}>
-              <Form.Item label="变更日志" name="changelog">
-                <Input.TextArea placeholder="本次变更说明" rows={3} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
-      </Modal>
+          <Form<PublishFormValues>
+            form={publishForm}
+            layout="vertical"
+            initialValues={DEFAULT_PUBLISH_FORM_VALUES}
+            preserve={false}
+          >
+            <Row gutter={12}>
+              <Col xs={24} md={12}>
+                <Form.Item label="版本号" name="version_tag" rules={[{ required: true, message: "请输入版本号" }]}>
+                  <Input placeholder="版本号，如 v1.0.0" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={24}>
+                <Form.Item label="变更日志" name="changelog">
+                  <Input.TextArea placeholder="本次变更说明" rows={3} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        </Modal>
+      )}
 
       <Modal
         title={previewTitle}
@@ -1264,6 +1410,7 @@ export default function AdminMatlabEnginePage() {
         onCancel={() => setPreviewOpen(false)}
         footer={null}
         width={640}
+        destroyOnHidden
       >
         {previewFiles.length === 0 ? (
           <Typography.Text type="secondary">无文件记录</Typography.Text>

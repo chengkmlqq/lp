@@ -1926,6 +1926,84 @@ body {
   flex-shrink: 0;
 }
 
+/* ---- MATLAB 引擎管理（严格对齐系统参数管理页）---- */
+.admin-matlab-search-results-count {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary);
+  padding: 4px 16px 0;
+}
+
+.admin-matlab-sider-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 24px;
+}
+
+.admin-matlab-skeleton-menu {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-matlab-skeleton-item {
+  height: 22px;
+}
+
+.admin-matlab-sider-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.admin-matlab-sider-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-matlab-sider-menu::-webkit-scrollbar-thumb {
+  background: var(--fquiz-scrollbar-thumb);
+  border-radius: 3px;
+}
+
+.admin-matlab-sider-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--fquiz-scrollbar-thumb-hover);
+}
+
+/* 模块节点右侧三点菜单：悬停/选中时显示（对齐系统参数页 tree-node-more） */
+.admin-matlab-module-item-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 4px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--ant-color-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms cubic-bezier(0.2, 0, 0, 1), background 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.admin-matlab-sider-menu .admin-matlab-module-item:hover .admin-matlab-module-item-more,
+.admin-matlab-module-item--active .admin-matlab-module-item-more {
+  opacity: 1;
+}
+
+.admin-matlab-module-item-more:hover {
+  background: var(--ant-color-bg-text-hover);
+  color: var(--ant-color-primary);
+}
+
+/* 左侧模块列表分页 */
+.admin-matlab-module-pagination {
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--ant-color-border-secondary);
+  flex-shrink: 0;
+}
+
+.admin-matlab-module-pagination .ant-pagination {
+  justify-content: center;
+}
+
 
 .admin-workers-card-view {
   display: flex;
