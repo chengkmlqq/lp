@@ -974,9 +974,19 @@ export default function AdminMatlabEnginePage() {
         tabBarExtraContent={
           <Space>
             {canManage && (
-              <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
-                上传新包
-              </Button>
+              <>
+                <Button
+                  icon={<CloudSyncOutlined />}
+                  onClick={handleSync}
+                  loading={syncMutation.isPending}
+                  disabled={syncMutation.isPending || !currentRelease}
+                >
+                  同步到 Worker
+                </Button>
+                <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
+                  上传新包
+                </Button>
+              </>
             )}
           </Space>
         }
@@ -1119,16 +1129,6 @@ export default function AdminMatlabEnginePage() {
                               {selectedModule.name}
                             </Typography.Text>
                             <Tag color="blue">{selectedModule.slug}</Tag>
-                          </Space>
-                          <Space size={8} wrap>
-                            <Button
-                              icon={<CloudSyncOutlined />}
-                              onClick={handleSync}
-                              loading={syncMutation.isPending}
-                              disabled={!canManage || syncMutation.isPending || !currentRelease}
-                            >
-                              同步到 Worker
-                            </Button>
                           </Space>
                         </div>
                       </>
