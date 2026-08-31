@@ -1115,25 +1115,11 @@ export default function AdminMatlabEnginePage() {
                       <div className="admin-matlab-resize-handle-line" />
                     </div>
                   )}
-                  {/* Right Panel: module header + filter + table/card-view */}
+                  {/* Right Panel: filter + table/card-view */}
                   <div
                     ref={isMobile ? pageCardRef : undefined}
                     className="admin-matlab-main"
                   >
-                    {selectedModule && (
-                      <>
-                        {/* Module title bar */}
-                        <div className="admin-matlab-header">
-                          <Space className="min-w-0" size={12}>
-                            <Typography.Text strong className="admin-matlab-header-title">
-                              {selectedModule.name}
-                            </Typography.Text>
-                            <Tag color="blue">{selectedModule.slug}</Tag>
-                          </Space>
-                        </div>
-                      </>
-                    )}
-
                     <div className="admin-filter-bar">
                       <Form layout="inline">
                         {isMobile && (

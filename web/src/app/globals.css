@@ -1692,19 +1692,6 @@ body {
   overflow-y: auto;
 }
 
-.admin-matlab-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.admin-matlab-header-title {
-  font-size: 16px;
-  font-weight: 600;
-}
 
 .admin-matlab-view-bar {
   display: flex;
