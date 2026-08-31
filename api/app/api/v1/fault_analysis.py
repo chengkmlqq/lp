@@ -271,7 +271,9 @@ async def _store_explicit_uploads(
     for field, uploads, temp_file_ids in items:
         allowed_exts = UPLOAD_ALLOWED_EXTS[field]
         temp_id_list = [temp_file_ids] if isinstance(temp_file_ids, str) else list(temp_file_ids or [])
-        upload_list = [uploads] if isinstance(uploads, UploadFile) else list(uploads or [])
+        # 注意：fastapi 0.141+/starlette 1.6+ 中 fastapi.UploadFile 与注入对象的类不一致，
+        # isinstance(uploads, UploadFile) 恒为 False，不能用 UploadFile 做类型判断（LP-530）。
+        upload_list = list(uploads) if isinstance(uploads, list) else ([uploads] if uploads is not None else [])
         if field == "traveling_wave_file":
             stored: list[dict[str, str]] = []
             for temp_file_id in temp_id_list:

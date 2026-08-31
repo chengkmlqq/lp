@@ -113,7 +113,7 @@ services:
       - app.core.celery_app.celery_app
       - worker
       - -Q
-      - celery,matlab-diagnostics,scheduled,default,wine
+      - celery,scheduled,default,wine
       - --hostname=通用worker@lp
       - --loglevel=${CELERY_LOG_LEVEL}
       - --concurrency=${CELERY_WORKER_CONCURRENCY:-2}

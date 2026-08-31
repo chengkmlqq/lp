@@ -30,10 +30,41 @@ def _publish_sync_event(event_name: str, payload: dict) -> None:
         pass
 
 
+def _flatten_wrapper_dir(target_dir: Path, log_parts: list[str]) -> None:
+    """若解压结果带单一顶层包装目录且必需可执行文件不在根目录，将内容上移一层（LP-530）。
+
+    上传 zip 常以 `RunWaveAnalysisModule_linux_R2023a/` 之类的目录包裹全部文件，
+    而判别服务按 FAULT_DIAG_MATLAB_COMPILED_DIR 根目录查找可执行文件。
+    """
+    exe_names = ("RunWaveAnalysisModule", "waveform_engine_v2.exe", "waveform_engine.exe")
+    if any((target_dir / n).is_file() for n in exe_names):
+        return
+    subdirs = [p for p in target_dir.iterdir() if p.is_dir()]
+    if len(subdirs) != 1:
+        log_parts.append(f"[flatten] No single wrapper dir to flatten (subdirs={len(subdirs)})")
+        return
+    wrapper = subdirs[0]
+    moved = 0
+    for item in wrapper.iterdir():
+        dest = target_dir / item.name
+        if dest.exists():
+            if dest.is_dir():
+                shutil.rmtree(dest, ignore_errors=True)
+            else:
+                dest.unlink()
+        shutil.move(str(item), str(dest))
+        moved += 1
+    wrapper.rmdir()
+    log_parts.append(f"[flatten] Moved {moved} items from wrapper dir {wrapper.name} to {target_dir}")
+
+
 @celery_app.task(
     name="app.tasks.sync_matlab_engine_task.sync_matlab_engine_module",
     bind=True,
-    queue="default",
+    # LP-530：引擎部署目标目录（/app/matlab-wave）只挂在 matlab-worker 容器，
+    # 该队列仅 matlab-worker 消费（compose 中 celery-worker 已移除 matlab-diagnostics），
+    # 同步任务必须在此容器内执行，否则会解压到通用 worker 自己的临时文件系统。
+    queue="matlab-diagnostics",
     soft_time_limit=120,
     time_limit=180,
 )
@@ -82,6 +113,10 @@ def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_
 
         with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
             zf.extractall(target_dir)
+
+        # LP-530：上传包可能带单一顶层包装目录（如 RunWaveAnalysisModule_linux_R2023a/），
+        # 而判别服务按 compiled_dir 根目录查找可执行文件，需将内容上移一层。
+        _flatten_wrapper_dir(target_dir, log_parts)
 
         log_parts.append(f"[{task_id}] Extracted engine files to {target_dir}")
 
