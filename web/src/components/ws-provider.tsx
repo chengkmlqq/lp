@@ -65,6 +65,20 @@ export function WSProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // 统一的退避重连调度：网络层失败（ticket 获取失败）与 WS 断开共用
+  const scheduleReconnect = useCallback(() => {
+    if (!userIdRef.current) {
+      return;
+    }
+    const delays = [1000, 2000, 5000, 10000, 20000];
+    const delay = delays[Math.min(reconnectAttemptRef.current, delays.length - 1)];
+    reconnectAttemptRef.current += 1;
+    clearReconnectTimer();
+    reconnectTimerRef.current = window.setTimeout(() => {
+      void connectRef.current?.();
+    }, delay);
+  }, [clearReconnectTimer]);
+
   const rememberEventId = (eventId: string) => {
     seenEventIdsRef.current.push(eventId);
     if (seenEventIdsRef.current.length > 200) {
@@ -87,12 +101,27 @@ export function WSProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    const ticketRes = await fetchWithAuth("/api/v1/ws/ticket", { method: "POST" });
+    let ticketRes: Response;
+    try {
+      ticketRes = await fetchWithAuth("/api/v1/ws/ticket", { method: "POST" });
+    } catch {
+      // 网络层失败（后端未就绪 / 临时断连 / 混合内容被拦截）：
+      // 不抛出未处理异常，按退避策略稍后重试，避免 WS 永久断连
+      scheduleReconnect();
+      return;
+    }
     if (!ticketRes.ok) {
       return;
     }
-    const ticketPayload = (await ticketRes.json()) as WsTicketResponse;
-    const socket = new WebSocket(`${toWebSocketUrl("/api/v1/ws")}?ticket=${encodeURIComponent(ticketPayload.ticket)}`);
+    let ticket: string;
+    try {
+      const ticketPayload = (await ticketRes.json()) as WsTicketResponse;
+      ticket = ticketPayload.ticket;
+    } catch {
+      scheduleReconnect();
+      return;
+    }
+    const socket = new WebSocket(`${toWebSocketUrl("/api/v1/ws")}?ticket=${encodeURIComponent(ticket)}`);
     socketRef.current = socket;
 
     socket.onopen = () => {
@@ -181,15 +210,9 @@ export function WSProvider({ children }: { children: React.ReactNode }) {
         await logout();
         return;
       }
-      const delays = [1000, 2000, 5000, 10000, 20000];
-      const delay = delays[Math.min(reconnectAttemptRef.current, delays.length - 1)];
-      reconnectAttemptRef.current += 1;
-      clearReconnectTimer();
-      reconnectTimerRef.current = window.setTimeout(() => {
-        void connectRef.current?.();
-      }, delay);
+      scheduleReconnect();
     };
-  }, [clearReconnectTimer, fetchWithAuth, logout, queryClient, refreshAccessToken]);
+  }, [fetchWithAuth, logout, queryClient, refreshAccessToken, scheduleReconnect]);
 
   useEffect(() => {
     connectRef.current = connect;
