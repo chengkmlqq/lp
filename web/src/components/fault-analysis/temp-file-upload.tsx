@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { App, Button, Progress, Space, Spin, Typography } from "antd";
 import {
   CheckCircleOutlined,
@@ -30,6 +30,8 @@ interface TempFileUploadProps {
   previewKind?: PreviewKind;
   /** PDF 提取完成后的回调，传入 (item, response)。 */
   onPdfExtracted?: (item: FaultAnalysisTempFile, response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string }) => void;
+  /** 渲染在选择文件按钮右侧的附加内容（如「下载模板」按钮） */
+  trailing?: ReactNode;
 }
 
 function uploadToTemp(
@@ -274,6 +276,7 @@ export function TempFileUpload({
   maxSizeMb,
   previewKind,
   onPdfExtracted,
+  trailing,
 }: TempFileUploadProps) {
   const { message: messageApi } = App.useApp();
   const { getAccessToken } = useAuth();
@@ -298,13 +301,14 @@ export function TempFileUpload({
     [],
   );
 
-  const callPdfExtract = useCallback(
+  // 录波数据文件（pdf/txt/csv/json/xlsx）上传后调用后端提取 13 个故障字段并回填表单
+  const callWaveExtract = useCallback(
     async (uid: string, file: File) => {
       const token = getAccessToken();
       const formData = new FormData();
       formData.append("file", file);
       try {
-        const response = await fetch(`${getApiBaseUrl()}/api/v1/fault-analysis/extract-wave-pdf`, {
+        const response = await fetch(`${getApiBaseUrl()}/api/v1/fault-analysis/extract-wave`, {
           method: "POST",
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           body: formData,
@@ -398,7 +402,8 @@ export function TempFileUpload({
   const startUpload = useCallback(
     (file: File, item: FaultAnalysisTempFile) => {
       const token = getAccessToken();
-      const isPdf = (file.name.split(".").pop()?.toLowerCase() || "") === "pdf";
+      // 录波数据任意格式（pdf/txt/csv/json/xlsx）上传后都走后端提取并回填表单；其余文件做内容预校验
+      const shouldExtractWave = previewKind === "wave_data";
       fileMapRef.current.set(item.uid, file);
       uploadToTemp(
         file,
@@ -417,13 +422,13 @@ export function TempFileUpload({
                 : it,
             ),
           );
-          if (isPdf) {
+          if (shouldExtractWave) {
             patchValue((items) =>
               items.map((it) =>
                 it.uid === item.uid ? { ...it, pdfExtracting: true } : it,
               ),
             );
-            callPdfExtract(item.uid, file);
+            callWaveExtract(item.uid, file);
             return;
           }
           startValidate(item.uid, file);
@@ -438,7 +443,7 @@ export function TempFileUpload({
           messageApi.error(`${file.name} 上传失败：${text}`);
         });
     },
-    [getAccessToken, patchValue, startValidate, callPdfExtract],
+    [getAccessToken, patchValue, startValidate, callWaveExtract, previewKind],
   );
 
   const buildPendingItem = useCallback(
@@ -504,9 +509,12 @@ export function TempFileUpload({
           event.target.value = "";
         }}
       />
-      <Button size="small" icon={<UploadOutlined />} onClick={triggerPicker}>
-        {buttonLabel}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button size="small" icon={<UploadOutlined />} onClick={triggerPicker}>
+          {buttonLabel}
+        </Button>
+        {trailing}
+      </div>
 
       {value.length > 0 && (
         <div className="flex w-full flex-col gap-2">

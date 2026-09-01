@@ -50,7 +50,7 @@ from ...services.minio_storage import (
     get_object,
     list_objects,
 )
-from ...services.pdf_fault_extractor import ExtractWavePdfResponse, extract_wave_pdf
+from ...services.pdf_fault_extractor import ExtractWavePdfResponse, extract_wave_file
 
 router = APIRouter(
     prefix="/fault-analysis",
@@ -120,15 +120,19 @@ def upload_fault_analysis_temp_file(
     return FaultAnalysisTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
 
 
-@router.post("/extract-wave-pdf", response_model=None)
-async def extract_wave_pdf(
+@router.post("/extract-wave", response_model=None)
+async def extract_wave(
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
 ) -> ExtractWavePdfResponse:
-    """从录波 PDF 中提取 13 个故障字段，供前端自动回填，不回写数据库（LP-421）。"""
-    validate_upload(file, allowed_exts={"pdf"}, allowed_exts_label="pdf")
+    """从录波数据文件（pdf/txt/csv/json/xlsx）中提取 13 个故障字段，供前端自动回填，不回写数据库（LP-421）。"""
+    validate_upload(
+        file,
+        allowed_exts={"pdf", "txt", "csv", "json", "xlsx"},
+        allowed_exts_label="pdf/txt/csv/json/xlsx",
+    )
     content = await file.read()
-    return extract_wave_pdf(content, file.filename or "upload.pdf")
+    return extract_wave_file(content, file.filename or "upload")
 
 
 @router.post("/upload", response_model=FaultAnalysisCreateResponse)

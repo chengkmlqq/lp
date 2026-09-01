@@ -6,9 +6,9 @@ import {
   Alert,
   App,
   Button,
+  Drawer,
   Empty,
   Form,
-  Modal,
   Progress,
   Segmented,
   Space,
@@ -380,7 +380,7 @@ export default function AdminFaultAnalysisPage() {
     };
   }, [updateTableScrollHeight, viewMode]);
 
-  // ---- LP-546: 新建/编辑表单改用固定高度分步弹窗（见下方 Modal），不再走 Tab ----
+  // ---- LP-546: 新建表单改用固定高度分步表单（见下方 Drawer），不再走 Tab ----
 
   // 新建提交请求（两段式：先传临时目录拿到 temp_file_id，提交时携带 ID 列表）。
   const submitCreate = useCallback(async (values: CreateFaultAnalysisFormValues) => {
@@ -794,12 +794,16 @@ export default function AdminFaultAnalysisPage() {
           ]}
         />
       </div>
-      <Modal
+      <Drawer
         title="新建故障分析"
+        className="admin-fault-analysis-drawer"
         open={createModalOpen}
         width={880}
         footer={null}
-        onCancel={() => {
+        styles={{
+          body: { display: "flex", flexDirection: "column", padding: 0, overflow: "hidden" },
+        }}
+        onClose={() => {
           if (formModalSubmitting) {
             return;
           }
@@ -817,7 +821,7 @@ export default function AdminFaultAnalysisPage() {
           onSubmittingChange={setFormModalSubmitting}
           open={createModalOpen}
         />
-      </Modal>
+      </Drawer>
 
       <ArtifactsModal
         analysisId={artifactsModal?.id ?? null}

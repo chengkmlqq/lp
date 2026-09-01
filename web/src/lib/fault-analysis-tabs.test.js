@@ -64,20 +64,20 @@ test("LP-348: 新建/编辑表单不再使用内层 Tabs，改为纵向三分区
     "表单不应再嵌套内层 Tabs",
   );
   assert.ok(
-    FORM.includes('className="admin-fault-analysis-form-section-title"'),
-    "表单应使用纵向分区标题类",
+    !FORM.includes("admin-fault-analysis-form-section-title"),
+    "各步骤区块标题已移除（步骤名由 STEP_TITLES 提供）",
   );
   assert.ok(
-    FORM.includes(">故障线路</div>"),
-    "应保留“故障线路”分区标题",
+    !FORM.includes(">故障线路</div>"),
+    "故障线路区块标题已移除（步骤名由 STEP_TITLES 提供）",
   );
   assert.ok(
-    FORM.includes("<span>故障信息</span>"),
-    "应保留“故障信息”分区标题",
+    !FORM.includes("<span>故障信息</span>"),
+    "故障信息区块标题已移除（步骤名由 STEP_TITLES 提供）",
   );
   assert.ok(
-    FORM.includes(">分析数据</div>"),
-    "应保留“分析数据”分区标题",
+    !FORM.includes(">分析数据</div>"),
+    "分析数据区块标题已移除（步骤名由 STEP_TITLES 提供）",
   );
   assert.ok(
     FORM.includes("htmlType=\"submit\""),
@@ -204,8 +204,8 @@ test("LP-319: 故障分析页支持卡片/列表双视图与表格操作列", ()
   assert.ok(PAGE.includes("Table<FaultAnalysis>"), "列表视图应使用 antd Table");
   assert.ok(PAGE.includes("ColumnsType<FaultAnalysis>"), "表格列定义应使用 FaultAnalysis 类型");
   assert.ok(PAGE.includes("FAULT_STATUS_META"), "状态枚举应收敛为页面级常量");
-  assert.ok(PAGE.includes("Dropdown"), "删除操作应收进三点 Dropdown");
-  assert.ok(PAGE.includes("MoreOutlined"), "三点菜单应使用 MoreOutlined 图标");
+  assert.ok(PAGE.includes("DeleteOutlined"), "删除按钮应使用 DeleteOutlined 图标");
+  assert.ok(PAGE.includes('danger'), "删除应为直接危险按钮（不再收进 ⋯ 下拉）");
   assert.ok(PAGE.includes('fixed: "right"'), "操作列应固定在右侧");
 });
 
@@ -242,25 +242,24 @@ test("LP-319: 故障分析卡片视图抽象为统一滚动和分页容器", () 
   assert.ok(!PAGE.includes("overflowY: 'auto'"), "卡片滚动不应继续使用内联 overflowY 样式");
 });
 
-test("LP-319: 故障分析卡片编辑和删除按钮按处理器存在性渲染", () => {
-  assert.ok(CARD.includes("onEdit ? ("), "编辑按钮应仅在传入 onEdit 时渲染");
+test("LP-319: 故障分析卡片删除按钮按处理器存在性渲染（编辑入口已移除）", () => {
   assert.ok(CARD.includes("onDelete ? ("), "删除按钮应仅在传入 onDelete 时渲染");
-  assert.ok(PAGE.includes("onEdit={canManage ? handleEdit : undefined}"), "卡片视图编辑入口应受 canManage 门控");
   assert.ok(PAGE.includes("onDelete={canManage ? handleDelete : undefined}"), "卡片视图删除入口应受 canManage 门控");
+  assert.ok(!CARD.includes("onEdit"), "编辑入口已移除，卡片不应再接收 onEdit");
 });
 
-test("LP-546: 新建/编辑改为固定高度分步弹窗，不再走 Tab", () => {
+test("LP-546: 新建表单改为固定高度分步抽屉，不再走 Tab", () => {
   assert.ok(
     PAGE.includes("createModalOpen"),
     "应存在 createModalOpen 状态",
   );
   assert.ok(
     PAGE.includes("openCreateModal"),
-    "应存在 openCreateModal 打开新建弹窗",
+    "应存在 openCreateModal 打开新建表单",
   );
   assert.ok(
-    PAGE.includes("editModal"),
-    "应存在 editModal 状态",
+    PAGE.includes("<Drawer"),
+    "新建表单应使用 Drawer 抽屉承载",
   );
   assert.ok(
     !PAGE.includes("openCreateTab"),
@@ -276,46 +275,38 @@ test("LP-546: 新建/编辑改为固定高度分步弹窗，不再走 Tab", () =
   );
   assert.ok(
     PAGE.includes("CreateAnalysisFormTab"),
-    "弹窗内容应挂载 CreateAnalysisFormTab",
+    "抽屉内容应挂载 CreateAnalysisFormTab",
   );
   assert.ok(
     PAGE.includes('mode="create"'),
-    "新建弹窗应使用 CreateAnalysisFormTab 创建模式",
+    "新建抽屉应使用 CreateAnalysisFormTab 创建模式",
   );
   assert.ok(
-    PAGE.includes('mode="edit"'),
-    "编辑弹窗应使用 CreateAnalysisFormTab 编辑模式",
+    !PAGE.includes('mode="edit"'),
+    "编辑入口已移除，不应再存在编辑模式渲染",
   );
 });
 
-test("LP-546: 提交成功自动关闭对应弹窗，提交中禁止关闭", () => {
+test("LP-546: 提交成功自动关闭新建抽屉，提交中禁止关闭", () => {
   assert.ok(
     PAGE.includes("setCreateModalOpen(false)"),
-    "新建成功后应关闭新建弹窗（回到列表）",
+    "新建成功后应关闭新建抽屉（回到列表）",
   );
   assert.ok(
     PAGE.includes("handleCreateSuccess"),
-    "新建成功应刷新列表并关闭弹窗",
-  );
-  assert.ok(
-    PAGE.includes("setEditModal(null)"),
-    "编辑成功后应关闭编辑弹窗",
-  );
-  assert.ok(
-    PAGE.includes("handleUpdateSuccess"),
-    "编辑成功应刷新列表并关闭弹窗",
+    "新建成功应刷新列表并关闭抽屉",
   );
   assert.ok(
     PAGE.includes("formModalSubmitting"),
-    "应跟踪弹窗提交状态以禁止关闭",
+    "应跟踪抽屉提交状态以禁止关闭",
   );
   assert.ok(
     PAGE.includes("onSubmittingChange={setFormModalSubmitting}"),
-    "弹窗提交状态应回传页面",
+    "抽屉提交状态应回传页面",
   );
   assert.ok(
-    PAGE.includes("onLoadError"),
-    "编辑详情加载失败时应回调关闭对应弹窗",
+    PAGE.includes("keyboard={false}"),
+    "抽屉应禁止 Esc 误关（提交中防丢失）",
   );
 });
 

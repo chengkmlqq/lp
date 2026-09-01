@@ -5841,15 +5841,29 @@ body {
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 12px;
 }
 
+/* 新建故障分析抽屉：顶部步骤栏与底部按钮栏固定不滚动，仅中间内容区滚动
+   （.ant-drawer-body 的 flex/overflow 由 Drawer styles.body 内联样式接管，避免被 antd cssinjs 覆盖） */
 .admin-fault-analysis-form-tabs {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.admin-fault-analysis-form-tabs .ant-steps {
+  flex-shrink: 0;
+}
+
+.admin-fault-analysis-form-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .admin-fault-analysis-form-section-title {
@@ -5867,7 +5881,10 @@ body {
 
 .admin-fault-analysis-form-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
   padding-top: 16px;
   margin-top: 8px;
   border-top: 1px solid var(--ant-color-border-secondary);

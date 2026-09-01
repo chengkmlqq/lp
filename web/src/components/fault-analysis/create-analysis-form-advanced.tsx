@@ -1,11 +1,11 @@
-import { App, Form, Input, Select, Upload, Button, FormInstance, Space, Steps, Alert, Table, Typography } from "antd";
+import { App, Form, Input, Select, Button, FormInstance, Space, Steps, Alert, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { UploadOutlined, FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined } from "@ant-design/icons";
-import { useQuery } from "@tanstack/react-query";
+import { FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined } from "@ant-design/icons";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { CreateFaultAnalysisFormValues } from "./types";
 import { TempFileUpload } from "./temp-file-upload";
 import type { FaultAnalysisTempFile } from "./types";
-import { parseExcelFile, generateImportTemplate, generateWaveDataTemplate, generateLightningTemplate, generateWaveTemplate, generateOpticalTemplate } from "@/lib/excel-import-utils";
+import { generateWaveDataTemplate, generateLightningTemplate, generateWaveTemplate, generateOpticalTemplate } from "@/lib/excel-import-utils";
 import * as XLSX from "xlsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
@@ -26,12 +26,45 @@ interface CreateAnalysisFormAdvancedProps {
 /** 分步配置（LP-546）：故障线路 → 故障信息 → 分析数据，与防雷计算任务新建表单一致。 */
 const STEP_TITLES = ["故障线路", "故障信息", "分析数据"];
 
+/** 线路杆塔列表服务端分页大小（一次查 15 条，翻页再按 15 条递增拉取） */
+const TOWER_PAGE_SIZE = 15;
+
 // 各步骤进入下一步时需要校验的字段（参照防雷 goNext 的按步校验策略）
 const STEP_REQUIRED_FIELDS: Array<Array<keyof CreateFaultAnalysisFormValues>> = [
   ["title", "line_id"],
   ["station_name", "fault_time", "fault_line_name", "fault_phase", "reclosure_status"],
   [],
 ];
+
+/** 数值字段提取值清洗：去掉单位/千分位等杂字符，解析失败返回 undefined（保证回填进 type="number" 输入框） */
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isNaN(value) ? undefined : value;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const cleaned = value.replace(/[，,]/g, "").replace(/[^\d.\-]/g, "");
+  if (!cleaned) {
+    return undefined;
+  }
+  const parsed = Number(cleaned);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/** 重合闸文本 → 枚举码（第二步 Select 选项为 success/failed/not_applicable，提取结果常为中文文本） */
+function toReclosureCode(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return value as string | undefined;
+  }
+  if (/成功|success/i.test(value)) {
+    return "success";
+  }
+  if (/失败|fail/i.test(value)) {
+    return "failed";
+  }
+  return "not_applicable";
+}
 
 export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit, submitText = "提交分析", submitting, open = false }: CreateAnalysisFormAdvancedProps) {
   const { message: messageApi, modal: modalApi } = App.useApp();
@@ -45,13 +78,26 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
     item: FaultAnalysisTempFile;
   } | null>(null);
 
-  // 选中线路 → 拉取该线路杆塔列表（参照防雷计算任务新建表单的「线路杆塔」区块）
+  // 选中线路 → 拉取该线路杆塔列表（参照防雷计算任务新建表单的「线路杆塔」区块）；
+  // 服务端分页，一次查 TOWER_PAGE_SIZE 条（15），翻页时按 offset 递增拉取。
   const selectedLineId = Form.useWatch("line_id", form) ?? "";
+  const [towerPage, setTowerPage] = useState(1);
+  const [prevLineId, setPrevLineId] = useState(selectedLineId);
+  // 切换线路时回到第一页（渲染期调整，避免 effect 内 setState）
+  if (selectedLineId !== prevLineId) {
+    setPrevLineId(selectedLineId);
+    setTowerPage(1);
+  }
   const towersQuery = useQuery({
-    queryKey: ["/api/v1/lines", selectedLineId, "towers"],
+    queryKey: ["/api/v1/lines", selectedLineId, "towers", towerPage],
     enabled: !!user && !!selectedLineId,
+    placeholderData: keepPreviousData,
     queryFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/lines/${selectedLineId}/towers?limit=1000&offset=0`);
+      const params = new URLSearchParams({
+        limit: String(TOWER_PAGE_SIZE),
+        offset: String((towerPage - 1) * TOWER_PAGE_SIZE),
+      });
+      const response = await fetchWithAuth(`/api/v1/lines/${selectedLineId}/towers?${params.toString()}`);
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
@@ -150,20 +196,21 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
   const handlePdfExtracted = useCallback((item: FaultAnalysisTempFile, response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string }) => {
     setExtractState({ response, item });
     const extracted = response.extracted || {};
+    // 识别结果回填第二步故障信息表单（数值字段清洗单位、重合闸转枚举码，保证输入框/下拉可显示）
     form.setFieldsValue({
       station_name: extracted.station ?? undefined,
       fault_time: extracted.fault_time ?? undefined,
       fault_line_name: extracted.line_name ?? undefined,
       fault_phase: extracted.fault_phase ?? undefined,
-      fault_duration: extracted.duration_ms ?? undefined,
-      reclosure_status: extracted.reclosing ?? undefined,
-      fault_voltage: extracted.phase_voltage ?? undefined,
-      fault_current: extracted.phase_current ?? undefined,
-      max_zero_current: extracted.zero_sequence_current ?? undefined,
-      zero_compensation: extracted.zero_sequence_compensation_k ?? undefined,
-      line_length: extracted.line_length_km ?? undefined,
-      line_angle: extracted.sensitive_angle_deg ?? undefined,
-      line_impedance: extracted.positive_sequence_impedance_ohm ?? undefined,
+      fault_duration: toNumber(extracted.duration_ms),
+      reclosure_status: toReclosureCode(extracted.reclosing),
+      fault_voltage: toNumber(extracted.phase_voltage),
+      fault_current: toNumber(extracted.phase_current),
+      max_zero_current: toNumber(extracted.zero_sequence_current),
+      zero_compensation: toNumber(extracted.zero_sequence_compensation_k),
+      line_length: toNumber(extracted.line_length_km),
+      line_angle: toNumber(extracted.sensitive_angle_deg),
+      line_impedance: toNumber(extracted.positive_sequence_impedance_ohm),
     } as Parameters<typeof form.setFieldsValue>[0]);
   }, [form]);
 
@@ -196,33 +243,6 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       messageApi.error('下载录波提取结果失败');
     }
   }, []);
-  // 处理Excel导入
-  const handleExcelImport = async (file: File) => {
-    try {
-      const data = await parseExcelFile(file);
-
-      // 将解析的数据填充到表单
-      form.setFieldsValue(data as Parameters<typeof form.setFieldsValue>[0]);
-
-      messageApi.success('Excel数据导入成功');
-    } catch (error) {
-      messageApi.error(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
-    }
-
-    // 阻止自动上传
-    return false;
-  };
-
-  // 下载导入模板
-  const handleDownloadTemplate = () => {
-    try {
-      generateImportTemplate();
-      messageApi.success('模板下载成功');
-    } catch {
-      messageApi.error('模板下载失败');
-    }
-  };
-
   // 下载录波数据模板
   const handleDownloadWaveDataTemplate = () => {
     try {
@@ -381,8 +401,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
         items={STEP_TITLES.map((title, index) => ({ title, key: index }))}
       />
 
-      {/* 步骤内容区固定高度，不随内容自动伸缩；超高时内部滚动（LP-546） */}
-      <div style={{ height: 520, overflowY: "auto", overflowX: "hidden" }}>
+      {/* 步骤内容区：撑满抽屉剩余高度，超高时内部滚动（顶部步骤栏 / 底部按钮栏固定不滚动） */}
+      <div className="admin-fault-analysis-form-scroll">
         {/* 第 1 步：故障线路 */}
         {currentStep === 0 ? (
           <div className="admin-fault-analysis-form-section">
@@ -433,7 +453,14 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                   dataSource={towersQuery.data?.items ?? []}
                   loading={towersQuery.isFetching}
                   size="small"
-                  pagination={{ pageSize: 8, showSizeChanger: false, hideOnSinglePage: true }}
+                  pagination={{
+                    current: towerPage,
+                    pageSize: TOWER_PAGE_SIZE,
+                    total: towersQuery.data?.total ?? 0,
+                    showSizeChanger: false,
+                    hideOnSinglePage: true,
+                    onChange: (page) => setTowerPage(page),
+                  }}
                   scroll={{ x: 760 }}
                 />
               )}
@@ -446,30 +473,53 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
         {/* 第 2 步：故障信息 */}
         {currentStep === 1 ? (
         <div className="admin-fault-analysis-form-section">
-          <div className="admin-fault-analysis-form-section-title justify-between">
-            <span>故障信息</span>
-            <Space size="small">
-              <Button
-                size="small"
-                icon={<DownloadOutlined />}
-                className="fault-analysis-step-button"
-                onClick={handleDownloadTemplate}
-              >
-                下载模板
-              </Button>
-              <Upload
-                accept=".xlsx,.xls"
-                showUploadList={false}
-                beforeUpload={handleExcelImport}
-              >
-                <Button size="small" icon={<UploadOutlined />} className="fault-analysis-step-button">
-                  Excel导入
-                </Button>
-              </Upload>
-            </Space>
-          </div>
-
         <div className="space-y-4 px-1">
+
+          {/* 录波数据上传（置于第二步顶部）：上传 PDF 自动识别并直接回填下方故障信息字段 */}
+          <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
+            <FileTextOutlined className="text-4xl text-blue-600" />
+            <div className="text-center">
+              <div className="font-semibold text-sm mb-1">录波数据</div>
+              <div className="text-xs text-gray-500 mb-3">支持 .txt/.json/.csv/.pdf/.xlsx，上传后自动识别并回填下方故障信息</div>
+            </div>
+            <Form.Item name="wave_data_file" className="mb-0">
+              <TempFileUpload
+                accept=".txt,.json,.csv,.pdf,.xlsx"
+                maxSizeMb={50}
+                buttonLabel="选择文件"
+                previewKind="wave_data"
+                trailing={
+                  <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadWaveDataTemplate}>
+                    下载模板
+                  </Button>
+                }
+                onPdfExtracted={(item, response) => {
+                  handlePdfExtracted(item, response);
+                  messageApi.success(response.ok ? '已自动提取并回填表单字段' : `已识别 ${13 - response.missing.length}/13 个字段，缺失字段已提示`);
+                }}
+              />
+            </Form.Item>
+            {extractState && extractState.response.extracted && (
+              <div className="mt-1 w-full rounded bg-blue-50 px-2 py-1 text-xs text-gray-700">
+                <div className="flex items-center justify-between">
+                  <span>
+                    识别到 {13 - extractState.response.missing.length}/13 个字段
+                    {extractState.response.missing.length > 0 && (
+                      <span className="ml-1 text-yellow-600">（缺失 {extractState.response.missing.length} 个）</span>
+                    )}
+                  </span>
+                  <Button size="small" icon={<DownloadOutlined />} onClick={() => handleDownloadExtracted(extractState.response)}>
+                    下载 Excel
+                  </Button>
+                </div>
+                {extractState.response.missing.length > 0 && (
+                  <div className="mt-1 text-yellow-600">
+                    缺失字段：{extractState.response.missing.map((key) => WAVE_FIELD_LABELS[key] ?? key).join("、")}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           <Form.Item
             label="录波记录厂站"
@@ -682,85 +732,69 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
         {/* 第 3 步：分析数据 */}
         {currentStep === 2 ? (
         <div className="admin-fault-analysis-form-section">
-          <div className="admin-fault-analysis-form-section-title">分析数据</div>
         <div className="px-1 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <div className="flex items-center justify-between w-full mb-1">
-                <FileTextOutlined className="text-4xl text-blue-600" />
-                <DownloadOutlined className="text-lg cursor-pointer" size={24} onClick={handleDownloadWaveDataTemplate} title="下载模板" />
-              </div>
-              <div className="text-center">
-                <div className="font-semibold text-sm mb-1">录波数据</div>
-                <div className="text-xs text-gray-500 mb-3">支持 .txt/.json/.csv/.pdf/.xlsx 格式</div>
-              </div>
-              <Form.Item name="wave_data_file" className="mb-0">
-                <TempFileUpload accept=".txt,.json,.csv,.pdf,.xlsx" maxSizeMb={50} buttonLabel="选择文件" previewKind="wave_data" onPdfExtracted={(item, response) => {
-                  handlePdfExtracted(item, response);
-                  messageApi.success(response.ok ? '已自动提取并回填表单字段' : `已识别 ${13 - response.missing.length}/13 个字段，缺失字段已提示`);
-                }} />
-              </Form.Item>
-              {extractState && extractState.response.extracted && (
-                <div className="mt-1 w-full rounded bg-blue-50 px-2 py-1 text-xs text-gray-700">
-                  <div className="flex items-center justify-between">
-                    <span>
-                      识别到 {13 - extractState.response.missing.length}/13 个字段
-                      {extractState.response.missing.length > 0 && (
-                        <span className="ml-1 text-yellow-600">（缺失 {extractState.response.missing.length} 个）</span>
-                      )}
-                    </span>
-                    <Button size="small" icon={<DownloadOutlined />} onClick={() => handleDownloadExtracted(extractState.response)}>
-                      下载 Excel
-                    </Button>
-                  </div>
-                  {extractState.response.missing.length > 0 && (
-                    <div className="mt-1 text-yellow-600">
-                      缺失字段：{extractState.response.missing.map((key) => WAVE_FIELD_LABELS[key] ?? key).join("、")}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <div className="flex items-center justify-between w-full mb-1">
-                <TableOutlined className="text-4xl text-blue-600" />
-                <DownloadOutlined className="text-lg cursor-pointer" size={24} onClick={handleDownloadLightningTemplate} title="下载模板" />
-              </div>
+              <TableOutlined className="text-4xl text-blue-600" />
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">雷电定位数据</div>
                 <div className="text-xs text-gray-500 mb-3">支持 .xls/.xlsx/.csv 格式</div>
               </div>
               <Form.Item name="lightning_data_file" className="mb-0">
-                <TempFileUpload accept=".xls,.xlsx,.csv" maxSizeMb={50} buttonLabel="选择文件" previewKind="lightning_data" />
+                <TempFileUpload
+                  accept=".xls,.xlsx,.csv"
+                  maxSizeMb={50}
+                  buttonLabel="选择文件"
+                  previewKind="lightning_data"
+                  trailing={
+                    <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadLightningTemplate}>
+                      下载模板
+                    </Button>
+                  }
+                />
               </Form.Item>
             </div>
 
             <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <div className="flex items-center justify-between w-full mb-1">
-                <LineChartOutlined className="text-4xl text-blue-600" />
-                <DownloadOutlined className="text-lg cursor-pointer" size={24} onClick={handleDownloadWaveTemplate} title="下载模板" />
-              </div>
+              <LineChartOutlined className="text-4xl text-blue-600" />
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">分布式行波数据</div>
                 <div className="text-xs text-gray-500 mb-3">支持 .csv/.dat/.txt/.json 格式，可多选（A/B/C 三相）</div>
               </div>
               <Form.Item name="traveling_wave_file" className="mb-0">
-                <TempFileUpload accept=".csv,.dat,.txt,.json" maxSizeMb={50} buttonLabel="选择文件" previewKind="traveling_wave" multiple />
+                <TempFileUpload
+                  accept=".csv,.dat,.txt,.json"
+                  maxSizeMb={50}
+                  buttonLabel="选择文件"
+                  previewKind="traveling_wave"
+                  multiple
+                  trailing={
+                    <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadWaveTemplate}>
+                      下载模板
+                    </Button>
+                  }
+                />
               </Form.Item>
             </div>
 
             <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <div className="flex items-center justify-between w-full mb-1">
-                <CameraOutlined className="text-4xl text-blue-600" />
-                <DownloadOutlined className="text-lg cursor-pointer" size={24} onClick={handleDownloadOpticalTemplate} title="下载模板" />
-              </div>
+              <CameraOutlined className="text-4xl text-blue-600" />
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">光学监控数据</div>
                 <div className="text-xs text-gray-500 mb-3">支持图片或视频格式</div>
               </div>
               <Form.Item name="optical_data_file" className="mb-0">
-                <TempFileUpload accept="image/*,video/*" maxSizeMb={50} buttonLabel="选择文件" previewKind="optical_data" />
+                <TempFileUpload
+                  accept="image/*,video/*"
+                  maxSizeMb={50}
+                  buttonLabel="选择文件"
+                  previewKind="optical_data"
+                  trailing={
+                    <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadOpticalTemplate}>
+                      下载模板
+                    </Button>
+                  }
+                />
               </Form.Item>
             </div>
 
@@ -770,8 +804,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
         ) : null}
       </div>
 
-      {/* 底部导航：上一步 / 下一步 / 提交（取消按钮已移除，关闭走弹窗右上角 X / 遮罩） */}
-      <div className="mt-4 flex items-center justify-end gap-2">
+      {/* 底部导航：上一步 / 下一步 / 提交，固定在抽屉右下角（取消按钮已移除，关闭走抽屉右上角 X / 遮罩） */}
+      <div className="admin-fault-analysis-form-actions">
         {currentStep > 0 ? (
           <Button onClick={goPrev} disabled={submitting}>
             上一步

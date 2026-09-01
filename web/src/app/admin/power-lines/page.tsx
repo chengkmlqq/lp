@@ -266,8 +266,15 @@ export default function AdminPowerLinesPage() {
   }, [updateTableScrollHeight, viewMode, lines.length]);
 
   const handleSearch = () => {
+    // 关键词/分页都未变化时查询键不变，react-query 不会自动重新拉取；
+    // 这里手动强制刷新，保证重复点击「查询」也会触发查询（如拉取新数据）。
+    const keywordChanged = keywordInput.trim() !== keyword.trim();
+    const pageChanged = paginationCurrent !== 1;
     setKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
+    if (!keywordChanged && !pageChanged) {
+      void queryClient.refetchQueries({ queryKey: [lineListPath] });
+    }
   };
   const saveLineMutation = useMutation({
     mutationFn: async (values: LineFormValues) => {
@@ -503,14 +510,14 @@ export default function AdminPowerLinesPage() {
                   />
                 )}
 
-                {linesQuery.isFetching ? (
+                {linesQuery.isLoading ? (
                   <div className="admin-power-lines-loading flex justify-center items-center py-12">
                     <Spin />
                   </div>
                 ) : lines.length === 0 ? (
                   <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : viewMode === "card" ? (
-                  <>
+                  <div className="relative flex min-h-0 flex-1 flex-col">
                     <div className="admin-power-lines-card-scroll">
                       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                         {lines.map((line) => (
@@ -538,6 +545,11 @@ export default function AdminPowerLinesPage() {
                         ))}
                       </div>
                     </div>
+                    {linesQuery.isFetching ? (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60">
+                        <Spin />
+                      </div>
+                    ) : null}
                     <div className="admin-power-lines-pagination">
                       <Pagination
                         current={pagination.current}
@@ -550,7 +562,7 @@ export default function AdminPowerLinesPage() {
                         showTotal={(total) => `共 ${total} 条`}
                       />
                     </div>
-                  </>
+                  </div>
                 ) : (
                   <div
                     ref={tableScrollAnchorRef}
@@ -563,6 +575,7 @@ export default function AdminPowerLinesPage() {
                       onEdit={openEditLineModal}
                       onDetail={openDetail}
                       onPreview={openPreview}
+                      loading={linesQuery.isFetching}
                       onDelete={(line) => {
                         modalApi.confirm({
                           title: "删除线路",
@@ -766,10 +779,12 @@ interface PowerLineTableProps {
   onPreview: (line: LineSummary) => void;
   onDelete: (line: LineSummary) => void;
   deleteLoading: boolean;
+  /** 列表刷新中（保留旧数据仅显示加载遮罩） */
+  loading?: boolean;
   scrollY?: number;
 }
 
-function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onDelete, deleteLoading, scrollY = POWER_LINES_TABLE_MIN_SCROLL_Y }: PowerLineTableProps) {
+function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onDelete, deleteLoading, loading, scrollY = POWER_LINES_TABLE_MIN_SCROLL_Y }: PowerLineTableProps) {
   const columns: ColumnsType<LineSummary> = [
     {
       title: "线路名称",
@@ -863,6 +878,7 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
       rowKey="id"
       columns={columns}
       dataSource={lines}
+      loading={loading}
       sticky
       pagination={{
         hideOnSinglePage: false,
