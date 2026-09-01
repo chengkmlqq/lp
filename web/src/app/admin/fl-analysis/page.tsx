@@ -491,21 +491,26 @@ export default function AdminFlAnalysisPage() {
       <Modal
         title="新建防雷任务"
         open={createModalOpen}
-        width={800}
+        width={880}
+        footer={null}
         onCancel={() => {
           if (createJobMutation.isPending) {
             return;
           }
           setCreateModalOpen(false);
         }}
-        onOk={() => createJobForm.submit()}
-        okText="创建并启动任务"
-        cancelText="取消"
-        confirmLoading={createJobMutation.isPending}
         destroyOnHidden={false}
       >
         <CreateJobForm
           form={createJobForm}
+          open={createModalOpen}
+          submitting={createJobMutation.isPending}
+          onCancel={() => {
+            if (createJobMutation.isPending) {
+              return;
+            }
+            setCreateModalOpen(false);
+          }}
           lines={linesQuery.data?.items ?? []}
           linesLoading={linesQuery.isLoading}
           selectedLine={selectedLine}
