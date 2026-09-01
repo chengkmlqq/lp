@@ -644,7 +644,7 @@ interface ArtifactsViewProps {
 }
 
 /** 渲染一节 section 的 content 列表（段落/子标题/bullet/card/表格，与 docx 同源按序交错）。 */
-function SectionContent({ content }: { content: ReportSectionItem[] }) {
+function SectionContent({ content, isAppendix = false }: { content: ReportSectionItem[]; isAppendix?: boolean }) {
   return (
     <Space direction="vertical" size={12} className="w-full">
       {content.map((item, itemIndex) => {
@@ -704,6 +704,45 @@ function SectionContent({ content }: { content: ReportSectionItem[] }) {
                   </Paragraph>
                 );
               })}
+            </div>
+          );
+        }
+        if (item.type === "table" && isAppendix) {
+          // 附表A 输入信息汇总：参照「表1 故障分析总览」的呈现方式，
+          // 采用双列 label:value 展示、无表头（key_value 表 A.1~A.3 直接取相邻键值对；
+          // grid 表 A.4 以首列为标签，其余列合并为值）。
+          const rawRows = item.rows ?? [];
+          const pairs: { label: string; value: string }[] = [];
+          if (item.layout === "grid") {
+            rawRows.forEach((row) => {
+              const label = row[0] ?? "";
+              const value = row.slice(1).filter((cell) => cell !== "").join("；");
+              if (label || value) {
+                pairs.push({ label, value });
+              }
+            });
+          } else {
+            rawRows.forEach((row) => {
+              for (let index = 0; index + 1 < row.length; index += 2) {
+                pairs.push({ label: row[index] ?? "", value: row[index + 1] ?? "" });
+              }
+            });
+          }
+          return (
+            <div
+              key={itemIndex}
+              className="bg-white border border-gray-200 rounded-lg"
+              style={{ padding: 12 }}
+            >
+              <Descriptions size="small" bordered column={2}>
+                {pairs.map((pair, pairIndex) => (
+                  <Descriptions.Item key={pairIndex} label={pair.label}>
+                    <Paragraph className="text-sm text-gray-700 mb-0">
+                      {pair.value}
+                    </Paragraph>
+                  </Descriptions.Item>
+                ))}
+              </Descriptions>
             </div>
           );
         }
@@ -852,7 +891,7 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
                       </Text>
                     </div>
                   )}
-                  <SectionContent content={section.content} />
+                  <SectionContent content={section.content} isAppendix={group.key === "appendix"} />
                 </div>
               ))}
             </Space>
