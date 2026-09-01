@@ -177,8 +177,17 @@ interface ApiErrorResponse {
  */
 export async function readApiError(response: Response): Promise<string> {
   try {
-    const data = (await response.json()) as ApiErrorResponse;
-    return data.detail ?? `HTTP ${response.status}`;
+    const data = (await response.json()) as ApiErrorResponse & { detail?: unknown };
+    const detail = data.detail;
+    // detail 可能是 string / 对象 / 数组（如 FastAPI 422 校验错误为数组、嵌套 detail）——
+    // 直接 return 传给 `new Error(detail)` 会对对象隐式转成 "[object Object]"，故需序列化。
+    if (detail == null) return `HTTP ${response.status}`;
+    if (typeof detail === "string") return detail;
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return String(detail);
+    }
   } catch {
     return `HTTP ${response.status}`;
   }
