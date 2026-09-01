@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getApiBaseUrl } from "@/lib/api";
 import { withBasePath } from "@/lib/base-path";
+import { createCesiumViewer, formatCesiumInitError } from "@/lib/cesium-viewer";
 import { reloadOnceOnChunkError } from "@/lib/chunk-error";
 import {
   getElevationTerrainLayerUrl,
@@ -65,8 +66,7 @@ function pointSizeByAltitude(altitude: number, minAltitude: number, maxAltitude:
 }
 
 function formatErrorMessage(candidate: unknown): string {
-  if (candidate instanceof Error && candidate.message) return candidate.message;
-  return "Cesium 初始化失败，请检查静态资源是否已同步。";
+  return formatCesiumInitError(candidate);
 }
 
 export function ElevationPreviewCesiumMap({
@@ -142,7 +142,7 @@ export function ElevationPreviewCesiumMap({
         const Cesium = await import("cesium");
         if (cancelled || !containerRef.current) return;
 
-        const viewer = new Cesium.Viewer(containerRef.current, {
+        const viewer = createCesiumViewer(Cesium, containerRef.current, {
           animation: false,
           baseLayer: false,
           baseLayerPicker: false,

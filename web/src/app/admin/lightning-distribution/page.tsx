@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  App,
   Button,
   Badge,
   Card,
@@ -25,7 +26,6 @@ import {
   Tooltip,
   Typography,
   Upload,
-  message,
   type CardProps,
   type MenuProps,
 } from "antd";
@@ -35,10 +35,12 @@ import {
   EnvironmentOutlined,
   EyeOutlined,
   FileTextOutlined,
+  InboxOutlined,
   MoreOutlined,
   NumberOutlined,
   QuestionCircleOutlined,
   SearchOutlined,
+  SendOutlined,
   TagOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
@@ -71,7 +73,6 @@ type ImportFormValues = {
   region_id: string;
   city: string;
   notes: string;
-  line_id: string | null;
 };
 
 type DistributionLogRow = {
@@ -89,7 +90,6 @@ const INITIAL_IMPORT_VALUES: ImportFormValues = {
   region_id: "",
   city: "",
   notes: "",
-  line_id: null,
 };
 
 const STATUS_META: Record<string, { color: "default" | "processing" | "success" | "error"; label: string }> = {
@@ -152,6 +152,7 @@ const LIST_TAB_KEY = "list";
 
 export default function AdminLightningDistributionPage() {
   const { user, initializing, hasPermission, fetchWithAuth, getAccessToken } = useAuth();
+  const { modal: modalApi, message: messageApi } = App.useApp();
   const queryClient = useQueryClient();
   const [importForm] = Form.useForm<ImportFormValues>();
 
@@ -322,7 +323,6 @@ export default function AdminLightningDistributionPage() {
       formData.append("region_id", values.region_id.trim());
       formData.append("city", values.city.trim());
       if (values.notes?.trim()) formData.append("notes", values.notes.trim());
-      if (values.line_id) formData.append("line_id", values.line_id);
 
       const response = await fetchWithAuth("/api/v1/lightning-currents/import-distribution", {
         method: "POST",
@@ -682,6 +682,7 @@ export default function AdminLightningDistributionPage() {
         width: 200,
         fixed: "right",
         render: (_: unknown, row) => {
+          // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/回填），其余操作收进 ⋯ 三点下拉（与雷电流幅值统计页一致）
           const moreMenuItems: MenuProps["items"] = [
             {
               key: "backfill-history",
@@ -709,9 +710,20 @@ export default function AdminLightningDistributionPage() {
             ...(canManage
               ? [
                   {
-                    key: "draw-lp",
-                    label: "回填",
-                    onClick: () => openLpDrawModal(row),
+                    key: "delete",
+                    label: "删除",
+                    danger: true,
+                    disabled: deleteMutation.isPending,
+                    onClick: () => {
+                      modalApi.confirm({
+                        title: "确认删除该地闪分布记录？",
+                        content: "将同时删除 MinIO 上的原始文件与密度图，此操作不可恢复。",
+                        onOk: () => deleteMutation.mutate(row),
+                        okText: "确认删除",
+                        cancelText: "取消",
+                        okButtonProps: { danger: true },
+                      });
+                    },
                   },
                 ]
               : []),
@@ -723,22 +735,8 @@ export default function AdminLightningDistributionPage() {
                 详情
               </Button>
               {canManage && (
-                <Button
-                  size="small"
-                  danger
-                  loading={deleteMutation.isPending}
-                  onClick={() => {
-                    Modal.confirm({
-                      title: "确认删除该地闪分布记录？",
-                      content: "将同时删除 MinIO 上的原始文件与密度图，此操作不可恢复。",
-                      onOk: () => deleteMutation.mutate(row),
-                      okText: "确认删除",
-                      cancelText: "取消",
-                      okButtonProps: { danger: true },
-                    });
-                  }}
-                >
-                  删除
+                <Button size="small" onClick={() => openLpDrawModal(row)}>
+                  回填
                 </Button>
               )}
               {moreMenuItems.length > 0 && (
@@ -753,7 +751,7 @@ export default function AdminLightningDistributionPage() {
         },
       },
     ],
-    [canManage, deleteMutation, openDetail, openLinkedLinesModal, openLogViewer, canReadLogs],
+    [canManage, deleteMutation, openDetail, openLinkedLinesModal, openLogViewer, openLpDrawModal, canReadLogs],
   );
 
   const renderRecordCard = (record: LightningDistributionRecord) => {
@@ -832,23 +830,14 @@ export default function AdminLightningDistributionPage() {
                 />
               </Tooltip>
               {canManage && (
-                <Tooltip title="删除">
+                <Tooltip title="回填">
                   <Button
                     type="text"
                     size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    loading={deleteMutation.isPending}
+                    icon={<SendOutlined />}
                     onClick={(event) => {
                       event.stopPropagation();
-                      Modal.confirm({
-                        title: "确认删除",
-                        content: "确认删除该地闪分布记录？此操作不可恢复。",
-                        okText: "确认删除",
-                        cancelText: "取消",
-                        okButtonProps: { danger: true },
-                        onOk: () => deleteMutation.mutate(record),
-                      });
+                      openLpDrawModal(record);
                     }}
                   />
                 </Tooltip>
@@ -859,25 +848,21 @@ export default function AdminLightningDistributionPage() {
                     key: "backfill-history",
                     label: "回填记录",
                     icon: <FileTextOutlined />,
-                    onClick: () => openLinkedLinesModal(record),
+                    onClick: (info) => {
+                      info.domEvent?.stopPropagation();
+                      openLinkedLinesModal(record);
+                    },
                   },
-                  ...(canManage
-                    ? [
-                        {
-                          key: "draw-lp",
-                          label: "回填",
-                          icon: <ThunderboltOutlined />,
-                          onClick: () => openLpDrawModal(record),
-                        },
-                      ]
-                    : []),
                   ...(canReadLogs && record.task_id
                     ? [
                         {
                           key: "import-log",
                           label: "导入日志",
                           icon: <FileTextOutlined />,
-                          onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
+                          onClick: (info) => {
+                            info.domEvent?.stopPropagation();
+                            openLogViewer(record.task_id, "导入日志", record.source_file_name);
+                          },
                         },
                       ]
                     : []),
@@ -887,7 +872,31 @@ export default function AdminLightningDistributionPage() {
                           key: "draw-log",
                           label: "绘图日志",
                           icon: <FileTextOutlined />,
-                          onClick: () => openLogViewer(record.lp_draw_task_id, "绘图日志", record.source_file_name),
+                          onClick: (info) => {
+                            info.domEvent?.stopPropagation();
+                            openLogViewer(record.lp_draw_task_id, "绘图日志", record.source_file_name);
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(canManage
+                    ? [
+                        {
+                          key: "delete",
+                          label: "删除",
+                          danger: true,
+                          icon: <DeleteOutlined />,
+                          onClick: (info) => {
+                            info.domEvent?.stopPropagation();
+                            modalApi.confirm({
+                              title: "确认删除",
+                              content: "确认删除该地闪分布记录？此操作不可恢复。",
+                              okText: "确认删除",
+                              cancelText: "取消",
+                              okButtonProps: { danger: true },
+                              onOk: () => deleteMutation.mutate(record),
+                            });
+                          },
                         },
                       ]
                     : []),
@@ -1156,33 +1165,7 @@ function ImportModal({
   loading: boolean;
   onConfirm: () => void;
 }) {
-  const { fetchWithAuth } = useAuth();
-  const [lineSearchText, setLineSearchText] = useState("");
-
-  const linesQuery = useQuery({
-    queryKey: ["/api/v1/lines", lineSearchText],
-    enabled: open,
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      params.set("limit", "200");
-      params.set("offset", "0");
-      if (lineSearchText.trim()) params.set("keyword", lineSearchText.trim());
-      const response = await fetchWithAuth(`/api/v1/lines?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LineListResponse;
-    },
-  });
-
-  const lineOptions = useMemo(() => {
-    const items = linesQuery.data?.items ?? [];
-    return items.map((line: LineSummary) => ({
-      label: `${line.code} - ${line.name}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`,
-      value: line.id,
-    }));
-  }, [linesQuery.data]);
-
+  const { message: messageApi } = App.useApp();
   return (
     <Modal
       title="导入地闪密度数据"
@@ -1194,7 +1177,7 @@ function ImportModal({
     >
       <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={initialValues}>
         <div className="grid gap-3 md:grid-cols-2">
-          <Form.Item name="city" label="城市" rules={[{ required: true, message: "请选择城市" }]}>
+          <Form.Item name="city" label="城市">
             <Select
               showSearch
               allowClear
@@ -1216,28 +1199,14 @@ function ImportModal({
               }))}
             />
           </Form.Item>
-          <Form.Item name="region_id" label="地点" rules={[{ required: true, message: "请填写地点" }]}>
+          <Form.Item name="region_id" label="地点">
             <Input placeholder="例如 XX变电站、XX区域（闪电事件发生地点）" />
           </Form.Item>
-          <Form.Item name="event_year" label="数据年份" rules={[{ required: true, message: "请填写年份" }]}>
+          <Form.Item name="event_year" label="数据年份">
             <InputNumber style={{ width: "100%" }} min={1900} max={2100} />
           </Form.Item>
           <Form.Item name="notes" label="数据说明">
             <Input placeholder="可填写数据来源、采集说明等" />
-          </Form.Item>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-1" style={{ marginBottom: 16 }}>
-          <Form.Item name="line_id" label="关联线路">
-            <Select
-              showSearch
-              allowClear
-              placeholder="选择关联线路（可选，用于线路密度回填）"
-              filterOption={false}
-              onSearch={setLineSearchText}
-              notFoundContent={linesQuery.isLoading ? <Spin size="small" /> : undefined}
-              options={lineOptions}
-            />
           </Form.Item>
         </div>
 
@@ -1251,11 +1220,11 @@ function ImportModal({
                   const allowedExts = ["csv", "txt"];
                   const ext = file.name.split(".").pop()?.toLowerCase() || "";
                   if (file.size > maxMB * 1024 * 1024) {
-                    message.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                    messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
                     return Upload.LIST_IGNORE;
                   }
                   if (!allowedExts.includes(ext)) {
-                    message.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
                     return Upload.LIST_IGNORE;
                   }
                   return true;
@@ -1278,6 +1247,7 @@ function ImportModal({
                 </>
               ) : (
                 <>
+                  <InboxOutlined style={{ fontSize: 40, color: "#999" }} />
                   <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
                     点击或拖拽文件到此区域上传
                   </p>

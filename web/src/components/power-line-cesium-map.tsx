@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getApiBaseUrl } from "@/lib/api";
 import { withBasePath } from "@/lib/base-path";
+import { createCesiumViewer, formatCesiumInitError } from "@/lib/cesium-viewer";
 import { reloadOnceOnChunkError } from "@/lib/chunk-error";
 import {
   countLineTowersOutsideTerrainBounds,
@@ -77,8 +78,7 @@ function normalizeRiskLevel(value: string | null): string {
 }
 
 function formatErrorMessage(candidate: unknown): string {
-  if (candidate instanceof Error && candidate.message) return candidate.message;
-  return "Cesium 初始化失败，请检查依赖与静态资源是否已同步。";
+  return formatCesiumInitError(candidate);
 }
 
 function toRad(value: number): number {
@@ -252,7 +252,7 @@ export function PowerLineCesiumMap({
         }
 
         cesiumRef.current = Cesium;
-        const viewer = new Cesium.Viewer(containerRef.current, {
+        const viewer = createCesiumViewer(Cesium, containerRef.current, {
           animation: false,
           baseLayer: false,
           baseLayerPicker: false,

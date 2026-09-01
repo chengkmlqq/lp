@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
+  App,
   Button,
   Descriptions,
   Space,
@@ -11,7 +12,6 @@ import {
   Spin,
   Dropdown,
   Table,
-  message,
   Steps,
   Collapse,
   Tag,
@@ -540,7 +540,7 @@ function buildArtifactTree(
   return root.children ?? [];
 }
 
-async function downloadObject(fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>, analysisId: string, objectKey: string) {
+async function downloadObject(fetchWithAuth: (path: string, init?: RequestInit) => Promise<Response>, analysisId: string, objectKey: string) {
   const encodedKey = objectKey.split("/").map(encodeURIComponent).join("/");
   const response = await fetchWithAuth(`/api/v1/fault-analysis/${analysisId}/artifacts/${encodedKey}`);
   if (!response.ok) {
@@ -573,7 +573,7 @@ interface ReportViewProps {
   detail: FaultAnalysisDetail;
   sections: { sections: ReportSection[]; station: string; fault_datetime: string; fault_id: string };
   exportLoading: boolean;
-  onExportMatlab: () => void;
+  onExportReport: () => void;
 }
 
 interface ProcessViewProps {
@@ -589,7 +589,7 @@ interface ArtifactsViewProps {
   onDownload: (key: string) => void;
 }
 
-function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, onExportMatlab }: ReportViewProps) {
+function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, onExportReport }: ReportViewProps) {
   return (
     <div id={exportElementId} className="py-4">
       <div className="border-b border-gray-200 pb-5 mb-6">
@@ -597,23 +597,11 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
           <Title level={3} className="mb-0">
             {sections.fault_id} 故障分析报告
           </Title>
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: "matlab",
-                  label: "导出引擎产物 (ZIP)",
-                  onClick: onExportMatlab,
-                },
-              ],
-            }}
-            placement="bottomRight"
-            trigger={["click"]}
-          >
-            <Button icon={<DownloadOutlined />} loading={exportLoading}>
+          <Space size={8}>
+            <Button icon={<DownloadOutlined />} loading={exportLoading} onClick={onExportReport}>
               导出报告
             </Button>
-          </Dropdown>
+          </Space>
         </div>
         <Text type="secondary" className="text-sm">
           线路: {detail.line_name ?? "-"} | 录波记录厂站: {sections.station} | 故障时间:{" "}
@@ -677,7 +665,7 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
                         );
                       }
                       return (
-                        <Descriptions.Item key={itemIndex} label="">
+                        <Descriptions.Item key={itemIndex} label="" span={2}>
                           <Paragraph className="text-sm text-gray-700 mb-0">
                             {item.text}
                           </Paragraph>
@@ -840,6 +828,7 @@ function ArtifactsView({ onDownload, downloadingArtifact, artifactTree }: Artifa
 }
 
 export function AnalysisDetailView({ analysisId, tabKey, defaultView }: AnalysisDetailViewProps) {
+  const { message: messageApi } = App.useApp();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
   const [downloadingArtifact, setDownloadingArtifact] = useState<string | null>(null);
@@ -865,38 +854,30 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView }: Analysis
     },
   });
 
-  const handleExportMatlab = async () => {
+  const handleExportReport = async () => {
     if (!detail) return;
 
     setExporting(true);
     try {
-      const response = await fetchWithAuth(`/api/v1/fault-analysis/${analysisId}/export-matlab`);
+      const response = await fetchWithAuth(`/api/v1/fault-analysis/${analysisId}/report`);
       if (!response.ok) {
         const errMsg = await readApiError(response).catch(() => "请求失败");
         throw new Error(errMsg);
       }
       const blob = await response.blob();
-      const disposition = response.headers.get("Content-Disposition") ?? "";
-      let filename = "";
-      const encodedMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-      if (encodedMatch) {
-        filename = decodeURIComponent(encodedMatch[1]);
-      } else {
-        const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
-        filename = plainMatch ? plainMatch[1] : `fault_analysis_${analysisId}_matlab_outputs.zip`;
-      }
+      const taskName = detail.title?.trim() || `FA-${detail.id?.slice(0, 12) ?? ""}`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = filename;
+      a.download = `${taskName}_故障分析报告.docx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      message.success("MATLAB 引擎产物导出成功");
+      messageApi.success("Word报告导出成功");
     } catch (error) {
-      console.error("导出失败", error);
-      message.error(error instanceof Error ? error.message : "导出失败，请重试");
+      console.error("导出报告失败", error);
+      messageApi.error(error instanceof Error ? error.message : "导出失败，请重试");
     } finally {
       setExporting(false);
     }
@@ -943,10 +924,10 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView }: Analysis
     setDownloadingArtifact(objectKey);
     try {
       await downloadObject(fetchWithAuth, analysisId, objectKey);
-      message.success("产物下载成功");
+      messageApi.success("产物下载成功");
     } catch (error) {
       console.error("下载产物失败", error);
-      message.error(error instanceof Error ? error.message : "下载失败，请重试");
+      messageApi.error(error instanceof Error ? error.message : "下载失败，请重试");
     } finally {
       setDownloadingArtifact(null);
     }
@@ -962,7 +943,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView }: Analysis
             detail={detail}
             sections={buildSections(detail)}
             exportLoading={exporting}
-            onExportMatlab={handleExportMatlab}
+            onExportReport={handleExportReport}
           />
         )}
         {activeView === "process" && (

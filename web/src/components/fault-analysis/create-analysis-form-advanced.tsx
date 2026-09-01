@@ -1,4 +1,4 @@
-import { Form, Input, Select, Upload, Button, FormInstance, Space, message, Modal } from "antd";
+import { App, Form, Input, Select, Upload, Button, FormInstance, Space } from "antd";
 import { UploadOutlined, FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined } from "@ant-design/icons";
 import type { CreateFaultAnalysisFormValues } from "./types";
 import { TempFileUpload } from "./temp-file-upload";
@@ -17,6 +17,7 @@ interface CreateAnalysisFormAdvancedProps {
 }
 
 export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit, submitText = "提交分析", submitting }: CreateAnalysisFormAdvancedProps) {
+  const { message: messageApi, modal: modalApi } = App.useApp();
   const [extractState, setExtractState] = useState<{
     response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string };
     item: FaultAnalysisTempFile;
@@ -95,7 +96,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       XLSX.utils.book_append_sheet(wb, ws, '录波提取');
       XLSX.writeFile(wb, '录波提取结果.xlsx');
     } catch {
-      message.error('下载录波提取结果失败');
+      messageApi.error('下载录波提取结果失败');
     }
   }, []);
   // 处理Excel导入
@@ -106,9 +107,9 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       // 将解析的数据填充到表单
       form.setFieldsValue(data as Partial<CreateFaultAnalysisFormValues>);
 
-      message.success('Excel数据导入成功');
+      messageApi.success('Excel数据导入成功');
     } catch (error) {
-      message.error(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      messageApi.error(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
 
     // 阻止自动上传
@@ -119,9 +120,9 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
   const handleDownloadTemplate = () => {
     try {
       generateImportTemplate();
-      message.success('模板下载成功');
+      messageApi.success('模板下载成功');
     } catch {
-      message.error('模板下载失败');
+      messageApi.error('模板下载失败');
     }
   };
 
@@ -129,9 +130,9 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
   const handleDownloadWaveDataTemplate = () => {
     try {
       generateWaveDataTemplate();
-      message.success('录波数据模板下载成功');
+      messageApi.success('录波数据模板下载成功');
     } catch {
-      message.error('录波数据模板下载失败');
+      messageApi.error('录波数据模板下载失败');
     }
   };
 
@@ -139,9 +140,9 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
   const handleDownloadLightningTemplate = () => {
     try {
       generateLightningTemplate();
-      message.success('雷电定位数据模板下载成功');
+      messageApi.success('雷电定位数据模板下载成功');
     } catch {
-      message.error('雷电定位数据模板下载失败');
+      messageApi.error('雷电定位数据模板下载失败');
     }
   };
 
@@ -149,9 +150,9 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
   const handleDownloadWaveTemplate = () => {
     try {
       generateWaveTemplate();
-      message.success('行波数据模板下载成功');
+      messageApi.success('行波数据模板下载成功');
     } catch {
-      message.error('行波数据模板下载失败');
+      messageApi.error('行波数据模板下载失败');
     }
   };
 
@@ -159,9 +160,9 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
   const handleDownloadOpticalTemplate = () => {
     try {
       generateOpticalTemplate();
-      message.success('光学监控数据模板下载成功');
+      messageApi.success('光学监控数据模板下载成功');
     } catch {
-      message.error('光学监控数据模板下载失败');
+      messageApi.error('光学监控数据模板下载失败');
     }
   };
 
@@ -209,7 +210,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
     }
 
     if (pendingChecks.length > 0) {
-      Modal.confirm({
+      modalApi.confirm({
         title: "部分文件尚未完成内容校验",
         content: `${pendingChecks.map((p) => p.label).join("、")} 仍有文件在解析中或尚未校验，确定要提交吗？`,
         okText: "仍要提交",
@@ -220,7 +221,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
     }
 
     if (allErrors.length > 0) {
-      Modal.confirm({
+      modalApi.confirm({
         title: "以下文件存在格式错误，无法参与判别",
         content: (
           <div className="max-h-[300px] overflow-y-auto">
@@ -240,7 +241,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
     }
 
     if (allWarnings.length > 0) {
-      Modal.confirm({
+      modalApi.confirm({
         title: "部分文件疑似缺少字段",
         content: (
           <div className="max-h-[300px] overflow-y-auto">
@@ -298,30 +299,30 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
       {/* 中：故障信息 */}
       <div className="admin-fault-analysis-form-section">
-        <div className="admin-fault-analysis-form-section-title">故障信息</div>
-        <div className="space-y-4 px-1">
-          <div className="flex items-center justify-between">
-            <div />
-            <Space size="small">
-              <Button
-                size="small"
-                icon={<DownloadOutlined />}
-                className="fault-analysis-step-button"
-                onClick={handleDownloadTemplate}
-              >
-                下载模板
+        <div className="admin-fault-analysis-form-section-title justify-between">
+          <span>故障信息</span>
+          <Space size="small">
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              className="fault-analysis-step-button"
+              onClick={handleDownloadTemplate}
+            >
+              下载模板
+            </Button>
+            <Upload
+              accept=".xlsx,.xls"
+              showUploadList={false}
+              beforeUpload={handleExcelImport}
+            >
+              <Button size="small" icon={<UploadOutlined />} className="fault-analysis-step-button">
+                Excel导入
               </Button>
-              <Upload
-                accept=".xlsx,.xls"
-                showUploadList={false}
-                beforeUpload={handleExcelImport}
-              >
-                <Button size="small" icon={<UploadOutlined />} className="fault-analysis-step-button">
-                  Excel导入
-                </Button>
-              </Upload>
-            </Space>
-          </div>
+            </Upload>
+          </Space>
+        </div>
+
+        <div className="space-y-4 px-1">
 
           <Form.Item
             label="录波记录厂站"
@@ -547,7 +548,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               <Form.Item name="wave_data_file" className="mb-0">
                 <TempFileUpload accept=".txt,.json,.csv,.pdf,.xlsx" maxSizeMb={50} buttonLabel="选择文件" previewKind="wave_data" onPdfExtracted={(item, response) => {
                   handlePdfExtracted(item, response);
-                  message.success(response.ok ? '已自动提取并回填表单字段' : `已识别 ${13 - response.missing.length}/13 个字段，缺失字段已提示`);
+                  messageApi.success(response.ok ? '已自动提取并回填表单字段' : `已识别 ${13 - response.missing.length}/13 个字段，缺失字段已提示`);
                 }} />
               </Form.Item>
               {extractState && extractState.response.extracted && (

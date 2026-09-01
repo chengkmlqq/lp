@@ -264,7 +264,7 @@ export function TaskLogViewerDrawer({
           <Spin />
         </div>
       ) : (
-        <>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
           <Space
             style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}
             align="center"
@@ -291,7 +291,8 @@ export function TaskLogViewerDrawer({
           <pre
             ref={contentRef}
             style={{
-              maxHeight: "60vh",
+              flex: 1,
+              minHeight: 0,
               overflow: "auto",
               padding: "16px",
               backgroundColor: "#0f172a",
@@ -311,7 +312,7 @@ export function TaskLogViewerDrawer({
               />
             )}
           </pre>
-        </>
+        </div>
       )}
     </Drawer>
   );

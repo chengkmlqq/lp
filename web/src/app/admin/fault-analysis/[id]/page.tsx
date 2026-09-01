@@ -51,7 +51,7 @@ function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]
       sections: storedSections,
       station: detail.station ?? "",
       fault_datetime: detail.fault_time ?? "",
-      fault_id: `FA-${detail.id?.slice(0, 12) ?? ""}`,
+      fault_id: buildFaultId(detail),
     };
   }
 
@@ -134,13 +134,14 @@ function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]
    return { sections, station, fault_datetime: faultDatetime, fault_id: faultId };
 }
 
+function buildFaultId(detail: FaultAnalysisDetail): string {
+  return `FA-${detail.id?.slice(0, 12) ?? ""}`;
+}
+
+/** 下载报告时按任务名称命名：优先任务标题（title），否则用任务编号（与详情页标题一致）。 */
 function buildReportFileName(detail: FaultAnalysisDetail): string {
-  const date = detail.fault_time ? new Date(detail.fault_time) : null;
-  const datePart = date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : "";
-  const parts = [detail.line_name, "故障分析报告"];
-  if (datePart) parts.push(datePart);
-  const raw = parts.filter((part): part is string => Boolean(part)).join("_");
-  return `${raw}.docx`;
+  const taskName = detail.title?.trim() || buildFaultId(detail);
+  return `${taskName}_故障分析报告.docx`;
 }
 
 interface ComputationStepDef {
@@ -583,7 +584,7 @@ function buildArtifactTree(
 const FAULT_ANALYSIS_KEY_PREFIX = "fault-analysis/";
 
 /** 下载指定 MinIO 对象 key。 */
-async function downloadObject(fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>, analysisId: string, objectKey: string) {
+async function downloadObject(fetchWithAuth: (path: string, init?: RequestInit) => Promise<Response>, analysisId: string, objectKey: string) {
   const encodedKey = objectKey.split("/").map(encodeURIComponent).join("/");
   const response = await fetchWithAuth(`/api/v1/fault-analysis/${analysisId}/artifacts/${encodedKey}`);
   if (!response.ok) {
@@ -620,6 +621,7 @@ export default function FaultAnalysisDetailPage() {
   const [wsStatus, setWsStatus] = useState<string | null>(null);
   const [wsProgress, setWsProgress] = useState<number | null>(null);
   const [wsError, setWsError] = useState<string | null>(null);
+  const [wsStep, setWsStep] = useState<string | null>(null);
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
 
@@ -654,16 +656,19 @@ export default function FaultAnalysisDetailPage() {
           setWsStatus("failed");
           setWsProgress(0);
           setWsError(typeof payload.error === "string" ? payload.error : "分析失败");
+          setWsStep(null);
         } else if (event.name === "analysis.diagnosis_completed") {
           setWsStatus("completed");
           setWsProgress(100);
           setWsError(null);
+          setWsStep(null);
           void detailQuery.refetch();
         } else {
           setWsStatus(typeof payload.status === "string" && payload.status ? payload.status : "processing");
           const progressValue = Number(payload.progress);
           setWsProgress(Number.isNaN(progressValue) ? null : Math.max(0, Math.min(100, progressValue)));
           setWsError(null);
+          setWsStep(typeof payload.step === "string" && payload.step ? payload.step : null);
         }
       }
     }, [analysisId, detailQuery]),

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  App,
   Badge,
   Button,
   Descriptions,
@@ -25,7 +26,6 @@ import {
   Tooltip,
   Typography,
   Upload,
-  message,
   type MenuProps,
 } from "antd";
 import {
@@ -36,6 +36,7 @@ import {
   FileTextOutlined,
   GlobalOutlined,
   HistoryOutlined,
+  InboxOutlined,
   NumberOutlined,
   SearchOutlined,
   UploadOutlined,
@@ -251,6 +252,7 @@ function readMutationError(error: unknown, fallback: string): string {
 }
 
 export default function ElevationRecordsPage() {
+  const { message: messageApi } = App.useApp();
   const { fetchWithAuth, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
 
@@ -331,14 +333,14 @@ export default function ElevationRecordsPage() {
       return readJsonResponse<ElevationFileRecordUploadResponse>(response);
     },
     onSuccess: () => {
-      message.success("文件上传成功");
+      messageApi.success("文件上传成功");
       setUploadModalOpen(false);
       uploadForm.resetFields();
       resetTempUploadState();
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
-      message.error(readMutationError(error, "上传失败"));
+      messageApi.error(readMutationError(error, "上传失败"));
     },
   });
 
@@ -413,11 +415,11 @@ export default function ElevationRecordsPage() {
       setDeletingId(id);
     },
     onSuccess: () => {
-      message.success("删除成功");
+      messageApi.success("删除成功");
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
-      message.error(readMutationError(error, "删除失败"));
+      messageApi.error(readMutationError(error, "删除失败"));
     },
     onSettled: () => setDeletingId(null),
   });
@@ -434,11 +436,11 @@ export default function ElevationRecordsPage() {
       setAnalyzingId(id);
     },
     onSuccess: () => {
-      message.success("分析任务已提交");
+      messageApi.success("分析任务已提交");
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
-      message.error(readMutationError(error, "分析失败"));
+      messageApi.error(readMutationError(error, "分析失败"));
     },
     onSettled: () => setAnalyzingId(null),
   });
@@ -452,11 +454,11 @@ export default function ElevationRecordsPage() {
       return readJsonResponse<ElevationFileRecordTaskResponse>(response);
     },
     onSuccess: () => {
-      message.success("地形瓦片任务已提交");
+      messageApi.success("地形瓦片任务已提交");
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
-      message.error(readMutationError(error, "地形生成失败"));
+      messageApi.error(readMutationError(error, "地形生成失败"));
     },
   });
 
@@ -471,12 +473,12 @@ export default function ElevationRecordsPage() {
       return readJsonResponse(response);
     },
     onSuccess: () => {
-      message.success("回填任务已创建");
+      messageApi.success("回填任务已创建");
       setApplyModalOpen(false);
       applyForm.resetFields();
     },
     onError: (error) => {
-      message.error(readMutationError(error, "创建任务失败"));
+      messageApi.error(readMutationError(error, "创建任务失败"));
     },
   });
 
@@ -1002,6 +1004,18 @@ export default function ElevationRecordsPage() {
           layout="vertical"
           onFinish={(values) => uploadMutation.mutate(values)}
         >
+          <Form.Item label="来源" name="source">
+            <Input placeholder="例如：SRTM、DEM 数据" />
+          </Form.Item>
+
+          <Form.Item label="分辨率(米)" name="resolution_m">
+            <InputNumber min={0.1} step={0.1} style={{ width: "100%" }} placeholder="例如：30" />
+          </Form.Item>
+
+          <Form.Item label="备注" name="notes">
+            <Input.TextArea rows={3} placeholder="文件说明..." />
+          </Form.Item>
+
           <Form.Item
             label="文件"
             required
@@ -1014,7 +1028,7 @@ export default function ElevationRecordsPage() {
                 const allowedExts = ["tif", "tiff", "zip"];
                 const ext = file.name.split(".").pop()?.toLowerCase() || "";
                 if (!allowedExts.includes(ext)) {
-                  message.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                  messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
                   return Upload.LIST_IGNORE;
                 }
                 handleTempUpload(file as File);
@@ -1037,6 +1051,7 @@ export default function ElevationRecordsPage() {
                 </>
               ) : (
                 <>
+                  <InboxOutlined style={{ fontSize: 40, color: "#999" }} />
                   <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
                     点击或拖拽文件到此区域上传
                   </p>
@@ -1052,18 +1067,6 @@ export default function ElevationRecordsPage() {
               )}
             </Upload.Dragger>
           </Form.Item>
-
-          <Form.Item label="来源" name="source">
-            <Input placeholder="例如：SRTM、DEM 数据" />
-          </Form.Item>
-
-          <Form.Item label="分辨率(米)" name="resolution_m">
-            <InputNumber min={0.1} step={0.1} style={{ width: "100%" }} placeholder="例如：30" />
-          </Form.Item>
-
-          <Form.Item label="备注" name="notes">
-            <Input.TextArea rows={3} placeholder="文件说明..." />
-          </Form.Item>
         </Form>
       </Modal>
 
@@ -1071,6 +1074,7 @@ export default function ElevationRecordsPage() {
       <Modal
         title="回填线路高程"
         open={applyModalOpen}
+        forceRender
         onCancel={() => {
           setApplyModalOpen(false);
           applyForm.resetFields();

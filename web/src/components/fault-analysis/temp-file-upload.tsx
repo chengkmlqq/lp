@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Progress, Space, Spin, Typography, message } from "antd";
+import { App, Button, Progress, Space, Spin, Typography } from "antd";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -275,6 +275,7 @@ export function TempFileUpload({
   previewKind,
   onPdfExtracted,
 }: TempFileUploadProps) {
+  const { message: messageApi } = App.useApp();
   const { getAccessToken } = useAuth();
   const inputRef = useRef<HTMLInputElement | null>(null);
   // 始终读取最新 value，避免并发上传时 onProgress 回调闭包读到陈旧值。
@@ -434,7 +435,7 @@ export function TempFileUpload({
               it.uid === item.uid ? { ...it, status: "error", error: text } : it,
             ),
           );
-          message.error(`${file.name} 上传失败：${text}`);
+          messageApi.error(`${file.name} 上传失败：${text}`);
         });
     },
     [getAccessToken, patchValue, startValidate, callPdfExtract],
@@ -443,7 +444,7 @@ export function TempFileUpload({
   const buildPendingItem = useCallback(
     (file: File): FaultAnalysisTempFile | null => {
       if (maxSizeMb != null && file.size > maxSizeMb * 1024 * 1024) {
-        message.error(`${file.name} 超过 ${maxSizeMb}MB 大小限制，请重新选择`);
+        messageApi.error(`${file.name} 超过 ${maxSizeMb}MB 大小限制，请重新选择`);
         return null;
       }
       return {

@@ -83,6 +83,22 @@ const DEFAULT_FORM_VALUES: MenuFormValues = {
   component: "",
 };
 
+function menuToFormValues(menu: MenuItem): MenuFormValues {
+  return {
+    code: menu.code,
+    name: menu.name,
+    path: menu.path ?? "",
+    icon: menu.icon ?? "",
+    parent_id: menu.parent_id ?? undefined,
+    type: menu.type as MenuFormValues["type"],
+    sort_order: menu.sort_order,
+    status: menu.status as MenuFormValues["status"],
+    visible: menu.visible,
+    cacheable: menu.cacheable,
+    component: menu.component ?? "",
+  };
+}
+
 const ADMIN_ME_MENUS_QUERY_KEY = ["/api/v1/admin/me/menus"] as const;
 const MENU_TABLE_MIN_SCROLL_Y = 180;
 const MENU_TABLE_VIEWPORT_GAP = 40;
@@ -435,27 +451,13 @@ export default function AdminMenusPage() {
 
   const startCreate = useCallback(() => {
     setEditingMenuId(null);
-    form.setFieldsValue(DEFAULT_FORM_VALUES);
     setDialogOpen(true);
-  }, [form]);
+  }, []);
 
   const startEdit = useCallback((menu: MenuItem) => {
     setEditingMenuId(menu.id);
-    form.setFieldsValue({
-      code: menu.code,
-      name: menu.name,
-      path: menu.path ?? "",
-      icon: menu.icon ?? "",
-      parent_id: menu.parent_id ?? undefined,
-      type: menu.type as MenuFormValues["type"],
-      sort_order: menu.sort_order,
-      status: menu.status as MenuFormValues["status"],
-      visible: menu.visible,
-      cacheable: menu.cacheable,
-      component: menu.component ?? "",
-    });
     setDialogOpen(true);
-  }, [form]);
+  }, []);
 
   const createMenuMutation = useMutation({
     mutationFn: async (payload: MenuMutationPayload) => {
@@ -904,7 +906,7 @@ export default function AdminMenusPage() {
               <AntCard
                 className="admin-menus-tree-card"
                 style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-                bodyStyle={{ flex: 1, padding: 0 }}
+                styles={{ body: { flex: 1, padding: 0 } }}
               >
                 <div className="admin-menus-sider-search">
                   <Input
@@ -1130,7 +1132,7 @@ export default function AdminMenusPage() {
         <Form<MenuFormValues>
           form={form}
           layout="vertical"
-          initialValues={DEFAULT_FORM_VALUES}
+          initialValues={editingMenu ? menuToFormValues(editingMenu) : DEFAULT_FORM_VALUES}
           preserve={false}
         >
           <Row gutter={12}>
@@ -1185,7 +1187,7 @@ export default function AdminMenusPage() {
               </Form.Item>
             </Col>
 
-            <Col xs={24} md={12}>
+            <Col xs={24} md={24}>
               <Form.Item label="排序" name="sort_order" rules={[{ required: true, message: "请输入排序值" }]}>
                 <InputNumber className="w-full" min={0} precision={0} />
               </Form.Item>

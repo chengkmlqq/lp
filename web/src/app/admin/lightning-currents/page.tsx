@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  App,
   Badge,
   Button,
   DatePicker,
@@ -26,7 +27,6 @@ import {
   Tooltip as AntTooltip,
   Typography,
   Upload,
-  message,
   type MenuProps,
 } from "antd";
 import {
@@ -122,7 +122,7 @@ const INITIAL_IMPORT_VALUES: ImportFormValues = {
   is_synthetic: false,
 };
 
-const STATUS_META: Record<string, { color: string; label: string }> = {
+const STATUS_META: Record<string, { color: "default" | "processing" | "success" | "error" | "warning"; label: string }> = {
   pending: { color: "default", label: "待处理" },
   processing: { color: "processing", label: "导入中" },
   completed: { color: "success", label: "已完成" },
@@ -176,6 +176,7 @@ const LIGHTNING_TABLE_BOTTOM_GAP = 8;
 
 export default function AdminLightningCurrentsPage() {
   const { user, initializing, hasPermission, fetchWithAuth, getAccessToken } = useAuth();
+  const { modal: modalApi, message: messageApi } = App.useApp();
   const queryClient = useQueryClient();
   const [importForm] = Form.useForm<ImportFormValues>();
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -772,10 +773,14 @@ export default function AdminLightningCurrentsPage() {
         <div className="flex flex-col">
           <div className="admin-lightning-events-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
             <ThunderboltOutlined className="text-base text-gray-500" />
-            <Typography.Text strong className="truncate">{record.source_file_name || "-"}</Typography.Text>
-            <div className="flex flex-shrink-0 items-center gap-2">
-              <Badge status={meta.color} />
-              <Typography.Text type="secondary" className="text-xs">{meta.label}</Typography.Text>
+            <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
+              <div className="flex flex-1 min-w-0 flex-col">
+                <Typography.Text strong className="truncate">{record.source_file_name || "-"}</Typography.Text>
+              </div>
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <Badge status={meta.color} />
+                <Typography.Text type="secondary" className="text-xs">{meta.label}</Typography.Text>
+              </div>
             </div>
           </div>
 
@@ -798,10 +803,12 @@ export default function AdminLightningCurrentsPage() {
             </div>
           </div>
 
-          <div className="admin-lightning-events-card-actions flex justify-end px-4 py-2 border-t border-gray-200">
+          <div className="admin-lightning-events-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
             {record.status === "processing" ? (
               <Progress percent={record.progress} size="small" className="flex-1 max-w-40" />
-            ) : null}
+            ) : (
+              <div />
+            )}
             <Space size="small" className="shrink-0">
               <AntTooltip title="详情">
                 <Button
@@ -837,7 +844,10 @@ export default function AdminLightningCurrentsPage() {
                           {
                             key: "edit",
                             label: "编辑",
-                            onClick: () => openEditModal(record),
+                            onClick: (info) => {
+                              info.domEvent?.stopPropagation();
+                              openEditModal(record);
+                            },
                           },
                         ]
                       : []),
@@ -846,7 +856,10 @@ export default function AdminLightningCurrentsPage() {
                           {
                             key: "backfill-history",
                             label: "回填记录",
-                            onClick: () => openBackfillHistory(record),
+                            onClick: (info) => {
+                              info.domEvent?.stopPropagation();
+                              openBackfillHistory(record);
+                            },
                           },
                         ]
                       : []),
@@ -855,7 +868,10 @@ export default function AdminLightningCurrentsPage() {
                           {
                             key: "import-log",
                             label: "导入日志",
-                            onClick: () => openLogViewer(record.task_id, "导入日志", record.source_file_name),
+                            onClick: (info) => {
+                              info.domEvent?.stopPropagation();
+                              openLogViewer(record.task_id, "导入日志", record.source_file_name);
+                            },
                           },
                         ]
                       : []),
@@ -865,8 +881,19 @@ export default function AdminLightningCurrentsPage() {
                             key: "delete",
                             label: "删除",
                             danger: true,
-                            onClick: async () => {
-                              await deleteMutation.mutateAsync(record);
+                            disabled: deleteMutation.isPending,
+                            onClick: (info) => {
+                              info.domEvent?.stopPropagation();
+                              modalApi.confirm({
+                                title: "删除记录",
+                                content: `确认删除记录 ${record.source_file_name} 吗？`,
+                                okText: "删除",
+                                cancelText: "取消",
+                                okButtonProps: { danger: true },
+                                onOk: async () => {
+                                  await deleteMutation.mutateAsync(record);
+                                },
+                              });
                             },
                           },
                         ]
@@ -1014,7 +1041,7 @@ export default function AdminLightningCurrentsPage() {
                     label: "删除",
                     disabled: deleteMutation.isPending,
                     onClick: () => {
-                      Modal.confirm({
+                      modalApi.confirm({
                         title: "删除记录",
                         content: `确认删除记录 ${row.source_file_name} 吗？`,
                         okText: "删除",
@@ -1290,11 +1317,11 @@ export default function AdminLightningCurrentsPage() {
                   const allowedExts = ["csv", "txt"];
                   const ext = file.name.split(".").pop()?.toLowerCase() || "";
                   if (file.size > maxMB * 1024 * 1024) {
-                    message.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                    messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
                     return Upload.LIST_IGNORE;
                   }
                   if (!allowedExts.includes(ext)) {
-                    message.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
                     return Upload.LIST_IGNORE;
                   }
                   return true;
@@ -1445,6 +1472,7 @@ export default function AdminLightningCurrentsPage() {
       <Modal
         title={editRecord ? `编辑元信息 - ${editRecord.source_file_name}` : "编辑元信息"}
         open={editModalOpen}
+        forceRender
         onCancel={() => {
           setEditModalOpen(false);
           setEditRecord(null);

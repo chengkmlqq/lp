@@ -5913,6 +5913,18 @@ body {
   background: color-mix(in srgb, var(--ant-color-primary) 20%, transparent) !important;
 }
 
+/* 标题栏内的操作按钮：标题栏自带底色，透明按钮会被吞掉，改用容器底色+实边框突出 */
+.admin-fault-analysis-form-section-title .fault-analysis-step-button {
+  background: var(--ant-color-bg-container) !important;
+  border-color: var(--ant-color-border-secondary) !important;
+}
+
+.admin-fault-analysis-form-section-title .fault-analysis-step-button:hover {
+  color: var(--ant-color-primary) !important;
+  border-color: var(--ant-color-primary) !important;
+  background: color-mix(in srgb, var(--ant-color-primary) 12%, var(--ant-color-bg-container)) !important;
+}
+
 
 /* LP-304: 线路管理详情页（[id]/page.tsx）外层固定 card Tabs，内容区白底；
    纵向滚动已上移到整个详情页容器（overflow-y: auto），Tabs 不再强制撑满高度 */
