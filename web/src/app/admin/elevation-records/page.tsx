@@ -770,9 +770,10 @@ export default function ElevationRecordsPage() {
     const deleting = deleteMutation.isPending && deletingId === record.id;
     const rowBusy = analyzing || deleting;
     const recordStatus = computedParseStatus(record);
-    const showProgress = ["processing"].includes(record.status) ||
-      ["processing"].includes(record.analysis_status) ||
-      ["processing"].includes(record.terrain_status);
+    // 分析生命周期：queued（已提交）→ running（执行中）→ success/failed；
+    // 进行中即展示底部进度条（分析无增量进度数据，用全宽动画条表示处理中）
+    const showProgress = ["queued", "running", "processing"].includes(record.analysis_status) ||
+      ["processing", "running"].includes(record.terrain_status);
 
     return (
       <Card
@@ -814,7 +815,7 @@ export default function ElevationRecordsPage() {
 
           <div className={`admin-elevation-record-card-actions flex items-center px-4 py-2 border-t border-gray-200 ${showProgress ? 'justify-between' : 'justify-end'}`}>
             {showProgress && (
-              <Progress percent={0} size="small" className="flex-1 max-w-40" showInfo={false} status="active" />
+              <Progress percent={100} size="small" className="flex-1 max-w-40" showInfo={false} status="active" />
             )}
             <Space size="small">
                           <Tooltip title="应用">
