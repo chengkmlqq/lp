@@ -27,7 +27,6 @@ import type { ColumnsType } from "antd/es/table";
 import { useAuth } from "@/components/auth-provider";
 import { AnalysisCardList } from "@/components/fault-analysis/analysis-card-list";
 import { AnalysisDetailView } from "@/components/fault-analysis/analysis-detail-view";
-import { ArtifactsModal } from "@/components/fault-analysis/artifacts-modal";
 import { CreateAnalysisFormTab } from "@/components/fault-analysis/create-analysis-form-tab";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -172,7 +171,6 @@ export default function AdminFaultAnalysisPage() {
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [tableScrollY, setTableScrollY] = useState(FAULT_TABLE_MIN_SCROLL_Y);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
-  const [artifactsModal, setArtifactsModal] = useState<{ id: string; title?: string } | null>(null);
   // LP-546：新建/编辑改为固定高度分步弹窗（参照防雷计算任务新建表单），不再走 Tab。
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [formModalSubmitting, setFormModalSubmitting] = useState(false);
@@ -447,6 +445,9 @@ export default function AdminFaultAnalysisPage() {
   // 新建成功：刷新列表并关闭新建弹窗（LP-546：新建改为分步弹窗）。
   const handleCreateSuccess = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
+    // 显式重查一次（返回卡片/列表页时展示最新数据），并回到第一页让新记录可见。
+    await queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"], type: "active" });
+    setPagination((prev) => ({ ...prev, current: 1 }));
     setCreateModalOpen(false);
     messageApi.success("故障分析创建成功");
   }, [queryClient, messageApi]);
@@ -486,7 +487,9 @@ export default function AdminFaultAnalysisPage() {
   const openDetail = useCallback((record: { id: string; title?: string; fault_type?: string }, defaultView?: "report" | "process" | "artifacts") => {
     const tabKey = defaultView ? `${record.id}-${defaultView}` : record.id;
     const tabLabel = defaultView
-      ? `${record.title || `故障分析 ${record.id.slice(0, 8)}`} - ${defaultView === "process" ? "计算过程" : defaultView === "artifacts" ? "产物" : "报告"}`
+      ? `${record.title || `故障分析 ${record.id.slice(0, 8)}`} - ${
+          defaultView === "process" ? "计算过程" : defaultView === "artifacts" ? "产物" : "报告"
+        }`
       : record.title || `故障分析 ${record.id.slice(0, 8)}`;
     setDetailTabs((previous) => {
       if (previous.some((tab) => tab.key === tabKey)) {
@@ -754,14 +757,6 @@ export default function AdminFaultAnalysisPage() {
                             const record = analyses.find((item) => item.id === id);
                             openDetail(record ?? { id });
                           }}
-                          onProcess={(id) => {
-                            const record = analyses.find((item) => item.id === id);
-                            openDetail(record ?? { id }, "process");
-                          }}
-                          onArtifacts={(id) => {
-                            const record = analyses.find((item) => item.id === id);
-                            setArtifactsModal({ id, title: record?.title });
-                          }}
                           onDelete={canManage ? handleDelete : undefined}
                           onLog={canReadLogs ? (id) => {
                             const record = analyses.find((item) => item.id === id);
@@ -822,12 +817,6 @@ export default function AdminFaultAnalysisPage() {
           open={createModalOpen}
         />
       </Drawer>
-
-      <ArtifactsModal
-        analysisId={artifactsModal?.id ?? null}
-        open={Boolean(artifactsModal)}
-        onClose={() => setArtifactsModal(null)}
-      />
 
       <TaskLogViewerDrawer
         taskId={logModalTaskId}

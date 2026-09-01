@@ -7,13 +7,11 @@ interface AnalysisCardListProps {
   selectedId: string | null;
   loading?: boolean;
   onView?: (id: string) => void;
-  onProcess?: (id: string) => void;
-  onArtifacts?: (id: string) => void;
   onDelete?: (id: string) => void;
   onLog?: (id: string) => void;
 }
 
-export function AnalysisCardList({ analyses, selectedId, loading, onView, onProcess, onArtifacts, onDelete, onLog }: AnalysisCardListProps) {
+export function AnalysisCardList({ analyses, selectedId, loading, onView, onDelete, onLog }: AnalysisCardListProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -39,8 +37,6 @@ export function AnalysisCardList({ analyses, selectedId, loading, onView, onProc
           analysis={analysis}
           selected={analysis.id === selectedId}
           onView={() => onView?.(analysis.id)}
-          onProcess={() => onProcess?.(analysis.id)}
-          onArtifacts={() => onArtifacts?.(analysis.id)}
           onDelete={() => onDelete?.(analysis.id)}
           onLog={() => onLog?.(analysis.id)}
         />

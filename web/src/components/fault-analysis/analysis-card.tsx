@@ -22,8 +22,6 @@ interface AnalysisCardProps {
   analysis: FaultAnalysis;
   selected?: boolean;
   onView?: () => void;
-  onProcess?: () => void;
-  onArtifacts?: () => void;
   onDelete?: () => void;
   onLog?: () => void;
 }
@@ -35,22 +33,8 @@ const statusConfig = {
   failed: { text: "失败", icon: CloseCircleOutlined, color: "error" as const },
 };
 
-const getConfidenceColor = (confidence: number) => {
-  if (confidence >= 90) return "#22C55E";
-  if (confidence >= 70) return "#F97316";
-  return "#EF4444";
-};
-
-const getConfidenceIcon = (confidence: number) => {
-  if (confidence >= 90) return "✅";
-  if (confidence >= 70) return "⚠️";
-  return "❌";
-};
-
-export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifacts, onDelete, onLog }: AnalysisCardProps) {
+export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: AnalysisCardProps) {
   const status = statusConfig[analysis.status];
-  const confidenceColor = getConfidenceColor(analysis.confidence);
-  const confidenceIcon = getConfidenceIcon(analysis.confidence);
 
   return (
     <Card
