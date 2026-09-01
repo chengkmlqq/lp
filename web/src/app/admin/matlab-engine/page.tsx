@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  App,
   Button,
   Card,
   Col,
@@ -139,6 +140,7 @@ function versionStatusTag(value: unknown): React.ReactNode {
 }
 
 export default function AdminMatlabEnginePage() {
+  const { modal: modalApi } = App.useApp();
   const { user, initializing, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
@@ -453,9 +455,18 @@ export default function AdminMatlabEnginePage() {
   const currentRelease = releases[0] ?? null;
 
   const allVersions = useMemo(() => {
+    // 同一 hash 可能同时出现在 draft 与 releases（发布后草稿记录仍保留），
+    // 按 hash 去重避免表格 rowKey 冲突，草稿优先保留。
     const items: MatlabVersion[] = [];
-    if (draft) items.push(draft);
-    items.push(...releases);
+    const seen = new Set<string>();
+    const candidates: MatlabVersion[] = [];
+    if (draft) candidates.push(draft);
+    candidates.push(...releases);
+    for (const item of candidates) {
+      if (seen.has(item.version_hash)) continue;
+      seen.add(item.version_hash);
+      items.push(item);
+    }
     return items;
   }, [draft, releases]);
 
@@ -611,7 +622,7 @@ export default function AdminMatlabEnginePage() {
               danger: true,
               onClick: ({ domEvent }) => {
                 domEvent.stopPropagation();
-                Modal.confirm({
+                modalApi.confirm({
                   title: "删除模块",
                   content: `确认删除模块"${item.name}"吗？`,
                   okText: "删除",
@@ -754,22 +765,14 @@ export default function AdminMatlabEnginePage() {
         dataIndex: "version_tag",
         key: "version_tag",
         width: 150,
-        render: (value: string, record: MatlabVersion) => {
-          const isDraft = record === draft;
-          return (
-            <Space size={6} wrap>
-              <Typography.Text>{value || "-"}</Typography.Text>
-              <Tag color={isDraft ? "orange" : "green"}>{isDraft ? "草稿" : "已发布"}</Tag>
-            </Space>
-          );
-        },
+        render: (value: string) => <Typography.Text>{value || "-"}</Typography.Text>,
       },
       {
-        title: "Hash",
-        dataIndex: "version_hash",
-        key: "version_hash",
-        width: 200,
-        render: (hash: string) => <Typography.Text copyable={{ text: hash }} className="font-mono text-xs">{hash}</Typography.Text>,
+        title: "状态",
+        key: "version_status",
+        width: 110,
+        render: (_, record) =>
+          versionStatusTag(record === draft ? "draft" : "released"),
       },
       {
         title: "变更日志",
@@ -824,7 +827,7 @@ export default function AdminMatlabEnginePage() {
                   label: "删除",
                   danger: true,
                   onClick: () => {
-                    Modal.confirm({
+                    modalApi.confirm({
                       title: "删除版本",
                       content: isDraft
                         ? `确认删除草稿版本"${record.version_tag || record.version_hash}"吗？`
@@ -857,7 +860,7 @@ export default function AdminMatlabEnginePage() {
                 size="small"
                 danger
                 onClick={() => {
-                  Modal.confirm({
+                  modalApi.confirm({
                     title: "回退到此版本",
                     content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
                     okText: "回退",
@@ -931,7 +934,7 @@ export default function AdminMatlabEnginePage() {
               label: "删除",
               danger: true,
               onClick: () => {
-                Modal.confirm({
+                modalApi.confirm({
                   title: "删除版本",
                   content: isDraft
                     ? `确认删除草稿版本"${item.version_tag || item.version_hash}"吗？`
@@ -1013,7 +1016,7 @@ export default function AdminMatlabEnginePage() {
                   disabled={rowBusy}
                   onClick={(event) => {
                     event.stopPropagation();
-                    Modal.confirm({
+                    modalApi.confirm({
                       title: "回退到此版本",
                       content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
                       okText: "回退",
@@ -1129,7 +1132,6 @@ export default function AdminMatlabEnginePage() {
                                 >
                                   <div className="admin-matlab-module-info">
                                     <div className="admin-matlab-module-name">{item.name}</div>
-                                    <div className="admin-matlab-module-slug">{item.slug}</div>
                                   </div>
                                   <Dropdown
                                     menu={{ items: getModuleMoreMenuItems(item) }}
