@@ -50,3 +50,6 @@ deploy/*/data/minio/
 deploy/*/data/app/
 *.dump
 *.tif
+
+# Agent scratch / debug files
+tmp/
