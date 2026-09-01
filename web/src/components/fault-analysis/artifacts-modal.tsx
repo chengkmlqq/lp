@@ -54,8 +54,11 @@ function flattenArtifacts(artifacts: Record<string, unknown> | undefined): Artif
       const clean = item.startsWith(FAULT_ANALYSIS_KEY_PREFIX)
         ? item
         : `${FAULT_ANALYSIS_KEY_PREFIX}${item}`;
+      // 同一产物可能同时出现在多个分类（如 matlab_outputs 全量归档与
+      // matlab_wave_prediction 快捷引用指向同一文件），行 key 需带上分类前缀，
+      // 避免 React 表格出现重复 key 警告。
       rows.push({
-        key: clean,
+        key: `${category}::${clean}`,
         category,
         name: item,
         fullKey: clean,

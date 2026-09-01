@@ -4,11 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  App,
   Button,
   Dropdown,
   Empty,
   Form,
-  Modal,
   Progress,
   Segmented,
   Space,
@@ -177,6 +177,7 @@ export default function AdminFaultAnalysisPage() {
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [artifactsModal, setArtifactsModal] = useState<{ id: string; title?: string } | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
+  const { modal: modalApi } = App.useApp();
   const [wsProgressMap, setWsProgressMap] = useState<Record<string, { progress: number; status: string; error?: string; step?: string }>>({});
 
   // 提交进行中的 Tab key 集合（LP-348：提交中禁止关闭对应表单 Tab）
@@ -550,7 +551,7 @@ export default function AdminFaultAnalysisPage() {
   }, [submitUpdate, handleUpdateSuccess, closeTab, setTabSubmitting, messageApi]);
 
   const handleDelete = useCallback((id: string) => {
-    Modal.confirm({
+    modalApi.confirm({
       title: "确认删除",
       content: "确定要删除该故障分析记录吗？此操作不可撤销。",
       okText: "确认删除",
@@ -571,7 +572,7 @@ export default function AdminFaultAnalysisPage() {
         }
       },
     });
-  }, [fetchWithAuth, messageApi, queryClient]);
+  }, [fetchWithAuth, messageApi, modalApi, queryClient]);
 
   // ---- LP-275: 动态详情选项卡 ----
   // 点击卡片「查看」时新增/激活对应详情 Tab；以分析 id 去重，
