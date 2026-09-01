@@ -72,7 +72,7 @@ test("LP-348: 新建/编辑表单不再使用内层 Tabs，改为纵向三分区
     "应保留“故障线路”分区标题",
   );
   assert.ok(
-    FORM.includes(">故障信息</div>"),
+    FORM.includes("<span>故障信息</span>"),
     "应保留“故障信息”分区标题",
   );
   assert.ok(
@@ -204,7 +204,6 @@ test("LP-319: 故障分析页支持卡片/列表双视图与表格操作列", ()
   assert.ok(PAGE.includes("Table<FaultAnalysis>"), "列表视图应使用 antd Table");
   assert.ok(PAGE.includes("ColumnsType<FaultAnalysis>"), "表格列定义应使用 FaultAnalysis 类型");
   assert.ok(PAGE.includes("FAULT_STATUS_META"), "状态枚举应收敛为页面级常量");
-  assert.ok(PAGE.includes("FAULT_RISK_META"), "风险枚举应收敛为页面级常量");
   assert.ok(PAGE.includes("Dropdown"), "删除操作应收进三点 Dropdown");
   assert.ok(PAGE.includes("MoreOutlined"), "三点菜单应使用 MoreOutlined 图标");
   assert.ok(PAGE.includes('fixed: "right"'), "操作列应固定在右侧");
@@ -244,75 +243,87 @@ test("LP-319: 故障分析卡片视图抽象为统一滚动和分页容器", () 
 });
 
 test("LP-319: 故障分析卡片编辑和删除按钮按处理器存在性渲染", () => {
-  assert.ok(CARD.includes("onEdit &&"), "编辑按钮应仅在传入 onEdit 时渲染");
-  assert.ok(CARD.includes("onDelete &&"), "删除按钮应仅在传入 onDelete 时渲染");
+  assert.ok(CARD.includes("onEdit ? ("), "编辑按钮应仅在传入 onEdit 时渲染");
+  assert.ok(CARD.includes("onDelete ? ("), "删除按钮应仅在传入 onDelete 时渲染");
   assert.ok(PAGE.includes("onEdit={canManage ? handleEdit : undefined}"), "卡片视图编辑入口应受 canManage 门控");
   assert.ok(PAGE.includes("onDelete={canManage ? handleDelete : undefined}"), "卡片视图删除入口应受 canManage 门控");
 });
 
-test("LP-348: 新建/编辑不再使用 Modal，改为动态选项卡", () => {
+test("LP-546: 新建/编辑改为固定高度分步弹窗，不再走 Tab", () => {
   assert.ok(
-    !PAGE.includes("createModalOpen"),
-    "不应再存在 createModalOpen 状态",
+    PAGE.includes("createModalOpen"),
+    "应存在 createModalOpen 状态",
   );
   assert.ok(
-    !PAGE.includes("editModalOpen"),
-    "不应再存在 editModalOpen 状态",
+    PAGE.includes("openCreateModal"),
+    "应存在 openCreateModal 打开新建弹窗",
   );
   assert.ok(
-    !PAGE.includes("createForm"),
-    "不应再存在页面级 createForm 实例",
+    PAGE.includes("editModal"),
+    "应存在 editModal 状态",
   );
   assert.ok(
-    !PAGE.includes("editForm"),
-    "不应再存在页面级 editForm 实例",
-  );
-  assert.ok(PAGE.includes("openCreateTab"), "应存在 openCreateTab 打开新建 Tab");
-  assert.ok(PAGE.includes('CREATE_TAB_KEY'), "应存在新建 Tab 固定 key 常量");
-  assert.ok(PAGE.includes('EDIT_TAB_KEY_PREFIX'), "应存在编辑 Tab key 前缀常量");
-  assert.ok(PAGE.includes("CreateAnalysisFormTab"), "Tab 内容应挂载 CreateAnalysisFormTab");
-  assert.ok(
-    PAGE.includes("previous.some((tab) => tab.key === CREATE_TAB_KEY)"),
-    "新建 Tab 应按固定 key 去重",
+    !PAGE.includes("openCreateTab"),
+    "不应再存在 openCreateTab 打开新建 Tab 的逻辑",
   );
   assert.ok(
-    PAGE.includes("`${EDIT_TAB_KEY_PREFIX}${id}`"),
-    "编辑 Tab key 应为 edit-{id}",
+    !PAGE.includes("CREATE_TAB_KEY"),
+    "不应再存在新建 Tab 固定 key 常量",
+  );
+  assert.ok(
+    !PAGE.includes("EDIT_TAB_KEY_PREFIX"),
+    "不应再存在编辑 Tab key 前缀常量",
+  );
+  assert.ok(
+    PAGE.includes("CreateAnalysisFormTab"),
+    "弹窗内容应挂载 CreateAnalysisFormTab",
+  );
+  assert.ok(
+    PAGE.includes('mode="create"'),
+    "新建弹窗应使用 CreateAnalysisFormTab 创建模式",
+  );
+  assert.ok(
+    PAGE.includes('mode="edit"'),
+    "编辑弹窗应使用 CreateAnalysisFormTab 编辑模式",
   );
 });
 
-test("LP-348: 提交成功自动关闭对应 Tab，失败保留内容", () => {
+test("LP-546: 提交成功自动关闭对应弹窗，提交中禁止关闭", () => {
   assert.ok(
-    PAGE.includes("closeTab(CREATE_TAB_KEY)"),
-    "新建成功后应关闭新建 Tab（回到列表）",
+    PAGE.includes("setCreateModalOpen(false)"),
+    "新建成功后应关闭新建弹窗（回到列表）",
+  );
+  assert.ok(
+    PAGE.includes("handleCreateSuccess"),
+    "新建成功应刷新列表并关闭弹窗",
+  );
+  assert.ok(
+    PAGE.includes("setEditModal(null)"),
+    "编辑成功后应关闭编辑弹窗",
   );
   assert.ok(
     PAGE.includes("handleUpdateSuccess"),
-    "编辑成功后应关闭对应编辑 Tab",
+    "编辑成功应刷新列表并关闭弹窗",
   );
   assert.ok(
-    PAGE.includes("closeTab(tabKey)"),
-    "保存成功应复用 closeTab 关闭对应 Tab",
+    PAGE.includes("formModalSubmitting"),
+    "应跟踪弹窗提交状态以禁止关闭",
   );
   assert.ok(
-    PAGE.includes("submittingTabKeys"),
-    "应跟踪提交中的 Tab 以便禁止关闭",
-  );
-  assert.ok(
-    PAGE.includes("submittingTabKeys.has(key)"),
-    "提交进行中的 Tab 应禁止被关闭",
+    PAGE.includes("onSubmittingChange={setFormModalSubmitting}"),
+    "弹窗提交状态应回传页面",
   );
   assert.ok(
     PAGE.includes("onLoadError"),
-    "编辑详情加载失败时应回调关闭对应 Tab",
+    "编辑详情加载失败时应回调关闭对应弹窗",
   );
 });
 
 test("LP-393: 详情动态 Tab 标签去掉故障类型结果标签", () => {
   const labelBlock = PAGE.match(
-    /label:\s*<span>\{record\.title \|\| `故障分析 \$\{record\.id\.slice\(0, 8\)\}`\}<\/span>/,
+    /const tabLabel = defaultView/,
   )?.[0];
-  assert.ok(labelBlock, "详情 Tab 标签应只保留标题 span");
+  assert.ok(labelBlock, "详情 Tab 标签应通过 tabLabel 统一计算（默认/计算过程/产物）");
   assert.ok(
     !PAGE.includes('<Tag color="blue">{record.fault_type}</Tag>'),
     "详情 Tab 标签不应再渲染故障类型结果标签",

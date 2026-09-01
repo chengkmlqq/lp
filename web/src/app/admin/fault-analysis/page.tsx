@@ -9,6 +9,7 @@ import {
   Dropdown,
   Empty,
   Form,
+  Modal,
   Progress,
   Segmented,
   Space,
@@ -47,10 +48,6 @@ const { Text } = Typography;
 
 /** 结果列表固定主 Tab（不可关闭），详情 Tab 依次追加在其后 */
 const LIST_TAB_KEY = "list";
-/** 新建表单固定 Tab key（唯一，重复点击去重） */
-const CREATE_TAB_KEY = "create";
-/** 编辑表单 Tab key 前缀：edit-{id}，按 id 去重 */
-const EDIT_TAB_KEY_PREFIX = "edit-";
 
 const FAULT_STATUS_META: Record<FaultAnalysis["status"], { color: string; label: string }> = {
   pending: { color: "default", label: "待处理" },
@@ -176,19 +173,14 @@ export default function AdminFaultAnalysisPage() {
   const [tableScrollY, setTableScrollY] = useState(FAULT_TABLE_MIN_SCROLL_Y);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [artifactsModal, setArtifactsModal] = useState<{ id: string; title?: string } | null>(null);
+  // LP-546：新建/编辑改为固定高度分步弹窗（参照防雷计算任务新建表单），不再走 Tab。
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editModal, setEditModal] = useState<{ id: string; title?: string } | null>(null);
+  const [formModalSubmitting, setFormModalSubmitting] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const { modal: modalApi } = App.useApp();
   const [wsProgressMap, setWsProgressMap] = useState<Record<string, { progress: number; status: string; error?: string; step?: string }>>({});
 
-  // 提交进行中的 Tab key 集合（LP-348：提交中禁止关闭对应表单 Tab）
-  const [submittingTabKeys, setSubmittingTabKeys] = useState<Set<string>>(() => new Set());
-
-  // closeTab 可能被 Tab 内回调（onSuccess/onLoadError）以较早的闭包触发，
-  // 故用 ref 始终读取最新的 detailTabs/activeTabKey，避免关闭/回退位置错乱。
-  const detailTabsRef = useRef(detailTabs);
-  detailTabsRef.current = detailTabs;
-  const activeTabKeyRef = useRef(activeTabKey);
-  activeTabKeyRef.current = activeTabKey;
   const searchKeywordCacheRef = useRef(searchKeyword);
   searchKeywordCacheRef.current = searchKeyword;
   const wsProgressCacheRef = useRef(wsProgressMap);
@@ -371,33 +363,7 @@ export default function AdminFaultAnalysisPage() {
     };
   }, [updateTableScrollHeight, viewMode]);
 
-  // ---- LP-348: 新建/编辑表单改用动态选项卡 ----
-
-  // 移除指定 Tab 并按「左邻 → 最左 → 列表主 Tab」回退 activeKey（与详情 Tab 关闭逻辑一致）。
-  // 通过 ref 读取最新状态，兼容 Tab 内回调以较早闭包触发的场景。
-  const closeTab = useCallback((tabKey: string) => {
-    const previous = detailTabsRef.current;
-    const removedIndex = previous.findIndex((tab) => tab.key === tabKey);
-    const next = previous.filter((tab) => tab.key !== tabKey);
-    setDetailTabs(next);
-    if (activeTabKeyRef.current === tabKey) {
-      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
-      setActiveTabKey(fallback);
-    }
-  }, []);
-
-  // 提交进行中的 Tab 状态（LP-348：提交中禁止关闭对应表单 Tab）。
-  const setTabSubmitting = useCallback((tabKey: string, submitting: boolean) => {
-    setSubmittingTabKeys((previous) => {
-      const next = new Set(previous);
-      if (submitting) {
-        next.add(tabKey);
-      } else {
-        next.delete(tabKey);
-      }
-      return next;
-    });
-  }, []);
+  // ---- LP-546: 新建/编辑表单改用固定高度分步弹窗（见下方 Modal），不再走 Tab ----
 
   // 新建提交请求（两段式：先传临时目录拿到 temp_file_id，提交时携带 ID 列表）。
   const submitCreate = useCallback(async (values: CreateFaultAnalysisFormValues) => {
@@ -461,39 +427,17 @@ export default function AdminFaultAnalysisPage() {
     return (await response.json()) as FaultAnalysisCreateResponse;
   }, [fetchWithAuth]);
 
-  // 新建成功：刷新列表并关闭新建 Tab（回到列表）。
+  // 新建成功：刷新列表并关闭新建弹窗（LP-546：新建改为分步弹窗）。
   const handleCreateSuccess = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
-    closeTab(CREATE_TAB_KEY);
+    setCreateModalOpen(false);
     messageApi.success("故障分析创建成功");
-  }, [queryClient, closeTab, messageApi]);
+  }, [queryClient, messageApi]);
 
-  // 点击「新建分析」→ 打开/激活唯一的新建 Tab（固定 key "create"，重复点击去重）。
-  const openCreateTab = useCallback(() => {
-    setDetailTabs((previous) => {
-      if (previous.some((tab) => tab.key === CREATE_TAB_KEY)) {
-        return previous;
-      }
-      return [
-        ...previous,
-        {
-          key: CREATE_TAB_KEY,
-          label: <span>新建故障分析</span>,
-          closable: true,
-          children: (
-            <CreateAnalysisFormTab
-              mode="create"
-              submitRequest={submitCreate}
-              onSuccess={handleCreateSuccess}
-              onError={(error) => messageApi.error(error instanceof Error ? error.message : "创建失败")}
-              onSubmittingChange={(submitting) => setTabSubmitting(CREATE_TAB_KEY, submitting)}
-            />
-          ),
-        } satisfies DetailTabItem,
-      ];
-    });
-    setActiveTabKey(CREATE_TAB_KEY);
-  }, [submitCreate, handleCreateSuccess, setTabSubmitting, messageApi]);
+  // 点击「新建分析」→ 打开新建分步弹窗（LP-546：参照防雷计算任务新建表单）。
+  const openCreateModal = useCallback(() => {
+    setCreateModalOpen(true);
+  }, []);
 
   // --- Edit handlers ---
 
@@ -512,43 +456,18 @@ export default function AdminFaultAnalysisPage() {
     return (await response.json()) as FaultAnalysisDetail;
   }, [fetchWithAuth]);
 
-  // 更新成功：刷新列表并关闭对应编辑 Tab（回到列表）。
-  const handleUpdateSuccess = useCallback(async (tabKey: string) => {
+  // 更新成功：刷新列表并关闭编辑弹窗（LP-546：编辑改为分步弹窗）。
+  const handleUpdateSuccess = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
-    closeTab(tabKey);
+    setEditModal(null);
     messageApi.success("故障分析更新成功");
-  }, [queryClient, closeTab, messageApi]);
+  }, [queryClient, messageApi]);
 
-  // 点击卡片/列表「编辑」→ 打开/激活编辑 Tab（key 用 edit-{id} 去重），
+  // 点击卡片/列表「编辑」→ 打开编辑分步弹窗（LP-546），
   // 表单内按 id 加载详情并预填（见 CreateAnalysisFormTab）。
   const handleEdit = useCallback((id: string, title?: string) => {
-    const tabKey = `${EDIT_TAB_KEY_PREFIX}${id}`;
-    setDetailTabs((previous) => {
-      if (previous.some((tab) => tab.key === tabKey)) {
-        return previous;
-      }
-      return [
-        ...previous,
-        {
-          key: tabKey,
-          label: <span>{title ? `编辑：${title}` : "编辑故障分析"}</span>,
-          closable: true,
-          children: (
-            <CreateAnalysisFormTab
-              mode="edit"
-              editId={id}
-              submitRequest={(values) => submitUpdate(id, values)}
-              onSuccess={() => handleUpdateSuccess(tabKey)}
-              onError={(error) => messageApi.error(error instanceof Error ? error.message : "更新失败")}
-              onSubmittingChange={(submitting) => setTabSubmitting(tabKey, submitting)}
-              onLoadError={() => closeTab(tabKey)}
-            />
-          ),
-        } satisfies DetailTabItem,
-      ];
-    });
-    setActiveTabKey(tabKey);
-  }, [submitUpdate, handleUpdateSuccess, closeTab, setTabSubmitting, messageApi]);
+    setEditModal({ id, title });
+  }, []);
 
   const handleDelete = useCallback((id: string) => {
     modalApi.confirm({
@@ -615,10 +534,6 @@ export default function AdminFaultAnalysisPage() {
       return;
     }
     const key = String(targetKey);
-    // LP-348：提交进行中的表单 Tab 禁止关闭，避免丢失已填内容。
-    if (submittingTabKeys.has(key)) {
-      return;
-    }
     const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
     const next = detailTabs.filter((tab) => tab.key !== key);
     setDetailTabs(next);
@@ -626,7 +541,7 @@ export default function AdminFaultAnalysisPage() {
       const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
       setActiveTabKey(fallback);
     }
-  }, [detailTabs, activeTabKey, submittingTabKeys]);
+  }, [detailTabs, activeTabKey]);
 
   const columns = useMemo<ColumnsType<FaultAnalysis>>(
     () => [
@@ -668,17 +583,8 @@ export default function AdminFaultAnalysisPage() {
         width: 180,
         fixed: "right",
         render: (_: unknown, row) => {
-          // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/计算过程），其余操作收进 ⋯ 三点下拉
+          // 编辑放行内直接按钮，删除收进 ⋯ 三点下拉
           const moreMenuItems: MenuProps["items"] = [
-            ...(canManage
-              ? [
-                  {
-                    key: "edit",
-                    label: "编辑",
-                    onClick: () => handleEdit(row.id, row.title),
-                  },
-                ]
-              : []),
             {
               key: "delete",
               label: "删除",
@@ -692,6 +598,11 @@ export default function AdminFaultAnalysisPage() {
               <Button size="small" onClick={() => openDetail(row)}>
                 详情
               </Button>
+              {canManage ? (
+                <Button size="small" onClick={() => handleEdit(row.id, row.title)}>
+                  编辑
+                </Button>
+              ) : null}
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" icon={<MoreOutlined />} />
               </Dropdown>
@@ -739,7 +650,7 @@ export default function AdminFaultAnalysisPage() {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                onClick={openCreateTab}
+                onClick={openCreateModal}
               >
                 新建分析
               </Button>
@@ -885,6 +796,69 @@ export default function AdminFaultAnalysisPage() {
           ]}
         />
       </div>
+      <Modal
+        title="新建故障分析"
+        open={createModalOpen}
+        width={880}
+        footer={null}
+        onCancel={() => {
+          if (formModalSubmitting) {
+            return;
+          }
+          setCreateModalOpen(false);
+        }}
+        destroyOnHidden={false}
+      >
+        <CreateAnalysisFormTab
+          mode="create"
+          submitRequest={submitCreate}
+          onSuccess={handleCreateSuccess}
+          onError={(error) => messageApi.error(error instanceof Error ? error.message : "创建失败")}
+          onSubmittingChange={setFormModalSubmitting}
+          open={createModalOpen}
+          onCancel={() => {
+            if (formModalSubmitting) {
+              return;
+            }
+            setCreateModalOpen(false);
+          }}
+        />
+      </Modal>
+
+      <Modal
+        title={editModal ? `编辑：${editModal.title ?? ""}` : "编辑故障分析"}
+        open={Boolean(editModal)}
+        width={880}
+        footer={null}
+        onCancel={() => {
+          if (formModalSubmitting) {
+            return;
+          }
+          setEditModal(null);
+        }}
+        destroyOnHidden={false}
+      >
+        {editModal ? (
+          <CreateAnalysisFormTab
+            key={editModal.id}
+            mode="edit"
+            editId={editModal.id}
+            submitRequest={(values) => submitUpdate(editModal.id, values)}
+            onSuccess={handleUpdateSuccess}
+            onError={(error) => messageApi.error(error instanceof Error ? error.message : "更新失败")}
+            onSubmittingChange={setFormModalSubmitting}
+            onLoadError={() => setEditModal(null)}
+            open={Boolean(editModal)}
+            onCancel={() => {
+              if (formModalSubmitting) {
+                return;
+              }
+              setEditModal(null);
+            }}
+          />
+        ) : null}
+      </Modal>
+
       <ArtifactsModal
         analysisId={artifactsModal?.id ?? null}
         open={Boolean(artifactsModal)}

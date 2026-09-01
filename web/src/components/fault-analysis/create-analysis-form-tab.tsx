@@ -18,13 +18,17 @@ interface CreateAnalysisFormTabProps {
   submitRequest: (values: CreateFaultAnalysisFormValues) => Promise<unknown>;
   onSuccess: () => void;
   onError: (error: unknown) => void;
-  /** 提交状态变更回调（页面据此在提交中禁止关闭 Tab） */
+  /** 提交状态变更回调（页面据此在提交中禁止关闭 Modal） */
   onSubmittingChange?: (submitting: boolean) => void;
-  /** 编辑详情加载失败时回调（用于关闭对应 Tab） */
+  /** 编辑详情加载失败时回调（用于关闭对应 Modal） */
   onLoadError?: () => void;
+  /** Modal 打开状态（弹窗重开时表单复位到第一步） */
+  open?: boolean;
+  /** 取消/关闭回调（转发给分步表单的「取消」按钮） */
+  onCancel?: () => void;
 }
 
-/** 动态选项卡内自持表单实例、线路数据与提交状态的新建/编辑表单容器（LP-348）。 */
+/** Modal 弹窗内自持表单实例、线路数据与提交状态的新建/编辑分步表单容器（LP-546）。 */
 export function CreateAnalysisFormTab({
   mode,
   editId,
@@ -33,6 +37,8 @@ export function CreateAnalysisFormTab({
   onError,
   onSubmittingChange,
   onLoadError,
+  open,
+  onCancel,
 }: CreateAnalysisFormTabProps) {
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [form] = Form.useForm<CreateFaultAnalysisFormValues>();
@@ -151,6 +157,8 @@ export function CreateAnalysisFormTab({
         linesLoading={linesQuery.isLoading}
         submitText={mode === "edit" ? "保存修改" : "提交分析"}
         submitting={mutation.isPending}
+        open={open}
+        onCancel={onCancel}
         onSubmit={(values) => mutation.mutate(values)}
       />
     </div>

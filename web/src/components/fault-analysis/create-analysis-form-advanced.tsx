@@ -1,4 +1,4 @@
-import { App, Form, Input, Select, Upload, Button, FormInstance, Space } from "antd";
+import { App, Form, Input, Select, Upload, Button, FormInstance, Space, Steps } from "antd";
 import { UploadOutlined, FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined } from "@ant-design/icons";
 import type { CreateFaultAnalysisFormValues } from "./types";
 import { TempFileUpload } from "./temp-file-upload";
@@ -14,14 +14,49 @@ interface CreateAnalysisFormAdvancedProps {
   onSubmit: (values: CreateFaultAnalysisFormValues) => void;
   submitText?: string;
   submitting?: boolean;
+  /** 弹窗是否处于打开状态（用于弹窗重开时复位到第一步，参照防雷任务分步表单） */
+  open?: boolean;
+  onCancel?: () => void;
 }
 
-export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit, submitText = "提交分析", submitting }: CreateAnalysisFormAdvancedProps) {
+/** 分步配置（LP-546）：故障线路 → 故障信息 → 分析数据，与防雷计算任务新建表单一致。 */
+const STEP_TITLES = ["故障线路", "故障信息", "分析数据"];
+
+// 各步骤进入下一步时需要校验的字段（参照防雷 goNext 的按步校验策略）
+const STEP_REQUIRED_FIELDS: Array<Array<keyof CreateFaultAnalysisFormValues>> = [
+  ["line_id"],
+  ["station_name", "fault_time", "fault_line_name", "fault_phase", "reclosure_status"],
+  [],
+];
+
+export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit, submitText = "提交分析", submitting, open = false, onCancel }: CreateAnalysisFormAdvancedProps) {
   const { message: messageApi, modal: modalApi } = App.useApp();
+  const [currentStep, setCurrentStep] = useState(0);
+  const [prevOpen, setPrevOpen] = useState(open);
   const [extractState, setExtractState] = useState<{
     response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string };
     item: FaultAnalysisTempFile;
   } | null>(null);
+
+  // 弹窗重新打开时回到第一步（渲染期调整，避免 effect 内 setState，参照防雷实现）
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      setCurrentStep(0);
+    }
+  }
+
+  const lastStepIndex = STEP_TITLES.length - 1;
+
+  const goNext = async () => {
+    const fields = STEP_REQUIRED_FIELDS[currentStep];
+    try {
+      await form.validateFields(fields.map((field) => String(field)));
+      setCurrentStep((step) => step + 1);
+    } catch {
+      // 校验失败信息由 Form.Item 展示，停留在当前步骤
+    }
+  };
 
   const waveFiles = Form.useWatch("wave_data_file", form) ?? [];
   useEffect(() => {
@@ -67,7 +102,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       line_length: extracted.line_length_km ?? undefined,
       line_angle: extracted.sensitive_angle_deg ?? undefined,
       line_impedance: extracted.positive_sequence_impedance_ohm ?? undefined,
-    });
+    } as Parameters<typeof form.setFieldsValue>[0]);
   }, [form]);
 
   const handleDownloadExtracted = useCallback((response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string }) => {
@@ -105,7 +140,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       const data = await parseExcelFile(file);
 
       // 将解析的数据填充到表单
-      form.setFieldsValue(data as Partial<CreateFaultAnalysisFormValues>);
+      form.setFieldsValue(data as Parameters<typeof form.setFieldsValue>[0]);
 
       messageApi.success('Excel数据导入成功');
     } catch (error) {
@@ -271,56 +306,69 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       onFinish={handleFinish}
       className="admin-fault-analysis-form-tabs"
     >
-      {/* 上：故障线路 */}
-      <div className="admin-fault-analysis-form-section">
-        <div className="admin-fault-analysis-form-section-title">故障线路</div>
-        <div className="px-1">
-          <Form.Item
-            label="请选择故障线路名称"
-            name="line_id"
-            rules={[{ required: true, message: "请选择故障线路" }]}
-          >
-            <Select
-              placeholder="请选择故障线路名称"
-              loading={linesLoading}
-              showSearch
-              optionFilterProp="children"
-              filterOption={(input, option) =>
-                (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
-              }
-              options={lines.map((line) => ({
-                value: line.id,
-                label: `${line.name} (${line.code})`,
-              }))}
+      {/* 分步配置进度条（参照防雷计算任务新建表单） */}
+      <Steps
+        current={currentStep}
+        size="small"
+        className="mb-4"
+        items={STEP_TITLES.map((title, index) => ({ title, key: index }))}
+      />
+
+      {/* 步骤内容区固定高度，不随内容自动伸缩；超高时内部滚动（LP-546） */}
+      <div style={{ height: 520, overflowY: "auto", overflowX: "hidden" }}>
+        {/* 第 1 步：故障线路 */}
+        {currentStep === 0 ? (
+          <div className="admin-fault-analysis-form-section">
+            <div className="admin-fault-analysis-form-section-title">故障线路</div>
+            <div className="px-1">
+              <Form.Item
+                label="请选择故障线路名称"
+                name="line_id"
+                rules={[{ required: true, message: "请选择故障线路" }]}
+              >
+                <Select
+                  placeholder="请选择故障线路名称"
+                  loading={linesLoading}
+                  showSearch
+                  optionFilterProp="children"
+                  filterOption={(input, option) =>
+                    (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={lines.map((line) => ({
+                    value: line.id,
+                    label: `${line.name} (${line.code})`,
+                  }))}
             />
           </Form.Item>
         </div>
       </div>
+        ) : null}
 
-      {/* 中：故障信息 */}
-      <div className="admin-fault-analysis-form-section">
-        <div className="admin-fault-analysis-form-section-title justify-between">
-          <span>故障信息</span>
-          <Space size="small">
-            <Button
-              size="small"
-              icon={<DownloadOutlined />}
-              className="fault-analysis-step-button"
-              onClick={handleDownloadTemplate}
-            >
-              下载模板
-            </Button>
-            <Upload
-              accept=".xlsx,.xls"
-              showUploadList={false}
-              beforeUpload={handleExcelImport}
-            >
-              <Button size="small" icon={<UploadOutlined />} className="fault-analysis-step-button">
-                Excel导入
+        {/* 第 2 步：故障信息 */}
+        {currentStep === 1 ? (
+        <div className="admin-fault-analysis-form-section">
+          <div className="admin-fault-analysis-form-section-title justify-between">
+            <span>故障信息</span>
+            <Space size="small">
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                className="fault-analysis-step-button"
+                onClick={handleDownloadTemplate}
+              >
+                下载模板
               </Button>
-            </Upload>
-          </Space>
-        </div>
+              <Upload
+                accept=".xlsx,.xls"
+                showUploadList={false}
+                beforeUpload={handleExcelImport}
+              >
+                <Button size="small" icon={<UploadOutlined />} className="fault-analysis-step-button">
+                  Excel导入
+                </Button>
+              </Upload>
+            </Space>
+          </div>
 
         <div className="space-y-4 px-1">
 
@@ -530,10 +578,12 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
           </Space.Compact>
         </div>
       </div>
+        ) : null}
 
-      {/* 下：分析数据 */}
-      <div className="admin-fault-analysis-form-section">
-        <div className="admin-fault-analysis-form-section-title">分析数据</div>
+        {/* 第 3 步：分析数据 */}
+        {currentStep === 2 ? (
+        <div className="admin-fault-analysis-form-section">
+          <div className="admin-fault-analysis-form-section-title">分析数据</div>
         <div className="px-1 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
@@ -618,11 +668,28 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
           </div>
         </div>
       </div>
+        ) : null}
+      </div>
 
-      <div className="admin-fault-analysis-form-actions">
-        <Button type="primary" htmlType="submit" loading={submitting}>
-          {submitText}
+      {/* 底部导航：取消 / 上一步 / 下一步 / 提交（参照防雷计算任务新建表单） */}
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <Button onClick={onCancel} disabled={submitting}>
+          取消
         </Button>
+        {currentStep > 0 ? (
+          <Button onClick={() => setCurrentStep((step) => step - 1)} disabled={submitting}>
+            上一步
+          </Button>
+        ) : null}
+        {currentStep < lastStepIndex ? (
+          <Button type="primary" onClick={goNext}>
+            下一步
+          </Button>
+        ) : (
+          <Button type="primary" htmlType="submit" loading={submitting}>
+            {submitText}
+          </Button>
+        )}
       </div>
     </Form>
   );

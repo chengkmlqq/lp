@@ -112,49 +112,47 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
                 }}
               />
             </Tooltip>
-            <Dropdown
-              menu={{
-                items: [
-                  ...(onEdit
-                    ? [
-                        {
-                          key: "edit",
-                          label: "编辑",
-                          icon: <EditOutlined />,
-                          onClick: (info) => {
-                            info.domEvent?.stopPropagation();
-                            onEdit();
-                          },
-                        },
-                      ]
-                    : []),
-                  ...(onDelete
-                    ? [
-                        {
-                          key: "delete",
-                          label: "删除",
-                          danger: true,
-                          icon: <DeleteOutlined />,
-                          onClick: (info) => {
-                            info.domEvent?.stopPropagation();
-                            onDelete();
-                          },
-                        },
-                      ]
-                    : []),
-                ],
-              }}
-              trigger={["click"]}
-            >
-              <Button
-                type="text"
-                size="small"
-                icon={<MoreOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
+            {onEdit ? (
+              <Tooltip title="编辑">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onEdit();
+                  }}
+                />
+              </Tooltip>
+            ) : null}
+            {onDelete ? (
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: "delete",
+                      label: "删除",
+                      danger: true,
+                      icon: <DeleteOutlined />,
+                      onClick: (info) => {
+                        info.domEvent?.stopPropagation();
+                        onDelete();
+                      },
+                    },
+                  ],
                 }}
-              />
-            </Dropdown>
+                trigger={["click"]}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MoreOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                />
+              </Dropdown>
+            ) : null}
           </Space>
         </div>
       </div>
