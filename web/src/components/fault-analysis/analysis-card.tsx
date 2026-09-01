@@ -1,7 +1,8 @@
-import { Badge, Button, Dropdown, Progress, Space, Tooltip, Typography } from "antd";
-import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined, MoreOutlined } from "@ant-design/icons";
+import { Badge, Button, Progress, Space, Tooltip, Typography } from "antd";
+import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined, FileSearchOutlined, ApartmentOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Card } from "@/components/ui-antd";
+import { RECLOSURE_LABELS } from "./types";
 import type { FaultAnalysis } from "./types";
 
 const { Text } = Typography;
@@ -23,8 +24,8 @@ interface AnalysisCardProps {
   onView?: () => void;
   onProcess?: () => void;
   onArtifacts?: () => void;
-  onEdit?: () => void;
   onDelete?: () => void;
+  onLog?: () => void;
 }
 
 const statusConfig = {
@@ -46,7 +47,7 @@ const getConfidenceIcon = (confidence: number) => {
   return "❌";
 };
 
-export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifacts, onEdit, onDelete }: AnalysisCardProps) {
+export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifacts, onDelete, onLog }: AnalysisCardProps) {
   const status = statusConfig[analysis.status];
   const confidenceColor = getConfidenceColor(analysis.confidence);
   const confidenceIcon = getConfidenceIcon(analysis.confidence);
@@ -74,13 +75,13 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
 
         <div className="flex flex-col gap-2 px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">📍</span>
-            <Text type="secondary" className="text-xs">{analysis.line_name}</Text>
+            <ApartmentOutlined className="text-gray-500 text-xs" />
+            <Text type="secondary" className="text-xs">故障线路：{analysis.line_name || '-'}</Text>
           </div>
 
           <div className="flex items-center gap-2">
             <ClockCircleOutlined className="text-gray-500 text-xs" />
-            <Text type="secondary" className="text-xs">{formatDateTime(analysis.fault_time)}</Text>
+            <Text type="secondary" className="text-xs">故障时刻：{formatDateTime(analysis.fault_time)}</Text>
           </div>
 
           <div className="flex items-center gap-2">
@@ -90,7 +91,7 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
 
           <div className="flex items-center gap-2">
             <DeploymentUnitOutlined className="text-gray-500 text-xs" />
-            <Text type="secondary" className="text-xs">重合闸：{analysis.reclosure_status || '-'}</Text>
+            <Text type="secondary" className="text-xs">重合闸：{analysis.reclosure_status ? (RECLOSURE_LABELS[analysis.reclosure_status] ?? analysis.reclosure_status) : '-'}</Text>
           </div>
         </div>
 
@@ -112,46 +113,32 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
                 }}
               />
             </Tooltip>
-            {onEdit ? (
-              <Tooltip title="编辑">
+            {onLog && analysis.task_id ? (
+              <Tooltip title="查看日志">
                 <Button
                   type="text"
                   size="small"
-                  icon={<EditOutlined />}
+                  icon={<FileSearchOutlined />}
                   onClick={(event) => {
                     event.stopPropagation();
-                    onEdit();
+                    onLog();
                   }}
                 />
               </Tooltip>
             ) : null}
             {onDelete ? (
-              <Dropdown
-                menu={{
-                  items: [
-                    {
-                      key: "delete",
-                      label: "删除",
-                      danger: true,
-                      icon: <DeleteOutlined />,
-                      onClick: (info) => {
-                        info.domEvent?.stopPropagation();
-                        onDelete();
-                      },
-                    },
-                  ],
-                }}
-                trigger={["click"]}
-              >
+              <Tooltip title="删除">
                 <Button
                   type="text"
                   size="small"
-                  icon={<MoreOutlined />}
+                  danger
+                  icon={<DeleteOutlined />}
                   onClick={(event) => {
                     event.stopPropagation();
+                    onDelete();
                   }}
                 />
-              </Dropdown>
+              </Tooltip>
             ) : null}
           </Space>
         </div>

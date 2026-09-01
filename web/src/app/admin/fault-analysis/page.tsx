@@ -6,7 +6,6 @@ import {
   Alert,
   App,
   Button,
-  Dropdown,
   Empty,
   Form,
   Modal,
@@ -20,9 +19,8 @@ import {
   message,
   Input,
   Pagination,
-  type MenuProps,
 } from "antd";
-import { MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { DeleteOutlined, PlusOutlined, SearchOutlined, FileSearchOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 
@@ -31,17 +29,18 @@ import { AnalysisCardList } from "@/components/fault-analysis/analysis-card-list
 import { AnalysisDetailView } from "@/components/fault-analysis/analysis-detail-view";
 import { ArtifactsModal } from "@/components/fault-analysis/artifacts-modal";
 import { CreateAnalysisFormTab } from "@/components/fault-analysis/create-analysis-form-tab";
+import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { readApiError } from "@/lib/api";
 import type {
   FaultAnalysisListResponse,
   FaultAnalysisCreateResponse,
-  FaultAnalysisDetail,
 } from "@/types/auth";
-import type {
-  FaultAnalysis,
-  CreateFaultAnalysisFormValues,
-  DetailTabItem,
+import {
+  RECLOSURE_LABELS,
+  type FaultAnalysis,
+  type CreateFaultAnalysisFormValues,
+  type DetailTabItem,
 } from "@/components/fault-analysis/types";
 
 const { Text } = Typography;
@@ -97,6 +96,7 @@ function mapSummary(item: FaultAnalysisListResponse["items"][0]): FaultAnalysis 
     fault_phase: item.fault_phase ?? "",
     reclosure_status: item.reclosure_status ?? "",
     progress: item.progress ?? 0,
+    task_id: item.task_id ?? null,
     created_at: item.create_date,
     updated_at: item.update_date,
     created_by: item.create_user ?? undefined,
@@ -175,8 +175,11 @@ export default function AdminFaultAnalysisPage() {
   const [artifactsModal, setArtifactsModal] = useState<{ id: string; title?: string } | null>(null);
   // LP-546：新建/编辑改为固定高度分步弹窗（参照防雷计算任务新建表单），不再走 Tab。
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [editModal, setEditModal] = useState<{ id: string; title?: string } | null>(null);
   const [formModalSubmitting, setFormModalSubmitting] = useState(false);
+  // ---- 分析执行日志弹窗（参照雷电流幅值统计页的日志查看） ----
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
+  const [logModalTitle, setLogModalTitle] = useState("任务执行日志");
   const [messageApi, contextHolder] = message.useMessage();
   const { modal: modalApi } = App.useApp();
   const [wsProgressMap, setWsProgressMap] = useState<Record<string, { progress: number; status: string; error?: string; step?: string }>>({});
@@ -188,6 +191,20 @@ export default function AdminFaultAnalysisPage() {
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage");
+  const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
+
+  // 打开分析执行日志抽屉（task_id 缺失或无日志权限时静默忽略，参照雷电流幅值页）
+  const openLogViewer = useCallback(
+    (taskId: string | null | undefined, label: string, title: string) => {
+      if (!taskId || !canReadLogs) {
+        return;
+      }
+      setLogModalTaskId(taskId);
+      setLogModalTitle(`${label} - ${title}`);
+      setLogModalOpen(true);
+    },
+    [canReadLogs],
+  );
 
   const analysesQuery = useQuery({
     queryKey: ["/api/v1/fault-analysis", searchKeyword],
@@ -439,36 +456,6 @@ export default function AdminFaultAnalysisPage() {
     setCreateModalOpen(true);
   }, []);
 
-  // --- Edit handlers ---
-
-  // 更新提交请求（与改造前 updateMutation 行为一致）。
-  const submitUpdate = useCallback(async (id: string, values: CreateFaultAnalysisFormValues) => {
-    const body = buildFaultAnalysisBody(values);
-
-    const response = await fetchWithAuth(`/api/v1/fault-analysis/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      throw new Error(await readApiError(response));
-    }
-    return (await response.json()) as FaultAnalysisDetail;
-  }, [fetchWithAuth]);
-
-  // 更新成功：刷新列表并关闭编辑弹窗（LP-546：编辑改为分步弹窗）。
-  const handleUpdateSuccess = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
-    setEditModal(null);
-    messageApi.success("故障分析更新成功");
-  }, [queryClient, messageApi]);
-
-  // 点击卡片/列表「编辑」→ 打开编辑分步弹窗（LP-546），
-  // 表单内按 id 加载详情并预填（见 CreateAnalysisFormTab）。
-  const handleEdit = useCallback((id: string, title?: string) => {
-    setEditModal({ id, title });
-  }, []);
-
   const handleDelete = useCallback((id: string) => {
     modalApi.confirm({
       title: "确认删除",
@@ -516,6 +503,7 @@ export default function AdminFaultAnalysisPage() {
               analysisId={record.id}
               tabKey={tabKey}
               defaultView={defaultView || "report"}
+              onOpenLog={openLogViewer}
             />
           ),
         } satisfies DetailTabItem,
@@ -575,7 +563,10 @@ export default function AdminFaultAnalysisPage() {
         title: "重合闸情况",
         dataIndex: "reclosure_status",
         width: 120,
-        render: (value: string) => formatNullable(value),
+        render: (value: string) => {
+          if (!value) return "-";
+          return RECLOSURE_LABELS[value] ?? formatNullable(value);
+        },
       },
       {
         title: "操作",
@@ -583,35 +574,37 @@ export default function AdminFaultAnalysisPage() {
         width: 180,
         fixed: "right",
         render: (_: unknown, row) => {
-          // 编辑放行内直接按钮，删除收进 ⋯ 三点下拉
-          const moreMenuItems: MenuProps["items"] = [
-            {
-              key: "delete",
-              label: "删除",
-              danger: true,
-              onClick: () => handleDelete(row.id),
-            },
-          ];
-
+          // 详情 + 删除直接按钮（编辑已移除，删除不再收进 ⋯ 下拉）
           return (
             <Space wrap>
               <Button size="small" onClick={() => openDetail(row)}>
                 详情
               </Button>
-              {canManage ? (
-                <Button size="small" onClick={() => handleEdit(row.id, row.title)}>
-                  编辑
+              {canReadLogs && row.task_id ? (
+                <Button
+                  size="small"
+                  icon={<FileSearchOutlined />}
+                  onClick={() => openLogViewer(row.task_id, "分析日志", row.title ?? `FA-${row.id.slice(0, 8)}`)}
+                >
+                  日志
                 </Button>
               ) : null}
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button size="small" icon={<MoreOutlined />} />
-              </Dropdown>
+              {canManage ? (
+                <Button
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => handleDelete(row.id)}
+                >
+                  删除
+                </Button>
+              ) : null}
             </Space>
           );
         },
       },
     ],
-    [canManage, handleDelete, handleEdit, openDetail],
+    [canManage, handleDelete, openDetail, canReadLogs, openLogViewer],
   );
 
   if (!initializing && !user) {
@@ -769,8 +762,13 @@ export default function AdminFaultAnalysisPage() {
                             const record = analyses.find((item) => item.id === id);
                             setArtifactsModal({ id, title: record?.title });
                           }}
-                          onEdit={canManage ? handleEdit : undefined}
                           onDelete={canManage ? handleDelete : undefined}
+                          onLog={canReadLogs ? (id) => {
+                            const record = analyses.find((item) => item.id === id);
+                            if (record?.task_id) {
+                              openLogViewer(record.task_id, "分析日志", record.title);
+                            }
+                          } : undefined}
                         />
                       </div>
 
@@ -808,6 +806,8 @@ export default function AdminFaultAnalysisPage() {
           setCreateModalOpen(false);
         }}
         destroyOnHidden={false}
+        maskClosable={false}
+        keyboard={false}
       >
         <CreateAnalysisFormTab
           mode="create"
@@ -816,53 +816,20 @@ export default function AdminFaultAnalysisPage() {
           onError={(error) => messageApi.error(error instanceof Error ? error.message : "创建失败")}
           onSubmittingChange={setFormModalSubmitting}
           open={createModalOpen}
-          onCancel={() => {
-            if (formModalSubmitting) {
-              return;
-            }
-            setCreateModalOpen(false);
-          }}
         />
-      </Modal>
-
-      <Modal
-        title={editModal ? `编辑：${editModal.title ?? ""}` : "编辑故障分析"}
-        open={Boolean(editModal)}
-        width={880}
-        footer={null}
-        onCancel={() => {
-          if (formModalSubmitting) {
-            return;
-          }
-          setEditModal(null);
-        }}
-        destroyOnHidden={false}
-      >
-        {editModal ? (
-          <CreateAnalysisFormTab
-            key={editModal.id}
-            mode="edit"
-            editId={editModal.id}
-            submitRequest={(values) => submitUpdate(editModal.id, values)}
-            onSuccess={handleUpdateSuccess}
-            onError={(error) => messageApi.error(error instanceof Error ? error.message : "更新失败")}
-            onSubmittingChange={setFormModalSubmitting}
-            onLoadError={() => setEditModal(null)}
-            open={Boolean(editModal)}
-            onCancel={() => {
-              if (formModalSubmitting) {
-                return;
-              }
-              setEditModal(null);
-            }}
-          />
-        ) : null}
       </Modal>
 
       <ArtifactsModal
         analysisId={artifactsModal?.id ?? null}
         open={Boolean(artifactsModal)}
         onClose={() => setArtifactsModal(null)}
+      />
+
+      <TaskLogViewerDrawer
+        taskId={logModalTaskId}
+        title={logModalTitle}
+        open={logModalOpen}
+        onClose={() => setLogModalOpen(false)}
       />
     </>
   );

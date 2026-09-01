@@ -1,11 +1,16 @@
-import { App, Form, Input, Select, Upload, Button, FormInstance, Space, Steps } from "antd";
+import { App, Form, Input, Select, Upload, Button, FormInstance, Space, Steps, Alert, Table, Typography } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { UploadOutlined, FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined } from "@ant-design/icons";
+import { useQuery } from "@tanstack/react-query";
 import type { CreateFaultAnalysisFormValues } from "./types";
 import { TempFileUpload } from "./temp-file-upload";
 import type { FaultAnalysisTempFile } from "./types";
 import { parseExcelFile, generateImportTemplate, generateWaveDataTemplate, generateLightningTemplate, generateWaveTemplate, generateOpticalTemplate } from "@/lib/excel-import-utils";
 import * as XLSX from "xlsx";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/components/auth-provider";
+import { readApiError } from "@/lib/api";
+import type { LineTowerListResponse, LineTowerSummary } from "@/types/auth";
 
 interface CreateAnalysisFormAdvancedProps {
   form: FormInstance<CreateFaultAnalysisFormValues>;
@@ -16,7 +21,6 @@ interface CreateAnalysisFormAdvancedProps {
   submitting?: boolean;
   /** 弹窗是否处于打开状态（用于弹窗重开时复位到第一步，参照防雷任务分步表单） */
   open?: boolean;
-  onCancel?: () => void;
 }
 
 /** 分步配置（LP-546）：故障线路 → 故障信息 → 分析数据，与防雷计算任务新建表单一致。 */
@@ -24,19 +28,36 @@ const STEP_TITLES = ["故障线路", "故障信息", "分析数据"];
 
 // 各步骤进入下一步时需要校验的字段（参照防雷 goNext 的按步校验策略）
 const STEP_REQUIRED_FIELDS: Array<Array<keyof CreateFaultAnalysisFormValues>> = [
-  ["line_id"],
+  ["title", "line_id"],
   ["station_name", "fault_time", "fault_line_name", "fault_phase", "reclosure_status"],
   [],
 ];
 
-export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit, submitText = "提交分析", submitting, open = false, onCancel }: CreateAnalysisFormAdvancedProps) {
+export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit, submitText = "提交分析", submitting, open = false }: CreateAnalysisFormAdvancedProps) {
   const { message: messageApi, modal: modalApi } = App.useApp();
+  const { user, fetchWithAuth } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [prevOpen, setPrevOpen] = useState(open);
+  // 最近一次步骤切换的时间戳（防连点：同位置按钮替换导致的误点击）
+  const lastStepChangeAtRef = useRef(0);
   const [extractState, setExtractState] = useState<{
     response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string };
     item: FaultAnalysisTempFile;
   } | null>(null);
+
+  // 选中线路 → 拉取该线路杆塔列表（参照防雷计算任务新建表单的「线路杆塔」区块）
+  const selectedLineId = Form.useWatch("line_id", form) ?? "";
+  const towersQuery = useQuery({
+    queryKey: ["/api/v1/lines", selectedLineId, "towers"],
+    enabled: !!user && !!selectedLineId,
+    queryFn: async () => {
+      const response = await fetchWithAuth(`/api/v1/lines/${selectedLineId}/towers?limit=1000&offset=0`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LineTowerListResponse;
+    },
+  });
 
   // 弹窗重新打开时回到第一步（渲染期调整，避免 effect 内 setState，参照防雷实现）
   if (open !== prevOpen) {
@@ -48,14 +69,55 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
   const lastStepIndex = STEP_TITLES.length - 1;
 
+  // 线路杆塔列表列（参照防雷计算任务新建表单）
+  const towerColumns: ColumnsType<LineTowerSummary> = [
+    { title: "序号", dataIndex: "seq_no", width: 70 },
+    {
+      title: "塔号",
+      dataIndex: "tower_no",
+      width: 130,
+      render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
+    },
+    { title: "塔型", dataIndex: "tower_type", width: 100, render: (value: string | null) => value || "-" },
+    { title: "模型", dataIndex: "tower_model", width: 160, render: (value: string | null) => value || "-" },
+    {
+      title: "接地电阻(Ω)",
+      dataIndex: "ground_resistance_ohm",
+      width: 110,
+      render: (value: number | null) => value ?? "-",
+    },
+    {
+      title: "地闪密度",
+      dataIndex: "lightning_density",
+      width: 100,
+      render: (value: number | null) => value ?? "-",
+    },
+  ];
+
   const goNext = async () => {
+    // 防连点：步骤切换后极短时间内（同位置「下一步」→「提交」按钮替换）的重复点击
+    // 可能误触发下一步跳级或直接提交（导致弹窗被关闭），统一忽略。
+    const now = Date.now();
+    if (now - lastStepChangeAtRef.current < 350) {
+      return;
+    }
     const fields = STEP_REQUIRED_FIELDS[currentStep];
     try {
       await form.validateFields(fields.map((field) => String(field)));
       setCurrentStep((step) => step + 1);
+      lastStepChangeAtRef.current = Date.now();
     } catch {
       // 校验失败信息由 Form.Item 展示，停留在当前步骤
     }
+  };
+
+  const goPrev = () => {
+    const now = Date.now();
+    if (now - lastStepChangeAtRef.current < 350) {
+      return;
+    }
+    setCurrentStep((step) => Math.max(0, step - 1));
+    lastStepChangeAtRef.current = Date.now();
   };
 
   const waveFiles = Form.useWatch("wave_data_file", form) ?? [];
@@ -219,6 +281,11 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
   // LP-420：提交前置内容校验汇总
   const handleFinish = (values: CreateFaultAnalysisFormValues) => {
+    // 步骤切换后同位置按钮由「下一步」替换为「提交」，快速连点的第二次点击
+    // 可能落在「提交」上误触发创建（弹窗随之关闭），忽略切换后极短窗口内的提交。
+    if (Date.now() - lastStepChangeAtRef.current < 350) {
+      return;
+    }
     const allErrors: string[] = [];
     const allWarnings: string[] = [];
     const pendingChecks: Array<{ files: FaultAnalysisTempFile[]; label: string }> = [];
@@ -319,10 +386,16 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
         {/* 第 1 步：故障线路 */}
         {currentStep === 0 ? (
           <div className="admin-fault-analysis-form-section">
-            <div className="admin-fault-analysis-form-section-title">故障线路</div>
             <div className="px-1">
               <Form.Item
-                label="请选择故障线路名称"
+                label="任务名称"
+                name="title"
+                rules={[{ required: true, message: "请输入任务名称" }]}
+              >
+                <Input placeholder="例如：XX线路故障分析" maxLength={100} />
+              </Form.Item>
+              <Form.Item
+                label="故障线路"
                 name="line_id"
                 rules={[{ required: true, message: "请选择故障线路" }]}
               >
@@ -341,6 +414,32 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
             />
           </Form.Item>
         </div>
+
+        {/* 选中线路后展示该线路杆塔列表（参照防雷计算任务新建表单）；标题沿用上方表单项的 label 样式 */}
+        {selectedLineId ? (
+          <div className="px-1 mt-3">
+            <Form.Item label="线路杆塔">
+              {towersQuery.isError ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="杆塔列表加载失败"
+                  description={towersQuery.error instanceof Error ? towersQuery.error.message : "未知错误"}
+                />
+              ) : (
+                <Table<LineTowerSummary>
+                  rowKey={(row) => row.id}
+                  columns={towerColumns}
+                  dataSource={towersQuery.data?.items ?? []}
+                  loading={towersQuery.isFetching}
+                  size="small"
+                  pagination={{ pageSize: 8, showSizeChanger: false, hideOnSinglePage: true }}
+                  scroll={{ x: 760 }}
+                />
+              )}
+            </Form.Item>
+          </div>
+        ) : null}
       </div>
         ) : null}
 
@@ -671,13 +770,10 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
         ) : null}
       </div>
 
-      {/* 底部导航：取消 / 上一步 / 下一步 / 提交（参照防雷计算任务新建表单） */}
+      {/* 底部导航：上一步 / 下一步 / 提交（取消按钮已移除，关闭走弹窗右上角 X / 遮罩） */}
       <div className="mt-4 flex items-center justify-end gap-2">
-        <Button onClick={onCancel} disabled={submitting}>
-          取消
-        </Button>
         {currentStep > 0 ? (
-          <Button onClick={() => setCurrentStep((step) => step - 1)} disabled={submitting}>
+          <Button onClick={goPrev} disabled={submitting}>
             上一步
           </Button>
         ) : null}

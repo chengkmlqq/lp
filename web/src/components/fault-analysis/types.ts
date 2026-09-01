@@ -10,6 +10,7 @@ export interface FaultAnalysis {
   fault_phase: string;
   reclosure_status: string;
   progress: number;
+  task_id?: string | null;
   created_at: string;
   updated_at: string;
   created_by?: string;
@@ -86,3 +87,10 @@ export interface CreateFaultAnalysisFormValues {
   traveling_wave_file?: FaultAnalysisTempFile[];
   optical_data_file?: FaultAnalysisTempFile[];
 }
+
+/** 重合闸情况枚举 → 中文展示文案（与判别报告/后端 reclosing_labels 一致） */
+export const RECLOSURE_LABELS: Record<string, string> = {
+  success: "成功",
+  failed: "失败",
+  not_applicable: "不适用",
+};

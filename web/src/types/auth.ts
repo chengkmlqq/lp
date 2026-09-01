@@ -940,6 +940,7 @@ export type FaultAnalysisSummary = {
   wave_distance_km: number | null;
   traveling_wave_distance_km: number | null;
   progress: number;
+  task_id: string | null;
   create_date: string;
   create_user: string | null;
   update_date: string;

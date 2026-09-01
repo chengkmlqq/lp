@@ -23,6 +23,7 @@ import {
   FileTextOutlined,
   FileExcelOutlined,
   PictureOutlined,
+  FileSearchOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
@@ -37,6 +38,8 @@ interface AnalysisDetailViewProps {
   /** 唯一标识，用作导出容器 DOM id 前缀（多开详情 Tab 时避免重复 id） */
   tabKey: string;
   defaultView?: "report" | "process" | "artifacts";
+  /** 打开分析执行日志抽屉（参照雷电流幅值页的日志查看） */
+  onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
 }
 
 interface ReportSectionItem {
@@ -628,6 +631,8 @@ interface ReportViewProps {
   sections: { sections: ReportSection[]; station: string; fault_datetime: string; fault_id: string };
   exportLoading: boolean;
   onExportReport: () => void;
+  /** 打开分析执行日志抽屉（参照雷电流幅值页的日志查看） */
+  onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
 }
 
 interface ProcessViewProps {
@@ -845,7 +850,7 @@ function SectionContent({ content, isAppendix = false }: { content: ReportSectio
   );
 }
 
-function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, onExportReport }: ReportViewProps) {
+function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, onExportReport, onOpenLog }: ReportViewProps) {
   const tabGroups = groupReportSections(sections.sections);
   return (
     <div id={exportElementId} className="py-4 flex flex-col flex-1 min-h-0">
@@ -855,6 +860,14 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
             {sections.fault_id} 故障分析报告
           </Title>
           <Space size={8}>
+            {onOpenLog && detail.task_id ? (
+              <Button
+                icon={<FileSearchOutlined />}
+                onClick={() => onOpenLog(detail.task_id, "分析日志", detail.title ?? `FA-${detail.id?.slice(0, 12) ?? ""}`)}
+              >
+                查看日志
+              </Button>
+            ) : null}
             <Button icon={<DownloadOutlined />} loading={exportLoading} onClick={onExportReport}>
               导出报告
             </Button>
@@ -956,7 +969,7 @@ function ArtifactsView({ onDownload, downloadingArtifact, artifactTree }: Artifa
   );
 }
 
-export function AnalysisDetailView({ analysisId, tabKey, defaultView }: AnalysisDetailViewProps) {
+export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog }: AnalysisDetailViewProps) {
   const { message: messageApi } = App.useApp();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
@@ -1076,6 +1089,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView }: Analysis
             sections={buildSections(detail)}
             exportLoading={exporting}
             onExportReport={handleExportReport}
+            onOpenLog={onOpenLog}
           />
         )}
         {activeView === "process" && (

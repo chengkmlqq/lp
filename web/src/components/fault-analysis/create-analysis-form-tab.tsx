@@ -24,8 +24,6 @@ interface CreateAnalysisFormTabProps {
   onLoadError?: () => void;
   /** Modal 打开状态（弹窗重开时表单复位到第一步） */
   open?: boolean;
-  /** 取消/关闭回调（转发给分步表单的「取消」按钮） */
-  onCancel?: () => void;
 }
 
 /** Modal 弹窗内自持表单实例、线路数据与提交状态的新建/编辑分步表单容器（LP-546）。 */
@@ -38,7 +36,6 @@ export function CreateAnalysisFormTab({
   onSubmittingChange,
   onLoadError,
   open,
-  onCancel,
 }: CreateAnalysisFormTabProps) {
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [form] = Form.useForm<CreateFaultAnalysisFormValues>();
@@ -66,6 +63,27 @@ export function CreateAnalysisFormTab({
     onError,
   });
 
+  // 新建模式：弹窗每次打开时清空上次填写的数据（任务名称/故障信息/已选文件等），
+  // 避免上次内容残留到下一次新建。
+  useEffect(() => {
+    if (mode === "create" && open) {
+      form.resetFields();
+    }
+  }, [open, mode, form]);
+
+  // 新建模式：线路加载完成后默认选中第一条线路（参照防雷计算任务新建表单）。
+  // 编辑模式由详情预填 line_id，不在此干预。open 变化触发重跑，配合上方 resetFields
+  // 保证每次重开都回到「默认选第一条线路」的干净初始态。
+  useEffect(() => {
+    if (mode !== "create") {
+      return;
+    }
+    const firstLine = linesQuery.data?.items[0];
+    if (firstLine && !form.getFieldValue("line_id")) {
+      form.setFieldsValue({ line_id: firstLine.id });
+    }
+  }, [form, linesQuery.data?.items, mode, open]);
+
   useEffect(() => {
     onSubmittingChange?.(mutation.isPending);
   }, [mutation.isPending, onSubmittingChange]);
@@ -88,6 +106,7 @@ export function CreateAnalysisFormTab({
           return;
         }
         form.setFieldsValue({
+          title: detail.title ?? undefined,
           line_id: detail.line_id ?? "",
           station_name: detail.station ?? undefined,
           fault_time: detail.fault_time ?? undefined,
@@ -158,7 +177,6 @@ export function CreateAnalysisFormTab({
         submitText={mode === "edit" ? "保存修改" : "提交分析"}
         submitting={mutation.isPending}
         open={open}
-        onCancel={onCancel}
         onSubmit={(values) => mutation.mutate(values)}
       />
     </div>
