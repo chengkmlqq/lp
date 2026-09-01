@@ -26,6 +26,7 @@ import {
 import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
+  InboxOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
@@ -429,13 +430,15 @@ export default function AdminPowerLineTowersPage() {
           </Form.Item>
           {canTowerManage && (
             <Form.Item style={{ marginBottom: 0 }}>
-              <Button onClick={openImportModal}>导入 CSV</Button>
+              <Button onClick={openImportModal}>
+                导入
+              </Button>
             </Form.Item>
           )}
           {canTowerRead && (
             <Form.Item style={{ marginBottom: 0 }}>
               <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
-                导出 CSV
+                导出
               </Button>
             </Form.Item>
           )}
@@ -517,8 +520,12 @@ export default function AdminPowerLineTowersPage() {
                   </>
                 ) : (
                   <>
+                    <p className="ant-upload-drag-icon">
+                      <InboxOutlined />
+                    </p>
+                    <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
                     <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
-                      点击或拖拽文件到此区域上传
+                      支持 .csv / .xlsx 格式，单文件不超过 50MB
                     </p>
                     <Typography.Text type="secondary">
                       选择文件后立即上传到临时存储，确认导入后开始解析。

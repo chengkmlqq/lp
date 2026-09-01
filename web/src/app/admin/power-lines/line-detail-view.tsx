@@ -23,8 +23,9 @@ import {
   Typography,
   Upload,
   Dropdown,
+  type MenuProps,
 } from "antd";
-import { ApartmentOutlined, CheckCircleOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
+import { ApartmentOutlined, CheckCircleOutlined, InboxOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
@@ -617,13 +618,15 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
           </Form.Item>
           {canTowerManage && (
             <Form.Item style={{ marginBottom: 0 }}>
-              <Button onClick={openImportModal}>导入 CSV</Button>
+              <Button onClick={openImportModal}>
+                导入
+              </Button>
             </Form.Item>
           )}
           {canTowerRead && (
             <Form.Item style={{ marginBottom: 0 }}>
               <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
-                导出 CSV
+                导出
               </Button>
             </Form.Item>
           )}
@@ -670,18 +673,18 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
           <Form layout="vertical">
             <Form.Item label="数据文件" required>
               <Upload.Dragger
-                accept=".csv,text/csv"
+                accept=".csv,text/csv,.xlsx"
                 showUploadList={false}
                 beforeUpload={(file) => {
                   const maxMB = 50;
-                  const allowedExts = ["csv"];
+                  const allowedExts = ["csv", "xlsx"];
                   const ext = file.name.split(".").pop()?.toLowerCase() || "";
                   if (file.size > maxMB * 1024 * 1024) {
                     messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
                     return Upload.LIST_IGNORE;
                   }
                   if (!allowedExts.includes(ext)) {
-                    messageApi.error("不支持的文件格式，仅支持 .csv");
+                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
                     return Upload.LIST_IGNORE;
                   }
                   return true;
@@ -709,8 +712,12 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                   </>
                 ) : (
                   <>
+                    <p className="ant-upload-drag-icon">
+                      <InboxOutlined />
+                    </p>
+                    <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
                     <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
-                      点击或拖拽文件到此区域上传
+                      支持 .csv / .xlsx 格式，单文件不超过 50MB
                     </p>
                     <Typography.Text type="secondary">
                       选择文件后立即上传到临时存储，确认导入后开始解析。

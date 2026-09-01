@@ -66,8 +66,8 @@ test("LP-433: towers page contains filters, import/export and tower table", () =
   assert.match(towersPage, /关键词/, "杆塔页应保留关键词筛选");
   assert.match(towersPage, /塔型/, "杆塔页应保留塔型筛选");
   assert.match(towersPage, /查询/, "杆塔页应保留查询按钮");
-  assert.match(towersPage, /导入 CSV/, "杆塔页应保留导入功能");
-  assert.match(towersPage, /导出 CSV/, "杆塔页应保留导出功能");
+  assert.match(towersPage, />\s*导入\s*</, "杆塔页应保留导入功能");
+  assert.match(towersPage, />\s*导出\s*</, "杆塔页应保留导出功能");
   assert.ok(/admin-power-line-detail-meta/.test(towersPage) || !/PowerLineCesiumMap/.test(towersPage), "杆塔页应移除地图视图");
 });
 
