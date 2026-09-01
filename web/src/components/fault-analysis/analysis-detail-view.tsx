@@ -227,12 +227,20 @@ interface ComputationStepDef {
 
 function rjValue(obj: Record<string, unknown> | undefined, path: string): unknown {
   if (!obj) return undefined;
-  let current: unknown = obj;
-  for (const segment of path.split(".")) {
-    if (current == null || typeof current !== "object") return undefined;
-    current = (current as Record<string, unknown>)[segment];
-  }
-  return current;
+  const resolve = (base: unknown): unknown => {
+    let current = base;
+    for (const segment of path.split(".")) {
+      if (current == null || typeof current !== "object") return undefined;
+      current = (current as Record<string, unknown>)[segment];
+    }
+    return current;
+  };
+  const direct = resolve(obj);
+  if (direct !== undefined) return direct;
+  // LP-539：判别中间数据存储于 result_json.diagnosis 子对象（build_result_json 组装），
+  // 过程 tab 各步骤字段按 diagnosis 内部路径读取；兼容顶层直存的历史/直传结构：
+  // 顶层取不到时自动回退到 obj.diagnosis 再按同一路径查找。
+  return resolve(obj.diagnosis);
 }
 
 function rjText(obj: Record<string, unknown> | undefined, path: string, empty = "-"): string {
