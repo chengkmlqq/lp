@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
 import {
   Alert,
   Anchor,
@@ -36,7 +37,7 @@ interface AnalysisDetailViewProps {
   analysisId: string;
   /** 唯一标识，用作导出容器 DOM id 前缀（多开详情 Tab 时避免重复 id） */
   tabKey: string;
-  defaultView?: "report" | "process" | "artifacts";
+  defaultView?: "summary" | "report" | "process" | "artifacts";
   /** 打开分析执行日志抽屉（参照雷电流幅值页的日志查看） */
   onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
 }
@@ -1069,12 +1070,53 @@ function ArtifactsView({ onDownload, downloadingArtifact, artifactTree }: Artifa
   );
 }
 
+/** 摘要视图：渲染后端下发的 summary_markdown（步骤1-5自动判别摘要，Markdown 排版）。 */
+function SummaryView({ markdown }: { markdown: string }) {
+  if (!markdown || !markdown.trim()) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        message="暂无自动判别摘要"
+        description="该记录尚未生成步骤1-5自动判别摘要（summary_markdown）。"
+      />
+    );
+  }
+  return (
+    <div className="py-2 fault-analysis-summary-view">
+      <ReactMarkdown
+        components={{
+          p: ({ children }) => (
+            <Paragraph className="fa-detail-md-p">{children}</Paragraph>
+          ),
+          h1: ({ children }) => <Title level={3} className="mb-3">{children}</Title>,
+          h2: ({ children }) => <Title level={4} className="mb-2">{children}</Title>,
+          h3: ({ children }) => <Title level={5} className="mb-2">{children}</Title>,
+          strong: ({ children }) => <Text strong>{children}</Text>,
+          ul: ({ children }) => <ul className="fa-detail-bullets">{children}</ul>,
+          ol: ({ children }) => <ol className="fa-detail-bullets" style={{ listStyle: "decimal" }}>{children}</ol>,
+          li: ({ children }) => <li className="fa-detail-md-li">{children}</li>,
+          table: ({ children }) => (
+            <div className="fa-detail-table-box fa-detail-table-wrap">
+              <table className="w-full text-sm">{children}</table>
+            </div>
+          ),
+          th: ({ children }) => <th className="fa-detail-th px-3 py-2 text-left">{children}</th>,
+          td: ({ children }) => <td className="fa-detail-td px-3 py-1.5">{children}</td>,
+          del: ({ children }) => <Text delete>{children}</Text>,
+          hr: () => <div className="my-3 border-t fa-detail-table-wrap" />,
+        }}
+      />
+    </div>
+  );
+}
+
 export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog }: AnalysisDetailViewProps) {
   const { message: messageApi } = App.useApp();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
   const [downloadingArtifact, setDownloadingArtifact] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<"report" | "process" | "artifacts">(defaultView ?? "report");
+  const [activeView, setActiveView] = useState<"summary" | "report" | "process" | "artifacts">(defaultView ?? "report");
   const exportElementId = `analysis-export-content-${tabKey}`;
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
@@ -1160,6 +1202,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
   const artifacts = resultJson.artifacts as Record<string, unknown> | undefined;
   const computationSteps = buildComputationSteps();
   const viewModel = resultJson.view_model as ProcessViewModel | undefined;
+  const summaryMarkdown = typeof resultJson.summary_markdown === "string" ? resultJson.summary_markdown : "";
   const artifactTree = buildArtifactTree(
     artifacts,
     (key) => handleDownloadArtifact(key),
@@ -1190,8 +1233,9 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
         <div className="flex items-center justify-between gap-3 flex-shrink-0 px-4 py-3 border-b border-gray-200">
           <Segmented
             value={activeView}
-            onChange={(value) => setActiveView(value as "report" | "process" | "artifacts")}
+            onChange={(value) => setActiveView(value as "summary" | "report" | "process" | "artifacts")}
             options={[
+              { label: "摘要", value: "summary" },
               { label: "报告", value: "report" },
               { label: "计算过程", value: "process" },
               { label: "产物", value: "artifacts" },
@@ -1199,8 +1243,15 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
           />
           {activeView === "report" ? (
             <Text type="secondary" className="text-sm">报告按章节排版，左侧目录可快速跳转</Text>
+          ) : activeView === "summary" ? (
+            <Text type="secondary" className="text-sm">步骤1-5自动判别摘要（Markdown）</Text>
           ) : null}
         </div>
+        {activeView === "summary" && (
+          <div className="flex-1 min-h-0 overflow-auto">
+            <SummaryView markdown={summaryMarkdown} />
+          </div>
+        )}
         {activeView === "report" && (
           <ReportView
             tabKey={tabKey}
