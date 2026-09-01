@@ -6228,3 +6228,35 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
 }
+
+/* LP-541: 故障分析详情页报告内部 Tabs —— 外层固定高度不滚动，tab 内容区自身滚动。
+   标题区自然置于顶部，Tabs 撑满剩余高度，content-holder flex 布局，激活 pane 内部滚动。 */
+.fault-analysis-report-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.fault-analysis-report-tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fault-analysis-report-tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.fault-analysis-report-tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+}

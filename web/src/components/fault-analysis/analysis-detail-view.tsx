@@ -76,7 +76,11 @@ function groupReportSections(sections: ReportSection[]): ReportTabGroup[] {
     if (title.startsWith("5.") || title.includes("分布式行波分析") || title.includes("故障原因融合")) {
       return { key: "wave", label: "分布式行波分析与故障原因融合" };
     }
-    if (title.includes("总体状态与后续意见")) return { key: "recommend", label: "总体状态与后续意见" };
+    // 「总体状态与后续意见」不再单独成 tab，并入「分布式行波分析与故障原因融合」，
+    // 作为该章节的延续内容展示。
+    if (title.includes("总体状态与后续意见")) {
+      return { key: "wave", label: "分布式行波分析与故障原因融合" };
+    }
     if (title.startsWith("A.") || title.includes("附表A")) return { key: "appendix", label: "附表A 输入信息汇总" };
     return { key: title, label: title };
   };
@@ -797,16 +801,8 @@ function SectionContent({ content }: { content: ReportSectionItem[] }) {
 function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, onExportReport }: ReportViewProps) {
   const tabGroups = groupReportSections(sections.sections);
   return (
-    <div id={exportElementId} className="py-4">
-      <div
-        className="border-b border-gray-200 pb-4 mb-4"
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          background: "var(--fquiz-theme-bg-container, var(--ant-color-bg-container))",
-        }}
-      >
+    <div id={exportElementId} className="py-4 flex flex-col flex-1 min-h-0">
+      <div className="border-b border-gray-200 pb-4 mb-4">
         <div className="flex items-start justify-between mb-4">
           <Title level={3} className="mb-0">
             {sections.fault_id} 故障分析报告
@@ -825,6 +821,7 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
 
       <Tabs
         defaultActiveKey={tabGroups[0]?.key ?? "overview"}
+        className="fault-analysis-report-tabs"
         tabBarStyle={{ marginBottom: 16 }}
         items={tabGroups.map((group) => ({
           key: group.key,
@@ -1020,7 +1017,10 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView }: Analysis
 
   return (
     <div className="flex flex-col gap-4 h-full">
-      <Card className="flex-1 overflow-auto">
+      <Card
+        className="flex-1 overflow-hidden"
+        styles={{ body: { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } }}
+      >
         {activeView === "report" && (
           <ReportView
             tabKey={tabKey}
@@ -1032,19 +1032,23 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView }: Analysis
           />
         )}
         {activeView === "process" && (
-          <ProcessView
-            tabKey={tabKey}
-            computationSteps={computationSteps}
-            resultJson={resultJson}
-          />
+          <div className="flex-1 min-h-0 overflow-auto">
+            <ProcessView
+              tabKey={tabKey}
+              computationSteps={computationSteps}
+              resultJson={resultJson}
+            />
+          </div>
         )}
         {activeView === "artifacts" && (
-          <ArtifactsView
-            tabKey={tabKey}
-            artifactTree={artifactTree}
-            downloadingArtifact={downloadingArtifact}
-            onDownload={handleDownloadArtifact}
-          />
+          <div className="flex-1 min-h-0 overflow-auto">
+            <ArtifactsView
+              tabKey={tabKey}
+              artifactTree={artifactTree}
+              downloadingArtifact={downloadingArtifact}
+              onDownload={handleDownloadArtifact}
+            />
+          </div>
         )}
       </Card>
     </div>
