@@ -958,12 +958,13 @@ def _build_sections(
         return {"type": "text", "text": _report.user_facing_model_terms(value)}
 
     # ---- 1 报告总览 ----
+    # 先展示「故障分析」文字结论，再展示表1 故障分析总览（用户要求文字结论置于表格上方）。
     content: list[dict[str, Any]] = []
-    if "table1" in tables:
-        content.append(tables["table1"])
     content.append({"type": "subtitle", "text": "故障分析"})
     for paragraph in _report.executive_summary_paragraphs(diag):
         content.append(text(paragraph))
+    if "table1" in tables:
+        content.append(tables["table1"])
     sections.append({"title": "1 报告总览", "content": content})
 
     # ---- 2 接地故障及过渡电阻判别 ----
