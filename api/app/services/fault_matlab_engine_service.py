@@ -94,12 +94,37 @@ def _compute_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()[:16]
 
 
+def fix_gbk_zip_filename(name: str) -> str:
+    """修复 Windows 中文 zip 文件名的编码乱码（LP-530）。
+
+    Windows 工具打包中文文件名时常见两种情况：
+    1. UTF-8 字节但未置 zip UTF-8 flag → Python 按 cp437 解码成乱码；
+    2. GBK/GB18030 字节 → 同样被 cp437 解码成乱码。
+    修复：按 cp437 还原原始字节，依次尝试 UTF-8 / GBK / GB18030 解码，
+    取第一个可打印且不含替换符的结果；无法还原时原样返回。
+    """
+    if not any(ord(ch) > 127 for ch in name):
+        return name
+    try:
+        raw = name.encode("cp437")
+    except UnicodeEncodeError:
+        return name
+    for encoding in ("utf-8", "gbk", "gb18030"):
+        try:
+            decoded = raw.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+        if decoded.isprintable() and "\ufffd" not in decoded:
+            return decoded
+    return name
+
+
 def _validate_zip_content(data: bytes, required_files: list[str] | None = None) -> tuple[bool, str]:
     required = required_files if required_files is not None else list(REQUIRED_FILES)
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
             names = zf.namelist()
-            basenames = {Path(n).name for n in names}
+            basenames = {Path(fix_gbk_zip_filename(n)).name for n in names}
             for file_name in required:
                 if file_name not in basenames:
                     return False, f"ZIP 包缺少必需文件: {file_name}"
@@ -251,7 +276,7 @@ def _version_manifest(version: dict[str, Any], file_list: list[str]) -> dict[str
 def _list_zip_files(data: bytes) -> list[str]:
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            return [n for n in zf.namelist() if not n.endswith("/")]
+            return [fix_gbk_zip_filename(n) for n in zf.namelist() if not n.endswith("/")]
     except zipfile.BadZipFile:
         return []
 

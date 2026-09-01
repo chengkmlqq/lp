@@ -165,13 +165,27 @@ jobs:
         id: check
         shell: bash
         run: |
-          if git diff --quiet HEAD~1 HEAD -- api/Dockerfile.matlab api/app/services/fault_diagnosis*.py api/app/services/fl_analysis*.py api/app/tasks/sync_matlab_engine_task.py; then
+          # 之前 skip 是死代码（无任何 if 引用），导致每次 push 都全量重建 17.6GB MCR 镜像（LP-530）。
+          # 修复：workflow_dispatch 永远构建；push 事件用 github.event.before..HEAD 对比
+          # （相对 HEAD~1..HEAD 更准确，避免同批多次提交时漏判中间 commit 的 matlab 变更）。
+          BEFORE="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             || [ -z "$BEFORE" ] \
+             || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BEFORE" HEAD -- \
+            api/Dockerfile.matlab \
+            api/app/services/fault_diagnosis*.py \
+            api/app/services/fl_analysis*.py \
+            api/app/tasks/sync_matlab_engine_task.py \
+            api/app/tasks/fault_diagnosis_tasks.py; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 清理 runner 磁盘（Linux MCR 构建峰值 ~25G，需先释放预装工具空间）
+        if: steps.check.outputs.skip != 'true'
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -184,15 +198,18 @@ jobs:
 
       - name: 生成镜像变量
         id: vars
+        if: steps.check.outputs.skip != 'true'
         shell: bash
         run: |
           NS="${{ env.REGISTRY_NAMESPACE }}"
           echo "image=${{ env.REGISTRY }}/${NS}/fquiz-matlab-worker" >> "$GITHUB_OUTPUT"
 
       - name: 安装 Buildx
+        if: steps.check.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v4
 
       - name: 登录镜像仓库
+        if: steps.check.outputs.skip != 'true'
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -200,6 +217,7 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: 构建并推送 MCR 基础镜像（fquiz-base + Linux MATLAB Runtime）
+        if: steps.check.outputs.skip != 'true'
         uses: docker/build-push-action@v7
         with:
           context: ./api
@@ -222,6 +240,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=fquiz-mcr-base
 
       - name: 构建并推送 MATLAB Worker 镜像
+        if: steps.check.outputs.skip != 'true'
         uses: docker/build-push-action@v7
         with:
           context: ./api

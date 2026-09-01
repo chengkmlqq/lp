@@ -30,6 +30,15 @@ def _publish_sync_event(event_name: str, payload: dict) -> None:
         pass
 
 
+def _extract_zip_with_fixed_names(zf: zipfile.ZipFile, target_dir: Path) -> None:
+    """解压 zip 并修复 Windows 中文文件名的 GBK 乱码（LP-530）。"""
+    from ..services.fault_matlab_engine_service import fix_gbk_zip_filename
+
+    for member in zf.infolist():
+        member.filename = fix_gbk_zip_filename(member.filename)
+        zf.extract(member, target_dir)
+
+
 def _flatten_wrapper_dir(target_dir: Path, log_parts: list[str]) -> None:
     """若解压结果带单一顶层包装目录且必需可执行文件不在根目录，将内容上移一层（LP-530）。
 
@@ -112,7 +121,7 @@ def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_
                 shutil.rmtree(item, ignore_errors=True)
 
         with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
-            zf.extractall(target_dir)
+            _extract_zip_with_fixed_names(zf, target_dir)
 
         # LP-530：上传包可能带单一顶层包装目录（如 RunWaveAnalysisModule_linux_R2023a/），
         # 而判别服务按 compiled_dir 根目录查找可执行文件，需将内容上移一层。
