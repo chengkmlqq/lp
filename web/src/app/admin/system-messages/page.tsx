@@ -1026,6 +1026,7 @@ export default function AdminSystemMessagesPage() {
       <Modal
         title="发送消息"
         open={createMessageModalOpen}
+        forceRender
         destroyOnHidden
         width={960}
         onCancel={closeCreateMessageModal}

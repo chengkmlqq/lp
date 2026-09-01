@@ -815,6 +815,7 @@ export default function AtpModelsPage() {
       <Modal
         title="新建 ATP 模型"
         open={modalOpen}
+        forceRender
         onCancel={closeModal}
         onOk={() => void form.submit()}
         confirmLoading={createAssetMutation.isPending}

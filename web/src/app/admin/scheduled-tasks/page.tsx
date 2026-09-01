@@ -544,6 +544,7 @@ export default function AdminScheduledTasksPage() {
         <Modal
           title="编辑定时任务"
           open={editorOpen}
+          forceRender
           onCancel={closeEditor}
           width={760}
           destroyOnHidden

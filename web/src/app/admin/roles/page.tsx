@@ -960,6 +960,7 @@ export default function AdminRolesPage() {
         <Modal
           title={editingRole ? `编辑角色：${editingRole.name}` : "新建角色"}
           open={dialogOpen}
+          forceRender
           destroyOnHidden
           okText={editingRole ? "保存修改" : "创建角色"}
           cancelText="取消"

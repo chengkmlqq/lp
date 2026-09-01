@@ -1371,6 +1371,7 @@ export default function AdminUsersPage() {
       <Modal
         title="新增用户"
         open={createUserModalOpen}
+        forceRender
         destroyOnHidden
         onCancel={closeCreateUserModal}
         onOk={() => createForm.submit()}

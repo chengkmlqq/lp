@@ -823,7 +823,7 @@ export default function AdminDocumentsPage() {
               <AntCard
                 className="admin-documents-tree-card"
                 style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-                bodyStyle={{ flex: 1, padding: 0 }}
+                styles={{ body: { flex: 1, padding: 0 } }}
               >
                 <div className="admin-documents-sider-search">
                   <Input
@@ -1059,6 +1059,7 @@ export default function AdminDocumentsPage() {
       <Modal
         title={editingChapterId ? "编辑章节" : "新建章节"}
         open={chapterDialogOpen}
+        forceRender
         onOk={handleChapterFormSubmit}
         onCancel={() => {
           setChapterDialogOpen(false);
@@ -1104,6 +1105,7 @@ export default function AdminDocumentsPage() {
         title={editingDocumentId ? "编辑文档" : "新建文档"}
         width={720}
         open={documentDrawerOpen}
+        forceRender
         onClose={() => {
           setDocumentDrawerOpen(false);
           setEditingDocumentId(null);

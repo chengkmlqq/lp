@@ -1104,7 +1104,7 @@ export default function AdminSystemParamsPage() {
             <AntCard
               className="admin-system-params-sider-card"
               style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-              bodyStyle={{ flex: 1, overflow: "auto", padding: 0 }}
+              styles={{ body: { flex: 1, overflow: "auto", padding: 0 } }}
               actions={canManage ? [
                 <Button type="text" key="add-cat" onClick={() => openCategoryCreate(null)} style={{ width: "100%", color: "var(--ant-color-primary)" }}>
                   <PlusOutlined /> 新建分类
@@ -1288,6 +1288,7 @@ export default function AdminSystemParamsPage() {
           <Modal
             title={editingId === null ? "新建系统参数" : `编辑系统参数：${formApi.getFieldValue("param_name")}（ID: ${editingId}）`}
             open={editorOpen}
+            forceRender
             onCancel={closeEditor}
             onOk={() => formApi.submit()}
             okText={editingId === null ? "创建" : "保存"}

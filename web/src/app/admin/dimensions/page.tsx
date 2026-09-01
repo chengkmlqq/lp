@@ -963,7 +963,7 @@ export default function AdminDimensionsPage() {
               <AntCard
                 className="admin-system-params-sider-card"
                 style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-                bodyStyle={{ flex: 1, overflow: "auto", padding: 0 }}
+                styles={{ body: { flex: 1, overflow: "auto", padding: 0 } }}
                 actions={canManage ? [
                   <Button type="text" key="add-type" onClick={() => openTypeCreate(null)} style={{ width: "100%", color: "var(--ant-color-primary)" }}>
                     <PlusOutlined /> 新建类型
@@ -1165,6 +1165,7 @@ export default function AdminDimensionsPage() {
             <Modal
               title={editingDimension === null ? "新建维度项" : `编辑维度项：${editingDimension.name}（${editingDimension.code}）`}
               open={dimensionEditorOpen}
+              forceRender
               onCancel={() => {
                 setDimensionEditorOpen(false);
                 setEditingDimension(null);

@@ -1086,6 +1086,7 @@ export default function AdminTowerModelsPage() {
         title={editingModel ? "编辑杆塔模型" : "新建杆塔模型"}
         open={dialogOpen}
         width={720}
+        forceRender
         okText={editingModel ? "保存" : "创建"}
         confirmLoading={saveMutation.isPending}
         onCancel={() => {
