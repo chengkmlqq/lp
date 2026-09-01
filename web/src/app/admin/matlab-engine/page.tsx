@@ -57,6 +57,7 @@ import {
   createMatlabModule,
   deleteMatlabModule,
   deleteMatlabVersion,
+  downloadMatlabPackage,
   fetchMatlabModuleVersions,
   fetchMatlabModules,
   publishMatlabDraft,
@@ -189,6 +190,7 @@ export default function AdminMatlabEnginePage() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(240);
   const containerRef = useRef<HTMLDivElement>(null);
   const isResizing = useRef(false);
+  const [downloadingHash, setDownloadingHash] = useState<string | null>(null);
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -664,6 +666,22 @@ export default function AdminMatlabEnginePage() {
     await syncMutation.mutateAsync(effectiveSlug);
   }, [effectiveSlug, syncMutation]);
 
+  const handleDownload = useCallback(
+    async (version: MatlabVersion) => {
+      if (!effectiveSlug) return;
+      setDownloadingHash(version.version_hash);
+      try {
+        await downloadMatlabPackage(effectiveSlug, version.version_hash);
+        setSuccess("下载开始");
+      } catch (candidate) {
+        setError(candidate instanceof Error ? candidate.message : "下载失败");
+      } finally {
+        setDownloadingHash(null);
+      }
+    },
+    [effectiveSlug],
+  );
+
   const handleQuery = useCallback(() => {
     setSearchKeyword(keywordInput);
     setStatusFilter(statusFilterInput);
@@ -820,6 +838,25 @@ export default function AdminMatlabEnginePage() {
         const isDraft = record === draft;
 
         const moreMenuItems: MenuProps["items"] = [
+          ...(!isDraft && canManage
+            ? [
+                {
+                  key: "rollback",
+                  label: "回退",
+                  icon: <SwapOutlined />,
+                  onClick: () => {
+                    modalApi.confirm({
+                      title: "回退到此版本",
+                      content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
+                      okText: "回退",
+                      cancelText: "取消",
+                      okButtonProps: { danger: true },
+                      onOk: () => handleRollback(record),
+                    });
+                  },
+                } as const,
+              ]
+            : []),
           ...(canManage
             ? [
                 {
@@ -851,26 +888,16 @@ export default function AdminMatlabEnginePage() {
             >
               查看
             </Button>
+            <Button
+              size="small"
+              loading={downloadingHash === record.version_hash}
+              onClick={() => handleDownload(record)}
+            >
+              下载
+            </Button>
             {isDraft && canManage ? (
               <Button size="small" type="primary" onClick={() => openPublishModal()}>
                 发布
-              </Button>
-            ) : !isDraft && canManage ? (
-              <Button
-                size="small"
-                danger
-                onClick={() => {
-                  modalApi.confirm({
-                    title: "回退到此版本",
-                    content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
-                    okText: "回退",
-                    cancelText: "取消",
-                    okButtonProps: { danger: true },
-                    onOk: () => handleRollback(record),
-                  });
-                }}
-              >
-                回退
               </Button>
             ) : null}
             {moreMenuItems.length > 0 && (
@@ -884,7 +911,7 @@ export default function AdminMatlabEnginePage() {
     });
 
     return baseColumns;
-  }, [canManage, draft, deleteVersionMutation, handleRollback, openPublishModal]);
+  }, [canManage, draft, deleteVersionMutation, downloadingHash, handleDownload, handleRollback, openPublishModal]);
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
@@ -927,6 +954,25 @@ export default function AdminMatlabEnginePage() {
     const rowBusy = uploadMutation.isPending || publishMutation.isPending || rollbackMutation.isPending || deleteVersionMutation.isPending;
 
     const moreMenuItems: MenuProps["items"] = [
+      ...(!isDraft && canManage
+        ? [
+            {
+              key: "rollback",
+              label: "回退",
+              icon: <SwapOutlined />,
+              onClick: () => {
+                modalApi.confirm({
+                  title: "回退到此版本",
+                  content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
+                  okText: "回退",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true },
+                  onOk: () => handleRollback(item),
+                });
+              },
+            } as const,
+          ]
+        : []),
       ...(canManage
         ? [
             {
@@ -1003,30 +1049,24 @@ export default function AdminMatlabEnginePage() {
                   }}
                 />
               </Tooltip>
+              <Tooltip title="下载">
+                <Button
+                  type="text"
+                  size="small"
+                  loading={downloadingHash === item.version_hash}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleDownload(item);
+                  }}
+                >
+                  下载
+                </Button>
+              </Tooltip>
             </Space>
             <Space size="small">
               {isDraft && canManage ? (
                 <Button type="primary" size="small" disabled={rowBusy} onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
                   发布
-                </Button>
-              ) : !isDraft && canManage ? (
-                <Button
-                  size="small"
-                  danger
-                  disabled={rowBusy}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    modalApi.confirm({
-                      title: "回退到此版本",
-                      content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
-                      okText: "回退",
-                      cancelText: "取消",
-                      okButtonProps: { danger: true },
-                      onOk: () => handleRollback(item),
-                    });
-                  }}
-                >
-                  回退
                 </Button>
               ) : null}
               {moreMenuItems.length > 0 && (

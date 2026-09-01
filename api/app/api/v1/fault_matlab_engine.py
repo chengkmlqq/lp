@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -22,6 +23,13 @@ from ...services.fault_matlab_engine_service import (
     trigger_sync_for_module,
     update_module,
     upload_draft,
+)
+from ...services.minio_storage import (
+    MinioObjectNotFoundError,
+    MinioStorageError,
+    build_matlab_engine_draft_prefix,
+    build_matlab_engine_release_prefix,
+    get_object,
 )
 
 router = APIRouter(
@@ -223,6 +231,71 @@ def get_module_version_files(
         return get_version_files(db, slug, version_hash)
     except MatlabEngineError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+def _resolve_engine_package_prefix(slug: str, version_hash: str, scope: str) -> str:
+    """返回指定 scope（draft/release）下 engine.zip 所在前缀。"""
+    if scope == "draft":
+        return build_matlab_engine_draft_prefix(slug, version_hash)
+    return build_matlab_engine_release_prefix(slug, version_hash)
+
+
+def _download_name(slug: str, version_tag: str, version_hash: str) -> str:
+    """生成下载文件名：{module_slug}_{version_tag}.zip，版本号缺省时退化为 hash。"""
+    tag = (version_tag or "").strip().replace("/", "_").replace("\\", "_") or version_hash
+    return f"{slug}_{tag}.zip"
+
+
+@router.get("/modules/{slug}/versions/{version_hash}/download")
+def download_module_version_package(
+    slug: str,
+    version_hash: str,
+    _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """下载指定版本（草稿或已发布）上传的 engine.zip 原始包。"""
+    if not get_module(db, slug):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"模块不存在: {slug}")
+    versions = list_versions(db, slug)
+    draft = versions.get("draft")
+    releases = versions.get("releases", [])
+
+    scope: str | None = None
+    version_tag = ""
+    if draft and draft.get("version_hash") == version_hash:
+        scope = "draft"
+        version_tag = draft.get("version_tag") or ""
+    else:
+        for item in releases:
+            if item.get("version_hash") == version_hash:
+                scope = "release"
+                version_tag = item.get("version_tag") or ""
+                break
+    if not scope:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"版本不存在: {version_hash}")
+
+    prefix = _resolve_engine_package_prefix(slug, version_hash, scope)
+    zip_key = f"{prefix}engine.zip"
+    try:
+        content = get_object(zip_key)
+    except MinioObjectNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"该版本的上传包不存在（{scope}）",
+        ) from exc
+    except MinioStorageError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    filename = _download_name(slug, version_tag, version_hash)
+    ascii_name = "".join(ch if ord(ch) < 128 else "_" for ch in filename) or "engine.zip"
+    encoded_filename = quote(filename)
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded_filename}',
+        },
+    )
 
 
 @router.post("/modules/{slug}/sync")

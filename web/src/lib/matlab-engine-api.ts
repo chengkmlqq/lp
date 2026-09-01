@@ -102,3 +102,33 @@ export async function syncMatlabModule(slug: string): Promise<MatlabSyncResponse
     {},
   );
 }
+
+/**
+ * 下载指定版本（草稿或已发布）上传的 engine.zip 原始包。
+ * 通过携带鉴权请求拉取 blob，再触发浏览器下载。
+ */
+export async function downloadMatlabPackage(slug: string, versionHash: string): Promise<void> {
+  const response = await fetchWithAuth(
+    `/api/v1/fault-matlab/modules/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionHash)}/download`,
+  );
+  if (!response.ok) {
+    throw new Error(await readApiError(response));
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+
+  // 优先从 Content-Disposition 的 filename*（UTF-8 编码）解析文件名，其次取默认名。
+  const utf8Match = disposition.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
+  const plainMatch = disposition.match(/filename="([^"]+)"/i);
+  const rawName = (utf8Match?.[1] ?? plainMatch?.[1] ?? "").trim().replace(/"/g, "");
+  let fileName = rawName ? decodeURIComponent(rawName) : "engine.zip";
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
