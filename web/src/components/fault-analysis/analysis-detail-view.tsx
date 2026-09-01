@@ -16,6 +16,7 @@ import {
   Collapse,
   Tag,
   Tree,
+  Tabs,
 } from "antd";
 import {
   DownloadOutlined,
@@ -51,6 +52,47 @@ interface ReportSectionItem {
 interface ReportSection {
   title: string;
   content: ReportSectionItem[];
+}
+
+/** 详情页 Tabs 分组：将 docx 章节 sections 归并为大的选项卡。
+ * 单章节 → 独立 tab（tab 名即标题）；5.1/5.2 并入「分布式行波分析与故障原因融合」，
+ * A.1~A.4 并入「附表A 输入信息汇总」；空容器章节（5 / 附表A）不单独成组。
+ */
+interface ReportTabGroup {
+  key: string;
+  label: string;
+  sections: ReportSection[];
+}
+
+function groupReportSections(sections: ReportSection[]): ReportTabGroup[] {
+  const groups = new Map<string, ReportTabGroup>();
+  const findGroup = (key: string): ReportTabGroup | undefined => groups.get(key);
+
+  const resolve = (title: string): { key: string; label: string } => {
+    if (title.includes("报告总览")) return { key: "overview", label: "总览" };
+    if (title.includes("接地故障及过渡电阻判别")) return { key: "ground", label: "接地故障及过渡电阻判别" };
+    if (title.includes("故障定位")) return { key: "location", label: "故障定位" };
+    if (title.includes("耐雷水平与雷击原因分析")) return { key: "lightning", label: "耐雷水平与雷击原因分析" };
+    if (title.startsWith("5.") || title.includes("分布式行波分析") || title.includes("故障原因融合")) {
+      return { key: "wave", label: "分布式行波分析与故障原因融合" };
+    }
+    if (title.includes("总体状态与后续意见")) return { key: "recommend", label: "总体状态与后续意见" };
+    if (title.startsWith("A.") || title.includes("附表A")) return { key: "appendix", label: "附表A 输入信息汇总" };
+    return { key: title, label: title };
+  };
+
+  for (const section of sections) {
+    // 空容器章节（仅标题无内容）跳过，其子章节已归入对应 tab
+    if (section.content.length === 0) continue;
+    const { key, label } = resolve(section.title);
+    let group = findGroup(key);
+    if (!group) {
+      group = { key, label, sections: [] };
+      groups.set(key, group);
+    }
+    group.sections.push(section);
+  }
+  return Array.from(groups.values());
 }
 
 /** Build report sections from a FaultAnalysisDetail returned by the API. */
@@ -589,7 +631,171 @@ interface ArtifactsViewProps {
   onDownload: (key: string) => void;
 }
 
+/** 渲染一节 section 的 content 列表（段落/子标题/bullet/card/表格，与 docx 同源按序交错）。 */
+function SectionContent({ content }: { content: ReportSectionItem[] }) {
+  return (
+    <Space direction="vertical" size={12} className="w-full">
+      {content.map((item, itemIndex) => {
+        // 与 docx 报告同源：按 content 原始顺序渲染（段落/表格/说明交错），
+        // report 有什么详情页就展示什么。
+        if (item.type === "subtitle") {
+          return (
+            <Text key={itemIndex} strong className="text-sm block">
+              {item.text}
+            </Text>
+          );
+        }
+        if (item.type === "highlight") {
+          return (
+            <Text key={itemIndex} type="warning" className="text-sm block">
+              {item.text}
+            </Text>
+          );
+        }
+        if (item.type === "bullet") {
+          return (
+            <div key={itemIndex}>
+              {item.items?.map((bullet, bulletIndex) => (
+                <Paragraph key={bulletIndex} className="text-sm mb-2 text-gray-700">
+                  • {bullet}
+                </Paragraph>
+              ))}
+            </div>
+          );
+        }
+        if (item.type === "card") {
+          const lines = item.text.split("\n");
+          return (
+            <div
+              key={itemIndex}
+              className="bg-gray-50 border border-gray-200 rounded-lg p-5"
+            >
+              {lines.map((line, lineIndex) => {
+                const isHighlight =
+                  line.includes("建议人工复核") ||
+                  line.includes("雷击类型:");
+                const isTitle =
+                  line === "综合判定" ||
+                  (lineIndex === 0 && !line.includes(":"));
+                return (
+                  <Paragraph
+                    key={lineIndex}
+                    className={`text-sm mb-2 ${
+                      isTitle
+                        ? "font-semibold text-gray-900"
+                        : isHighlight
+                          ? "text-orange-600 font-medium"
+                          : "text-gray-700"
+                    }`}
+                  >
+                    {line}
+                  </Paragraph>
+                );
+              })}
+            </div>
+          );
+        }
+        if (item.type === "table") {
+          // 表1 故障分析总览：双列 label:value 展示（参照雷电流幅值统计详情），无统一表头
+          const isOverviewKvTable =
+            item.layout === "key_value" &&
+            typeof item.title === "string" &&
+            item.title.includes("表1");
+          if (isOverviewKvTable) {
+            const rawRows = item.rows ?? [];
+            const pairs: { label: string; value: string }[] = [];
+            rawRows.forEach((row) => {
+              for (let index = 0; index + 1 < row.length; index += 2) {
+                pairs.push({
+                  label: row[index] ?? "",
+                  value: row[index + 1] ?? "",
+                });
+              }
+            });
+            return (
+              <div
+                key={itemIndex}
+                className="bg-white border border-gray-200 rounded-lg"
+                style={{ padding: 12 }}
+              >
+                <Descriptions size="small" bordered column={2}>
+                  {pairs.map((pair, pairIndex) => (
+                    <Descriptions.Item key={pairIndex} label={pair.label}>
+                      <Paragraph className="text-sm text-gray-700 mb-0">
+                        {pair.value}
+                      </Paragraph>
+                    </Descriptions.Item>
+                  ))}
+                </Descriptions>
+              </div>
+            );
+          }
+          const columns = item.columns ?? [];
+          const rawRows = item.rows ?? [];
+          let tableColumns = columns.map((col, index) => ({
+            title: col,
+            dataIndex: index,
+            key: `${index}-${col}`,
+          }));
+          const tableRows: Record<string, string>[] = [];
+          if ((item.layout === "key_value" || columns.length === 2) && columns.length >= 2) {
+            const pairHead = columns[0];
+            const valueHead = columns[1];
+            tableColumns = [
+              { title: pairHead, dataIndex: 0, key: "kv-key" },
+              { title: valueHead, dataIndex: 1, key: "kv-value" },
+            ];
+            rawRows.forEach((row, rowIndex) => {
+              for (let index = 0; index + 1 < row.length; index += 2) {
+                tableRows.push({
+                  key: `r${rowIndex}-c${index}`,
+                  0: row[index] ?? "",
+                  1: row[index + 1] ?? "",
+                });
+              }
+            });
+          } else {
+            rawRows.forEach((row, rowIndex) => {
+              const record: Record<string, string> = { key: `r${rowIndex}` };
+              columns.forEach((_, index) => {
+                record[index] = row[index] ?? "";
+              });
+              tableRows.push(record);
+            });
+          }
+          return (
+            <div
+              key={itemIndex}
+              className="bg-white border border-gray-200 rounded-lg"
+              style={{ padding: 12, overflowY: "auto" }}
+            >
+              {item.title ? (
+                <Text strong className="text-sm block mb-2">
+                  {item.title}
+                </Text>
+              ) : null}
+              <Table
+                size="small"
+                bordered
+                pagination={false}
+                columns={tableColumns}
+                dataSource={tableRows}
+              />
+            </div>
+          );
+        }
+        return (
+          <Paragraph key={itemIndex} className="text-sm text-gray-700 mb-0">
+            {item.text}
+          </Paragraph>
+        );
+      })}
+    </Space>
+  );
+}
+
 function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, onExportReport }: ReportViewProps) {
+  const tabGroups = groupReportSections(sections.sections);
   return (
     <div id={exportElementId} className="py-4">
       <div className="border-b border-gray-200 pb-5 mb-6">
@@ -609,181 +815,37 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
         </Text>
       </div>
 
-      <Space direction="vertical" size={24} className="w-full">
-        {sections.sections.map((section, sectionIndex) => (
-          <div key={sectionIndex}>
-            <div
-              className="px-5 py-3 rounded-md mb-4"
-              style={{
-                background: "var(--fquiz-theme-bg-active)",
-                color: "var(--fquiz-theme-text-primary)",
-                border: "1px solid var(--fquiz-theme-border)",
-              }}
-            >
-              <Text className="font-semibold text-base" style={{ color: "var(--fquiz-theme-text-primary)" }}>
-                {section.title}
-              </Text>
-            </div>
-            <Space direction="vertical" size={12} className="w-full">
-              {section.content.map((item, itemIndex) => {
-                // 与 docx 报告同源：按 content 原始顺序渲染（段落/表格/说明交错），
-                // report 有什么详情页就展示什么。
-                if (item.type === "subtitle") {
-                  return (
-                    <Text key={itemIndex} strong className="text-sm block">
-                      {item.text}
-                    </Text>
-                  );
-                }
-                if (item.type === "highlight") {
-                  return (
-                    <Text key={itemIndex} type="warning" className="text-sm block">
-                      {item.text}
-                    </Text>
-                  );
-                }
-                if (item.type === "bullet") {
-                  return (
-                    <div key={itemIndex}>
-                      {item.items?.map((bullet, bulletIndex) => (
-                        <Paragraph key={bulletIndex} className="text-sm mb-2 text-gray-700">
-                          • {bullet}
-                        </Paragraph>
-                      ))}
-                    </div>
-                  );
-                }
-                if (item.type === "card") {
-                  const lines = item.text.split("\n");
-                  return (
+      <Tabs
+        defaultActiveKey={tabGroups[0]?.key ?? "overview"}
+        tabBarStyle={{ marginBottom: 16 }}
+        items={tabGroups.map((group) => ({
+          key: group.key,
+          label: group.label,
+          children: (
+            <Space direction="vertical" size={24} className="w-full">
+              {group.sections.map((section, sectionIndex) => (
+                <div key={sectionIndex}>
+                  {group.sections.length > 1 && (
                     <div
-                      key={itemIndex}
-                      className="bg-gray-50 border border-gray-200 rounded-lg p-5"
+                      className="px-5 py-3 rounded-md mb-4"
+                      style={{
+                        background: "var(--fquiz-theme-bg-active)",
+                        color: "var(--fquiz-theme-text-primary)",
+                        border: "1px solid var(--fquiz-theme-border)",
+                      }}
                     >
-                      {lines.map((line, lineIndex) => {
-                        const isHighlight =
-                          line.includes("建议人工复核") ||
-                          line.includes("雷击类型:");
-                        const isTitle =
-                          line === "综合判定" ||
-                          (lineIndex === 0 && !line.includes(":"));
-                        return (
-                          <Paragraph
-                            key={lineIndex}
-                            className={`text-sm mb-2 ${
-                              isTitle
-                                ? "font-semibold text-gray-900"
-                                : isHighlight
-                                  ? "text-orange-600 font-medium"
-                                  : "text-gray-700"
-                            }`}
-                          >
-                            {line}
-                          </Paragraph>
-                        );
-                      })}
+                      <Text className="font-semibold text-base" style={{ color: "var(--fquiz-theme-text-primary)" }}>
+                        {section.title}
+                      </Text>
                     </div>
-                  );
-                }
-                if (item.type === "table") {
-                  // 表1 故障分析总览：双列 label:value 展示（参照雷电流幅值统计详情），无统一表头
-                  const isOverviewKvTable =
-                    item.layout === "key_value" &&
-                    typeof item.title === "string" &&
-                    item.title.includes("表1");
-                  if (isOverviewKvTable) {
-                    const rawRows = item.rows ?? [];
-                    const pairs: { label: string; value: string }[] = [];
-                    rawRows.forEach((row) => {
-                      for (let index = 0; index + 1 < row.length; index += 2) {
-                        pairs.push({
-                          label: row[index] ?? "",
-                          value: row[index + 1] ?? "",
-                        });
-                      }
-                    });
-                    return (
-                      <div
-                        key={itemIndex}
-                        className="bg-white border border-gray-200 rounded-lg"
-                        style={{ padding: 12 }}
-                      >
-                        <Descriptions size="small" bordered column={2}>
-                          {pairs.map((pair, pairIndex) => (
-                            <Descriptions.Item key={pairIndex} label={pair.label}>
-                              <Paragraph className="text-sm text-gray-700 mb-0">
-                                {pair.value}
-                              </Paragraph>
-                            </Descriptions.Item>
-                          ))}
-                        </Descriptions>
-                      </div>
-                    );
-                  }
-                  const columns = item.columns ?? [];
-                  const rawRows = item.rows ?? [];
-                  let tableColumns = columns.map((col, index) => ({
-                    title: col,
-                    dataIndex: index,
-                    key: `${index}-${col}`,
-                  }));
-                  const tableRows: Record<string, string>[] = [];
-                  if ((item.layout === "key_value" || columns.length === 2) && columns.length >= 2) {
-                    const pairHead = columns[0];
-                    const valueHead = columns[1];
-                    tableColumns = [
-                      { title: pairHead, dataIndex: 0, key: "kv-key" },
-                      { title: valueHead, dataIndex: 1, key: "kv-value" },
-                    ];
-                    rawRows.forEach((row, rowIndex) => {
-                      for (let index = 0; index + 1 < row.length; index += 2) {
-                        tableRows.push({
-                          key: `r${rowIndex}-c${index}`,
-                          0: row[index] ?? "",
-                          1: row[index + 1] ?? "",
-                        });
-                      }
-                    });
-                  } else {
-                    rawRows.forEach((row, rowIndex) => {
-                      const record: Record<string, string> = { key: `r${rowIndex}` };
-                      columns.forEach((_, index) => {
-                        record[index] = row[index] ?? "";
-                      });
-                      tableRows.push(record);
-                    });
-                  }
-                  return (
-                    <div
-                      key={itemIndex}
-                      className="bg-white border border-gray-200 rounded-lg"
-                      style={{ padding: 12, overflowY: "auto" }}
-                    >
-                      {item.title ? (
-                        <Text strong className="text-sm block mb-2">
-                          {item.title}
-                        </Text>
-                      ) : null}
-                      <Table
-                        size="small"
-                        bordered
-                        pagination={false}
-                        columns={tableColumns}
-                        dataSource={tableRows}
-                      />
-                    </div>
-                  );
-                }
-                return (
-                  <Paragraph key={itemIndex} className="text-sm text-gray-700 mb-0">
-                    {item.text}
-                  </Paragraph>
-                );
-              })}
+                  )}
+                  <SectionContent content={section.content} />
+                </div>
+              ))}
             </Space>
-          </div>
-        ))}
-      </Space>
+          ),
+        }))}
+      />
     </div>
   );
 }
