@@ -79,6 +79,14 @@ export async function rollbackMatlabVersion(slug: string, versionHash: string): 
   );
 }
 
+export async function deleteMatlabVersion(slug: string, versionHash: string): Promise<void> {
+  const response = await fetchWithAuth(
+    `/api/v1/fault-matlab/modules/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionHash)}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) throw new Error(await readApiError(response));
+}
+
 export async function fetchMatlabVersionFiles(
   slug: string,
   versionHash: string,

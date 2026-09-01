@@ -398,6 +398,30 @@ def rollback_to_version(db: Session, slug: str, version_hash: str, *, actor_user
     return draft
 
 
+def delete_version(db: Session, slug: str, version_hash: str, *, actor_user_id: str) -> dict[str, Any]:
+    """删除草稿或历史版本，并清理对象存储中的包文件。"""
+    module = get_module(db, slug)
+    if not module:
+        raise MatlabEngineError(f"模块不存在: {slug}")
+    versions = _load_versions(db, slug)
+    draft = versions.get("draft")
+    if draft and draft.get("version_hash") == version_hash:
+        _delete_scope(module, version_hash, "draft")
+        versions["draft"] = None
+        _save_versions(db, slug, versions, actor_user_id=actor_user_id)
+        _publish_event("engine.version_deleted", {"slug": slug, "version_hash": version_hash, "scope": "draft"})
+        return {"deleted": True, "version_hash": version_hash, "scope": "draft"}
+    releases = versions.get("releases", [])
+    target = next((item for item in releases if item.get("version_hash") == version_hash), None)
+    if not target:
+        raise MatlabEngineError("版本不存在")
+    _delete_scope(module, version_hash, "release")
+    versions["releases"] = [item for item in releases if item.get("version_hash") != version_hash]
+    _save_versions(db, slug, versions, actor_user_id=actor_user_id)
+    _publish_event("engine.version_deleted", {"slug": slug, "version_hash": version_hash, "scope": "release"})
+    return {"deleted": True, "version_hash": version_hash, "scope": "release"}
+
+
 def get_version_files(db: Session, slug: str, version_hash: str) -> dict[str, Any]:
     module = get_module(db, slug)
     if not module:

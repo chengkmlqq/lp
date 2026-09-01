@@ -12,6 +12,7 @@ from ...services.fault_matlab_engine_service import (
     MatlabEngineError,
     create_module,
     delete_module,
+    delete_version,
     get_module,
     get_version_files,
     list_modules,
@@ -196,6 +197,19 @@ def rollback_module_version(
     except MatlabEngineError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return draft
+
+
+@router.delete("/modules/{slug}/versions/{version_hash}")
+def delete_module_version(
+    slug: str,
+    version_hash: str,
+    current_user: CurrentUser = Depends(require_permission("line.manage")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        return delete_version(db, slug, version_hash, actor_user_id=_current_user_id(current_user))
+    except MatlabEngineError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/modules/{slug}/versions/{version_hash}/files")

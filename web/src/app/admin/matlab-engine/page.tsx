@@ -55,6 +55,7 @@ import { ApiError } from "@/lib/api";
 import {
   createMatlabModule,
   deleteMatlabModule,
+  deleteMatlabVersion,
   fetchMatlabModuleVersions,
   fetchMatlabModules,
   publishMatlabDraft,
@@ -415,6 +416,20 @@ export default function AdminMatlabEnginePage() {
     },
     onError: (candidate) => {
       setError(candidate instanceof Error ? candidate.message : "回退失败");
+    },
+  });
+
+  const deleteVersionMutation = useMutation({
+    mutationFn: async (version: MatlabVersion) => {
+      if (!effectiveSlug) return;
+      await deleteMatlabVersion(effectiveSlug, version.version_hash);
+    },
+    onSuccess: async () => {
+      setSuccess("版本已删除");
+      await versionsQuery.refetch();
+    },
+    onError: (candidate) => {
+      setError(candidate instanceof Error ? candidate.message : "删除版本失败");
     },
   });
 
@@ -802,34 +817,22 @@ export default function AdminMatlabEnginePage() {
         const isDraft = record === draft;
 
         const moreMenuItems: MenuProps["items"] = [
-          {
-            key: "preview",
-            label: "查看文件列表",
-            onClick: () => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || []),
-          },
-          ...(isDraft && canManage
+          ...(canManage
             ? [
                 {
-                  key: "publish",
-                  label: "发布",
-                  onClick: () => openPublishModal(),
-                } as const,
-              ]
-            : []),
-          ...(!isDraft && canManage
-            ? [
-                {
-                  key: "rollback",
-                  label: "回退",
+                  key: "delete",
+                  label: "删除",
                   danger: true,
                   onClick: () => {
                     Modal.confirm({
-                      title: "回退到此版本",
-                      content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
-                      okText: "回退",
+                      title: "删除版本",
+                      content: isDraft
+                        ? `确认删除草稿版本"${record.version_tag || record.version_hash}"吗？`
+                        : `确认删除版本"${record.version_tag}"（${record.version_hash}）吗？删除后不可恢复。`,
+                      okText: "删除",
                       cancelText: "取消",
                       okButtonProps: { danger: true },
-                      onOk: () => handleRollback(record),
+                      onOk: () => deleteVersionMutation.mutateAsync(record),
                     });
                   },
                 } as const,
@@ -843,7 +846,7 @@ export default function AdminMatlabEnginePage() {
               size="small"
               onClick={() => openPreview(`版本文件列表 (${record.version_tag || record.version_hash})`, record.file_list || [])}
             >
-              查看文件列表
+              查看
             </Button>
             {isDraft && canManage ? (
               <Button size="small" type="primary" onClick={() => openPublishModal()}>
@@ -867,16 +870,18 @@ export default function AdminMatlabEnginePage() {
                 回退
               </Button>
             ) : null}
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button size="small" icon={<MoreOutlined />} />
-            </Dropdown>
+            {moreMenuItems.length > 0 && (
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button size="small" icon={<MoreOutlined />} />
+              </Dropdown>
+            )}
           </Space>
         );
       },
     });
 
     return baseColumns;
-  }, [canManage, draft, handleRollback, openPublishModal]);
+  }, [canManage, draft, deleteVersionMutation, handleRollback, openPublishModal]);
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
@@ -916,37 +921,25 @@ export default function AdminMatlabEnginePage() {
   const renderVersionCard = (item: MatlabVersion) => {
     const isDraft = item === draft;
     const statusConfig = isDraft ? { color: "warning" as const, text: "草稿" } : { color: "success" as const, text: "已发布" };
-    const rowBusy = uploadMutation.isPending || publishMutation.isPending || rollbackMutation.isPending;
+    const rowBusy = uploadMutation.isPending || publishMutation.isPending || rollbackMutation.isPending || deleteVersionMutation.isPending;
 
     const moreMenuItems: MenuProps["items"] = [
-      {
-        key: "preview",
-        label: "查看文件列表",
-        onClick: () => openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []),
-      },
-      ...(isDraft && canManage
+      ...(canManage
         ? [
             {
-              key: "publish",
-              label: "发布",
-              onClick: () => openPublishModal(),
-            } as const,
-          ]
-        : []),
-      ...(!isDraft && canManage
-        ? [
-            {
-              key: "rollback",
-              label: "回退",
+              key: "delete",
+              label: "删除",
               danger: true,
               onClick: () => {
                 Modal.confirm({
-                  title: "回退到此版本",
-                  content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
-                  okText: "回退",
+                  title: "删除版本",
+                  content: isDraft
+                    ? `确认删除草稿版本"${item.version_tag || item.version_hash}"吗？`
+                    : `确认删除版本"${item.version_tag}"（${item.version_hash}）吗？删除后不可恢复。`,
+                  okText: "删除",
                   cancelText: "取消",
                   okButtonProps: { danger: true },
-                  onOk: () => handleRollback(item),
+                  onOk: () => deleteVersionMutation.mutateAsync(item),
                 });
               },
             } as const,
@@ -995,33 +988,56 @@ export default function AdminMatlabEnginePage() {
           </div>
 
           <div className="admin-matlab-version-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
-            {isDraft && canManage ? (
-              <Button type="primary" size="small" disabled={rowBusy} onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
-                发布
-              </Button>
-            ) : (
-              <Space size="small">
-                <Tooltip title="查看文件列表">
+            <Space size="small">
+              <Tooltip title="查看">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []);
+                  }}
+                />
+              </Tooltip>
+            </Space>
+            <Space size="small">
+              {isDraft && canManage ? (
+                <Button type="primary" size="small" disabled={rowBusy} onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
+                  发布
+                </Button>
+              ) : !isDraft && canManage ? (
+                <Button
+                  size="small"
+                  danger
+                  disabled={rowBusy}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    Modal.confirm({
+                      title: "回退到此版本",
+                      content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
+                      okText: "回退",
+                      cancelText: "取消",
+                      okButtonProps: { danger: true },
+                      onOk: () => handleRollback(item),
+                    });
+                  }}
+                >
+                  回退
+                </Button>
+              ) : null}
+              {moreMenuItems.length > 0 && (
+                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                   <Button
                     type="text"
                     size="small"
-                    icon={<EyeOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openPreview(`版本文件列表 (${item.version_tag || item.version_hash})`, item.file_list || []);
-                    }}
+                    disabled={rowBusy}
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
                   />
-                </Tooltip>
-              </Space>
-            )}
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button
-                type="text"
-                size="small"
-                icon={<MoreOutlined />}
-                onClick={(event) => event.stopPropagation()}
-              />
-            </Dropdown>
+                </Dropdown>
+              )}
+            </Space>
           </div>
         </div>
       </Card>
@@ -1306,6 +1322,7 @@ export default function AdminMatlabEnginePage() {
           okText={editingModule ? "保存" : "创建"}
           cancelText="取消"
           destroyOnHidden
+          forceRender
           width={760}
         >
           <Form<ModuleFormValues>
@@ -1443,7 +1460,7 @@ export default function AdminMatlabEnginePage() {
         destroyOnHidden
       >
         {detailModule && (
-          <Descriptions column={1} bordered size="small" labelStyle={{ width: 130 }}>
+          <Descriptions column={1} bordered size="small" styles={{ label: { width: 130 } }}>
             <Descriptions.Item label="标识">
               <Typography.Text code>{detailModule.slug}</Typography.Text>
             </Descriptions.Item>
