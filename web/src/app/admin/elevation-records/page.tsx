@@ -216,16 +216,20 @@ function computedParseStatus(record: ElevationFileRecordSummary): ParseStatusInf
     return { label: "失败", color: "error" };
   }
 
-  // Any running/processing/queued/pending → 处理中
-  const processingStates = ["running", "queued", "pending", "processing"];
-  if (
-    processingStates.includes(analysis_status) ||
-    processingStates.includes(terrain_status)
-  ) {
+  // 分析任务进行中（含排队未开始）→ 处理中
+  const activeAnalysisStates = ["running", "queued", "pending", "processing"];
+  if (activeAnalysisStates.includes(analysis_status)) {
     return { label: "处理中", color: "processing" };
   }
 
-  // Otherwise → 成功（含分析完成且地形就绪或格式不支持等正常状态）
+  // 地形瓦片构建链已下线（LP-457）：新建记录 terrain_status 默认 "pending" 且永不推进，
+  // 不再视为处理中；仅历史遗留的真实进行中构建（processing/running）保持处理中
+  const activeTerrainStates = ["processing", "running"];
+  if (activeTerrainStates.includes(terrain_status)) {
+    return { label: "处理中", color: "processing" };
+  }
+
+  // Otherwise → 成功（含分析完成且地形就绪/不支持等正常状态）
   return { label: "成功", color: "success" };
 }
 
