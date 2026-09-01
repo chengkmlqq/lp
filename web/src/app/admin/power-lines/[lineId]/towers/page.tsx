@@ -478,11 +478,11 @@ export default function AdminPowerLineTowersPage() {
           <Form layout="vertical">
             <Form.Item label="数据文件" required>
               <Upload.Dragger
-                accept=".csv,text/csv"
+                accept=".csv,text/csv,.xlsx"
                 showUploadList={false}
                 beforeUpload={(file) => {
                   const maxMB = 50;
-                  const allowedExts = ["csv"];
+                  const allowedExts = ["csv", "xlsx"];
                   const ext = file.name.split(".").pop()?.toLowerCase() || "";
                   if (file.size > maxMB * 1024 * 1024) {
                     messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);

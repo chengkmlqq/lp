@@ -194,6 +194,101 @@ def test_import_line_towers_via_temp_file_id(monkeypatch) -> None:
         session.close()
 
 
+def test_import_line_towers_via_temp_file_id_xlsx(monkeypatch) -> None:
+    """xlsx 格式导入：openpyxl 解析为二维表后复用同一套导入逻辑（LP：线路台账支持 xlsx）。"""
+    from io import BytesIO
+
+    from openpyxl import Workbook
+
+    session = _build_session_factory()()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        line = Line(code="PL-TEMP-003", name="XLSX导入线路", voltage_kv=220, status="enabled")
+        session.add(line)
+        session.commit()
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(["序号", "塔号", "经度", "纬度", "接地电阻", "地闪密度", "直线或耐张杆塔", "杆塔模型"])
+        sheet.append([1, "X001", 120.1, 30.1, 5, 3.5, "直线", "ZM-001"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        workbook.close()
+        xlsx_content = buffer.getvalue()
+
+        temp_key = "lightning/tmp/tester/abc123_towers.xlsx"
+        monkeypatch.setattr(minio_storage, "get_object", lambda key: xlsx_content)
+        monkeypatch.setattr(minio_storage, "delete_object", lambda key: None)
+
+        result = line_service.import_line_towers_from_csv(
+            session,
+            line=line,
+            file=None,
+            temp_file_id=temp_key,
+            actor_user_id="tester",
+        )
+
+        assert result.imported_count == 1
+        towers = session.execute(
+            select(LineTower).where(LineTower.line_id == line.id)
+        ).scalars().all()
+        assert len(towers) == 1
+        assert towers[0].tower_no == "X001"
+        assert towers[0].longitude == 120.1
+        assert towers[0].latitude == 30.1
+    finally:
+        session.close()
+
+
+def test_import_line_towers_via_direct_xlsx_upload(monkeypatch) -> None:
+    """直接上传 xlsx（file 路径）：按 filename 扩展名分流解析。"""
+    from io import BytesIO
+
+    from fastapi import UploadFile
+    from openpyxl import Workbook
+
+    session = _build_session_factory()()
+    try:
+        monkeypatch.setattr(line_service, "_publish_line_change", lambda *args, **kwargs: None)
+
+        line = Line(code="PL-TEMP-004", name="XLSX直传线路", voltage_kv=220, status="enabled")
+        session.add(line)
+        session.commit()
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(["序号", "塔号", "接地电阻", "地闪密度"])
+        sheet.append([1, "Y001", 8, 2.1])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        workbook.close()
+
+        upload_file = UploadFile(
+            filename="towers.xlsx",
+            file=BytesIO(buffer.getvalue()),
+        )
+
+        result = line_service.import_line_towers_from_csv(
+            session,
+            line=line,
+            file=upload_file,
+            temp_file_id=None,
+            actor_user_id="tester",
+        )
+
+        assert result.imported_count == 1
+        towers = session.execute(
+            select(LineTower).where(LineTower.line_id == line.id)
+        ).scalars().all()
+        assert len(towers) == 1
+        assert towers[0].tower_no == "Y001"
+        assert towers[0].ground_resistance_ohm == 8
+        assert towers[0].lightning_density == 2.1
+    finally:
+        session.close()
+
+
 def test_import_line_towers_via_temp_file_id_missing_file(monkeypatch) -> None:
     from fastapi import HTTPException
 

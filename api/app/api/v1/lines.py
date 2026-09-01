@@ -192,7 +192,16 @@ def import_line_tower_csv_endpoint(
     current_user: CurrentUser = Depends(require_permission("tower.manage")),
     db: Session = Depends(get_db),
 ) -> LineTowerImportResponse:
-    validate_upload(file, allowed_exts={"csv"})
+    validate_upload(file, allowed_exts={"csv", "xlsx"}, allowed_exts_label="csv/xlsx")
+    # 两段式上传路径（temp_file_id）在前端已按 accept 过滤，这里兜底校验扩展名，
+    # 防止绕过前端直接构造请求导入其他格式。
+    if temp_file_id:
+        temp_ext = temp_file_id.rsplit(".", 1)[-1].lower() if "." in temp_file_id else ""
+        if temp_ext not in {"csv", "xlsx"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不支持的文件格式，仅支持 .csv/.xlsx",
+            )
     line = get_line_by_id(db, line_id)
     if not line:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Line not found")

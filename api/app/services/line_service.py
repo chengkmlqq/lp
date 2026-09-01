@@ -607,7 +607,7 @@ def import_line_towers_from_csv(
     if temp_file_id:
         from ..core.file_upload import resolve_temp_file
 
-        content, _source_name = resolve_temp_file(temp_file_id, actor_user_id)
+        content, source_name = resolve_temp_file(temp_file_id, actor_user_id)
     else:
         if file is None:
             raise HTTPException(
@@ -615,13 +615,20 @@ def import_line_towers_from_csv(
                 detail="缺少文件，请提供 file 或 temp_file_id",
             )
         content = file.file.read()
+        source_name = file.filename or ""
     if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV file is empty")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="导入文件为空")
 
-    text = _decode_csv_bytes(content)
-    rows = list(csv.reader(io.StringIO(text)))
+    # 兼容 csv / xlsx 两种格式：按原始文件名扩展名分流解析，
+    # 统一产出二维字符串表（与既有 CSV 行解析共用同一套表头定位/行处理逻辑）。
+    extension = (source_name or "").rsplit(".", 1)[-1].lower() if "." in (source_name or "") else ""
+    if extension == "xlsx":
+        rows = _read_xlsx_rows(content)
+    else:
+        text = _decode_csv_bytes(content)
+        rows = list(csv.reader(io.StringIO(text)))
     if not rows:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV file has no rows")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="导入文件没有数据行")
 
     # 台账导出文件常以 <TGanTa> 等占位行开头（其后才是真实表头），
     # 向下扫描定位同时包含「序号」「塔号」的表头行，避免整表解析失败。
@@ -1503,6 +1510,36 @@ def _decode_csv_bytes(content: bytes) -> str:
         except UnicodeDecodeError:
             continue
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV encoding is not supported")
+
+
+def _read_xlsx_rows(content: bytes) -> list[list[str]]:
+    """读取 xlsx 工作簿第一个工作表为二维字符串表（行结构与 csv.reader 输出一致）。
+
+    单元格统一转为字符串（None → 空串），供后续表头定位与字段解析复用；
+    数据行长度不足时由调用方按表头补齐，超出时由调用方追加 __extra_col_N 占位列。
+    """
+    try:
+        from openpyxl import load_workbook  # type: ignore
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="读取 XLSX 需要 openpyxl；请使用项目的 Python 运行环境",
+        ) from exc
+    try:
+        workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="XLSX 文件解析失败，请确认为有效的 Excel 文件",
+        ) from exc
+    try:
+        sheet = workbook[workbook.sheetnames[0]]
+        return [
+            ["" if cell is None else str(cell) for cell in values]
+            for values in sheet.iter_rows(values_only=True)
+        ]
+    finally:
+        workbook.close()
 
 
 def _normalize_str(value: Any) -> str | None:
