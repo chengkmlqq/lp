@@ -623,11 +623,22 @@ def import_line_towers_from_csv(
     if not rows:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV file has no rows")
 
-    raw_header = rows[0]
+    # 台账导出文件常以 <TGanTa> 等占位行开头（其后才是真实表头），
+    # 向下扫描定位同时包含「序号」「塔号」的表头行，避免整表解析失败。
+    header_index = 0
+    while header_index < len(rows):
+        candidate = rows[header_index]
+        if "序号" in candidate and "塔号" in candidate:
+            break
+        header_index += 1
+    if header_index >= len(rows):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV 中未找到包含序号/塔号的表头")
+
+    raw_header = rows[header_index]
     if not raw_header:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV header is empty")
 
-    max_row_len = max((len(row) for row in rows[1:]), default=len(raw_header))
+    max_row_len = max((len(row) for row in rows[header_index + 1 :]), default=len(raw_header))
     header = list(raw_header)
     extra_headers: list[str] = []
     if max_row_len > len(header):
@@ -642,7 +653,7 @@ def import_line_towers_from_csv(
 
     first_data_row: dict[str, str] | None = None
 
-    for row_index, source_row in enumerate(rows[1:], start=2):
+    for row_index, source_row in enumerate(rows[header_index + 1 :], start=header_index + 2):
         row_values = source_row + [""] * (len(header) - len(source_row))
         row = {name: row_values[idx] for idx, name in enumerate(header)}
         if all(not str(value).strip() for value in row.values()):
