@@ -140,7 +140,7 @@ function resolveVoltageOptionFromKv(voltageKv: number | null): LineFormValues["v
 export default function AdminPowerLinesPage() {
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
-  const { message: messageApi } = App.useApp();
+  const { message: messageApi, modal: modalApi } = App.useApp();
   const [lineForm] = Form.useForm<LineFormValues>();
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -290,7 +290,7 @@ export default function AdminPowerLinesPage() {
         if (!response.ok) {
           throw new Error(await readApiError(response));
         }
-        return "updated" as const;
+        return { mode: "updated" as const, line: null as LineSummary | null };
       }
       const response = await fetchWithAuth("/api/v1/lines", {
         method: "POST",
@@ -300,15 +300,20 @@ export default function AdminPowerLinesPage() {
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return "created" as const;
+      const createdLine = (await response.json()) as LineSummary;
+      return { mode: "created" as const, line: createdLine };
     },
-    onSuccess: async (mode) => {
+    onSuccess: async ({ mode, line }) => {
       setError("");
-      messageApi.success(mode === "created" ? "线路已创建" : "线路已更新");
+      messageApi.success(mode === "created" ? "线路已创建，已进入杆塔列表" : "线路已更新");
       setLineModalOpen(false);
       setEditingLine(null);
       lineForm.resetFields();
       await refreshLines();
+      // 新建成功后直接打开该线路的详情 Tab（含杆塔列表），无需用户再点击。
+      if (mode === "created" && line) {
+        openDetail(line);
+      }
     },
     onError: (candidate) => {
       setError(candidate instanceof Error ? candidate.message : "保存线路失败");
@@ -517,7 +522,7 @@ export default function AdminPowerLinesPage() {
                             onDetail={openDetail}
                             onPreview={openPreview}
                             onDelete={() => {
-                              Modal.confirm({
+                              modalApi.confirm({
                                 title: "删除线路",
                                 content: `确认删除线路 ${line.name || line.code} 吗？`,
                                 okText: "删除",
@@ -559,7 +564,7 @@ export default function AdminPowerLinesPage() {
                       onDetail={openDetail}
                       onPreview={openPreview}
                       onDelete={(line) => {
-                        Modal.confirm({
+                        modalApi.confirm({
                           title: "删除线路",
                           content: `确认删除线路 ${line.name || line.code} 吗？`,
                           okText: "删除",
