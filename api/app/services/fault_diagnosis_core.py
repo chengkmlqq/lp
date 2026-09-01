@@ -242,7 +242,8 @@ def _read_xlsx_first_row(path: Path) -> dict[str, Any]:
 
 def _load_pdf_fault_info(path: Path, extractor_path: Path | None, ocr_engine: str) -> dict[str, Any]:
     if extractor_path is None:
-        extractor_path = Path(__file__).resolve().parent.parent / "录波" / "extract_fault_report.py"
+        # 与 services/pdf_fault_extractor._EXTRACTOR_PATH 保持一致：api/录波/extract_fault_report.py
+        extractor_path = Path(__file__).resolve().parents[2] / "录波" / "extract_fault_report.py"
     if not extractor_path.exists():
         raise InputError(f"找不到录波 PDF 提取器: {extractor_path}")
 

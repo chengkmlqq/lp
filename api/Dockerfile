@@ -14,6 +14,9 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 COPY app ./app
+# 录波 PDF 提取器（extract_fault_report.py）及其依赖清单：镜像内需与 app 同级存在，
+# 否则 /extract-wave 与判别任务会报「录波 PDF 提取器不存在」。
+COPY 录波 ./录波
 
 EXPOSE 8000
 ENTRYPOINT ["/docker-entrypoint.sh"]

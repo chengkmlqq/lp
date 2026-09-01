@@ -26,6 +26,8 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
 
 COPY app ./app
+# 录波 PDF 提取器：判别任务解析录波 PDF 需要，镜像内与 app 同级存在
+COPY 录波 ./录波
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["celery", "-A", "app.core.celery_app.celery_app", "worker", "--loglevel=info"]

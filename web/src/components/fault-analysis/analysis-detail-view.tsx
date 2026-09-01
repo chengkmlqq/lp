@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
 import {
   Alert,
   App,
   Button,
   Descriptions,
+  Segmented,
   Space,
   Typography,
   Spin,
-  Dropdown,
   Table,
   Steps,
   Collapse,
@@ -37,7 +38,7 @@ interface AnalysisDetailViewProps {
   analysisId: string;
   /** 唯一标识，用作导出容器 DOM id 前缀（多开详情 Tab 时避免重复 id） */
   tabKey: string;
-  defaultView?: "report" | "process" | "artifacts";
+  defaultView?: "summary" | "report" | "process" | "artifacts";
   /** 打开分析执行日志抽屉（参照雷电流幅值页的日志查看） */
   onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
 }
@@ -54,6 +55,8 @@ interface ReportSectionItem {
 
 interface ReportSection {
   title: string;
+  key?: string;
+  group?: string;
   content: ReportSectionItem[];
 }
 
@@ -67,21 +70,46 @@ interface ReportTabGroup {
   sections: ReportSection[];
 }
 
+/** 后端下发的「计算过程」声明式视图模型（build_view_model 输出）。 */
+interface ProcessViewModelField {
+  label: string;
+  kind: "text" | "tag" | "bullets" | "kv";
+  value?: string | null;
+  options?: Record<string, string>;
+  items?: { key?: string; value?: string }[] | string[];
+}
+
+interface ProcessViewModelStep {
+  key: string;
+  title: string;
+  header: string;
+  empty: string;
+  available: boolean;
+  fields: ProcessViewModelField[];
+}
+
+interface ProcessViewModel {
+  steps: ProcessViewModelStep[];
+}
+
 function groupReportSections(sections: ReportSection[]): ReportTabGroup[] {
   const groups = new Map<string, ReportTabGroup>();
   const findGroup = (key: string): ReportTabGroup | undefined => groups.get(key);
 
-  const resolve = (title: string): { key: string; label: string } => {
-    if (title.includes("报告总览")) return { key: "overview", label: "故障总览" };
-    if (title.includes("接地故障及过渡电阻判别")) return { key: "ground", label: "接地故障及过渡电阻判别" };
-    if (title.includes("故障定位")) return { key: "location", label: "故障定位" };
-    if (title.includes("耐雷水平与雷击原因分析")) return { key: "lightning", label: "耐雷水平与雷击原因分析" };
-    if (title.startsWith("5.") || title.includes("分布式行波分析") || title.includes("故障原因融合")) {
+  // 优先使用后端下发的 key/group；旧记录无该字段时回退到标题匹配。
+  const resolve = (section: ReportSection): { key: string; label: string } => {
+    if (section.group === "wave") return { key: "wave", label: "分布式行波分析与故障原因融合" };
+    if (section.group === "appendix") return { key: "appendix", label: "附表A 输入信息汇总" };
+    const title = section.title ?? "";
+    if (section.key === "overview" || title.includes("报告总览")) return { key: "overview", label: "故障总览" };
+    if (section.key === "ground" || title.includes("接地故障及过渡电阻判别")) return { key: "ground", label: "接地故障及过渡电阻判别" };
+    if (section.key === "location" || title.includes("故障定位")) return { key: "location", label: "故障定位" };
+    if (section.key === "lightning" || title.includes("耐雷水平与雷击原因分析")) return { key: "lightning", label: "耐雷水平与雷击原因分析" };
+    if (section.key === "wave_process" || section.key === "wave_fusion" || section.key === "recommendation") {
       return { key: "wave", label: "分布式行波分析与故障原因融合" };
     }
-    // 「总体状态与后续意见」不再单独成 tab，并入「分布式行波分析与故障原因融合」，
-    // 作为该章节的延续内容展示。
-    if (title.includes("总体状态与后续意见")) {
+    // 旧记录标题回退（兼容 LP-537 之前的存储）
+    if (title.startsWith("5.") || title.includes("分布式行波分析") || title.includes("故障原因融合") || title.includes("总体状态与后续意见")) {
       return { key: "wave", label: "分布式行波分析与故障原因融合" };
     }
     if (title.startsWith("A.") || title.includes("附表A")) return { key: "appendix", label: "附表A 输入信息汇总" };
@@ -91,7 +119,7 @@ function groupReportSections(sections: ReportSection[]): ReportTabGroup[] {
   for (const section of sections) {
     // 空容器章节（仅标题无内容）跳过，其子章节已归入对应 tab
     if (section.content.length === 0) continue;
-    const { key, label } = resolve(section.title);
+    const { key, label } = resolve(section);
     let group = findGroup(key);
     if (!group) {
       group = { key, label, sections: [] };
@@ -142,7 +170,7 @@ function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]
     basics.push({ type: "text", text: `重合闸情况: ${detail.reclosure_status}` });
   }
   if (basics.length > 0) {
-    sections.push({ title: "一、故障基本信息", content: basics });
+    sections.push({ title: "一、故障基本信息", key: "overview", group: "overview", content: basics });
   }
 
   // Section 2: electrical parameters
@@ -166,7 +194,7 @@ function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]
     electrical.push({ type: "text", text: `线路总长度: ${detail.line_length_km} km` });
   }
   if (electrical.length > 0) {
-    sections.push({ title: "二、电气参数", content: electrical });
+    sections.push({ title: "二、电气参数", key: "overview", group: "overview", content: electrical });
   }
 
   // Section 3: lightning & location
@@ -190,7 +218,7 @@ function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]
     location.push({ type: "text", text: `光学设备安装位置: ${detail.optical_device_location}` });
   }
   if (location.length > 0) {
-    sections.push({ title: "三、雷电定位与测距", content: location });
+    sections.push({ title: "三、雷电定位与测距", key: "overview", group: "overview", content: location });
   }
 
   // Section 4: conclusion
@@ -214,7 +242,7 @@ function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]
         : "综合判定: 置信度较低，建议结合现场情况综合分析。",
   });
   if (conclusion.length > 0) {
-    sections.push({ title: "四、综合判定", content: conclusion });
+    sections.push({ title: "四、综合判定", key: "overview", group: "overview", content: conclusion });
   }
 
   return { sections, station, fault_datetime: faultDatetime, fault_id: faultId };
@@ -649,7 +677,7 @@ interface ArtifactsViewProps {
 }
 
 /** 渲染一节 section 的 content 列表（段落/子标题/bullet/card/表格，与 docx 同源按序交错）。 */
-function SectionContent({ content, isAppendix = false }: { content: ReportSectionItem[]; isAppendix?: boolean }) {
+function SectionContent({ content }: { content: ReportSectionItem[] }) {
   return (
     <Space direction="vertical" size={12} className="w-full">
       {content.map((item, itemIndex) => {
@@ -712,52 +740,11 @@ function SectionContent({ content, isAppendix = false }: { content: ReportSectio
             </div>
           );
         }
-        if (item.type === "table" && isAppendix) {
-          // 附表A 输入信息汇总：参照「表1 故障分析总览」的呈现方式，
-          // 采用双列 label:value 展示、无表头（key_value 表 A.1~A.3 直接取相邻键值对；
-          // grid 表 A.4 以首列为标签，其余列合并为值）。
-          const rawRows = item.rows ?? [];
-          const pairs: { label: string; value: string }[] = [];
-          if (item.layout === "grid") {
-            rawRows.forEach((row) => {
-              const label = row[0] ?? "";
-              const value = row.slice(1).filter((cell) => cell !== "").join("；");
-              if (label || value) {
-                pairs.push({ label, value });
-              }
-            });
-          } else {
-            rawRows.forEach((row) => {
-              for (let index = 0; index + 1 < row.length; index += 2) {
-                pairs.push({ label: row[index] ?? "", value: row[index + 1] ?? "" });
-              }
-            });
-          }
-          return (
-            <div
-              key={itemIndex}
-              className="bg-white border border-gray-200 rounded-lg"
-              style={{ padding: 12 }}
-            >
-              <Descriptions size="small" bordered column={2}>
-                {pairs.map((pair, pairIndex) => (
-                  <Descriptions.Item key={pairIndex} label={pair.label}>
-                    <Paragraph className="text-sm text-gray-700 mb-0">
-                      {pair.value}
-                    </Paragraph>
-                  </Descriptions.Item>
-                ))}
-              </Descriptions>
-            </div>
-          );
-        }
         if (item.type === "table") {
-          // 表1 故障分析总览：双列 label:value 展示（参照雷电流幅值统计详情），无统一表头
-          const isOverviewKvTable =
-            item.layout === "key_value" &&
-            typeof item.title === "string" &&
-            item.title.includes("表1");
-          if (isOverviewKvTable) {
+          // key_value 布局：双列 label:value 展示（参照雷电流幅值统计详情），无统一表头；
+          // grid 布局：按多列表格呈现（与 docx 同源）。
+          const isKvTable = item.layout === "key_value";
+          if (isKvTable) {
             const rawRows = item.rows ?? [];
             const pairs: { label: string; value: string }[] = [];
             rawRows.forEach((row) => {
@@ -904,7 +891,7 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
                       </Text>
                     </div>
                   )}
-                  <SectionContent content={section.content} isAppendix={group.key === "appendix"} />
+                  <SectionContent content={section.content} />
                 </div>
               ))}
             </Space>
@@ -915,7 +902,89 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
   );
 }
 
+function renderViewModelField(field: ProcessViewModelField): React.ReactNode {
+  if (field.kind === "tag") {
+    return field.value ? (
+      <Tag color={field.options?.[field.value] ?? "default"}>{field.value}</Tag>
+    ) : "-";
+  }
+  if (field.kind === "bullets") {
+    const items = Array.isArray(field.items) ? field.items : [];
+    return items.length > 0 ? (
+      <ul className="pl-4 list-disc space-y-1">
+        {items.map((item, index) => (
+          <li key={index} className="text-sm text-gray-700">
+            {typeof item === "string" ? item : String(item)}
+          </li>
+        ))}
+      </ul>
+    ) : "-";
+  }
+  if (field.kind === "kv") {
+    const pairs = Array.isArray(field.items) ? (field.items as { key?: string; value?: string }[]) : [];
+    return pairs.length > 0 ? (
+      <Descriptions column={1} size="small" className="w-full">
+        {pairs.map((pair, index) => (
+          <Descriptions.Item key={index} label={pair.key ?? "-"}>
+            {pair.value ?? "-"}
+          </Descriptions.Item>
+        ))}
+      </Descriptions>
+    ) : "-";
+  }
+  return field.value ?? "-";
+}
+
 function ProcessView({ computationSteps, resultJson }: ProcessViewProps) {
+  const viewModel = resultJson.view_model as ProcessViewModel | undefined;
+  // 优先消费后端下发的 view_model（声明式 schema，前端不再硬编码 diagnosis 路径）；
+  // 旧记录无 view_model 时回退到 buildComputationSteps 兜底。
+  if (viewModel && Array.isArray(viewModel.steps) && viewModel.steps.length > 0) {
+    const steps = viewModel.steps;
+    return (
+      <div className="py-4">
+        <Steps
+          current={steps.length - 1}
+          status="finish"
+          size="small"
+          className="mb-6"
+          items={steps.map((step) => ({ title: step.title }))}
+        />
+        <Collapse
+          accordion
+          defaultActiveKey={["ground"]}
+          items={steps.map((step) => ({
+            key: step.key,
+            label: step.header,
+            children: (
+              <Space direction="vertical" size={12} className="w-full">
+                {step.fields.length === 0 ? (
+                  <Alert type="info" showIcon message={step.empty} />
+                ) : (
+                  <Descriptions column={2} bordered size="small">
+                    {step.fields.map((field, index) => (
+                      <Descriptions.Item key={`${step.key}-${index}`} label={field.label} span={2}>
+                        {renderViewModelField(field)}
+                      </Descriptions.Item>
+                    ))}
+                  </Descriptions>
+                )}
+                {resultJson.input_warnings && (resultJson.input_warnings as unknown[]).length > 0 ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="输入警告"
+                    description={(resultJson.input_warnings as string[]).join("；")}
+                  />
+                ) : null}
+              </Space>
+            ),
+          }))}
+        />
+      </div>
+    );
+  }
+
   const stepCount = computationSteps.length;
   return (
     <div className="py-4">
@@ -969,12 +1038,51 @@ function ArtifactsView({ onDownload, downloadingArtifact, artifactTree }: Artifa
   );
 }
 
+/** 摘要视图：渲染后端下发的 summary_markdown（与判别结论一屏概览）。 */
+function SummaryView({ markdown }: { markdown: string }) {
+  if (!markdown || !markdown.trim()) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        message="暂无自动判别摘要"
+        description="该记录尚未生成步骤1-5自动判别摘要。"
+      />
+    );
+  }
+  return (
+    <div className="py-2 fault-analysis-summary-view">
+      <ReactMarkdown
+        components={{
+          p: ({ children }) => <Paragraph className="text-sm text-gray-700 mb-2 whitespace-pre-line">{children}</Paragraph>,
+          h1: ({ children }) => <Title level={3} className="mb-3">{children}</Title>,
+          h2: ({ children }) => <Title level={4} className="mb-2">{children}</Title>,
+          h3: ({ children }) => <Title level={5} className="mb-2">{children}</Title>,
+          strong: ({ children }) => <Text strong>{children}</Text>,
+          ul: ({ children }) => <ul className="pl-5 list-disc mb-2">{children}</ul>,
+          ol: ({ children }) => <ol className="pl-5 list-decimal mb-2">{children}</ol>,
+          li: ({ children }) => <li className="text-sm text-gray-700 mb-1">{children}</li>,
+          table: ({ children }) => (
+            <div className="my-2 overflow-x-auto border border-gray-200 rounded-md">
+              <table className="w-full text-sm">{children}</table>
+            </div>
+          ),
+          th: ({ children }) => <th className="px-3 py-2 text-left bg-gray-50 font-medium">{children}</th>,
+          td: ({ children }) => <td className="px-3 py-1.5 text-gray-700 border-t border-gray-100">{children}</td>,
+          del: ({ children }) => <Text delete>{children}</Text>,
+          hr: () => <div className="my-3 border-t border-gray-200" />,
+        }}
+      />
+    </div>
+  );
+}
+
 export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog }: AnalysisDetailViewProps) {
   const { message: messageApi } = App.useApp();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
   const [downloadingArtifact, setDownloadingArtifact] = useState<string | null>(null);
-  const [activeView] = useState<"report" | "process" | "artifacts">(defaultView ?? "report");
+  const [activeView, setActiveView] = useState<"summary" | "report" | "process" | "artifacts">(defaultView ?? "report");
   const exportElementId = `analysis-export-content-${tabKey}`;
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
@@ -1059,6 +1167,8 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
   const resultJson = (detail.result_json ?? {}) as Record<string, unknown>;
   const artifacts = resultJson.artifacts as Record<string, unknown> | undefined;
   const computationSteps = buildComputationSteps();
+  const viewModel = resultJson.view_model as ProcessViewModel | undefined;
+  const summaryMarkdown = typeof resultJson.summary_markdown === "string" ? resultJson.summary_markdown : "";
   const artifactTree = buildArtifactTree(artifacts, (key) => handleDownloadArtifact(key));
 
   const handleDownloadArtifact = async (objectKey: string) => {
@@ -1081,6 +1191,26 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
         className="flex-1 overflow-hidden"
         styles={{ body: { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } }}
       >
+        <div className="flex items-center justify-between gap-3 flex-shrink-0 px-4 py-3 border-b border-gray-200">
+          <Segmented
+            value={activeView}
+            onChange={(value) => setActiveView(value as "summary" | "report" | "process" | "artifacts")}
+            options={[
+              { label: "摘要", value: "summary" },
+              { label: "报告", value: "report" },
+              { label: "计算过程", value: "process" },
+              { label: "产物", value: "artifacts" },
+            ]}
+          />
+          {activeView === "report" ? (
+            <Text type="secondary" className="text-sm">自动判别摘要、报告与产物同源展示</Text>
+          ) : null}
+        </div>
+        {activeView === "summary" && (
+          <div className="flex-1 min-h-0 overflow-auto">
+            <SummaryView markdown={summaryMarkdown} />
+          </div>
+        )}
         {activeView === "report" && (
           <ReportView
             tabKey={tabKey}
