@@ -18,6 +18,7 @@ export type MatlabVersion = {
   size_bytes: number;
   file_list: string[];
   is_active?: boolean;
+  deployed_at?: string;
 };
 
 export type MatlabModuleListResponse = {

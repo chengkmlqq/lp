@@ -144,6 +144,27 @@ def sync_matlab_engine_module(self, slug: str, version_hash: str, worker_deploy_
         else:
             log_parts.append(f"[{task_id}] Found executables: {', '.join(found)}")
 
+        # 同步成功后记录 Worker 当前生效版本（供页面展示“Worker 已部署”标记）。
+        # 数据库记录失败不应影响已完成的文件同步，仅告警。
+        try:
+            from ..core.database import SessionLocal
+            from ..services.fault_matlab_engine_service import mark_version_deployed
+
+            db = SessionLocal()
+            try:
+                mark_version_deployed(db, slug, version_hash)
+                log_parts.append(f"[{task_id}] Recorded version {version_hash} as deployed in worker")
+            finally:
+                db.close()
+        except Exception as exc:  # noqa: BLE001 —— 记录失败不影响同步结果
+            log_parts.append(f"[{task_id}] WARNING: Failed to record deployed version: {exc}")
+            logger.warning(
+                "Failed to record deployed MATLAB engine version %s for module %s",
+                version_hash,
+                slug,
+                exc_info=True,
+            )
+
         _publish_sync_event("engine.sync_completed", {
             "slug": slug,
             "version_hash": version_hash,

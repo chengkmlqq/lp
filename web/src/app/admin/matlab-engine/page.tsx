@@ -455,6 +455,11 @@ export default function AdminMatlabEnginePage() {
   const draft = versionsQuery.data?.draft ?? null;
   const releases = useMemo(() => versionsQuery.data?.releases ?? [], [versionsQuery.data]);
   const currentRelease = releases[0] ?? null;
+  // 最近一次成功同步到 Worker 的版本（由后端在 engine.sync_completed 时标记）
+  const activeRelease = useMemo(
+    () => releases.find((item) => item.is_active) ?? null,
+    [releases],
+  );
 
   const allVersions = useMemo(() => {
     // 同一 hash 可能同时出现在 draft 与 releases（发布后草稿记录仍保留），
@@ -793,6 +798,41 @@ export default function AdminMatlabEnginePage() {
           versionStatusTag(record === draft ? "draft" : "released"),
       },
       {
+        title: "Worker 状态",
+        key: "worker_status",
+        width: 130,
+        render: (_, record) => {
+          if (record.is_active) {
+            return (
+              <Tooltip
+                title={
+                  record.deployed_at
+                    ? `已部署到 Worker（${formatDateTime(record.deployed_at)}）`
+                    : "已部署到 Worker"
+                }
+              >
+                <Tag color="blue">Worker 已部署</Tag>
+              </Tooltip>
+            );
+          }
+          if (record !== draft) {
+            const isNewest = record === currentRelease;
+            return (
+              <Tooltip
+                title={
+                  isNewest
+                    ? "最新版本尚未同步到 Worker；点击右上角「同步到 Worker」部署"
+                    : "Worker 当前未部署该版本；带「Worker 已部署」标记的才是生效版本"
+                }
+              >
+                <Tag>{isNewest ? "未同步" : "非当前"}</Tag>
+              </Tooltip>
+            );
+          }
+          return null;
+        },
+      },
+      {
         title: "变更日志",
         dataIndex: "changelog",
         key: "changelog",
@@ -911,7 +951,7 @@ export default function AdminMatlabEnginePage() {
     });
 
     return baseColumns;
-  }, [canManage, draft, deleteVersionMutation, downloadingHash, handleDownload, handleRollback, openPublishModal]);
+  }, [canManage, currentRelease, draft, deleteVersionMutation, downloadingHash, handleDownload, handleRollback, openPublishModal]);
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
@@ -1010,6 +1050,7 @@ export default function AdminMatlabEnginePage() {
             <Typography.Text strong className="truncate flex-1">{item.version_tag || "未命名版本"}</Typography.Text>
             <div className="flex flex-shrink-0 items-center gap-2">
               <Tag color={statusConfig.color === "warning" ? "orange" : "green"}>{statusConfig.text}</Tag>
+              {item.is_active && <Tag color="blue">Worker 已部署</Tag>}
             </div>
           </div>
 
@@ -1097,16 +1138,37 @@ export default function AdminMatlabEnginePage() {
         className="admin-matlab-tabs"
         tabBarExtraContent={
           <Space>
+            {activeRelease && (
+              <Tooltip
+                title={
+                  activeRelease.deployed_at
+                    ? `部署时间：${formatDateTime(activeRelease.deployed_at)}`
+                    : undefined
+                }
+              >
+                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                  Worker 已部署：{activeRelease.version_tag || activeRelease.version_hash}
+                </Typography.Text>
+              </Tooltip>
+            )}
             {canManage && (
               <>
-                <Button
-                  icon={<CloudSyncOutlined />}
-                  onClick={handleSync}
-                  loading={syncMutation.isPending}
-                  disabled={syncMutation.isPending || !currentRelease}
+                <Tooltip
+                  title={
+                    currentRelease
+                      ? `将把最新版本 ${currentRelease.version_tag || currentRelease.version_hash} 同步到 Worker`
+                      : "该模块还没有已发布版本，无法同步"
+                  }
                 >
-                  同步到 Worker
-                </Button>
+                  <Button
+                    icon={<CloudSyncOutlined />}
+                    onClick={handleSync}
+                    loading={syncMutation.isPending}
+                    disabled={syncMutation.isPending || !currentRelease}
+                  >
+                    同步到 Worker
+                  </Button>
+                </Tooltip>
                 <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
                   上传新包
                 </Button>

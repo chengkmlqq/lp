@@ -387,6 +387,9 @@ def publish_draft(db: Session, slug: str, version_hash: str, version_tag: str, c
     release = dict(draft)
     release["version_tag"] = tag
     release["changelog"] = str(changelog or "")
+    # 新发布版本尚未同步到 Worker，不得继承草稿可能携带的部署标记
+    release.pop("is_active", None)
+    release.pop("deployed_at", None)
     manifest = _load_manifest(module, version_hash, "draft")
     if manifest:
         release["file_list"] = manifest.get("file_list") or release.get("file_list") or []
@@ -413,6 +416,9 @@ def rollback_to_version(db: Session, slug: str, version_hash: str, *, actor_user
     draft["version_tag"] = ""
     draft["changelog"] = ""
     draft["upload_time"] = _utcnow_iso()
+    # 回退生成的新草稿不继承历史版本的部署标记
+    draft.pop("is_active", None)
+    draft.pop("deployed_at", None)
     manifest = _load_manifest(module, version_hash, "release")
     if manifest:
         draft["file_list"] = manifest.get("file_list") or target.get("file_list") or []
@@ -486,6 +492,15 @@ def list_versions(db: Session, slug: str, *, limit: int | None = None, offset: i
             draft = dict(draft)
             draft["file_list"] = manifest.get("file_list") or draft.get("file_list") or []
     releases = versions.get("releases", [])
+    # 归一化“Worker 当前生效版本”标记：记录被标记记录的全量索引（而非仅 hash ——
+    # 回退后重新发布会产生同 hash 的新旧两条发布记录），分页后再按索引判定，
+    # 保证全量列表中恰好一条 release 携带 is_active（历史数据兼容）。
+    active_index: int | None = None
+    for _index, item in enumerate(releases):
+        if item.get("is_active"):
+            active_index = _index
+            break
+    start = 0
     if limit is not None and offset is not None:
         start = max(0, offset)
         end = start + limit if limit >= 0 else len(releases)
@@ -495,11 +510,42 @@ def list_versions(db: Session, slug: str, *, limit: int | None = None, offset: i
         if manifest:
             releases[index] = dict(item)
             releases[index]["file_list"] = manifest.get("file_list") or item.get("file_list") or []
+        is_active = active_index is not None and index + start == active_index
+        releases[index]["is_active"] = is_active
+        if not is_active:
+            releases[index].pop("deployed_at", None)
     return {
         "slug": slug,
         "draft": draft,
         "releases": releases,
     }
+
+
+def mark_version_deployed(db: Session, slug: str, version_hash: str) -> bool:
+    """标记某已发布版本为 Worker 当前生效版本（同步任务成功时调用）。
+
+    仅允许标记 releases 中的版本；目标版本不存在时返回 False 且不改动数据。
+    同 hash 可能出现多条发布记录（回退后重新发布），只标记列表中最靠前的一条，
+    其余 release 清除 is_active / deployed_at。
+    """
+    versions = _load_versions(db, slug)
+    releases = versions.get("releases", [])
+    target_index = next(
+        (i for i, item in enumerate(releases) if item.get("version_hash") == version_hash),
+        None,
+    )
+    if target_index is None:
+        return False
+    for index, item in enumerate(releases):
+        active = index == target_index
+        item["is_active"] = active
+        if active:
+            item["deployed_at"] = _utcnow_iso()
+        else:
+            item.pop("deployed_at", None)
+    versions["releases"] = releases
+    _save_versions(db, slug, versions)
+    return True
 
 
 def trigger_sync_for_module(db: Session, slug: str, *, actor_user_id: str) -> str:
