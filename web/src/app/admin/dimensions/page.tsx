@@ -212,7 +212,6 @@ export default function AdminDimensionsPage() {
     setTypeNameInput("");
     setTypeParentId(parentId);
     setTypeSortInput("0");
-    setTypeDeleteConfirmId(null);
     setTypeEditorOpen(true);
   };
 
@@ -222,7 +221,6 @@ export default function AdminDimensionsPage() {
     setTypeNameInput(t.name);
     setTypeParentId(t.parent_id);
     setTypeSortInput(String(t.sort_order ?? 0));
-    setTypeDeleteConfirmId(null);
     setTypeEditorOpen(true);
   };
 
@@ -274,7 +272,6 @@ export default function AdminDimensionsPage() {
     },
     onSuccess: async (typeId) => {
       setSuccess("维度类型已删除");
-      setTypeDeleteConfirmId(null);
       if (selectedTypeId === typeId) {
         setSelectedTypeId(null);
         setTypeIdFilter(null);
