@@ -741,11 +741,6 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
                           className="bg-white border border-gray-200 rounded-lg"
                           style={{ padding: 12 }}
                         >
-                          {item.title ? (
-                            <Text strong className="text-sm block mb-2">
-                              {item.title}
-                            </Text>
-                          ) : null}
                           <Descriptions size="small" bordered column={2}>
                             {pairs.map((pair, pairIndex) => (
                               <Descriptions.Item key={pairIndex} label={pair.label}>
