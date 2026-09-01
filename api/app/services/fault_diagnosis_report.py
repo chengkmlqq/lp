@@ -752,17 +752,15 @@ def resistance_sentence(result: Mapping[str, Any]) -> str:
     return f"计算得到的过渡电阻为{format_number(rf)} Ω，{criterion}，属于{category}。"
 
 
-def build_executive_summary(doc: Document, result: Mapping[str, Any]) -> None:
+def executive_summary_paragraphs(result: Mapping[str, Any]) -> list[str]:
+    """「1 报告总览」下「故障分析」小节的 6 段正文（与 build_executive_summary 输出逐字一致）。"""
     inputs = result.get("inputs", {})
     fault = inputs.get("fault_record", {})
     lightning = inputs.get("lightning", {})
     ground = result.get("ground_fault_summary", {})
-    recommendation = result.get("overall_recommendation", {})
     location = result.get("fault_location", {})
     ledger_record = safe_get(inputs, "line_ledger", "record", default={}) or {}
     lightning_cause = result.get("lightning_cause_analysis", {})
-    wave = result.get("traveling_wave_analysis", {})
-    fusion = result.get("cause_fusion", {})
     optical = inputs.get("optical", {})
     parts = [display(fault.get("fault_time"))]
     if usable_text(fault.get("station")):
@@ -810,8 +808,142 @@ def build_executive_summary(doc: Document, result: Mapping[str, Any]) -> None:
         cause_sentence += f"光学监测结果为{display(optical.get('result') or optical.get('conclusion'))}。"
     reliability = f"可靠性与后续意见：{effective_review_summary(result)}。"
     follow_up = f"3）后续意见：{effective_review_decision(result)}。"
+    return [first, second, location_sentence, cause_sentence, reliability, follow_up]
+
+
+def ground_and_resistance_paragraphs(result: Mapping[str, Any]) -> list[str]:
+    """「2 接地故障及过渡电阻判别」正文段落（与 build_ground_and_resistance_section 输出一致）。"""
+    summary = result.get("ground_fault_summary", {})
+    observations = "、".join(str(item).rstrip("。；") for item in summary.get("observations", []) if has_value(item))
+    grounding_sentence = (
+        f"录波特征显示{observations}，属于{fault_conclusion_text(summary.get('conclusion'))}。"
+        if observations
+        else f"根据录波信息，属于{fault_conclusion_text(summary.get('conclusion'))}。"
+    )
+    return [grounding_sentence + resistance_sentence(result)]
+
+
+ZERO_SEQUENCE_COMPARISON_NOTE = (
+    "说明：两套结果用于核对零序电流字段语义，主结果依据录波字段定义选择，"
+    "不能只根据结果正负反推零序电流含义。"
+)
+
+
+def zero_sequence_comparison_spec(result: Mapping[str, Any]) -> tuple[list[str], list[list[str]]] | None:
+    """「2」节的零序电流解释比较表（headers, rows）；无数据返回 None。"""
+    resistance = result.get("transition_resistance", {})
+    comparisons = resistance.get("zero_sequence_comparison", {})
+    if resistance.get("status") == "not_applicable" or not comparisons:
+        return None
+    rows: list[list[str]] = []
+    for candidate in comparisons.values():
+        rows.append([
+            str(candidate.get("assumption")),
+            format_number(candidate.get("three_i0_a_used")),
+            format_number(candidate.get("zm_ohm")),
+            format_number(candidate.get("transition_resistance_ohm")),
+            "有效" if candidate.get("status") == "ok" else "需复核",
+            "采用" if candidate.get("selected") else "对照",
+        ])
+    return (["零序电流解释（仅单相接地）", "代入3I₀(A)", "Zm(Ω)", "Rf(Ω)", "有效性", "采用情况"], rows)
+
+
+def location_section_paragraphs(result: Mapping[str, Any]) -> list[str]:
+    """「3 故障定位」正文段落（与 build_location_section 输出一致）。"""
+    location = result.get("fault_location", {})
+    ledger = safe_get(result, "inputs", "line_ledger", default={}) or {}
+    record = ledger.get("record", {}) if isinstance(ledger, Mapping) else {}
+    available = [item for item in location.get("sources", []) if item.get("available")]
+    labels = "、".join(display(item.get("label")) for item in available) or "现有定位信息"
+    terrain = display(record.get("terrain"))
+    location_sentence = f"{labels}综合显示故障位置为{display(location.get('result_text'))}，对应位置地形为{terrain}。"
+    lightning = safe_get(result, "inputs", "lightning", default={}) or {}
+    has_strike = str(lightning.get("query_result", "")).strip().upper() in {"是", "有", "YES", "Y", "TRUE", "1"}
+    if has_strike:
+        validation_errors = [
+            item.get("code")
+            for item in safe_get(result, "input_validation", "issues", default=[])
+            if isinstance(item, Mapping)
+        ]
+        if "event_time_mismatch" in validation_errors:
+            lightning_sentence = (
+                f"查询雷电定位系统，线路跳闸时刻附近存在落雷记录，雷电流幅值为"
+                f"{format_number(lightning.get('current_ka'))} kA。雷电定位位置与测距结果存在空间关联，"
+                "但事件时刻不一致，不能自动确认为同一故障事件，建议人工复核。"
+            )
+        else:
+            lightning_sentence = (
+                f"查询雷电定位系统，线路跳闸时刻附近存在落雷记录，雷电流幅值为"
+                f"{format_number(lightning.get('current_ka'))} kA，雷电定位位置与故障测距信息基本吻合。"
+            )
+    else:
+        lightning_sentence = "查询雷电定位系统，线路跳闸时刻附近无可用落雷记录。"
+    return [location_sentence + lightning_sentence]
+
+
+def lightning_section_paragraphs(result: Mapping[str, Any]) -> list[str]:
+    """「4 耐雷水平与雷击原因分析」正文段落（与 build_lightning_section 输出一致）。"""
+    inputs = result.get("inputs", {})
+    ledger = inputs.get("line_ledger", {})
+    record = ledger.get("record", {}) if ledger.get("matched") else {}
+    cause = result.get("lightning_cause_analysis", {})
+    current = cause.get("lightning_current_ka") or safe_get(inputs, "lightning", "current_ka")
+    if record:
+        ledger_sentence = (
+            f"经线路台账匹配，故障候选位置对应{display(record.get('tower_no'))}杆塔，"
+            f"塔形为{display(record.get('tower_shape'))}，地形为{display(record.get('terrain'))}，"
+            f"海拔{format_number(record.get('elevation_m'))} m，接地电阻实测值为"
+            f"{format_number(record.get('ground_resistance_ohm'))} Ω。该塔反击耐雷水平为"
+            f"{format_number(record.get('backflashover_withstand_ka'))} kA，绕击耐雷水平为"
+            f"{format_number(record.get('shielding_failure_withstand_ka'))} kA。"
+        )
+    else:
+        ledger_sentence = "本次未匹配到可用的故障杆塔台账，杆塔结构及耐雷水平参数暂无法核实。"
+    current_sentence = (
+        f"本次雷电流幅值为{format_number(current)} kA。"
+        if has_value(current)
+        else "本次未提供可用的雷电流幅值。"
+    )
+    conclusion_sentence = (
+        f"根据雷电流幅值与台账耐雷水平的固定阈值比较，"
+        f"{display(cause.get('report_text'), '耐雷水平数据不足')}。"
+    )
+    return [ledger_sentence + current_sentence + conclusion_sentence]
+
+
+def wave_section_note(result: Mapping[str, Any]) -> str:
+    """「5.1 分布式行波分析」表格下方的说明（含低概率提示）。"""
+    wave = result.get("traveling_wave_analysis", {})
+    model = wave.get("model_result", {})
+    lightning_score = model.get("ln_lightning_score")
+    non_lightning_score = model.get("ln_non_lightning_score")
+    note = "说明：反击与绕击概率为模型输出的工程归一化结果，用于辅助判别，不作为统计置信度使用。"
+    available_scores = [float(v) for v in (lightning_score, non_lightning_score) if has_value(v)]
+    if available_scores and max(available_scores) < 0.60:
+        note += "首次雷击与非雷击模型最高概率低于60%，模型区分度较低，建议结合原始行波复核。"
+    return note
+
+
+FUSION_PRIORITY_NOTE = (
+    "证据优先级为：光学监测明确证据、有效行波结论、雷电流幅值与台账耐雷水平比较。"
+    "该优先级用于处理冲突，不用于生成概率。"
+)
+
+
+def recommendation_section(result: Mapping[str, Any]) -> tuple[str, list[str]]:
+    """「6 总体状态与后续意见」：总体状态段落 + 后续意见 bullets。"""
+    recommendation = result.get("overall_recommendation", {})
+    paragraph = (
+        f"{user_facing_model_terms(effective_review_decision(result))}："
+        f"{user_facing_model_terms(effective_review_summary(result))}。"
+    )
+    reasons = [user_facing_model_terms(item) for item in recommendation.get("reasons", [])]
+    return paragraph, reasons
+
+
+def build_executive_summary(doc: Document, result: Mapping[str, Any]) -> None:
     add_heading(doc, "故障分析", 2)
-    for text in (first, second, location_sentence, cause_sentence, reliability, follow_up):
+    for text in executive_summary_paragraphs(result):
         add_report_paragraph(doc, text)
 
 
@@ -851,100 +983,42 @@ def build_basic_information(doc: Document, result: Mapping[str, Any], front_only
 
 def build_ground_and_resistance_section(doc: Document, result: Mapping[str, Any]) -> None:
     add_heading(doc, "2  接地故障及过渡电阻判别")
-    summary = result.get("ground_fault_summary", {})
-    resistance = result.get("transition_resistance", {})
-    observations = "、".join(str(item).rstrip("。；") for item in summary.get("observations", []) if has_value(item))
-    grounding_sentence = (
-        f"录波特征显示{observations}，属于{fault_conclusion_text(summary.get('conclusion'))}。"
-        if observations
-        else f"根据录波信息，属于{fault_conclusion_text(summary.get('conclusion'))}。"
-    )
-    output_text = (
-        grounding_sentence
-        + resistance_sentence(result)
-    )
-    add_report_paragraph(doc, output_text)
-    if resistance.get("status") == "not_applicable":
-        return
-    comparisons = resistance.get("zero_sequence_comparison", {})
-    if comparisons:
-        rows = []
-        for candidate in comparisons.values():
-            rows.append([
-                candidate.get("assumption"),
-                format_number(candidate.get("three_i0_a_used")),
-                format_number(candidate.get("zm_ohm")),
-                format_number(candidate.get("transition_resistance_ohm")),
-                "有效" if candidate.get("status") == "ok" else "需复核",
-                "采用" if candidate.get("selected") else "对照",
-            ])
-        add_table(doc, ["零序电流解释（仅单相接地）", "代入3I₀(A)", "Zm(Ω)", "Rf(Ω)", "有效性", "采用情况"], rows, [4.2, 2.6, 2.4, 2.6, 2.6, 2.6])
-        add_report_paragraph(doc, "说明：两套结果用于核对零序电流字段语义，主结果依据录波字段定义选择，不能只根据结果正负反推零序电流含义。", first_line=False)
+    for text in ground_and_resistance_paragraphs(result):
+        add_report_paragraph(doc, text)
+    comparison_spec = zero_sequence_comparison_spec(result)
+    if comparison_spec is not None:
+        headers, rows = comparison_spec
+        add_table(doc, headers, rows, [4.2, 2.6, 2.4, 2.6, 2.6, 2.6])
+        add_report_paragraph(doc, ZERO_SEQUENCE_COMPARISON_NOTE, first_line=False)
 
 
 def build_location_section(doc: Document, result: Mapping[str, Any], sections: Sequence[Mapping[str, Any]] | None = None) -> None:
     add_heading(doc, "3  故障定位")
-    location = result.get("fault_location", {})
-    ledger = safe_get(result, "inputs", "line_ledger", default={}) or {}
-    record = ledger.get("record", {}) if isinstance(ledger, Mapping) else {}
-    available = [item for item in location.get("sources", []) if item.get("available")]
-    rows = []
-    for item in available:
-        distance_text = (
-            f"{format_number(item.get('distance_km'))} km"
-            if has_value(item.get("distance_km"))
-            else "位置记录可用"
-        )
-        rows.append([item.get("label"), distance_text, item.get("tower")])
-    labels = "、".join(display(item.get("label")) for item in available) or "现有定位信息"
-    terrain = display(record.get("terrain"))
-    location_sentence = f"{labels}综合显示故障位置为{display(location.get('result_text'))}，对应位置地形为{terrain}。"
-    lightning = safe_get(result, "inputs", "lightning", default={}) or {}
-    has_strike = str(lightning.get("query_result", "")).strip().upper() in {"是", "有", "YES", "Y", "TRUE", "1"}
-    if has_strike:
-        validation_errors = [item.get("code") for item in safe_get(result, "input_validation", "issues", default=[]) if isinstance(item, Mapping)]
-        if "event_time_mismatch" in validation_errors:
-            lightning_sentence = f"查询雷电定位系统，线路跳闸时刻附近存在落雷记录，雷电流幅值为{format_number(lightning.get('current_ka'))} kA。雷电定位位置与测距结果存在空间关联，但事件时刻不一致，不能自动确认为同一故障事件，建议人工复核。"
-        else:
-            lightning_sentence = f"查询雷电定位系统，线路跳闸时刻附近存在落雷记录，雷电流幅值为{format_number(lightning.get('current_ka'))} kA，雷电定位位置与故障测距信息基本吻合。"
-    else:
-        lightning_sentence = "查询雷电定位系统，线路跳闸时刻附近无可用落雷记录。"
-    add_report_paragraph(doc, location_sentence + lightning_sentence)
+    for text in location_section_paragraphs(result):
+        add_report_paragraph(doc, text)
     sources_table = find_section_table(sections, "表2 定位信息来源")
     if sources_table is not None:
         add_table_from_spec(doc, sources_table, caption="表2 定位信息来源")
-    elif rows:
-        add_table_caption(doc, "表2 定位信息来源")
-        add_table(doc, ["定位来源", "定位结果", "对应杆塔/区段"], rows, [3.5, 6.0, 7.5])
+    else:
+        location = result.get("fault_location", {})
+        available = [item for item in location.get("sources", []) if item.get("available")]
+        rows = []
+        for item in available:
+            distance_text = (
+                f"{format_number(item.get('distance_km'))} km"
+                if has_value(item.get("distance_km"))
+                else "位置记录可用"
+            )
+            rows.append([item.get("label"), distance_text, item.get("tower")])
+        if rows:
+            add_table_caption(doc, "表2 定位信息来源")
+            add_table(doc, ["定位来源", "定位结果", "对应杆塔/区段"], rows, [3.5, 6.0, 7.5])
 
 
 def build_lightning_section(doc: Document, result: Mapping[str, Any]) -> None:
     add_heading(doc, "4  耐雷水平与雷击原因分析")
-    inputs = result.get("inputs", {})
-    ledger = inputs.get("line_ledger", {})
-    record = ledger.get("record", {}) if ledger.get("matched") else {}
-    cause = result.get("lightning_cause_analysis", {})
-    current = cause.get("lightning_current_ka") or safe_get(inputs, "lightning", "current_ka")
-    if record:
-        ledger_sentence = (
-            f"经线路台账匹配，故障候选位置对应{display(record.get('tower_no'))}杆塔，"
-            f"塔形为{display(record.get('tower_shape'))}，地形为{display(record.get('terrain'))}，"
-            f"海拔{format_number(record.get('elevation_m'))} m，接地电阻实测值为"
-            f"{format_number(record.get('ground_resistance_ohm'))} Ω。该塔反击耐雷水平为"
-            f"{format_number(record.get('backflashover_withstand_ka'))} kA，绕击耐雷水平为"
-            f"{format_number(record.get('shielding_failure_withstand_ka'))} kA。"
-        )
-    else:
-        ledger_sentence = "本次未匹配到可用的故障杆塔台账，杆塔结构及耐雷水平参数暂无法核实。"
-    current_sentence = (
-        f"本次雷电流幅值为{format_number(current)} kA。"
-        if has_value(current)
-        else "本次未提供可用的雷电流幅值。"
-    )
-    conclusion_sentence = (
-        f"根据雷电流幅值与台账耐雷水平的固定阈值比较，{display(cause.get('report_text'), '耐雷水平数据不足')}。"
-    )
-    add_report_paragraph(doc, ledger_sentence + current_sentence + conclusion_sentence)
+    for text in lightning_section_paragraphs(result):
+        add_report_paragraph(doc, text)
 
 
 def subtype_text(value: Any) -> str:
@@ -1202,36 +1276,28 @@ def wave_review_result_sentence(
 
 def build_wave_section(doc: Document, result: Mapping[str, Any], sections: Sequence[Mapping[str, Any]] | None = None) -> None:
     add_heading(doc, "5.1  分布式行波分析", 2)
-    wave = result.get("traveling_wave_analysis", {})
-    model = wave.get("model_result", {})
-    review = wave.get("fault_phase_review", {})
-    active = review.get("initial_wave_active_phases") or model.get("active_phases")
-    if isinstance(active, Sequence) and not isinstance(active, str):
-        active = "/".join(str(item) for item in active)
-    initial_phase = model.get("main_phase") or review.get("initial_wave_main_phase")
-    phase_display = f"行波判别故障相{initial_phase}、候补故障相{active}" if has_value(initial_phase) or has_value(active) else "行波模型未输出可用的判别故障相或候补故障相信息"
-    lightning_score = model.get("ln_lightning_score")
-    non_lightning_score = model.get("ln_non_lightning_score")
-    score_text = f"模型判断雷击概率{format_number(float(lightning_score) * 100, 2)}%，非雷击概率{format_number(float(non_lightning_score) * 100, 2)}%" if has_value(lightning_score) and has_value(non_lightning_score) else "雷击与非雷击概率未提供"
-    fr_probability_text = wave_fr_probability_sentence(model)
-    final_phase = model.get("corrected_fault_phase") or wave.get("recording_fault_phase")
-    candidate_text = wave_candidate_types_display(model.get("candidate_types"))
-    returned_sentence = returned_information_sentence(wave, model, candidate_text)
-    ln_basis = wave_ln_basis_sentence(wave, model)
-    fr_basis = wave_fr_basis_sentence(wave, model)
-    initial_basis = f"{ln_basis}{fr_basis}"
-    ln_winning_probability = wave_winning_ln_probability_sentence(wave, model)
-    fr_winning_probability = wave_winning_fr_probability_sentence(wave, model)
-    review_result = wave_review_result_sentence(wave, model, review)
-    low_score_note = ""
-    available_scores = [float(v) for v in (lightning_score, non_lightning_score) if has_value(v)]
-    if available_scores and max(available_scores) < 0.60:
-        low_score_note = "首次雷击与非雷击模型最高概率低于60%，模型区分度较低，建议结合原始行波复核。"
     add_report_paragraph(doc, wave_process_summary_sentence(result))
     wave_table = find_section_table(sections, "表3 行波判别过程")
     if wave_table is not None:
         add_table_from_spec(doc, wave_table, caption="表3 行波判别过程")
     else:
+        wave = result.get("traveling_wave_analysis", {})
+        model = wave.get("model_result", {})
+        review = wave.get("fault_phase_review", {})
+        active = review.get("initial_wave_active_phases") or model.get("active_phases")
+        if isinstance(active, Sequence) and not isinstance(active, str):
+            active = "/".join(str(item) for item in active)
+        initial_phase = model.get("main_phase") or review.get("initial_wave_main_phase")
+        phase_display = f"行波判别故障相{initial_phase}、候补故障相{active}" if has_value(initial_phase) or has_value(active) else "行波模型未输出可用的判别故障相或候补故障相信息"
+        lightning_score = model.get("ln_lightning_score")
+        non_lightning_score = model.get("ln_non_lightning_score")
+        score_text = f"模型判断雷击概率{format_number(float(lightning_score) * 100, 2)}%，非雷击概率{format_number(float(non_lightning_score) * 100, 2)}%" if has_value(lightning_score) and has_value(non_lightning_score) else "雷击与非雷击概率未提供"
+        fr_probability_text = wave_fr_probability_sentence(model)
+        candidate_text = wave_candidate_types_display(model.get("candidate_types"))
+        ln_basis = wave_ln_basis_sentence(wave, model)
+        fr_basis = wave_fr_basis_sentence(wave, model)
+        initial_basis = f"{ln_basis}{fr_basis}"
+        review_result = wave_review_result_sentence(wave, model, review)
         add_table_caption(doc, "表3 行波判别过程")
         add_table(doc, ["项目", "结果"], [
             ["初判结果", f"{display(wave.get('initial_classification'))}；{phase_display}；{score_text}；{fr_probability_text}"],
@@ -1240,10 +1306,7 @@ def build_wave_section(doc: Document, result: Mapping[str, Any], sections: Seque
             ["修正/复核结果", review_result],
             ["最终采用结果", wave_fault_conclusion(result)],
         ], [4.2, 12.8])
-    note = "说明：反击与绕击概率为模型输出的工程归一化结果，用于辅助判别，不作为统计置信度使用。"
-    if low_score_note:
-        note += low_score_note
-    add_report_paragraph(doc, note, first_line=False, before=2)
+    add_report_paragraph(doc, wave_section_note(result), first_line=False, before=2)
 
 
 def recording_phase_sentence(result: Mapping[str, Any]) -> str:
@@ -1380,18 +1443,14 @@ def build_fusion_section(doc: Document, result: Mapping[str, Any], sections: Seq
         merged = row.cells[0].merge(row.cells[1])
         merged.text = wave_review_summary_sentence(result)
         style_runs(merged.paragraphs[0], size=9.5)
-    add_report_paragraph(doc, "证据优先级为：光学监测明确证据、有效行波结论、雷电流幅值与台账耐雷水平比较。该优先级用于处理冲突，不用于生成概率。", first_line=False, before=2)
+    add_report_paragraph(doc, FUSION_PRIORITY_NOTE, first_line=False, before=2)
 
 
 def build_recommendation_section(doc: Document, result: Mapping[str, Any]) -> None:
     add_heading(doc, "6  总体状态与后续意见")
-    recommendation = result.get("overall_recommendation", {})
-    add_report_paragraph(
-        doc,
-        f"{user_facing_model_terms(effective_review_decision(result))}："
-        f"{user_facing_model_terms(effective_review_summary(result))}。",
-    )
-    add_bullets(doc, [user_facing_model_terms(item) for item in recommendation.get("reasons", [])])
+    paragraph, reasons = recommendation_section(result)
+    add_report_paragraph(doc, paragraph)
+    add_bullets(doc, reasons)
 
 
 def build_input_appendix(doc: Document, result: Mapping[str, Any], sections: Sequence[Mapping[str, Any]] | None = None) -> None:

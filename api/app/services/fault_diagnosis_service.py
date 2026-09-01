@@ -936,18 +936,14 @@ def _build_sections(
       1 报告总览 | 2 接地故障及过渡电阻判别 | 3 故障定位 | 4 耐雷水平与雷击原因分析
       5 分布式行波分析与故障原因融合（5.1 / 5.2） | 6 总体状态与后续意见
       附表A 输入信息汇总（A.1~A.4）
+
+    文本段落直接复用 fault_diagnosis_report 的纯函数（executive_summary_paragraphs /
+    ground_and_resistance_paragraphs / location_section_paragraphs / lightning_section_paragraphs /
+    wave_process_summary_sentence / wave_initial_review_sentence / recommendation_section 等），
+    并在组装时统一做 user_facing_model_terms 清理（docx 保存前也会全文清理），
+    保证「report 有什么，详情页就展示什么」。
     """
-    decision = diag.get("ground_fault_decision", {})
-    ground_summary = diag.get("ground_fault_summary", {})
-    resistance = diag.get("transition_resistance", {})
-    fault_location = diag.get("fault_location", {})
-    lightning_cause = diag.get("lightning_cause_analysis", {})
-    wave = diag.get("traveling_wave_analysis", {})
-    cause_fusion = diag.get("cause_fusion", {})
-    validation = diag.get("input_validation", {})
-    recommendation = diag.get("overall_recommendation", {})
-    inputs = diag.get("inputs", {})
-    fault = inputs.get("fault_record", {}) if isinstance(inputs, Mapping) else {}
+    from . import fault_diagnosis_report as _report
 
     tables = _build_tables(
         diag,
@@ -959,150 +955,65 @@ def _build_sections(
     sections: list[dict[str, Any]] = []
 
     def text(value: Any) -> dict[str, Any]:
-        return {"type": "text", "text": str(value)}
+        return {"type": "text", "text": _report.user_facing_model_terms(value)}
 
     # ---- 1 报告总览 ----
-    phase = str(ground_summary.get("fault_phase") or fault.get("fault_phase") or "未知")
-    conclusion = str(
-        ground_summary.get("conclusion")
-        or f"{phase}相{decision.get('fault_kind', '无法判定')}"
-    )
-    confidence_text = f"{confidence:.2f}%" if confidence is not None else "未计算"
     content: list[dict[str, Any]] = []
     if "table1" in tables:
         content.append(tables["table1"])
-    content.extend(
-        [
-            text(f"接地判别结论：{conclusion}"),
-            text(f"故障类型：{decision.get('fault_kind', '无法判定')}"),
-            text(f"故障相别：{phase}"),
-            text(f"综合置信度：{confidence_text}（来源：{confidence_source}）"),
-            text(f"风险等级：{RISK_LEVEL_LABELS.get(risk_level, risk_level)}"),
-        ]
-    )
-    recommendation_decision = str(recommendation.get("decision", "建议人工复核"))
-    content.append(text(f"判别系统后续意见：{recommendation_decision}"))
-    recommendation_reasons = recommendation.get("reasons", [])
-    if recommendation_reasons:
-        content.append({"type": "bullet", "items": [str(item) for item in recommendation_reasons]})
+    content.append({"type": "subtitle", "text": "故障分析"})
+    for paragraph in _report.executive_summary_paragraphs(diag):
+        content.append(text(paragraph))
     sections.append({"title": "1 报告总览", "content": content})
 
     # ---- 2 接地故障及过渡电阻判别 ----
-    if resistance.get("status") == "ok":
-        rf_value = resistance.get("transition_resistance_ohm")
-        content = [
-            text(f"过渡电阻 Rf：{rf_value} Ω（{resistance.get('category_report_text', '')}）"),
-            text(f"计算公式：{resistance.get('formula_rf')}"),
-            text(f"零序电流按 {resistance.get('selected_zero_sequence_representation')} 解释"),
-        ]
-        if resistance.get("zm_ohm") is not None:
-            content.append(text(f"测量阻抗 Zm：{resistance.get('zm_ohm')} Ω"))
-        warnings = resistance.get("warnings", [])
-        if warnings:
-            content.append({"type": "bullet", "items": [str(item) for item in warnings]})
-        sections.append({"title": "2 接地故障及过渡电阻判别", "content": content})
-    else:
-        sections.append(
+    content = [text(paragraph) for paragraph in _report.ground_and_resistance_paragraphs(diag)]
+    comparison_spec = _report.zero_sequence_comparison_spec(diag)
+    if comparison_spec is not None:
+        headers, rows = comparison_spec
+        content.append(
             {
-                "title": "2 接地故障及过渡电阻判别",
-                "content": [
-                    text(
-                        f"过渡电阻：{'不适用（仅单相接地故障计算）' if resistance.get('status') == 'not_applicable' else '无法计算'}"
-                    ),
-                    *[{"type": "bullet", "items": [str(item) for item in resistance.get("warnings", [])]}],
-                ],
+                "type": "table",
+                "layout": "grid",
+                "columns": [str(cell) for cell in headers],
+                "rows": [[str(cell) for cell in row] for row in rows],
             }
         )
+        content.append(text(_report.ZERO_SEQUENCE_COMPARISON_NOTE))
+    sections.append({"title": "2 接地故障及过渡电阻判别", "content": content})
 
     # ---- 3 故障定位 ----
-    content = [text(f"综合故障位置：{fault_location.get('result_text', '无法定位')}")]
-    for source in fault_location.get("sources", []):
-        tower = source.get("tower")
-        distance = source.get("distance_km")
-        content.append(
-            text(f"{source.get('label')}：{tower or '未提供'}{f'（测距 {distance} km）' if distance is not None else ''}")
-        )
-    if fault_location.get("evidence"):
-        content.append({"type": "bullet", "items": [str(item) for item in fault_location.get("evidence", [])]})
+    content = [text(paragraph) for paragraph in _report.location_section_paragraphs(diag)]
     if "table2" in tables:
         content.append(tables["table2"])
     sections.append({"title": "3 故障定位", "content": content})
 
     # ---- 4 耐雷水平与雷击原因分析 ----
-    lightning_conclusion = str(
-        lightning_cause.get("conclusion")
-        or lightning_cause.get("report_text")
-        or lightning_cause.get("mechanism")
-        or "无法判定"
-    )
-    content = [text(f"耐雷水平初判：{lightning_conclusion}")]
-    if lightning_cause.get("lightning_current_ka") is not None:
-        content.append(text(f"雷电流幅值：{lightning_cause.get('lightning_current_ka')} kA"))
-    tower_analyses = lightning_cause.get("tower_analyses", [])
-    if tower_analyses:
-        items = [
-            f"{item.get('tower_no')}: {item.get('report_text', item.get('mechanism', ''))}"
-            for item in tower_analyses
-        ]
-        content.append({"type": "bullet", "items": items})
+    content = [text(paragraph) for paragraph in _report.lightning_section_paragraphs(diag)]
     sections.append({"title": "4 耐雷水平与雷击原因分析", "content": content})
 
     # ---- 5 分布式行波分析与故障原因融合（容器）----
     sections.append({"title": "5 分布式行波分析与故障原因融合", "content": []})
 
     # ---- 5.1 分布式行波分析 ----
-    wave_conclusion = str(
-        wave.get("report_conclusion")
-        or wave.get("classification")
-        or "未提供行波数据"
-    )
-    content = [
-        text(f"行波判别：{wave_conclusion}"),
-        text(f"最终机制：{wave.get('final_detail') or wave.get('mechanism') or '无法判定'}"),
-    ]
-    if wave.get("analysis_method"):
-        content.append(text(f"分析方法：{wave.get('analysis_method')}"))
-    if wave.get("evidence"):
-        content.append({"type": "bullet", "items": [str(item) for item in wave.get("evidence", [])]})
-    if wave.get("warnings"):
-        content.append({"type": "bullet", "items": [str(item) for item in wave.get("warnings", [])]})
+    content = [text(_report.wave_process_summary_sentence(diag))]
     if "table3" in tables:
         content.append(tables["table3"])
+    content.append(text(_report.wave_section_note(diag)))
     sections.append({"title": "5.1 分布式行波分析", "content": content})
 
     # ---- 5.2 故障原因融合 ----
-    content = [
-        text(f"原因融合结论：{cause_fusion.get('final_detail') or cause_fusion.get('final_mechanism') or '无法判定'}"),
-        text(f"来源一致性：{cause_fusion.get('consistency', '无可用原因来源')}"),
-    ]
-    fusion_sources = cause_fusion.get("sources", [])
-    if fusion_sources:
-        content.append(
-            {
-                "type": "bullet",
-                "items": [
-                    f"{item.get('source')}: {item.get('mechanism')}"
-                    for item in fusion_sources
-                ],
-            }
-        )
+    content = [text(_report.wave_initial_review_sentence(diag))]
     if "table4" in tables:
         content.append(tables["table4"])
-    content.append({"type": "card", "text": f"后续意见：{recommendation.get('summary', '')}"})
+    content.append(text(_report.FUSION_PRIORITY_NOTE))
     sections.append({"title": "5.2 故障原因融合", "content": content})
 
     # ---- 6 总体状态与后续意见 ----
-    validation_issues = validation.get("issues", [])
-    content = []
-    if validation_issues:
-        content.append(
-            {
-                "type": "bullet",
-                "items": [f"【{item.get('severity', 'info')}】{item.get('message', '')}" for item in validation_issues],
-            }
-        )
-    if not validation_issues:
-        content.append(text("输入校验：无"))
+    recommendation_paragraph, recommendation_reasons = _report.recommendation_section(diag)
+    content = [text(recommendation_paragraph)]
+    if recommendation_reasons:
+        content.append({"type": "bullet", "items": recommendation_reasons})
     sections.append({"title": "6 总体状态与后续意见", "content": content})
 
     # ---- 附表A 输入信息汇总 ----
@@ -1123,6 +1034,21 @@ def _build_sections(
     # ---- A.4 行波与光学监测信息 ----
     if "table8" in tables:
         sections.append({"title": "A.4 行波与光学监测信息", "content": [tables["table8"]]})
+
+    # docx 保存前会对全文（含表格单元格）做 user_facing_model_terms 清理，
+    # 页面 sections 同步清理，保证「report 有什么，详情页就展示什么」。
+    for section in sections:
+        for item in section["content"]:
+            if item.get("type") in {"text", "subtitle", "highlight", "card"}:
+                item["text"] = _report.user_facing_model_terms(item.get("text"))
+            elif item.get("type") == "bullet":
+                item["items"] = [_report.user_facing_model_terms(value) for value in item.get("items", [])]
+            elif item.get("type") == "table":
+                item["columns"] = [_report.user_facing_model_terms(value) for value in item.get("columns", [])]
+                item["rows"] = [
+                    [_report.user_facing_model_terms(value) for value in row]
+                    for row in item.get("rows", [])
+                ]
 
     return sections
 
