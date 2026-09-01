@@ -243,7 +243,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       messageApi.error('下载录波提取结果失败');
     }
   }, []);
-  // 下载录波数据模板
+  // 下载录波数据模板（13 个字段，与分析程序实际使用的录波故障数据一致；填写后上传可自动回填）
   const handleDownloadWaveDataTemplate = () => {
     try {
       generateWaveDataTemplate();
@@ -495,7 +495,13 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 }
                 onPdfExtracted={(item, response) => {
                   handlePdfExtracted(item, response);
-                  messageApi.success(response.ok ? '已自动提取并回填表单字段' : `已识别 ${13 - response.missing.length}/13 个字段，缺失字段已提示`);
+                  if (response.missing.length === 13) {
+                    messageApi.warning('未识别到故障字段：请使用「下载模板」的格式（录波记录厂站/故障时刻/故障线路名称等表头）或上传录波故障报告 PDF');
+                  } else if (response.ok) {
+                    messageApi.success('已自动提取并回填表单字段');
+                  } else {
+                    messageApi.success(`已识别 ${13 - response.missing.length}/13 个字段，缺失字段已提示`);
+                  }
                 }}
               />
             </Form.Item>

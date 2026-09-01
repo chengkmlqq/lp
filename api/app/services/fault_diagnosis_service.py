@@ -16,6 +16,7 @@ from ..core.config import get_settings
 from ..models.base import utcnow
 from ..models.fault_analysis import FaultAnalysis
 from .fault_analysis_service import assemble_ledger_rows, get_analysis_by_id
+from .fault_analysis_view import build_view_model
 from .fault_diagnosis_core import (
     InputError,
     build_diagnosis,
@@ -957,6 +958,10 @@ def _build_sections(
     def text(value: Any) -> dict[str, Any]:
         return {"type": "text", "text": _report.user_facing_model_terms(value)}
 
+    def section(title: str, key: str, content: list[dict[str, Any]], *, group: str | None = None) -> dict[str, Any]:
+        """章节容器：标题 + 稳定 key（前端按 key/group 分组，不再依赖标题字符串匹配）。"""
+        return {"title": title, "key": key, "group": group or key, "content": content}
+
     # ---- 1 报告总览 ----
     # 先展示「故障分析」文字结论，再展示表1 故障分析总览（用户要求文字结论置于表格上方）。
     content: list[dict[str, Any]] = []
@@ -965,7 +970,7 @@ def _build_sections(
         content.append(text(paragraph))
     if "table1" in tables:
         content.append(tables["table1"])
-    sections.append({"title": "1 报告总览", "content": content})
+    sections.append(section("1 报告总览", "overview", content))
 
     # ---- 2 接地故障及过渡电阻判别 ----
     content = [text(paragraph) for paragraph in _report.ground_and_resistance_paragraphs(diag)]
@@ -981,60 +986,60 @@ def _build_sections(
             }
         )
         content.append(text(_report.ZERO_SEQUENCE_COMPARISON_NOTE))
-    sections.append({"title": "2 接地故障及过渡电阻判别", "content": content})
+    sections.append(section("2 接地故障及过渡电阻判别", "ground", content))
 
     # ---- 3 故障定位 ----
     content = [text(paragraph) for paragraph in _report.location_section_paragraphs(diag)]
     if "table2" in tables:
         content.append(tables["table2"])
-    sections.append({"title": "3 故障定位", "content": content})
+    sections.append(section("3 故障定位", "location", content))
 
     # ---- 4 耐雷水平与雷击原因分析 ----
     content = [text(paragraph) for paragraph in _report.lightning_section_paragraphs(diag)]
-    sections.append({"title": "4 耐雷水平与雷击原因分析", "content": content})
+    sections.append(section("4 耐雷水平与雷击原因分析", "lightning", content))
 
     # ---- 5 分布式行波分析与故障原因融合（容器）----
-    sections.append({"title": "5 分布式行波分析与故障原因融合", "content": []})
+    sections.append(section("5 分布式行波分析与故障原因融合", "wave_container", [], group="wave"))
 
     # ---- 5.1 分布式行波分析 ----
     content = [text(_report.wave_process_summary_sentence(diag))]
     if "table3" in tables:
         content.append(tables["table3"])
     content.append(text(_report.wave_section_note(diag)))
-    sections.append({"title": "5.1 分布式行波分析", "content": content})
+    sections.append(section("5.1 分布式行波分析", "wave_process", content, group="wave"))
 
     # ---- 5.2 故障原因融合 ----
     content = [text(_report.wave_initial_review_sentence(diag))]
     if "table4" in tables:
         content.append(tables["table4"])
     content.append(text(_report.FUSION_PRIORITY_NOTE))
-    sections.append({"title": "5.2 故障原因融合", "content": content})
+    sections.append(section("5.2 故障原因融合", "wave_fusion", content, group="wave"))
 
     # ---- 6 总体状态与后续意见 ----
     recommendation_paragraph, recommendation_reasons = _report.recommendation_section(diag)
     content = [text(recommendation_paragraph)]
     if recommendation_reasons:
         content.append({"type": "bullet", "items": recommendation_reasons})
-    sections.append({"title": "6 总体状态与后续意见", "content": content})
+    sections.append(section("6 总体状态与后续意见", "recommendation", content, group="wave"))
 
     # ---- 附表A 输入信息汇总 ----
-    sections.append({"title": "附表A 输入信息汇总", "content": []})
+    sections.append(section("附表A 输入信息汇总", "appendix_container", [], group="appendix"))
 
     # ---- A.1 录波故障信息 ----
     if "table5" in tables:
-        sections.append({"title": "A.1 录波故障信息", "content": [tables["table5"]]})
+        sections.append(section("A.1 录波故障信息", "appendix_a1", [tables["table5"]], group="appendix"))
 
     # ---- A.2 雷电流及定位信息 ----
     if "table6" in tables:
-        sections.append({"title": "A.2 雷电流及定位信息", "content": [tables["table6"]]})
+        sections.append(section("A.2 雷电流及定位信息", "appendix_a2", [tables["table6"]], group="appendix"))
 
     # ---- A.3 线路台账匹配信息 ----
     if "table7" in tables:
-        sections.append({"title": "A.3 线路台账匹配信息", "content": [tables["table7"]]})
+        sections.append(section("A.3 线路台账匹配信息", "appendix_a3", [tables["table7"]], group="appendix"))
 
     # ---- A.4 行波与光学监测信息 ----
     if "table8" in tables:
-        sections.append({"title": "A.4 行波与光学监测信息", "content": [tables["table8"]]})
+        sections.append(section("A.4 行波与光学监测信息", "appendix_a4", [tables["table8"]], group="appendix"))
 
     # docx 保存前会对全文（含表格单元格）做 user_facing_model_terms 清理，
     # 页面 sections 同步清理，保证「report 有什么，详情页就展示什么」。
@@ -1076,6 +1081,10 @@ def rebuild_sections_from_diagnosis(result_json: Mapping[str, Any]) -> dict[str,
         return None
     rebuilt = dict(result_json)
     rebuilt["sections"] = sections
+    try:
+        rebuilt["view_model"] = build_view_model(diag)
+    except Exception:
+        logger.exception("根据 result_json.diagnosis 重建 view_model 失败，保留原存储结构")
     return rebuilt
 
 
@@ -1105,6 +1114,7 @@ def build_result_json(
             confidence_source=confidence_source,
         ),
         "diagnosis": diag,
+        "view_model": build_view_model(diag),
         "summary_markdown": render_markdown_summary(diag),
     }
 

@@ -555,6 +555,16 @@ export function TempFileUpload({
                   ) : null}
                 </div>
               )}
+              {item.pdfExtracting && (
+                <div className="mt-1 flex items-center gap-2 rounded bg-blue-50 px-2 py-1 text-xs text-blue-600">
+                  <Spin size="small" /> 正在识别并回填故障字段...
+                </div>
+              )}
+              {item.pdfExtractError && (
+                <div className="mt-1 rounded bg-red-50 px-2 py-1 text-xs text-red-600">
+                  识别失败：{item.pdfExtractError}
+                </div>
+              )}
             </div>
           ))}
         </div>
