@@ -769,6 +769,40 @@ def _ensure_fault_analysis_progress_column_compatibility() -> None:
         )
 
 
+def _ensure_fault_analysis_task_id_column_compatibility() -> None:
+    """
+    Add `fault_analysis.task_id` column if missing (for existing deployments).
+
+    The task_id stores the Celery task id of the async diagnosis task, so the
+    frontend can trace the execution log for a given analysis.
+    """
+    if not database_url.startswith("postgresql"):
+        return
+
+    schema = settings.resolved_db_schema
+    with engine.begin() as connection:
+        db_inspector = inspect(connection)
+        if not db_inspector.has_table("fault_analysis", schema=schema):
+            return
+
+        column_names = {
+            column["name"]
+            for column in db_inspector.get_columns("fault_analysis", schema=schema)
+        }
+        if "task_id" in column_names:
+            return
+
+        connection.execute(
+            text(
+                "ALTER TABLE fault_analysis "
+                "ADD COLUMN IF NOT EXISTS task_id VARCHAR(128)"
+            )
+        )
+        logger.warning(
+            "Detected missing fault_analysis.task_id; added nullable task id column.",
+        )
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
@@ -823,4 +857,5 @@ def init_db() -> None:
     _ensure_system_param_encrypted_column_compatibility()
     _ensure_fault_analysis_upload_files_column_compatibility()
     _ensure_fault_analysis_progress_column_compatibility()
+    _ensure_fault_analysis_task_id_column_compatibility()
     Base.metadata.create_all(bind=engine)

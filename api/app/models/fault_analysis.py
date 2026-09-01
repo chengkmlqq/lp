@@ -76,6 +76,9 @@ class FaultAnalysis(Base):
     # 进度（0-100，异步判别任务执行过程中递增）
     progress: Mapped[float] = mapped_column(Float, default=0)
 
+    # 判别任务 Celery task_id（用于追溯分析执行日志）
+    task_id: Mapped[str | None] = mapped_column(String(128), index=True)
+
     # 审计
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)
