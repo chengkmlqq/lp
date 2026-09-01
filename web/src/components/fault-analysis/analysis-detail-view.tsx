@@ -798,8 +798,16 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
   const tabGroups = groupReportSections(sections.sections);
   return (
     <div id={exportElementId} className="py-4">
-      <div className="border-b border-gray-200 pb-5 mb-6">
-        <div className="flex items-start justify-between mb-5">
+      <div
+        className="border-b border-gray-200 pb-4 mb-4"
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+          background: "var(--fquiz-theme-bg-container, var(--ant-color-bg-container))",
+        }}
+      >
+        <div className="flex items-start justify-between mb-4">
           <Title level={3} className="mb-0">
             {sections.fault_id} 故障分析报告
           </Title>
