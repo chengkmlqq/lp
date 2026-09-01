@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import ReactMarkdown from "react-markdown";
 import {
   Alert,
+  Anchor,
   App,
   Button,
   Descriptions,
@@ -13,11 +13,9 @@ import {
   Typography,
   Spin,
   Table,
-  Steps,
   Collapse,
   Tag,
   Tree,
-  Tabs,
 } from "antd";
 import {
   DownloadOutlined,
@@ -38,7 +36,7 @@ interface AnalysisDetailViewProps {
   analysisId: string;
   /** 唯一标识，用作导出容器 DOM id 前缀（多开详情 Tab 时避免重复 id） */
   tabKey: string;
-  defaultView?: "summary" | "report" | "process" | "artifacts";
+  defaultView?: "report" | "process" | "artifacts";
   /** 打开分析执行日志抽屉（参照雷电流幅值页的日志查看） */
   onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
 }
@@ -577,9 +575,39 @@ interface ArtifactTreeNode {
   children?: ArtifactTreeNode[];
 }
 
+/** 产物树节点段中文映射（固定目录/文件翻译；动态 run_id 与任意技术文件名保留原样）。 */
+const ARTIFACT_SEGMENT_LABELS: Record<string, string> = {
+  "fault-analysis": "故障分析",
+  Output: "输出",
+  matlab: "MATLAB 计算",
+  debug: "调试输入",
+  "result.json": "判别结果",
+  "wave_module_prediction.txt": "行波模块预测结果",
+  "fault_raw.json": "录波输入数据",
+  "lightning_raw.json": "雷电定位输入数据",
+  "ledger_rows.json": "线路台账输入数据",
+  "traveling_wave_records.json": "行波输入数据",
+};
+
+/** 节点段翻译：记录 id 段显示为分析标题；run-* 显示为「运行记录 N」；已知固定段走映射；其余保留。 */
+function translateSegment(segment: string, analysisId?: string | null, analysisTitle?: string | null): string {
+  if (analysisId && segment === analysisId) {
+    return analysisTitle?.trim() || segment;
+  }
+  if (ARTIFACT_SEGMENT_LABELS[segment]) {
+    return ARTIFACT_SEGMENT_LABELS[segment];
+  }
+  if (segment.startsWith("run-")) {
+    return `运行记录 ${segment.slice(4)}`;
+  }
+  return segment;
+}
+
 function buildArtifactTree(
   artifacts: Record<string, unknown> | undefined,
   onDownload: (key: string) => void,
+  analysisId?: string | null,
+  analysisTitle?: string | null,
 ): ArtifactTreeNode[] {
   const root: ArtifactTreeNode = { title: "产物", key: "__root__", children: [] };
   const nodes = new Map<string, ArtifactTreeNode>();
@@ -590,18 +618,19 @@ function buildArtifactTree(
     for (let i = 0; i < parts.length; i++) {
       prefix = prefix ? `${prefix}/${parts[i]}` : parts[i];
       const isFile = i === parts.length - 1;
+      const label = translateSegment(parts[i], analysisId, analysisTitle);
       if (!nodes.has(prefix)) {
         const node: ArtifactTreeNode = {
           title: isFile ? (
             <span className="inline-flex items-center gap-2">
               {artifactIcon(parts[i])}
-              {parts[i]}
+              {label}
               <Button size="small" icon={<DownloadOutlined />} onClick={(e) => { e.stopPropagation(); onDownload(fullKey); }}>
                 下载
               </Button>
             </span>
           ) : (
-            parts[i]
+            label
           ),
           key: prefix,
           ...(isFile ? { isLeaf: true } : { children: [] }),
@@ -676,62 +705,53 @@ interface ArtifactsViewProps {
   onDownload: (key: string) => void;
 }
 
-/** 渲染一节 section 的 content 列表（段落/子标题/bullet/card/表格，与 docx 同源按序交错）。 */
+/** 渲染一节 section 的 content 列表（段落/子标题/bullet/卡片/表格，与 docx 同源按序交错）。
+ * 组件化排版：子标题带主题色竖条、highlight 琥珀提示条、卡片按语义分级着色、表格统一紧凑样式。
+ */
 function SectionContent({ content }: { content: ReportSectionItem[] }) {
   return (
     <Space direction="vertical" size={12} className="w-full">
       {content.map((item, itemIndex) => {
-        // 与 docx 报告同源：按 content 原始顺序渲染（段落/表格/说明交错），
-        // report 有什么详情页就展示什么。
         if (item.type === "subtitle") {
           return (
-            <Text key={itemIndex} strong className="text-sm block">
+            <div key={itemIndex} className="fa-detail-subtitle">
               {item.text}
-            </Text>
+            </div>
           );
         }
         if (item.type === "highlight") {
           return (
-            <Text key={itemIndex} type="warning" className="text-sm block">
+            <div key={itemIndex} className="fa-detail-highlight">
               {item.text}
-            </Text>
+            </div>
           );
         }
         if (item.type === "bullet") {
           return (
-            <div key={itemIndex}>
+            <ul key={itemIndex} className="fa-detail-bullets">
               {item.items?.map((bullet, bulletIndex) => (
-                <Paragraph key={bulletIndex} className="text-sm mb-2 text-gray-700">
-                  • {bullet}
-                </Paragraph>
+                <li key={bulletIndex}>{bullet}</li>
               ))}
-            </div>
+            </ul>
           );
         }
         if (item.type === "card") {
           const lines = item.text.split("\n");
+          const tone = item.text.includes("综合判定")
+            ? "conclusion"
+            : item.text.includes("建议人工复核")
+              ? "warning"
+              : "info";
           return (
-            <div
-              key={itemIndex}
-              className="bg-gray-50 border border-gray-200 rounded-lg p-5"
-            >
+            <div key={itemIndex} className={`fa-detail-card fa-detail-card--${tone}`}>
               {lines.map((line, lineIndex) => {
-                const isHighlight =
-                  line.includes("建议人工复核") ||
-                  line.includes("雷击类型:");
                 const isTitle =
                   line === "综合判定" ||
                   (lineIndex === 0 && !line.includes(":"));
                 return (
                   <Paragraph
                     key={lineIndex}
-                    className={`text-sm mb-2 ${
-                      isTitle
-                        ? "font-semibold text-gray-900"
-                        : isHighlight
-                          ? "text-orange-600 font-medium"
-                          : "text-gray-700"
-                    }`}
+                    className={`fa-detail-card-line mb-1 ${isTitle ? "fa-detail-card-line--title" : ""}`}
                   >
                     {line}
                   </Paragraph>
@@ -741,8 +761,6 @@ function SectionContent({ content }: { content: ReportSectionItem[] }) {
           );
         }
         if (item.type === "table") {
-          // key_value 布局：双列 label:value 展示（参照雷电流幅值统计详情），无统一表头；
-          // grid 布局：按多列表格呈现（与 docx 同源）。
           const isKvTable = item.layout === "key_value";
           if (isKvTable) {
             const rawRows = item.rows ?? [];
@@ -756,17 +774,14 @@ function SectionContent({ content }: { content: ReportSectionItem[] }) {
               }
             });
             return (
-              <div
-                key={itemIndex}
-                className="bg-white border border-gray-200 rounded-lg"
-                style={{ padding: 12 }}
-              >
+              <div key={itemIndex} className="fa-detail-table-box">
+                {item.title ? (
+                  <div className="fa-detail-table-title">{item.title}</div>
+                ) : null}
                 <Descriptions size="small" bordered column={2}>
                   {pairs.map((pair, pairIndex) => (
                     <Descriptions.Item key={pairIndex} label={pair.label}>
-                      <Paragraph className="text-sm text-gray-700 mb-0">
-                        {pair.value}
-                      </Paragraph>
+                      {pair.value}
                     </Descriptions.Item>
                   ))}
                 </Descriptions>
@@ -775,47 +790,23 @@ function SectionContent({ content }: { content: ReportSectionItem[] }) {
           }
           const columns = item.columns ?? [];
           const rawRows = item.rows ?? [];
-          let tableColumns = columns.map((col, index) => ({
+          const tableColumns = columns.map((col, index) => ({
             title: col,
             dataIndex: index,
             key: `${index}-${col}`,
           }));
           const tableRows: Record<string, string>[] = [];
-          if ((item.layout === "key_value" || columns.length === 2) && columns.length >= 2) {
-            const pairHead = columns[0];
-            const valueHead = columns[1];
-            tableColumns = [
-              { title: pairHead, dataIndex: 0, key: "kv-key" },
-              { title: valueHead, dataIndex: 1, key: "kv-value" },
-            ];
-            rawRows.forEach((row, rowIndex) => {
-              for (let index = 0; index + 1 < row.length; index += 2) {
-                tableRows.push({
-                  key: `r${rowIndex}-c${index}`,
-                  0: row[index] ?? "",
-                  1: row[index + 1] ?? "",
-                });
-              }
+          rawRows.forEach((row, rowIndex) => {
+            const record: Record<string, string> = { key: `r${rowIndex}` };
+            columns.forEach((_, index) => {
+              record[index] = row[index] ?? "";
             });
-          } else {
-            rawRows.forEach((row, rowIndex) => {
-              const record: Record<string, string> = { key: `r${rowIndex}` };
-              columns.forEach((_, index) => {
-                record[index] = row[index] ?? "";
-              });
-              tableRows.push(record);
-            });
-          }
+            tableRows.push(record);
+          });
           return (
-            <div
-              key={itemIndex}
-              className="bg-white border border-gray-200 rounded-lg"
-              style={{ padding: 12, overflowY: "auto" }}
-            >
+            <div key={itemIndex} className="fa-detail-table-box">
               {item.title ? (
-                <Text strong className="text-sm block mb-2">
-                  {item.title}
-                </Text>
+                <div className="fa-detail-table-title">{item.title}</div>
               ) : null}
               <Table
                 size="small"
@@ -828,7 +819,7 @@ function SectionContent({ content }: { content: ReportSectionItem[] }) {
           );
         }
         return (
-          <Paragraph key={itemIndex} className="text-sm text-gray-700 mb-0">
+          <Paragraph key={itemIndex} className="fa-detail-md-p mb-0">
             {item.text}
           </Paragraph>
         );
@@ -839,65 +830,84 @@ function SectionContent({ content }: { content: ReportSectionItem[] }) {
 
 function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, onExportReport, onOpenLog }: ReportViewProps) {
   const tabGroups = groupReportSections(sections.sections);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   return (
-    <div id={exportElementId} className="py-4 flex flex-col flex-1 min-h-0">
-      <div className="border-b border-gray-200 pb-4 mb-4">
-        <div className="flex items-start justify-between mb-4">
-          <Title level={3} className="mb-0">
-            {sections.fault_id} 故障分析报告
-          </Title>
-          <Space size={8}>
-            {onOpenLog && detail.task_id ? (
-              <Button
-                icon={<FileSearchOutlined />}
-                onClick={() => onOpenLog(detail.task_id, "分析日志", detail.title ?? `FA-${detail.id?.slice(0, 12) ?? ""}`)}
-              >
-                查看日志
+    <div className="flex flex-1 min-h-0 py-4">
+      {tabGroups.length > 1 ? (
+        <div className="w-44 flex-shrink-0 overflow-auto border-r pl-4 pr-3 fa-detail-anchor">
+          <Anchor
+            getContainer={() => scrollRef.current ?? document.body}
+            offsetTop={8}
+            items={tabGroups.map((group) => ({
+              key: group.key,
+              href: `#fa-group-${group.key}`,
+              title: group.label,
+            }))}
+          />
+        </div>
+      ) : null}
+      <div
+        ref={scrollRef}
+        id={exportElementId}
+        className="flex-1 min-h-0 overflow-auto px-6 fa-detail-report-scroll"
+      >
+        <div className="border-b pb-4 mb-6 fa-detail-report-header">
+          <div className="flex items-start justify-between mb-4">
+            <Title level={3} className="mb-0">
+              {sections.fault_id} 故障分析报告
+            </Title>
+            <Space size={8}>
+              {onOpenLog && detail.task_id ? (
+                <Button
+                  icon={<FileSearchOutlined />}
+                  onClick={() => onOpenLog(detail.task_id, "分析日志", detail.title ?? `FA-${detail.id?.slice(0, 12) ?? ""}`)}
+                >
+                  查看日志
+                </Button>
+              ) : null}
+              <Button icon={<DownloadOutlined />} loading={exportLoading} onClick={onExportReport}>
+                导出报告
               </Button>
+            </Space>
+          </div>
+          <Space size={16} wrap className="fa-detail-meta">
+            <span>
+              线路：<Text strong>{detail.line_name ?? "-"}</Text>
+            </span>
+            <span>
+              录波记录厂站：<Text>{sections.station || "-"}</Text>
+            </span>
+            <span>
+              故障时间：<Text>{sections.fault_datetime || "-"}</Text>
+            </span>
+            {detail.fault_phase ? (
+              <span>
+                故障相：<Text strong>{detail.fault_phase}</Text>
+              </span>
             ) : null}
-            <Button icon={<DownloadOutlined />} loading={exportLoading} onClick={onExportReport}>
-              导出报告
-            </Button>
           </Space>
         </div>
-        <Text type="secondary" className="text-sm">
-          线路: {detail.line_name ?? "-"} | 录波记录厂站: {sections.station} | 故障时间:{" "}
-          {sections.fault_datetime}
-        </Text>
-      </div>
 
-      <Tabs
-        defaultActiveKey={tabGroups[0]?.key ?? "overview"}
-        className="fault-analysis-report-tabs"
-        tabBarStyle={{ marginBottom: 16 }}
-        items={tabGroups.map((group) => ({
-          key: group.key,
-          label: group.label,
-          children: (
-            <Space direction="vertical" size={24} className="w-full">
+        {tabGroups.map((group) => (
+          <section key={group.key} id={`fa-group-${group.key}`} className="mb-10 fa-detail-report-group">
+            <div className="fa-detail-group-title">
+              <span>{group.label}</span>
+            </div>
+            <Space direction="vertical" size={20} className="w-full">
               {group.sections.map((section, sectionIndex) => (
                 <div key={sectionIndex}>
-                  {group.sections.length > 1 && (
-                    <div
-                      className="px-5 py-3 rounded-md mb-4"
-                      style={{
-                        background: "var(--fquiz-theme-bg-active)",
-                        color: "var(--fquiz-theme-text-primary)",
-                        border: "1px solid var(--fquiz-theme-border)",
-                      }}
-                    >
-                      <Text className="font-semibold text-base" style={{ color: "var(--fquiz-theme-text-primary)" }}>
-                        {section.title}
-                      </Text>
+                  {group.sections.length > 1 ? (
+                    <div className="fa-detail-section-title">
+                      <span>{section.title}</span>
                     </div>
-                  )}
+                  ) : null}
                   <SectionContent content={section.content} />
                 </div>
               ))}
             </Space>
-          ),
-        }))}
-      />
+          </section>
+        ))}
+      </div>
     </div>
   );
 }
@@ -911,11 +921,9 @@ function renderViewModelField(field: ProcessViewModelField): React.ReactNode {
   if (field.kind === "bullets") {
     const items = Array.isArray(field.items) ? field.items : [];
     return items.length > 0 ? (
-      <ul className="pl-4 list-disc space-y-1">
+      <ul className="fa-detail-bullets">
         {items.map((item, index) => (
-          <li key={index} className="text-sm text-gray-700">
-            {typeof item === "string" ? item : String(item)}
-          </li>
+          <li key={index}>{typeof item === "string" ? item : String(item)}</li>
         ))}
       </ul>
     ) : "-";
@@ -935,72 +943,95 @@ function renderViewModelField(field: ProcessViewModelField): React.ReactNode {
   return field.value ?? "-";
 }
 
+/** 字段是否占整行（bullets/kv/长文本 → 整行展示，短值 → 与下一字段并排）。 */
+function isWideField(field: { kind?: string; value?: unknown }): boolean {
+  if (field.kind === "bullets" || field.kind === "kv") return true;
+  if (typeof field.value === "string" && field.value.length > 28) return true;
+  return false;
+}
+
 function ProcessView({ computationSteps, resultJson }: ProcessViewProps) {
   const viewModel = resultJson.view_model as ProcessViewModel | undefined;
   // 优先消费后端下发的 view_model（声明式 schema，前端不再硬编码 diagnosis 路径）；
   // 旧记录无 view_model 时回退到 buildComputationSteps 兜底。
   if (viewModel && Array.isArray(viewModel.steps) && viewModel.steps.length > 0) {
     const steps = viewModel.steps;
+    // 进入页面默认展开第一个步骤；可同时展开多个
+    const defaultStepKey = steps[0]?.key;
     return (
-      <div className="py-4">
-        <Steps
-          current={steps.length - 1}
-          status="finish"
-          size="small"
-          className="mb-6"
-          items={steps.map((step) => ({ title: step.title }))}
-        />
+      <div className="py-4 px-4">
         <Collapse
-          accordion
-          defaultActiveKey={["ground"]}
-          items={steps.map((step) => ({
-            key: step.key,
-            label: step.header,
-            children: (
-              <Space direction="vertical" size={12} className="w-full">
-                {step.fields.length === 0 ? (
-                  <Alert type="info" showIcon message={step.empty} />
-                ) : (
-                  <Descriptions column={2} bordered size="small">
-                    {step.fields.map((field, index) => (
-                      <Descriptions.Item key={`${step.key}-${index}`} label={field.label} span={2}>
-                        {renderViewModelField(field)}
-                      </Descriptions.Item>
-                    ))}
-                  </Descriptions>
-                )}
-                {resultJson.input_warnings && (resultJson.input_warnings as unknown[]).length > 0 ? (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message="输入警告"
-                    description={(resultJson.input_warnings as string[]).join("；")}
-                  />
-                ) : null}
-              </Space>
-            ),
-          }))}
+          defaultActiveKey={defaultStepKey ? [defaultStepKey] : undefined}
+          items={steps.map((step, index) => {
+            // 短值字段两列并排（column=2）、宽字段（bullets/kv/长文本）整行展示（column=1），
+            // 拆成两个 Descriptions，避免混用 span 触发 antd「Sum of column span」告警。
+            const narrowFields = step.fields.filter((field) => !isWideField(field));
+            const wideFields = step.fields.filter((field) => isWideField(field));
+            return {
+              key: step.key,
+              label: (
+                <div className="fa-detail-step-header">
+                  <span className="fa-detail-step-index">{index + 1}</span>
+                  <span>{step.header.replace(/^步骤\d+：/, "")}</span>
+                </div>
+              ),
+              children: (
+                <Space direction="vertical" size={12} className="w-full">
+                  {step.fields.length === 0 ? (
+                    <Alert type="info" showIcon message={step.empty} />
+                  ) : (
+                    <>
+                      {narrowFields.length > 0 ? (
+                        <Descriptions column={2} bordered size="small">
+                          {narrowFields.map((field, index) => (
+                            <Descriptions.Item key={`${step.key}-n${index}`} label={field.label} span={1}>
+                              {renderViewModelField(field)}
+                            </Descriptions.Item>
+                          ))}
+                        </Descriptions>
+                      ) : null}
+                      {wideFields.length > 0 ? (
+                        <Descriptions column={1} bordered size="small">
+                          {wideFields.map((field, index) => (
+                            <Descriptions.Item key={`${step.key}-w${index}`} label={field.label} span={1}>
+                              {renderViewModelField(field)}
+                            </Descriptions.Item>
+                          ))}
+                        </Descriptions>
+                      ) : null}
+                    </>
+                  )}
+                  {resultJson.input_warnings && (resultJson.input_warnings as unknown[]).length > 0 ? (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message="输入警告"
+                      description={(resultJson.input_warnings as string[]).join("；")}
+                    />
+                  ) : null}
+                </Space>
+              ),
+            };
+          })}
         />
       </div>
     );
   }
 
-  const stepCount = computationSteps.length;
+  // 进入页面默认展开第一个步骤；可同时展开多个
+  const defaultStepKey = computationSteps[0]?.key;
   return (
-    <div className="py-4">
-      <Steps
-        current={stepCount - 1}
-        status="finish"
-        size="small"
-        className="mb-6"
-        items={computationSteps.map((step) => ({ title: step.title }))}
-      />
+    <div className="py-4 px-4">
       <Collapse
-        accordion
-        defaultActiveKey={["ground"]}
-        items={computationSteps.map((step) => ({
+        defaultActiveKey={defaultStepKey ? [defaultStepKey] : undefined}
+        items={computationSteps.map((step, index) => ({
           key: step.key,
-          label: step.header,
+          label: (
+            <div className="fa-detail-step-header">
+              <span className="fa-detail-step-index">{index + 1}</span>
+              <span>{step.header.replace(/^步骤\d+：/, "")}</span>
+            </div>
+          ),
           children: (
             <Space direction="vertical" size={12} className="w-full">
               <Descriptions column={2} bordered size="small">
@@ -1038,51 +1069,12 @@ function ArtifactsView({ onDownload, downloadingArtifact, artifactTree }: Artifa
   );
 }
 
-/** 摘要视图：渲染后端下发的 summary_markdown（与判别结论一屏概览）。 */
-function SummaryView({ markdown }: { markdown: string }) {
-  if (!markdown || !markdown.trim()) {
-    return (
-      <Alert
-        type="info"
-        showIcon
-        message="暂无自动判别摘要"
-        description="该记录尚未生成步骤1-5自动判别摘要。"
-      />
-    );
-  }
-  return (
-    <div className="py-2 fault-analysis-summary-view">
-      <ReactMarkdown
-        components={{
-          p: ({ children }) => <Paragraph className="text-sm text-gray-700 mb-2 whitespace-pre-line">{children}</Paragraph>,
-          h1: ({ children }) => <Title level={3} className="mb-3">{children}</Title>,
-          h2: ({ children }) => <Title level={4} className="mb-2">{children}</Title>,
-          h3: ({ children }) => <Title level={5} className="mb-2">{children}</Title>,
-          strong: ({ children }) => <Text strong>{children}</Text>,
-          ul: ({ children }) => <ul className="pl-5 list-disc mb-2">{children}</ul>,
-          ol: ({ children }) => <ol className="pl-5 list-decimal mb-2">{children}</ol>,
-          li: ({ children }) => <li className="text-sm text-gray-700 mb-1">{children}</li>,
-          table: ({ children }) => (
-            <div className="my-2 overflow-x-auto border border-gray-200 rounded-md">
-              <table className="w-full text-sm">{children}</table>
-            </div>
-          ),
-          th: ({ children }) => <th className="px-3 py-2 text-left bg-gray-50 font-medium">{children}</th>,
-          td: ({ children }) => <td className="px-3 py-1.5 text-gray-700 border-t border-gray-100">{children}</td>,
-          del: ({ children }) => <Text delete>{children}</Text>,
-          hr: () => <div className="my-3 border-t border-gray-200" />,
-        }}
-      />
-    </div>
-  );
-}
-
 export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog }: AnalysisDetailViewProps) {
   const { message: messageApi } = App.useApp();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
   const [downloadingArtifact, setDownloadingArtifact] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<"summary" | "report" | "process" | "artifacts">(defaultView ?? "report");
+  const [activeView, setActiveView] = useState<"report" | "process" | "artifacts">(defaultView ?? "report");
   const exportElementId = `analysis-export-content-${tabKey}`;
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
@@ -1168,8 +1160,12 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
   const artifacts = resultJson.artifacts as Record<string, unknown> | undefined;
   const computationSteps = buildComputationSteps();
   const viewModel = resultJson.view_model as ProcessViewModel | undefined;
-  const summaryMarkdown = typeof resultJson.summary_markdown === "string" ? resultJson.summary_markdown : "";
-  const artifactTree = buildArtifactTree(artifacts, (key) => handleDownloadArtifact(key));
+  const artifactTree = buildArtifactTree(
+    artifacts,
+    (key) => handleDownloadArtifact(key),
+    detail.id,
+    detail.title,
+  );
 
   const handleDownloadArtifact = async (objectKey: string) => {
     if (!detail) return;
@@ -1194,23 +1190,17 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
         <div className="flex items-center justify-between gap-3 flex-shrink-0 px-4 py-3 border-b border-gray-200">
           <Segmented
             value={activeView}
-            onChange={(value) => setActiveView(value as "summary" | "report" | "process" | "artifacts")}
+            onChange={(value) => setActiveView(value as "report" | "process" | "artifacts")}
             options={[
-              { label: "摘要", value: "summary" },
               { label: "报告", value: "report" },
               { label: "计算过程", value: "process" },
               { label: "产物", value: "artifacts" },
             ]}
           />
           {activeView === "report" ? (
-            <Text type="secondary" className="text-sm">自动判别摘要、报告与产物同源展示</Text>
+            <Text type="secondary" className="text-sm">报告按章节排版，左侧目录可快速跳转</Text>
           ) : null}
         </div>
-        {activeView === "summary" && (
-          <div className="flex-1 min-h-0 overflow-auto">
-            <SummaryView markdown={summaryMarkdown} />
-          </div>
-        )}
         {activeView === "report" && (
           <ReportView
             tabKey={tabKey}

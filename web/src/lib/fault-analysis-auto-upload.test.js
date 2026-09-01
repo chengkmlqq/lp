@@ -22,21 +22,25 @@ test("LP-385: multiple file selection adds pending items as one state update", (
   );
 });
 
-test("LP-385: auto-classify request sends every completed temp file id", () => {
+test("LP-385: 两段式上传提交携带每个已完成临时文件 id，未完成时阻止提交", () => {
   assert.ok(
-    PAGE.includes("const completedAutoFiles = autoFiles.filter"),
-    "提交前应明确筛选上传完成的自动识别文件",
+    PAGE.includes("hasPendingUploads("),
+    "提交前应检查各文件字段是否存在未完成上传",
   );
   assert.ok(
-    PAGE.includes("completedAutoFiles.length !== autoFiles.length"),
-    "自动识别文件未全部完成时必须阻止提交",
+    PAGE.includes("仍有文件在上传中，请等待上传完成后提交"),
+    "存在未完成上传时必须阻止提交并给出提示",
   );
   assert.ok(
-    PAGE.includes("for (const item of completedAutoFiles)"),
-    "FormData 必须遍历每个已完成的自动识别文件",
+    PAGE.includes("pickTempFileIds(list)"),
+    "行波等可多文件字段应遍历提交全部已完成临时文件 id",
   );
   assert.ok(
-    PAGE.includes("formData.getAll(\"auto_classify_temp_file_ids\").length"),
-    "提交前应校验 FormData 中的临时文件 ID 数量",
+    PAGE.includes("pickTempFileId(list)"),
+    "单文件字段应提取已完成临时文件 id",
+  );
+  assert.ok(
+    PAGE.includes("/api/v1/fault-analysis/upload"),
+    "两段式上传应提交到 /api/v1/fault-analysis/upload",
   );
 });

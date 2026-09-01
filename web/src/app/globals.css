@@ -6277,3 +6277,135 @@ body {
   flex-direction: column;
   overflow-y: auto;
 }
+
+/* ===== 故障分析详情页（报告/计算过程）统一排版 ===== */
+.fa-detail-text-secondary { color: var(--ant-color-text-secondary); }
+.fa-detail-text-value { color: var(--ant-color-text); }
+
+/* markdown 正文 */
+.fa-detail-md-p { color: var(--ant-color-text); line-height: 1.8; white-space: pre-line; font-size: 13px; }
+.fa-detail-md-li { color: var(--ant-color-text); line-height: 1.7; }
+.fa-detail-table-wrap { border-color: var(--ant-color-border-secondary); }
+.fa-detail-th { background: var(--ant-color-fill-secondary); color: var(--ant-color-text); border-bottom: 1px solid var(--ant-color-border-secondary); }
+.fa-detail-td { color: var(--ant-color-text); border-top: 1px solid var(--ant-color-border-secondary); }
+
+/* 小节标题：主题色左侧竖条 */
+.fa-detail-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ant-color-text);
+}
+.fa-detail-subtitle::before {
+  content: "";
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--ant-color-primary);
+  flex-shrink: 0;
+}
+
+/* highlight 提示条 */
+.fa-detail-highlight {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ant-color-text);
+  background: color-mix(in srgb, var(--ant-color-warning) 12%, var(--ant-color-bg-container));
+  border: 1px solid color-mix(in srgb, var(--ant-color-warning) 35%, transparent);
+}
+
+/* 语义卡片 */
+.fa-detail-card {
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-left-width: 4px;
+  background: var(--ant-color-bg-container);
+}
+.fa-detail-card--conclusion {
+  border-left-color: var(--ant-color-primary);
+  background: color-mix(in srgb, var(--ant-color-primary) 5%, var(--ant-color-bg-container));
+}
+.fa-detail-card--warning {
+  border-left-color: var(--ant-color-warning);
+  background: color-mix(in srgb, var(--ant-color-warning) 6%, var(--ant-color-bg-container));
+}
+.fa-detail-card--info { border-left-color: var(--ant-color-border); }
+.fa-detail-card-line { color: var(--ant-color-text); font-size: 13px; line-height: 1.7; }
+.fa-detail-card-line--title { font-weight: 600; font-size: 14px; }
+
+/* bullet 列表 */
+.fa-detail-bullets { list-style: disc; padding-left: 20px; margin: 0; }
+.fa-detail-bullets li { color: var(--ant-color-text); font-size: 13px; line-height: 1.7; margin-bottom: 2px; }
+
+/* 表格容器 */
+.fa-detail-table-box {
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  background: var(--ant-color-bg-container);
+}
+.fa-detail-table-title { font-weight: 600; font-size: 13px; margin-bottom: 8px; color: var(--ant-color-text); }
+
+/* 组内小节标题条 */
+.fa-detail-section-title {
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ant-color-text);
+  background: var(--ant-color-fill-secondary);
+  border-left: 3px solid var(--ant-color-primary);
+}
+
+/* 报告组标题 */
+.fa-detail-group-title {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--ant-color-text);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ant-color-primary) 12%, transparent), transparent);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-left: 4px solid var(--ant-color-primary);
+}
+
+/* 头部信息行 */
+.fa-detail-meta { color: var(--ant-color-text-secondary); font-size: 13px; }
+.fa-detail-meta span { display: inline-flex; align-items: center; }
+
+/* 锚点目录 */
+.fa-detail-anchor .ant-anchor-link-title { font-size: 13px; }
+.fa-detail-anchor .ant-anchor-link-active > .ant-anchor-link-title { font-weight: 600; color: var(--ant-color-primary); }
+
+/* 计算过程步骤标题（Collapse 头部）：序号徽标 + 标题 */
+.fa-detail-step-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.fa-detail-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ant-color-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
