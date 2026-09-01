@@ -120,6 +120,27 @@ def test_run_fault_diagnosis_completes_and_backfills(db_session: Session):
     assert result == updated.result_json
 
 
+def test_run_fault_diagnosis_generates_form_wave_file_without_upload(db_session: Session):
+    """未上传录波文件时，第二步表单数据应生成 fault_form.json 录波文件供判别程序处理。"""
+    _sample_user(db_session)
+    item = _sample_analysis(db_session)
+
+    result = fault_diagnosis_service.run_fault_diagnosis(db_session, item.id)
+
+    db_session.expire_all()
+    updated = db_session.get(FaultAnalysis, item.id)
+    assert updated.status == "completed"
+    source_paths = updated.result_json.get("diagnosis", {}).get("source_paths", {})
+    fault_source = source_paths.get("fault")
+    assert fault_source, "未上传录波文件时也应记录由表单生成的录波文件来源"
+    assert Path(fault_source).name == "fault_form.json"
+    # 表单数据即录波文件数据：判别输入应包含第二步表单的关键字段
+    fault_record = updated.result_json["diagnosis"]["inputs"]["fault_record"]
+    assert fault_record.get("station") == "广东河源500kV上寨变"
+    assert fault_record.get("fault_phase") == "AN"
+    assert fault_record.get("duration_ms") == 64
+
+
 def test_run_fault_diagnosis_degrades_with_minimal_input(db_session: Session):
     _sample_user(db_session)
     item = FaultAnalysis(

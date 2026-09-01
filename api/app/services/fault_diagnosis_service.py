@@ -784,6 +784,10 @@ def _table5_recording(diag: Mapping[str, Any], report: dict[str, Any]) -> dict[s
         ["最大零序电流", display(zero_current), "零序补偿系数", display(fault.get("zero_sequence_compensation_k"))],
         ["故障测距", value_with_unit(record_distance, "km"), "原始文件", display(paths.get("fault"))],
     ]
+    # 未上传录波文件时（判别输入由第二步表单生成 fault_form.json），原始文件列给出友好说明。
+    fault_source = paths.get("fault")
+    if fault_source and Path(str(fault_source)).name == "fault_form.json":
+        rows[3][3] = "表单数据（未上传录波文件）"
     return _kv_table("表A.1 录波故障信息", rows)
 
 
@@ -1177,6 +1181,24 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
     try:
         original_upload_files = item.upload_files or {}
         materialized_upload_files = _materialize_upload_files(original_upload_files, run_dir / "Input")
+        # 无录波文件时用第二步表单标量字段生成录波 JSON 文件（表单数据即录波文件数据），
+        # 保证判别程序始终有录波输入、报告来源可溯源，用户不上传录波文件也能正常判别。
+        if _resolve_upload_file(materialized_upload_files, "wave_data_file") is None:
+            try:
+                form_fault = build_fault_raw(item)
+                if form_fault:
+                    gen_path = run_dir / "Input" / "fault_form.json"
+                    gen_path.parent.mkdir(parents=True, exist_ok=True)
+                    gen_path.write_text(
+                        json.dumps(form_fault, ensure_ascii=False, default=str),
+                        encoding="utf-8",
+                    )
+                    materialized_upload_files = {
+                        **materialized_upload_files,
+                        "wave_data_file": gen_path.as_posix(),
+                    }
+            except Exception as exc:
+                logger.warning("Fault diagnosis form wave file generation failed: %s", exc)
         item.upload_files = materialized_upload_files
         try:
             fault_raw, lightning_raw, ledger_rows, traveling_wave_records, input_warnings = _collect_inputs(
@@ -1301,6 +1323,24 @@ def run_fault_diagnosis_with_progress(
             step_callback("准备输入文件")
         original_upload_files = item.upload_files or {}
         materialized_upload_files = _materialize_upload_files(original_upload_files, run_dir / "Input")
+        # 无录波文件时用第二步表单标量字段生成录波 JSON 文件（表单数据即录波文件数据），
+        # 保证判别程序始终有录波输入、报告来源可溯源，用户不上传录波文件也能正常判别。
+        if _resolve_upload_file(materialized_upload_files, "wave_data_file") is None:
+            try:
+                form_fault = build_fault_raw(item)
+                if form_fault:
+                    gen_path = run_dir / "Input" / "fault_form.json"
+                    gen_path.parent.mkdir(parents=True, exist_ok=True)
+                    gen_path.write_text(
+                        json.dumps(form_fault, ensure_ascii=False, default=str),
+                        encoding="utf-8",
+                    )
+                    materialized_upload_files = {
+                        **materialized_upload_files,
+                        "wave_data_file": gen_path.as_posix(),
+                    }
+            except Exception as exc:
+                logger.warning("Fault diagnosis form wave file generation failed: %s", exc)
         item.upload_files = materialized_upload_files
         try:
             fault_raw, lightning_raw, ledger_rows, traveling_wave_records, input_warnings = _collect_inputs(
