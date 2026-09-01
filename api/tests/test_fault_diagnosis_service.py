@@ -420,3 +420,15 @@ def test_finalize_artifacts_no_matlab_keeps_compat_artifacts(db_session: Session
     assert "matlab_outputs" not in artifacts
     assert "debug_outputs" not in artifacts
 
+
+
+def test_list_analysis_summary_includes_reclosure_status(db_session: Session):
+    """列表 summary 序列化必须携带重合闸情况（此前 serialize_summary 漏掉该字段导致列表展示为空）。"""
+    _sample_user(db_session)
+    _sample_analysis(db_session)
+
+    result = fault_analysis_service.list_analyses(db_session, keyword="龙和线")
+    assert result.total == 1
+    item = result.items[0]
+    assert item.reclosure_status == "success"
+    assert item.id == "fa-sample"

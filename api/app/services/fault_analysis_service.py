@@ -42,6 +42,7 @@ def serialize_summary(item: FaultAnalysis) -> FaultAnalysisSummary:
         fault_time=item.fault_time,
         fault_type=item.fault_type,
         fault_phase=item.fault_phase,
+        reclosure_status=item.reclosure_status,
         confidence=item.confidence,
         station=item.station,
         lightning_current_ka=item.lightning_current_ka,
@@ -368,7 +369,13 @@ def dispatch_fault_diagnosis(db: Session, analysis_id: str) -> None:
         item.update_date = utcnow()
         db.commit()
     try:
-        run_fault_diagnosis_task.delay(analysis_id)
+        result = run_fault_diagnosis_task.delay(analysis_id)
+        # 记录判别任务 task_id，供页面按分析追溯执行日志
+        item = get_analysis_by_id(db, analysis_id)
+        if item is not None:
+            item.task_id = str(result.id)
+            item.update_date = utcnow()
+            db.commit()
     except Exception as exc:  # pragma: no cover - depends on broker availability
         item = get_analysis_by_id(db, analysis_id)
         if item is not None:
