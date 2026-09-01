@@ -904,12 +904,23 @@ export default function FaultAnalysisDetailPage() {
 
                     <Space direction="vertical" size={24} className="w-full">
                       {sections.map((section, sectionIndex) => {
-                const descriptionsItems = section.content.filter(
-                  (item) => item.type !== "table" && item.type !== "card"
-                );
-                const standaloneItems = section.content.filter(
-                  (item) => item.type === "table" || item.type === "card"
-                );
+                // 报告总览节：删除该节的信息文本格与其余表格，仅保留「表1 故障分析总览」并置顶
+                const isOverviewSection = section.title.includes("报告总览");
+                const descriptionsItems = isOverviewSection
+                  ? []
+                  : section.content.filter(
+                      (item) => item.type !== "table" && item.type !== "card"
+                    );
+                const standaloneItems = isOverviewSection
+                  ? section.content.filter(
+                      (item) =>
+                        item.type === "table" &&
+                        typeof item.title === "string" &&
+                        item.title.includes("表1")
+                    )
+                  : section.content.filter(
+                      (item) => item.type === "table" || item.type === "card"
+                    );
                 return (
                   <div key={sectionIndex}>
                     <div className="fault-analysis-step-header px-5 py-3 rounded-md mb-4">
@@ -997,6 +1008,45 @@ export default function FaultAnalysisDetailPage() {
                           );
                         }
                         if (item.type === "table") {
+                          // 表1 故障分析总览：双列 label:value 展示（参照雷电流幅值统计详情），无统一表头
+                          const isOverviewKvTable =
+                            (item.layout as string) === "key_value" &&
+                            typeof item.title === "string" &&
+                            item.title.includes("表1");
+                          if (isOverviewKvTable) {
+                            const rawRows = item.rows ?? [];
+                            const pairs: { label: string; value: string }[] = [];
+                            rawRows.forEach((row) => {
+                              for (let index = 0; index + 1 < row.length; index += 2) {
+                                pairs.push({
+                                  label: row[index] ?? "",
+                                  value: row[index + 1] ?? "",
+                                });
+                              }
+                            });
+                            return (
+                              <div
+                                key={itemIndex}
+                                className="bg-white border border-gray-200 rounded-lg"
+                                style={{ padding: 12 }}
+                              >
+                                {item.title ? (
+                                  <Text strong className="text-sm block mb-2">
+                                    {item.title}
+                                  </Text>
+                                ) : null}
+                                <Descriptions size="small" bordered column={2}>
+                                  {pairs.map((pair, pairIndex) => (
+                                    <Descriptions.Item key={pairIndex} label={pair.label}>
+                                      <Paragraph className="text-sm text-gray-700 mb-0">
+                                        {pair.value}
+                                      </Paragraph>
+                                    </Descriptions.Item>
+                                  ))}
+                                </Descriptions>
+                              </div>
+                            );
+                          }
                           const columns = item.columns ?? [];
                           const rawRows = item.rows ?? [];
                           const titleText = (item.title || "").toLowerCase();
