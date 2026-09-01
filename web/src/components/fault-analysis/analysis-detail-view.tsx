@@ -69,7 +69,7 @@ function groupReportSections(sections: ReportSection[]): ReportTabGroup[] {
   const findGroup = (key: string): ReportTabGroup | undefined => groups.get(key);
 
   const resolve = (title: string): { key: string; label: string } => {
-    if (title.includes("报告总览")) return { key: "overview", label: "总览" };
+    if (title.includes("报告总览")) return { key: "overview", label: "故障总览" };
     if (title.includes("接地故障及过渡电阻判别")) return { key: "ground", label: "接地故障及过渡电阻判别" };
     if (title.includes("故障定位")) return { key: "location", label: "故障定位" };
     if (title.includes("耐雷水平与雷击原因分析")) return { key: "lightning", label: "耐雷水平与雷击原因分析" };
