@@ -1053,6 +1053,31 @@ def _build_sections(
     return sections
 
 
+def rebuild_sections_from_diagnosis(result_json: Mapping[str, Any]) -> dict[str, Any] | None:
+    """旧记录 sections 升级：LP-537 之前存储的 sections 为字段式旧结构，
+    详情读取时若 result_json 含完整 diagnosis，则用当前 _build_sections 实时重建，
+    保证「report 有什么，详情页就展示什么」对历史记录同样成立。
+
+    返回重建后的 result_json（浅拷贝 + 新 sections）；diagnosis 缺失或重建失败时返回 None。
+    """
+    diag = result_json.get("diagnosis")
+    if not isinstance(diag, Mapping) or not diag:
+        return None
+    try:
+        sections = _build_sections(
+            diag,
+            risk_level=str(result_json.get("risk_level") or "unknown"),
+            confidence=result_json.get("confidence"),
+            confidence_source=str(result_json.get("confidence_source") or "未知"),
+        )
+    except Exception:
+        logger.exception("根据 result_json.diagnosis 重建 sections 失败，保留原存储结构")
+        return None
+    rebuilt = dict(result_json)
+    rebuilt["sections"] = sections
+    return rebuilt
+
+
 def build_result_json(
     diag: Mapping[str, Any],
     *,

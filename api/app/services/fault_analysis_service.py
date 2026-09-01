@@ -55,6 +55,18 @@ def serialize_summary(item: FaultAnalysis) -> FaultAnalysisSummary:
 
 
 def serialize_detail(item: FaultAnalysis) -> FaultAnalysisDetail:
+    # LP-537 兼容：历史记录存储的 sections 为旧字段式结构，读取时若 result_json
+    # 含完整 diagnosis，用当前 _build_sections 实时重建，保证与 docx 报告同源。
+    # 惰性导入避免与 fault_diagnosis_service 顶层循环依赖。
+    from .fault_diagnosis_service import rebuild_sections_from_diagnosis
+
+    result_json = item.result_json or {}
+    try:
+        rebuilt = rebuild_sections_from_diagnosis(result_json)
+    except Exception:
+        rebuilt = None
+    if rebuilt is not None:
+        result_json = rebuilt
     return FaultAnalysisDetail(
         id=item.id,
         title=item.title,
@@ -85,7 +97,7 @@ def serialize_detail(item: FaultAnalysis) -> FaultAnalysisDetail:
         traveling_wave_distance_km=item.traveling_wave_distance_km,
         optical_position=item.optical_position,
         optical_device_location=item.optical_device_location,
-        result_json=item.result_json or {},
+        result_json=result_json,
         upload_files=item.upload_files or {},
         create_date=item.create_date,
         create_user=item.create_user,
