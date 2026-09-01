@@ -1,5 +1,5 @@
 import { Badge, Button, Dropdown, Progress, Space, Tooltip, Typography } from "antd";
-import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined, FileTextOutlined, DownloadOutlined, MoreOutlined } from "@ant-design/icons";
+import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined, MoreOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Card } from "@/components/ui-antd";
 import type { FaultAnalysis } from "./types";
@@ -112,29 +112,9 @@ export function AnalysisCard({ analysis, selected, onView, onProcess, onArtifact
                 }}
               />
             </Tooltip>
-            <Tooltip title="计算过程">
-              <Button
-                type="text"
-                size="small"
-                icon={<FileTextOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onProcess?.();
-                }}
-              />
-            </Tooltip>
             <Dropdown
               menu={{
                 items: [
-                  {
-                    key: "artifacts",
-                    label: "产物",
-                    icon: <DownloadOutlined />,
-                    onClick: (info) => {
-                      info.domEvent?.stopPropagation();
-                      onArtifacts?.();
-                    },
-                  },
                   ...(onEdit
                     ? [
                         {

@@ -670,11 +670,6 @@ export default function AdminFaultAnalysisPage() {
         render: (_: unknown, row) => {
           // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/计算过程），其余操作收进 ⋯ 三点下拉
           const moreMenuItems: MenuProps["items"] = [
-            {
-              key: "artifacts",
-              label: "产物",
-              onClick: () => setArtifactsModal({ id: row.id, title: row.title }),
-            },
             ...(canManage
               ? [
                   {
@@ -696,9 +691,6 @@ export default function AdminFaultAnalysisPage() {
             <Space wrap>
               <Button size="small" onClick={() => openDetail(row)}>
                 详情
-              </Button>
-              <Button size="small" onClick={() => openDetail(row, "process")}>
-                计算过程
               </Button>
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" icon={<MoreOutlined />} />
