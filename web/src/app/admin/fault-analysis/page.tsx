@@ -28,6 +28,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useAuth } from "@/components/auth-provider";
 import { AnalysisCardList } from "@/components/fault-analysis/analysis-card-list";
 import { AnalysisDetailView } from "@/components/fault-analysis/analysis-detail-view";
+import { ArtifactsModal } from "@/components/fault-analysis/artifacts-modal";
 import { CreateAnalysisFormTab } from "@/components/fault-analysis/create-analysis-form-tab";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { readApiError } from "@/lib/api";
@@ -174,6 +175,7 @@ export default function AdminFaultAnalysisPage() {
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [tableScrollY, setTableScrollY] = useState(FAULT_TABLE_MIN_SCROLL_Y);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  const [artifactsModal, setArtifactsModal] = useState<{ id: string; title?: string } | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
   const [wsProgressMap, setWsProgressMap] = useState<Record<string, { progress: number; status: string; error?: string; step?: string }>>({});
 
@@ -670,7 +672,7 @@ export default function AdminFaultAnalysisPage() {
             {
               key: "artifacts",
               label: "产物",
-              onClick: () => openDetail(row, "artifacts"),
+              onClick: () => setArtifactsModal({ id: row.id, title: row.title }),
             },
             ...(canManage
               ? [
@@ -861,7 +863,7 @@ export default function AdminFaultAnalysisPage() {
                           }}
                           onArtifacts={(id) => {
                             const record = analyses.find((item) => item.id === id);
-                            openDetail(record ?? { id }, "artifacts");
+                            setArtifactsModal({ id, title: record?.title });
                           }}
                           onEdit={canManage ? handleEdit : undefined}
                           onDelete={canManage ? handleDelete : undefined}
@@ -890,6 +892,11 @@ export default function AdminFaultAnalysisPage() {
           ]}
         />
       </div>
+      <ArtifactsModal
+        analysisId={artifactsModal?.id ?? null}
+        open={Boolean(artifactsModal)}
+        onClose={() => setArtifactsModal(null)}
+      />
     </>
   );
 }
