@@ -348,9 +348,16 @@ export default function AtpModelsPage() {
   };
 
   const handleSearch = useCallback(() => {
+    // LP-545：关键词/分页都未变化时查询键不变，react-query 不会自动重新拉取；
+    // 手动强制刷新，保证重复点击「查询」也会触发查询（如拉取新数据）。
+    const keywordChanged = keywordInput.trim() !== searchKeyword.trim();
+    const pageChanged = paginationCurrent !== 1;
     setSearchKeyword(keywordInput);
     setPagination((previous) => ({ ...previous, current: 1 }));
-  }, [keywordInput]);
+    if (!keywordChanged && !pageChanged) {
+      void queryClient.refetchQueries({ queryKey: ["atp-assets"] });
+    }
+  }, [keywordInput, searchKeyword, paginationCurrent, queryClient]);
 
   const assetItems = useMemo(() => assetsQuery.data?.items ?? [], [assetsQuery.data?.items]);
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Button,
@@ -54,6 +54,7 @@ export default function AdminLightningRetrofitPage() {
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage") || hasPermission("tower.manage");
+  const queryClient = useQueryClient();
 
   const jobsListPath = useMemo(() => {
     const params = new URLSearchParams();
@@ -90,8 +91,15 @@ export default function AdminLightningRetrofitPage() {
   });
 
   const handleSearch = () => {
+    // LP-545：关键词/分页都未变化时查询键不变，react-query 不会自动重新拉取；
+    // 手动强制刷新，保证重复点击「查询」也会触发查询（如拉取新数据）。
+    const keywordChanged = keywordInput.trim() !== keyword.trim();
+    const pageChanged = paginationCurrent !== 1;
     setKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
+    if (!keywordChanged && !pageChanged) {
+      void queryClient.refetchQueries({ queryKey: [jobsListPath] });
+    }
   };
 
   const handleDeleteJob = async (job: FlAnalysisJobSummary) => {

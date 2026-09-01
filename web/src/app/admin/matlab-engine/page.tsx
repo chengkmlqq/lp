@@ -688,12 +688,20 @@ export default function AdminMatlabEnginePage() {
   );
 
   const handleQuery = useCallback(() => {
+    // LP-545：关键词/状态/分页都未变化时查询键不变，react-query 不会自动重新拉取；
+    // 手动强制刷新，保证重复点击「查询」也会触发查询（如拉取新数据）。
+    const keywordChanged = keywordInput.trim() !== searchKeyword.trim();
+    const statusChanged = statusFilterInput !== statusFilter;
+    const pageChanged = paginationCurrent !== 1;
     setSearchKeyword(keywordInput);
     setStatusFilter(statusFilterInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(1);
     setAllLoadedVersions([]);
-  }, [keywordInput, statusFilterInput]);
+    if (!keywordChanged && !statusChanged && !pageChanged) {
+      void queryClient.refetchQueries({ queryKey: ["admin.matlab.versions", effectiveSlug] });
+    }
+  }, [keywordInput, searchKeyword, statusFilterInput, statusFilter, paginationCurrent, queryClient, effectiveSlug]);
 
   const handleModuleSearch = useCallback(() => {
     setModuleKeyword(moduleKeywordInput);

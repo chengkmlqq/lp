@@ -318,8 +318,15 @@ export default function AdminFlAnalysisPage() {
   }
 
   const handleSearch = () => {
+    // LP-545：关键词/分页都未变化时查询键不变，react-query 不会自动重新拉取；
+    // 手动强制刷新，保证重复点击「查询」也会触发查询（如拉取新数据）。
+    const keywordChanged = keywordInput.trim() !== keyword.trim();
+    const pageChanged = paginationCurrent !== 1;
     setKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
+    if (!keywordChanged && !pageChanged) {
+      void queryClient.refetchQueries({ queryKey: [jobsListPath] });
+    }
   };
 
   const createJobMutation = useMutation({
