@@ -204,6 +204,13 @@ export default function AdminFaultAnalysisPage() {
     [canReadLogs],
   );
 
+  // 查询按钮/回车触发：设置关键词与分页，并强制刷新列表（关键词未变时 refetchQueries 保证重新拉取）。
+  const handleQuery = useCallback(() => {
+    setSearchKeyword(keywordInput);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    void queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"] });
+  }, [keywordInput, queryClient]);
+
   const analysesQuery = useQuery({
     queryKey: ["/api/v1/fault-analysis", searchKeyword],
     enabled: !!user && canRead,
@@ -667,22 +674,15 @@ export default function AdminFaultAnalysisPage() {
                           value={keywordInput}
                           onChange={(e) => setKeywordInput(e.target.value)}
                           allowClear
-                          onPressEnter={() => {
-                            setSearchKeyword(keywordInput);
-                            setPagination((prev) => ({ ...prev, current: 1 }));
-                            void queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"] });
-                          }}
+                          onPressEnter={handleQuery}
                         />
                       </Form.Item>
                       <Form.Item style={{ marginBottom: 0 }}>
                         <Button
                           htmlType="button"
                           icon={<SearchOutlined />}
-                          onClick={() => {
-                            setSearchKeyword(keywordInput);
-                            setPagination((prev) => ({ ...prev, current: 1 }));
-                            void queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"] });
-                          }}
+                          loading={analysesQuery.isFetching}
+                          onClick={handleQuery}
                           className="admin-search-btn"
                         >
                           查询
