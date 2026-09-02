@@ -7,6 +7,7 @@ import {
   App,
   Button,
   Drawer,
+  Dropdown,
   Empty,
   Form,
   Progress,
@@ -19,8 +20,9 @@ import {
   message,
   Input,
   Pagination,
+  type MenuProps,
 } from "antd";
-import { DeleteOutlined, PlusOutlined, SearchOutlined, FileSearchOutlined } from "@ant-design/icons";
+import { PlusOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 
@@ -595,30 +597,37 @@ export default function AdminFaultAnalysisPage() {
         width: 180,
         fixed: "right",
         render: (_: unknown, row) => {
-          // 详情 + 删除直接按钮（编辑已移除，删除不再收进 ⋯ 下拉）
+          // 对齐雷电流幅值统计页：详情直接按钮，日志/删除收进 ⋯ 三点下拉
+          const moreMenuItems: MenuProps["items"] = [
+            ...(canReadLogs && row.task_id
+              ? [
+                  {
+                    key: "analysis-log",
+                    label: "分析日志",
+                    onClick: () => openLogViewer(row.task_id, "分析日志", row.title ?? `FA-${row.id.slice(0, 8)}`),
+                  },
+                ]
+              : []),
+            ...(canManage
+              ? [
+                  {
+                    key: "delete",
+                    label: "删除",
+                    danger: true,
+                    onClick: () => handleDelete(row.id),
+                  },
+                ]
+              : []),
+          ];
           return (
             <Space wrap>
               <Button size="small" onClick={() => openDetail(row)}>
                 详情
               </Button>
-              {canReadLogs && row.task_id ? (
-                <Button
-                  size="small"
-                  icon={<FileSearchOutlined />}
-                  onClick={() => openLogViewer(row.task_id, "分析日志", row.title ?? `FA-${row.id.slice(0, 8)}`)}
-                >
-                  日志
-                </Button>
-              ) : null}
-              {canManage ? (
-                <Button
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => handleDelete(row.id)}
-                >
-                  删除
-                </Button>
+              {moreMenuItems.length > 0 ? (
+                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                  <Button size="small" icon={<MoreOutlined />} />
+                </Dropdown>
               ) : null}
             </Space>
           );

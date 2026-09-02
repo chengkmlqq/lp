@@ -21,7 +21,6 @@ export type CreateJobFormValues = {
   job_name: string;
   line_id: string;
   job_type: "normal" | "tongtiao" | "risk";
-  atp_model_id: string;
   current_waveform: "heidler" | "double_slope" | "double_exponential";
   flashover_method: "guideline" | "intersection" | "leader_development";
   altitude_correction: "none" | "formula1" | "formula2";
@@ -32,10 +31,6 @@ export type CreateJobFormValues = {
   tail_time_min_us: number;
   tail_time_max_us: number;
   tail_time_step_us: number;
-  binary_search: boolean;
-  binary_search_low_ka?: number;
-  binary_search_high_ka?: number;
-  binary_search_tolerance_ka?: number;
   fanji_naleishuiping_method: "guicheng" | "atp";
   raoji_naleishuiping_method: "guicheng" | "atp";
   fanji_tzl_method: "none" | "guicheng" | "egm";
@@ -135,7 +130,6 @@ export const CREATE_JOB_DEFAULTS: CreateJobFormValues = {
   job_name: "",
   line_id: "",
   job_type: "normal",
-  atp_model_id: "",
   current_waveform: "heidler",
   flashover_method: "intersection",
   altitude_correction: "none",
@@ -146,12 +140,8 @@ export const CREATE_JOB_DEFAULTS: CreateJobFormValues = {
   tail_time_min_us: 50,
   tail_time_max_us: 50,
   tail_time_step_us: 1,
-  binary_search: false,
-  binary_search_low_ka: 0.1,
-  binary_search_high_ka: 2000,
-  binary_search_tolerance_ka: 0.1,
-  fanji_naleishuiping_method: "guicheng",
-  raoji_naleishuiping_method: "guicheng",
+  fanji_naleishuiping_method: "atp",
+  raoji_naleishuiping_method: "atp",
   fanji_tzl_method: "none",
   raoji_tzl_method: "none",
   include_tower_ids: [],
@@ -370,6 +360,9 @@ export function mitigationMode(job: FlAnalysisJobDetail | FlAnalysisJobSummary |
   const options = readObject(job.execution_options_json);
   return Boolean(options.non_construction);
 }
+
+// LP-561: readMitigationMode 为 mitigationMode 的兼容别名（lightning-retrofit/high-risk-reason 仍在引用）
+export const readMitigationMode = mitigationMode;
 
 export function waveformJobType(job: FlAnalysisJobDetail | FlAnalysisJobSummary | null): "normal" | "tongtiao" | null {
   if (!job) {

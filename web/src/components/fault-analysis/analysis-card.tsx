@@ -1,5 +1,5 @@
-import { Badge, Button, Progress, Space, Tooltip, Typography } from "antd";
-import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, DeleteOutlined, ThunderboltOutlined, DeploymentUnitOutlined, FileSearchOutlined, ApartmentOutlined } from "@ant-design/icons";
+import { Badge, Button, Dropdown, Progress, Space, Tooltip, Typography, type MenuProps } from "antd";
+import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, ThunderboltOutlined, DeploymentUnitOutlined, MoreOutlined, ApartmentOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Card } from "@/components/ui-antd";
 import { RECLOSURE_LABELS } from "./types";
@@ -35,6 +35,34 @@ const statusConfig = {
 
 export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: AnalysisCardProps) {
   const status = statusConfig[analysis.status];
+  // 对齐雷电流幅值统计页：日志/删除收进 ⋯ 三点下拉，详情保留平铺图标按钮
+  const moreMenuItems: MenuProps["items"] = [
+    ...(onLog && analysis.task_id
+      ? [
+          {
+            key: "analysis-log",
+            label: "分析日志",
+            onClick: (info) => {
+              info.domEvent?.stopPropagation();
+              onLog();
+            },
+          },
+        ]
+      : []),
+    ...(onDelete
+      ? [
+          {
+            key: "delete",
+            label: "删除",
+            danger: true,
+            onClick: (info) => {
+              info.domEvent?.stopPropagation();
+              onDelete();
+            },
+          },
+        ]
+      : []),
+  ];
 
   return (
     <Card
@@ -97,32 +125,17 @@ export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: An
                 }}
               />
             </Tooltip>
-            {onLog && analysis.task_id ? (
-              <Tooltip title="查看日志">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<FileSearchOutlined />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onLog();
-                  }}
-                />
-              </Tooltip>
-            ) : null}
-            {onDelete ? (
-              <Tooltip title="删除">
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDelete();
-                  }}
-                />
-              </Tooltip>
+            {moreMenuItems.length > 0 ? (
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Tooltip title="更多">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </Tooltip>
+              </Dropdown>
             ) : null}
           </Space>
         </div>

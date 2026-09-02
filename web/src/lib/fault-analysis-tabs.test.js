@@ -204,8 +204,15 @@ test("LP-319: 故障分析页支持卡片/列表双视图与表格操作列", ()
   assert.ok(PAGE.includes("Table<FaultAnalysis>"), "列表视图应使用 antd Table");
   assert.ok(PAGE.includes("ColumnsType<FaultAnalysis>"), "表格列定义应使用 FaultAnalysis 类型");
   assert.ok(PAGE.includes("FAULT_STATUS_META"), "状态枚举应收敛为页面级常量");
-  assert.ok(PAGE.includes("DeleteOutlined"), "删除按钮应使用 DeleteOutlined 图标");
-  assert.ok(PAGE.includes('danger'), "删除应为直接危险按钮（不再收进 ⋯ 下拉）");
+  assert.ok(PAGE.includes("MoreOutlined"), "操作列应使用 ⋯ 三点下拉（对齐雷电流幅值页）");
+  assert.ok(
+    PAGE.includes('key: "analysis-log"') && PAGE.includes('label: "分析日志"'),
+    "日志入口应收进 ⋯ 下拉菜单",
+  );
+  assert.ok(
+    PAGE.includes('key: "delete"') && PAGE.includes("danger: true"),
+    "删除应收进 ⋯ 下拉并保留危险样式",
+  );
   assert.ok(PAGE.includes('fixed: "right"'), "操作列应固定在右侧");
 });
 
@@ -242,8 +249,12 @@ test("LP-319: 故障分析卡片视图抽象为统一滚动和分页容器", () 
   assert.ok(!PAGE.includes("overflowY: 'auto'"), "卡片滚动不应继续使用内联 overflowY 样式");
 });
 
-test("LP-319: 故障分析卡片删除按钮按处理器存在性渲染（编辑入口已移除）", () => {
-  assert.ok(CARD.includes("onDelete ? ("), "删除按钮应仅在传入 onDelete 时渲染");
+test("LP-319: 故障分析卡片删除/日志入口按处理器存在性渲染（收进 ⋯ 下拉）", () => {
+  assert.ok(CARD.includes("...(onDelete"), "删除入口应仅在传入 onDelete 时渲染（收进 ⋯ 下拉）");
+  assert.ok(
+    CARD.includes("...(onLog && analysis.task_id"),
+    "日志入口应仅在传入 onLog 且存在 task_id 时渲染（收进 ⋯ 下拉）",
+  );
   assert.ok(PAGE.includes("onDelete={canManage ? handleDelete : undefined}"), "卡片视图删除入口应受 canManage 门控");
   assert.ok(!CARD.includes("onEdit"), "编辑入口已移除，卡片不应再接收 onEdit");
 });

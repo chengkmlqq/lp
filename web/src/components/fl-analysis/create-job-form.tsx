@@ -10,8 +10,6 @@ import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import { readLinePreparation } from "@/lib/line-preparation";
 import type {
-  AtpAssetSummary,
-  AtpEngineStatusResponse,
   LineSummary,
   LineTowerListResponse,
   LineTowerSummary,
@@ -25,11 +23,13 @@ import {
 } from "./types";
 import { useFlDimensionOptions, type FlDimensionOption } from "./use-fl-dimensions";
 
+// 新建表单任务类型仅提供 普通计算 / 同跳计算（风险评估暂不在新建入口提供）。
 const JOB_TYPE_FALLBACK_OPTIONS: FlDimensionOption[] = [
   { value: "normal", label: "普通计算" },
   { value: "tongtiao", label: "同跳计算" },
-  { value: "risk", label: "风险评估" },
 ];
+/** 新建表单隐藏「风险评估」任务类型（维度管理 DB / 兜底列表两边都过滤，防漏网）。 */
+const HIDDEN_JOB_TYPES = new Set(["risk"]);
 const CURRENT_WAVEFORM_FALLBACK_OPTIONS: FlDimensionOption[] = [
   { value: "heidler", label: "Heidler" },
   { value: "double_slope", label: "双斜角" },
@@ -61,11 +61,6 @@ type CreateJobFormProps = {
   linesLoading: boolean;
   selectedLine: LineSummary | null;
   selectedJobType: CreateJobFormValues["job_type"];
-  atpModels: AtpAssetSummary[];
-  atpModelsLoading: boolean;
-  atpModelsError: unknown;
-  selectedAtpModel: AtpAssetSummary | null;
-  engineQueryData: AtpEngineStatusResponse | undefined;
   open: boolean;
   submitting: boolean;
   onCancel: () => void;
@@ -101,11 +96,6 @@ export function CreateJobForm({
   linesLoading,
   selectedLine,
   selectedJobType,
-  atpModels,
-  atpModelsLoading,
-  atpModelsError,
-  selectedAtpModel,
-  engineQueryData,
   open,
   submitting,
   onCancel,
@@ -118,7 +108,9 @@ export function CreateJobForm({
   const selectedLineId = Form.useWatch("line_id", form) ?? "";
   const { optionMap, isLoading: dimensionsLoading } = useFlDimensionOptions();
 
-  const jobTypeOptions = useSelectOptions(optionMap.job_type, JOB_TYPE_FALLBACK_OPTIONS);
+  const jobTypeOptions = useSelectOptions(optionMap.job_type, JOB_TYPE_FALLBACK_OPTIONS).filter(
+    (option) => !HIDDEN_JOB_TYPES.has(option.value),
+  );
   const currentWaveformOptions = useSelectOptions(optionMap.current_waveform, CURRENT_WAVEFORM_FALLBACK_OPTIONS);
   const flashoverMethodOptions = useSelectOptions(optionMap.flashover_method, FLASHOVER_METHOD_FALLBACK_OPTIONS);
   const altitudeCorrectionOptions = useSelectOptions(optionMap.altitude_correction, ALTITUDE_CORRECTION_FALLBACK_OPTIONS);
@@ -132,7 +124,7 @@ export function CreateJobForm({
   const showWaveformBlock = isNormal || isTongtiao;
   const showNormalBlock = isNormal;
   const showTongtiaoBlock = isTongtiao;
-  // 风险评估没有计算方法 / 高级参数步骤，仅保留基础信息一步。
+  // 新建表单已不提供「风险评估」，但保留单步分支防御（历史任务 / 兼容 flow 仍可能带 risk 类型）。
   const stepCount = isNormal || isTongtiao ? 3 : 1;
   const lastStepIndex = stepCount - 1;
 
@@ -327,25 +319,25 @@ export function CreateJobForm({
             <Card size="small" className="fl-form-section">
               <div className="fl-form-section-title">计算方法</div>
               <div className="grid gap-3 md:grid-cols-2">
-                <Form.Item name="fanji_naleishuiping_method" label="反击耐雷水平" rules={[{ required: true, message: "请选择反击耐雷水平方法" }]}>
+                <Form.Item name="fanji_naleishuiping_method" label="反击耐雷水平计算方法" rules={[{ required: true, message: "请选择反击耐雷水平计算方法" }]}>
                   <Select
                     loading={dimensionsLoading}
                     options={fanjiNaleishuipingMethodOptions}
                   />
                 </Form.Item>
-                <Form.Item name="raoji_naleishuiping_method" label="绕击耐雷水平" rules={[{ required: true, message: "请选择绕击耐雷水平方法" }]}>
+                <Form.Item name="raoji_naleishuiping_method" label="绕击耐雷水平计算方法" rules={[{ required: true, message: "请选择绕击耐雷水平计算方法" }]}>
                   <Select
                     loading={dimensionsLoading}
                     options={raojiNaleishuipingMethodOptions}
                   />
                 </Form.Item>
-                <Form.Item name="fanji_tzl_method" label="反击跳闸率" rules={[{ required: true, message: "请选择反击跳闸率方法" }]}>
+                <Form.Item name="fanji_tzl_method" label="反击跳闸率计算方法" rules={[{ required: true, message: "请选择反击跳闸率计算方法" }]}>
                   <Select
                     loading={dimensionsLoading}
                     options={fanjiTzlMethodOptions}
                   />
                 </Form.Item>
-                <Form.Item name="raoji_tzl_method" label="绕击跳闸率" rules={[{ required: true, message: "请选择绕击跳闸率方法" }]}>
+                <Form.Item name="raoji_tzl_method" label="绕击跳闸率计算方法" rules={[{ required: true, message: "请选择绕击跳闸率计算方法" }]}>
                   <Select
                     loading={dimensionsLoading}
                     options={raojiTzlMethodOptions}
@@ -359,13 +351,13 @@ export function CreateJobForm({
             <Card size="small" className="fl-form-section">
               <div className="fl-form-section-title">计算方法</div>
               <div className="grid gap-3 md:grid-cols-2">
-                <Form.Item name="fanji_tzl_method" label="反击跳闸率" rules={[{ required: true, message: "请选择反击跳闸率方法" }]}>
+                <Form.Item name="fanji_tzl_method" label="反击跳闸率计算方法" rules={[{ required: true, message: "请选择反击跳闸率计算方法" }]}>
                   <Select
                     loading={dimensionsLoading}
                     options={fanjiTzlMethodOptions}
                   />
                 </Form.Item>
-                <Form.Item name="raoji_tzl_method" label="绕击跳闸率" rules={[{ required: true, message: "请选择绕击跳闸率方法" }]}>
+                <Form.Item name="raoji_tzl_method" label="绕击跳闸率计算方法" rules={[{ required: true, message: "请选择绕击跳闸率计算方法" }]}>
                   <Select
                     loading={dimensionsLoading}
                     options={raojiTzlMethodOptions}
@@ -380,35 +372,6 @@ export function CreateJobForm({
                   />
                 </Form.Item>
               </div>
-            </Card>
-          ) : null}
-
-          {showWaveformBlock ? (
-            <Card size="small" className="fl-form-section mt-3">
-              <div className="fl-form-section-title">ATP模型</div>
-              {atpModelsError ? (
-                <Alert
-                  type="error"
-                  showIcon
-                  message={atpModelsError instanceof Error ? atpModelsError.message : "ATP 模型列表加载失败"}
-                />
-              ) : null}
-              <Form.Item
-                name="atp_model_id"
-                label="ATP模型"
-                rules={[{ required: false, message: "请选择 ATP 模型" }]}
-              >
-                <Select
-                  showSearch
-                  optionFilterProp="label"
-                  loading={atpModelsLoading}
-                  placeholder="选择 ATP 模型（可选，不选则走规则近似计算）"
-                  options={atpModels.map((item) => ({
-                    value: item.id,
-                    label: `${item.name} / ${item.code}`,
-                  }))}
-                />
-              </Form.Item>
             </Card>
           ) : null}
         </>
@@ -461,34 +424,6 @@ export function CreateJobForm({
             </Form.Item>
             <Form.Item name="tail_time_step_us" label="波尾步长(μs)">
               <InputNumber min={0.5} step={0.5} precision={2} className="w-full" />
-            </Form.Item>
-          </div>
-          <div className="mt-4 flex flex-col gap-1">
-            <Form.Item name="binary_search" label="二分迭代" valuePropName="checked" className="mb-0">
-              <Select
-                options={[
-                  { value: true, label: "开启" },
-                  { value: false, label: "关闭" },
-                ]}
-              />
-            </Form.Item>
-            {selectedAtpModel ? (
-              <Alert
-                type="info"
-                showIcon
-                message="开启后以雷电流为变量进行折半搜索逼近临界耐雷水平（每塔约 15~30 次 ATP 调用）。"
-              />
-            ) : null}
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <Form.Item name="binary_search_low_ka" label="二分下限(kA)">
-              <InputNumber min={0.1} step={0.1} precision={2} className="w-full" disabled={!selectedAtpModel} />
-            </Form.Item>
-            <Form.Item name="binary_search_high_ka" label="二分上限(kA)">
-              <InputNumber min={0.1} step={0.1} precision={2} className="w-full" disabled={!selectedAtpModel} />
-            </Form.Item>
-            <Form.Item name="binary_search_tolerance_ka" label="精度阈值(kA)">
-              <InputNumber min={0.01} step={0.01} precision={2} className="w-full" disabled={!selectedAtpModel} />
             </Form.Item>
           </div>
         </Card>

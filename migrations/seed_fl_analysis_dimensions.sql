@@ -10,8 +10,9 @@
 --   fanji_tzl_method / raoji_tzl_method → create-job-form.tsx 方法选择
 -- 目标：在维度数据管理页面可维护这些枚举（dimension_type 类型 + dimension_item 值）
 -- 幂等：可重复执行（code 唯一约束 / NOT EXISTS 去重）
--- 备注：fl_analysis_job_type 中 mitigation/report/scenario 为内部类型（创建表单仅展示前 3 个），
---       seed 时以 is_enabled = FALSE 标记，前端仅读取启用的项。
+-- 备注：fl_analysis_job_type 中 mitigation/report/scenario 为内部类型（is_enabled = FALSE，前端创建表单不展示）；
+--       9420: risk（风险评估）同样置为 is_enabled = FALSE，新建任务表单仅展示 normal/tongtiao，历史 risk 任务的
+--       展示与详情操作（措施推荐 / 报告入口）不受影响。
 
 -- ============ 1. 维度类型 dimension_type ============
 INSERT INTO dimension_type (id, code, name, description, is_enabled, sort_order, create_date, create_user, update_date, update_user)
@@ -41,14 +42,14 @@ CROSS JOIN (VALUES
 WHERE t.code = 'tower_topology_kind'
   AND NOT EXISTS (SELECT 1 FROM dimension_item i WHERE i.type_id = t.id AND i.code = v.code);
 
--- 2.2 FL分析任务类型（mitigation/report/scenario 为内部类型，is_enabled = FALSE，前端创建表单不展示）
+-- 2.2 FL分析任务类型（risk/mitigation/report/scenario 为内部或暂缓类型，is_enabled = FALSE，前端创建表单不展示）
 INSERT INTO dimension_item (id, dimension_type, type_id, code, name, is_enabled, sort_order, create_date, create_user, update_date, update_user)
 SELECT replace(gen_random_uuid()::text, '-', ''), 'fl_analysis_job_type', t.id, v.code, v.name, v.is_enabled, v.sort_order, NOW() AT TIME ZONE 'UTC', 'system', NOW() AT TIME ZONE 'UTC', 'system'
 FROM dimension_type t
 CROSS JOIN (VALUES
   ('normal', '普通计算', TRUE, 0),
   ('tongtiao', '同跳计算', TRUE, 1),
-  ('risk', '风险评估', TRUE, 2),
+  ('risk', '风险评估', FALSE, 2),
   ('mitigation', '措施推荐', FALSE, 3),
   ('report', '报告', FALSE, 4),
   ('scenario', '场景', FALSE, 5)

@@ -36,8 +36,6 @@ import {
 } from "@/components/fl-analysis/types";
 import { readApiError } from "@/lib/api";
 import type {
-  AtpEngineStatusResponse,
-  AtpAssetListResponse,
   FlAnalysisJobDetail,
   FlAnalysisJobListResponse,
   FlAnalysisJobSummary,
@@ -68,11 +66,9 @@ export default function AdminFlAnalysisPage() {
   const [createJobForm] = Form.useForm<CreateJobFormValues>();
   const selectedLineId = Form.useWatch("line_id", createJobForm);
   const selectedCreateJobType = Form.useWatch("job_type", createJobForm) ?? CREATE_JOB_DEFAULTS.job_type;
-  const selectedAtpModelId = Form.useWatch("atp_model_id", createJobForm) ?? "";
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage") || hasPermission("tower.manage");
-  const canReadAtp = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
   const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
@@ -122,39 +118,8 @@ export default function AdminFlAnalysisPage() {
     },
   });
 
-  const engineQuery = useQuery({
-    queryKey: ["/api/v1/atp/engine/status"],
-    enabled: !!user && canReadAtp,
-    queryFn: async () => {
-      const response = await fetchWithAuth("/api/v1/atp/engine/status");
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as AtpEngineStatusResponse;
-    },
-    staleTime: 30_000,
-  });
-
-  const atpModelsQuery = useQuery({
-    queryKey: ["/api/v1/atp/assets", "enabled"],
-    enabled: !!user && canReadAtp,
-    queryFn: async () => {
-      const response = await fetchWithAuth("/api/v1/atp/assets?status=enabled");
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as AtpAssetListResponse;
-    },
-  });
-
   const jobs = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data?.items]);
   const total = jobsQuery.data?.total ?? 0;
-
-  const atpModels = useMemo(() => atpModelsQuery.data?.items ?? [], [atpModelsQuery.data]);
-  const selectedAtpModel = useMemo(
-    () => atpModels.find((item) => item.id === selectedAtpModelId) ?? null,
-    [atpModels, selectedAtpModelId],
-  );
 
   const selectedLine = useMemo(() => {
     return linesQuery.data?.items.find((item) => item.id === selectedLineId) ?? null;
@@ -166,16 +131,6 @@ export default function AdminFlAnalysisPage() {
       createJobForm.setFieldsValue({ line_id: firstLine.id });
     }
   }, [createJobForm, linesQuery.data?.items]);
-
-  useEffect(() => {
-    if (!["normal", "tongtiao"].includes(selectedCreateJobType)) {
-      return;
-    }
-    if (!atpModels.length || createJobForm.getFieldValue("atp_model_id")) {
-      return;
-    }
-    createJobForm.setFieldValue("atp_model_id", atpModels[0].id);
-  }, [atpModels, createJobForm, selectedCreateJobType]);
 
   const invalidateFlAnalysisQueries = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -281,7 +236,7 @@ export default function AdminFlAnalysisPage() {
       job_type: values.job_type,
     };
     if (values.job_type === "normal" || values.job_type === "tongtiao") {
-      payload.execution_options_json = {
+      const executionOptions: Record<string, unknown> = {
         current_waveform: values.current_waveform,
         flashover_method: values.flashover_method,
         altitude_correction: values.altitude_correction,
@@ -299,20 +254,9 @@ export default function AdminFlAnalysisPage() {
         include_tower_ids: values.include_tower_ids,
       };
       if (values.job_type === "tongtiao") {
-        payload.execution_options_json.selected_tower_ids = values.include_tower_ids;
+        executionOptions.selected_tower_ids = values.include_tower_ids;
       }
-      if (values.atp_model_id) {
-        payload.external_adapter = "atp";
-        payload.adapter_config_json = {
-          model_id: values.atp_model_id,
-        };
-      }
-      if (values.binary_search) {
-        payload.execution_options_json.binary_search = true;
-        payload.execution_options_json.binary_search_low_ka = values.binary_search_low_ka;
-        payload.execution_options_json.binary_search_high_ka = values.binary_search_high_ka;
-        payload.execution_options_json.binary_search_tolerance_ka = values.binary_search_tolerance_ka;
-      }
+      payload.execution_options_json = executionOptions;
     }
     return payload;
   }
@@ -522,11 +466,6 @@ export default function AdminFlAnalysisPage() {
           linesLoading={linesQuery.isLoading}
           selectedLine={selectedLine}
           selectedJobType={selectedCreateJobType}
-          atpModels={atpModels}
-          atpModelsLoading={atpModelsQuery.isLoading}
-          atpModelsError={atpModelsQuery.error}
-          selectedAtpModel={selectedAtpModel}
-          engineQueryData={engineQuery.data}
           onSubmit={(values) => {
             createJobMutation.mutate(values);
           }}
