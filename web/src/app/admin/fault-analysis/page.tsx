@@ -681,7 +681,6 @@ export default function AdminFaultAnalysisPage() {
                         <Button
                           htmlType="button"
                           icon={<SearchOutlined />}
-                          loading={analysesQuery.isFetching}
                           onClick={handleQuery}
                           className="admin-search-btn"
                         >
@@ -752,7 +751,7 @@ export default function AdminFaultAnalysisPage() {
                         <AnalysisCardList
                           analyses={paginatedAnalyses}
                           selectedId={null}
-                          loading={analysesQuery.isLoading}
+                          loading={analysesQuery.isFetching}
                           onView={(id) => {
                             const record = analyses.find((item) => item.id === id);
                             openDetail(record ?? { id });
