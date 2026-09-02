@@ -38,8 +38,8 @@ from ..schemas.fl_analysis import (
     FlAnalysisTowerResultSummary,
 )
 from .atp_asset_service import _truncate_output
-from .fl_analysis_external import execute_binary_search_external, execute_external_waveform_tower_analysis, resolve_external_waveform_job
-from .legacy_atp_adapter import execute_legacy_atp_tower_analysis, resolve_legacy_atp_job
+from .fl_analysis_external import ResolvedExternalWaveformJob, execute_binary_search_external, execute_external_waveform_tower_analysis, resolve_external_waveform_job
+from .legacy_atp_adapter import ResolvedLegacyAtpJob, _normalize_tower_shape_code, execute_legacy_atp_tower_analysis, resolve_legacy_atp_job
 from .fl_analysis_report import build_report_document, build_report_summary_payload
 from .fl_analysis_rules import (
     grade_mitigation_snapshot_payload,
@@ -506,6 +506,60 @@ def execute_job(job_id: str) -> None:
                 summary["external_model_name"] = legacy_external_job.template_dir.name
                 summary["external_version_id"] = legacy_external_job.template_identifier
                 summary["external_version_no"] = 1
+        # LP-560：legacy ATP 模板支持按塔型编码细分。循环内按每塔 tower_type 解析模板并缓存，
+        # 塔型无对应子目录时回退任务级默认模板（legacy_external_job）。
+        legacy_job_cache: dict[str, ResolvedLegacyAtpJob | None] = {}
+        external_job_cache: dict[str, ResolvedExternalWaveformJob | None] = {}
+
+        def _resolve_legacy_job_for_tower(snapshot: FlAnalysisTowerSnapshot) -> ResolvedLegacyAtpJob | None:
+            if legacy_external_job is None:
+                return None
+            tower_type = snapshot.tower_type or ""
+            cache_key = _normalize_tower_shape_code(tower_type) or "<default>"
+            if cache_key in legacy_job_cache:
+                return legacy_job_cache[cache_key]
+            try:
+                resolved = resolve_legacy_atp_job(
+                    adapter_config_json=job.adapter_config_json or {},
+                    execution_options=execution_options,
+                    tower_type=tower_type,
+                )
+            except Exception as exc:  # 塔型子目录/默认模板缺失时回退任务级默认，避免单塔失败拖垮整批
+                logger.warning(
+                    "[ATP] 按塔型解析模板失败（tower=%s type=%s）：%s，回退默认模板",
+                    snapshot.tower_no,
+                    tower_type,
+                    exc,
+                )
+                resolved = legacy_external_job
+            legacy_job_cache[cache_key] = resolved
+            return resolved
+
+        def _resolve_external_job_for_tower(snapshot: FlAnalysisTowerSnapshot) -> ResolvedExternalWaveformJob | None:
+            if external_job is None:
+                return None
+            tower_type = snapshot.tower_type or ""
+            cache_key = _normalize_tower_shape_code(tower_type) or "<default>"
+            if cache_key in external_job_cache:
+                return external_job_cache[cache_key]
+            try:
+                resolved = resolve_external_waveform_job(
+                    db,
+                    external_adapter=job.external_adapter,
+                    adapter_config_json=job.adapter_config_json or {},
+                    tower_type=tower_type,
+                )
+            except Exception as exc:  # 塔型子目录缺失时回退资产根目录模板，避免单塔失败拖垮整批
+                logger.warning(
+                    "[ATP] 按塔型解析资产模板失败（tower=%s type=%s）：%s，回退默认模板",
+                    snapshot.tower_no,
+                    tower_type,
+                    exc,
+                )
+                resolved = external_job
+            external_job_cache[cache_key] = resolved
+            return resolved
+
         for idx, snapshot in enumerate(snapshots, start=1):
             payload = {
                 "base_tower_json": snapshot.base_tower_json or {},
@@ -530,9 +584,12 @@ def execute_job(job_id: str) -> None:
             elif waveform_job_type == "normal":
                 baseline_result = grade_normal_snapshot_payload(payload, execution_options=execution_options)
                 if external_job is not None:
+                    resolved_job = _resolve_external_job_for_tower(snapshot)
+                    if resolved_job is None:
+                        raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
                     if bool(execution_options.get("binary_search")):
                         execution = execute_binary_search_external(
-                            external_job,
+                            resolved_job,
                             job=job,
                             snapshot=snapshot,
                             execution_options=execution_options,
@@ -540,7 +597,7 @@ def execute_job(job_id: str) -> None:
                         )
                     else:
                         execution = execute_external_waveform_tower_analysis(
-                            external_job,
+                            resolved_job,
                             job=job,
                             snapshot=snapshot,
                             execution_options=execution_options,
@@ -554,8 +611,11 @@ def execute_job(job_id: str) -> None:
                     if execution.stderr_text:
                         stderr_chunks.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
                 elif legacy_external_job is not None:
+                    resolved_job = _resolve_legacy_job_for_tower(snapshot)
+                    if resolved_job is None:
+                        raise RuntimeError(f"legacy ATP 模板解析失败：{snapshot.tower_no}")
                     execution = execute_legacy_atp_tower_analysis(
-                        legacy_external_job,
+                        resolved_job,
                         job=job,
                         snapshot=snapshot,
                         execution_options=execution_options,
@@ -573,9 +633,12 @@ def execute_job(job_id: str) -> None:
             elif waveform_job_type == "tongtiao":
                 baseline_result = grade_tongtiao_snapshot_payload(payload, execution_options=execution_options)
                 if external_job is not None:
+                    resolved_job = _resolve_external_job_for_tower(snapshot)
+                    if resolved_job is None:
+                        raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
                     if bool(execution_options.get("binary_search")):
                         execution = execute_binary_search_external(
-                            external_job,
+                            resolved_job,
                             job=job,
                             snapshot=snapshot,
                             execution_options=execution_options,
@@ -583,7 +646,7 @@ def execute_job(job_id: str) -> None:
                         )
                     else:
                         execution = execute_external_waveform_tower_analysis(
-                            external_job,
+                            resolved_job,
                             job=job,
                             snapshot=snapshot,
                             execution_options=execution_options,
@@ -597,8 +660,11 @@ def execute_job(job_id: str) -> None:
                     if execution.stderr_text:
                         stderr_chunks.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
                 elif legacy_external_job is not None:
+                    resolved_job = _resolve_legacy_job_for_tower(snapshot)
+                    if resolved_job is None:
+                        raise RuntimeError(f"legacy ATP 模板解析失败：{snapshot.tower_no}")
                     execution = execute_legacy_atp_tower_analysis(
-                        legacy_external_job,
+                        resolved_job,
                         job=job,
                         snapshot=snapshot,
                         execution_options=execution_options,

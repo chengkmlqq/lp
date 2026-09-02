@@ -37,6 +37,22 @@ from .storage_driver import (
 )
 
 PLACEHOLDER_PATTERN = re.compile(r"{{\s*([^{}]+?)\s*}}")
+
+
+def _normalize_tower_shape_code(value: str) -> str:
+    """规范化塔型编码用于资产子目录名（LP-560）。
+
+    C# 式塔型编码如 d500shangzi/s500guxing/zhiliu500 仅含字母数字；
+    中文「直线/耐张」或空值返回空串，调用方回退到资产根目录模板。
+    """
+    if not value:
+        return ""
+    normalized = re.sub(r"[^a-z0-9]", "", value.lower())
+    if not normalized or not re.search(r"[a-z]", normalized):
+        return ""
+    return normalized
+
+
 DEFAULT_JSON_MARKERS = ("FL_ANALYSIS_RESULT_BEGIN", "FL_ANALYSIS_RESULT_END")
 LEGACY_RESULT_KEY_MAP = {
     "反击耐雷水平": "counterstrike_withstand_ka",
@@ -100,12 +116,16 @@ def _resolve_asset_worktree(
     db: Session,
     *,
     asset: AtpAsset,
+    tower_type: str | None = None,
 ) -> dict[str, Any]:
     """Resolve an executable file tree directly from the asset's own storage.
 
     Assets are created by uploading files straight into the asset root
     (``/atp-assets/<code>``). This helper walks that root and auto-detects
     the entry ``.atp`` file.
+
+    LP-560：支持按塔型编码细分 —— 优先查找 ``<root>/<塔型编码>/work.atp``，
+    找不到时回退资产根目录 ``<root>/work.atp``（兼容旧布局）。
 
     Returns a dict compatible with the run payload::
 
@@ -126,17 +146,31 @@ def _resolve_asset_worktree(
     mount = _resolve_mount(db, mount_code)
     driver = build_storage_driver(mount.backend, mount)
 
-    try:
-        tree = _walk_storage_tree(driver, root_path)
-    except HTTPException as exc:
+    search_roots = [root_path]
+    shape_code = _normalize_tower_shape_code(str(tower_type or "").strip())
+    if shape_code:
+        search_roots.insert(0, normalize_virtual_path(f"{root_path.rstrip('/')}/{shape_code}"))
+
+    tree = None
+    root = root_path
+    for candidate_root in search_roots:
+        try:
+            tree = _walk_storage_tree(driver, candidate_root)
+        except HTTPException:
+            continue
+        if tree is not None and any(path.lower().endswith(".atp") for path in tree.file_paths):
+            root = candidate_root
+            break
+
+    if tree is None:
         raise RuntimeError(
             f"ATP 资产缺少可执行模板文件: {asset.code}（{root_path} 无可用文件）"
-        ) from exc
+        )
 
     atp_files = sorted(path for path in tree.file_paths if path.lower().endswith(".atp"))
     entry_file = "work.atp" if "work.atp" in tree.file_paths else (atp_files[0] if atp_files else None)
     if entry_file is None:
-        raise RuntimeError(f"ATP 资产缺少可执行模板文件: {asset.code}（根目录未找到 work.atp 或 .atp 文件）")
+        raise RuntimeError(f"ATP 资产缺少可执行模板文件: {asset.code}（{root} 未找到 work.atp 或 .atp 文件）")
 
     warnings: list[str] = []
     result_file = _normalize_relative_path(
@@ -146,7 +180,7 @@ def _resolve_asset_worktree(
         )
     )
 
-    entry_path = normalize_virtual_path(f"{root_path.rstrip('/')}/{entry_file}")
+    entry_path = normalize_virtual_path(f"{root.rstrip('/')}/{entry_file}")
     try:
         read_result = driver.read_file(entry_path)
     except (HTTPException, StorageDriverError) as exc:
@@ -160,15 +194,16 @@ def _resolve_asset_worktree(
         "directory_count": len(tree.directories),
         "max_depth": tree.max_depth,
         "detected_entry_file": entry_file,
+        "detected_root": root,
         "sample_files": [path for path in sorted(tree.file_paths)[:20]],
         "storage_mount_code": mount.code,
-        "storage_root_path": root_path,
+        "storage_root_path": root,
     }
     return {
         "entry_file": entry_file,
         "result_file": result_file,
         "storage_mount_code": mount.code,
-        "storage_root_path": root_path,
+        "storage_root_path": root,
         "atp_text": atp_text,
         "manifest": manifest,
         "warnings": warnings,
@@ -180,6 +215,7 @@ def resolve_external_waveform_job(
     *,
     external_adapter: str,
     adapter_config_json: dict[str, Any],
+    tower_type: str | None = None,
 ) -> ResolvedExternalWaveformJob:
     adapter = str(external_adapter or "").strip().lower()
     if adapter not in {"atp", "wine"}:
@@ -194,7 +230,7 @@ def resolve_external_waveform_job(
     if asset is None:
         raise RuntimeError(f"指定的 ATP 资产不存在: {asset_id}")
 
-    worktree = _resolve_asset_worktree(db, asset=asset)
+    worktree = _resolve_asset_worktree(db, asset=asset, tower_type=tower_type)
     atp_text = worktree["atp_text"]
     entry_file = worktree["entry_file"]
     result_file = worktree["result_file"]

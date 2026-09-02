@@ -43,12 +43,6 @@ import type {
   TowerDetailResponse,
 } from "@/types/auth";
 
-const TOWER_TYPE_OPTIONS = [
-  { value: "", label: "全部塔型" },
-  { value: "直线", label: "直线" },
-  { value: "耐张", label: "耐张" },
-] as const;
-
 const TOWER_TABLE_DEFAULT_PAGE_SIZE = 20;
 const TOWER_MAP_QUERY_LIMIT = 500;
 
@@ -598,10 +592,11 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
             />
           </Form.Item>
           <Form.Item label="塔型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-            <Select
+            <Input
               value={towerTypeFilter}
-              options={[...TOWER_TYPE_OPTIONS]}
-              onChange={(value) => setTowerTypeFilter(value)}
+              onChange={(event) => setTowerTypeFilter(event.target.value)}
+              allowClear
+              placeholder="塔型编码（如 d500shangzi）"
             />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
@@ -766,14 +761,11 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
             </Col>
             <Col xs={24} md={12}>
               <Form.Item label="塔型">
-                <Select
-                  value={towerForm.tower_type}
+                <Input
+                  value={towerForm.tower_type ?? ""}
                   allowClear
-                  options={[
-                    { value: "直线", label: "直线" },
-                    { value: "耐张", label: "耐张" },
-                  ]}
-                  onChange={(value) => setFormValue("tower_type", value)}
+                  placeholder="塔型编码（如 d500shangzi/s500guxing）"
+                  onChange={(event) => setFormValue("tower_type", event.target.value)}
                 />
               </Form.Item>
             </Col>

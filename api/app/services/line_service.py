@@ -703,8 +703,14 @@ def import_line_towers_from_csv(
         source_model_name = _normalize_str(row.get("杆塔模型"))
         model_defaults = _load_tower_model_defaults_from_row(db, source_row=row, source_model_name=source_model_name)
         tower.tower_model = model_defaults.get("tower_model") if model_defaults else source_model_name
+        # LP-560：塔形列优先作为完整塔型编码（参照 C# 的 mTaXing_GanTa，如 d500shangzi/s500guxing），
+        # 缺省时回退「直线或耐张杆塔」列（仅直线/耐张），保证旧模板数据兼容。
         tower.tower_type = _pick_optional_value(
+            _normalize_str(row.get("塔形")),
             _normalize_str(row.get("直线或耐张杆塔")),
+        )
+        tower.tower_type = _pick_optional_value(
+            tower.tower_type,
             model_defaults.get("tower_type") if model_defaults else None,
         )
         tower.longitude = _parse_float(row.get("经度"))

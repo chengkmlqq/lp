@@ -313,7 +313,7 @@ def assemble_ledger_rows(db: Session, line_id: str) -> list[dict[str, object]]:
                 "海拔m": tower.altitude_m,
                 "杆塔模型": tower.tower_model,
                 "塔形": tower.tower_type,
-                "直线或耐张杆塔": tower.tower_type,
+                "直线或耐张杆塔": profile.structure_kind if profile is not None else None,
                 "绝缘子串长度mm": insulator_mm,
                 "接地电阻": tower.ground_resistance_ohm,
                 "反击耐雷水平kA": lightning.counterstroke_withstand_ka if lightning is not None else None,

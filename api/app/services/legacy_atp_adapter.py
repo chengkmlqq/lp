@@ -111,6 +111,7 @@ def resolve_legacy_atp_job(
     *,
     adapter_config_json: dict[str, Any],
     execution_options: dict[str, Any] | None = None,
+    tower_type: str | None = None,
 ) -> ResolvedLegacyAtpJob:
     config = dict(adapter_config_json or {})
     normalized_execution_options = dict(execution_options or {})
@@ -137,6 +138,7 @@ def resolve_legacy_atp_job(
     template_dir = _resolve_template_directory(
         template_root=template_root,
         template_identifier=template_identifier,
+        tower_type=tower_type,
     )
     use_egm = _coerce_bool(
         config.get("use_egm"),
@@ -860,15 +862,37 @@ def _resolve_template_identifier(
     return calculation_mode
 
 
-def _resolve_template_directory(*, template_root: Path, template_identifier: str) -> Path:
-    candidate = (template_root / template_identifier).resolve(strict=False)
-    if not candidate.is_relative_to(template_root.resolve(strict=False)):
+def _resolve_template_directory(*, template_root: Path, template_identifier: str, tower_type: str | None = None) -> Path:
+    # LP-560：模板目录支持按塔型编码细分，优先 <template_identifier>/<塔型编码>，
+    # 找不到时回退任务级模板目录 <template_identifier>（兼容旧模板布局）。
+    base_candidate = (template_root / template_identifier).resolve(strict=False)
+    if not base_candidate.is_relative_to(template_root.resolve(strict=False)):
         raise RuntimeError(f"模型目录越界: {template_identifier}")
-    if candidate.is_dir():
-        return candidate
+    if tower_type:
+        shape_subdir = _normalize_tower_shape_code(str(tower_type or "").strip())
+        if shape_subdir:
+            candidate = (base_candidate / shape_subdir).resolve(strict=False)
+            if candidate.is_relative_to(template_root.resolve(strict=False)) and candidate.is_dir():
+                return candidate
+    if base_candidate.is_dir():
+        return base_candidate
     if template_root.is_dir() and template_identifier in {"", ".", "./"}:
         return template_root
-    raise RuntimeError(f"模型目录不存在: {candidate}")
+    raise RuntimeError(f"模型目录不存在: {base_candidate}")
+
+
+def _normalize_tower_shape_code(value: str) -> str:
+    """规范化塔型编码用于模板子目录名（LP-560）。
+
+    C# 式塔型编码如 d500shangzi/s500guxing/zhiliu500 仅含字母数字；
+    中文「直线/耐张」或空值返回空串，调用方回退到任务级默认模板。
+    """
+    if not value:
+        return ""
+    normalized = re.sub(r"[^a-z0-9]", "", value.lower())
+    if not normalized or not re.search(r"[a-z]", normalized):
+        return ""
+    return normalized
 
 
 def _discover_model_file(template_dir: Path, raw_path: Any) -> str | None:

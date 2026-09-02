@@ -144,7 +144,12 @@ def grade_snapshot_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     ground_resistance = _as_float(base.get("ground_resistance_ohm"))
     lightning_density = _as_float(base.get("lightning_density"))
     span_large = _as_float(base.get("span_large_m"))
-    tower_type = str(base.get("tower_type") or profile.get("structure_kind") or "")
+    # LP-560：tower_type 为完整塔型编码（如 d500shangzi），直线/耐张取 structure_kind 列；
+    # 兼容旧数据（tower_type 可能仍为「直线/耐张」）。
+    tower_type = str(base.get("tower_type") or "")
+    structure_kind = str(profile.get("structure_kind") or "")
+    if not structure_kind and ("耐张" in tower_type or "直线" in tower_type):
+        structure_kind = tower_type
     stroke_mode = str(profile.get("stroke_mode") or "")
     arrester_values = [profile.get("arrester_a"), profile.get("arrester_b"), profile.get("arrester_c")]
 
@@ -205,7 +210,7 @@ def grade_snapshot_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         causes.append("杆塔高度暴露偏高")
         recommendations.append("复核塔型高度与屏蔽布置")
 
-    if "耐张" in tower_type:
+    if "耐张" in structure_kind:
         causes.append("耐张杆塔参数更敏感")
 
     if "反击" in stroke_mode:
