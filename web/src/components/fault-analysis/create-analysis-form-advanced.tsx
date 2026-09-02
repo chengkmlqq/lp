@@ -315,9 +315,17 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
     const allWarnings: string[] = [];
     const pendingChecks: Array<{ files: FaultAnalysisTempFile[]; label: string }> = [];
 
-    for (const { field, label } of FILE_KIND_MAP) {
+    for (const { field, kind, label } of FILE_KIND_MAP) {
       const files = values[field] ?? [];
       if (files.length === 0) {
+        continue;
+      }
+      // 录波文件由后端 extract-wave 做识别提取（不走本地 startValidate，因此没有 preview）；
+      // 只有仍在提取中（pdfExtracting）才算「在解析中」需要提示，提取完成即可正常提交。
+      if (kind === "wave_data") {
+        if (files.some((f) => f.pdfExtracting)) {
+          pendingChecks.push({ files, label });
+        }
         continue;
       }
       const filesWithPreview = files.filter((f) => !!f.preview);
