@@ -50,9 +50,12 @@ def _update_progress(analysis_id: str, progress: float, status: str | None = Non
 
     payload: dict[str, Any] = {
         "analysis_id": analysis_id,
-        "progress": max(progress, 0),
         "status": status or "",
     }
+    # 阶段事件（progress<0，step_callback）不携带 progress 字段，避免前端把阶段事件
+    # 误当作真实进度（旧逻辑 max(-1,0)=0 会把进度条重置为 0，表现为进度不更新）。
+    if progress >= 0:
+        payload["progress"] = max(progress, 0)
     if step is not None:
         payload["step"] = step
 

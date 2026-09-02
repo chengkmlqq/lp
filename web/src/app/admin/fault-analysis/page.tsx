@@ -241,12 +241,19 @@ export default function AdminFaultAnalysisPage() {
         event.name === "analysis.diagnosis_failed"
       ) {
         if (analysisId) {
+          // 阶段事件（step_callback，后端不携带 progress 字段）只更新阶段描述，
+          // 不覆盖真实进度；仅当 payload 带数值 progress 时才视为真实进度更新，
+          // 避免进度条被阶段事件（旧逻辑 progress=0）反复重置为 0。
+          const rawProgress = payload.progress;
+          const isRealProgress = typeof rawProgress === "number" && !Number.isNaN(rawProgress);
           const progress =
             event.name === "analysis.diagnosis_failed"
               ? 0
               : event.name === "analysis.diagnosis_completed"
                 ? 100
-                : Number(payload.progress);
+                : isRealProgress
+                  ? rawProgress
+                  : Number.NaN;
           const status =
             event.name === "analysis.diagnosis_completed"
               ? "completed"
@@ -257,15 +264,19 @@ export default function AdminFaultAnalysisPage() {
                   : event.name === "analysis.diagnosis_started"
                     ? "processing"
                     : "processing";
-          setWsProgressMap((previous) => ({
-            ...previous,
-            [analysisId]: {
-              progress: Number.isNaN(progress) ? 0 : Math.max(0, Math.min(100, progress)),
-              status,
-              error: typeof payload.error === "string" ? payload.error : undefined,
-              step: typeof payload.step === "string" ? payload.step : undefined,
-            },
-          }));
+          setWsProgressMap((previous) => {
+            const previousProgress = previous[analysisId]?.progress ?? 0;
+            const finalProgress = Number.isNaN(progress) ? previousProgress : progress;
+            return {
+              ...previous,
+              [analysisId]: {
+                progress: Math.max(0, Math.min(100, finalProgress)),
+                status,
+                error: typeof payload.error === "string" ? payload.error : undefined,
+                step: typeof payload.step === "string" ? payload.step : undefined,
+              },
+            };
+          });
         }
         // 进度事件密集，只增量更新，不整表刷新
         void queryClient.setQueryData<FaultAnalysisListResponse>(["/api/v1/fault-analysis", searchKeywordCacheRef.current], (old) => {
