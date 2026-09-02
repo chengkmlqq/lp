@@ -300,12 +300,17 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
   ];
 
   // LP-420：提交前置内容校验汇总
-  const handleFinish = (values: CreateFaultAnalysisFormValues) => {
+  const handleFinish = () => {
     // 步骤切换后同位置按钮由「下一步」替换为「提交」，快速连点的第二次点击
     // 可能落在「提交」上误触发创建（弹窗随之关闭），忽略切换后极短窗口内的提交。
     if (Date.now() - lastStepChangeAtRef.current < 350) {
       return;
     }
+    // 分步表单提交时 onFinish 的 values 只包含「当前步骤已挂载」的字段（rc-field-form
+    // validateFields → getFieldsValue(namePathList) 只收集已注册字段），第一步/第二步的
+    // 值（任务名称、线路、故障信息、录波文件）会被丢掉，导致创建请求缺失标量字段与
+    // 录波文件、判别程序收到空录波输入（已复现）。改用 getFieldsValue(true) 取完整 store。
+    const values = form.getFieldsValue(true) as CreateFaultAnalysisFormValues;
     const allErrors: string[] = [];
     const allWarnings: string[] = [];
     const pendingChecks: Array<{ files: FaultAnalysisTempFile[]; label: string }> = [];

@@ -216,7 +216,7 @@ export function CreateJobForm({
       form={form}
       layout="vertical"
       initialValues={CREATE_JOB_DEFAULTS}
-      onFinish={onSubmit}
+      onFinish={() => onSubmit(form.getFieldsValue(true) as CreateJobFormValues)}
     >
       <Steps current={currentStep} items={stepItems} className="mb-4" size="small" />
 
