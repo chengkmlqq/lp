@@ -196,8 +196,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
   const handlePdfExtracted = useCallback((item: FaultAnalysisTempFile, response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string }) => {
     setExtractState({ response, item });
     const extracted = response.extracted || {};
-    // 识别结果回填第二步故障信息表单（数值字段清洗单位、重合闸转枚举码，保证输入框/下拉可显示）
-    form.setFieldsValue({
+    const patch = {
       station_name: extracted.station ?? undefined,
       fault_time: extracted.fault_time ?? undefined,
       fault_line_name: extracted.line_name ?? undefined,
@@ -211,8 +210,34 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       line_length: toNumber(extracted.line_length_km),
       line_angle: toNumber(extracted.sensitive_angle_deg),
       line_impedance: toNumber(extracted.positive_sequence_impedance_ohm),
-    } as Parameters<typeof form.setFieldsValue>[0]);
-  }, [form]);
+    } as Parameters<typeof form.setFieldsValue>[0];
+    // 线路联动：识别出的线路与第一步所选线路不一致时，能匹配到系统线路则自动切换 line_id，
+    // 匹配不到则提示用户（避免台账按默认线路组装导致判别时线路查不到）。
+    const extractedLineName = String(extracted.line_name ?? "").trim();
+    if (extractedLineName) {
+      const matchedLine = lines.find(
+        (line) => line.name === extractedLineName || line.code === extractedLineName,
+      );
+      const currentLineId = form.getFieldValue("line_id");
+      if (matchedLine) {
+        if (currentLineId && currentLineId !== matchedLine.id) {
+          patch.line_id = matchedLine.id;
+          messageApi.info(`已按录波识别结果自动选择线路「${matchedLine.name}」`);
+        } else if (!currentLineId) {
+          patch.line_id = matchedLine.id;
+        }
+      } else if (currentLineId) {
+        const currentLine = lines.find((line) => line.id === currentLineId);
+        messageApi.warning(
+          `录波识别的线路「${extractedLineName}」不在系统线路列表中，` +
+            `当前第一步选择的是「${currentLine ? `${currentLine.name} (${currentLine.code})` : "未选择"}」，请确认是否需要更换线路；` +
+            "否则判别时台账将按所选线路组装，无法匹配录波线路。",
+        );
+      }
+    }
+    // 识别结果回填第二步故障信息表单（数值字段清洗单位、重合闸转枚举码，保证输入框/下拉可显示）
+    form.setFieldsValue(patch);
+  }, [form, lines, messageApi]);
 
   const handleDownloadExtracted = useCallback((response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string }) => {
     try {
