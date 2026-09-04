@@ -10,4 +10,11 @@ ENV WINEPREFIX="/opt/wineprefix" \
 RUN mkdir -p /opt/wineprefix/dosdevices \
     && ln -sf /app/data/wine/ATP /opt/wineprefix/dosdevices/d: 2>/dev/null || true
 
+# 中文字体（LP-582）：worker 内 matplotlib 渲染地闪密度网格图 / 报告图需要，
+# 缺少时中文标签会渲染成方框（tofu）。与 Dockerfile.base 的 fonts-noto-cjk 保持一致。
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app

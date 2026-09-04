@@ -278,6 +278,14 @@ def _generate_combined_chart(
     except ImportError:
         return None
 
+    # 中文标签（A相/B相/电流等）需要中文字体，否则渲染成方框（与地闪密度图同源问题，LP-582）
+    try:
+        from .lightning_statistics import configure_chinese_font
+
+        configure_chinese_font()
+    except Exception:
+        pass
+
     if common_time_us:
         t0 = common_time_us[0]
         t_us = [(t - t0) * 1_000_000 for t in common_time_us]

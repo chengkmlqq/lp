@@ -345,25 +345,78 @@ def build_density_matrix(
     return matrix
 
 
+# 常见中文字体名关键词（按优先级匹配系统已安装字体）。
+# 具体字体名靠前（SC 简体优先），宽泛的 "CJK" 靠后兜底，避免先命中 TC/JP 变体。
+_CJK_FONT_KEYWORDS = (
+    "Source Han Sans SC",
+    "Noto Sans SC",
+    "Noto Sans CJK SC",
+    "SimHei",
+    "WenQuanYi",
+    "Microsoft YaHei",
+    "PingFang SC",
+    "Noto Serif SC",
+    "AR PL UMing CN",
+    "Droid Sans Fallback",
+    "CJK",
+)
+
+# 静态候选字体列表（动态检测未命中时的回退；matplotlib 按序取第一个可用字体）。
+_FALLBACK_SANS_SERIF = [
+    "SimHei",
+    "Noto Sans CJK SC",
+    "WenQuanYi Zen Hei",
+    "Microsoft YaHei",
+    "PingFang SC",
+    "Source Han Sans SC",
+    "AR PL UMing CN",
+    "DejaVu Sans",
+]
+
+
+def _find_installed_cjk_font() -> str | None:
+    """在 matplotlib 已注册字体中查找一个可用中文字体名，找不到返回 None。"""
+    try:
+        from matplotlib import font_manager
+    except ImportError:
+        return None
+    try:
+        names = {font.name for font in font_manager.fontManager.ttflist}
+    except Exception:
+        return None
+    for keyword in _CJK_FONT_KEYWORDS:
+        for name in names:
+            if keyword.lower() in name.lower():
+                return name
+    return None
+
+
 def _configure_chinese_font() -> None:
     """配置 matplotlib 中文字体（幂等，多次调用安全）。
 
-    font.sans-serif 列表含多个候选中文字体，matplotlib 按序回退到第一个可用字体。
-    必须在 pyplot 首次使用前调用。
+    优先动态选择系统已安装的中文字体，避免中文标签渲染成方框（tofu）；
+    未找到时回退静态候选列表并显式告警，便于定位缺字体环境（如
+    celery worker 容器未安装 fonts-noto-cjk）。
     """
     import matplotlib
+    import warnings
 
-    matplotlib.rcParams["font.sans-serif"] = [
-        "SimHei",
-        "Noto Sans CJK SC",
-        "WenQuanYi Zen Hei",
-        "Microsoft YaHei",
-        "PingFang SC",
-        "Source Han Sans SC",
-        "AR PL UMing CN",
-        "DejaVu Sans",
-    ]
     matplotlib.rcParams["axes.unicode_minus"] = False
+    installed = _find_installed_cjk_font()
+    if installed:
+        matplotlib.rcParams["font.sans-serif"] = [installed, *_FALLBACK_SANS_SERIF]
+    else:
+        matplotlib.rcParams["font.sans-serif"] = list(_FALLBACK_SANS_SERIF)
+        warnings.warn(
+            "未检测到可用的中文字体，地闪密度图中文标签将显示为方框；"
+            "请在运行环境安装 fonts-noto-cjk 等中文字体后重试。",
+            UserWarning,
+            stacklevel=2,
+        )
+
+
+# 公共入口：供其他模块（如 traveling_wave_service 行波波形图）复用同一套中文字体配置。
+configure_chinese_font = _configure_chinese_font
 
 
 def render_density_image(
