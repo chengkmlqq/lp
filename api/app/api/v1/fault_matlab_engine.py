@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -21,8 +21,9 @@ from ...services.fault_matlab_engine_service import (
     publish_draft,
     rollback_to_version,
     trigger_sync_for_module,
+    trigger_sync_for_version,
     update_module,
-    upload_draft,
+    upload_release,
 )
 from ...services.minio_storage import (
     MinioObjectNotFoundError,
@@ -139,26 +140,31 @@ def get_module_versions(
 
 
 @router.post("/modules/{slug}/upload")
-def upload_module_draft(
+def upload_module_release(
     slug: str,
     file: UploadFile = File(...),
+    version_tag: str = Form(...),
+    changelog: str = Form(default=""),
     current_user: CurrentUser = Depends(require_permission("line.manage")),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """上传即发布：上传 ZIP 时直接填写版本号与变更日志，创建已发布版本（无草稿）。"""
     content = file.file.read()
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
     try:
-        draft = upload_draft(
+        release = upload_release(
             db,
             slug,
             content,
+            version_tag=version_tag,
+            changelog=changelog,
             uploaded_by=_current_user_id(current_user),
             uploaded_by_name=_current_user_name(current_user),
         )
     except MatlabEngineError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return draft
+    return release
 
 
 @router.post("/modules/{slug}/publish")
@@ -306,6 +312,21 @@ def sync_module_engine(
 ) -> dict[str, Any]:
     try:
         task_id = trigger_sync_for_module(db, slug, actor_user_id=_current_user_id(current_user))
+    except MatlabEngineError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"task_id": task_id, "status": "dispatched"}
+
+
+@router.post("/modules/{slug}/versions/{version_hash}/sync")
+def sync_module_version_engine(
+    slug: str,
+    version_hash: str,
+    current_user: CurrentUser = Depends(require_permission("line.manage")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """把指定版本同步（部署）到 Worker，使其生效。"""
+    try:
+        task_id = trigger_sync_for_version(db, slug, version_hash, actor_user_id=_current_user_id(current_user))
     except MatlabEngineError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return {"task_id": task_id, "status": "dispatched"}

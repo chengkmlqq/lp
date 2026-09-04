@@ -3,7 +3,6 @@ import {
   getJson,
   postJson,
   readApiError,
-  uploadFileWithAuth,
 } from "@/lib/api";
 import type {
   CreateMatlabModulePayload,
@@ -53,30 +52,21 @@ export async function fetchMatlabModuleVersions(
   );
 }
 
-export async function uploadMatlabDraft(slug: string, file: File): Promise<MatlabVersion> {
-  const response = await uploadFileWithAuth(
+export async function uploadMatlabRelease(
+  slug: string,
+  file: File,
+  payload: { version_tag: string; changelog: string },
+): Promise<MatlabVersion> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("version_tag", payload.version_tag);
+  formData.append("changelog", payload.changelog);
+  const response = await fetchWithAuth(
     `/api/v1/fault-matlab/modules/${encodeURIComponent(slug)}/upload`,
-    file,
+    { method: "POST", body: formData },
   );
   if (!response.ok) throw new Error(await readApiError(response));
   return (await response.json()) as MatlabVersion;
-}
-
-export async function publishMatlabDraft(
-  slug: string,
-  payload: { version_tag: string; changelog: string },
-): Promise<MatlabVersion> {
-  return postJson<MatlabVersion>(
-    `/api/v1/fault-matlab/modules/${encodeURIComponent(slug)}/publish`,
-    payload,
-  );
-}
-
-export async function rollbackMatlabVersion(slug: string, versionHash: string): Promise<MatlabVersion> {
-  return postJson<MatlabVersion>(
-    `/api/v1/fault-matlab/modules/${encodeURIComponent(slug)}/rollback`,
-    { version_hash: versionHash },
-  );
 }
 
 export async function deleteMatlabVersion(slug: string, versionHash: string): Promise<void> {
@@ -96,9 +86,9 @@ export async function fetchMatlabVersionFiles(
   );
 }
 
-export async function syncMatlabModule(slug: string): Promise<MatlabSyncResponse> {
+export async function syncMatlabVersion(slug: string, versionHash: string): Promise<MatlabSyncResponse> {
   return postJson<MatlabSyncResponse>(
-    `/api/v1/fault-matlab/modules/${encodeURIComponent(slug)}/sync`,
+    `/api/v1/fault-matlab/modules/${encodeURIComponent(slug)}/versions/${encodeURIComponent(versionHash)}/sync`,
     {},
   );
 }
@@ -121,7 +111,7 @@ export async function downloadMatlabPackage(slug: string, versionHash: string): 
   const utf8Match = disposition.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
   const plainMatch = disposition.match(/filename="([^"]+)"/i);
   const rawName = (utf8Match?.[1] ?? plainMatch?.[1] ?? "").trim().replace(/"/g, "");
-  let fileName = rawName ? decodeURIComponent(rawName) : "engine.zip";
+  const fileName = rawName ? decodeURIComponent(rawName) : "engine.zip";
 
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

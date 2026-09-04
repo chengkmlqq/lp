@@ -116,11 +116,13 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, 
         </div>
       </div>
 
-      <div className="admin-atp-models-card-actions flex items-center justify-between px-4 py-2">
+      <div className="admin-atp-models-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
         {asset.status === "processing" ? (
           <Progress percent={asset.progress ?? 0} size="small" className="flex-1 max-w-40" />
-        ) : null}
-        <Space size="small">
+        ) : (
+          <div />
+        )}
+        <Space size="small" className="shrink-0">
           <Tooltip title="预览">
             <Button
               type="text"
@@ -152,15 +154,23 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, 
                   icon: <DeleteOutlined />,
                   danger: true,
                   disabled: !canManage || rowBusy,
+                  onClick: (info) => {
+                    info.domEvent?.stopPropagation();
+                    handleDelete();
+                  },
                 },
               ],
-              onClick: () => {
-                handleDelete();
-              },
             }}
             trigger={["click"]}
           >
-            <Button size="small" icon={<MoreOutlined />} onClick={(event) => event.stopPropagation()} />
+            <Tooltip title="更多">
+              <Button
+                type="text"
+                size="small"
+                icon={<MoreOutlined />}
+                onClick={(event) => event.stopPropagation()}
+              />
+            </Tooltip>
           </Dropdown>
         </Space>
       </div>

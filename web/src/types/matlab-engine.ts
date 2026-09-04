@@ -28,7 +28,6 @@ export type MatlabModuleListResponse = {
 
 export type MatlabModuleVersionsResponse = {
   slug: string;
-  draft: MatlabVersion | null;
   releases: MatlabVersion[];
   total: number;
 };
@@ -52,4 +51,9 @@ export type CreateMatlabModulePayload = {
   description?: string;
   required_files?: string[];
   worker_deploy_path?: string;
+};
+
+export type MatlabUploadPayload = {
+  version_tag: string;
+  changelog?: string;
 };

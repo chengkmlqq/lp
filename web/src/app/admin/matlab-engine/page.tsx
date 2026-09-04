@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   App,
+  Badge,
   Button,
   Card,
   Col,
@@ -32,7 +33,6 @@ import {
 } from "antd";
 import {
   ClockCircleOutlined,
-  CloudSyncOutlined,
   CodeOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -41,6 +41,7 @@ import {
   InboxOutlined,
   MoreOutlined,
   PlusOutlined,
+  RocketOutlined,
   SearchOutlined,
   SwapOutlined,
   UploadOutlined,
@@ -60,13 +61,11 @@ import {
   downloadMatlabPackage,
   fetchMatlabModuleVersions,
   fetchMatlabModules,
-  publishMatlabDraft,
-  rollbackMatlabVersion,
-  syncMatlabModule,
+  syncMatlabVersion,
   updateMatlabModule,
-  uploadMatlabDraft,
+  uploadMatlabRelease,
 } from "@/lib/matlab-engine-api";
-import type { MatlabModule, MatlabVersion } from "@/types/matlab-engine";
+import type { MatlabModule, MatlabUploadPayload, MatlabVersion } from "@/types/matlab-engine";
 
 type ModuleFormValues = {
   name: string;
@@ -76,13 +75,6 @@ type ModuleFormValues = {
   required_files?: string;
 };
 
-type PublishFormValues = {
-  version_tag: string;
-  changelog?: string;
-};
-
-type VersionStatusFilter = "draft" | "released" | undefined;
-
 const DEFAULT_MODULE_FORM_VALUES: ModuleFormValues = {
   name: "",
   slug: "",
@@ -91,7 +83,7 @@ const DEFAULT_MODULE_FORM_VALUES: ModuleFormValues = {
   required_files: "",
 };
 
-const DEFAULT_PUBLISH_FORM_VALUES: PublishFormValues = {
+const DEFAULT_UPLOAD_FORM_VALUES: MatlabUploadPayload = {
   version_tag: "",
   changelog: "",
 };
@@ -123,30 +115,13 @@ function formatDateTime(value: string | null | undefined): string {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
-function versionStatusLabel(value: VersionStatusFilter): string {
-  if (value === "draft") return "草稿";
-  if (value === "released") return "已发布";
-  return "-";
-}
-
-// 状态过滤下拉的选中项/选项以 Tag 展示，颜色与表格状态列保持一致
-function versionStatusTag(value: unknown): React.ReactNode {
-  if (value === "draft") {
-    return <Tag color="orange">草稿</Tag>;
-  }
-  if (value === "released") {
-    return <Tag color="green">已发布</Tag>;
-  }
-  return <Tag>{versionStatusLabel(undefined)}</Tag>;
-}
-
 export default function AdminMatlabEnginePage() {
   const { modal: modalApi } = App.useApp();
   const { user, initializing, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
   const [form] = Form.useForm<ModuleFormValues>();
-  const [publishForm] = Form.useForm<PublishFormValues>();
+  const [uploadForm] = Form.useForm<MatlabUploadPayload>();
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -164,17 +139,14 @@ export default function AdminMatlabEnginePage() {
   const [detailModule, setDetailModule] = useState<MatlabModule | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTitle, setPreviewTitle] = useState("文件列表");
   const [previewFiles, setPreviewFiles] = useState<string[]>([]);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
 
-  // 版本筛选
+  // 版本筛选（仅关键词）
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
-  const [statusFilterInput, setStatusFilterInput] = useState<VersionStatusFilter>(undefined);
-  const [statusFilter, setStatusFilter] = useState<VersionStatusFilter>(undefined);
   // 模块筛选（左侧栏）
   const [moduleKeywordInput, setModuleKeywordInput] = useState("");
   const [moduleKeyword, setModuleKeyword] = useState("");
@@ -191,6 +163,7 @@ export default function AdminMatlabEnginePage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const isResizing = useRef(false);
   const [downloadingHash, setDownloadingHash] = useState<string | null>(null);
+  const [syncingHash, setSyncingHash] = useState<string | null>(null);
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -245,7 +218,7 @@ export default function AdminMatlabEnginePage() {
     queryKey: ["admin.matlab.versions", effectiveSlug],
     enabled: Boolean(user && canRead && effectiveSlug),
     queryFn: async () => {
-      if (!effectiveSlug) return { draft: null, releases: [] };
+      if (!effectiveSlug) return { slug: "", releases: [] };
       return fetchMatlabModuleVersions(effectiveSlug);
     },
   });
@@ -276,25 +249,24 @@ export default function AdminMatlabEnginePage() {
         if (event.name === "engine.sync_failed") {
           setError((payload?.error as string | undefined) ?? "同步失败");
         }
-        if (event.name === "engine.draft_uploaded") {
+        if (event.name === "engine.released") {
           setSuccess("上传成功");
-        }
-        if (event.name === "engine.published") {
-          setSuccess("发布成功");
-        }
-        if (event.name === "engine.rollbacked") {
-          setSuccess("已回退");
         }
       },
       [canRead, effectiveSlug, modulesQuery, refreshCurrent, user],
     ),
   );
 
-  const syncMutation = useMutation({
-    mutationFn: async (slug: string) => syncMatlabModule(slug),
-    onSuccess: (_data, slug) => {
+  const syncVersionMutation = useMutation({
+    mutationFn: async (version: MatlabVersion) => {
+      if (!effectiveSlug) return;
+      await syncMatlabVersion(effectiveSlug, version.version_hash);
+    },
+    onSuccess: async () => {
       setSuccess("同步任务已提交，请等待 Worker 处理");
-      void queryClient.invalidateQueries({ queryKey: ["admin.matlab.versions", slug] });
+      if (effectiveSlug) {
+        await queryClient.invalidateQueries({ queryKey: ["admin.matlab.versions", effectiveSlug] });
+      }
     },
     onError: (candidate) => {
       setError(candidate instanceof Error ? candidate.message : "同步失败");
@@ -359,7 +331,7 @@ export default function AdminMatlabEnginePage() {
   });
 
   const uploadMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (values: MatlabUploadPayload) => {
       const raw = fileList[0]?.originFileObj;
       if (!raw) {
         throw new ApiError("请先选择 ZIP 文件");
@@ -367,33 +339,19 @@ export default function AdminMatlabEnginePage() {
       if (!effectiveSlug) {
         throw new ApiError("请先选择模块");
       }
-      await uploadMatlabDraft(effectiveSlug, raw);
-    },
-    onSuccess: async () => {
-      setSuccess("上传成功");
-      setUploadModalOpen(false);
-      setFileList([]);
-      await versionsQuery.refetch();
-    },
-    onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "上传失败");
-    },
-  });
-
-  const publishMutation = useMutation({
-    mutationFn: async (values: PublishFormValues) => {
-      if (!effectiveSlug || !draft) {
-        throw new ApiError("当前没有草稿版本");
+      if (!values.version_tag?.trim()) {
+        throw new ApiError("请输入版本号");
       }
-      await publishMatlabDraft(effectiveSlug, {
+      await uploadMatlabRelease(effectiveSlug, raw, {
         version_tag: values.version_tag.trim(),
         changelog: values.changelog?.trim() || "",
       });
     },
     onSuccess: async () => {
-      setSuccess("发布成功");
-      setPublishModalOpen(false);
-      publishForm.resetFields();
+      setSuccess("上传成功");
+      setUploadModalOpen(false);
+      setFileList([]);
+      uploadForm.resetFields();
       await versionsQuery.refetch();
     },
     onError: (candidate) => {
@@ -405,21 +363,7 @@ export default function AdminMatlabEnginePage() {
       ) {
         return;
       }
-      setError(candidate instanceof Error ? candidate.message : "发布失败");
-    },
-  });
-
-  const rollbackMutation = useMutation({
-    mutationFn: async (version: MatlabVersion) => {
-      if (!effectiveSlug) return;
-      await rollbackMatlabVersion(effectiveSlug, version.version_hash);
-    },
-    onSuccess: async () => {
-      setSuccess("已回退为新草稿，请重新发布");
-      await versionsQuery.refetch();
-    },
-    onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "回退失败");
+      setError(candidate instanceof Error ? candidate.message : "上传失败");
     },
   });
 
@@ -452,7 +396,6 @@ export default function AdminMatlabEnginePage() {
     });
   }, [moduleKeyword, modules]);
 
-  const draft = versionsQuery.data?.draft ?? null;
   const releases = useMemo(() => versionsQuery.data?.releases ?? [], [versionsQuery.data]);
   const currentRelease = releases[0] ?? null;
   // 最近一次成功同步到 Worker 的版本（由后端在 engine.sync_completed 时标记）
@@ -462,38 +405,25 @@ export default function AdminMatlabEnginePage() {
   );
 
   const allVersions = useMemo(() => {
-    // 同一 hash 可能同时出现在 draft 与 releases（发布后草稿记录仍保留），
-    // 按 hash 去重避免表格 rowKey 冲突，草稿优先保留。
+    // 同一 hash 可能出现多条发布记录（历史回退后重新发布），按 hash 去重避免表格 rowKey 冲突。
     const items: MatlabVersion[] = [];
     const seen = new Set<string>();
-    const candidates: MatlabVersion[] = [];
-    if (draft) candidates.push(draft);
-    candidates.push(...releases);
-    for (const item of candidates) {
+    for (const item of releases) {
       if (seen.has(item.version_hash)) continue;
       seen.add(item.version_hash);
       items.push(item);
     }
     return items;
-  }, [draft, releases]);
+  }, [releases]);
 
   const filteredVersions = useMemo(() => {
     const keyword = searchKeyword.trim().toLowerCase();
-    let result = allVersions;
-    if (keyword) {
-      result = result.filter((item) => {
-        const text = `${item.version_tag ?? ""} ${item.version_hash} ${item.changelog ?? ""} ${item.uploaded_by_name ?? item.uploaded_by ?? ""}`.toLowerCase();
-        return text.includes(keyword);
-      });
-    }
-    if (statusFilter === "draft") {
-      result = result.filter((item) => item === draft);
-    }
-    if (statusFilter === "released") {
-      result = result.filter((item) => item !== draft);
-    }
-    return result;
-  }, [allVersions, draft, searchKeyword, statusFilter]);
+    if (!keyword) return allVersions;
+    return allVersions.filter((item) => {
+      const text = `${item.version_tag ?? ""} ${item.version_hash} ${item.changelog ?? ""} ${item.uploaded_by_name ?? item.uploaded_by ?? ""}`.toLowerCase();
+      return text.includes(keyword);
+    });
+  }, [allVersions, searchKeyword]);
 
   const pageVersions = useMemo(() => {
     const start = (paginationCurrent - 1) * paginationPageSize;
@@ -642,34 +572,26 @@ export default function AdminMatlabEnginePage() {
           ]
         : []),
     ],
-    [canManage, deleteModule, openEditModule, openModuleDetail],
+    [canManage, deleteModule, modalApi, openEditModule, openModuleDetail],
   );
 
   const handleUpload = useCallback(async () => {
-    await uploadMutation.mutateAsync();
-  }, [uploadMutation]);
+    const values = await uploadForm.validateFields();
+    await uploadMutation.mutateAsync(values);
+  }, [uploadForm, uploadMutation]);
 
-  const handlePublish = useCallback(async () => {
-    const values = await publishForm.validateFields();
-    await publishMutation.mutateAsync(values);
-  }, [publishForm, publishMutation]);
-
-  const openPublishModal = useCallback(() => {
-    setPublishModalOpen(true);
-  }, []);
-
-  const handleRollback = useCallback(
+  const handleSyncVersion = useCallback(
     async (version: MatlabVersion) => {
       if (!effectiveSlug) return;
-      await rollbackMutation.mutateAsync(version);
+      setSyncingHash(version.version_hash);
+      try {
+        await syncVersionMutation.mutateAsync(version);
+      } finally {
+        setSyncingHash(null);
+      }
     },
-    [effectiveSlug, rollbackMutation],
+    [effectiveSlug, syncVersionMutation],
   );
-
-  const handleSync = useCallback(async () => {
-    if (!effectiveSlug) return;
-    await syncMutation.mutateAsync(effectiveSlug);
-  }, [effectiveSlug, syncMutation]);
 
   const handleDownload = useCallback(
     async (version: MatlabVersion) => {
@@ -688,20 +610,18 @@ export default function AdminMatlabEnginePage() {
   );
 
   const handleQuery = useCallback(() => {
-    // LP-545：关键词/状态/分页都未变化时查询键不变，react-query 不会自动重新拉取；
+    // LP-545：关键词/分页都未变化时查询键不变，react-query 不会自动重新拉取；
     // 手动强制刷新，保证重复点击「查询」也会触发查询（如拉取新数据）。
     const keywordChanged = keywordInput.trim() !== searchKeyword.trim();
-    const statusChanged = statusFilterInput !== statusFilter;
     const pageChanged = paginationCurrent !== 1;
     setSearchKeyword(keywordInput);
-    setStatusFilter(statusFilterInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(1);
     setAllLoadedVersions([]);
-    if (!keywordChanged && !statusChanged && !pageChanged) {
+    if (!keywordChanged && !pageChanged) {
       void queryClient.refetchQueries({ queryKey: ["admin.matlab.versions", effectiveSlug] });
     }
-  }, [keywordInput, searchKeyword, statusFilterInput, statusFilter, paginationCurrent, queryClient, effectiveSlug]);
+  }, [keywordInput, searchKeyword, paginationCurrent, queryClient, effectiveSlug]);
 
   const handleModuleSearch = useCallback(() => {
     setModuleKeyword(moduleKeywordInput);
@@ -799,16 +719,9 @@ export default function AdminMatlabEnginePage() {
         render: (value: string) => <Typography.Text>{value || "-"}</Typography.Text>,
       },
       {
-        title: "状态",
-        key: "version_status",
-        width: 110,
-        render: (_, record) =>
-          versionStatusTag(record === draft ? "draft" : "released"),
-      },
-      {
         title: "Worker 状态",
         key: "worker_status",
-        width: 130,
+        width: 140,
         render: (_, record) => {
           if (record.is_active) {
             return (
@@ -823,21 +736,18 @@ export default function AdminMatlabEnginePage() {
               </Tooltip>
             );
           }
-          if (record !== draft) {
-            const isNewest = record === currentRelease;
-            return (
-              <Tooltip
-                title={
-                  isNewest
-                    ? "最新版本尚未同步到 Worker；点击右上角「同步到 Worker」部署"
-                    : "Worker 当前未部署该版本；带「Worker 已部署」标记的才是生效版本"
-                }
-              >
-                <Tag>{isNewest ? "未同步" : "非当前"}</Tag>
-              </Tooltip>
-            );
-          }
-          return null;
+          const isNewest = record === currentRelease;
+          return (
+            <Tooltip
+              title={
+                isNewest
+                  ? "最新版本尚未生效；点击行内「生效」按钮部署到 Worker"
+                  : "Worker 当前未部署该版本；点击行内「生效」按钮部署，带「Worker 已部署」标记的才是生效版本"
+              }
+            >
+              <Tag>{isNewest ? "未生效" : "非当前"}</Tag>
+            </Tooltip>
+          );
         },
       },
       {
@@ -880,31 +790,10 @@ export default function AdminMatlabEnginePage() {
     baseColumns.push({
       title: "操作",
       key: "actions",
-      width: 220,
+      width: 240,
       fixed: "right",
       render: (_, record) => {
-        const isDraft = record === draft;
-
         const moreMenuItems: MenuProps["items"] = [
-          ...(!isDraft && canManage
-            ? [
-                {
-                  key: "rollback",
-                  label: "回退",
-                  icon: <SwapOutlined />,
-                  onClick: () => {
-                    modalApi.confirm({
-                      title: "回退到此版本",
-                      content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
-                      okText: "回退",
-                      cancelText: "取消",
-                      okButtonProps: { danger: true },
-                      onOk: () => handleRollback(record),
-                    });
-                  },
-                } as const,
-              ]
-            : []),
           ...(canManage
             ? [
                 {
@@ -914,9 +803,7 @@ export default function AdminMatlabEnginePage() {
                   onClick: () => {
                     modalApi.confirm({
                       title: "删除版本",
-                      content: isDraft
-                        ? `确认删除草稿版本"${record.version_tag || record.version_hash}"吗？`
-                        : `确认删除版本"${record.version_tag}"（${record.version_hash}）吗？删除后不可恢复。`,
+                      content: `确认删除版本"${record.version_tag}"（${record.version_hash}）吗？删除后不可恢复。`,
                       okText: "删除",
                       cancelText: "取消",
                       okButtonProps: { danger: true },
@@ -943,11 +830,17 @@ export default function AdminMatlabEnginePage() {
             >
               下载
             </Button>
-            {isDraft && canManage ? (
-              <Button size="small" type="primary" onClick={() => openPublishModal()}>
-                发布
+            {canManage && (
+              <Button
+                size="small"
+                type="primary"
+                loading={syncingHash === record.version_hash}
+                disabled={Boolean(record.is_active) || syncingHash === record.version_hash}
+                onClick={() => handleSyncVersion(record)}
+              >
+                生效
               </Button>
-            ) : null}
+            )}
             {moreMenuItems.length > 0 && (
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" icon={<MoreOutlined />} />
@@ -959,7 +852,7 @@ export default function AdminMatlabEnginePage() {
     });
 
     return baseColumns;
-  }, [canManage, currentRelease, draft, deleteVersionMutation, downloadingHash, handleDownload, handleRollback, openPublishModal]);
+  }, [canManage, currentRelease, deleteVersionMutation, downloadingHash, handleDownload, handleSyncVersion, modalApi, syncingHash]);
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
@@ -997,26 +890,19 @@ export default function AdminMatlabEnginePage() {
   }
 
   const renderVersionCard = (item: MatlabVersion) => {
-    const isDraft = item === draft;
-    const statusConfig = isDraft ? { color: "warning" as const, text: "草稿" } : { color: "success" as const, text: "已发布" };
-    const rowBusy = uploadMutation.isPending || publishMutation.isPending || rollbackMutation.isPending || deleteVersionMutation.isPending;
+    const rowBusy = uploadMutation.isPending || deleteVersionMutation.isPending;
 
     const moreMenuItems: MenuProps["items"] = [
-      ...(!isDraft && canManage
+      ...(canManage
         ? [
             {
-              key: "rollback",
-              label: "回退",
-              icon: <SwapOutlined />,
-              onClick: () => {
-                modalApi.confirm({
-                  title: "回退到此版本",
-                  content: "此操作将把该历史版本复制为新的草稿，需要重新发布后才会同步到 Worker。",
-                  okText: "回退",
-                  cancelText: "取消",
-                  okButtonProps: { danger: true },
-                  onOk: () => handleRollback(item),
-                });
+              key: "sync",
+              label: "生效",
+              icon: <RocketOutlined />,
+              disabled: rowBusy || Boolean(item.is_active) || syncingHash === item.version_hash,
+              onClick: (info) => {
+                info.domEvent?.stopPropagation();
+                handleSyncVersion(item);
               },
             } as const,
           ]
@@ -1027,12 +913,11 @@ export default function AdminMatlabEnginePage() {
               key: "delete",
               label: "删除",
               danger: true,
-              onClick: () => {
+              onClick: (info) => {
+                info.domEvent?.stopPropagation();
                 modalApi.confirm({
                   title: "删除版本",
-                  content: isDraft
-                    ? `确认删除草稿版本"${item.version_tag || item.version_hash}"吗？`
-                    : `确认删除版本"${item.version_tag}"（${item.version_hash}）吗？删除后不可恢复。`,
+                  content: `确认删除版本"${item.version_tag}"（${item.version_hash}）吗？删除后不可恢复。`,
                   okText: "删除",
                   cancelText: "取消",
                   okButtonProps: { danger: true },
@@ -1046,7 +931,7 @@ export default function AdminMatlabEnginePage() {
 
     return (
       <Card
-        key={`${item.version_hash}-${isDraft ? "draft" : "release"}`}
+        key={item.version_hash}
         className="admin-matlab-version-card"
         size="small"
         hoverable
@@ -1057,8 +942,12 @@ export default function AdminMatlabEnginePage() {
             <CodeOutlined className="text-base text-gray-500" />
             <Typography.Text strong className="truncate flex-1">{item.version_tag || "未命名版本"}</Typography.Text>
             <div className="flex flex-shrink-0 items-center gap-2">
-              <Tag color={statusConfig.color === "warning" ? "orange" : "green"}>{statusConfig.text}</Tag>
-              {item.is_active && <Tag color="blue">Worker 已部署</Tag>}
+              {item.is_active && (
+                <>
+                  <Badge status="success" />
+                  <Typography.Text type="secondary" className="text-xs">Worker 已部署</Typography.Text>
+                </>
+              )}
             </div>
           </div>
 
@@ -1086,7 +975,8 @@ export default function AdminMatlabEnginePage() {
           </div>
 
           <div className="admin-matlab-version-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
-            <Space size="small">
+            <div />
+            <Space size="small" className="shrink-0">
               <Tooltip title="查看">
                 <Button
                   type="text"
@@ -1111,22 +1001,17 @@ export default function AdminMatlabEnginePage() {
                   下载
                 </Button>
               </Tooltip>
-            </Space>
-            <Space size="small">
-              {isDraft && canManage ? (
-                <Button type="primary" size="small" disabled={rowBusy} onClick={(event) => { event.stopPropagation(); openPublishModal(); }}>
-                  发布
-                </Button>
-              ) : null}
               {moreMenuItems.length > 0 && (
                 <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Button
-                    type="text"
-                    size="small"
-                    disabled={rowBusy}
-                    icon={<MoreOutlined />}
-                    onClick={(event) => event.stopPropagation()}
-                  />
+                  <Tooltip title="更多">
+                    <Button
+                      type="text"
+                      size="small"
+                      disabled={rowBusy}
+                      icon={<MoreOutlined />}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                  </Tooltip>
                 </Dropdown>
               )}
             </Space>
@@ -1160,27 +1045,9 @@ export default function AdminMatlabEnginePage() {
               </Tooltip>
             )}
             {canManage && (
-              <>
-                <Tooltip
-                  title={
-                    currentRelease
-                      ? `将把最新版本 ${currentRelease.version_tag || currentRelease.version_hash} 同步到 Worker`
-                      : "该模块还没有已发布版本，无法同步"
-                  }
-                >
-                  <Button
-                    icon={<CloudSyncOutlined />}
-                    onClick={handleSync}
-                    loading={syncMutation.isPending}
-                    disabled={syncMutation.isPending || !currentRelease}
-                  >
-                    同步到 Worker
-                  </Button>
-                </Tooltip>
-                <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
-                  上传新包
-                </Button>
-              </>
+              <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
+                上传新包
+              </Button>
             )}
           </Space>
         }
@@ -1304,20 +1171,6 @@ export default function AdminMatlabEnginePage() {
                             onPressEnter={handleQuery}
                           />
                         </Form.Item>
-                        <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                          <Select<VersionStatusFilter>
-                            value={statusFilterInput}
-                            allowClear
-                            placeholder="全部"
-                            options={[
-                              { value: "draft", label: "草稿" },
-                              { value: "released", label: "已发布" },
-                            ]}
-                            labelRender={(props) => versionStatusTag(props.value)}
-                            optionRender={(option) => versionStatusTag(option.value)}
-                            onChange={(value) => setStatusFilterInput(value)}
-                          />
-                        </Form.Item>
                         <Form.Item style={{ marginBottom: 0 }}>
                           <Button
                             htmlType="button"
@@ -1384,7 +1237,7 @@ export default function AdminMatlabEnginePage() {
                           <div className="admin-matlab-card-view-content">
                             <Row gutter={[12, 12]}>
                               {allLoadedVersions.map((item) => (
-                                <Col key={`${item.version_hash}-${item === draft ? "draft" : "release"}`} xs={24} sm={24} md={12} lg={8} xl={6}>
+                                <Col key={item.version_hash} xs={24} sm={24} md={12} lg={8} xl={6}>
                                   {renderVersionCard(item)}
                                 </Col>
                               ))}
@@ -1481,13 +1334,38 @@ export default function AdminMatlabEnginePage() {
           onCancel={() => {
             setUploadModalOpen(false);
             setFileList([]);
+            uploadForm.resetFields();
           }}
           onOk={() => handleUpload()}
           okText="上传"
           cancelText="取消"
           confirmLoading={uploadMutation.isPending}
           destroyOnHidden
+          forceRender
         >
+          <Form<MatlabUploadPayload>
+            form={uploadForm}
+            layout="vertical"
+            initialValues={DEFAULT_UPLOAD_FORM_VALUES}
+            preserve={false}
+          >
+            <Row gutter={12}>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label="版本号"
+                  name="version_tag"
+                  rules={[{ required: true, message: "请输入版本号" }]}
+                >
+                  <Input placeholder="版本号，如 v1.0.0" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={24}>
+                <Form.Item label="变更日志" name="changelog">
+                  <Input.TextArea placeholder="本次变更说明" rows={3} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
           <Upload.Dragger
             accept=".zip"
             maxCount={1}
@@ -1500,42 +1378,9 @@ export default function AdminMatlabEnginePage() {
             </p>
             <p className="ant-upload-text">点击或拖拽 ZIP 文件到此处</p>
             <p className="ant-upload-hint">
-              ZIP 包必须包含 {(selectedModule?.required_files || []).join(", ") || "必需文件"}
+              ZIP 包必须包含 {(selectedModule?.required_files || []).join(", ") || "必需文件"}，上传成功后即为已发布版本
             </p>
           </Upload.Dragger>
-        </Modal>
-      )}
-
-      {canManage && (
-        <Modal
-          title="发布版本"
-          open={publishModalOpen}
-          onCancel={() => setPublishModalOpen(false)}
-          onOk={() => handlePublish()}
-          okText="发布"
-          cancelText="取消"
-          confirmLoading={publishMutation.isPending}
-          destroyOnHidden
-        >
-          <Form<PublishFormValues>
-            form={publishForm}
-            layout="vertical"
-            initialValues={DEFAULT_PUBLISH_FORM_VALUES}
-            preserve={false}
-          >
-            <Row gutter={12}>
-              <Col xs={24} md={12}>
-                <Form.Item label="版本号" name="version_tag" rules={[{ required: true, message: "请输入版本号" }]}>
-                  <Input placeholder="版本号，如 v1.0.0" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={24}>
-                <Form.Item label="变更日志" name="changelog">
-                  <Input.TextArea placeholder="本次变更说明" rows={3} />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Form>
         </Modal>
       )}
 

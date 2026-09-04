@@ -298,6 +298,24 @@ def _upload_draft_package(db: Session, module: dict[str, Any], data: bytes, vers
     return file_list
 
 
+def _upload_release_package(db: Session, module: dict[str, Any], data: bytes, version_hash: str, version_tag: str, changelog: str, uploaded_by: str, uploaded_by_name: str) -> list[str]:
+    """直接把上传包写入 release 前缀并落 manifest（LP：上传即发布，无草稿环节）。"""
+    prefix = build_matlab_engine_release_prefix(module["slug"], version_hash)
+    put_object(f"{prefix}engine.zip", data, content_type="application/zip")
+    file_list = _list_zip_files(data)
+    manifest = _version_manifest({
+        "version_hash": version_hash,
+        "version_tag": version_tag,
+        "changelog": changelog,
+        "uploaded_by": uploaded_by,
+        "uploaded_by_name": uploaded_by_name,
+        "upload_time": _utcnow_iso(),
+        "size_bytes": len(data),
+    }, file_list)
+    put_object(f"{prefix}manifest.json", json.dumps(manifest, ensure_ascii=False).encode("utf-8"), content_type="application/json")
+    return file_list
+
+
 def _copy_package(src_slug: str, dst_slug: str, version_hash: str, scope: str) -> None:
     if scope == "draft":
         src_prefix = build_matlab_engine_release_prefix(src_slug, version_hash)
@@ -367,6 +385,57 @@ def upload_draft(db: Session, slug: str, data: bytes, *, uploaded_by: str, uploa
     _save_versions(db, slug, versions, actor_user_id=uploaded_by)
     _publish_event("engine.draft_uploaded", {"slug": slug, "version_hash": version_hash})
     return draft
+
+
+def upload_release(db: Session, slug: str, data: bytes, *, version_tag: str, changelog: str, uploaded_by: str, uploaded_by_name: str = "") -> dict[str, Any]:
+    """上传即发布：校验通过后直接创建已发布版本（无草稿环节）。
+
+    - version_tag 必填，且不得与已有发布版本号重复；
+    - 同内容（version_hash）重复上传会被拒绝；
+    - 上传包直接写入 release 前缀，插入 releases 首位。
+    """
+    module = get_module(db, slug)
+    if not module:
+        raise MatlabEngineError(f"模块不存在: {slug}")
+    valid, error_msg = _validate_zip_content(data, module.get("required_files"))
+    if not valid:
+        raise MatlabEngineError(error_msg)
+    tag = str(version_tag or "").strip()
+    if not tag:
+        raise MatlabEngineError("版本号不能为空")
+    version_hash = _compute_hash(data)
+    versions = _load_versions(db, slug)
+    releases = versions.get("releases", [])
+    if any(item.get("version_hash") == version_hash for item in releases):
+        raise MatlabEngineError("该文件内容已上传过（版本 hash 相同），请勿重复上传")
+    if any(item.get("version_tag") == tag for item in releases):
+        raise MatlabEngineError(f"版本号已存在: {tag}")
+    file_list = _upload_release_package(
+        db,
+        module,
+        data,
+        version_hash,
+        tag,
+        str(changelog or ""),
+        uploaded_by,
+        uploaded_by_name,
+    )
+    release = {
+        "version_hash": version_hash,
+        "version_tag": tag,
+        "changelog": str(changelog or ""),
+        "uploaded_by": uploaded_by,
+        "uploaded_by_name": uploaded_by_name,
+        "upload_time": _utcnow_iso(),
+        "size_bytes": len(data),
+        "file_list": file_list,
+    }
+    releases.insert(0, release)
+    versions["releases"] = releases
+    versions["draft"] = None
+    _save_versions(db, slug, versions, actor_user_id=uploaded_by)
+    _publish_event("engine.released", {"slug": slug, "version_hash": version_hash, "version_tag": tag})
+    return release
 
 
 def publish_draft(db: Session, slug: str, version_hash: str, version_tag: str, changelog: str, *, actor_user_id: str) -> dict[str, Any]:
@@ -563,6 +632,29 @@ def trigger_sync_for_module(db: Session, slug: str, *, actor_user_id: str) -> st
         slug,
         current.get("version_hash", ""),
         current.get("worker_deploy_path") or module.get("worker_deploy_path") or "",
+        actor_user_id,
+    )
+    return result.id
+
+
+def trigger_sync_for_version(db: Session, slug: str, version_hash: str, *, actor_user_id: str) -> str:
+    """把指定已发布版本同步（部署）到 Worker（页面「生效」按钮）。"""
+    module = get_module(db, slug)
+    if not module:
+        raise MatlabEngineError(f"模块不存在: {slug}")
+    versions = _load_versions(db, slug)
+    target = next(
+        (item for item in versions.get("releases", []) if item.get("version_hash") == version_hash),
+        None,
+    )
+    if not target:
+        raise MatlabEngineError(f"版本不存在或未发布: {version_hash}")
+    from ..tasks.sync_matlab_engine_task import sync_matlab_engine_module
+
+    result = sync_matlab_engine_module.delay(
+        slug,
+        version_hash,
+        target.get("worker_deploy_path") or module.get("worker_deploy_path") or "",
         actor_user_id,
     )
     return result.id
