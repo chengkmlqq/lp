@@ -119,7 +119,9 @@
 }
 
 :root[data-fquiz-theme="dark"] .admin-users-user-card > .ant-card-head,
+:root[data-fquiz-theme="dark"] .admin-users-user-card-title,
 :root[data-fquiz-theme="dark"] .admin-menus-menu-card > .ant-card-head,
+:root[data-fquiz-theme="dark"] .admin-menus-menu-card-title,
 :root[data-fquiz-theme="dark"] .admin-workers-worker-card > .ant-card-head,
 :root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-head,
 :root[data-fquiz-theme="dark"] .admin-power-lines-line-card-title,
@@ -173,6 +175,18 @@
   border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
 }
 
+:root[data-fquiz-theme="dark"] .admin-users-user-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-menus-menu-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-roles-role-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+}
+
 :root[data-fquiz-theme="dark"] .admin-fl-analysis-job-card-actions .ant-progress-text {
   color: var(--ant-color-text-secondary) !important;
 }
@@ -197,8 +211,12 @@
   box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
 }
 
-:root[data-fquiz-theme="dark"] .admin-documents-document-card > .ant-card-head {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+:root[data-fquiz-theme="dark"] .admin-documents-document-card-title,
+:root[data-fquiz-theme="dark"] .admin-documents-document-card-actions {
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-documents-document-card-title {
   background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
 }
 
@@ -226,8 +244,12 @@
   box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
 }
 
-:root[data-fquiz-theme="dark"] .admin-system-messages-message-card > .ant-card-head {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+:root[data-fquiz-theme="dark"] .admin-system-messages-message-card-title,
+:root[data-fquiz-theme="dark"] .admin-system-messages-message-card-actions {
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-system-messages-message-card-title {
   background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
 }
 
@@ -246,8 +268,12 @@
   box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
 }
 
-:root[data-fquiz-theme="dark"] .admin-task-monitor-task-card > .ant-card-head {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+:root[data-fquiz-theme="dark"] .admin-task-monitor-task-card-title,
+:root[data-fquiz-theme="dark"] .admin-task-monitor-task-card-actions {
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-task-monitor-task-card-title {
   background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
 }
 
@@ -266,8 +292,12 @@
   box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
 }
 
-:root[data-fquiz-theme="dark"] .admin-system-params-param-card > .ant-card-head {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+:root[data-fquiz-theme="dark"] .admin-system-params-param-card-title,
+:root[data-fquiz-theme="dark"] .admin-system-params-param-card-actions {
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-system-params-param-card-title {
   background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
 }
 
@@ -1019,7 +1049,17 @@ body {
 }
 
 .admin-system-messages-message-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
+}
+
+.admin-system-messages-message-card-title {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-system-messages-message-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
 }
 
 .admin-system-messages-message-card-field {
@@ -1069,7 +1109,17 @@ body {
 }
 
 .admin-users-user-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
+}
+
+.admin-users-user-card-title {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-users-user-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
 }
 
 .admin-users-user-card-field {
@@ -1281,7 +1331,17 @@ body {
 }
 
 .admin-documents-document-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
+}
+
+.admin-documents-document-card-title {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-documents-document-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
 }
 
 .admin-documents-document-card-field {
@@ -1428,7 +1488,17 @@ body {
 }
 
 .admin-menus-menu-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
+}
+
+.admin-menus-menu-card-title {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-menus-menu-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
 }
 
 .admin-menus-menu-card-field {
@@ -2349,7 +2419,17 @@ body {
 }
 
 .admin-task-monitor-task-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
+}
+
+.admin-task-monitor-task-card-title {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-task-monitor-task-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
 }
 
 .admin-task-monitor-task-card-field {
@@ -2512,7 +2592,11 @@ body {
 }
 
 .admin-roles-role-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
+}
+
+.admin-roles-role-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
 }
 
 .admin-roles-role-card-field {
@@ -2934,7 +3018,17 @@ body {
 }
 
 .admin-system-params-param-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
+}
+
+.admin-system-params-param-card-title {
+  min-height: 44px;
+  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, transparent);
+}
+
+.admin-system-params-param-card-actions {
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
 }
 
 .admin-system-params-param-card-field {

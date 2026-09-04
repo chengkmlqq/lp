@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  Badge,
   Button,
   Empty,
   Form,
@@ -12,11 +13,12 @@ import {
   Segmented,
   Space,
   Table,
+  Tooltip,
   Typography,
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { SearchOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EyeOutlined, SearchOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
@@ -292,44 +294,63 @@ export default function AdminLightningRetrofitPage() {
               <div className="admin-power-lines-card-scroll">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {jobs.map((job) => (
-                    <div
+                    <Card
                       key={job.id}
-                      className="admin-fl-analysis-job-card border border-gray-200 rounded-lg"
+                      size="small"
+                      hoverable
+                      className="admin-fl-analysis-job-card"
                     >
-                      <div className="admin-fl-analysis-job-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
-                        <Typography.Text strong className="truncate">
-                          {job.job_name || job.line_name || job.line_code || "-"}
-                        </Typography.Text>
-                        <span style={{ color: statusColor(job.status) }}>{job.status}</span>
-                      </div>
-                      <div className="flex flex-col gap-2 px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Typography.Text type="secondary" className="text-xs truncate">
-                            {job.line_name || job.line_code || "-"}
+                      <div className="flex flex-col">
+                        <div className="admin-fl-analysis-job-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+                          <Typography.Text strong className="truncate flex-1">
+                            {job.job_name || job.line_name || job.line_code || "-"}
                           </Typography.Text>
+                          <div className="flex flex-shrink-0 items-center gap-2">
+                            <Badge status={retrofitJobBadgeStatus(job.status)} />
+                            <Typography.Text type="secondary" className="text-xs">{job.status}</Typography.Text>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Typography.Text type="secondary" className="text-xs">
-                            创建：{formatDateTime(job.create_date)}
-                          </Typography.Text>
+                        <div className="flex flex-col gap-2 px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Typography.Text type="secondary" className="text-xs truncate">
+                              {job.line_name || job.line_code || "-"}
+                            </Typography.Text>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Typography.Text type="secondary" className="text-xs">
+                              创建：{formatDateTime(job.create_date)}
+                            </Typography.Text>
+                          </div>
+                        </div>
+                        <div className="admin-fl-analysis-job-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+                          <div />
+                          <Space size="small" className="shrink-0">
+                            <Tooltip title="查看详情">
+                              <Button
+                                type="text"
+                                size="small"
+                                href={`/admin/lightning-retrofit/high-risk-reason?jobId=${job.id}`}
+                                icon={<EyeOutlined />}
+                                onClick={(event) => event.stopPropagation()}
+                              />
+                            </Tooltip>
+                            <Tooltip title="删除">
+                              <Button
+                                type="text"
+                                size="small"
+                                danger
+                                disabled={["queued", "running"].includes(job.status)}
+                                icon={<DeleteOutlined />}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleDeleteJob(job);
+                                }}
+                              />
+                            </Tooltip>
+                          </Space>
                         </div>
                       </div>
-                      <div className="admin-fl-analysis-job-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
-                        <Space>
-                          <Button size="small" href={`/admin/lightning-retrofit/high-risk-reason?jobId=${job.id}`}>
-                            查看详情
-                          </Button>
-                          <Button
-                            size="small"
-                            danger
-                            disabled={["queued", "running"].includes(job.status)}
-                            onClick={() => handleDeleteJob(job)}
-                          >
-                            删除
-                          </Button>
-                        </Space>
-                      </div>
-                    </div>
+                    </Card>
                   ))}
                 </div>
               </div>
@@ -374,5 +395,13 @@ function statusColor(value: string | null | undefined): string {
   if (value === "failed" || value === "blocked") return "red";
   if (value === "running") return "blue";
   if (value === "queued") return "cyan";
+  return "default";
+}
+
+// 卡片头部右上角状态 Badge：与雷电流幅值统计页一致使用 Badge + 次级文字
+function retrofitJobBadgeStatus(value: string | null | undefined): "success" | "processing" | "error" | "default" | "warning" {
+  if (value === "success") return "success";
+  if (value === "failed" || value === "blocked") return "error";
+  if (value === "running" || value === "queued") return "processing";
   return "default";
 }

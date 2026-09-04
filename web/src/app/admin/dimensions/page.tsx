@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Badge,
   Button,
   Card,
   Col,
@@ -20,6 +21,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Tree,
   Typography,
   type CardProps,
@@ -763,14 +765,18 @@ export default function AdminDimensionsPage() {
         key: "toggle-status",
         label: item.is_enabled ? "禁用" : "启用",
         disabled: deleteLoading,
-        onClick: () => toggleDimensionStatus(item),
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
+          toggleDimensionStatus(item);
+        },
       },
       {
         key: "delete",
         label: "删除",
         danger: true,
         disabled: deleteLoading,
-        onClick: () => {
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
           Modal.confirm({
             title: "删除维度项",
             content: `确认删除维度项 ${item.name}（${item.code}）吗？`,
@@ -790,39 +796,15 @@ export default function AdminDimensionsPage() {
         size="small"
         hoverable
         onClick={() => openDimensionEdit(item)}
-        title={
-          <Space className="min-w-0" size={8}>
-            <Typography.Text strong>{item.name}</Typography.Text>
-            <Tag color={item.is_enabled ? "green" : "default"}>{statusLabel(item.is_enabled)}</Tag>
-          </Space>
-        }
-        extra={
-          canManage ? (
-            <Space size={4}>
-              <Button
-                type="text"
-                size="small"
-                disabled={deleteLoading}
-                icon={<EditOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openDimensionEdit(item);
-                }}
-              />
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button
-                  type="text"
-                  size="small"
-                  disabled={deleteLoading}
-                  icon={<MoreOutlined />}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              </Dropdown>
-            </Space>
-          ) : null
-        }
       >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+        <div className="admin-system-params-param-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+          <Typography.Text strong className="truncate flex-1">{item.name}</Typography.Text>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Badge status={item.is_enabled ? "success" : "default"} />
+            <Typography.Text type="secondary" className="text-xs">{statusLabel(item.is_enabled)}</Typography.Text>
+          </div>
+        </div>
+        <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-system-params-param-card-field">
             <Typography.Text type="secondary">维度类型</Typography.Text>
             <Typography.Text>{typeName(item.type_id, typeTreeQuery.data)}</Typography.Text>
@@ -850,6 +832,38 @@ export default function AdminDimensionsPage() {
             <Typography.Text>{item.sort_order}</Typography.Text>
           </div>
         </Space>
+        <div className="admin-system-params-param-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+          <div />
+          <Space size="small" className="shrink-0">
+            {canManage ? (
+              <>
+                <Tooltip title="编辑">
+                  <Button
+                    type="text"
+                    size="small"
+                    disabled={deleteLoading}
+                    icon={<EditOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openDimensionEdit(item);
+                    }}
+                  />
+                </Tooltip>
+                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                  <Tooltip title="更多">
+                    <Button
+                      type="text"
+                      size="small"
+                      disabled={deleteLoading}
+                      icon={<MoreOutlined />}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                  </Tooltip>
+                </Dropdown>
+              </>
+            ) : null}
+          </Space>
+        </div>
       </AntCard>
     );
   };

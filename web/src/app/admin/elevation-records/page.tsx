@@ -9,6 +9,7 @@ import {
   Badge,
   Button,
   Descriptions,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -32,13 +33,16 @@ import {
   AppstoreOutlined,
   CheckCircleOutlined,
   CloudUploadOutlined,
+  DeleteOutlined,
   FileOutlined,
   FileTextOutlined,
   GlobalOutlined,
   HistoryOutlined,
   InboxOutlined,
+  MoreOutlined,
   NumberOutlined,
   SearchOutlined,
+  SendOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
@@ -815,24 +819,82 @@ export default function ElevationRecordsPage() {
             </div>
           </div>
 
-          <div className={`admin-elevation-record-card-actions flex items-center px-4 py-2 border-t border-gray-200 ${showProgress ? 'justify-between' : 'justify-end'}`}>
-            {showProgress && (
+          <div className="admin-elevation-record-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+            {showProgress ? (
               <Progress percent={100} size="small" className="flex-1 max-w-40" showInfo={false} status="active" />
+            ) : (
+              <div />
             )}
-            <Space size="small">
-                          <Tooltip title="应用">
-                            <Button
-                              type="text"
-                              size="small"
-                              icon={<CloudUploadOutlined />}
-                              disabled={rowBusy}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openTowerTab(record);
-                              }}
-                            />
-                          </Tooltip>
-                        </Space>
+            <Space size="small" className="shrink-0">
+              <Tooltip title="应用">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CloudUploadOutlined />}
+                  disabled={rowBusy}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openTowerTab(record);
+                  }}
+                />
+              </Tooltip>
+              <Tooltip title="回填">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<SendOutlined />}
+                  disabled={rowBusy}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openApplyModal(record);
+                  }}
+                />
+              </Tooltip>
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: "backfill-history",
+                      label: "回填记录",
+                      icon: <HistoryOutlined />,
+                      disabled: rowBusy,
+                      onClick: (info) => {
+                        info.domEvent?.stopPropagation();
+                        openBackfillHistoryTab(record);
+                      },
+                    },
+                    {
+                      key: "delete",
+                      label: "删除",
+                      icon: <DeleteOutlined />,
+                      danger: true,
+                      disabled: rowBusy,
+                      onClick: (info) => {
+                        info.domEvent?.stopPropagation();
+                        Modal.confirm({
+                          title: `确认删除文件 "${record.file_name}"？`,
+                          okText: "删除",
+                          cancelText: "取消",
+                          okButtonProps: { danger: true, loading: deleting },
+                          onOk: () => deleteMutation.mutate(record.id),
+                        });
+                      },
+                    },
+                  ],
+                }}
+                trigger={["click"]}
+              >
+                <Tooltip title="更多">
+                  <Button
+                    type="text"
+                    size="small"
+                    disabled={rowBusy}
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </Tooltip>
+              </Dropdown>
+            </Space>
           </div>
         </div>
       </Card>

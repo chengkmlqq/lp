@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Avatar,
+  Badge,
   Button,
   Card,
   Col,
@@ -19,6 +20,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   Upload,
   type CardProps,
@@ -1056,7 +1058,8 @@ export default function AdminUsersPage() {
         label: "删除",
         danger: true,
         disabled: rowBusy,
-        onClick: () => {
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
           Modal.confirm({
             title: `确认删除用户 ${userItem.username}（${userItem.id}）？`,
             okText: "删除",
@@ -1070,19 +1073,26 @@ export default function AdminUsersPage() {
         key: "assign-roles",
         label: "分配角色",
         disabled: rowBusy,
-        onClick: () => openAssignRolesModal(userItem),
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
+          openAssignRolesModal(userItem);
+        },
       },
       {
         key: "reset-password",
         label: "重置密码",
         disabled: rowBusy,
-        onClick: () => openResetPasswordModal(userItem),
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
+          openResetPasswordModal(userItem);
+        },
       },
       {
         key: "toggle-status",
         label: userItem.status === "active" ? "禁用" : "启用",
         disabled: rowBusy || userItem.id === user?.id,
-        onClick: () => {
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
           if (userItem.id === user?.id) {
             setError(new ApiError("不能修改当前登录账号的状态"));
             return;
@@ -1100,39 +1110,15 @@ export default function AdminUsersPage() {
         size="small"
         hoverable
         onClick={() => openEditUserModal(userItem)}
-        title={
-          <Space className="min-w-0" size={8}>
-            <Typography.Text strong>{userItem.username}</Typography.Text>
-            <Tag color={userItem.status === "active" ? "green" : "red"}>
-              {statusLabel(userItem.status)}
-            </Tag>
-          </Space>
-        }
-        extra={
-          <Space size={4}>
-            <Button
-              type="text"
-              size="small"
-              disabled={rowBusy}
-              icon={<EditOutlined />}
-              onClick={(event) => {
-                event.stopPropagation();
-                openEditUserModal(userItem);
-              }}
-            />
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button
-                type="text"
-                size="small"
-                disabled={rowBusy}
-                icon={<MoreOutlined />}
-                onClick={(event) => event.stopPropagation()}
-              />
-            </Dropdown>
-          </Space>
-        }
       >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+        <div className="admin-users-user-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+          <Typography.Text strong className="truncate flex-1">{userItem.username}</Typography.Text>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Badge status={userItem.status === "active" ? "success" : "error"} />
+            <Typography.Text type="secondary" className="text-xs">{statusLabel(userItem.status)}</Typography.Text>
+          </div>
+        </div>
+        <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-users-user-card-field">
             <Typography.Text type="secondary">用户 ID</Typography.Text>
             <Typography.Text>{userItem.id}</Typography.Text>
@@ -1158,6 +1144,34 @@ export default function AdminUsersPage() {
             </Typography.Text>
           </div>
         </Space>
+        <div className="admin-users-user-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+          <div />
+          <Space size="small" className="shrink-0">
+            <Tooltip title="编辑">
+              <Button
+                type="text"
+                size="small"
+                disabled={rowBusy}
+                icon={<EditOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openEditUserModal(userItem);
+                }}
+              />
+            </Tooltip>
+            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+              <Tooltip title="更多">
+                <Button
+                  type="text"
+                  size="small"
+                  disabled={rowBusy}
+                  icon={<MoreOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </Tooltip>
+            </Dropdown>
+          </Space>
+        </div>
       </AntCard>
     );
   };

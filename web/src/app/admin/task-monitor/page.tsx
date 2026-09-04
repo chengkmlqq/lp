@@ -20,11 +20,12 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   type CardProps,
   type TableColumnsType,
 } from "antd";
-import { SearchOutlined } from "@ant-design/icons";
+import { FileTextOutlined, SearchOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -698,16 +699,16 @@ export default function AdminTaskMonitorPage() {
       size="small"
       hoverable
       onClick={() => handleViewLog(task.task_id)}
-      title={
-        <Space className="min-w-0" size={8}>
-          <Typography.Text strong ellipsis={{ tooltip: getTaskDisplayName(task.name) }}>
-            {getTaskDisplayName(task.name)}
-          </Typography.Text>
-          {renderTaskStateTag(task.state)}
-        </Space>
-      }
     >
-      <Space direction="vertical" size={10} style={{ width: "100%" }}>
+      <div className="admin-task-monitor-task-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+        <Typography.Text strong ellipsis={{ tooltip: getTaskDisplayName(task.name) }} className="truncate flex-1">
+          {getTaskDisplayName(task.name)}
+        </Typography.Text>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {renderTaskStateTag(task.state)}
+        </div>
+      </div>
+      <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
         <div className="admin-task-monitor-task-card-field">
           <Typography.Text type="secondary">任务 ID</Typography.Text>
           <Typography.Text
@@ -740,21 +741,23 @@ export default function AdminTaskMonitorPage() {
           <Typography.Text type="secondary">时长</Typography.Text>
           <Typography.Text>{formatTaskMonitorDuration(task.runtime_seconds)}</Typography.Text>
         </div>
-        <div style={{ marginTop: 8 }}>
-          <Space direction="vertical" size={8} style={{ width: "100%" }}>
+      </Space>
+      <div className="admin-task-monitor-task-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+        <div />
+        <Space size="small" className="shrink-0">
+          <Tooltip title="日志">
             <Button
+              type="text"
               size="small"
-              block
+              icon={<FileTextOutlined />}
               onClick={(event) => {
                 event.stopPropagation();
                 handleViewLog(task.task_id);
               }}
-            >
-              日志
-            </Button>
-          </Space>
-        </div>
-      </Space>
+            />
+          </Tooltip>
+        </Space>
+      </div>
     </AntCard>
   );
 

@@ -18,6 +18,7 @@ import {
   Spin,
   Table,
   Tabs,
+  Tooltip,
   TreeSelect,
   Typography,
   type CardProps,
@@ -584,7 +585,8 @@ export default function AdminRolesPage() {
         key: "view-menus",
         label: "查看菜单",
         disabled: menuLabels.length === 0,
-        onClick: () => {
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
           Modal.info({
             title: `角色菜单：${role.name}（${role.code}）`,
             content: (
@@ -607,7 +609,8 @@ export default function AdminRolesPage() {
         label: "删除",
         danger: true,
         disabled: rowBusy,
-        onClick: () => {
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
           Modal.confirm({
             title: `确认删除角色 ${role.code} 吗？`,
             content: "删除后无法恢复，请谨慎操作。",
@@ -637,33 +640,8 @@ export default function AdminRolesPage() {
             </Typography.Text>
           </Space>
         }
-        extra={
-          canManage ? (
-            <Space size={4}>
-              <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined />}
-                disabled={rowBusy}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  startEdit(role);
-                }}
-              />
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<MoreOutlined />}
-                  disabled={rowBusy}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              </Dropdown>
-            </Space>
-          ) : null
-        }
       >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+        <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-roles-role-card-field">
             <Typography.Text type="secondary">角色编码</Typography.Text>
             <Typography.Text ellipsis={{ tooltip: role.code }}>
@@ -688,6 +666,38 @@ export default function AdminRolesPage() {
             </Typography.Text>
           </div>
         </Space>
+        <div className="admin-roles-role-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+          <div />
+          <Space size="small" className="shrink-0">
+            {canManage ? (
+              <>
+                <Tooltip title="编辑">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EditOutlined />}
+                    disabled={rowBusy}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      startEdit(role);
+                    }}
+                  />
+                </Tooltip>
+                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                  <Tooltip title="更多">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<MoreOutlined />}
+                      disabled={rowBusy}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                  </Tooltip>
+                </Dropdown>
+              </>
+            ) : null}
+          </Space>
+        </div>
       </AntCard>
     );
   };

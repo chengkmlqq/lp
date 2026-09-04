@@ -391,10 +391,14 @@ export default function AdminSyslogPage() {
       className="admin-syslog-log-card"
       size="small"
       title={
-        <Space className="min-w-0" size={8}>
-          <Typography.Text strong>{log.username ?? log.user_id ?? "-"}</Typography.Text>
-          <Tag>{getActionLabel(log.action)}</Tag>
-        </Space>
+        <div className="flex items-center gap-2 min-w-0">
+          <Typography.Text strong ellipsis={{ tooltip: log.username ?? log.user_id ?? "-" }} className="flex-1 min-w-0">
+            {log.username ?? log.user_id ?? "-"}
+          </Typography.Text>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Tag>{getActionLabel(log.action)}</Tag>
+          </div>
+        </div>
       }
     >
       <Space direction="vertical" size={10} style={{ width: "100%" }}>

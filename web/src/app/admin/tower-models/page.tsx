@@ -22,6 +22,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   Upload,
   message,
@@ -702,14 +703,18 @@ export default function AdminTowerModelsPage() {
         key: "upload-image",
         label: "上传图片",
         disabled: rowBusy,
-        onClick: () => openUpload(row),
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
+          openUpload(row);
+        },
       },
       {
         key: "delete",
         label: "删除",
         danger: true,
         disabled: rowBusy,
-        onClick: () => {
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
           Modal.confirm({
             title: "删除杆塔模型",
             content: `确认删除模型 ${row.code} 吗？`,
@@ -771,28 +776,30 @@ export default function AdminTowerModelsPage() {
         </Space>
         {canManage ? (
           <div className="admin-tower-models-card-actions">
-            <div className="admin-tower-models-card-actions-left">
-              <div />
-            </div>
-            <Space size={4}>
-              <Button
-                type="text"
-                size="small"
-                disabled={rowBusy}
-                icon={<EditOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openEdit(row);
-                }}
-              />
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+            <div />
+            <Space size="small" className="shrink-0">
+              <Tooltip title="编辑">
                 <Button
                   type="text"
                   size="small"
                   disabled={rowBusy}
-                  icon={<MoreOutlined />}
-                  onClick={(event) => event.stopPropagation()}
+                  icon={<EditOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openEdit(row);
+                  }}
                 />
+              </Tooltip>
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Tooltip title="更多">
+                  <Button
+                    type="text"
+                    size="small"
+                    disabled={rowBusy}
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </Tooltip>
               </Dropdown>
             </Space>
           </div>

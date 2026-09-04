@@ -1,11 +1,12 @@
 "use client";
 
-import { Badge, Button, Dropdown, Empty, Progress, Space, Spin, Typography } from "antd";
+import { Badge, Button, Dropdown, Empty, Progress, Space, Spin, Tooltip, Typography } from "antd";
 import {
   ApartmentOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
   DeploymentUnitOutlined,
+  FileTextOutlined,
   MoreOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
@@ -117,52 +118,55 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
                     <Progress percent={0} size="small" className="flex-1 max-w-40" />
                   ) : null}
                 </div>
-                <Space>
+                <Space size="small" className="shrink-0">
                   {canReadLogs ? (
-                    <Button
-                      type="link"
-                      size="small"
-                      disabled={!job.task_id}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onOpenLog?.(job.task_id, "任务执行日志", job.job_name || job.line_name || job.line_code || "防雷任务");
-                      }}
-                    >
-                      查看日志
-                    </Button>
+                    <Tooltip title="查看日志">
+                      <Button
+                        type="text"
+                        size="small"
+                        disabled={!job.task_id}
+                        icon={<FileTextOutlined />}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onOpenLog?.(job.task_id, "任务执行日志", job.job_name || job.line_name || job.line_code || "防雷任务");
+                        }}
+                      />
+                    </Tooltip>
                   ) : null}
-                </Space>
-                <Dropdown
-                  menu={{
-                    items: [
-                      {
-                        key: "delete",
-                        label: (
-                          <Space size={4}>
-                            <DeleteOutlined />
-                            <span>删除</span>
-                          </Space>
-                        ),
-                        danger: true,
-                        disabled: isJobLocked(job),
-                        onClick: (event) => {
-                          event.domEvent.stopPropagation();
-                          onDeleteJob(job);
+                  <Dropdown
+                    menu={{
+                      items: [
+                        {
+                          key: "delete",
+                          label: (
+                            <Space size={4}>
+                              <DeleteOutlined />
+                              <span>删除</span>
+                            </Space>
+                          ),
+                          danger: true,
+                          disabled: isJobLocked(job),
+                          onClick: (event) => {
+                            event.domEvent.stopPropagation();
+                            onDeleteJob(job);
+                          },
                         },
-                      },
-                    ],
-                  }}
-                  trigger={["click"]}
-                >
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<MoreOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
+                      ],
                     }}
-                  />
-                </Dropdown>
+                    trigger={["click"]}
+                  >
+                    <Tooltip title="更多">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<MoreOutlined />}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                        }}
+                      />
+                    </Tooltip>
+                  </Dropdown>
+                </Space>
               </div>
             </div>
           </Card>

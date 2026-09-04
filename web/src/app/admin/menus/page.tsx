@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Badge,
   Button,
   Card,
   Checkbox,
@@ -19,6 +20,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Tree,
   Typography,
   type CardProps,
@@ -690,7 +692,8 @@ export default function AdminMenusPage() {
         label: "删除",
         danger: true,
         disabled: menuBusy || !canManage,
-        onClick: () => {
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
           Modal.confirm({
             title: `确认删除菜单 ${menuItem.name}（${menuItem.code}）？`,
             okText: "删除",
@@ -704,7 +707,10 @@ export default function AdminMenusPage() {
         key: "toggle-status",
         label: menuItem.status === "enabled" ? "禁用" : "启用",
         disabled: menuBusy || !canManage,
-        onClick: () => void updateMenuStatus(menuItem),
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
+          void updateMenuStatus(menuItem);
+        },
       },
     ];
 
@@ -715,42 +721,17 @@ export default function AdminMenusPage() {
         size="small"
         hoverable
         onClick={() => startEdit(menuItem)}
-        title={
-          <Space className="min-w-0" size={8}>
-            <Typography.Text strong>{menuItem.name}</Typography.Text>
-            <Tag color={menuItem.status === "enabled" ? "success" : "error"}>
-              {menuItem.status === "enabled" ? "已启用" : "已禁用"}
-            </Tag>
-          </Space>
-        }
-        extra={
-          canManage ? (
-            <Space size={4}>
-              <Button
-                type="text"
-                size="small"
-                disabled={menuBusy}
-                icon={<EditOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  startEdit(menuItem);
-                }}
-              />
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button
-                  type="text"
-                  size="small"
-                  loading={updatingLoading}
-                  disabled={menuBusy}
-                  icon={<MoreOutlined />}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              </Dropdown>
-            </Space>
-          ) : null
-        }
       >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+        <div className="admin-menus-menu-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+          <Typography.Text strong className="truncate flex-1">{menuItem.name}</Typography.Text>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Badge status={menuItem.status === "enabled" ? "success" : "error"} />
+            <Typography.Text type="secondary" className="text-xs">
+              {menuItem.status === "enabled" ? "已启用" : "已禁用"}
+            </Typography.Text>
+          </div>
+        </div>
+        <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-menus-menu-card-field">
             <Typography.Text type="secondary">菜单编码</Typography.Text>
             <Typography.Text className="font-mono text-xs">{menuItem.code}</Typography.Text>
@@ -770,6 +751,39 @@ export default function AdminMenusPage() {
             <Typography.Text>{menuItem.sort_order}</Typography.Text>
           </div>
         </Space>
+        <div className="admin-menus-menu-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+          <div />
+          <Space size="small" className="shrink-0">
+            {canManage ? (
+              <>
+                <Tooltip title="编辑">
+                  <Button
+                    type="text"
+                    size="small"
+                    disabled={menuBusy}
+                    icon={<EditOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      startEdit(menuItem);
+                    }}
+                  />
+                </Tooltip>
+                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                  <Tooltip title="更多">
+                    <Button
+                      type="text"
+                      size="small"
+                      loading={updatingLoading}
+                      disabled={menuBusy}
+                      icon={<MoreOutlined />}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                  </Tooltip>
+                </Dropdown>
+              </>
+            ) : null}
+          </Space>
+        </div>
       </AntCard>
     );
   };

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Badge,
   Button,
   Card,
   Col,
@@ -21,6 +22,7 @@ import {
   Tabs,
   Table,
   Tag,
+  Tooltip,
   Tree,
   Typography,
   type CardProps,
@@ -754,7 +756,8 @@ export default function AdminSystemParamsPage() {
         key: "copy-key",
         label: "复制参数键",
         disabled: rowBusy,
-        onClick: () => {
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
           void navigator.clipboard.writeText(param.param_key);
           setSuccess(`已复制参数键: ${param.param_key}`);
         },
@@ -763,14 +766,18 @@ export default function AdminSystemParamsPage() {
         key: "toggle-status",
         label: param.status === "enabled" ? "禁用" : "启用",
         disabled: rowBusy || !canManage,
-        onClick: () => toggleParamStatus(param),
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
+          toggleParamStatus(param);
+        },
       },
       {
         key: "delete",
         label: "删除",
         danger: true,
         disabled: rowBusy || !canManage,
-        onClick: () => {
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
           Modal.confirm({
             title: `确认删除系统参数 ${param.param_key}？`,
             okText: "删除",
@@ -789,41 +796,15 @@ export default function AdminSystemParamsPage() {
         size="small"
         hoverable
         onClick={() => startEdit(param)}
-        title={
-          <Space className="min-w-0" size={8}>
-            <Typography.Text strong>{param.param_name}</Typography.Text>
-            <Tag color={param.status === "enabled" ? "green" : "red"}>
-              {paramStatusLabel(param.status)}
-            </Tag>
-          </Space>
-        }
-        extra={
-          canManage ? (
-            <Space size={4}>
-              <Button
-                type="text"
-                size="small"
-                disabled={rowBusy}
-                icon={<EditOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  startEdit(param);
-                }}
-              />
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button
-                  type="text"
-                  size="small"
-                  disabled={rowBusy}
-                  icon={<MoreOutlined />}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              </Dropdown>
-            </Space>
-          ) : null
-        }
       >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+        <div className="admin-system-params-param-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+          <Typography.Text strong className="truncate flex-1">{param.param_name}</Typography.Text>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Badge status={param.status === "enabled" ? "success" : "error"} />
+            <Typography.Text type="secondary" className="text-xs">{paramStatusLabel(param.status)}</Typography.Text>
+          </div>
+        </div>
+        <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-system-params-param-card-field">
             <Typography.Text type="secondary">参数键</Typography.Text>
             <Typography.Text className="font-mono text-xs">{param.param_key}</Typography.Text>
@@ -847,6 +828,38 @@ export default function AdminSystemParamsPage() {
             <Typography.Text>{new Date(param.updated_at).toLocaleString()}</Typography.Text>
           </div>
         </Space>
+        <div className="admin-system-params-param-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+          <div />
+          <Space size="small" className="shrink-0">
+            {canManage ? (
+              <>
+                <Tooltip title="编辑">
+                  <Button
+                    type="text"
+                    size="small"
+                    disabled={rowBusy}
+                    icon={<EditOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      startEdit(param);
+                    }}
+                  />
+                </Tooltip>
+                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                  <Tooltip title="更多">
+                    <Button
+                      type="text"
+                      size="small"
+                      disabled={rowBusy}
+                      icon={<MoreOutlined />}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                  </Tooltip>
+                </Dropdown>
+              </>
+            ) : null}
+          </Space>
+        </div>
       </AntCard>
     );
   };

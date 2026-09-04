@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Badge,
   Button,
   Card,
   Col,
@@ -19,11 +20,14 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Tree,
   Typography,
   type CardProps,
 } from "antd";
 import {
+  DeleteOutlined,
+  EditOutlined,
   PlusOutlined,
   FolderOutlined,
   SearchOutlined,
@@ -667,52 +671,19 @@ export default function AdminDocumentsPage() {
         size="small"
         hoverable
         onClick={() => handleEditDocument(doc)}
-        title={
-          <Space className="min-w-0" size={8}>
-            <Typography.Text strong ellipsis={{ tooltip: doc.title }}>
-              {doc.title}
-            </Typography.Text>
-            <Tag color={doc.status === "published" ? "green" : "orange"}>
-              {doc.status === "published" ? "已发布" : "草稿"}
-            </Tag>
-          </Space>
-        }
-        extra={
-          <Space size={4}>
-            <Button
-              type="text"
-              size="small"
-              disabled={rowBusy || !canManage}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleEditDocument(doc);
-              }}
-            >
-              编辑
-            </Button>
-            <Button
-              type="text"
-              size="small"
-              danger
-              disabled={rowBusy || !canManage}
-              loading={deleteLoading}
-              onClick={(event) => {
-                event.stopPropagation();
-                Modal.confirm({
-                  title: `确认删除文档 ${doc.title}？`,
-                  okText: "删除",
-                  cancelText: "取消",
-                  okButtonProps: { danger: true, loading: deleteLoading },
-                  onOk: () => deleteDocumentMutation.mutate(doc.id),
-                });
-              }}
-            >
-              删除
-            </Button>
-          </Space>
-        }
       >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+        <div className="admin-documents-document-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+          <Typography.Text strong ellipsis={{ tooltip: doc.title }} className="truncate flex-1">
+            {doc.title}
+          </Typography.Text>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Badge status={doc.status === "published" ? "success" : "warning"} />
+            <Typography.Text type="secondary" className="text-xs">
+              {doc.status === "published" ? "已发布" : "草稿"}
+            </Typography.Text>
+          </div>
+        </div>
+        <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-documents-document-card-field">
             <Typography.Text type="secondary">排序</Typography.Text>
             <Typography.Text>{doc.sort_order}</Typography.Text>
@@ -727,6 +698,43 @@ export default function AdminDocumentsPage() {
             </div>
           )}
         </Space>
+        <div className="admin-documents-document-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+          <div />
+          <Space size="small" className="shrink-0">
+            <Tooltip title="编辑">
+              <Button
+                type="text"
+                size="small"
+                disabled={rowBusy || !canManage}
+                icon={<EditOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleEditDocument(doc);
+                }}
+              />
+            </Tooltip>
+            <Tooltip title="删除">
+              <Button
+                type="text"
+                size="small"
+                danger
+                disabled={rowBusy || !canManage}
+                loading={deleteLoading}
+                icon={<DeleteOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  Modal.confirm({
+                    title: `确认删除文档 ${doc.title}？`,
+                    okText: "删除",
+                    cancelText: "取消",
+                    okButtonProps: { danger: true, loading: deleteLoading },
+                    onOk: () => deleteDocumentMutation.mutate(doc.id),
+                  });
+                }}
+              />
+            </Tooltip>
+          </Space>
+        </div>
       </AntCard>
     );
   };

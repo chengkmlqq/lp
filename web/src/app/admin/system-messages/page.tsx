@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  Badge,
   Button,
   Card,
   Col,
@@ -18,12 +19,13 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   type CardProps,
   type MenuProps,
   type TableColumnsType,
 } from "antd";
-import { MoreOutlined, SearchOutlined } from "@ant-design/icons";
+import { EyeOutlined, MoreOutlined, SearchOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import type { ComponentType, CSSProperties, ReactNode, RefAttributes } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -611,7 +613,10 @@ export default function AdminSystemMessagesPage() {
         key: "mark-read",
         label: "标记已读",
         disabled: item.is_read || isDeleting || isMarkingRead,
-        onClick: () => markReadMutation.mutate([item.id]),
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
+          markReadMutation.mutate([item.id]);
+        },
       },
       ...(canManage
         ? [
@@ -620,7 +625,8 @@ export default function AdminSystemMessagesPage() {
               label: "删除",
               danger: true,
               disabled: isDeleting,
-              onClick: () => {
+              onClick: (info) => {
+                info.domEvent?.stopPropagation();
                 Modal.confirm({
                   title: "删除系统消息",
                   content: `确认删除系统消息「${item.title}」吗？`,
@@ -642,51 +648,28 @@ export default function AdminSystemMessagesPage() {
         size="small"
         hoverable
         onClick={() => setDetailMessage(item)}
-        title={
-          <Space direction="vertical" size={2} style={{ width: "100%" }}>
+      >
+        <div className="admin-system-messages-message-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+          <div className="flex flex-1 min-w-0 flex-col">
             <Typography.Text strong={!item.is_read} ellipsis={{ tooltip: item.title }}>
               {item.title}
             </Typography.Text>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               {item.target_user_id ? `用户：${item.target_user_id}` : "全员广播"}
             </Typography.Text>
-          </Space>
-        }
-        extra={
-          <Space size={4}>
-            <Button
-              size="small"
-              type="text"
-              onClick={(event) => {
-                event.stopPropagation();
-                setDetailMessage(item);
-              }}
-            >
-              查看
-            </Button>
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button
-                type="text"
-                size="small"
-                disabled={isDeleting}
-                icon={<MoreOutlined />}
-                onClick={(event) => event.stopPropagation()}
-              />
-            </Dropdown>
-          </Space>
-        }
-      >
-        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Badge status={item.is_read ? "default" : "processing"} />
+            <Typography.Text type="secondary" className="text-xs">
+              {item.is_read ? "已读" : "未读"}
+            </Typography.Text>
+          </div>
+        </div>
+        <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-system-messages-message-card-field">
             <Typography.Text type="secondary">类型</Typography.Text>
             <Tag color={MESSAGE_TYPE_COLORS[item.message_type]}>
               {MESSAGE_TYPE_LABELS[item.message_type]}
-            </Tag>
-          </div>
-          <div className="admin-system-messages-message-card-field">
-            <Typography.Text type="secondary">状态</Typography.Text>
-            <Tag color={item.is_read ? "default" : "processing"}>
-              {item.is_read ? "已读" : "未读"}
             </Tag>
           </div>
           <div className="admin-system-messages-message-card-field">
@@ -698,6 +681,33 @@ export default function AdminSystemMessagesPage() {
             <Typography.Text>{formatDateTime(item.created_at)}</Typography.Text>
           </div>
         </Space>
+        <div className="admin-system-messages-message-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+          <div />
+          <Space size="small" className="shrink-0">
+            <Tooltip title="查看">
+              <Button
+                type="text"
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setDetailMessage(item);
+                }}
+              />
+            </Tooltip>
+            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+              <Tooltip title="更多">
+                <Button
+                  type="text"
+                  size="small"
+                  disabled={isDeleting}
+                  icon={<MoreOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </Tooltip>
+            </Dropdown>
+          </Space>
+        </div>
       </AntCard>
     );
   };

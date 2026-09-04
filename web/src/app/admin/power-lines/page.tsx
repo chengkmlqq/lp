@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
+  Badge,
   Button,
   Dropdown,
   Empty,
@@ -664,6 +665,12 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
         <div className="admin-power-lines-line-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
           <DeploymentUnitOutlined className="text-base text-gray-500" />
           <Typography.Text strong className="truncate flex-1">{line.name}</Typography.Text>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Badge status={line.status === "processing" ? "processing" : line.status === "disabled" ? "error" : "success"} />
+            <Typography.Text type="secondary" className="text-xs">
+              {line.status === "processing" ? "处理中" : line.status === "disabled" ? "已停用" : "正常"}
+            </Typography.Text>
+          </div>
         </div>
 
         <div className="flex flex-col gap-2 px-4 py-3">
@@ -689,11 +696,13 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
           </div>
         </div>
 
-        <div className="admin-power-lines-line-card-actions flex items-center justify-end px-4 py-2 border-t border-gray-200">
+        <div className="admin-power-lines-line-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
           {line.status === "processing" ? (
-            <Progress percent={Math.round(line.progress)} size="small" className="mr-auto flex-1 max-w-40" />
-          ) : null}
-          <Space size="small">
+            <Progress percent={Math.round(line.progress)} size="small" className="flex-1 max-w-40" />
+          ) : (
+            <div />
+          )}
+          <Space size="small" className="shrink-0">
             <Tooltip title="杆塔">
               <Button
                 type="text"
@@ -755,14 +764,16 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
               }}
               trigger={["click"]}
             >
-              <Button
-                type="text"
-                size="small"
-                icon={<MoreOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                }}
-              />
+              <Tooltip title="更多">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MoreOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                />
+              </Tooltip>
             </Dropdown>
           </Space>
         </div>
