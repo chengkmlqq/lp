@@ -53,6 +53,188 @@ def _normalize_tower_shape_code(value: str) -> str:
     return normalized
 
 
+# ---------------------------------------------------------------------------
+# C# 桌面版 work.atp 参数计算（参照 lp-knowledge V1_Invoke_CircuitLightningProtection_Base
+# / ComputeLightningProtection.cs 的 500kV 公式）。
+# work.atp 的 $PARAMETER 区是 NAME=占位符 格式（如 REHG______=REHGI），必须逐参数
+# 替换为「带小数点」的数值，否则 tpbig 报 TACS/JTOKEN 错误。
+# ---------------------------------------------------------------------------
+CSHARP_PARAM_ORDER = [
+    "RER001", "RELENS____",
+    "RELE01", "RELE02", "RELE03", "RELE04", "RELE05", "RELE06",
+    "RELE07", "RELE08", "RELE09", "RELE10",
+    "REHG______", "REHC1_____", "REHC2_____", "REHC3_____",
+    "REIGAN____", "REIAMP____", "HIAMP_____",
+    "REAA______", "REBB______", "REAA1_____", "REBB1_____",
+    "REHSUR____", "REHSLO____", "REHHEI____",
+]
+
+
+def _as_float(value: Any) -> float | None:
+    """宽松转 float，None/空/非法返回 None。"""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, Any],
+                             execution_options: dict[str, Any]) -> dict[str, str]:
+    """按 C# 桌面版公式计算 work.atp $PARAMETER 全部参数值。
+
+    返回 {参数名: 字符串值}，值统一带小数点（ATP 解析必需）。
+    """
+    import math
+    insul_mm = _as_float(profile.get("insulator_length_m"))
+    insul_m = insul_mm / 1000.0 if insul_mm and insul_mm > 100 else insul_mm
+    shield_h = _as_float(profile.get("shield_wire_height_m"))
+    current_a = _as_float(profile.get("current_a"))
+    current_b = _as_float(profile.get("current_b"))
+    head_t = _as_float(profile.get("current_head_time_us"))
+    tail_t = _as_float(profile.get("current_tail_time_us"))
+    ground_r = _as_float(base_tower.get("ground_resistance_ohm"))
+
+    geometry = profile.get("geometry_layers_json") or {}
+    layer_i = geometry.get("I") or {}
+    ph = layer_i.get("phase_height_m") or {}
+    spacing = layer_i.get("phase_spacing_m") or {}
+    left_h = _as_float(ph.get("upper"))
+    mid_h = _as_float(ph.get("middle"))
+    right_h = _as_float(ph.get("lower"))
+    left_spacing = _as_float(spacing.get("upper"))
+    right_spacing = _as_float(spacing.get("lower"))
+    angle_l = _as_float(profile.get("protection_angle_left_deg")) or 0.0
+    angle_r = _as_float(profile.get("protection_angle_right_deg")) or 0.0
+    voltage = _as_float(base_tower.get("line_voltage_kv")) or 500.0
+
+    def fmt(v, digits=2):
+        if v is None:
+            return "1."
+        try:
+            return f"{float(v):.{digits}f}"
+        except (TypeError, ValueError):
+            return "1."
+
+    p: dict[str, str] = {}
+    # 电压相关的修正量（对照 C# switch(mDYDJ)）
+    if voltage <= 35:
+        blx_adj, ph_adj, rel05_min = 2.0, 10.0 / 3.0, 1.5
+    elif voltage <= 66:
+        blx_adj, ph_adj, rel05_min = 1.2, 1.5, 1.5
+    elif voltage <= 110:
+        blx_adj, ph_adj, rel05_min = 2.0, 10.0 / 3.0, 1.5
+    elif voltage <= 220:
+        blx_adj, ph_adj, rel05_min = 10.0 / 3.0, 14.0 / 3.0, 1.5
+    elif voltage <= 330:
+        blx_adj, ph_adj, rel05_min = 10.0 / 3.0, 14.0 / 3.0, 1.5
+    elif voltage <= 500:
+        blx_adj, ph_adj, rel05_min = 8.0, 6.0, 1.5
+    elif voltage <= 750:
+        blx_adj, ph_adj, rel05_min = 10.0 / 3.0, 14.0 / 3.0, 1.5
+    else:
+        blx_adj, ph_adj, rel05_min = 0.0, 0.0, 1.5
+
+    p["RER001"] = fmt(ground_r, 1)
+    p["RELENS____"] = fmt(insul_m, 2)
+    # RELE01 第一节主材长度 = 左相高度
+    p["RELE01"] = fmt(left_h, 1)
+    p["RELE02"] = fmt(left_h * 1.5 if left_h else None, 1)
+    p["RELE03"] = fmt(abs(left_spacing) if left_spacing else None, 1)
+    p["RELE04"] = fmt(abs(right_spacing) if right_spacing else None, 1)
+    h5 = abs(mid_h - left_h) if (mid_h and left_h) else None
+    if h5 is not None and h5 < rel05_min:
+        h5 = rel05_min
+    p["RELE05"] = fmt(h5, 2)
+    p["RELE06"] = fmt(h5 * 1.5 if h5 else None, 2)
+    h7 = abs(shield_h - mid_h) if (shield_h and mid_h) else None
+    if h7 is not None and h7 < rel05_min:
+        h7 = rel05_min
+    p["RELE07"] = fmt(h7, 2)
+    p["RELE08"] = fmt(h7 * 1.5 if h7 else None, 2)
+    # 避雷线中距：由保护角推导 x = h*tan(alpha)
+    xl = (shield_h or 0) * math.tan(math.radians(angle_l)) if shield_h else None
+    xr = (shield_h or 0) * math.tan(math.radians(angle_r)) if shield_h else None
+    p["RELE09"] = fmt(abs(xl), 2)
+    p["RELE10"] = fmt(abs(xr), 2)
+    p["REHG______"] = fmt(abs(shield_h - blx_adj) if shield_h else None, 1)
+    for name, h in (("REHC1_____", left_h), ("REHC2_____", mid_h), ("REHC3_____", right_h)):
+        p[name] = fmt(abs(h - insul_m - ph_adj) if (h and insul_m) else None, 1)
+    p["REIGAN____"] = fmt(abs(current_a), 1)
+    p["REIAMP____"] = fmt(-abs(current_a) * 1000 if current_a else None, 1)
+    p["HIAMP_____"] = fmt(-abs(current_a) * 1000 * 0.5 if current_a else None, 1)
+    p["REAA______"] = fmt(current_b, 2)
+    p["REBB______"] = fmt(current_a, 2)
+    p["REAA1_____"] = fmt(head_t, 2)
+    p["REBB1_____"] = fmt(tail_t, 2)
+    p["REHSUR____"] = "0."
+    p["REHSLO____"] = "0."
+    p["REHHEI____"] = "1."
+    return p
+
+
+_CSHARP_EQUALS_PARAM_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*)\s*=\s*([A-Za-z0-9_]+)\s*$")
+
+
+def _looks_like_csharp_equality_template(template: str) -> bool:
+    """检测模板是否为 C# 等号占位符格式（$PARAMETER 区 NAME=NAMEI 行）。
+
+    特征：存在形如 `RER001=RER001I` / `REHG______=REHGI` 的等号行，
+    且等号右侧是字母数字下划线（占位符）而非数字。返回 True 时走 C# 渲染。
+    """
+    sample = 0
+    for line in template.splitlines():
+        line = line.strip()
+        if not line or "=" not in line:
+            continue
+        name, sep, value = line.partition("=")
+        name = name.strip()
+        value = value.strip()
+        if not name or not value:
+            continue
+        # 右侧是数字（含小数点/科学计数）→ 已渲染或非占位符
+        if re.fullmatch(r"[-+]?\d*\.?\d+([eE][-+]?\d+)?", value):
+            continue
+        # 右侧是字母开头占位符（REHGI / RER001I / RELENSI ...）
+        if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", value):
+            sample += 1
+            if sample >= 2:
+                return True
+    return False
+
+
+def render_csharp_equality_template(
+    template: str,
+    *,
+    base_tower: dict[str, Any],
+    profile: dict[str, Any],
+    execution_options: dict[str, Any],
+) -> str:
+    """渲染 C# 桌面版等号格式模板（$PARAMETER 区 NAME=占位符）。
+
+    将 `REHG______=REHGI` 替换为 `REHG______=31.1`（带小数点），与 C# DLL
+    Update_work_atp3 的行为一致。返回渲染后的完整文本。
+    """
+    params = compute_csharp_atp_params(
+        base_tower=base_tower, profile=profile, execution_options=execution_options
+    )
+    lines = template.splitlines(keepends=True)
+    rendered: list[str] = []
+    for line in lines:
+        match = _CSHARP_EQUALS_PARAM_RE.match(line.rstrip("\r\n"))
+        if match and match.group(1) in params:
+            new_line = f"{match.group(1)}={params[match.group(1)]}"
+            if line.endswith("\r\n"):
+                new_line += "\r\n"
+            elif line.endswith("\n"):
+                new_line += "\n"
+            rendered.append(new_line)
+        else:
+            rendered.append(line)
+    return "".join(rendered)
+
+
 DEFAULT_JSON_MARKERS = ("FL_ANALYSIS_RESULT_BEGIN", "FL_ANALYSIS_RESULT_END")
 LEGACY_RESULT_KEY_MAP = {
     "反击耐雷水平": "counterstrike_withstand_ka",
@@ -338,6 +520,16 @@ def execute_external_waveform_tower_analysis(
         context=context,
         parameter_bindings=parameter_bindings,
     )
+    # C# 桌面版等号格式模板（$PARAMETER 区 NAME=占位符）支持：
+    # 检测到等号占位符（如 REHG______=REHGI）时，按 C# 公式逐参数替换为带小数点的数值，
+    # 否则 tpbig 会报 TACS/JTOKEN 错误。
+    if _looks_like_csharp_equality_template(rendered_text):
+        rendered_text = render_csharp_equality_template(
+            rendered_text,
+            base_tower=snapshot.base_tower_json or {},
+            profile=snapshot.profile_json or {},
+            execution_options=execution_options,
+        )
     logger.info("[ATP] 模板渲染完成，输入文件大小=%d 字节", len(rendered_text))
 
     run_dir = _prepare_run_directory(job=job, snapshot=snapshot, resolved_job=resolved_job)
