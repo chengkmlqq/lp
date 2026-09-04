@@ -295,6 +295,8 @@ def execute_legacy_atp_tower_analysis(
         failure_prefix = "rjtzl.exe运行失败，所得绕击跳闸率无效"
         result_file = resolved_job.egm_result_file
 
+    _prepare_wine_environment(run_dir=run_dir, template_dir=resolved_job.template_dir)
+
     completed = _run_runtime_command(
         command=command,
         working_dir=working_dir,
@@ -732,6 +734,42 @@ def _prepare_run_directory(
     run_dir = resolved_job.run_root / job.id / snapshot.id
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
+
+
+def _prepare_wine_environment(*, run_dir: Path, template_dir: Path) -> None:
+    """准备 Wine 运行环境（legacy ATP 引擎必需）：
+    1. D: 盘映射到 /app/data/wine/ATP（模板 $INCLUDE 路径 D:\\ATP\\... 依赖它）
+    2. 在映射根下建 ATP/ATP 符号链接，使 D:\\ATP\\500\\... 解析到真实电压目录
+    3. 运行目录复制 startup 文件（ATP 启动必需）
+    """
+    if _resolve_engine_mode() == "native":
+        return
+    atp_root = Path("/app/data/wine/ATP")
+    if not atp_root.is_dir():
+        raise RuntimeError(f"ATP引擎根目录不存在: {atp_root}")
+    # D: 盘映射
+    wine_prefix = os.environ.get("WINEPREFIX") or str(Path(os.path.expanduser("~")) / ".wine")
+    wine_dosdevices = Path(wine_prefix) / "dosdevices"
+    wine_dosdevices.mkdir(parents=True, exist_ok=True)
+    Path("/tmp").mkdir(parents=True, exist_ok=True)
+    d_drive = wine_dosdevices / "d:"
+    if not d_drive.exists() or not d_drive.is_symlink():
+        if d_drive.exists() or d_drive.is_symlink():
+            d_drive.unlink()
+        d_drive.symlink_to(atp_root)
+    # 双层 ATP：模板 INCLUDE 为 D:\\ATP\\500\\...，D: 映射到 atp_root，
+    # 因此需要 atp_root/ATP -> atp_root 使 D:\\ATP 命中真实引擎目录
+    nested = atp_root / "ATP"
+    if not nested.exists():
+        try:
+            nested.symlink_to(atp_root)
+        except OSError:
+            pass
+    # startup 文件（ATP 启动必需）
+    startup_src = atp_root / "startup"
+    startup_dst = run_dir / "startup"
+    if startup_src.exists() and not startup_dst.exists():
+        startup_dst.write_bytes(startup_src.read_bytes())
 
 
 def _run_runtime_command(
