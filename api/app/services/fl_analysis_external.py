@@ -978,6 +978,11 @@ def _build_command(*, adapter: str, input_path: Path, extra_args: list[str]) -> 
         wine_binary, engine_path, error = _resolve_wine_engine_executable()
         if error or not wine_binary or not engine_path:
             raise RuntimeError(error or "Wine ATP engine unavailable")
+        # C# 桌面版调用参数：tpbig both <path> s -r —— both 模式先生成稳态再时域，
+        # 同时输出 work.lis（闪络判据 Type-99 动作需要）与 work.pl4。
+        # extra_args 若已含 both 则不重复追加。
+        if "both" not in (str(a).strip() for a in extra_args):
+            return [wine_binary, engine_path, "both", str(input_path), "s", "-r", *extra_args]
         return [wine_binary, engine_path, str(input_path), *extra_args]
 
     engine_path, error = _resolve_native_engine_executable()
