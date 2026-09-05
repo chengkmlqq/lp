@@ -24,6 +24,7 @@ from ...services.atp_asset_service import (
     get_asset_topology,
     get_engine_status,
     get_run_detail,
+    list_asset_files,
     list_assets,
     list_runs,
     serialize_asset,
@@ -100,6 +101,16 @@ def upload_atp_asset_files_endpoint(
         actor_user_id=current_user.user.id,
     )
     return AtpAssetDetail(**updated.model_dump())
+
+
+@router.get("/assets/{asset_id}/files", response_model=AtpAssetFileListResponse)
+def list_atp_asset_files_endpoint(
+    asset_id: str,
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetFileListResponse:
+    """列出资产目录下的模型文件（前端详情页「文件」tab 数据源）。"""
+    return list_asset_files(db, asset_id=asset_id)
 
 
 @router.get("/assets/{asset_id}", response_model=AtpAssetDetail)
