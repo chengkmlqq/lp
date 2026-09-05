@@ -3933,15 +3933,21 @@ body {
   overflow-x: hidden;
 }
 
-/* LP-583: 详情页「基本信息 / 波形特征参数」两个 Descriptions 的 label 列固定同宽，
-   避免 label 列被各自最长表头撑开导致上下表格列不对齐。
-   !important 覆盖 antd 默认 table-layout:auto（其选择器特异性更高）。 */
-.admin-lightning-currents-meta-table .ant-descriptions-table {
+/* LP-583: 详情页「基本信息 / 波形特征参数」两个 Descriptions 的列宽保持一致，上下表格列对齐。
+   注意 antd 渲染的 <table> 上没有 ant-descriptions-table 类，需经 .ant-descriptions-view 选择；
+   table-layout:fixed 下未显式设宽的列会被内容撑开，故 label/content 四列统一 25% 均分，
+   两表（同为 column=2、每行 label+content×2）即严格同宽对齐。 */
+.admin-lightning-currents-meta-table .ant-descriptions-view > table {
   table-layout: fixed !important;
+  width: 100% !important;
+}
+
+.admin-lightning-currents-meta-table .ant-descriptions-item-label,
+.admin-lightning-currents-meta-table .ant-descriptions-item-content {
+  width: 25%;
 }
 
 .admin-lightning-currents-meta-table .ant-descriptions-item-label {
-  width: 200px;
   white-space: nowrap;
 }
 
