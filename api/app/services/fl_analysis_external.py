@@ -85,33 +85,70 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
                              execution_options: dict[str, Any]) -> dict[str, str]:
     """按 C# 桌面版公式计算 work.atp $PARAMETER 全部参数值。
 
-    返回 {参数名: 字符串值}，值统一带小数点（ATP 解析必需）。
+    公式对齐 ComputeLightningProtection.cs 的 ganzi/maotou/jiubei/guxing 塔型分支
+    （各电压等级 mDYDJ 分级修正）。返回 {参数名: 字符串值}，值统一带小数点。
     """
     import math
-    insul_mm = _as_float(profile.get("insulator_length_m"))
+
+    def f(v):
+        return _as_float(v)
+
+    insul_mm = f(profile.get("insulator_length_m"))
     insul_m = insul_mm / 1000.0 if insul_mm and insul_mm > 100 else insul_mm
-    shield_h = _as_float(profile.get("shield_wire_height_m"))
-    # 二分法迭代电流优先：execute_binary_search_external 每轮经
-    # _with_binary_search_current 写入 binary_search_current_ka（单位 kA）。
-    # C# 桌面版同样以当前扫描电流驱动 tpbig；profile.current_a 仅作初值。
-    current_a = _as_float(execution_options.get("binary_search_current_ka")) or _as_float(profile.get("current_a"))
-    current_b = _as_float(profile.get("current_b"))
-    head_t = _as_float(profile.get("current_head_time_us"))
-    tail_t = _as_float(profile.get("current_tail_time_us"))
-    ground_r = _as_float(base_tower.get("ground_resistance_ohm"))
+    shield_h = f(profile.get("shield_wire_height_m"))
+    # 二分法迭代电流优先（kA）；profile.current_a 仅作初值
+    current_ka = f(execution_options.get("binary_search_current_ka")) or f(profile.get("current_a")) or 0.0
+    head_t_raw_ms = f(profile.get("current_head_time_ms"))
+    if head_t_raw_ms is None:
+        head_t_us = f(profile.get("current_head_time_us"))
+        # C# 桌面版默认波头 2.6ms（LP_Task.txt）
+        head_t_ms = head_t_us / 1000.0 if head_t_us is not None else 2.6
+    else:
+        head_t_ms = head_t_raw_ms
+    tail_t_raw_ms = f(profile.get("current_tail_time_ms"))
+    if tail_t_raw_ms is None:
+        tail_t_us = f(profile.get("current_tail_time_us"))
+        # C# 桌面版默认波尾 50ms（LP_Task.txt）
+        tail_t_ms = tail_t_us / 1000.0 if tail_t_us is not None else 50.0
+    else:
+        tail_t_ms = tail_t_raw_ms
+    ground_r = f(base_tower.get("ground_resistance_ohm"))
+
+    cg = base_tower.get("circuit_geometry_json") or {}
+    lightning_wire = cg.get("lightning_wire") or {}
+    mid_l = f(lightning_wire.get("left_mid_distance_m"))
+    mid_r = f(lightning_wire.get("right_mid_distance_m"))
+    if mid_l is None:
+        mid_l = f(cg.get("left_mid_distance_m"))
+    if mid_r is None:
+        mid_r = f(cg.get("right_mid_distance_m"))
+    tower_h = f(cg.get("tower_height_m")) or f(profile.get("call_height_m"))
 
     geometry = profile.get("geometry_layers_json") or {}
     layer_i = geometry.get("I") or {}
     ph = layer_i.get("phase_height_m") or {}
     spacing = layer_i.get("phase_spacing_m") or {}
-    left_h = _as_float(ph.get("upper"))
-    mid_h = _as_float(ph.get("middle"))
-    right_h = _as_float(ph.get("lower"))
-    left_spacing = _as_float(spacing.get("upper"))
-    right_spacing = _as_float(spacing.get("lower"))
-    angle_l = _as_float(profile.get("protection_angle_left_deg")) or 0.0
-    angle_r = _as_float(profile.get("protection_angle_right_deg")) or 0.0
-    voltage = _as_float(base_tower.get("line_voltage_kv")) or 500.0
+    left_h = f(ph.get("upper"))
+    mid_h = f(ph.get("middle"))
+    right_h = f(ph.get("lower"))
+    left_spacing = f(spacing.get("upper"))
+    right_spacing = f(spacing.get("lower"))
+    voltage = f(base_tower.get("line_voltage_kv")) or 500.0
+
+    # 电压分级 → C# switch(mDYDJ) 修正量（ganzi 段 2005-2048）
+    def vadj(series):
+        if voltage <= 35: return series[0]
+        if voltage <= 66: return series[1]
+        if voltage <= 110: return series[2]
+        if voltage <= 220: return series[3]
+        if voltage <= 330: return series[4]
+        if voltage <= 500: return series[5]
+        if voltage <= 750: return series[6]
+        return series[7]
+
+    rehg_adj = vadj([2.0, 1.2, 2.0, 10.0 / 3.0, 10.0 / 3.0, 8.0, 10.0 / 3.0, 0.0])   # REHG 避雷线平均高度修正
+    rehc_adj = vadj([10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 6.0, 14.0 / 3.0, 0.0])  # REHC1/2/3 相高修正
+    rel01_adj = vadj([3.5, 8.6, 8.6, 8.5, 10.5, 14.0, 20.0, 28.9])  # RELE01 呼高修正（ganzi 2637-2645）
 
     def fmt(v, digits=2):
         if v is None:
@@ -122,59 +159,82 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
             return "1."
 
     p: dict[str, str] = {}
-    # 电压相关的修正量（对照 C# switch(mDYDJ)）
-    if voltage <= 35:
-        blx_adj, ph_adj, rel05_min = 2.0, 10.0 / 3.0, 1.5
-    elif voltage <= 66:
-        blx_adj, ph_adj, rel05_min = 1.2, 1.5, 1.5
-    elif voltage <= 110:
-        blx_adj, ph_adj, rel05_min = 2.0, 10.0 / 3.0, 1.5
-    elif voltage <= 220:
-        blx_adj, ph_adj, rel05_min = 10.0 / 3.0, 14.0 / 3.0, 1.5
-    elif voltage <= 330:
-        blx_adj, ph_adj, rel05_min = 10.0 / 3.0, 14.0 / 3.0, 1.5
-    elif voltage <= 500:
-        blx_adj, ph_adj, rel05_min = 8.0, 6.0, 1.5
-    elif voltage <= 750:
-        blx_adj, ph_adj, rel05_min = 10.0 / 3.0, 14.0 / 3.0, 1.5
-    else:
-        blx_adj, ph_adj, rel05_min = 0.0, 0.0, 1.5
-
     p["RER001"] = fmt(ground_r, 1)
     p["RELENS____"] = fmt(insul_m, 2)
-    # RELE01 第一节主材长度 = 左相高度
-    p["RELE01"] = fmt(left_h, 1)
-    p["RELE02"] = fmt(left_h * 1.5 if left_h else None, 1)
-    p["RELE03"] = fmt(abs(left_spacing) if left_spacing else None, 1)
-    p["RELE04"] = fmt(abs(right_spacing) if right_spacing else None, 1)
-    h5 = abs(mid_h - left_h) if (mid_h and left_h) else None
-    if h5 is not None and h5 < rel05_min:
-        h5 = rel05_min
+
+    # === ganzi 干字型塔（C# 1936-2100）===
+    # RELE01 第一节主材 = 杆塔呼高 - 电压修正（ganzi 段实际用呼高）
+    rel01 = abs(tower_h - rel01_adj) if tower_h else None
+    p["RELE01"] = fmt(rel01, 1)
+    p["RELE02"] = fmt(rel01 * 1.5 if rel01 is not None else None, 1)
+    # RELE03 左波阻抗 = |左相中距|（ganzi 段减 0）
+    p["RELE03"] = fmt(abs(left_spacing) if left_spacing is not None else None, 1)
+    p["RELE04"] = fmt(abs(right_spacing) if right_spacing is not None else None, 1)
+    # RELE05 中相左相高度差（<1.5 钳到 1.5）
+    h5 = abs(mid_h - left_h) if (mid_h is not None and left_h is not None) else None
+    if h5 is not None and h5 < 1.5:
+        h5 = 1.5
     p["RELE05"] = fmt(h5, 2)
-    p["RELE06"] = fmt(h5 * 1.5 if h5 else None, 2)
-    h7 = abs(shield_h - mid_h) if (shield_h and mid_h) else None
-    if h7 is not None and h7 < rel05_min:
-        h7 = rel05_min
+    p["RELE06"] = fmt(h5 * 1.5 if h5 is not None else None, 2)
+    # RELE07 避雷线高度与中相高度之差（<1.5 钳到 1.5）
+    h7 = abs(shield_h - mid_h) if (shield_h is not None and mid_h is not None) else None
+    if h7 is not None and h7 < 1.5:
+        h7 = 1.5
     p["RELE07"] = fmt(h7, 2)
-    p["RELE08"] = fmt(h7 * 1.5 if h7 else None, 2)
-    # 避雷线中距：由保护角推导 x = h*tan(alpha)；缺保护角/避雷线高度时留空（fmt 输出默认）
-    xl = (shield_h or 0) * math.tan(math.radians(angle_l)) if (shield_h and angle_l is not None) else None
-    xr = (shield_h or 0) * math.tan(math.radians(angle_r)) if (shield_h and angle_r is not None) else None
-    p["RELE09"] = fmt(abs(xl) if xl is not None else None, 2)
-    p["RELE10"] = fmt(abs(xr) if xr is not None else None, 2)
-    p["REHG______"] = fmt(abs(shield_h - blx_adj) if shield_h else None, 1)
+    p["RELE08"] = fmt(h7 * 1.5 if h7 is not None else None, 2)
+    # RELE09/10 左/右避雷线中距绝对值（C# 1996/2000）
+    # 优先用 circuit_geometry.lightning_wire 中距；缺失时用保护角推导 x = h*tan(alpha) 回退
+    angle_l = f(profile.get("protection_angle_left_deg"))
+    angle_r = f(profile.get("protection_angle_right_deg"))
+    if mid_l is None and angle_l is not None and shield_h:
+        mid_l = shield_h * math.tan(math.radians(angle_l))
+    if mid_r is None and angle_r is not None and shield_h:
+        mid_r = shield_h * math.tan(math.radians(angle_r))
+    p["RELE09"] = fmt(abs(mid_l) if mid_l is not None else None, 2)
+    p["RELE10"] = fmt(abs(mid_r) if mid_r is not None else None, 2)
+
+    # REHG 避雷线平均高度 = |避雷线高度 - 修正|
+    p["REHG______"] = fmt(abs(shield_h - rehg_adj) if shield_h is not None else None, 1)
+    # REHC1/2/3 相平均高度 = |相高 - 绝缘子串长 - 修正|
     for name, h in (("REHC1_____", left_h), ("REHC2_____", mid_h), ("REHC3_____", right_h)):
-        p[name] = fmt(abs(h - insul_m - ph_adj) if (h and insul_m) else None, 1)
-    p["REIGAN____"] = fmt(abs(current_a) if current_a is not None else None, 1)
-    p["REIAMP____"] = fmt(-abs(current_a) * 1000 if current_a else None, 1)
-    p["HIAMP_____"] = fmt(-abs(current_a) * 1000 * 0.5 if current_a else None, 1)
-    p["REAA______"] = fmt(abs(current_b) if current_b is not None else None, 2)
-    p["REBB______"] = fmt(abs(current_a) if current_a is not None else None, 2)
-    p["REAA1_____"] = fmt(head_t, 2)
-    p["REBB1_____"] = fmt(tail_t, 2)
-    p["REHSUR____"] = "0."
-    p["REHSLO____"] = "0."
-    p["REHHEI____"] = "1."
+        p[name] = fmt(abs(h - insul_m - rehc_adj) if (h is not None and insul_m is not None) else None, 1)
+
+    # 雷电流幅值（C# 2052-2056）：current_ka(kA) → REIGAN=|c|/1000? 不——current_ka 已是 kA
+    # C# current 单位 A：REIGAN=|current|/1000(kA)、REIAMP=-|current|(A)、HIAMP=-|current|*0.5(A)
+    # 我们 current_ka 单位 kA：REIGAN=current_ka(kA)、REIAMP=-current_ka*1000(A)、HIAMP=-current_ka*500(A)
+    p["REIGAN____"] = fmt(abs(current_ka), 1)
+    p["REIAMP____"] = fmt(-abs(current_ka) * 1000.0, 1)
+    p["HIAMP_____"] = fmt(-abs(current_ka) * 1000.0 * 0.5, 1)
+
+    # 雷电流波形参数（C# 2058-2065）：REAA/REBB 衰减率(s^-1)=-1E6/时间ms；REAA1/REBB1 时间(s)=ms*1E-6
+    # 格式：REAA/REBB 用 {0,10:F1}，REAA1/REBB1 用 {0,10:F7}（work_atp_model.txt）
+    if head_t_ms is not None and head_t_ms > 0:
+        p["REBB______"] = fmt(-1.0E6 / head_t_ms, 1)
+        p["REAA1_____"] = fmt(head_t_ms * 1.0E-6, 7)
+    else:
+        p["REBB______"] = "1."
+        p["REAA1_____"] = "1."
+    if tail_t_ms is not None and tail_t_ms > 0:
+        p["REAA______"] = fmt(-1.0E6 / tail_t_ms, 1)
+        p["REBB1_____"] = fmt(tail_t_ms * 1.0E-6, 7)
+    else:
+        p["REAA______"] = "1."
+        p["REBB1_____"] = "1."
+
+    # 波形种类（C# 2066-2087 switch）：1 Heidler(INPhei) 2 双斜角(INPslo) 3 双指数(INPsur)
+    wf = int(f(profile.get("current_type")) or 1)
+    if wf == 2:
+        p["REHHEI____"] = "0."
+        p["REHSLO____"] = "1."
+        p["REHSUR____"] = "0."
+    elif wf == 3:
+        p["REHHEI____"] = "0."
+        p["REHSLO____"] = "0."
+        p["REHSUR____"] = "1."
+    else:
+        p["REHHEI____"] = "1."
+        p["REHSLO____"] = "0."
+        p["REHSUR____"] = "0."
     return p
 
 
@@ -665,6 +725,17 @@ def execute_external_waveform_tower_analysis(
     except Exception as exc:
         logger.warning("[ATP] 结果契约解析失败（%s），降级为 pl4 闪络检测：%s", snapshot.tower_no, exc)
         parsed_payload = {}
+    # work.lis Type-99 闪络判据（C# Check_Lightning_work_lis 同源机制）：
+    # tpbig 用 both 参数跑后生成 work.lis，绝缘子闪络模型（Type-99 非线性电阻）
+    # 动作时 lis 出现 "Type-99 v-i ... begins operation" 标记 → 该次计算闪络。
+    # 实测：30kA 无动作（不闪络）、124kA 在 1.765μs 动作（闪络），与 C# 耐雷水平吻合。
+    try:
+        lis_flash = _read_lis_flashover(run_dir)
+        if lis_flash is not None:
+            parsed_payload["flashover_count"] = lis_flash
+            logger.info("[ATP] lis 闪络检测：%s，闪络相数=%d", snapshot.tower_no, lis_flash)
+    except Exception as exc:
+        logger.warning("[ATP] lis 闪络检测失败（%s）：%s", snapshot.tower_no, exc)
     # ATP 二进制波形（work.pl4）闪络检测：复刻 C# pl4Class.flashNumber()，
     # 供二分法用 flashover_count 判断闪络。解析失败不阻断（仅记录）。
     try:
@@ -1014,6 +1085,31 @@ def _format_value(value: Any, format_spec: str) -> str:
         precision = abs(int(normalized_spec[1:] or "0"))
         return f"{numeric_value:.{precision}E}"
     return format(value, normalized_spec)
+
+
+def _read_lis_flashover(run_dir: Path) -> int | None:
+    """从 work.lis（tpbig both 模式日志）解析闪络相数。
+
+    判据对齐 C# Check_Lightning_work_lis：绝缘子闪络模型是 Type-99 非线性
+    电阻（99XX0011XX0115 等），闪络时 lis 出现
+    "Type-99 v-i from ... begins operation on segment ..." 标记。
+    返回闪络元件数（0=无闪络）；文件缺失返回 None。
+    """
+    lis_path = run_dir / "work.lis"
+    if not lis_path.is_file():
+        return None
+    try:
+        raw = lis_path.read_bytes()
+        text = raw.decode("gbk", errors="replace")
+    except Exception:
+        return None
+    if not text.strip():
+        return None
+    count = 0
+    for line in text.splitlines():
+        if "begins operation" in line and ("Type-99" in line or "Type 99" in line):
+            count += 1
+    return count
 
 
 def _read_pl4_flashover_count(run_dir: Path, storage_root: str | None = None) -> int | None:
