@@ -11,7 +11,6 @@ import {
   Input,
   Modal,
   Pagination,
-  Popconfirm,
   Segmented,
   Space,
   Tabs,
@@ -51,7 +50,7 @@ const FL_ANALYSIS_TABLE_BOTTOM_GAP = 8;
 export default function AdminFlAnalysisPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
-  const { message: messageApi } = App.useApp();
+  const { modal: modalApi, message: messageApi } = App.useApp();
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [keywordInput, setKeywordInput] = useState("");
@@ -307,6 +306,18 @@ export default function AdminFlAnalysisPage() {
     },
   });
 
+  // 删除前二次确认（对齐雷电流幅值统计页的 modalApi.confirm 交互）
+  const handleDeleteJob = (job: FlAnalysisJobSummary) => {
+    modalApi.confirm({
+      title: "删除防雷分析任务",
+      content: `确认删除任务「${job.job_name || job.line_name || job.id}」吗？删除后不可恢复。`,
+      okText: "删除",
+      cancelText: "取消",
+      okButtonProps: { danger: true },
+      onOk: () => deleteJobMutation.mutate(job),
+    });
+  };
+
 
   if (initializing) {
     return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
@@ -399,7 +410,7 @@ export default function AdminFlAnalysisPage() {
                 ) : viewMode === "card" ? (
                   <>
                     <div className="admin-power-lines-card-scroll">
-                      <JobCardList jobs={jobs} loading={jobsQuery.isLoading} onDeleteJob={(job) => deleteJobMutation.mutate(job)} canReadLogs={canReadLogs} onOpenLog={openLogViewer} />
+                      <JobCardList jobs={jobs} loading={jobsQuery.isLoading} onDeleteJob={handleDeleteJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} />
                     </div>
                     <div className="admin-power-lines-pagination">
                       <Pagination
@@ -427,7 +438,7 @@ export default function AdminFlAnalysisPage() {
                       pagination={pagination}
                       onPaginationChange={(next) => setPagination(next)}
                       scrollY={tableScrollY}
-                      onDeleteJob={(job) => deleteJobMutation.mutate(job)}
+                      onDeleteJob={handleDeleteJob}
                       canReadLogs={canReadLogs}
                       onOpenLog={openLogViewer}
                     />
