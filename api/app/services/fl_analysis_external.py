@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import struct
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -153,19 +154,19 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
         h7 = rel05_min
     p["RELE07"] = fmt(h7, 2)
     p["RELE08"] = fmt(h7 * 1.5 if h7 else None, 2)
-    # 避雷线中距：由保护角推导 x = h*tan(alpha)
-    xl = (shield_h or 0) * math.tan(math.radians(angle_l)) if shield_h else None
-    xr = (shield_h or 0) * math.tan(math.radians(angle_r)) if shield_h else None
-    p["RELE09"] = fmt(abs(xl), 2)
-    p["RELE10"] = fmt(abs(xr), 2)
+    # 避雷线中距：由保护角推导 x = h*tan(alpha)；缺保护角/避雷线高度时留空（fmt 输出默认）
+    xl = (shield_h or 0) * math.tan(math.radians(angle_l)) if (shield_h and angle_l is not None) else None
+    xr = (shield_h or 0) * math.tan(math.radians(angle_r)) if (shield_h and angle_r is not None) else None
+    p["RELE09"] = fmt(abs(xl) if xl is not None else None, 2)
+    p["RELE10"] = fmt(abs(xr) if xr is not None else None, 2)
     p["REHG______"] = fmt(abs(shield_h - blx_adj) if shield_h else None, 1)
     for name, h in (("REHC1_____", left_h), ("REHC2_____", mid_h), ("REHC3_____", right_h)):
         p[name] = fmt(abs(h - insul_m - ph_adj) if (h and insul_m) else None, 1)
-    p["REIGAN____"] = fmt(abs(current_a), 1)
+    p["REIGAN____"] = fmt(abs(current_a) if current_a is not None else None, 1)
     p["REIAMP____"] = fmt(-abs(current_a) * 1000 if current_a else None, 1)
     p["HIAMP_____"] = fmt(-abs(current_a) * 1000 * 0.5 if current_a else None, 1)
-    p["REAA______"] = fmt(current_b, 2)
-    p["REBB______"] = fmt(current_a, 2)
+    p["REAA______"] = fmt(abs(current_b) if current_b is not None else None, 2)
+    p["REBB______"] = fmt(abs(current_a) if current_a is not None else None, 2)
     p["REAA1_____"] = fmt(head_t, 2)
     p["REBB1_____"] = fmt(tail_t, 2)
     p["REHSUR____"] = "0."
@@ -489,6 +490,7 @@ def render_atp_template(
 def execute_external_waveform_tower_analysis(
     resolved_job: ResolvedExternalWaveformJob,
     *,
+    db: Session,
     job: FlAnalysisJob,
     snapshot: FlAnalysisTowerSnapshot,
     execution_options: dict[str, Any],
@@ -536,6 +538,13 @@ def execute_external_waveform_tower_analysis(
     input_path = run_dir / resolved_job.entry_file
     input_path.write_text(rendered_text, encoding="gbk", errors="replace")
     logger.info("[ATP] 输入文件已写入：%s", input_path)
+
+    # 物化资产 lib/dat 文件并改写 INCLUDE 路径（tpbig 依赖同目录 lib 文件）
+    _materialize_asset_files(
+        db=db,
+        run_dir=run_dir,
+        resolved_job=resolved_job,
+    )
 
     command = _build_command(
         adapter=resolved_job.adapter,
@@ -641,12 +650,27 @@ def execute_external_waveform_tower_analysis(
         )
 
     logger.info("[ATP] 开始解析结果：%s，期望结果文件=%s", snapshot.tower_no, resolved_job.result_file)
-    parsed_payload = _read_external_result_payload(
-        contract=resolved_job.contract,
-        stdout_text=result.stdout,
-        run_dir=run_dir,
-        result_file=resolved_job.result_file,
-    )
+    # ATP 模板无结果契约时（result_file=None 且 stdout 为 tpbig 文本日志），
+    # 解析会失败；此时降级为 pl4 闪络检测结果，保证二分法可运行。
+    try:
+        parsed_payload = _read_external_result_payload(
+            contract=resolved_job.contract,
+            stdout_text=result.stdout,
+            run_dir=run_dir,
+            result_file=resolved_job.result_file,
+        )
+    except Exception as exc:
+        logger.warning("[ATP] 结果契约解析失败（%s），降级为 pl4 闪络检测：%s", snapshot.tower_no, exc)
+        parsed_payload = {}
+    # ATP 二进制波形（work.pl4）闪络检测：复刻 C# pl4Class.flashNumber()，
+    # 供二分法用 flashover_count 判断闪络。解析失败不阻断（仅记录）。
+    try:
+        flashover_count = _read_pl4_flashover_count(run_dir, resolved_job.storage_root_path)
+        if flashover_count is not None:
+            parsed_payload["flashover_count"] = flashover_count
+            logger.info("[ATP] pl4 闪络检测：%s，闪络相数=%d", snapshot.tower_no, flashover_count)
+    except Exception as exc:
+        logger.warning("[ATP] pl4 闪络检测失败（%s）：%s", snapshot.tower_no, exc)
     logger.info("[ATP] 结果解析完成：%s，payload_keys=%s", snapshot.tower_no, list(parsed_payload.keys())[:10])
     merged_result = _merge_external_result(
         baseline_result=baseline_result,
@@ -667,6 +691,7 @@ def execute_external_waveform_tower_analysis(
 def execute_binary_search_external(
     resolved_job: ResolvedExternalWaveformJob,
     *,
+    db: Session,
     job: FlAnalysisJob,
     snapshot: FlAnalysisTowerSnapshot,
     execution_options: dict[str, Any],
@@ -693,6 +718,7 @@ def execute_binary_search_external(
         adjusted_execution_options = _with_binary_search_current(execution_options, current_ka=candidate)
         execution = execute_external_waveform_tower_analysis(
             resolved_job,
+            db=db,
             job=job,
             snapshot=snapshot,
             execution_options=adjusted_execution_options,
@@ -809,6 +835,70 @@ def _prepare_run_directory(
     return base_dir
 
 
+def _materialize_asset_files(
+    *,
+    db: Session,
+    run_dir: Path,
+    resolved_job: ResolvedExternalWaveformJob,
+) -> None:
+    """把资产目录的全部文件从存储物化到 Wine D 盘引擎目录。
+
+    tpbig 通过 $INCLUDE 引用 D:\\ATP\\500\\ganzi\\fanji\\M1\\short.lib 等绝对路径
+    （经 Wine D: 盘映射到 /app/data/wine/ATP）。因此资产文件必须落在
+    /app/data/wine/ATP/<storage_root相对路径>，而非运行目录。
+    渲染后的 work.atp 已写入 run_dir，这里把它复制到引擎目录覆盖模板占位符版。
+    """
+    from .atp_asset_service import _resolve_mount, _build_driver_or_400
+
+    storage_root = resolved_job.storage_root_path or ""
+    if not storage_root:
+        return
+    mount = _resolve_mount(db, resolved_job.storage_mount_code or "main")
+    driver = _build_driver_or_400(mount)
+    try:
+        tree = _walk_storage_tree(driver, storage_root)
+    except Exception:
+        logger.warning("[ATP] 资产文件物化失败：无法枚举 %s", storage_root, exc_info=True)
+        return
+
+    # D 盘引擎目录：/app/data/wine/ATP + storage_root 相对段
+    atp_root = Path("/app/data/wine/ATP")
+    rel_segments = [seg for seg in storage_root.strip("/").split("/") if seg]
+    # storage_root 形如 /atp-assets/500/ganzi/fanji/M1 → 取 atp-assets 之后的段
+    if rel_segments and rel_segments[0] == "atp-assets":
+        rel_segments = rel_segments[1:]
+    engine_dir = atp_root.joinpath(*rel_segments) if rel_segments else atp_root
+    engine_dir.mkdir(parents=True, exist_ok=True)
+
+    for item in tree.files:
+        rel = item.path
+        rel_path = rel[len(storage_root):].lstrip("/")
+        if not rel_path or "\\" in rel_path:
+            continue
+        target = engine_dir / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            read_result = driver.read_file(item.path)
+            content = read_result.content if hasattr(read_result, "content") else read_result
+            target.write_bytes(content)
+        except Exception as exc:
+            logger.warning("[ATP] 物化文件失败 %s：%s", rel_path, exc)
+
+    # 渲染后的 work.atp 复制到引擎目录（覆盖模板占位符版）
+    entry_target = engine_dir / resolved_job.entry_file
+    rendered_atp = run_dir / resolved_job.entry_file
+    if rendered_atp.is_file():
+        entry_target.write_bytes(rendered_atp.read_bytes())
+        logger.info("[ATP] 资产文件已物化到引擎目录 %s，work.atp 渲染版已覆盖", engine_dir)
+
+    # startup 是 tpbig 运行必需（缺少时报 "Attempt to connect disk file startup has failed"）
+    startup_src = atp_root / "startup"
+    startup_dst = engine_dir / "startup"
+    if startup_src.exists() and not startup_dst.exists():
+        startup_dst.write_bytes(startup_src.read_bytes())
+        logger.info("[ATP] startup 已复制到引擎目录 %s", engine_dir)
+
+
 def _build_command(*, adapter: str, input_path: Path, extra_args: list[str]) -> list[str]:
     if adapter in ("wine", "atp"):
         wine_binary, engine_path, error = _resolve_wine_engine_executable()
@@ -921,6 +1011,70 @@ def _format_value(value: Any, format_spec: str) -> str:
         precision = abs(int(normalized_spec[1:] or "0"))
         return f"{numeric_value:.{precision}E}"
     return format(value, normalized_spec)
+
+
+def _read_pl4_flashover_count(run_dir: Path, storage_root: str | None = None) -> int | None:
+    """从 work.pl4（ATP 二进制波形）解析闪络相数，复刻 C# pl4Class。
+
+    头部布局（getNs）：偏移 19 起 7 个 uint32 LE：
+      N_node, N_vol*2, N_all*2, N_tacs, N_zero, N_begin, N_end
+    N_N = (N_end - N_begin) / ((N_all+1)*4)
+    闪络检测（flashNumber）：从最后 3 个通道（N_all-1 .. N_all-3）反向找，
+    每个通道遍历所有采样点，采样值（float32 LE）> 阈值 10.0 即该相闪络。
+    返回闪络相数（0-3）；文件缺失/格式异常返回 None。
+    """
+    # tpbig 把 pl4 写到 INCLUDE 所在目录（引擎目录）而非运行目录：
+    # /app/data/wine/ATP/<电压>/<塔型>/<场景>/<组合>/work.pl4
+    candidates = [run_dir / "work.pl4"]
+    if storage_root:
+        rel_segments = [seg for seg in storage_root.strip("/").split("/") if seg]
+        if rel_segments and rel_segments[0] == "atp-assets":
+            rel_segments = rel_segments[1:]
+        if rel_segments:
+            candidates.append(Path("/app/data/wine/ATP").joinpath(*rel_segments) / "work.pl4")
+    pl4_path = None
+    for cand in candidates:
+        if cand.is_file() and cand.stat().st_size > 60:
+            pl4_path = cand
+            break
+    if pl4_path is None:
+        return None
+    data = pl4_path.read_bytes()
+    if len(data) < 19 + 28:
+        return None
+    def u32(offset: int) -> int:
+        return int.from_bytes(data[offset:offset + 4], "little", signed=False)
+
+    N_node = u32(19)
+    N_vol = u32(19 + 4) // 2
+    N_all = u32(19 + 8) // 2
+    N_begin = u32(19 + 20)
+    N_end = u32(19 + 24)
+    if N_node > 300 or N_all < 1:
+        return None
+    step_bytes = (N_all + 1) * 4
+    if step_bytes <= 0:
+        return None
+    N_N = (N_end - N_begin) // step_bytes
+    if N_N <= 0:
+        return None
+
+    threshold = 10.0
+    flash_count = 0
+    # 最后 3 个通道（跳过时间列 + 最后 3 个通道）
+    for channel in range(N_all - 1, max(N_all - 4, -1), -1):
+        flashed = False
+        for i in range(N_N):
+            offset = N_begin - 1 + step_bytes * i + (channel + 1) * 4
+            if offset + 4 > len(data):
+                break
+            sample = struct.unpack("<f", data[offset:offset + 4])[0]
+            if sample > threshold:
+                flashed = True
+                break
+        if flashed:
+            flash_count += 1
+    return flash_count
 
 
 def _read_external_result_payload(

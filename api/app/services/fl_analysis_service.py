@@ -596,6 +596,7 @@ def execute_job(job_id: str) -> None:
                     if execution_options.get("binary_search", True):
                         execution = execute_binary_search_external(
                             resolved_job,
+                            db=db,
                             job=job,
                             snapshot=snapshot,
                             execution_options=execution_options,
@@ -604,6 +605,7 @@ def execute_job(job_id: str) -> None:
                     else:
                         execution = execute_external_waveform_tower_analysis(
                             resolved_job,
+                            db=db,
                             job=job,
                             snapshot=snapshot,
                             execution_options=execution_options,
@@ -647,6 +649,7 @@ def execute_job(job_id: str) -> None:
                     if execution_options.get("binary_search", True):
                         execution = execute_binary_search_external(
                             resolved_job,
+                            db=db,
                             job=job,
                             snapshot=snapshot,
                             execution_options=execution_options,
@@ -655,6 +658,7 @@ def execute_job(job_id: str) -> None:
                     else:
                         execution = execute_external_waveform_tower_analysis(
                             resolved_job,
+                            db=db,
                             job=job,
                             snapshot=snapshot,
                             execution_options=execution_options,
