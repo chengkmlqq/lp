@@ -91,7 +91,10 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
     insul_mm = _as_float(profile.get("insulator_length_m"))
     insul_m = insul_mm / 1000.0 if insul_mm and insul_mm > 100 else insul_mm
     shield_h = _as_float(profile.get("shield_wire_height_m"))
-    current_a = _as_float(profile.get("current_a"))
+    # 二分法迭代电流优先：execute_binary_search_external 每轮经
+    # _with_binary_search_current 写入 binary_search_current_ka（单位 kA）。
+    # C# 桌面版同样以当前扫描电流驱动 tpbig；profile.current_a 仅作初值。
+    current_a = _as_float(execution_options.get("binary_search_current_ka")) or _as_float(profile.get("current_a"))
     current_b = _as_float(profile.get("current_b"))
     head_t = _as_float(profile.get("current_head_time_us"))
     tail_t = _as_float(profile.get("current_tail_time_us"))
