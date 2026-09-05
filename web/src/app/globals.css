@@ -3933,6 +3933,18 @@ body {
   overflow-x: hidden;
 }
 
+/* LP-583: 详情页「基本信息 / 波形特征参数」两个 Descriptions 的 label 列固定同宽，
+   避免 label 列被各自最长表头撑开导致上下表格列不对齐。
+   !important 覆盖 antd 默认 table-layout:auto（其选择器特异性更高）。 */
+.admin-lightning-currents-meta-table .ant-descriptions-table {
+  table-layout: fixed !important;
+}
+
+.admin-lightning-currents-meta-table .ant-descriptions-item-label {
+  width: 200px;
+  white-space: nowrap;
+}
+
 /* LP-246: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
    内部列表 Tab 的布局才能延续原有 flex 自适应滚动布局 */
 .admin-lightning-currents-tabs {

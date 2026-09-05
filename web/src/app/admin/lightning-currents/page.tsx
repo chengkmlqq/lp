@@ -1638,7 +1638,7 @@ function AmplitudeDetailView({
     <Space direction="vertical" size={12} className="w-full admin-lightning-currents-detail-pane">
       <div>
         <Typography.Title level={5}>基本信息</Typography.Title>
-        <Descriptions bordered size="small" column={2}>
+        <Descriptions bordered size="small" column={2} className="admin-lightning-currents-meta-table">
           <Descriptions.Item label="城市">{formatNullable(record.city)}</Descriptions.Item>
           <Descriptions.Item label="采样地点">{formatNullable(record.location_tag)}</Descriptions.Item>
           <Descriptions.Item label="传感器">{formatNullable(record.sensor_model)}</Descriptions.Item>
@@ -1652,7 +1652,7 @@ function AmplitudeDetailView({
 
       <div>
         <Typography.Title level={5}>波形特征参数</Typography.Title>
-        <Descriptions bordered size="small" column={2}>
+        <Descriptions bordered size="small" column={2} className="admin-lightning-currents-meta-table">
           <Descriptions.Item label={
             <span>
               峰值电流(kA){" "}
