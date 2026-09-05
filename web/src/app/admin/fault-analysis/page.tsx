@@ -191,19 +191,19 @@ export default function AdminFaultAnalysisPage() {
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage");
-  const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
 
-  // 打开分析执行日志抽屉（task_id 缺失或无日志权限时静默忽略，参照雷电流幅值页）
+  // 打开分析执行日志抽屉（不设权限门控；task_id 缺失时给出提示）
   const openLogViewer = useCallback(
     (taskId: string | null | undefined, label: string, title: string) => {
-      if (!taskId || !canReadLogs) {
+      if (!taskId) {
+        messageApi.warning("该记录暂无分析日志");
         return;
       }
       setLogModalTaskId(taskId);
       setLogModalTitle(`${label} - ${title}`);
       setLogModalOpen(true);
     },
-    [canReadLogs],
+    [messageApi],
   );
 
   // 查询按钮/回车触发：设置关键词与分页，并强制刷新列表（关键词未变时 refetchQueries 保证重新拉取）。
@@ -597,17 +597,13 @@ export default function AdminFaultAnalysisPage() {
         width: 180,
         fixed: "right",
         render: (_: unknown, row) => {
-          // 对齐雷电流幅值统计页：详情直接按钮，日志/删除收进 ⋯ 三点下拉
+          // 对齐雷电流幅值统计页：详情直接按钮，日志/删除收进 ⋯ 三点下拉（分析日志不设权限/task_id 门控，始终可点）
           const moreMenuItems: MenuProps["items"] = [
-            ...(canReadLogs && row.task_id
-              ? [
-                  {
-                    key: "analysis-log",
-                    label: "分析日志",
-                    onClick: () => openLogViewer(row.task_id, "分析日志", row.title ?? `FA-${row.id.slice(0, 8)}`),
-                  },
-                ]
-              : []),
+            {
+              key: "analysis-log",
+              label: "分析日志",
+              onClick: () => openLogViewer(row.task_id, "分析日志", row.title ?? `FA-${row.id.slice(0, 8)}`),
+            },
             ...(canManage
               ? [
                   {
@@ -634,7 +630,7 @@ export default function AdminFaultAnalysisPage() {
         },
       },
     ],
-    [canManage, handleDelete, openDetail, canReadLogs, openLogViewer],
+    [canManage, handleDelete, openDetail, openLogViewer],
   );
 
   if (!initializing && !user) {
@@ -777,12 +773,10 @@ export default function AdminFaultAnalysisPage() {
                             openDetail(record ?? { id });
                           }}
                           onDelete={canManage ? handleDelete : undefined}
-                          onLog={canReadLogs ? (id) => {
+                          onLog={(id) => {
                             const record = analyses.find((item) => item.id === id);
-                            if (record?.task_id) {
-                              openLogViewer(record.task_id, "分析日志", record.title);
-                            }
-                          } : undefined}
+                            openLogViewer(record?.task_id, "分析日志", record?.title ?? "");
+                          }}
                         />
                       </div>
 

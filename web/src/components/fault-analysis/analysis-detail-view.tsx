@@ -857,7 +857,7 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
               {sections.fault_id} 故障分析报告
             </Title>
             <Space size={8}>
-              {onOpenLog && detail.task_id ? (
+              {onOpenLog ? (
                 <Button
                   icon={<FileSearchOutlined />}
                   onClick={() => onOpenLog(detail.task_id, "分析日志", detail.title ?? `FA-${detail.id?.slice(0, 12) ?? ""}`)}

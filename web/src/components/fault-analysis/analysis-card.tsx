@@ -113,7 +113,7 @@ export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: An
                 }}
               />
             </Tooltip>
-            {onLog && analysis.task_id ? (
+            {onLog ? (
               <Tooltip title="分析日志">
                 <Button
                   type="text"
