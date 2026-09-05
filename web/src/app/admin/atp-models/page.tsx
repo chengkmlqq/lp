@@ -254,11 +254,23 @@ export default function AtpModelsPage() {
       try {
         const JSZip = (await import("jszip")).default;
         const zip = new JSZip();
+        // 计算所有文件的公共目录前缀（webkitRelativePath 第一段），剥掉它，
+        // 使 ZIP 根直接是模型文件（work.atp + lib/dat），与资产分层目录
+        // /atp-assets/<电压>/<塔型>/<场景>/<避雷器组合> 对齐。
+        const fullPaths = files.map((file) => getUploadRelativePath(file));
+        let prefixDepth = 0;
+        if (fullPaths.length > 0) {
+          const firstSegments = fullPaths[0].split('/').filter(Boolean);
+          while (
+            prefixDepth < firstSegments.length - 1 &&
+            fullPaths.every((path) => path.split('/').filter(Boolean)[prefixDepth] === firstSegments[prefixDepth])
+          ) {
+            prefixDepth += 1;
+          }
+        }
         for (const file of files) {
-          const fullPath = getUploadRelativePath(file);
-          // Strip the outermost directory level
-          const pathParts = fullPath.split('/');
-          const strippedPath = pathParts.length > 1 ? pathParts.slice(1).join('/') : fullPath;
+          const pathParts = getUploadRelativePath(file).split('/').filter(Boolean);
+          const strippedPath = pathParts.slice(prefixDepth).join('/');
           if (strippedPath) {
             zip.file(strippedPath, file);
           }

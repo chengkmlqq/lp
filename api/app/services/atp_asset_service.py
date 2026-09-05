@@ -357,6 +357,30 @@ def _build_asset_storage_root(asset_code: str) -> str:
     return normalize_virtual_path(f"{ATP_ASSET_FILES_ROOT}/{asset_segment}")
 
 
+def _build_asset_storage_root_by_dimensions(
+    *,
+    voltage_level: str | None,
+    tower_type: str | None,
+    scene_type: str | None,
+    arrester_config: str | None,
+    fallback_code: str,
+) -> str:
+    """按 ATP 模型目录分层构建存储路径：/atp-assets/<电压>/<塔型>/<场景>/<避雷器组合>。
+
+    与桌面版 ATP 模型目录结构一致（如 500/ganzi/fanji/M1）。
+    任一层缺失时回退到按 code 平铺，避免路径歧义。
+    """
+    segments = [
+        _sanitize_storage_segment(voltage_level or "", fallback=""),
+        _sanitize_storage_segment(tower_type or "", fallback=""),
+        _sanitize_storage_segment(scene_type or "", fallback=""),
+        _sanitize_storage_segment(arrester_config or "", fallback=""),
+    ]
+    if all(segments):
+        return normalize_virtual_path(f"{ATP_ASSET_FILES_ROOT}/{'/'.join(segments)}")
+    return _build_asset_storage_root(fallback_code)
+
+
 def _check_asset_storage_path_conflict(db: Session, storage_root_path: str, current_asset_id: str | None = None) -> None:
     asset_stmt = select(AtpAsset).where(AtpAsset.storage_root_path == storage_root_path)
     if current_asset_id:
@@ -697,7 +721,13 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
     storage_mount_code = _normalize_optional_str(payload.storage_mount_code) or "main"
     storage_root_path = _normalize_optional_str(payload.storage_root_path)
     if storage_root_path is None:
-        storage_root_path = _build_asset_storage_root(payload.code.strip())
+        storage_root_path = _build_asset_storage_root_by_dimensions(
+            voltage_level=payload.voltage_level,
+            tower_type=payload.tower_type,
+            scene_type=payload.scene_type,
+            arrester_config=payload.arrester_config,
+            fallback_code=payload.code.strip(),
+        )
     item = AtpAsset(
         code=payload.code.strip(),
         name=payload.name.strip(),
@@ -739,7 +769,8 @@ def upload_asset_archive(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
 
     storage_mount_code = "main"
-    storage_root_path = _build_asset_storage_root(asset.code)
+    # 用资产创建时确定的存储路径（分层维度路径或 code 平铺），避免与 create 时不一致
+    storage_root_path = asset.storage_root_path or _build_asset_storage_root(asset.code)
     mount = _resolve_mount(db, storage_mount_code)
     driver = _build_driver_or_400(mount)
     root_parent = _parent_virtual_path(storage_root_path)
