@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import {
   App,
   Button,
@@ -11,6 +11,7 @@ import {
   Dropdown,
   Empty,
   Form,
+  Image,
   Input,
   InputNumber,
   Modal,
@@ -18,6 +19,7 @@ import {
   Progress,
   Segmented,
   Select,
+  Skeleton,
   Space,
   Spin,
   Table,
@@ -123,6 +125,73 @@ function formatNumber(value: number | null | undefined, digits = 3): string {
     return "-";
   }
   return value.toFixed(digits);
+}
+
+/** 图片加载失败时的占位图（data URI SVG，灰色底 + 提示文案） */
+const IMAGE_LOAD_ERROR_FALLBACK =
+  "data:image/svg+xml;charset=utf-8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360">' +
+      '<rect width="100%" height="100%" fill="#fafafa"/>' +
+      '<g fill="#bfbfbf" font-family="sans-serif" text-anchor="middle">' +
+      '<circle cx="320" cy="150" r="40"/>' +
+      '<path d="M280 240c8-40 24-56 40-56s32 16 40 56z"/>' +
+      '<text x="320" y="290" font-size="16">图片加载失败</text>' +
+      "</g></svg>",
+  );
+
+/**
+ * 详情页密度图统一渲染：
+ * - 请求中显示骨架屏（Skeleton.Image）
+ * - 请求失败显示错误提示 + 重试按钮
+ * - 图片加载中显示骨架 placeholder，加载失败显示 fallback 占位图（避免破图小图标）
+ * - 无数据时显示空态
+ */
+function DistributionImagePane({
+  query,
+  alt,
+  emptyText,
+}: {
+  query: UseQueryResult<string | null, Error>;
+  alt: string;
+  emptyText: string;
+}) {
+  if (query.isPending) {
+    return (
+      <div className="admin-lightning-distribution-image-skeleton">
+        <Skeleton.Image active style={{ width: "100%", maxWidth: 640, height: 360 }} />
+      </div>
+    );
+  }
+
+  if (query.isError) {
+    return (
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="密度图加载失败">
+        <Button size="small" onClick={() => query.refetch()}>
+          重新加载
+        </Button>
+      </Empty>
+    );
+  }
+
+  if (query.data) {
+    return (
+      <Image
+        src={query.data}
+        alt={alt}
+        placeholder={
+          <div className="admin-lightning-distribution-image-skeleton">
+            <Skeleton.Image active style={{ width: "100%", maxWidth: 640, height: 360 }} />
+          </div>
+        }
+        fallback={IMAGE_LOAD_ERROR_FALLBACK}
+        preview={false}
+        style={{ maxWidth: "100%", border: "1px solid #f0f0f0", borderRadius: 6 }}
+      />
+    );
+  }
+
+  return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />;
 }
 
 function formatDateTime(iso: string): string {
@@ -1329,8 +1398,6 @@ function DistributionDetailView({
     return () => URL.revokeObjectURL(objectUrl);
   }, [lpImageQuery.data]);
 
-  const imageUrl = imageQuery.data ?? null;
-
   const logRows = useMemo<DistributionLogRow[]>(() => {
     const statusLabel = STATUS_META[record.status]?.label ?? record.status;
     const rows: DistributionLogRow[] = [];
@@ -1431,18 +1498,11 @@ function DistributionDetailView({
             label: "均匀网格图",
             children: (
               <div style={{ textAlign: "center", minHeight: 200 }}>
-                {imageQuery.isLoading ? (
-                  <Spin />
-                ) : imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={imageUrl}
-                    alt="地闪密度图"
-                    style={{ maxWidth: "100%", border: "1px solid #f0f0f0", borderRadius: 6 }}
-                  />
-                ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无密度图（导入失败或仍在处理中）" />
-                )}
+                <DistributionImagePane
+                  query={imageQuery}
+                  alt="地闪密度图"
+                  emptyText="暂无密度图（导入失败或仍在处理中）"
+                />
               </div>
             ),
           },
@@ -1453,18 +1513,11 @@ function DistributionDetailView({
                   label: "LP 分区图",
                   children: (
                     <div style={{ textAlign: "center", minHeight: 200 }}>
-                      {lpImageQuery.isLoading ? (
-                        <Spin />
-                      ) : lpImageQuery.data ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={lpImageQuery.data}
-                          alt="LP 分区密度图"
-                          style={{ maxWidth: "100%", border: "1px solid #f0f0f0", borderRadius: 6 }}
-                        />
-                      ) : (
-                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 LP 分区图" />
-                      )}
+                      <DistributionImagePane
+                        query={lpImageQuery}
+                        alt="LP 分区密度图"
+                        emptyText="暂无 LP 分区图"
+                      />
                     </div>
                   ),
                 },

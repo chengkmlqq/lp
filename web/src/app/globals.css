@@ -4388,6 +4388,20 @@ body {
   overflow-y: auto;
 }
 
+/* 详情页密度图骨架屏容器：灰底居中，图片加载中替代破图小图标 */
+.admin-lightning-distribution-image-skeleton {
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ant-color-fill-alter);
+  border-radius: var(--ant-border-radius);
+}
+
+:root[data-fquiz-theme="dark"] .admin-lightning-distribution-image-skeleton {
+  background: color-mix(in srgb, var(--ant-color-bg-container) 80%, black);
+}
+
 /* LP-235: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
    内部列表 Tab 的 Card 才能延续原有 flex 自适应滚动布局 */
 .admin-lightning-distribution-tabs {
