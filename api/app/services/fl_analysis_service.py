@@ -249,6 +249,10 @@ def create_job(
         )
     if payload.job_type in {"normal", "tongtiao"}:
         if external_adapter in {"atp", "wine"}:
+            # 外部 ATP 引擎二分法默认开启（对齐 C# 桌面版二分扫描求耐雷水平）。
+            # 不暴露给用户选择；仅显式 binary_search=false 时可关闭。
+            execution_options.setdefault("binary_search", True)
+        if external_adapter in {"atp", "wine"}:
             try:
                 resolve_external_waveform_job(
                     db,
@@ -587,7 +591,9 @@ def execute_job(job_id: str) -> None:
                     resolved_job = _resolve_external_job_for_tower(snapshot)
                     if resolved_job is None:
                         raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
-                    if bool(execution_options.get("binary_search")):
+                    # 二分法默认开启（对齐 C# 桌面版 ThreadCompute5 二分雷电流扫描求耐雷水平）；
+                    # 仅当显式传 binary_search=false 时回退单次仿真
+                    if execution_options.get("binary_search", True):
                         execution = execute_binary_search_external(
                             resolved_job,
                             job=job,
@@ -636,7 +642,9 @@ def execute_job(job_id: str) -> None:
                     resolved_job = _resolve_external_job_for_tower(snapshot)
                     if resolved_job is None:
                         raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
-                    if bool(execution_options.get("binary_search")):
+                    # 二分法默认开启（对齐 C# 桌面版 ThreadCompute5 二分雷电流扫描求耐雷水平）；
+                    # 仅当显式传 binary_search=false 时回退单次仿真
+                    if execution_options.get("binary_search", True):
                         execution = execute_binary_search_external(
                             resolved_job,
                             job=job,
