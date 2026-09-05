@@ -787,9 +787,6 @@ export default function AtpModelsPage() {
                         onEdit={(asset) => {
                           // TODO: route to edit page / open edit modal
                         }}
-                        onPreview={(asset) => {
-                          // TODO: open preview drawer
-                        }}
                         onDelete={(id) => deleteMutation.mutate(id)}
                         dimensionLabelMap={dimensionLabelMap}
                       />
@@ -819,12 +816,6 @@ export default function AtpModelsPage() {
             children: (
               <AtpModelDetailTab
                 assetId={tab.assetId}
-                onNavigateBack={() => {
-                  if (activeTabKey === tab.key) {
-                    setActiveTabKey("list");
-                  }
-                  setDetailTabs((previous) => previous.filter((item) => item.key !== tab.key));
-                }}
               />
             ),
           })),

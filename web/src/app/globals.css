@@ -3563,7 +3563,7 @@ body {
 }
 
 .admin-atp-models-card > .ant-card-body {
-  padding-block: 14px;
+  padding: 0;
 }
 
 .admin-atp-models-card-title {
@@ -3575,16 +3575,13 @@ body {
 }
 
 .admin-atp-models-card-field {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
+  display: flex;
+  align-items: center;
   gap: 8px;
-  align-items: baseline;
 }
 
 .admin-atp-models-card-actions {
-  border-top: 1px solid var(--ant-color-border-secondary);
-  margin-top: 2px;
-  padding-top: 12px;
+  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
   flex-shrink: 0;
 }
 

@@ -15,13 +15,11 @@ from ...schemas.atp_asset import (
     AtpAssetRunRequest,
     AtpAssetUpdateRequest,
     AtpEngineStatusResponse,
-    AtpTopologyResponse,
 )
 from ...services.atp_asset_service import (
     create_asset,
     delete_asset,
     get_asset_by_id,
-    get_asset_topology,
     get_engine_status,
     get_run_detail,
     list_asset_files,
@@ -155,18 +153,6 @@ def delete_atp_asset_endpoint(
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
     return {"success": True}
-
-
-
-
-
-@router.get("/assets/{asset_id}/topology", response_model=AtpTopologyResponse)
-def get_atp_asset_topology(
-    asset_id: str,
-    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
-    db: Session = Depends(get_db),
-) -> AtpTopologyResponse:
-    return get_asset_topology(db, asset_id=asset_id)
 
 
 

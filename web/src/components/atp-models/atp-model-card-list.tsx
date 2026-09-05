@@ -7,7 +7,6 @@ interface AtpModelCardListProps {
   deleteLoading: boolean;
   onView: (asset: AtpAssetSummary) => void;
   onEdit: (asset: AtpAssetSummary) => void;
-  onPreview: (asset: AtpAssetSummary) => void;
   onDelete: (id: string) => void;
   dimensionLabelMap?: {
     voltage_level?: Map<string, string>;
@@ -17,7 +16,7 @@ interface AtpModelCardListProps {
   };
 }
 
-export function AtpModelCardList({ assets, canManage, deleteLoading, onView, onEdit, onPreview, onDelete, dimensionLabelMap }: AtpModelCardListProps) {
+export function AtpModelCardList({ assets, canManage, deleteLoading, onView, onEdit, onDelete, dimensionLabelMap }: AtpModelCardListProps) {
 
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -29,7 +28,6 @@ export function AtpModelCardList({ assets, canManage, deleteLoading, onView, onE
           deleteLoading={deleteLoading}
           onView={onView}
           onEdit={onEdit}
-          onPreview={onPreview}
           onDelete={onDelete}
           dimensionLabelMap={dimensionLabelMap}
         />

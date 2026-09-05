@@ -7,7 +7,6 @@ import {
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
-  InfoCircleOutlined,
   MoreOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
@@ -23,7 +22,6 @@ interface AtpModelCardProps {
   deleteLoading: boolean;
   onView: (asset: AtpAssetSummary) => void;
   onEdit: (asset: AtpAssetSummary) => void;
-  onPreview: (asset: AtpAssetSummary) => void;
   onDelete: (id: string) => void;
   dimensionLabelMap?: {
     voltage_level?: Map<string, string>;
@@ -51,7 +49,7 @@ const assetStatusConfig = {
 
 const getAssetStatus = (status: string) => assetStatusConfig[status as keyof typeof assetStatusConfig] ?? assetStatusConfig.draft;
 
-export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, onPreview, onDelete, dimensionLabelMap }: AtpModelCardProps) {
+export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, onDelete, dimensionLabelMap }: AtpModelCardProps) {
   const rowBusy = deleteLoading;
   const status = getAssetStatus(asset.status);
 
@@ -62,10 +60,6 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, 
   const handleEdit = useCallback(() => {
     onEdit(asset);
   }, [onEdit, asset]);
-
-  const handlePreview = useCallback(() => {
-    onPreview(asset);
-  }, [onPreview, asset]);
 
   const handleDelete = useCallback(() => {
     Modal.confirm({
@@ -85,17 +79,17 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, 
       className="admin-atp-models-card"
       onClick={handleView}
     >
-      <div className="admin-atp-models-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
-        <Typography.Text strong className="truncate" style={{ flex: 1 }}>
-          {asset.name}
-        </Typography.Text>
-        <div className="flex flex-shrink-0 items-center gap-2">
-          <Badge status={status.color} />
-          <Text type="secondary" className="text-xs">{status.text}</Text>
+      <div className="flex flex-col">
+        <div className="admin-atp-models-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+          <Typography.Text strong className="truncate" style={{ flex: 1 }}>
+            {asset.name}
+          </Typography.Text>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Badge status={status.color} />
+            <Text type="secondary" className="text-xs">{status.text}</Text>
+          </div>
         </div>
-      </div>
 
-      <div className="admin-atp-models-card-body">
         <div className="flex flex-col gap-2 px-4 py-3">
           <div className="admin-atp-models-card-field flex items-center gap-2">
             <ThunderboltOutlined className="text-xs text-gray-500" />
@@ -114,26 +108,14 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, 
             <Text type="secondary" className="text-xs">避雷器组合：{formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config)}</Text>
           </div>
         </div>
-      </div>
 
-      <div className="admin-atp-models-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+        <div className="admin-atp-models-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
         {asset.status === "processing" ? (
           <Progress percent={asset.progress ?? 0} size="small" className="flex-1 max-w-40" />
         ) : (
           <div />
         )}
         <Space size="small" className="shrink-0">
-          <Tooltip title="预览">
-            <Button
-              type="text"
-              size="small"
-              icon={<InfoCircleOutlined />}
-              onClick={(event) => {
-                event.stopPropagation();
-                handlePreview();
-              }}
-            />
-          </Tooltip>
           <Tooltip title="编辑">
             <Button
               type="text"
@@ -173,6 +155,7 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, 
             </Tooltip>
           </Dropdown>
         </Space>
+        </div>
       </div>
     </Card>
   );

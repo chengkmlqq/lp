@@ -1,12 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Card, Descriptions, Empty, Space, Spin, Tabs, Table, Tag, Typography } from "antd";
-import { ArrowLeftOutlined } from "@ant-design/icons";
+import { Alert, Card, Descriptions, Empty, Space, Spin, Tabs, Table, Tag, Typography } from "antd";
 import { useMemo } from "react";
 
 import { useAuth } from "@/components/auth-provider";
-import AtpCircuitPreview from "@/components/atp-circuit-preview";
 import { readApiError } from "@/lib/api";
 import type { AtpAssetSummary, AtpAssetFileListResponse, AtpAssetRunListResponse } from "@/types/auth";
 
@@ -32,10 +30,9 @@ const RUN_COLUMNS = [
 
 interface AtpModelDetailTabProps {
   assetId: string;
-  onNavigateBack?: () => void;
 }
 
-export function AtpModelDetailTab({ assetId, onNavigateBack }: AtpModelDetailTabProps) {
+export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
 
   const canRead = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
@@ -88,11 +85,6 @@ export function AtpModelDetailTab({ assetId, onNavigateBack }: AtpModelDetailTab
 
   const tabs = useMemo(
     () => [
-      {
-        key: "topology",
-        label: "电路预览",
-        children: <AtpCircuitPreview assetId={assetId} height={520} />,
-      },
       {
         key: "files",
         label: `文件 (${files.length})`,
@@ -161,11 +153,6 @@ export function AtpModelDetailTab({ assetId, onNavigateBack }: AtpModelDetailTab
 
   const header = (
     <Space align="center" size={8}>
-      {onNavigateBack && (
-        <Button icon={<ArrowLeftOutlined />} onClick={onNavigateBack}>
-          返回
-        </Button>
-      )}
       <Typography.Title level={4} style={{ margin: 0 }}>
         ATP 模型详情
       </Typography.Title>

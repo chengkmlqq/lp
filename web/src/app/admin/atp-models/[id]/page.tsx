@@ -2,12 +2,10 @@
 
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Card, Descriptions, Empty, Space, Spin, Tabs, Table, Tag, Typography } from "antd";
-import { ArrowLeftOutlined } from "@ant-design/icons";
+import { Alert, Card, Descriptions, Empty, Space, Spin, Tabs, Table, Tag, Typography } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
-import AtpCircuitPreview from "@/components/atp-circuit-preview";
 import { readApiError } from "@/lib/api";
 import type { AtpAssetSummary, AtpAssetFileListResponse, AtpAssetRunListResponse } from "@/types/auth";
 
@@ -116,9 +114,6 @@ function ATPAssetDetailPage() {
   return (
     <div className="flex flex-col gap-4">
       <Space align="center" size={8}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => window.history.back()}>
-          返回
-        </Button>
         <Typography.Title level={4} style={{ margin: 0 }}>
           ATP 模型详情
         </Typography.Title>
@@ -163,11 +158,6 @@ function ATPAssetDetailPage() {
       <Card size="small" styles={{ body: { padding: 0 } }}>
         <Tabs
           items={[
-            {
-              key: "topology",
-              label: "电路预览",
-              children: <AtpCircuitPreview assetId={assetId} height={520} />,
-            },
             {
               key: "files",
               label: `文件 (${files.length})`,

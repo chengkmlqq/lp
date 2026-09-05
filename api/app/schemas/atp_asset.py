@@ -95,33 +95,6 @@ class AtpAssetFileUploadResponse(BaseModel):
     success: bool = True
 
 
-class AtpTopologyNode(BaseModel):
-    id: str
-    label: str
-    node_type: str
-    params: dict[str, Any] = Field(default_factory=dict)
-
-
-class AtpTopologyEdge(BaseModel):
-    id: str
-    source: str
-    target: str
-    label: str = ""
-    edge_type: str = "link"
-
-
-class AtpTopology(BaseModel):
-    nodes: list[AtpTopologyNode] = Field(default_factory=list)
-    edges: list[AtpTopologyEdge] = Field(default_factory=list)
-    parameters: dict[str, float] = Field(default_factory=dict)
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class AtpTopologyResponse(BaseModel):
-    asset_id: str
-    topology: AtpTopology
-
-
 class AtpAssetRunSummary(BaseModel):
     id: str
     asset_id: str
