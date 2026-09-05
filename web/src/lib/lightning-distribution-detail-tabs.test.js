@@ -12,7 +12,7 @@ const SOURCE = readFileSync(PAGE_FILE, "utf-8");
 const CSS = readFileSync(GLOBALS_CSS, "utf-8");
 
 test("LP-302: detail tab title keeps only file name (no status Tag)", () => {
-  const openDetailBlock = SOURCE.match(/const openDetail = useCallback[\s\S]*?\},\s*\[fetchWithAuth, canReadLogs, openLogViewer\]\);/);
+  const openDetailBlock = SOURCE.match(/const openDetail = useCallback[\s\S]*?\},\s*\[fetchWithAuth\]\);/);
   assert.ok(openDetailBlock, "应能找到 openDetail 定义");
   const block = openDetailBlock[0];
   assert.ok(
@@ -38,15 +38,17 @@ test("LP-302: detail view wrapped in 10px-padded scrollable container", () => {
   assert.match(rule, /overflow-y:\s*auto/, "内容超高时应出现纵向滚动条");
 });
 
-test("LP-302: processing logs rendered as a Table with operation column", () => {
-  const logsTabBlock = SOURCE.match(/label: "处理日志"[\s\S]*?<Table<DistributionLogRow>[\s\S]*?\/>/) ?? [];
-  const logs = logsTabBlock[0] ?? "";
-  assert.ok(logs.length > 0, "应存在「处理日志」Tab");
+test("LP-401: 详情页仅保留网格图，不再使用选项卡组件", () => {
+  const detailViewBlock = SOURCE.match(
+    /function DistributionDetailView\([\s\S]*?<\/div>\n  \);\n\}/,
+  )?.[0] ?? "";
+  assert.ok(detailViewBlock.length > 0, "应能找到 DistributionDetailView 组件定义");
   assert.ok(
-    /<Table<DistributionLogRow>/.test(logs),
-    "处理日志应使用 Table 呈现",
+    /<DistributionImagePane[\s\S]*?query=\{imageQuery\}/.test(detailViewBlock),
+    "详情页应直接渲染均匀网格图（DistributionImagePane + imageQuery）",
   );
-  assert.ok(/dataSource=\{logRows\}/.test(logs), "表格数据源应为构造的处理记录数组");
-  assert.ok(/title: "操作"/.test(SOURCE), "表格应包含「操作」列");
-  assert.ok(/onOpenLog\(row\.taskId, row\.logLabel, row\.fileName\)/.test(SOURCE), "操作列应提供查看日志按钮");
+  assert.ok(!/<Tabs/.test(detailViewBlock), "详情页不应再使用 Tabs 选项卡组件");
+  assert.ok(!/处理日志/.test(detailViewBlock), "详情页不应再包含处理日志");
+  assert.ok(!/lpImageQuery/.test(detailViewBlock), "详情页不应再加载 LP 分区图");
+  assert.ok(!/logRows|logColumns/.test(detailViewBlock), "详情页不应再保留日志表格数据");
 });

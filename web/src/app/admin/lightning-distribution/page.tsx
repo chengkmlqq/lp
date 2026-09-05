@@ -77,16 +77,6 @@ type ImportFormValues = {
   notes: string;
 };
 
-type DistributionLogRow = {
-  key: string;
-  typeLabel: string;
-  taskId: string | null;
-  statusLabel: string;
-  createdAt: string;
-  fileName: string;
-  logLabel: string;
-};
-
 const INITIAL_IMPORT_VALUES: ImportFormValues = {
   event_year: new Date().getFullYear(),
   region_id: "",
@@ -537,15 +527,13 @@ export default function AdminLightningDistributionPage() {
             <DistributionDetailView
               record={record}
               fetchWithAuth={fetchWithAuth}
-              canReadLogs={canReadLogs}
-              onOpenLog={openLogViewer}
             />
           ),
         },
       ];
     });
     setActiveTabKey(key);
-  }, [fetchWithAuth, canReadLogs, openLogViewer]);
+  }, [fetchWithAuth]);
 
   const openLinkedLinesModal = useCallback((record: LightningDistributionRecord) => {
     setLinkedLinesRow(record);
@@ -1351,13 +1339,9 @@ function ImportModal({
 function DistributionDetailView({
   record,
   fetchWithAuth,
-  canReadLogs,
-  onOpenLog,
 }: {
   record: LightningDistributionRecord;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
-  canReadLogs: boolean;
-  onOpenLog: (taskId: string | null | undefined, label: string, fileName: string) => void;
 }) {
   const imageQuery = useQuery({
     queryKey: ["/api/v1/lightning-currents/distributions", record.id, "image"],
@@ -1372,90 +1356,11 @@ function DistributionDetailView({
     },
   });
 
-  const lpImageQuery = useQuery({
-    queryKey: ["/api/v1/lightning-currents/distributions", record.id, "lp-image"],
-    enabled: !!record.has_lp_image,
-    queryFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/lightning-currents/distributions/${record.id}/lp-image`);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      const blob = await response.blob();
-      if (blob.size === 0) return null;
-      return URL.createObjectURL(blob);
-    },
-  });
-
   useEffect(() => {
     const objectUrl = imageQuery.data;
     if (!objectUrl) return;
     return () => URL.revokeObjectURL(objectUrl);
   }, [imageQuery.data]);
-
-  useEffect(() => {
-    const objectUrl = lpImageQuery.data;
-    if (!objectUrl) return;
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [lpImageQuery.data]);
-
-  const logRows = useMemo<DistributionLogRow[]>(() => {
-    const statusLabel = STATUS_META[record.status]?.label ?? record.status;
-    const rows: DistributionLogRow[] = [];
-    if (record.task_id) {
-      rows.push({
-        key: `import-${record.task_id}`,
-        typeLabel: "导入",
-        taskId: record.task_id,
-        statusLabel,
-        createdAt: record.create_date,
-        fileName: record.source_file_name,
-        logLabel: "导入日志",
-      });
-    }
-    if (record.lp_draw_task_id) {
-      rows.push({
-        key: `lp-draw-${record.lp_draw_task_id}`,
-        typeLabel: "LP 绘图",
-        taskId: record.lp_draw_task_id,
-        statusLabel,
-        createdAt: record.create_date,
-        fileName: record.source_file_name,
-        logLabel: "绘图日志",
-      });
-    }
-    return rows;
-  }, [record]);
-
-  const logColumns = useMemo<ColumnsType<DistributionLogRow>>(
-    () => [
-      { title: "处理类型", dataIndex: "typeLabel", width: 110 },
-      {
-        title: "任务 ID",
-        dataIndex: "taskId",
-        ellipsis: true,
-        render: (value: string | null) => value || "-",
-      },
-      { title: "状态", dataIndex: "statusLabel", width: 110 },
-      { title: "处理时间", dataIndex: "createdAt", width: 180 },
-      {
-        title: "文件名",
-        dataIndex: "fileName",
-        ellipsis: true,
-        render: (value: string) => truncateFileName(value),
-      },
-      {
-        title: "操作",
-        key: "action",
-        width: 110,
-        render: (_, row) => (
-          <Button size="small" type="link" onClick={() => onOpenLog(row.taskId, row.logLabel, row.fileName)}>
-            查看日志
-          </Button>
-        ),
-      },
-    ],
-    [onOpenLog],
-  );
 
   return (
     <div className="admin-lightning-distribution-detail-view">
@@ -1490,66 +1395,13 @@ function DistributionDetailView({
         <Descriptions.Item label="未知极性">{record.unknown_count}</Descriptions.Item>
       </Descriptions>
 
-      <Tabs
-        defaultActiveKey="grid"
-        items={[
-          {
-            key: "grid",
-            label: "均匀网格图",
-            children: (
-              <div style={{ textAlign: "center", minHeight: 200 }}>
-                <DistributionImagePane
-                  query={imageQuery}
-                  alt="地闪密度图"
-                  emptyText="暂无密度图（导入失败或仍在处理中）"
-                />
-              </div>
-            ),
-          },
-          ...(record.has_lp_image
-            ? [
-                {
-                  key: "lp",
-                  label: "LP 分区图",
-                  children: (
-                    <div style={{ textAlign: "center", minHeight: 200 }}>
-                      <DistributionImagePane
-                        query={lpImageQuery}
-                        alt="LP 分区密度图"
-                        emptyText="暂无 LP 分区图"
-                      />
-                    </div>
-                  ),
-                },
-              ]
-            : []),
-          ...(canReadLogs && (record.task_id || record.lp_draw_task_id)
-            ? [
-                {
-                  key: "logs",
-                  label: "处理日志",
-                  children: (
-                    <Table<DistributionLogRow>
-                      rowKey="key"
-                      size="small"
-                      columns={logColumns}
-                      dataSource={logRows}
-                      pagination={false}
-                      locale={{
-                        emptyText: (
-                          <Empty
-                            image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description="暂无可查看的处理日志"
-                          />
-                        ),
-                      }}
-                    />
-                  ),
-                },
-              ]
-            : []),
-        ]}
-      />
+      <div style={{ textAlign: "center", minHeight: 200 }}>
+        <DistributionImagePane
+          query={imageQuery}
+          alt="地闪密度图"
+          emptyText="暂无密度图（导入失败或仍在处理中）"
+        />
+      </div>
       </Space>
     </div>
   );
