@@ -365,9 +365,9 @@ export default function AdminFlAnalysisPage() {
   }, [detailActiveTabKey, submittingByJob]);
 
   // ---- 措施推荐 / 加装避雷器复算 / 报告生成 Modal 状态 ----
-  const [mitigationForm] = Form.useForm<MitigationFormValues>();
-  const [scenarioForm] = Form.useForm<ScenarioFormValues>();
-  const [reportForm] = Form.useForm<ReportFormValues>();
+  const mitigationForm = Form.useForm<MitigationFormValues>()[0];
+  const scenarioForm = Form.useForm<ScenarioFormValues>()[0];
+  const reportForm = Form.useForm<ReportFormValues>()[0];
   const [mitigationOpen, setMitigationOpen] = useState(false);
   const [mitigationJob, setMitigationJob] = useState<FlAnalysisJobSummary | null>(null);
   const [mitigationRows, setMitigationRows] = useState<FlAnalysisTowerResultSummary[]>([]);
@@ -386,9 +386,9 @@ export default function AdminFlAnalysisPage() {
     setMitigationJob(job);
     setMitigationRows(rows);
     setMitigationTowerIds(rows.map((row) => row.tower_id));
-    setMitigationForm({ job_name: "", non_construction: false });
+    mitigationForm.setFieldsValue({ job_name: "", non_construction: false });
     setMitigationOpen(true);
-  }, [setMitigationForm]);
+  }, [mitigationForm]);
 
   const openScenario = useCallback((
     job: FlAnalysisJobSummary,
@@ -399,17 +399,17 @@ export default function AdminFlAnalysisPage() {
     setScenarioRows(rows);
     setScenarioBaseJobs(baseJobs);
     setScenarioTowerIds(rows.map((row) => row.tower_id));
-    setScenarioForm({ job_name: "" });
+    scenarioForm.setFieldsValue({ job_name: "" });
     setScenarioOpen(true);
-  }, [setScenarioForm]);
+  }, [scenarioForm]);
 
   const openReport = useCallback((job: FlAnalysisJobSummary, rows: FlAnalysisTowerResultSummary[]) => {
     setReportJob(job);
     setReportRows(rows);
     setReportTowerIds(rows.map((row) => row.tower_id));
-    setReportForm({ job_name: "" });
+    reportForm.setFieldsValue({ job_name: "" });
     setReportOpen(true);
-  }, [setReportForm]);
+  }, [reportForm]);
 
   // ---- 措施推荐任务创建 ----
   const createMitigationMutation = useMutation({
