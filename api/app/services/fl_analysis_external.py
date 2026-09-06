@@ -1529,7 +1529,15 @@ def compute_counterstroke_nl_gcf(*, base_tower: dict, profile: dict) -> float | 
     if mid_r is None:
         mid_r = f(cg.get("right_mid_distance_m"))
     if mid_l is None or mid_r is None:
-        return None
+        # 避雷线中距缺失时按电压等级回填模板典型值（500kV 双回 ≈10m，单回 ≈7m，其余按比例）
+        if mDYDJ >= 500:
+            mid_l, mid_r = 10.0, 10.0
+        elif mDYDJ >= 220:
+            mid_l, mid_r = 7.0, 7.0
+        elif mDYDJ >= 110:
+            mid_l, mid_r = 5.0, 5.0
+        else:
+            mid_l, mid_r = 3.0, 3.0
 
     geom = (profile.get("geometry_layers_json") or {}).get("I") or {}
     ph = geom.get("phase_height_m") or {}
