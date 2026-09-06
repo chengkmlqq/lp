@@ -217,108 +217,110 @@ export function CreateJobForm({
       <div style={{ height: 520, overflowY: "auto", overflowX: "hidden" }}>
       {currentStep === 0 ? (
         <>
-          <Card size="small" className="fl-form-section">
-            <div className="fl-form-section-title">基础信息</div>
-            <Form.Item name="job_name" label="任务名">
-              <Input
-                placeholder={selectedLine
-                  ? `${selectedLine.name || selectedLine.code}-${formatJobType(selectedJobType)}`
-                  : `${formatJobType(selectedJobType)}任务`}
-              />
-            </Form.Item>
+          <Form.Item name="job_name" label="任务名">
+            <Input
+              placeholder={selectedLine
+                ? `${selectedLine.name || selectedLine.code}-${formatJobType(selectedJobType)}`
+                : `${formatJobType(selectedJobType)}任务`}
+            />
+          </Form.Item>
 
-            <Form.Item name="job_type" label="任务类型" rules={[{ required: true, message: "请选择任务类型" }]}>
-              <Select
-                loading={dimensionsLoading}
-                options={jobTypeOptions}
-              />
-            </Form.Item>
+          <Form.Item name="job_type" label="任务类型" rules={[{ required: true, message: "请选择任务类型" }]}>
+            <Select
+              loading={dimensionsLoading}
+              options={jobTypeOptions}
+            />
+          </Form.Item>
 
-            <Form.Item
-              name="line_id"
-              label="线路"
-              rules={[{ required: true, message: "请选择线路" }]}
-            >
-              <Select
-                showSearch
-                optionFilterProp="label"
-                placeholder="选择线路"
-                loading={linesLoading}
-                options={lines.map((item) => {
-                  const preparation = readLinePreparation(item);
-                  const statuses = [
-                    preparation.lightning_current,
-                    preparation.lightning_density,
-                    preparation.ground_slope,
-                  ];
-                  return {
-                    value: item.id,
-                    label: item.name || item.code,
-                    disabled: !preparation.all_ready,
-                    optionRender: ({ value: optionValue }: { value: string }) => {
-                      const line = lines.find((current) => current.id === optionValue);
-                      const currentPreparation = line ? readLinePreparation(line) : preparation;
-                      const currentStatuses = [
-                        currentPreparation.lightning_current,
-                        currentPreparation.lightning_density,
-                        currentPreparation.ground_slope,
-                      ];
-                      return (
-                        <div className="flex flex-col gap-1">
-                          <span>{line ? line.name || line.code : item.name || item.code}</span>
-                          <Space size={[4, 4]} wrap>
-                            {currentStatuses.map((status) => (
-                              <Tag key={status.key} color={preparationColor(status.ready)}>
-                                {status.label}
-                              </Tag>
-                            ))}
-                          </Space>
-                        </div>
-                      );
-                    },
-                  };
-                })}
-              />
-            </Form.Item>
-          </Card>
+          <Form.Item
+            name="line_id"
+            label="线路"
+            rules={[{ required: true, message: "请选择线路" }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="选择线路"
+              loading={linesLoading}
+              options={lines.map((item) => {
+                const preparation = readLinePreparation(item);
+                const statuses = [
+                  preparation.lightning_current,
+                  preparation.lightning_density,
+                  preparation.ground_slope,
+                ];
+                return {
+                  value: item.id,
+                  label: item.name || item.code,
+                  disabled: !preparation.all_ready,
+                  optionRender: ({ value: optionValue }: { value: string }) => {
+                    const line = lines.find((current) => current.id === optionValue);
+                    const currentPreparation = line ? readLinePreparation(line) : preparation;
+                    const currentStatuses = [
+                      currentPreparation.lightning_current,
+                      currentPreparation.lightning_density,
+                      currentPreparation.ground_slope,
+                    ];
+                    return (
+                      <div className="flex flex-col gap-1">
+                        <span>{line ? line.name || line.code : item.name || item.code}</span>
+                        <Space size={[4, 4]} wrap>
+                          {currentStatuses.map((status) => (
+                            <Tag key={status.key} color={preparationColor(status.ready)}>
+                              {status.label}
+                            </Tag>
+                          ))}
+                        </Space>
+                      </div>
+                    );
+                  },
+                };
+              })}
+            />
+          </Form.Item>
 
           {selectedLineId ? (
-            <Card size="small" className="fl-form-section mt-3">
-              <div className="fl-form-section-title">
-                选择计算杆塔
-                <Typography.Text type="secondary" className="ml-2">
-                  {selectedLine ? `${selectedLine.name || selectedLine.code} · ` : ""}
-                  {towersQuery.data ? `共 ${towersQuery.data.total} 基` : ""}
-                  （勾选参与计算的杆塔，不勾选=全部）
-                </Typography.Text>
-              </div>
+            <>
               {/* 注册 selected_tower_ids 字段（受控 rowSelection 的 form 存储） */}
               <Form.Item name="selected_tower_ids" hidden>
                 <Input />
               </Form.Item>
-              {towersQuery.isError ? (
-                <Alert
-                  type="error"
-                  showIcon
-                  message="杆塔列表加载失败"
-                  description={towersQuery.error instanceof Error ? towersQuery.error.message : "未知错误"}
-                />
-              ) : (
-                <Table<LineTowerSummary>
-                  rowKey={(row) => row.id}
-                  columns={towerColumns}
-                  dataSource={towersQuery.data?.items ?? []}
-                  loading={towersQuery.isFetching}
-                  size="small"
-                  pagination={{ pageSize: 8, showSizeChanger: false, hideOnSinglePage: true }}
-                  scroll={{ x: 760, y: 260 }}
-                  rowSelection={{
-                    selectedRowKeys: selectedTowerIds,
-                    onChange: (selectedRowKeys) => form.setFieldValue("selected_tower_ids", selectedRowKeys),
-                  }}
-                />
-              )}
-            </Card>
+              <Form.Item
+                label={
+                  <span>
+                    选择计算杆塔
+                    <Typography.Text type="secondary" className="ml-2">
+                      {selectedLine ? `${selectedLine.name || selectedLine.code} · ` : ""}
+                      {towersQuery.data ? `共 ${towersQuery.data.total} 基` : ""}
+                      （勾选参与计算的杆塔，不勾选=全部）
+                    </Typography.Text>
+                  </span>
+                }
+              >
+                {towersQuery.isError ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    message="杆塔列表加载失败"
+                    description={towersQuery.error instanceof Error ? towersQuery.error.message : "未知错误"}
+                  />
+                ) : (
+                  <Table<LineTowerSummary>
+                    rowKey={(row) => row.id}
+                    columns={towerColumns}
+                    dataSource={towersQuery.data?.items ?? []}
+                    loading={towersQuery.isFetching}
+                    size="small"
+                    pagination={{ pageSize: 8, showSizeChanger: false, hideOnSinglePage: true }}
+                    scroll={{ x: 760 }}
+                    rowSelection={{
+                      selectedRowKeys: selectedTowerIds,
+                      onChange: (selectedRowKeys) => form.setFieldValue("selected_tower_ids", selectedRowKeys),
+                    }}
+                  />
+                )}
+              </Form.Item>
+            </>
           ) : null}
         </>
       ) : null}
