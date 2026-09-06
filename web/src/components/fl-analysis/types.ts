@@ -36,6 +36,8 @@ export type CreateJobFormValues = {
   fanji_tzl_method: "none" | "guicheng" | "egm";
   raoji_tzl_method: "none" | "guicheng" | "egm";
   include_tower_ids: string[];
+  /** 普通/同跳计算勾选的杆塔 ID 列表（空=全部杆塔） */
+  selected_tower_ids: string[];
 };
 
 export type MitigationFormValues = {
@@ -140,11 +142,12 @@ export const CREATE_JOB_DEFAULTS: CreateJobFormValues = {
   tail_time_min_us: 50,
   tail_time_max_us: 50,
   tail_time_step_us: 1,
-  fanji_naleishuiping_method: "atp",
-  raoji_naleishuiping_method: "atp",
+  fanji_naleishuiping_method: "guicheng",
+  raoji_naleishuiping_method: "guicheng",
   fanji_tzl_method: "none",
   raoji_tzl_method: "none",
   include_tower_ids: [],
+  selected_tower_ids: [],
 };
 
 export function formatRiskLevel(value: string | null | undefined): string {

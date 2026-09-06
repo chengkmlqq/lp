@@ -106,6 +106,7 @@ export function CreateJobForm({
   const [prevOpen, setPrevOpen] = useState(open);
   const [prevJobType, setPrevJobType] = useState(selectedJobType);
   const selectedLineId = Form.useWatch("line_id", form) ?? "";
+  const selectedTowerIds = Form.useWatch("selected_tower_ids", form) ?? [];
   const { optionMap, isLoading: dimensionsLoading } = useFlDimensionOptions();
 
   const jobTypeOptions = useSelectOptions(optionMap.job_type, JOB_TYPE_FALLBACK_OPTIONS).filter(
@@ -284,10 +285,11 @@ export function CreateJobForm({
           {selectedLineId ? (
             <Card size="small" className="fl-form-section mt-3">
               <div className="fl-form-section-title">
-                线路杆塔
+                选择计算杆塔
                 <Typography.Text type="secondary" className="ml-2">
                   {selectedLine ? `${selectedLine.name || selectedLine.code} · ` : ""}
                   {towersQuery.data ? `共 ${towersQuery.data.total} 基` : ""}
+                  （勾选参与计算的杆塔，不勾选=全部）
                 </Typography.Text>
               </div>
               {towersQuery.isError ? (
@@ -306,6 +308,10 @@ export function CreateJobForm({
                   size="small"
                   pagination={{ pageSize: 8, showSizeChanger: false, hideOnSinglePage: true }}
                   scroll={{ x: 760, y: 260 }}
+                  rowSelection={{
+                    selectedRowKeys: selectedTowerIds,
+                    onChange: (selectedRowKeys) => form.setFieldValue("selected_tower_ids", selectedRowKeys),
+                  }}
                 />
               )}
             </Card>

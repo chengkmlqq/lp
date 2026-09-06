@@ -252,8 +252,10 @@ export default function AdminFlAnalysisPage() {
         raoji_tzl_method: values.raoji_tzl_method,
         include_tower_ids: values.include_tower_ids,
       };
-      if (values.job_type === "tongtiao") {
-        executionOptions.selected_tower_ids = values.include_tower_ids;
+      // 普通/同跳计算：勾选的杆塔列表（空=全部杆塔）
+      const selectedTowers = values.selected_tower_ids ?? [];
+      if (selectedTowers.length > 0) {
+        executionOptions.selected_tower_ids = selectedTowers;
       }
       payload.execution_options_json = executionOptions;
     }

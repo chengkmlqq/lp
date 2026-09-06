@@ -1756,7 +1756,7 @@ def _normalize_execution_options(job_type: str, execution_options: dict[str, Any
         normalized["tail_time_min_us"] = _normalize_positive_number(normalized.get("tail_time_min_us"), default=50.0)
         normalized["tail_time_max_us"] = _normalize_positive_number(normalized.get("tail_time_max_us"), default=50.0)
         normalized["tail_time_step_us"] = _normalize_positive_number(normalized.get("tail_time_step_us"), default=1.0)
-        if job_type == "tongtiao":
+        if job_type in {"normal", "tongtiao"}:
             include_tower_ids = normalized.get("include_tower_ids") or normalized.get("selected_tower_ids") or []
             if isinstance(include_tower_ids, list):
                 normalized["selected_tower_ids"] = list(dict.fromkeys(str(item).strip() for item in include_tower_ids if str(item).strip()))
@@ -2011,18 +2011,23 @@ def _load_job_towers(db: Session, *, job: FlAnalysisJob, execution_options: dict
     towers = db.execute(
         select(LineTower).where(LineTower.line_id == job.line_id).order_by(LineTower.seq_no.asc())
     ).scalars().all()
-    if job.job_type not in {"mitigation", "report", "scenario"}:
-        return towers
+    if job.job_type in {"mitigation", "report", "scenario"}:
+        # 既有任务类型：强制 selected_tower_ids 全部命中
+        selected_ids = set(execution_options.get("selected_tower_ids") or [])
+        scoped_towers = [tower for tower in towers if tower.id in selected_ids]
+        if len(scoped_towers) != len(selected_ids):
+            detail = "措施推荐任务的杆塔范围已失效，请重新生成任务"
+            if job.job_type == "report":
+                detail = "报告任务的杆塔范围已失效，请重新生成任务"
+            elif job.job_type == "scenario":
+                detail = "加装避雷器复算任务的杆塔范围已失效，请重新生成任务"
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+        return scoped_towers
+    # normal/tongtiao 等：selected_tower_ids 非空时按勾选过滤（空=全量），不强制校验
     selected_ids = set(execution_options.get("selected_tower_ids") or [])
-    scoped_towers = [tower for tower in towers if tower.id in selected_ids]
-    if len(scoped_towers) != len(selected_ids):
-        detail = "措施推荐任务的杆塔范围已失效，请重新生成任务"
-        if job.job_type == "report":
-            detail = "报告任务的杆塔范围已失效，请重新生成任务"
-        elif job.job_type == "scenario":
-            detail = "加装避雷器复算任务的杆塔范围已失效，请重新生成任务"
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
-    return scoped_towers
+    if not selected_ids:
+        return towers
+    return [tower for tower in towers if tower.id in selected_ids]
 
 
 def _validate_scenario_options(db: Session, *, line_id: str, execution_options: dict[str, Any]) -> dict[str, Any]:
