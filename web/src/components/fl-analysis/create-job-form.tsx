@@ -292,6 +292,10 @@ export function CreateJobForm({
                   （勾选参与计算的杆塔，不勾选=全部）
                 </Typography.Text>
               </div>
+              {/* 注册 selected_tower_ids 字段（受控 rowSelection 的 form 存储） */}
+              <Form.Item name="selected_tower_ids" hidden>
+                <Input />
+              </Form.Item>
               {towersQuery.isError ? (
                 <Alert
                   type="error"
