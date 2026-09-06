@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, Button, Card, Form, Input, InputNumber, Select, Space, Steps, Table, Tag, Typography } from "antd";
+import { Alert, Button, Form, Input, InputNumber, Select, Space, Steps, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { FormInstance } from "antd";
 import { useQuery } from "@tanstack/react-query";
@@ -211,13 +211,13 @@ export function CreateJobForm({
       initialValues={CREATE_JOB_DEFAULTS}
       onFinish={() => onSubmit(form.getFieldsValue(true) as CreateJobFormValues)}
     >
-      <Steps current={currentStep} items={stepItems} className="mb-4" size="small" />
+      <Steps current={currentStep} items={stepItems} className="mb-8" size="small" />
 
       {/* 步骤内容区固定高度 520px，不随表单项目数量自动伸缩；超高时内部滚动 */}
       <div style={{ height: 520, overflowY: "auto", overflowX: "hidden" }}>
       {currentStep === 0 ? (
         <>
-          <Form.Item name="job_name" label="任务名">
+          <Form.Item name="job_name" label="任务名" rules={[{ required: true, message: "请输入任务名" }]}>
             <Input
               placeholder={selectedLine
                 ? `${selectedLine.name || selectedLine.code}-${formatJobType(selectedJobType)}`
@@ -285,18 +285,7 @@ export function CreateJobForm({
               <Form.Item name="selected_tower_ids" hidden>
                 <Input />
               </Form.Item>
-              <Form.Item
-                label={
-                  <span>
-                    选择计算杆塔
-                    <Typography.Text type="secondary" className="ml-2">
-                      {selectedLine ? `${selectedLine.name || selectedLine.code} · ` : ""}
-                      {towersQuery.data ? `共 ${towersQuery.data.total} 基` : ""}
-                      （勾选参与计算的杆塔，不勾选=全部）
-                    </Typography.Text>
-                  </span>
-                }
-              >
+              <Form.Item label="选择计算杆塔">
                 {towersQuery.isError ? (
                   <Alert
                     type="error"
@@ -328,117 +317,124 @@ export function CreateJobForm({
       {currentStep === 1 && showWaveformBlock ? (
         <>
           {showNormalBlock ? (
-            <Card size="small" className="fl-form-section">
-              <div className="fl-form-section-title">计算方法</div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Form.Item name="fanji_naleishuiping_method" label="反击耐雷水平计算方法" rules={[{ required: true, message: "请选择反击耐雷水平计算方法" }]}>
-                  <Select
-                    loading={dimensionsLoading}
-                    options={fanjiNaleishuipingMethodOptions}
-                  />
-                </Form.Item>
-                <Form.Item name="raoji_naleishuiping_method" label="绕击耐雷水平计算方法" rules={[{ required: true, message: "请选择绕击耐雷水平计算方法" }]}>
-                  <Select
-                    loading={dimensionsLoading}
-                    options={raojiNaleishuipingMethodOptions}
-                  />
-                </Form.Item>
-                <Form.Item name="fanji_tzl_method" label="反击跳闸率计算方法" rules={[{ required: true, message: "请选择反击跳闸率计算方法" }]}>
-                  <Select
-                    loading={dimensionsLoading}
-                    options={fanjiTzlMethodOptions}
-                  />
-                </Form.Item>
-                <Form.Item name="raoji_tzl_method" label="绕击跳闸率计算方法" rules={[{ required: true, message: "请选择绕击跳闸率计算方法" }]}>
-                  <Select
-                    loading={dimensionsLoading}
-                    options={raojiTzlMethodOptions}
-                  />
-                </Form.Item>
-              </div>
-            </Card>
+            <>
+              <Form.Item name="fanji_naleishuiping_method" label="反击耐雷水平计算方法" rules={[{ required: true, message: "请选择反击耐雷水平计算方法" }]}>
+                <Select
+                  loading={dimensionsLoading}
+                  options={fanjiNaleishuipingMethodOptions}
+                />
+              </Form.Item>
+              <Form.Item name="raoji_naleishuiping_method" label="绕击耐雷水平计算方法" rules={[{ required: true, message: "请选择绕击耐雷水平计算方法" }]}>
+                <Select
+                  loading={dimensionsLoading}
+                  options={raojiNaleishuipingMethodOptions}
+                />
+              </Form.Item>
+              <Form.Item name="fanji_tzl_method" label="反击跳闸率计算方法" rules={[{ required: true, message: "请选择反击跳闸率计算方法" }]}>
+                <Select
+                  loading={dimensionsLoading}
+                  options={fanjiTzlMethodOptions}
+                />
+              </Form.Item>
+              <Form.Item name="raoji_tzl_method" label="绕击跳闸率计算方法" rules={[{ required: true, message: "请选择绕击跳闸率计算方法" }]}>
+                <Select
+                  loading={dimensionsLoading}
+                  options={raojiTzlMethodOptions}
+                />
+              </Form.Item>
+            </>
           ) : null}
 
           {showTongtiaoBlock ? (
-            <Card size="small" className="fl-form-section">
-              <div className="fl-form-section-title">计算方法</div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Form.Item name="fanji_tzl_method" label="反击跳闸率计算方法" rules={[{ required: true, message: "请选择反击跳闸率计算方法" }]}>
-                  <Select
-                    loading={dimensionsLoading}
-                    options={fanjiTzlMethodOptions}
-                  />
-                </Form.Item>
-                <Form.Item name="raoji_tzl_method" label="绕击跳闸率计算方法" rules={[{ required: true, message: "请选择绕击跳闸率计算方法" }]}>
-                  <Select
-                    loading={dimensionsLoading}
-                    options={raojiTzlMethodOptions}
-                  />
-                </Form.Item>
-                <Form.Item name="include_tower_ids" label="包含杆塔ID" className="md:col-span-2">
-                  <Select
-                    mode="tags"
-                    tokenSeparators={[","]}
-                    placeholder="输入杆塔ID后回车，支持多个"
-                    options={[]}
-                  />
-                </Form.Item>
-              </div>
-            </Card>
+            <>
+              <Form.Item name="fanji_tzl_method" label="反击跳闸率计算方法" rules={[{ required: true, message: "请选择反击跳闸率计算方法" }]}>
+                <Select
+                  loading={dimensionsLoading}
+                  options={fanjiTzlMethodOptions}
+                />
+              </Form.Item>
+              <Form.Item name="raoji_tzl_method" label="绕击跳闸率计算方法" rules={[{ required: true, message: "请选择绕击跳闸率计算方法" }]}>
+                <Select
+                  loading={dimensionsLoading}
+                  options={raojiTzlMethodOptions}
+                />
+              </Form.Item>
+              <Form.Item name="include_tower_ids" label="包含杆塔ID">
+                <Select
+                  mode="tags"
+                  tokenSeparators={[","]}
+                  placeholder="输入杆塔ID后回车，支持多个"
+                  options={[]}
+                />
+              </Form.Item>
+            </>
           ) : null}
         </>
       ) : null}
 
       {currentStep === 2 && showWaveformBlock ? (
-        <Card size="small" className="fl-form-section">
-          <div className="fl-form-section-title">高级参数</div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Form.Item name="current_waveform" label="雷电流波形">
-              <Select
-                loading={dimensionsLoading}
-                options={currentWaveformOptions}
-              />
-            </Form.Item>
-            <Form.Item name="flashover_method" label="闪络判据">
-              <Select
-                loading={dimensionsLoading}
-                options={flashoverMethodOptions}
-              />
-            </Form.Item>
-            <Form.Item name="altitude_correction" label="海拔修正">
-              <Select
-                loading={dimensionsLoading}
-                options={altitudeCorrectionOptions}
-              />
-            </Form.Item>
-            <Form.Item name="induced_voltage_formula" label="感应电压公式">
-              <Select
-                options={[
-                  { value: "formula1", label: "公式1" },
-                  { value: "formula2", label: "公式2" },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item name="head_time_min_us" label="波头时间最小(μs)">
-              <InputNumber min={0.1} step={0.1} precision={2} className="w-full" />
-            </Form.Item>
-            <Form.Item name="head_time_max_us" label="波头时间最大(μs)">
-              <InputNumber min={0.1} step={0.1} precision={2} className="w-full" />
-            </Form.Item>
-            <Form.Item name="head_time_step_us" label="波头步长(μs)">
-              <InputNumber min={0.05} step={0.05} precision={2} className="w-full" />
-            </Form.Item>
-            <Form.Item name="tail_time_min_us" label="波尾时间最小(μs)">
-              <InputNumber min={1} step={1} precision={2} className="w-full" />
-            </Form.Item>
-            <Form.Item name="tail_time_max_us" label="波尾时间最大(μs)">
-              <InputNumber min={1} step={1} precision={2} className="w-full" />
-            </Form.Item>
-            <Form.Item name="tail_time_step_us" label="波尾步长(μs)">
-              <InputNumber min={0.5} step={0.5} precision={2} className="w-full" />
-            </Form.Item>
-          </div>
-        </Card>
+        <>
+          <Form.Item name="current_waveform" label="雷电流波形">
+            <Select
+              loading={dimensionsLoading}
+              options={currentWaveformOptions}
+            />
+          </Form.Item>
+          <Form.Item name="flashover_method" label="闪络判据">
+            <Select
+              loading={dimensionsLoading}
+              options={flashoverMethodOptions}
+            />
+          </Form.Item>
+          <Form.Item name="altitude_correction" label="海拔修正">
+            <Select
+              loading={dimensionsLoading}
+              options={altitudeCorrectionOptions}
+            />
+          </Form.Item>
+          <Form.Item name="induced_voltage_formula" label="感应电压公式">
+            <Select
+              options={[
+                { value: "formula1", label: "公式1" },
+                { value: "formula2", label: "公式2" },
+              ]}
+            />
+          </Form.Item>
+          {/* 波头时间：Min/Max/步长 一行（对齐 C# 高级设置 Form_GJSZ_PuTongJiSuan） */}
+          <Form.Item label="波头时间(μs)">
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500 text-sm whitespace-nowrap">最小</span>
+              <Form.Item name="head_time_min_us" noStyle>
+                <InputNumber min={0.1} step={0.1} precision={2} className="w-24" />
+              </Form.Item>
+              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">最大</span>
+              <Form.Item name="head_time_max_us" noStyle>
+                <InputNumber min={0.1} step={0.1} precision={2} className="w-24" />
+              </Form.Item>
+              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">步长</span>
+              <Form.Item name="head_time_step_us" noStyle>
+                <InputNumber min={0.05} step={0.05} precision={2} className="w-24" />
+              </Form.Item>
+            </div>
+          </Form.Item>
+          {/* 波尾时间：Min/Max/步长 一行（对齐 C# 高级设置） */}
+          <Form.Item label="波尾时间(μs)">
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500 text-sm whitespace-nowrap">最小</span>
+              <Form.Item name="tail_time_min_us" noStyle>
+                <InputNumber min={1} step={1} precision={2} className="w-24" />
+              </Form.Item>
+              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">最大</span>
+              <Form.Item name="tail_time_max_us" noStyle>
+                <InputNumber min={1} step={1} precision={2} className="w-24" />
+              </Form.Item>
+              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">步长</span>
+              <Form.Item name="tail_time_step_us" noStyle>
+                <InputNumber min={0.5} step={0.5} precision={2} className="w-24" />
+              </Form.Item>
+            </div>
+          </Form.Item>
+        </>
       ) : null}
 
       </div>
