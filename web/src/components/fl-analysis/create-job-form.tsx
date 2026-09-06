@@ -211,7 +211,7 @@ export function CreateJobForm({
       initialValues={CREATE_JOB_DEFAULTS}
       onFinish={() => onSubmit(form.getFieldsValue(true) as CreateJobFormValues)}
     >
-      <Steps current={currentStep} items={stepItems} className="mb-8" size="small" />
+      <Steps current={currentStep} items={stepItems} size="small" style={{ marginBottom: 32 }} />
 
       {/* 步骤内容区固定高度 520px，不随表单项目数量自动伸缩；超高时内部滚动 */}
       <div style={{ height: 520, overflowY: "auto", overflowX: "hidden" }}>
