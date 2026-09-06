@@ -162,42 +162,113 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
     p["RER001"] = fmt(ground_r, 1)
     p["RELENS____"] = fmt(insul_m, 2)
 
-    # === ganzi 干字型塔（C# 1936-2100）===
-    # RELE01 第一节主材 = 杆塔呼高 - 电压修正（ganzi 段实际用呼高）
-    rel01 = abs(tower_h - rel01_adj) if tower_h else None
-    p["RELE01"] = fmt(rel01, 1)
-    p["RELE02"] = fmt(rel01 * 1.5 if rel01 is not None else None, 1)
-    # RELE03 左波阻抗 = |左相中距|（ganzi 段减 0）
-    p["RELE03"] = fmt(abs(left_spacing) if left_spacing is not None else None, 1)
-    p["RELE04"] = fmt(abs(right_spacing) if right_spacing is not None else None, 1)
-    # RELE05 中相左相高度差（<1.5 钳到 1.5）
-    h5 = abs(mid_h - left_h) if (mid_h is not None and left_h is not None) else None
-    if h5 is not None and h5 < 1.5:
-        h5 = 1.5
-    p["RELE05"] = fmt(h5, 2)
-    p["RELE06"] = fmt(h5 * 1.5 if h5 is not None else None, 2)
-    # RELE07 避雷线高度与中相高度之差（<1.5 钳到 1.5）
-    h7 = abs(shield_h - mid_h) if (shield_h is not None and mid_h is not None) else None
-    if h7 is not None and h7 < 1.5:
-        h7 = 1.5
-    p["RELE07"] = fmt(h7, 2)
-    p["RELE08"] = fmt(h7 * 1.5 if h7 is not None else None, 2)
-    # RELE09/10 左/右避雷线中距绝对值（C# 1996/2000）
-    # 优先用 circuit_geometry.lightning_wire 中距；缺失时用保护角推导 x = h*tan(alpha) 回退
-    angle_l = f(profile.get("protection_angle_left_deg"))
-    angle_r = f(profile.get("protection_angle_right_deg"))
-    if mid_l is None and angle_l is not None and shield_h:
-        mid_l = shield_h * math.tan(math.radians(angle_l))
-    if mid_r is None and angle_r is not None and shield_h:
-        mid_r = shield_h * math.tan(math.radians(angle_r))
-    p["RELE09"] = fmt(abs(mid_l) if mid_l is not None else None, 2)
-    p["RELE10"] = fmt(abs(mid_r) if mid_r is not None else None, 2)
+    tower_kind = str(execution_options.get("tower_kind") or profile.get("tower_kind") or "ganzi").strip().lower()
+    if tower_kind in ("guxing", "guxingd"):
+        # === guxing 鼓型双回塔（C# 2104-2244）===
+        # 数据语义：双回塔几何存于 geometry_layers_json.I（左回路）
+        # RELE01 下相高度（左回路下相）
+        p["RELE01"] = fmt(right_h, 1)
+        p["RELE02"] = fmt(right_h * 1.5 if right_h is not None else None, 1)
+        # RELE03 下相左侧中距（spacing.lower）
+        p["RELE03"] = fmt(abs(right_spacing) if right_spacing is not None else None, 1)
+        # RELE04 中相下相高度差绝对值（<1.5 钳 1.5）
+        h4 = abs(mid_h - right_h) if (mid_h is not None and right_h is not None) else None
+        if h4 is not None and h4 < 1.5:
+            h4 = 1.5
+        p["RELE04"] = fmt(h4, 2)
+        p["RELE05"] = fmt(h4 * 1.5 if h4 is not None else None, 2)
+        # RELE06 中相左侧中距（spacing.middle）
+        p["RELE06"] = fmt(abs(left_spacing) if left_spacing is not None else None, 1)
+        # RELE07 上相中相高度差绝对值（<1.5 钳 1.5）
+        h7 = abs(left_h - mid_h) if (left_h is not None and mid_h is not None) else None
+        if h7 is not None and h7 < 1.5:
+            h7 = 1.5
+        p["RELE07"] = fmt(h7, 2)
+        p["RELE08"] = fmt(h7 * 1.5 if h7 is not None else None, 2)
+        # RELE09 上相左侧中距
+        p["RELE09"] = fmt(abs(left_spacing) if left_spacing is not None else None, 2)
+        # RELE10 避雷线上相高度差绝对值（<1.5 钳 1.5）
+        h10 = abs(shield_h - left_h) if (shield_h is not None and left_h is not None) else None
+        if h10 is not None and h10 < 1.5:
+            h10 = 1.5
+        p["RELE10"] = fmt(h10, 2)
+        # RELE11 一点五倍RELE10
+        p["RELE11"] = fmt(h10 * 1.5 if h10 is not None else None, 2)
+        # RELE12 左避雷线中距
+        p["RELE12"] = fmt(abs(mid_l) if mid_l is not None else None, 2)
+        # REHG 避雷线平均高度 = |避雷线高度 - 修正|（500kV: -6）
+        p["REHG______"] = fmt(abs(shield_h - vadj([2.0, 1.2, 2.0, 10.0 / 3.0, 10.0 / 3.0, 6.0, 10.0 / 3.0, 0.0])) if shield_h is not None else None, 1)
+        # REHC1/2/3 上/中/下相平均高度 = |相高 - 绝缘子串长 - 修正|（500kV: -8）
+        for name, h in (("REHC1_____", left_h), ("REHC2_____", mid_h), ("REHC3_____", right_h)):
+            p[name] = fmt(abs(h - insul_m - vadj([10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0])) if (h is not None and insul_m is not None) else None, 1)
+    elif tower_kind in ("jiubei", "maotou"):
+        # === jiubei 酒杯型塔（C# 2548-2750）===
+        # RELE01 第一节主材 = |呼高 - 电压修正|（500kV: -14）
+        rel01 = abs(tower_h - rel01_adj) if tower_h else None
+        p["RELE01"] = fmt(rel01, 1)
+        p["RELE02"] = fmt(rel01 * 1.5 if rel01 is not None else None, 1)
+        # RELE03 左波阻抗 = |左相中距 - 修正|（500kV: -5）
+        p["RELE03"] = fmt(abs(left_spacing - vadj([2.45, 2.9, 2.9, 3.7, 5.0, 5.0, 7.75, 9.7])) if left_spacing is not None else None, 1)
+        p["RELE04"] = fmt(abs(right_spacing - vadj([2.45, 2.9, 2.9, 3.7, 5.0, 5.0, 7.75, 9.7])) if right_spacing is not None else None, 1)
+        # RELE05 左避雷线斜线距离 = sqrt(|左中距-修正|² + (避雷线高-左相高-修正)²)
+        if mid_l is not None and shield_h is not None and left_h is not None:
+            d5 = math.sqrt((abs(mid_l) - vadj([2.45, 2.2, 2.9, 3.7, 5.0, 3.7, 7.75, 9.7])) ** 2
+                           + (shield_h - left_h - vadj([0.0, 1.0, 1.0, 1.0, 1.2, 1.7, -0.5, 0.0])) ** 2)
+            p["RELE05"] = fmt(abs(d5), 2)
+        else:
+            p["RELE05"] = "1."
+        # RELE06 右避雷线斜线距离
+        if mid_r is not None and shield_h is not None and right_h is not None:
+            d6 = math.sqrt((abs(mid_r) - vadj([2.45, 2.2, 2.9, 3.7, 5.0, 3.7, 7.75, 9.7])) ** 2
+                           + (shield_h - right_h - vadj([0.0, 1.0, 1.0, 1.0, 1.2, 1.7, -0.5, 0.0])) ** 2)
+            p["RELE06"] = fmt(abs(d6), 2)
+        else:
+            p["RELE06"] = "1."
+        # RELE07 左避雷线中距、RELE08 右避雷线中距
+        p["RELE07"] = fmt(abs(mid_l) if mid_l is not None else None, 2)
+        p["RELE08"] = fmt(abs(mid_r) if mid_r is not None else None, 2)
+        p["RELE09"] = "1."
+        p["RELE10"] = "1."
+        p["REHG______"] = fmt(abs(shield_h - rehg_adj) if shield_h is not None else None, 1)
+        for name, h in (("REHC1_____", left_h), ("REHC2_____", mid_h), ("REHC3_____", right_h)):
+            p[name] = fmt(abs(h - insul_m - rehc_adj) if (h is not None and insul_m is not None) else None, 1)
+    else:
+        # === ganzi 干字型塔（C# 1936-2100）===
+        # RELE01 第一节主材 = 左相高度（C# 1937）
+        rel01 = left_h
+        p["RELE01"] = fmt(rel01, 1)
+        p["RELE02"] = fmt(rel01 * 1.5 if rel01 is not None else None, 1)
+        # RELE03 左波阻抗 = |左相中距|（ganzi 段减 0）
+        p["RELE03"] = fmt(abs(left_spacing) if left_spacing is not None else None, 1)
+        p["RELE04"] = fmt(abs(right_spacing) if right_spacing is not None else None, 1)
+        # RELE05 中相左相高度差（<1.5 钳到 1.5）
+        h5 = abs(mid_h - left_h) if (mid_h is not None and left_h is not None) else None
+        if h5 is not None and h5 < 1.5:
+            h5 = 1.5
+        p["RELE05"] = fmt(h5, 2)
+        p["RELE06"] = fmt(h5 * 1.5 if h5 is not None else None, 2)
+        # RELE07 避雷线高度与中相高度之差（<1.5 钳到 1.5）
+        h7 = abs(shield_h - mid_h) if (shield_h is not None and mid_h is not None) else None
+        if h7 is not None and h7 < 1.5:
+            h7 = 1.5
+        p["RELE07"] = fmt(h7, 2)
+        p["RELE08"] = fmt(h7 * 1.5 if h7 is not None else None, 2)
+        # RELE09/10 左/右避雷线中距绝对值（C# 1996/2000）
+        # 优先用 circuit_geometry.lightning_wire 中距；缺失时用保护角推导 x = h*tan(alpha) 回退
+        angle_l = f(profile.get("protection_angle_left_deg"))
+        angle_r = f(profile.get("protection_angle_right_deg"))
+        if mid_l is None and angle_l is not None and shield_h:
+            mid_l = shield_h * math.tan(math.radians(angle_l))
+        if mid_r is None and angle_r is not None and shield_h:
+            mid_r = shield_h * math.tan(math.radians(angle_r))
+        p["RELE09"] = fmt(abs(mid_l) if mid_l is not None else None, 2)
+        p["RELE10"] = fmt(abs(mid_r) if mid_r is not None else None, 2)
 
-    # REHG 避雷线平均高度 = |避雷线高度 - 修正|
-    p["REHG______"] = fmt(abs(shield_h - rehg_adj) if shield_h is not None else None, 1)
-    # REHC1/2/3 相平均高度 = |相高 - 绝缘子串长 - 修正|
-    for name, h in (("REHC1_____", left_h), ("REHC2_____", mid_h), ("REHC3_____", right_h)):
-        p[name] = fmt(abs(h - insul_m - rehc_adj) if (h is not None and insul_m is not None) else None, 1)
+        # REHG 避雷线平均高度 = |避雷线高度 - 修正|
+        p["REHG______"] = fmt(abs(shield_h - rehg_adj) if shield_h is not None else None, 1)
+        # REHC1/2/3 相平均高度 = |相高 - 绝缘子串长 - 修正|
+        for name, h in (("REHC1_____", left_h), ("REHC2_____", mid_h), ("REHC3_____", right_h)):
+            p[name] = fmt(abs(h - insul_m - rehc_adj) if (h is not None and insul_m is not None) else None, 1)
 
     # 雷电流幅值（C# 2052-2056）：current_ka(kA) → REIGAN=|c|/1000? 不——current_ka 已是 kA
     # C# current 单位 A：REIGAN=|current|/1000(kA)、REIAMP=-|current|(A)、HIAMP=-|current|*0.5(A)
@@ -1420,3 +1491,100 @@ def _risk_level_from_grade(grade: int) -> str:
     if grade == 2:
         return "medium"
     return "low"
+
+
+# ============================================================
+# 规程法反击耐雷水平（对齐 C# ComputeLightningProtection.cs 6504-6511
+# + fetch_CouplingCoefficient 11484-11668）
+# C# 桌面版默认反击耐雷水平走规程法（IS_GCF_FanJi_NaiLeiShuiPing），
+# ATP 二分是可选模式（IS_ATP_FanJi_NaiLeiShuiPing）。
+# ============================================================
+
+import math
+
+
+def compute_counterstroke_nl_gcf(*, base_tower: dict, profile: dict) -> float | None:
+    """规程法反击耐雷水平（kA）。数据不足返回 None。"""
+    def f(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    insul_mm = f(profile.get("insulator_length_m"))
+    insul_m = insul_mm / 1000.0 if insul_mm and insul_mm > 100 else insul_mm
+    shield_h = f(profile.get("shield_wire_height_m"))
+    Rg = f(base_tower.get("ground_resistance_ohm"))
+    voltage = f(base_tower.get("line_voltage_kv")) or 500.0
+    mDYDJ = int(voltage)
+    if not insul_m or not shield_h or Rg is None:
+        return None
+
+    cg = base_tower.get("circuit_geometry_json") or {}
+    lw = cg.get("lightning_wire") or {}
+    mid_l = f(lw.get("left_mid_distance_m"))
+    mid_r = f(lw.get("right_mid_distance_m"))
+    if mid_l is None:
+        mid_l = f(cg.get("left_mid_distance_m"))
+    if mid_r is None:
+        mid_r = f(cg.get("right_mid_distance_m"))
+    if mid_l is None or mid_r is None:
+        return None
+
+    geom = (profile.get("geometry_layers_json") or {}).get("I") or {}
+    ph = geom.get("phase_height_m") or {}
+    sp = geom.get("phase_spacing_m") or {}
+    tower_kind = str(profile.get("tower_kind") or base_tower.get("tower_kind") or "ganzi").lower()
+    x3 = f(sp.get("upper"))
+    ha = f(ph.get("upper"))
+    if x3 is None or ha is None:
+        return None
+
+    # 弧垂（C# 11509-11522）：避雷线 35/66=1.1、110=2.8、220=7、≥500=9.5；导线 35/66=1.8、110=5.3、220=12、≥500=12
+    if mDYDJ <= 66:
+        blxV, dxV = 1.1, 1.8
+    elif mDYDJ == 110:
+        blxV, dxV = 2.8, 5.3
+    elif mDYDJ == 220:
+        blxV, dxV = 7.0, 12.0
+    else:
+        blxV, dxV = 9.5, 12.0
+
+    # 耦合系数 fetch_CouplingCoefficient()（C# 11494-11668）
+    k1 = 1.15 if mDYDJ <= 66 else (1.2 if mDYDJ == 110 else (1.25 if mDYDJ == 220 else 1.28))
+    rk = 0.0055  # 地线半径 m
+    x1, y1 = mid_r, shield_h - blxV * 2.0 / 3.0
+    x2, y2 = -abs(mid_l), shield_h - blxV * 2.0 / 3.0
+    y3 = ha - dxV * 2.0 / 3.0 - insul_m
+    if tower_kind in ("guxingd",) and abs(mid_l) < 1e-9 and abs(mid_r) < 1e-9:
+        # 单避雷线（guxingd）：x1=x2=0，k0=z31/z11（C# 11653-11655）
+        d31 = math.sqrt((x1 - x3) ** 2 + (y1 - y3) ** 2)
+        D31 = math.sqrt((x1 - x3) ** 2 + (y1 + y3) ** 2)
+        z11 = math.log(2 * y1 / rk)
+        z31 = math.log(D31 / d31)
+        k0 = z31 / z11
+        k = k1 * z31 / z11
+    else:
+        d31 = math.sqrt((x1 - x3) ** 2 + (y1 - y3) ** 2)
+        D31 = math.sqrt((x1 - x3) ** 2 + (y1 + y3) ** 2)
+        d32 = math.sqrt((x2 - x3) ** 2 + (y2 - y3) ** 2)
+        D32 = math.sqrt((x2 - x3) ** 2 + (y2 + y3) ** 2)
+        d12 = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        D12 = math.sqrt((x2 - x1) ** 2 + (y2 + y1) ** 2)
+        z11 = math.log(2 * y1 / rk)
+        z12 = math.log(D12 / d12)
+        z31 = math.log(D31 / d31)
+        z32 = math.log(D32 / d32)
+        k0 = (z31 + z32) / (z11 + z12)
+        k = k1 * k0
+
+    # 规程法反击耐雷水平（C# 6504-6511）
+    belta = 0.84 if mDYDJ <= 66 else (0.86 if mDYDJ == 110 else (0.88 if mDYDJ <= 500 else (0.89 if mDYDJ == 750 else 0.9)))
+    ht = shield_h
+    Lt = 0.5 * ht
+    hc, hg = y3, y1
+    fenzi = insul_m * (400 + 710 / math.pow(10, 0.75))
+    fenmu = (1 - k) * belta * Rg + (ha / ht - k) * belta * Lt / 2.6 + (hc - hg * k0) / 2.6
+    if fenmu <= 0:
+        return None
+    return round(fenzi / fenmu, 3)
