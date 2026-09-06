@@ -1134,6 +1134,23 @@ def _normalize_lightning_inputs(payload: Mapping[str, Any]) -> _NormalizedLightn
     if right_shield_x_m is None and left_shield_x_m is not None:
         right_shield_x_m = abs(left_shield_x_m)
         synthetic_signed_geometry = True
+    if left_shield_x_m is None or right_shield_x_m is None:
+        # 避雷线中距完全缺失：按电压等级回填典型值（对齐模板设计几何）
+        voltage = _as_int(base.get("line_voltage_kv")) or 0
+        if voltage >= 500:
+            default_mid = 10.0
+        elif voltage >= 220:
+            default_mid = 7.0
+        elif voltage >= 110:
+            default_mid = 5.0
+        else:
+            default_mid = 3.0
+        if left_shield_x_m is None:
+            left_shield_x_m = -default_mid
+            synthetic_signed_geometry = True
+        if right_shield_x_m is None:
+            right_shield_x_m = default_mid
+            synthetic_signed_geometry = True
 
     line_lightning_param_json = base.get("line_lightning_param_json") or {}
     line_voltage_kv = _as_int(base.get("line_voltage_kv"))
