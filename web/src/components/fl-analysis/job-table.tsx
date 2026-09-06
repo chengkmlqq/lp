@@ -18,11 +18,13 @@ type JobTableProps = {
   loading: boolean;
   total: number;
   pagination: { current: number; pageSize: number };
-  onPaginationChange: (pagination: { current: number; pageSize: number }) => void;
+  onPaginationChange: (next: { current: number; pageSize: number }) => void;
   scrollY?: number;
-  onDeleteJob?: (job: FlAnalysisJobSummary) => void;
+  onDeleteJob: (job: FlAnalysisJobSummary) => void;
   canReadLogs?: boolean;
   onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
+  /** 打开任务详情（查看结果） */
+  onOpenDetail?: (job: FlAnalysisJobSummary) => void;
 };
 
 const LOCKED_STATUSES = new Set(["queued", "running"]);
@@ -41,6 +43,7 @@ export function JobTable({
   onDeleteJob,
   canReadLogs,
   onOpenLog,
+  onOpenDetail,
 }: JobTableProps) {
   const columns = useMemo<ColumnsType<FlAnalysisJobSummary>>(() => [
     {
@@ -108,10 +111,19 @@ export function JobTable({
           {
             title: "操作",
             key: "operation",
-            width: 200,
+            width: 280,
             align: "center" as const,
             render: (_value: unknown, job: FlAnalysisJobSummary) => (
               <Space size="small">
+                {onOpenDetail ? (
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => onOpenDetail(job)}
+                  >
+                    查看结果
+                  </Button>
+                ) : null}
                 {canReadLogs && onOpenLog ? (
                   <Button
                     type="link"

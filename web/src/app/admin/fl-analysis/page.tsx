@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
@@ -24,7 +24,11 @@ import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { Card } from "@/components/ui-antd";
 import { CreateJobForm } from "@/components/fl-analysis/create-job-form";
 import { JobCardList } from "@/components/fl-analysis/job-card-list";
+import { JobDetailTabView } from "@/components/fl-analysis/job-detail-tab-view";
 import { JobTable } from "@/components/fl-analysis/job-table";
+import { MitigationModal } from "@/components/fl-analysis/mitigation-modal";
+import { ScenarioModal } from "@/components/fl-analysis/scenario-modal";
+import { ReportModal } from "@/components/fl-analysis/report-modal";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import {
@@ -32,12 +36,16 @@ import {
   formatJobType,
   mitigationMode,
   type CreateJobFormValues,
+  type MitigationFormValues,
+  type ReportFormValues,
+  type ScenarioFormValues,
 } from "@/components/fl-analysis/types";
 import { readApiError } from "@/lib/api";
 import type {
   FlAnalysisJobDetail,
   FlAnalysisJobListResponse,
   FlAnalysisJobSummary,
+  FlAnalysisTowerResultSummary,
   LineListResponse,
 } from "@/types/auth";
 
@@ -320,6 +328,190 @@ export default function AdminFlAnalysisPage() {
     });
   };
 
+  // ---- 任务详情动态 Tab（LP-274：点击任务打开详情，可多开）----
+  const [detailTabs, setDetailTabs] = useState<{ key: string; job: FlAnalysisJobSummary }[]>([]);
+  const [detailActiveTabKey, setDetailActiveTabKey] = useState<string>(LIST_TAB_KEY);
+  const [submittingByJob, setSubmittingByJob] = useState<Record<string, boolean>>({});
+
+  const openJobDetail = useCallback((job: FlAnalysisJobSummary) => {
+    const tabKey = job.id;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === tabKey)) {
+        return previous;
+      }
+      return [...previous, { key: tabKey, job }];
+    });
+    setDetailActiveTabKey(tabKey);
+  }, []);
+
+  const handleDetailTabsEdit = useCallback((targetKey: string | ReactMouseEvent | ReactKeyboardEvent, action: "add" | "remove") => {
+    if (action !== "remove") {
+      return;
+    }
+    const key = String(targetKey);
+    if (submittingByJob[key]) {
+      // 任务提交中（措施推荐/复算/报告）禁止关闭详情 Tab
+      return;
+    }
+    setDetailTabs((previous) => {
+      const removedIndex = previous.findIndex((tab) => tab.key === key);
+      const next = previous.filter((tab) => tab.key !== key);
+      if (detailActiveTabKey === key) {
+        const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+        setDetailActiveTabKey(fallback);
+      }
+      return next;
+    });
+  }, [detailActiveTabKey, submittingByJob]);
+
+  // ---- 措施推荐 / 加装避雷器复算 / 报告生成 Modal 状态 ----
+  const [mitigationForm] = Form.useForm<MitigationFormValues>();
+  const [scenarioForm] = Form.useForm<ScenarioFormValues>();
+  const [reportForm] = Form.useForm<ReportFormValues>();
+  const [mitigationOpen, setMitigationOpen] = useState(false);
+  const [mitigationJob, setMitigationJob] = useState<FlAnalysisJobSummary | null>(null);
+  const [mitigationRows, setMitigationRows] = useState<FlAnalysisTowerResultSummary[]>([]);
+  const [mitigationTowerIds, setMitigationTowerIds] = useState<string[]>([]);
+  const [scenarioOpen, setScenarioOpen] = useState(false);
+  const [scenarioJob, setScenarioJob] = useState<FlAnalysisJobSummary | null>(null);
+  const [scenarioRows, setScenarioRows] = useState<FlAnalysisTowerResultSummary[]>([]);
+  const [scenarioBaseJobs, setScenarioBaseJobs] = useState<FlAnalysisJobSummary[]>([]);
+  const [scenarioTowerIds, setScenarioTowerIds] = useState<string[]>([]);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportJob, setReportJob] = useState<FlAnalysisJobSummary | null>(null);
+  const [reportRows, setReportRows] = useState<FlAnalysisTowerResultSummary[]>([]);
+  const [reportTowerIds, setReportTowerIds] = useState<string[]>([]);
+
+  const openMitigation = useCallback((job: FlAnalysisJobSummary, rows: FlAnalysisTowerResultSummary[]) => {
+    setMitigationJob(job);
+    setMitigationRows(rows);
+    setMitigationTowerIds(rows.map((row) => row.tower_id));
+    setMitigationForm({ job_name: "", non_construction: false });
+    setMitigationOpen(true);
+  }, [setMitigationForm]);
+
+  const openScenario = useCallback((
+    job: FlAnalysisJobSummary,
+    rows: FlAnalysisTowerResultSummary[],
+    baseJobs: FlAnalysisJobSummary[],
+  ) => {
+    setScenarioJob(job);
+    setScenarioRows(rows);
+    setScenarioBaseJobs(baseJobs);
+    setScenarioTowerIds(rows.map((row) => row.tower_id));
+    setScenarioForm({ job_name: "" });
+    setScenarioOpen(true);
+  }, [setScenarioForm]);
+
+  const openReport = useCallback((job: FlAnalysisJobSummary, rows: FlAnalysisTowerResultSummary[]) => {
+    setReportJob(job);
+    setReportRows(rows);
+    setReportTowerIds(rows.map((row) => row.tower_id));
+    setReportForm({ job_name: "" });
+    setReportOpen(true);
+  }, [setReportForm]);
+
+  // ---- 措施推荐任务创建 ----
+  const createMitigationMutation = useMutation({
+    mutationFn: async (values: MitigationFormValues) => {
+      const payload: Record<string, unknown> = {
+        line_id: mitigationJob?.line_id,
+        job_name: values.job_name.trim() || null,
+        job_type: "mitigation",
+        execution_options_json: {
+          source_job_id: mitigationJob?.id,
+          source_run_id: mitigationJob?.latest_run_id,
+          selected_tower_ids: mitigationTowerIds,
+          non_construction: values.non_construction,
+        },
+      };
+      const response = await fetchWithAuth("/api/v1/fl-analysis/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as { job: FlAnalysisJobDetail };
+    },
+    onSuccess: async () => {
+      await invalidateFlAnalysisQueries();
+      setMitigationOpen(false);
+      messageApi.success("措施推荐任务已创建");
+    },
+    onError: (candidate) => {
+      messageApi.error(candidate instanceof Error ? candidate.message : "措施推荐任务创建失败");
+    },
+  });
+
+  // ---- 加装避雷器复算任务创建 ----
+  const createScenarioMutation = useMutation({
+    mutationFn: async (values: ScenarioFormValues) => {
+      const payload: Record<string, unknown> = {
+        line_id: scenarioJob?.line_id,
+        job_name: values.job_name.trim() || null,
+        job_type: "scenario",
+        execution_options_json: {
+          source_job_id: scenarioJob?.id,
+          source_run_id: scenarioJob?.latest_run_id,
+          base_job_id: values.base_job_id,
+          selected_tower_ids: scenarioTowerIds,
+        },
+      };
+      const response = await fetchWithAuth("/api/v1/fl-analysis/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as { job: FlAnalysisJobDetail };
+    },
+    onSuccess: async () => {
+      await invalidateFlAnalysisQueries();
+      setScenarioOpen(false);
+      messageApi.success("加装避雷器复算任务已创建");
+    },
+    onError: (candidate) => {
+      messageApi.error(candidate instanceof Error ? candidate.message : "加装避雷器复算任务创建失败");
+    },
+  });
+
+  // ---- 报告生成任务创建 ----
+  const createReportMutation = useMutation({
+    mutationFn: async (values: ReportFormValues) => {
+      const payload: Record<string, unknown> = {
+        line_id: reportJob?.line_id,
+        job_name: values.job_name.trim() || null,
+        job_type: "report",
+        execution_options_json: {
+          source_job_id: reportJob?.id,
+          source_run_id: reportJob?.latest_run_id,
+          selected_tower_ids: reportTowerIds,
+        },
+      };
+      const response = await fetchWithAuth("/api/v1/fl-analysis/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as { job: FlAnalysisJobDetail };
+    },
+    onSuccess: async () => {
+      await invalidateFlAnalysisQueries();
+      setReportOpen(false);
+      messageApi.success("报告生成任务已创建");
+    },
+    onError: (candidate) => {
+      messageApi.error(candidate instanceof Error ? candidate.message : "报告生成任务创建失败");
+    },
+  });
+
 
   if (initializing) {
     return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
@@ -358,6 +550,7 @@ export default function AdminFlAnalysisPage() {
         hideAdd
         activeKey={activeTabKey}
         onChange={setActiveTabKey}
+        onEdit={handleDetailTabsEdit}
         className="admin-fl-analysis-tabs"
         tabBarExtraContent={
           <Space>
@@ -412,7 +605,7 @@ export default function AdminFlAnalysisPage() {
                 ) : viewMode === "card" ? (
                   <>
                     <div className="admin-power-lines-card-scroll">
-                      <JobCardList jobs={jobs} loading={jobsQuery.isLoading} onDeleteJob={handleDeleteJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} />
+                      <JobCardList jobs={jobs} loading={jobsQuery.isLoading} onDeleteJob={handleDeleteJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
                     </div>
                     <div className="admin-power-lines-pagination">
                       <Pagination
@@ -443,12 +636,37 @@ export default function AdminFlAnalysisPage() {
                       onDeleteJob={handleDeleteJob}
                       canReadLogs={canReadLogs}
                       onOpenLog={openLogViewer}
+                      onOpenDetail={openJobDetail}
                     />
                   </div>
                 )}
               </div>
             ),
           },
+          ...detailTabs.map((tab) => ({
+            key: tab.key,
+            label: (
+              <span className="admin-fl-analysis-tab-title">
+                {tab.job.job_name || tab.job.line_name || tab.job.line_code || "任务详情"}
+              </span>
+            ),
+            closable: true,
+            children: (
+              <JobDetailTabView
+                job={tab.job}
+                jobs={jobs}
+                canManage={canManage}
+                canReadLogs={canReadLogs}
+                onOpenMitigation={openMitigation}
+                onOpenScenario={openScenario}
+                onOpenReport={openReport}
+                onSubmittingChange={(jobId, submitting) => {
+                  setSubmittingByJob((previous) => ({ ...previous, [jobId]: submitting }));
+                }}
+                onOpenLog={openLogViewer}
+              />
+            ),
+          })),
         ]}
       />
 
@@ -490,6 +708,49 @@ export default function AdminFlAnalysisPage() {
         title={logModalTitle}
         open={logModalOpen}
         onClose={() => setLogModalOpen(false)}
+      />
+
+      <MitigationModal
+        open={mitigationOpen}
+        selectedJob={mitigationJob}
+        rows={mitigationRows}
+        selectedTowerIds={mitigationTowerIds}
+        form={mitigationForm}
+        submitting={createMitigationMutation.isPending}
+        onSelectedTowerIdsChange={setMitigationTowerIds}
+        onSubmit={(values) => {
+          createMitigationMutation.mutate(values);
+        }}
+        onCancel={() => setMitigationOpen(false)}
+      />
+
+      <ScenarioModal
+        open={scenarioOpen}
+        selectedJob={scenarioJob}
+        rows={scenarioRows}
+        baseJobs={scenarioBaseJobs}
+        selectedTowerIds={scenarioTowerIds}
+        form={scenarioForm}
+        submitting={createScenarioMutation.isPending}
+        onSelectedTowerIdsChange={setScenarioTowerIds}
+        onSubmit={(values) => {
+          createScenarioMutation.mutate(values);
+        }}
+        onCancel={() => setScenarioOpen(false)}
+      />
+
+      <ReportModal
+        open={reportOpen}
+        selectedJob={reportJob}
+        rows={reportRows}
+        selectedTowerIds={reportTowerIds}
+        form={reportForm}
+        submitting={createReportMutation.isPending}
+        onSelectedTowerIdsChange={setReportTowerIds}
+        onSubmit={(values) => {
+          createReportMutation.mutate(values);
+        }}
+        onCancel={() => setReportOpen(false)}
       />
     </div>
   );

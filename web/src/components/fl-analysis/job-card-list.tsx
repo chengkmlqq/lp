@@ -3,6 +3,7 @@
 import { Badge, Button, Dropdown, Empty, Progress, Space, Spin, Tooltip, Typography } from "antd";
 import {
   ApartmentOutlined,
+  BarChartOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
   DeploymentUnitOutlined,
@@ -28,6 +29,8 @@ type JobCardListProps = {
   onDeleteJob: (job: FlAnalysisJobSummary) => void;
   canReadLogs?: boolean;
   onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
+  /** 点击卡片主体打开任务详情（查看结果） */
+  onOpenDetail?: (job: FlAnalysisJobSummary) => void;
 };
 
 /** 卡片底部操作：默认平铺 2 个直接按钮，其余收进 ⋯ 三点下拉（对齐雷电流幅值统计页）。 */
@@ -66,7 +69,7 @@ function isJobLocked(job: FlAnalysisJobSummary) {
   return LOCKED_STATUSES.has(job.status);
 }
 
-export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog }: JobCardListProps) {
+export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog, onOpenDetail }: JobCardListProps) {
   if (loading) {
     return <Spin />;
   }
@@ -80,8 +83,19 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
       {jobs.map((job) => {
         const lineName = job.line_name || job.line_code || "-";
 
-        // 底部操作列表：查看日志/删除平铺为直接按钮，多于 2 个时其余收进 ⋯ 三点下拉
+        // 底部操作列表：查看结果/查看日志/删除；多于 2 个时其余收进 ⋯ 三点下拉
         const actions: CardAction[] = [];
+        if (onOpenDetail) {
+          actions.push({
+            key: "result",
+            tooltip: "查看结果",
+            icon: <BarChartOutlined />,
+            onClick: (event) => {
+              event.stopPropagation();
+              onOpenDetail?.(job);
+            },
+          });
+        }
         if (canReadLogs && onOpenLog) {
           actions.push({
             key: "log",
@@ -114,6 +128,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
             size="small"
             hoverable
             className="admin-fl-analysis-job-card"
+            onClick={() => onOpenDetail?.(job)}
           >
             <div className="flex flex-col">
               {/* 标题区：状态徽标置于右上角（对齐雷电流幅值统计页） */}
