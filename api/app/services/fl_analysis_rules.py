@@ -1315,7 +1315,7 @@ def _calculate_counterstrike_withstand_ka(
     if math.isclose(denominator, 0.0, abs_tol=1e-9):
         return None, coupling
 
-    current_ka = abs(normalized.insulator_length_m * _LIGHTNING_LEVEL_BASE / denominator) * 0.7
+    current_ka = abs(normalized.insulator_length_m * _LIGHTNING_LEVEL_BASE / denominator)
     current_ka = min(max(current_ka, 0.0), 2000.0)
     return round(current_ka, 4), {**coupling, "denominator": round(denominator, 6)}
 
