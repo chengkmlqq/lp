@@ -3948,6 +3948,22 @@ body {
   white-space: nowrap;
 }
 
+/* ATP 模型详情顶部「基本信息」Descriptions（bordered, column=2），
+   与雷电流幅值详情顶部基本信息表格保持一致的列宽分布（label/content 四列 25% 均分）。 */
+.admin-atp-models-meta-table .ant-descriptions-view > table {
+  table-layout: fixed !important;
+  width: 100% !important;
+}
+
+.admin-atp-models-meta-table .ant-descriptions-item-label,
+.admin-atp-models-meta-table .ant-descriptions-item-content {
+  width: 25%;
+}
+
+.admin-atp-models-meta-table .ant-descriptions-item-label {
+  white-space: nowrap;
+}
+
 /* LP-246: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
    内部列表 Tab 的布局才能延续原有 flex 自适应滚动布局 */
 .admin-lightning-currents-tabs {

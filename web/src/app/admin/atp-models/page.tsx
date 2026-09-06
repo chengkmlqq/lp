@@ -21,7 +21,7 @@ import {
   Upload,
   type MenuProps,
 } from "antd";
-import { CheckCircleOutlined, DeleteOutlined, EyeOutlined, MoreOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, DeleteOutlined, EditOutlined, EyeOutlined, InboxOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
@@ -40,6 +40,17 @@ type AssetFormValues = {
   scene_type: string;
   arrester_config: string;
   files: File[];
+};
+
+type AssetEditFormValues = {
+  name: string;
+  description: string;
+  voltage_level: string;
+  tower_type: string;
+  scene_type: string;
+  arrester_config: string;
+  storage_mount_code: string;
+  storage_root_path: string;
 };
 
 const EMPTY_FORM: AssetFormValues = {
@@ -109,10 +120,13 @@ export default function AtpModelsPage() {
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<AssetFormValues>();
+  const [editForm] = Form.useForm<AssetEditFormValues>();
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<AtpAssetSummary | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [fileList, setFileList] = useState<File[]>([]);
   const [tempFileId, setTempFileId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -238,6 +252,45 @@ export default function AtpModelsPage() {
     },
   });
 
+  const updateAssetMutation = useMutation({
+    mutationFn: async (values: AssetEditFormValues) => {
+      if (!editingAsset) {
+        throw new Error("未选择要编辑的模型");
+      }
+      const payload = {
+        name: values.name.trim() || null,
+        description: values.description.trim() || null,
+        voltage_level: values.voltage_level.trim() || null,
+        tower_type: values.tower_type.trim() || null,
+        scene_type: values.scene_type.trim() || null,
+        arrester_config: values.arrester_config.trim() || null,
+        storage_mount_code: values.storage_mount_code.trim() || null,
+        storage_root_path: values.storage_root_path.trim() || null,
+      };
+      const response = await fetchWithAuth(`/api/v1/atp/assets/${editingAsset.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as AtpAssetSummary;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
+      setSuccess("模型信息已更新");
+      setError(null);
+      setEditModalOpen(false);
+      setEditingAsset(null);
+      editForm.resetFields();
+    },
+    onError: (candidate) => {
+      setSuccess("");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : "更新模型失败"));
+    },
+  });
+
   const handleTempUpload = useCallback(
     async (files: File[]) => {
       if (files.length === 0) {
@@ -348,6 +401,30 @@ export default function AtpModelsPage() {
     form.setFieldsValue(EMPTY_FORM);
     setModalOpen(true);
   }, [form]);
+
+  const openEditModal = useCallback((asset: AtpAssetSummary) => {
+    setError(null);
+    setSuccess("");
+    setEditingAsset(asset);
+    editForm.setFieldsValue({
+      name: asset.name ?? "",
+      description: asset.description ?? "",
+      voltage_level: asset.voltage_level ?? "",
+      tower_type: asset.tower_type ?? "",
+      scene_type: asset.scene_type ?? "",
+      arrester_config: asset.arrester_config ?? "",
+      storage_mount_code: asset.storage_mount_code ?? "",
+      storage_root_path: asset.storage_root_path ?? "",
+    });
+    setEditModalOpen(true);
+  }, [editForm]);
+
+  const closeEditModal = () => {
+    if (updateAssetMutation.isPending) return;
+    setEditModalOpen(false);
+    setEditingAsset(null);
+    editForm.resetFields();
+  };
 
   const closeModal = () => {
     if (createAssetMutation.isPending) return;
@@ -615,6 +692,9 @@ export default function AtpModelsPage() {
               <Button size="small" icon={<EyeOutlined />} onClick={() => openDetailById(item.id)}>
                 详情
               </Button>
+              <Button size="small" icon={<EditOutlined />} disabled={!canManage} onClick={() => openEditModal(item)}>
+                编辑
+              </Button>
               <Button danger size="small" icon={<DeleteOutlined />} loading={deleteLoading} disabled={!canManage || rowBusy}
                 onClick={() => {
                   Modal.confirm({
@@ -634,7 +714,7 @@ export default function AtpModelsPage() {
         },
       },
     ],
-    [canManage, deleteMutation, formatDimensionValue, openDetailById],
+    [canManage, deleteMutation, formatDimensionValue, openDetailById, openEditModal],
   );
 
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
@@ -784,9 +864,7 @@ export default function AtpModelsPage() {
                         canManage={canManage}
                         deleteLoading={deleteMutation.isPending}
                         onView={(asset) => openDetail(asset)}
-                        onEdit={(asset) => {
-                          // TODO: route to edit page / open edit modal
-                        }}
+                        onEdit={(asset) => openEditModal(asset)}
                         onDelete={(id) => deleteMutation.mutate(id)}
                         dimensionLabelMap={dimensionLabelMap}
                       />
@@ -878,17 +956,51 @@ export default function AtpModelsPage() {
           </Form.Item>
           <Form.Item label="上传模型文件" required>
             <div>
-              <Upload
+              <Upload.Dragger
+                directory
+                multiple
+                showUploadList={false}
                 beforeUpload={(file) => {
                   setFileList((prev) => [...prev, file]);
                   return false;
                 }}
-                directory
-                multiple
-                showUploadList={false}
+                onRemove={() => {
+                  setFileList([]);
+                  setTempFileId(null);
+                  setUploadProgress(0);
+                  setUploadError("");
+                }}
               >
-                <Button icon={<UploadOutlined />}>选择文件夹</Button>
-              </Upload>
+                {fileList.length === 0 ? (
+                  <>
+                    <InboxOutlined style={{ fontSize: 40, color: "#999" }} />
+                    <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
+                      点击或拖拽模型文件夹到此区域上传
+                    </p>
+                    <Typography.Text type="secondary">
+                      支持选择整个 ATP 模型目录（含 work.atp 与 lib 等文件），选择后自动打包上传到临时存储。
+                    </Typography.Text>
+                  </>
+                ) : (
+                  <>
+                    <p className="ant-upload-text">已选择 {fileList.length} 个文件</p>
+                    {uploadProgress > 0 && uploadProgress < 100 ? (
+                      <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
+                    ) : tempFileId ? (
+                      <Typography.Text type="success">
+                        <CheckCircleOutlined /> 上传完成，可以创建模型
+                      </Typography.Text>
+                    ) : (
+                      <Typography.Text type="warning">上传中…</Typography.Text>
+                    )}
+                  </>
+                )}
+                {uploadError && (
+                  <Typography.Text type="danger" style={{ display: "block", marginTop: 8 }}>
+                    {uploadError}
+                  </Typography.Text>
+                )}
+              </Upload.Dragger>
               {fileList.length > 0 && (
                 <div style={{
                   marginTop: 8,
@@ -899,31 +1011,6 @@ export default function AtpModelsPage() {
                   padding: '8px',
                   backgroundColor: '#fafafa'
                 }}>
-                  <div style={{ marginBottom: 8, fontWeight: 500, color: '#666' }}>
-                    已选择 {fileList.length} 个文件
-                  </div>
-                  {uploadProgress > 0 && uploadProgress < 100 && (
-                    <div style={{ marginBottom: 8 }}>
-                      <Progress percent={uploadProgress} size="small" />
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        正在上传到临时目录，请稍候…
-                      </Typography.Text>
-                    </div>
-                  )}
-                  {tempFileId && (
-                    <div style={{ marginBottom: 8 }}>
-                      <Typography.Text type="success">
-                        <CheckCircleOutlined /> 上传完成，可以创建模型
-                      </Typography.Text>
-                    </div>
-                  )}
-                  {uploadError && (
-                    <div style={{ marginBottom: 8 }}>
-                      <Typography.Text type="danger" style={{ fontSize: 13 }}>
-                        {uploadError}
-                      </Typography.Text>
-                    </div>
-                  )}
                   {fileList.map((file, index) => (
                     <div key={index} style={{
                       padding: '4px 0',
@@ -939,6 +1026,75 @@ export default function AtpModelsPage() {
               )}
             </div>
           </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`编辑 ATP 模型${editingAsset ? ` - ${editingAsset.name || editingAsset.code}` : ""}`}
+        open={editModalOpen}
+        forceRender
+        onCancel={closeEditModal}
+        onOk={() => void editForm.submit()}
+        confirmLoading={updateAssetMutation.isPending}
+        destroyOnHidden
+        okText={updateAssetMutation.isPending ? "提交中..." : "保存"}
+        cancelText="取消"
+        width={640}
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={(values) => {
+            void updateAssetMutation.mutateAsync(values);
+          }}
+          autoComplete="off"
+        >
+          <div className="grid gap-x-4 md:grid-cols-2">
+            <Form.Item name="name" label="名称" rules={[{ required: true, message: "请输入名称" }]}>
+              <Input placeholder="模型名称" maxLength={255} />
+            </Form.Item>
+            <Form.Item name="storage_mount_code" label="存储挂载">
+              <Input placeholder="如 main" maxLength={64} />
+            </Form.Item>
+            <Form.Item name="voltage_level" label="电压等级" rules={[{ required: true, message: "请选择电压等级" }]}>
+              <Select
+                showSearch
+                allowClear
+                placeholder="请选择电压等级"
+                options={voltageLevelOptions}
+              />
+            </Form.Item>
+            <Form.Item name="tower_type" label="塔型" rules={[{ required: true, message: "请选择塔型" }]}>
+              <Select
+                showSearch
+                allowClear
+                placeholder="请选择塔型"
+                options={towerTypeOptions}
+              />
+            </Form.Item>
+            <Form.Item name="scene_type" label="场景" rules={[{ required: true, message: "请选择场景" }]}>
+              <Select
+                showSearch
+                allowClear
+                placeholder="请选择场景"
+                options={sceneTypeOptions}
+              />
+            </Form.Item>
+            <Form.Item name="arrester_config" label="避雷器装设组合" rules={[{ required: true, message: "请选择避雷器装设组合" }]}>
+              <Select
+                showSearch
+                allowClear
+                placeholder="请选择避雷器装设组合"
+                options={arresterConfigOptions}
+              />
+            </Form.Item>
+            <Form.Item name="storage_root_path" label="存储目录" className="md:col-span-2" rules={[{ required: true, message: "请输入存储目录" }]}>
+              <Input placeholder="如 /atp-assets/220kV/猫头塔/平原/避雷器组合A" maxLength={2048} />
+            </Form.Item>
+            <Form.Item name="description" label="描述" className="md:col-span-2">
+              <Input.TextArea rows={2} placeholder="模型描述（可选）" maxLength={8000} />
+            </Form.Item>
+          </div>
         </Form>
       </Modal>
     </div>
