@@ -330,7 +330,6 @@ export default function AdminFlAnalysisPage() {
 
   // ---- 任务详情动态 Tab（LP-274：点击任务打开详情，可多开）----
   const [detailTabs, setDetailTabs] = useState<{ key: string; job: FlAnalysisJobSummary }[]>([]);
-  const [detailActiveTabKey, setDetailActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [submittingByJob, setSubmittingByJob] = useState<Record<string, boolean>>({});
 
   const openJobDetail = useCallback((job: FlAnalysisJobSummary) => {
@@ -341,7 +340,7 @@ export default function AdminFlAnalysisPage() {
       }
       return [...previous, { key: tabKey, job }];
     });
-    setDetailActiveTabKey(tabKey);
+    setActiveTabKey(tabKey);
   }, []);
 
   const handleDetailTabsEdit = useCallback((targetKey: string | ReactMouseEvent | ReactKeyboardEvent, action: "add" | "remove") => {
@@ -356,13 +355,13 @@ export default function AdminFlAnalysisPage() {
     setDetailTabs((previous) => {
       const removedIndex = previous.findIndex((tab) => tab.key === key);
       const next = previous.filter((tab) => tab.key !== key);
-      if (detailActiveTabKey === key) {
+      if (activeTabKey === key) {
         const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
-        setDetailActiveTabKey(fallback);
+        setActiveTabKey(fallback);
       }
       return next;
     });
-  }, [detailActiveTabKey, submittingByJob]);
+  }, [activeTabKey, submittingByJob]);
 
   // ---- 措施推荐 / 加装避雷器复算 / 报告生成 Modal 状态 ----
   const mitigationForm = Form.useForm<MitigationFormValues>()[0];
