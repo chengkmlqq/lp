@@ -796,26 +796,31 @@ def execute_external_waveform_tower_analysis(
     except Exception as exc:
         logger.warning("[ATP] 结果契约解析失败（%s），降级为 pl4 闪络检测：%s", snapshot.tower_no, exc)
         parsed_payload = {}
-    # work.lis Type-99 闪络判据（C# Check_Lightning_work_lis 同源机制）：
-    # tpbig 用 both 参数跑后生成 work.lis，绝缘子闪络模型（Type-99 非线性电阻）
-    # 动作时 lis 出现 "Type-99 v-i ... begins operation" 标记 → 该次计算闪络。
-    # 实测：30kA 无动作（不闪络）、124kA 在 1.765μs 动作（闪络），与 C# 耐雷水平吻合。
+    # 闪络判据（对齐 C# Check_Lightning_work_lis = 读 work.lis "Close switch" 行数）：
+    # tpbig 用 both 参数跑后生成 work.lis，绝缘子闪络时模型闭合开关，
+    # lis 逐相输出 `*** Close switch "SWUx" to "XX.." after ... sec.`。
+    # 每一行计 1 相闪络。该判据随雷电流单调（实测 guxing-fanji-M1：≤300kA=0、
+    # 500kA=2、800kA=4），二分法可据此收敛。
+    # ⚠️ 不用 Type-99 "begins operation"（恒=2 不随电流变）也不以 pl4 阈值覆盖——
+    # 两者都会把闪络判成恒定值，令二分法空转。
     try:
         lis_flash = _read_lis_flashover(run_dir)
         if lis_flash is not None:
             parsed_payload["flashover_count"] = lis_flash
-            logger.info("[ATP] lis 闪络检测：%s，闪络相数=%d", snapshot.tower_no, lis_flash)
+            logger.info("[ATP] lis 闪络检测（Close switch）：%s，闪络相数=%d", snapshot.tower_no, lis_flash)
     except Exception as exc:
         logger.warning("[ATP] lis 闪络检测失败（%s）：%s", snapshot.tower_no, exc)
-    # ATP 二进制波形（work.pl4）闪络检测：复刻 C# pl4Class.flashNumber()，
-    # 供二分法用 flashover_count 判断闪络。解析失败不阻断（仅记录）。
-    try:
-        flashover_count = _read_pl4_flashover_count(run_dir, resolved_job.storage_root_path)
-        if flashover_count is not None:
-            parsed_payload["flashover_count"] = flashover_count
-            logger.info("[ATP] pl4 闪络检测：%s，闪络相数=%d", snapshot.tower_no, flashover_count)
-    except Exception as exc:
-        logger.warning("[ATP] pl4 闪络检测失败（%s）：%s", snapshot.tower_no, exc)
+    # 仅当 lis 判据不可用（work.lis 缺失/无 Close switch 信息）时，才回退到
+    # ATP 二进制波形（work.pl4）闪络检测（复刻 C# pl4Class.flashNumber()）。
+    # 注意：pl4 阈值法对部分模板判恒值，不能覆盖 lis 的 Close switch 权威结果。
+    if "flashover_count" not in parsed_payload:
+        try:
+            flashover_count = _read_pl4_flashover_count(run_dir, resolved_job.storage_root_path)
+            if flashover_count is not None:
+                parsed_payload["flashover_count"] = flashover_count
+                logger.info("[ATP] pl4 闪络检测（回退）：%s，闪络相数=%d", snapshot.tower_no, flashover_count)
+        except Exception as exc:
+            logger.warning("[ATP] pl4 闪络检测失败（%s）：%s", snapshot.tower_no, exc)
     logger.info("[ATP] 结果解析完成：%s，payload_keys=%s", snapshot.tower_no, list(parsed_payload.keys())[:10])
     merged_result = _merge_external_result(
         baseline_result=baseline_result,
@@ -1166,10 +1171,18 @@ def _format_value(value: Any, format_spec: str) -> str:
 def _read_lis_flashover(run_dir: Path) -> int | None:
     """从 work.lis（tpbig both 模式日志）解析闪络相数。
 
-    判据对齐 C# Check_Lightning_work_lis：绝缘子闪络模型是 Type-99 非线性
-    电阻（99XX0011XX0115 等），闪络时 lis 出现
-    "Type-99 v-i from ... begins operation on segment ..." 标记。
-    返回闪络元件数（0=无闪络）；文件缺失返回 None。
+    判据对齐 C# Check_Lightning_work_lis（ComputeLightningProtection.cs:11880）：
+    绝缘子闪络时模型闭合开关，tpbig 在 lis 中逐相输出行为：
+        *** Close switch  "SWU2  "  to  "XX0078"  after  1.71000000E-06  sec.
+    每出现一行 `Close switch "X" to "Y"` 计 1 相闪络（valueRet++）。
+    C# 用该 counts 作为折半法二分判据：numLightning >= level_lightning 视为闪络。
+
+    ⚠️ 历史误判：曾用 "Type-99 v-i ... begins operation"（非线性电阻进入
+    非线性段）作为判据——实测该标记在任何电流下都恒定出现（=2），不随雷电流
+    变化，二分法会判定"恒有闪络"而无法收敛。正确判据是 "Close switch"，实测
+    （500kV-guxing-fanji-M1 模板）随电流单调：50~300kA=0、500kA=2、800kA=4。
+
+    返回闪络相数（0=无闪络）；文件缺失返回 None。
     """
     lis_path = run_dir / "work.lis"
     if not lis_path.is_file():
@@ -1183,7 +1196,8 @@ def _read_lis_flashover(run_dir: Path) -> int | None:
         return None
     count = 0
     for line in text.splitlines():
-        if "begins operation" in line and ("Type-99" in line or "Type 99" in line):
+        # C# Check_Lightning_work_lis: text.IndexOf("Close") > 0
+        if "Close" in line and line.index("Close") > 0:
             count += 1
     return count
 
