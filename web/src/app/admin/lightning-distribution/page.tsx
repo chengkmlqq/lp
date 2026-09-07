@@ -1356,11 +1356,31 @@ function DistributionDetailView({
     },
   });
 
+  // 沿线圆密度图（回填时同步生成，对齐 C# banjin 分组圆）
+  const circleImageQuery = useQuery({
+    queryKey: ["/api/v1/lightning-currents/distributions", record.id, "circle-image"],
+    queryFn: async () => {
+      const response = await fetchWithAuth(`/api/v1/lightning-currents/distributions/${record.id}/circle-image`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const blob = await response.blob();
+      if (blob.size === 0) return null;
+      return URL.createObjectURL(blob);
+    },
+  });
+
   useEffect(() => {
     const objectUrl = imageQuery.data;
     if (!objectUrl) return;
     return () => URL.revokeObjectURL(objectUrl);
   }, [imageQuery.data]);
+
+  useEffect(() => {
+    const objectUrl = circleImageQuery.data;
+    if (!objectUrl) return;
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [circleImageQuery.data]);
 
   return (
     <div className="admin-lightning-distribution-detail-view">
@@ -1400,6 +1420,17 @@ function DistributionDetailView({
           query={imageQuery}
           alt="地闪密度图"
           emptyText="暂无密度图（导入失败或仍在处理中）"
+        />
+      </div>
+
+      <Typography.Title level={5} style={{ marginTop: 16, marginBottom: 8 }}>
+        沿线圆密度图
+      </Typography.Title>
+      <div style={{ textAlign: "center", minHeight: 200 }}>
+        <DistributionImagePane
+          query={circleImageQuery}
+          alt="沿线圆密度图"
+          emptyText="暂无沿线圆密度图（回填线路后生成）"
         />
       </div>
       </Space>

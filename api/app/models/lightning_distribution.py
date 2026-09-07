@@ -72,6 +72,7 @@ class LightningDistribution(Base):
     image_object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     thumbnail_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     lp_image_object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)  # LP 桌面端 Voronoi 分区密度图
+    circle_image_object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)  # LP 桌面端沿线圆密度图（对齐 banjin 分组圆）
 
     # ---- 审计 ----
     create_user: Mapped[str | None] = mapped_column(String(64), nullable=True)

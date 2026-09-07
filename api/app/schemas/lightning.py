@@ -191,6 +191,7 @@ class LightningDistributionRecord(BaseModel):
 
     has_image: bool = False
     has_lp_image: bool = False
+    has_circle_image: bool = False
 
     create_user: str | None = None
     create_date: datetime

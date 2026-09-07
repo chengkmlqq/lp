@@ -1456,6 +1456,7 @@ def _serialize_distribution(
         stats_json=_stats_json,
         has_image=bool(dist.image_object_key),
         has_lp_image=bool(dist.lp_image_object_key is not None),
+        has_circle_image=bool(dist.circle_image_object_key is not None),
         create_user=dist.create_user,
         create_date=dist.create_date,
         update_date=dist.update_date,
@@ -1816,6 +1817,19 @@ def get_lightning_distribution_lp_image_content(
     return content, "image/png"
 
 
+def get_lightning_distribution_circle_image_content(
+    db: Session,
+    distribution_id: str,
+) -> tuple[bytes | None, str | None]:
+    """读取「沿线圆」密度图；不存在返回 (None, None)。"""
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist or not dist.circle_image_object_key:
+        return None, None
+    from ..services import minio_storage
+    content = minio_storage.get_object(dist.circle_image_object_key)
+    return content, "image/png"
+
+
 def retry_lightning_distribution(
     db: Session,
     distribution_id: str,
@@ -1855,7 +1869,7 @@ def delete_lightning_distribution(db: Session, distribution_id: str) -> dict[str
     if not dist:
         return {"success": False}
     from ..services import minio_storage
-    for key in (dist.source_object_key, dist.image_object_key, dist.thumbnail_key, dist.lp_image_object_key):
+    for key in (dist.source_object_key, dist.image_object_key, dist.thumbnail_key, dist.lp_image_object_key, dist.circle_image_object_key):
         if key:
             try:
                 minio_storage.delete_object(key)
@@ -2040,6 +2054,54 @@ def prepare_line_lightning_density(
             "max_density": round(max(density_values), 6) if density_values else None,
         },
     )
+
+    # ---- 同步生成「沿线圆」密度图（对齐 C# banjin 分组圆画法）并存 MinIO ----
+    # 失败不阻塞回填主流程：matplotlib 不可用 / 渲染异常时仅跳过图生成
+    circle_uploaded = False
+    try:
+        from uuid import uuid4 as _uuid4
+        from ..services import lightning_statistics as _ls
+
+        # 按电压等级分组（与桌面版 banjin group_size 一致）
+        v = int(line.voltage_kv) if line.voltage_kv else 0
+        if v <= 110:
+            group_size = 2
+        elif v <= 330:
+            group_size = 3
+        else:
+            group_size = 5
+
+        groups = []
+        for gi in range(0, len(geo_towers), group_size):
+            chunk = geo_towers[gi:gi + group_size]
+            groups.append({
+                "group_id": gi // group_size,
+                "center_lat": sum(float(t.latitude) for t in chunk) / len(chunk),
+                "center_lon": sum(float(t.longitude) for t in chunk) / len(chunk),
+            })
+
+        strikes_for_render = [
+            {"lat": float(row["latitude"]), "lon": float(row["longitude"])}
+            for row in candidate_rows
+            if row["latitude"] is not None and row["longitude"] is not None
+        ]
+        png = _ls.render_along_route_circle_image(
+            strikes_for_render,
+            groups,
+            [],
+            data_years=source_years,
+            radius_km=actual_radius_km,
+            title=f"{line.name} - 地闪密度沿线圆",
+        )
+        if png:
+            from ..services import minio_storage
+            circle_key = f"lightning/dist/circle/{dist.id}/{_uuid4().hex}.png"
+            minio_storage.put_object(circle_key, png, content_type="image/png")
+            dist.circle_image_object_key = circle_key
+            circle_uploaded = True
+    except Exception:
+        circle_uploaded = False
+
     db.commit()
 
     preparation_json = summarize_line_preparation(db, line, tower_count=len(towers))

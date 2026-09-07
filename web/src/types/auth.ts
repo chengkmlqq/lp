@@ -1405,6 +1405,7 @@ export type LightningDistributionRecord = {
   stats_json: Record<string, unknown> | null;
   has_image: boolean;
   has_lp_image: boolean;
+  has_circle_image: boolean;
   create_user: string | null;
   create_date: string;
   update_date: string;

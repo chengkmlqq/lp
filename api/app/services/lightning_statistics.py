@@ -690,3 +690,112 @@ def render_lp_density_image(
     fig.savefig(buf, format="png", dpi=150)
     plt.close(fig)
     return buf.getvalue()
+
+
+def render_along_route_circle_image(
+    strikes: list[dict[str, Any]],
+    groups: list[dict[str, Any]],
+    cells: list[dict[str, Any]],
+    *,
+    data_years: float,
+    radius_km: float,
+    title: str | None = None,
+) -> bytes:
+    """LP 桌面端「沿线圆」地闪密度图：对齐 C# banjin{1,2,3}.exe 分组圆画法。
+
+    每个杆塔分组（group_size 座塔一组）以其中心为圆心、radius_km 为半径画圆，
+    圆填充色按该分组 Ng（地闪密度，次/(km²·年)）用 YlOrRd 色阶着色；
+    圆心画黑色圆点标记分组中心，落雷点以半透明小点叠加；
+    分组中心按线路顺序连线，呈现「沿线一串圆」的视觉效果。
+
+    matplotlib 不可用或输入不足返回 b""。
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        _configure_chinese_font()
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Circle
+    except ImportError:
+        return b""
+    if not groups or not strikes:
+        return b""
+
+    # 每个分组的 Ng：落雷分配到最近分组中心 / (圆面积 × 年数)
+    from collections import defaultdict
+    centers = {g["group_id"]: (g["center_lat"], g["center_lon"]) for g in groups}
+    area_km2 = math.pi * (radius_km ** 2)
+    cnt: dict[int, int] = defaultdict(int)
+    for s in strikes:
+        lat, lon = s.get("lat"), s.get("lon")
+        if lat is None or lon is None:
+            continue
+        best = min(centers, key=lambda gid: _lp_haversine_km(lat, lon, centers[gid][0], centers[gid][1]))
+        cnt[best] += 1
+    ng_map = {gid: cnt[gid] / (area_km2 * max(data_years, 1e-6)) for gid in cnt}
+    max_ng = max(ng_map.values(), default=0.0)
+
+    radius_deg = radius_km / DEGREE_TO_KM
+    # 经度方向的度/公里按中心纬度修正，保证圆在地理坐标下近似正圆
+    center_lat_ref = groups[0]["center_lat"]
+    lon_scale = 1.0 / math.cos(math.radians(center_lat_ref))
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    for g in groups:
+        gid = g["group_id"]
+        ng = ng_map.get(gid, 0.0)
+        norm = (ng / max_ng) if max_ng > 0 else 0.0
+        circle = Circle(
+            (g["center_lon"], g["center_lat"]),
+            radius=radius_deg * lon_scale,
+            facecolor=plt.cm.YlOrRd(norm),
+            edgecolor="#8c8c8c",
+            linewidth=0.8,
+            alpha=0.85,
+            transform=ax.transData,
+        )
+        ax.add_patch(circle)
+        ax.plot(g["center_lon"], g["center_lat"], "ko", markersize=2.5)
+
+    # 分组中心连线（沿线走向）
+    sorted_groups = sorted(groups, key=lambda g: g["group_id"])
+    ax.plot(
+        [g["center_lon"] for g in sorted_groups],
+        [g["center_lat"] for g in sorted_groups],
+        color="#444444", linewidth=1.2, linestyle="--", alpha=0.6,
+    )
+
+    # 落雷点（半透明小点）
+    lons = [float(s["lon"]) for s in strikes if s.get("lon") is not None]
+    lats = [float(s["lat"]) for s in strikes if s.get("lat") is not None]
+    if lons:
+        ax.scatter(lons, lats, s=6, c="#1f77b4", alpha=0.35, edgecolors="none", label="落雷点")
+
+    ax.set_xlabel("经度 (°E)")
+    ax.set_ylabel("纬度 (°N)")
+    ax.set_title(title or "地闪密度分布 - 沿线分组圆")
+    ax.set_aspect(1.0 / math.cos(math.radians(center_lat_ref)))
+    if lons:
+        ax.legend(loc="upper right", fontsize=8)
+
+    total_strikes = len(strikes)
+    overall_ng = (total_strikes / (len(groups) * area_km2 * max(data_years, 1e-6))) if groups else 0.0
+    ax.text(
+        0.02, 0.98,
+        f"总落雷数: {total_strikes}\n数据年数: {max(data_years, 1e-6):.1f}年\n"
+        f"分组数: {len(groups)}\n圆半径: {radius_km}km\n"
+        f"整体Ng: {overall_ng:.4f} 次/(km²·年)",
+        transform=ax.transAxes, fontsize=8, verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    )
+
+    sm = matplotlib.cm.ScalarMappable(cmap="YlOrRd")
+    sm.set_array([0, max_ng])
+    cbar = fig.colorbar(sm, ax=ax)
+    cbar.set_label("地闪密度 Ng (次/(km²·年))")
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150)
+    plt.close(fig)
+    return buf.getvalue()

@@ -50,6 +50,7 @@ from ...services.lightning_service import (
     get_lightning_distribution_detail,
     get_lightning_distribution_image_content,
     get_lightning_distribution_lp_image_content,
+    get_lightning_distribution_circle_image_content,
     get_lightning_distribution_status,
     get_linked_lines_for_distribution,
     get_peak_exceedance_curve,
@@ -413,6 +414,18 @@ def get_lightning_distribution_lp_image_endpoint(
     content, media_type = get_lightning_distribution_lp_image_content(db, distribution_id)
     if content is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="LP 密度图不存在")
+    return StreamingResponse(iter([content]), media_type=media_type or "image/png")
+
+
+@router.get("/distributions/{distribution_id}/circle-image")
+def get_lightning_distribution_circle_image_endpoint(
+    distribution_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    content, media_type = get_lightning_distribution_circle_image_content(db, distribution_id)
+    if content is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="沿线圆密度图不存在")
     return StreamingResponse(iter([content]), media_type=media_type or "image/png")
 
 
