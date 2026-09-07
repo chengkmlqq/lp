@@ -851,7 +851,18 @@ def execute_binary_search_external(
     high = _coerce_positive_float(execution_options.get("binary_search_high_ka"), default=2000.0)
     tolerance = _coerce_positive_float(execution_options.get("binary_search_tolerance_ka"), default=0.1)
     max_iterations = int(execution_options.get("binary_search_max_iterations") or 20)
-    multiplier = 0.7 if (execution_options.get("stroke_mode") or "").strip() in {"反击", "counterstrike"} else 1.0
+    # 显示倍率对齐 C# 桌面版：反击(fanji) 通道恒乘 mBeiShu_fanji=0.7，绕击(raoji) 乘
+    # mBeiShu_raoji=1.0（ComputeLightningProtection.cs:6685 + MyConst.cs:46/62）。
+    # 从资产 scene_type 判断（fanji/raoji1/raoji2/raoji3）；stroke_mode 字段实际恒为数值
+    # （如 3，从不等于"反击"/"counterstrike"），无法作为判据，仅作次要回退。
+    _asset_scene = ""
+    try:
+        _asset_scene = str(getattr(resolved_job.asset, "scene_type", "") or "").strip().lower()
+    except Exception:
+        _asset_scene = ""
+    _stroke = (execution_options.get("stroke_mode") or "").strip().lower()
+    _is_counterstrike = _asset_scene.startswith("fanji") or _stroke in {"反击", "counterstrike"}
+    multiplier = 0.7 if _is_counterstrike else 1.0
     if low is None or high is None or tolerance is None or low < 0 or high <= 0 or tolerance <= 0:
         raise RuntimeError("二分迭代参数无效：电流上下限与精度阈值必须为正数")
     if high <= low:
@@ -891,7 +902,12 @@ def execute_binary_search_external(
         final_flashover_count = flashover_count
         final_execution = execution
 
-    withstand_ka = round(max(min(high * multiplier, high), low), 4)
+    # C# 桌面版：折半收敛后 current = currentRight（闪络边界高值），
+    # showCurrent_kV = |currentRight|/1000 * mBeiShu（ComputeLightningProtection.cs:6685）。
+    # 故 withstand = high(对应 currentRight) × multiplier（kA）。⚠️ 勿用 max(min(high*多,high),low)
+    # ——low 是未乘倍率的原始下界，会把结果钳回未乘倍率值、抵消 multiplier（实测 P1=269.86×0.7=188.9
+    # 却被钳回 269.8）。直接 high*multiplier 即与 C# 一致。
+    withstand_ka = round(high * multiplier, 4)
     binary_search_payload = {
         "low_ka": low,
         "high_ka": high,
