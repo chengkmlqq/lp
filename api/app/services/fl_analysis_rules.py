@@ -955,6 +955,24 @@ def _grade_formula_snapshot_payload(payload: Mapping[str, Any]) -> dict[str, Any
     if normalized is not None:
         counterstrike_withstand_ka, coupling_details = _calculate_counterstrike_withstand_ka(normalized)
         shielding_withstand_ka = _calculate_shielding_withstand_ka(normalized)
+        # 显示倍率对齐 C# BeiShu.txt：反击(fanji) 500kV 为 1.0（仅 35kV guxing=0.7），
+        # 绕击(raoji) 110/220/500kV 多数塔型为 1.1。⚠️ 不可拿 MyConst 默认 0.7 当最终倍率。
+        _fj_mult = _csharp_beishu_multiplier_rules(
+            tower_type=normalized.tower_type,
+            structure_kind=normalized.structure_kind,
+            voltage_kv=normalized.line_voltage_kv,
+            is_counterstrike=True,
+        )
+        _rj_mult = _csharp_beishu_multiplier_rules(
+            tower_type=normalized.tower_type,
+            structure_kind=normalized.structure_kind,
+            voltage_kv=normalized.line_voltage_kv,
+            is_counterstrike=False,
+        )
+        if counterstrike_withstand_ka is not None:
+            counterstrike_withstand_ka = round(counterstrike_withstand_ka * _fj_mult, 4)
+        if shielding_withstand_ka is not None:
+            shielding_withstand_ka = round(shielding_withstand_ka * _rj_mult, 4)
         counterstrike_trip_rate = _calculate_counterstrike_trip_rate(normalized, counterstrike_withstand_ka)
         shielding_trip_rate, shielding_alpha_deg = _calculate_shielding_trip_rate(normalized, shielding_withstand_ka)
         risk_index, risk_threshold, risk_grade = _calculate_risk_grade(
@@ -1301,6 +1319,42 @@ def _force_phase_side(point: _PhasePoint | None, *, side: str) -> tuple[_PhasePo
         target_x = abs(point.x_m)
     changed = not math.isclose(point.x_m, target_x, abs_tol=1e-9)
     return _PhasePoint(phase_name=point.phase_name, x_m=target_x, height_m=point.height_m), changed
+
+
+# C# 桌面版倍率表（BeiShu.txt，2025-11-20 执行目录 SettingTxtFile/BeiShu.txt 实测）：
+# - 反击 fanji：除 35kV guxing/guxingd=0.7 外，全部 1.0（含 500kV guxing）
+# - 绕击 raoji：110/220/500kV 且塔型∈{menxing,ganzi,guxing,guxingd,maotou,jiubei} 取 1.1；
+#   sihuita 35/110/220 取 1.1；shangzi 与直流塔型恒 1.0；其余 1.0
+# 注意：MyConst.cs 默认 mBeiShu_fanji=0.7 会被 LoadFromSettingFile_BeiShu 覆盖成 1.0，
+# 不能拿默认常量当最终倍率。
+_CSHARP_BEISHU_RAOJI_110_220_500_RULES = {"menxing", "ganzi", "guxing", "guxingd", "maotou", "jiubei"}
+
+
+def _csharp_beishu_multiplier_rules(
+    *, tower_type: str, structure_kind: str, voltage_kv: int | None, is_counterstrike: bool
+) -> float:
+    """按 C# BeiShu.txt 查显示倍率（mBeiShu_fanji / mBeiShu_raoji）。
+
+    塔型从 tower_type 编码（如 s500guxing/d500ganzi）或 structure_kind 推断。
+    """
+    kind_text = f"{tower_type or ''} {structure_kind or ''}".lower()
+    kind = ""
+    for token in ("guxingd", "guxing", "menxing", "ganzi", "maotou", "jiubei", "shangzi", "sihuita"):
+        if token in kind_text:
+            kind = token
+            break
+    voltage = int(voltage_kv) if voltage_kv else 0
+    if is_counterstrike:
+        # fanji：仅 35kV 鼓型（guxing/guxingd）取 0.7，其余 1.0
+        if voltage <= 35 and kind in ("guxing", "guxingd"):
+            return 0.7
+        return 1.0
+    # raoji
+    if kind == "sihuita":
+        return 1.1 if voltage in (35, 110, 220) else 1.0
+    if voltage in (110, 220, 500) and kind in _CSHARP_BEISHU_RAOJI_110_220_500_RULES:
+        return 1.1
+    return 1.0
 
 
 def _calculate_counterstrike_withstand_ka(

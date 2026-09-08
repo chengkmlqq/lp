@@ -13,6 +13,31 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# C# 桌面版倍率表（BeiShu.txt，2025-11-20 执行目录 SettingTxtFile/BeiShu.txt 实测）：
+# - 反击 fanji：除 35kV guxing/guxingd=0.7 外，全部 1.0（含 500kV guxing）
+# - 绕击 raoji：110/220/500kV 且塔型∈{menxing,ganzi,guxing,guxingd,maotou,jiubei} 取 1.1；
+#   sihuita 35/110/220 取 1.1；shangzi 与直流塔型恒 1.0；其余 1.0
+# 注意：MyConst.cs 默认 mBeiShu_fanji=0.7 会被 LoadFromSettingFile_BeiShu 覆盖，
+# 不能拿默认常量当最终倍率（曾因此误把 ATP 500kV fanji 输出 ×0.7，系统性低 30%）。
+_CSHARP_BEISHU_RAOJI_110_220_500 = {"menxing", "ganzi", "guxing", "guxingd", "maotou", "jiubei"}
+
+
+def csharp_beishu_multiplier(*, tower_kind: str, voltage_kv: int | None, is_counterstrike: bool) -> float:
+    """按 C# BeiShu.txt 查显示倍率（mBeiShu_fanji / mBeiShu_raoji）。"""
+    kind = str(tower_kind or "").strip().lower()
+    voltage = int(voltage_kv) if voltage_kv else 0
+    if is_counterstrike:
+        # fanji：仅 35kV 鼓型（guxing/guxingd）取 0.7，其余 1.0
+        if voltage <= 35 and kind in ("guxing", "guxingd"):
+            return 0.7
+        return 1.0
+    # raoji
+    if kind == "sihuita":
+        return 1.1 if voltage in (35, 110, 220) else 1.0
+    if voltage in (110, 220, 500) and kind in _CSHARP_BEISHU_RAOJI_110_220_500:
+        return 1.1
+    return 1.0
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -851,10 +876,10 @@ def execute_binary_search_external(
     high = _coerce_positive_float(execution_options.get("binary_search_high_ka"), default=2000.0)
     tolerance = _coerce_positive_float(execution_options.get("binary_search_tolerance_ka"), default=0.1)
     max_iterations = int(execution_options.get("binary_search_max_iterations") or 20)
-    # 显示倍率对齐 C# 桌面版：反击(fanji) 通道恒乘 mBeiShu_fanji=0.7，绕击(raoji) 乘
-    # mBeiShu_raoji=1.0（ComputeLightningProtection.cs:6685 + MyConst.cs:46/62）。
-    # 从资产 scene_type 判断（fanji/raoji1/raoji2/raoji3）；stroke_mode 字段实际恒为数值
-    # （如 3，从不等于"反击"/"counterstrike"），无法作为判据，仅作次要回退。
+    # 显示倍率对齐 C# BeiShu.txt（ComputeLightningProtection.cs:6685 × mBeiShu_fanji/raoji）。
+    # ⚠️ 不能硬编码 0.7：MyConst 默认 mBeiShu_fanji=0.7 会被 BeiShu.txt 覆盖，
+    #    500kV fanji 实际为 1.0（仅 35kV guxing 为 0.7）；raoji 500kV 多数塔型为 1.1。
+    #    从资产 scene_type 判断反击/绕击，从 asset.tower_type+voltage_level 查倍率表。
     _asset_scene = ""
     try:
         _asset_scene = str(getattr(resolved_job.asset, "scene_type", "") or "").strip().lower()
@@ -862,7 +887,23 @@ def execute_binary_search_external(
         _asset_scene = ""
     _stroke = (execution_options.get("stroke_mode") or "").strip().lower()
     _is_counterstrike = _asset_scene.startswith("fanji") or _stroke in {"反击", "counterstrike"}
-    multiplier = 0.7 if _is_counterstrike else 1.0
+    _asset_tower_kind = ""
+    _asset_voltage = None
+    try:
+        _asset_tower_kind = str(getattr(resolved_job.asset, "tower_type", "") or "").strip().lower()
+    except Exception:
+        _asset_tower_kind = _asset_tower_kind
+    try:
+        _v = getattr(resolved_job.asset, "voltage_level", None)
+        if _v is not None:
+            _asset_voltage = int(float(str(_v)))
+    except (TypeError, ValueError):
+        _asset_voltage = None
+    multiplier = csharp_beishu_multiplier(
+        tower_kind=_asset_tower_kind,
+        voltage_kv=_asset_voltage,
+        is_counterstrike=_is_counterstrike,
+    )
     if low is None or high is None or tolerance is None or low < 0 or high <= 0 or tolerance <= 0:
         raise RuntimeError("二分迭代参数无效：电流上下限与精度阈值必须为正数")
     if high <= low:
