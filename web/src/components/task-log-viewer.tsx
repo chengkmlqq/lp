@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Drawer, Empty, Space, Spin, Tag, Typography } from "antd";
+import { Button, Drawer, Empty, Modal, Space, Spin, Tag, Typography } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { readApiError, API_BASE_URL } from "@/lib/api";
@@ -28,11 +28,13 @@ export function TaskLogViewerDrawer({
   title,
   open,
   onClose,
+  variant = "drawer",
 }: {
   taskId: string | null;
   title: string;
   open: boolean;
   onClose: () => void;
+  variant?: "drawer" | "modal";
 }) {
   const { fetchWithAuth } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -251,6 +253,80 @@ export function TaskLogViewerDrawer({
           ? "无日志"
           : "";
 
+  const contentNode = loading ? (
+    <div style={{ textAlign: "center", padding: "40px 0" }}>
+      <Spin />
+    </div>
+  ) : (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <Space
+        style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}
+        align="center"
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {streaming && !status && <Spin size="small" />}
+          {streaming && !status && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              任务运行中，实时接收日志...
+            </Text>
+          )}
+          {status && <Tag color={statusTone}>{statusLabel}</Tag>}
+        </span>
+        {content && (
+          <Button
+            type="link"
+            size="small"
+            onClick={() => navigator.clipboard?.writeText(content)}
+          >
+            复制
+          </Button>
+        )}
+      </Space>
+      <pre
+        ref={contentRef}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "auto",
+          padding: "16px",
+          backgroundColor: "#0f172a",
+          color: "#e2e8f0",
+          borderRadius: "4px",
+          fontSize: "12px",
+          lineHeight: "1.5",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        }}
+      >
+        {content || (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={status === "no-log" ? "暂无日志" : "等待日志..."}
+          />
+        )}
+      </pre>
+    </div>
+  );
+
+  if (variant === "modal") {
+    return (
+      <Modal
+        title={title}
+        width={800}
+        open={open}
+        onCancel={handleClose}
+        footer={null}
+        destroyOnHidden
+        styles={{ body: { height: "60vh", overflow: "hidden", display: "flex", flexDirection: "column" } }}
+      >
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          {contentNode}
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Drawer
       title={title}
@@ -259,61 +335,7 @@ export function TaskLogViewerDrawer({
       onClose={handleClose}
       destroyOnHidden
     >
-      {loading ? (
-        <div style={{ textAlign: "center", padding: "40px 0" }}>
-          <Spin />
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-          <Space
-            style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}
-            align="center"
-          >
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {streaming && !status && <Spin size="small" />}
-              {streaming && !status && (
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  任务运行中，实时接收日志...
-                </Text>
-              )}
-              {status && <Tag color={statusTone}>{statusLabel}</Tag>}
-            </span>
-            {content && (
-              <Button
-                type="link"
-                size="small"
-                onClick={() => navigator.clipboard?.writeText(content)}
-              >
-                复制
-              </Button>
-            )}
-          </Space>
-          <pre
-            ref={contentRef}
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflow: "auto",
-              padding: "16px",
-              backgroundColor: "#0f172a",
-              color: "#e2e8f0",
-              borderRadius: "4px",
-              fontSize: "12px",
-              lineHeight: "1.5",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            }}
-          >
-            {content || (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={status === "no-log" ? "暂无日志" : "等待日志..."}
-              />
-            )}
-          </pre>
-        </div>
-      )}
+      {contentNode}
     </Drawer>
   );
 }

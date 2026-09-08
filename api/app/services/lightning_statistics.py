@@ -38,7 +38,7 @@ def decode_text_bytes(content: bytes) -> str:
 
 
 def parse_distribution_line(raw_line: str) -> tuple[float, float, float] | None:
-    """解析一行 \"纬度 经度 电流\"，返回 (lat, lon, current_ka) 或 None。"""
+    """解析一行 "纬度 经度 电流"，返回 (lat, lon, current_ka) 或 None。"""
     stripped = raw_line.strip()
     if not stripped:
         return None
@@ -740,7 +740,25 @@ def render_along_route_circle_image(
     center_lat_ref = groups[0]["center_lat"]
     lon_scale = 1.0 / math.cos(math.radians(center_lat_ref))
 
-    fig, ax = plt.subplots(figsize=(12, 8))
+    # 数据 bbox（分组中心 + 落雷点）扩展一个圆半径余量，用于自适应画布宽高比与裁剪
+    all_lons = [float(g["center_lon"]) for g in groups]
+    all_lats = [float(g["center_lat"]) for g in groups]
+    for s in strikes:
+        if s.get("lon") is not None and s.get("lat") is not None:
+            all_lons.append(float(s["lon"]))
+            all_lats.append(float(s["lat"]))
+    lon_pad = radius_deg * lon_scale * 1.05
+    lat_pad = radius_deg * 1.05
+    x_min, x_max = min(all_lons) - lon_pad, max(all_lons) + lon_pad
+    y_min, y_max = min(all_lats) - lat_pad, max(all_lats) + lat_pad
+    data_w = max(x_max - x_min, 1e-9)
+    data_h = max(y_max - y_min, 1e-9)
+    # 画布形状跟随内容方向：竖向线路→竖图，横向线路→横图；基准宽度 12in
+    aspect_px = data_w / data_h
+    fig_w = 12.0
+    fig_h = max(4.0, min(18.0, fig_w / aspect_px))
+
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
     for g in groups:
         gid = g["group_id"]
         ng = ng_map.get(gid, 0.0)
@@ -793,6 +811,10 @@ def render_along_route_circle_image(
     sm.set_array([0, max_ng])
     cbar = fig.colorbar(sm, ax=ax)
     cbar.set_label("地闪密度 Ng (次/(km²·年))")
+
+
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
 
     plt.tight_layout()
     buf = io.BytesIO()

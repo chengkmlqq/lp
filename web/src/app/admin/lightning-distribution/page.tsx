@@ -781,15 +781,6 @@ export default function AdminLightningDistributionPage() {
                   },
                 ]
               : []),
-            ...(canReadLogs && row.lp_draw_task_id
-              ? [
-                  {
-                    key: "draw-log",
-                    label: "绘图日志",
-                    onClick: () => openLogViewer(row.lp_draw_task_id, "绘图日志", row.source_file_name),
-                  },
-                ]
-              : []),
             ...(canManage
               ? [
                   {
@@ -945,19 +936,6 @@ export default function AdminLightningDistributionPage() {
                           onClick: (info) => {
                             info.domEvent?.stopPropagation();
                             openLogViewer(record.task_id, "导入日志", record.source_file_name);
-                          },
-                        },
-                      ]
-                    : []),
-                  ...(canReadLogs && record.lp_draw_task_id
-                    ? [
-                        {
-                          key: "draw-log",
-                          label: "绘图日志",
-                          icon: <FileTextOutlined />,
-                          onClick: (info) => {
-                            info.domEvent?.stopPropagation();
-                            openLogViewer(record.lp_draw_task_id, "绘图日志", record.source_file_name);
                           },
                         },
                       ]
@@ -1209,6 +1187,7 @@ export default function AdminLightningDistributionPage() {
         title={logModalTitle}
         open={logModalOpen}
         onClose={() => setLogModalOpen(false)}
+        variant="modal"
       />
     </div>
   );
@@ -1375,31 +1354,11 @@ function DistributionDetailView({
     },
   });
 
-  // 沿线圆密度图（回填时同步生成，对齐 C# banjin 分组圆）
-  const circleImageQuery = useQuery({
-    queryKey: ["/api/v1/lightning-currents/distributions", record.id, "circle-image"],
-    queryFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/lightning-currents/distributions/${record.id}/circle-image`);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      const blob = await response.blob();
-      if (blob.size === 0) return null;
-      return URL.createObjectURL(blob);
-    },
-  });
-
   useEffect(() => {
     const objectUrl = imageQuery.data;
     if (!objectUrl) return;
     return () => URL.revokeObjectURL(objectUrl);
   }, [imageQuery.data]);
-
-  useEffect(() => {
-    const objectUrl = circleImageQuery.data;
-    if (!objectUrl) return;
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [circleImageQuery.data]);
 
   return (
     <div className="admin-lightning-distribution-detail-view">
@@ -1441,17 +1400,6 @@ function DistributionDetailView({
           emptyText="暂无密度图（导入失败或仍在处理中）"
         />
       </div>
-
-      <Typography.Title level={5} style={{ marginTop: 16, marginBottom: 8 }}>
-        沿线圆密度图
-      </Typography.Title>
-      <div style={{ textAlign: "center", minHeight: 200 }}>
-        <DistributionImagePane
-          query={circleImageQuery}
-          alt="沿线圆密度图"
-          emptyText="暂无沿线圆密度图（回填线路后生成）"
-        />
-      </div>
       </Space>
     </div>
   );
@@ -1474,6 +1422,38 @@ function BackfillRecordsView({
   const { current: page, pageSize } = pagination;
   const [towerDrawer, setTowerDrawer] = useState<LightningLinkedLineSummary | null>(null);
   const [ngImageDrawer, setNgImageDrawer] = useState<LightningLinkedLineSummary | null>(null);
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [tableScrollY, setTableScrollY] = useState<number>(240);
+
+  const updateTableScrollY = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) return;
+    const anchorHeight = anchor.getBoundingClientRect().height;
+    const header = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = header?.getBoundingClientRect().height ?? 39;
+    const paginationHeight = paginationEl?.getBoundingClientRect().height ?? 64;
+    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - 8);
+    setTableScrollY((previous) => (Math.abs(previous - Math.max(160, nextHeight)) <= 1 ? previous : Math.max(160, nextHeight)));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const frameId = window.requestAnimationFrame(updateTableScrollY);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [updateTableScrollY, searchKeyword, page, pageSize]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") return;
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) return;
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(updateTableScrollY);
+    });
+    resizeObserver.observe(anchor);
+    return () => resizeObserver.disconnect();
+  }, [updateTableScrollY]);
 
   const linkedLinesPath = useMemo(() => {
     const params = new URLSearchParams();
@@ -1579,7 +1559,7 @@ function BackfillRecordsView({
   );
 
   return (
-    <div className="admin-lightning-distribution-backfill-view" style={{ padding: "0 4px" }}>
+    <div className="admin-lightning-distribution-backfill-view" style={{ padding: "0 4px" }} ref={tableScrollAnchorRef}>
       <div className="admin-filter-bar" style={{ marginBottom: 12 }}>
         <Form layout="inline">
           <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -1605,7 +1585,8 @@ function BackfillRecordsView({
         dataSource={linkedLines}
         loading={linkedLinesQuery.isFetching}
         tableLayout="fixed"
-        scroll={{ x: 760 }}
+        scroll={{ x: 760, y: tableScrollY }}
+        style={{ height: "100%" }}
         pagination={{
           current: page,
           pageSize,
@@ -1658,6 +1639,38 @@ function TowerNgDrawer({
   const [searchKeyword, setSearchKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const { current: page, pageSize } = pagination;
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [tableScrollY, setTableScrollY] = useState<number>(320);
+
+  const updateTableScrollY = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) return;
+    const anchorHeight = anchor.getBoundingClientRect().height;
+    const header = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = header?.getBoundingClientRect().height ?? 39;
+    const paginationHeight = paginationEl?.getBoundingClientRect().height ?? 64;
+    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - 8);
+    setTableScrollY((previous) => (Math.abs(previous - Math.max(160, nextHeight)) <= 1 ? previous : Math.max(160, nextHeight)));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const frameId = window.requestAnimationFrame(updateTableScrollY);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [updateTableScrollY, line, searchKeyword, page, pageSize]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") return;
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) return;
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(updateTableScrollY);
+    });
+    resizeObserver.observe(anchor);
+    return () => resizeObserver.disconnect();
+  }, [updateTableScrollY, line]);
 
   const towersPath = useMemo(() => {
     if (!line) return null;
@@ -1741,52 +1754,54 @@ function TowerNgDrawer({
       width={720}
       destroyOnHidden
     >
-      <div className="admin-filter-bar" style={{ marginBottom: 12 }}>
-        <Form layout="inline">
-          <Form.Item label="杆塔号" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-            <Input
-              allowClear
-              placeholder="按杆塔号筛选"
-              value={keywordInput}
-              onChange={(event) => setKeywordInput(event.target.value)}
-              onPressEnter={handleSearch}
-            />
-          </Form.Item>
-          <Form.Item style={{ marginBottom: 0 }}>
-            <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
-              查询
-            </Button>
-          </Form.Item>
-        </Form>
+      <div ref={tableScrollAnchorRef} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <div className="admin-filter-bar" style={{ marginBottom: 12 }}>
+          <Form layout="inline">
+            <Form.Item label="杆塔号" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Input
+                allowClear
+                placeholder="按杆塔号筛选"
+                value={keywordInput}
+                onChange={(event) => setKeywordInput(event.target.value)}
+                onPressEnter={handleSearch}
+              />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
+                查询
+              </Button>
+            </Form.Item>
+          </Form>
+        </div>
+        <Table<LightningDensityBackfillTowerDetail>
+          rowKey="tower_id"
+          size="small"
+          columns={towerColumns}
+          dataSource={towers}
+          loading={towersQuery.isFetching}
+          tableLayout="fixed"
+          scroll={{ x: 740, y: tableScrollY }}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            showTotal: (totalCount) => `共 ${totalCount} 条`,
+            hideOnSinglePage: false,
+            onChange: (nextPage, nextPageSize) => {
+              setPagination({ current: nextPage, pageSize: nextPageSize });
+            },
+          }}
+          locale={{
+            emptyText: towersQuery.isLoading ? (
+              <Spin size="small" />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该线路无回填杆塔数据" />
+            ),
+          }}
+        />
       </div>
-      <Table<LightningDensityBackfillTowerDetail>
-        rowKey="tower_id"
-        size="small"
-        columns={towerColumns}
-        dataSource={towers}
-        loading={towersQuery.isFetching}
-        tableLayout="fixed"
-        scroll={{ x: 740, y: 480 }}
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          showSizeChanger: true,
-          pageSizeOptions: [10, 20, 50, 100],
-          showTotal: (totalCount) => `共 ${totalCount} 条`,
-          hideOnSinglePage: false,
-          onChange: (nextPage, nextPageSize) => {
-            setPagination({ current: nextPage, pageSize: nextPageSize });
-          },
-        }}
-        locale={{
-          emptyText: towersQuery.isLoading ? (
-            <Spin size="small" />
-          ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该线路无回填杆塔数据" />
-          ),
-        }}
-      />
     </Drawer>
   );
 }
