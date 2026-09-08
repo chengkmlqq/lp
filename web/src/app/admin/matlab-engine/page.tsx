@@ -35,10 +35,12 @@ import {
   ClockCircleOutlined,
   CodeOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   EyeOutlined,
   FileTextOutlined,
   InboxOutlined,
+  MinusCircleOutlined,
   MoreOutlined,
   PlusOutlined,
   RocketOutlined,
@@ -67,20 +69,30 @@ import {
 } from "@/lib/matlab-engine-api";
 import type { MatlabModule, MatlabUploadPayload, MatlabVersion } from "@/types/matlab-engine";
 
+// 简易 slug 生成：转小写、空白/符号替换为连字符、压缩连续连字符
+// （保留 CJK 字符，中文模块名可直接作为标识的一部分，保证唯一且稳定）
+function slugifyName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9\u4e00-\u9fff_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 type ModuleFormValues = {
   name: string;
-  slug?: string;
   description?: string;
   worker_deploy_path?: string;
-  required_files?: string;
+  required_files?: string[];
 };
 
 const DEFAULT_MODULE_FORM_VALUES: ModuleFormValues = {
   name: "",
-  slug: "",
   description: "",
   worker_deploy_path: "",
-  required_files: "",
+  required_files: [],
 };
 
 const DEFAULT_UPLOAD_FORM_VALUES: MatlabUploadPayload = {
@@ -162,7 +174,6 @@ export default function AdminMatlabEnginePage() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(240);
   const containerRef = useRef<HTMLDivElement>(null);
   const isResizing = useRef(false);
-  const [downloadingHash, setDownloadingHash] = useState<string | null>(null);
   const [syncingHash, setSyncingHash] = useState<string | null>(null);
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -290,20 +301,28 @@ export default function AdminMatlabEnginePage() {
 
   const saveModuleMutation = useMutation({
     mutationFn: async (values: ModuleFormValues) => {
-      const payload = {
+      const payload: {
+        name: string;
+        description: string;
+        worker_deploy_path: string;
+        required_files: string[];
+        slug?: string;
+      } = {
         name: values.name.trim(),
-        slug: values.slug?.trim() || values.name.trim(),
         description: values.description?.trim() || "",
         worker_deploy_path: values.worker_deploy_path?.trim() || "",
-        required_files: (values.required_files || "")
-          .split(/[\n,，]+/)
+        required_files: (values.required_files || [])
           .map((item) => item.trim())
           .filter(Boolean),
       };
       if (editingModule) {
+        // 编辑时保留原标识（系统自动生成，不随表单改变）
+        payload.slug = editingModule.slug;
         await updateMatlabModule(editingModule.slug, payload);
         return { mode: "updated" as const, module: editingModule };
       }
+      // 创建时由名称系统自动生成标识
+      payload.slug = slugifyName(payload.name) || payload.name;
       const created = await createMatlabModule(payload);
       return { mode: "created" as const, module: created };
     },
@@ -504,10 +523,9 @@ export default function AdminMatlabEnginePage() {
     setEditingModule(item);
     form.setFieldsValue({
       name: item.name,
-      slug: item.slug,
       description: item.description || "",
       worker_deploy_path: item.worker_deploy_path || "",
-      required_files: (item.required_files || []).join("\n"),
+      required_files: item.required_files || [],
     });
     setModuleModalOpen(true);
   }, [form]);
@@ -596,14 +614,11 @@ export default function AdminMatlabEnginePage() {
   const handleDownload = useCallback(
     async (version: MatlabVersion) => {
       if (!effectiveSlug) return;
-      setDownloadingHash(version.version_hash);
       try {
         await downloadMatlabPackage(effectiveSlug, version.version_hash);
         setSuccess("下载开始");
       } catch (candidate) {
         setError(candidate instanceof Error ? candidate.message : "下载失败");
-      } finally {
-        setDownloadingHash(null);
       }
     },
     [effectiveSlug],
@@ -769,7 +784,7 @@ export default function AdminMatlabEnginePage() {
         dataIndex: "uploaded_by_name",
         key: "uploaded_by_name",
         width: 120,
-        render: (name: string, record: MatlabVersion) => name || record.uploaded_by || "-",
+        render: (name: string) => name || "-",
       },
       {
         title: "大小",
@@ -790,10 +805,17 @@ export default function AdminMatlabEnginePage() {
     baseColumns.push({
       title: "操作",
       key: "actions",
-      width: 240,
+      width: 200,
       fixed: "right",
       render: (_, record) => {
         const moreMenuItems: MenuProps["items"] = [
+          // 下载紧随「生效」之后，收纳于三点菜单中
+          {
+            key: "download",
+            label: "下载",
+            icon: <DownloadOutlined />,
+            onClick: () => handleDownload(record),
+          } as const,
           ...(canManage
             ? [
                 {
@@ -823,13 +845,6 @@ export default function AdminMatlabEnginePage() {
             >
               查看
             </Button>
-            <Button
-              size="small"
-              loading={downloadingHash === record.version_hash}
-              onClick={() => handleDownload(record)}
-            >
-              下载
-            </Button>
             {canManage && (
               <Button
                 size="small"
@@ -852,7 +867,7 @@ export default function AdminMatlabEnginePage() {
     });
 
     return baseColumns;
-  }, [canManage, currentRelease, deleteVersionMutation, downloadingHash, handleDownload, handleSyncVersion, modalApi, syncingHash]);
+  }, [canManage, currentRelease, deleteVersionMutation, handleDownload, handleSyncVersion, modalApi, syncingHash]);
   if (initializing) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
@@ -893,20 +908,16 @@ export default function AdminMatlabEnginePage() {
     const rowBusy = uploadMutation.isPending || deleteVersionMutation.isPending;
 
     const moreMenuItems: MenuProps["items"] = [
-      ...(canManage
-        ? [
-            {
-              key: "sync",
-              label: "生效",
-              icon: <RocketOutlined />,
-              disabled: rowBusy || Boolean(item.is_active) || syncingHash === item.version_hash,
-              onClick: (info) => {
-                info.domEvent?.stopPropagation();
-                handleSyncVersion(item);
-              },
-            } as const,
-          ]
-        : []),
+      // 下载紧随「生效」之后，收纳于三点菜单中
+      {
+        key: "download",
+        label: "下载",
+        icon: <DownloadOutlined />,
+        onClick: (info) => {
+          info.domEvent?.stopPropagation();
+          handleDownload(item);
+        },
+      } as const,
       ...(canManage
         ? [
             {
@@ -962,7 +973,7 @@ export default function AdminMatlabEnginePage() {
             </div>
             <div className="flex items-center gap-2">
               <EditOutlined className="text-xs text-gray-500" />
-              <Typography.Text className="text-xs">发布人：{item.uploaded_by_name || item.uploaded_by || "-"}</Typography.Text>
+              <Typography.Text className="text-xs">发布人：{item.uploaded_by_name || "-"}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <InboxOutlined className="text-xs text-gray-500" />
@@ -988,19 +999,21 @@ export default function AdminMatlabEnginePage() {
                   }}
                 />
               </Tooltip>
-              <Tooltip title="下载">
-                <Button
-                  type="text"
-                  size="small"
-                  loading={downloadingHash === item.version_hash}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleDownload(item);
-                  }}
-                >
-                  下载
-                </Button>
-              </Tooltip>
+              {canManage && (
+                <Tooltip title={item.is_active ? "Worker 已部署该版本" : "生效"}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<RocketOutlined />}
+                    loading={syncingHash === item.version_hash}
+                    disabled={rowBusy || Boolean(item.is_active) || syncingHash === item.version_hash}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleSyncVersion(item);
+                    }}
+                  />
+                </Tooltip>
+              )}
               {moreMenuItems.length > 0 && (
                 <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                   <Tooltip title="更多">
@@ -1296,33 +1309,57 @@ export default function AdminMatlabEnginePage() {
             initialValues={DEFAULT_MODULE_FORM_VALUES}
             preserve={false}
           >
-            <Row gutter={12}>
-              <Col xs={24} md={12}>
-                <Form.Item label="模块名称" name="name" rules={[{ required: true, message: "请输入模块名称" }]}>
-                  <Input placeholder="模块显示名称" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item label="标识" name="slug" rules={[{ required: true, message: "请输入模块标识" }]}>
-                  <Input placeholder="waveform_diagnosis" disabled={Boolean(editingModule)} />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item label="描述" name="description">
-                  <Input.TextArea placeholder="模块用途说明" rows={2} />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item label="Worker 部署路径" name="worker_deploy_path">
-                  <Input placeholder="/opt/worker/matlab/{module}/" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={24}>
-                <Form.Item label="必需文件" name="required_files">
-                  <Input.TextArea placeholder="每行一个文件名" rows={2} />
-                </Form.Item>
-              </Col>
-            </Row>
+            <Form.Item label="模块名称" name="name" rules={[{ required: true, message: "请输入模块名称" }]}>
+              <Input placeholder="模块显示名称" />
+            </Form.Item>
+
+            <Form.Item
+              label="描述"
+              name="description"
+              extra={editingModule ? undefined : "标识（模块唯一键）将由系统根据模块名称自动生成。"}
+            >
+              <Input.TextArea placeholder="模块用途说明" rows={2} />
+            </Form.Item>
+
+            <Form.Item label="Worker 部署路径" name="worker_deploy_path">
+              <Input placeholder="/opt/worker/matlab/{module}/" />
+            </Form.Item>
+
+            <Form.Item label="必需文件" required={false}>
+              <Form.List name="required_files">
+                {(fields, { add, remove }) => (
+                  <div className="flex flex-col gap-2">
+                    {fields.map((field, index) => (
+                      <div key={field.key} className="flex items-start gap-2">
+                        <Form.Item
+                          {...field}
+                          style={{ marginBottom: 0, flex: 1 }}
+                          rules={[{ required: true, message: "请输入文件名或删除该行" }]}
+                        >
+                          <Input placeholder={`必需文件 ${index + 1}`} />
+                        </Form.Item>
+                        <Button
+                          type="text"
+                          danger
+                          icon={<MinusCircleOutlined />}
+                          onClick={() => remove(field.name)}
+                          disabled={fields.length <= 1}
+                          aria-label={`删除必需文件 ${index + 1}`}
+                        />
+                      </div>
+                    ))}
+                    <Button
+                      type="dashed"
+                      block
+                      icon={<PlusOutlined />}
+                      onClick={() => add()}
+                    >
+                      添加必需文件
+                    </Button>
+                  </div>
+                )}
+              </Form.List>
+            </Form.Item>
           </Form>
         </Modal>
       )}

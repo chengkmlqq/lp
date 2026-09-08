@@ -9,10 +9,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
 from ..models.system_param import SystemParam
+from ..models.user import User
 from ..schemas.system_param import SystemParamSummary
 from ..services.audit_service import compose_audit_detail, write_audit_log
 from ..services.minio_storage import (
@@ -271,6 +273,30 @@ def _version_manifest(version: dict[str, Any], file_list: list[str]) -> dict[str
         "size_bytes": version.get("size_bytes"),
         "file_list": file_list,
     }
+
+
+def _resolve_uploader_names(db: Session, versions: list[dict[str, Any]]) -> None:
+    """补齐版本「发布人」的显示名。
+
+    历史数据可能只存了 user_id（uploaded_by）而没有 uploaded_by_name，
+    这里按 user_id 反查用户表，把空白的发布人显示名填充为用户名（中文展示名）。
+    不修改持久化数据，仅在本次响应中回填。
+    """
+    missing_ids = {
+        str(item.get("uploaded_by")).strip()
+        for item in versions
+        if item.get("uploaded_by")
+    }
+    if not missing_ids:
+        return
+    try:
+        rows = db.execute(select(User.id, User.username).where(User.id.in_(missing_ids))).all()
+    except Exception:  # 用户表查询失败不阻断版本列表（降级为原值）
+        return
+    name_by_id = {user_id: username for user_id, username in rows}
+    for item in versions:
+        if not item.get("uploaded_by_name"):
+            item["uploaded_by_name"] = name_by_id.get(str(item.get("uploaded_by")), "") or item.get("uploaded_by_name") or ""
 
 
 def _list_zip_files(data: bytes) -> list[str]:
@@ -583,6 +609,8 @@ def list_versions(db: Session, slug: str, *, limit: int | None = None, offset: i
         releases[index]["is_active"] = is_active
         if not is_active:
             releases[index].pop("deployed_at", None)
+    # 补齐历史版本的「发布人」中文显示名（user_id -> username）
+    _resolve_uploader_names(db, [item for item in releases] + ([draft] if draft else []))
     return {
         "slug": slug,
         "draft": draft,
