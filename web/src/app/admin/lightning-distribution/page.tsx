@@ -65,6 +65,8 @@ import type {
   LightningDistributionStatusResponse,
   LightningDensityBackfillTowerDetail,
   LightningDensityBackfillTowersResponse,
+  LightningDensityBackfillTaskSummary,
+  LightningDensityBackfillHistoryResponse,
   LightningLpDrawResponse,
   LightningLinkedLineSummary,
   LightningLinkedLinesResponse,
@@ -1420,8 +1422,8 @@ function BackfillRecordsView({
   const [searchKeyword, setSearchKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const { current: page, pageSize } = pagination;
-  const [towerDrawer, setTowerDrawer] = useState<LightningLinkedLineSummary | null>(null);
-  const [ngImageDrawer, setNgImageDrawer] = useState<LightningLinkedLineSummary | null>(null);
+  const [towerDrawer, setTowerDrawer] = useState<LightningDensityBackfillTaskSummary | null>(null);
+  const [ngImageDrawer, setNgImageDrawer] = useState<LightningDensityBackfillTaskSummary | null>(null);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState<number>(240);
 
@@ -1461,7 +1463,7 @@ function BackfillRecordsView({
     if (trimmed) params.set("keyword", trimmed);
     params.set("limit", String(pageSize));
     params.set("offset", String((page - 1) * pageSize));
-    return `/api/v1/lightning-currents/distributions/${record.id}/linked-lines?${params.toString()}`;
+    return `/api/v1/lightning-currents/distributions/${record.id}/backfill-history?${params.toString()}`;
   }, [record.id, searchKeyword, page, pageSize]);
 
   const linkedLinesQuery = useQuery({
@@ -1471,7 +1473,7 @@ function BackfillRecordsView({
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return (await response.json()) as LightningLinkedLinesResponse;
+      return (await response.json()) as LightningDensityBackfillHistoryResponse;
     },
   });
 
@@ -1486,13 +1488,13 @@ function BackfillRecordsView({
     setPagination((prev) => ({ ...prev, current: 1 }));
   };
 
-  const linkedColumns = useMemo<ColumnsType<LightningLinkedLineSummary>>(
+  const linkedColumns = useMemo<ColumnsType<LightningDensityBackfillTaskSummary>>(
     () => [
       {
-        title: "线路编号",
-        dataIndex: "line_code",
-        width: 120,
-        render: (value: string | null) => value || "-",
+        title: "回填时间",
+        dataIndex: "prepared_at",
+        width: 160,
+        render: (value: string | null) => (value ? formatDateTime(value) : "-"),
       },
       {
         title: "线路名称",
@@ -1501,30 +1503,41 @@ function BackfillRecordsView({
         render: (value: string | null) => value || "-",
       },
       {
-        title: "电压等级",
-        dataIndex: "voltage_kv",
-        width: 90,
-        render: (value: number | null) =>
-          value === null || value === undefined ? "-" : `${value}kV`,
+        title: "线路编号",
+        dataIndex: "line_code",
+        width: 130,
+        render: (value: string | null) => value || "-",
       },
       {
-        title: "引用杆塔数",
-        dataIndex: "tower_count",
+        title: "回填塔数",
+        dataIndex: "updated_tower_count",
         width: 90,
         render: (value: number) => value,
       },
       {
-        title: "最近回填时间",
-        dataIndex: "prepared_at",
-        width: 160,
-        render: (value: string | null) => (value ? formatDateTime(value) : "-"),
+        title: "平均 Ng",
+        dataIndex: "avg_density",
+        width: 100,
+        render: (value: number | null) => formatNumber(value, 4),
+      },
+      {
+        title: "最小 Ng",
+        dataIndex: "min_density",
+        width: 100,
+        render: (value: number | null) => formatNumber(value, 4),
+      },
+      {
+        title: "最大 Ng",
+        dataIndex: "max_density",
+        width: 100,
+        render: (value: number | null) => formatNumber(value, 4),
       },
       {
         title: "操作",
         key: "actions",
         width: 200,
         fixed: "right",
-        render: (_: unknown, row: LightningLinkedLineSummary) => (
+        render: (_: unknown, row: LightningDensityBackfillTaskSummary) => (
           <Space size={4}>
             <Button
               type="link"
@@ -1578,14 +1591,14 @@ function BackfillRecordsView({
           </Form.Item>
         </Form>
       </div>
-      <Table<LightningLinkedLineSummary>
-        rowKey="line_id"
+      <Table<LightningDensityBackfillTaskSummary>
+        rowKey="id"
         size="small"
         columns={linkedColumns}
         dataSource={linkedLines}
         loading={linkedLinesQuery.isFetching}
         tableLayout="fixed"
-        scroll={{ x: 760, y: tableScrollY }}
+        scroll={{ x: 900, y: tableScrollY }}
         style={{ height: "100%" }}
         pagination={{
           current: page,
@@ -1631,7 +1644,7 @@ function TowerNgDrawer({
   onClose,
 }: {
   record: LightningDistributionRecord;
-  line: LightningLinkedLineSummary | null;
+  line: LightningDensityBackfillTaskSummary | null;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
   onClose: () => void;
 }) {
@@ -1813,7 +1826,7 @@ function NgImageDrawer({
   onClose,
 }: {
   record: LightningDistributionRecord;
-  line: LightningLinkedLineSummary | null;
+  line: LightningDensityBackfillTaskSummary | null;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
   onClose: () => void;
 }) {
@@ -1996,7 +2009,7 @@ function DrawLpBody({
   const drawMutation = useMutation({
     mutationFn: async () => {
       if (!lineId) throw new Error("请先选择线路");
-      const body = { line_id: lineId };
+      const body = { line_id: lineId, distribution_id: data?.id };
       const results: string[] = [];
 
       // 1. 绘图任务

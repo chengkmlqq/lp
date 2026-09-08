@@ -37,6 +37,7 @@ from ...schemas.lightning import (
     LightningLinkedLineSummary,
     LightningLinkedLinesResponse,
     LightningDensityBackfillTowersResponse,
+    LightningDensityBackfillHistoryResponse,
     LightningTempUploadResponse,
 )
 from ...services.lightning_service import (
@@ -55,6 +56,7 @@ from ...services.lightning_service import (
     get_lightning_distribution_status,
     get_linked_lines_for_distribution,
     get_lightning_density_backfill_towers,
+    list_lightning_density_backfill_history,
     get_peak_exceedance_curve,
     import_lightning_amplitude_from_file,
     import_lightning_distribution_from_file,
@@ -412,6 +414,28 @@ def get_lightning_distribution_density_towers_endpoint(
         db,
         distribution_id,
         line_id,
+        keyword=keyword,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/distributions/{distribution_id}/backfill-history",
+    response_model=LightningDensityBackfillHistoryResponse,
+)
+def get_lightning_distribution_backfill_history_endpoint(
+    distribution_id: str,
+    keyword: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningDensityBackfillHistoryResponse:
+    """查询某地闪分布的全部回填历史记录（最新在上）。"""
+    return list_lightning_density_backfill_history(
+        db,
+        distribution_id,
         keyword=keyword,
         limit=limit,
         offset=offset,

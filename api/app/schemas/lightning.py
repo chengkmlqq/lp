@@ -246,6 +246,8 @@ class LightningCurrentPreparationAsyncResponse(BaseModel):
 
 class LightningDensityPreparationRequest(BaseModel):
     line_id: str = Field(min_length=1, max_length=64)
+    # 指定用哪个分布计算/回填（不限定线路自身）；缺省则用线路关联的最新 completed 分布
+    distribution_id: str | None = Field(default=None, max_length=64)
     region_id: str | None = Field(default=None, max_length=64)
     is_synthetic: bool | None = None
     radius_km: float | None = Field(default=None, gt=0.05, le=50.0)
@@ -263,6 +265,31 @@ class LightningDensityPreparationResponse(BaseModel):
     max_density: float | None = None
     warning_count: int = 0
     warnings: list[str] = Field(default_factory=list)
+
+
+class LightningDensityBackfillTaskSummary(BaseModel):
+    id: str
+    line_id: str
+    line_name: str | None = None
+    line_code: str | None = None
+    distribution_id: str | None = None
+    prepared_at: str | None = None
+    prepared_by_user_id: str | None = None
+    radius_km: float | None = None
+    data_years: float | None = None
+    updated_tower_count: int = 0
+    missing_geo_count: int = 0
+    avg_density: float | None = None
+    min_density: float | None = None
+    max_density: float | None = None
+    strike_count: int | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class LightningDensityBackfillHistoryResponse(BaseModel):
+    distribution_id: str
+    items: list[LightningDensityBackfillTaskSummary]
+    total: int
 
 
 # ---------------------------------------------------------------------------

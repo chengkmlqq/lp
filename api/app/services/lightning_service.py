@@ -53,6 +53,8 @@ from ..schemas.lightning import (
     LightningLinkedLinesResponse,
     LightningDensityBackfillTowerDetail,
     LightningDensityBackfillTowersResponse,
+    LightningDensityBackfillTaskSummary,
+    LightningDensityBackfillHistoryResponse,
 )
 from .line_preparation_service import record_line_preparation_source, summarize_line_preparation
 from .line_service import serialize_line
@@ -1902,6 +1904,67 @@ def get_lightning_density_backfill_towers(
     return LightningDensityBackfillTowersResponse(items=items, total=len(items))
 
 
+def list_lightning_density_backfill_history(
+    db: Session,
+    distribution_id: str,
+    *,
+    keyword: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> LightningDensityBackfillHistoryResponse:
+    """查询某地闪分布的全部回填历史记录（最新在上）。
+
+    从新建的 `lightning_density_backfill_task` 表读取（每次回填生成一条），
+    供回填记录 tab 展示所有历史回填，而非仅当前最新覆盖值。
+    """
+    from ..models.lightning_density_backfill import LightningDensityBackfillTask as _LDBT
+    from ..models.line import Line as _Line
+
+    stmt = select(_LDBT).where(_LDBT.distribution_id == distribution_id)
+    normalized = (keyword or "").strip()
+    if normalized:
+        like = f"%{normalized}%"
+        line_sub = select(_Line.id).where(_Line.name.ilike(like))
+        stmt = stmt.where(_LDBT.line_id.in_(line_sub))
+    total = int(db.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0)
+    rows = (
+        db.execute(stmt.order_by(_LDBT.prepared_at.desc(), _LDBT.create_date.desc()).limit(limit).offset(offset))
+        .scalars()
+        .all()
+    )
+
+    line_ids = {r.line_id for r in rows}
+    lines = {}
+    if line_ids:
+        for line_row in db.execute(select(_Line).where(_Line.id.in_(line_ids))).scalars().all():
+            lines[line_row.id] = line_row
+
+    items: list[LightningDensityBackfillTaskSummary] = []
+    for task in rows:
+        line_row = lines.get(task.line_id)
+        items.append(
+            LightningDensityBackfillTaskSummary(
+                id=task.id,
+                line_id=task.line_id,
+                line_name=line_row.name if line_row else None,
+                line_code=line_row.code if line_row else None,
+                distribution_id=task.distribution_id,
+                prepared_at=task.prepared_at.isoformat() if task.prepared_at else None,
+                prepared_by_user_id=task.prepared_by_user_id,
+                radius_km=task.radius_km,
+                data_years=task.data_years,
+                updated_tower_count=task.updated_tower_count,
+                missing_geo_count=task.missing_geo_count,
+                avg_density=task.avg_density,
+                min_density=task.min_density,
+                max_density=task.max_density,
+                strike_count=task.strike_count,
+                warnings=list(task.warnings or []),
+            )
+        )
+    return LightningDensityBackfillHistoryResponse(distribution_id=distribution_id, items=items, total=total)
+
+
 def retry_lightning_distribution(
     db: Session,
     distribution_id: str,
@@ -2009,15 +2072,23 @@ def prepare_line_lightning_density(
     if not geo_towers:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前线路缺少杆塔经纬度，无法计算地闪密度")
 
-    # 数据来源：线路关联的最新 LightningDistribution + MinIO 原始文件（不再读明细点表）
-    dist = db.execute(
-        select(LightningDistribution)
-        .where(
-            LightningDistribution.line_id == line.id,
-            LightningDistribution.status == "completed",
-        )
-        .order_by(LightningDistribution.create_date.desc())
-    ).scalars().first()
+    # 数据来源：指定 distribution_id 优先，否则线路关联的最新 LightningDistribution
+    dist = None
+    if payload.distribution_id:
+        dist = db.execute(
+            select(LightningDistribution).where(LightningDistribution.id == payload.distribution_id)
+        ).scalar_one_or_none()
+        if dist is not None and dist.status != "completed":
+            dist = None
+    if dist is None:
+        dist = db.execute(
+            select(LightningDistribution)
+            .where(
+                LightningDistribution.line_id == line.id,
+                LightningDistribution.status == "completed",
+            )
+            .order_by(LightningDistribution.create_date.desc())
+        ).scalars().first()
     if not dist or not dist.source_object_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -2173,6 +2244,31 @@ def prepare_line_lightning_density(
             circle_uploaded = True
     except Exception:
         circle_uploaded = False
+
+    # ---- 写入回填历史记录（每次回填一条，供回填记录 tab 展示全部历史，最新在上）----
+    try:
+        from ..models.lightning_density_backfill import LightningDensityBackfillTask as _LDBT
+
+        db.add(
+            _LDBT(
+                line_id=line.id,
+                distribution_id=dist.id if dist else None,
+                prepared_at=now,
+                prepared_by_user_id=actor_user_id,
+                radius_km=actual_radius_km,
+                data_years=round(source_years, 6),
+                updated_tower_count=updated_tower_count,
+                missing_geo_count=missing_geo_count,
+                avg_density=round(sum(density_values) / len(density_values), 6) if density_values else None,
+                min_density=round(min(density_values), 6) if density_values else None,
+                max_density=round(max(density_values), 6) if density_values else None,
+                strike_count=len(candidate_rows),
+                warnings=warnings,
+            )
+        )
+    except Exception:
+        # 历史记录写入失败不阻塞回填主流程
+        pass
 
     db.commit()
 

@@ -1463,6 +1463,31 @@ export type LightningDensityBackfillTowersResponse = {
   total: number;
 };
 
+export type LightningDensityBackfillTaskSummary = {
+  id: string;
+  line_id: string;
+  line_name: string | null;
+  line_code: string | null;
+  distribution_id: string | null;
+  prepared_at: string | null;
+  prepared_by_user_id: string | null;
+  radius_km: number | null;
+  data_years: number | null;
+  updated_tower_count: number;
+  missing_geo_count: number;
+  avg_density: number | null;
+  min_density: number | null;
+  max_density: number | null;
+  strike_count: number | null;
+  warnings: string[];
+};
+
+export type LightningDensityBackfillHistoryResponse = {
+  distribution_id: string;
+  items: LightningDensityBackfillTaskSummary[];
+  total: number;
+};
+
 export type LightningCurrentBackfillTaskSummary = {
   id: string;
   line_id: string;
