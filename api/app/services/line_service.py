@@ -65,6 +65,7 @@ def serialize_line(
     tower_count: int = 0,
     preparation_json: dict[str, Any] | None = None,
     estimated_length_km: float | None = None,
+    bbox_overlap: bool | None = None,
 ) -> LineSummary:
     return LineSummary(
         id=line.id,
@@ -77,6 +78,7 @@ def serialize_line(
         preparation_json=preparation_json or {},
         tower_count=tower_count,
         estimated_length_km=estimated_length_km,
+        bbox_overlap=bbox_overlap,
         create_date=line.create_date,
         create_user=line.create_user,
         update_date=line.update_date,
@@ -181,6 +183,7 @@ def list_lines(
     *,
     keyword: str | None,
     bbox: tuple[float, float, float, float] | None = None,
+    bbox_mode: str = "filter",
     limit: int | None = None,
     offset: int = 0,
 ) -> LineListResponse:
@@ -196,6 +199,9 @@ def list_lines(
 
     # bbox 过滤：仅保留杆塔经纬度范围与给定 bbox（min_lat,min_lon,max_lat,max_lon）
     # 有矩形重叠的线路（包含端点，max(min) <= min(max)）。与绘图任务的 bbox 裁剪判定一致。
+    # bbox_mode="mark" 时不过滤，仅返回每条线路是否与 bbox 重叠（bbox_overlap 标记），
+    # 用于新建回填表单"展示全部线路 + 不在范围内的禁用"。
+    bbox_overlap_ids: set[str] = set()
     if bbox is not None:
         min_lat, min_lon, max_lat, max_lon = bbox
         tower_overlap = (
@@ -210,8 +216,12 @@ def list_lines(
             )
             .distinct()
         )
-        stmt = stmt.where(Line.id.in_(tower_overlap))
-        total_stmt = total_stmt.where(Line.id.in_(tower_overlap))
+        if bbox_mode == "mark":
+            rows = db.execute(tower_overlap).all()
+            bbox_overlap_ids = {str(row[0]) for row in rows}
+        else:
+            stmt = stmt.where(Line.id.in_(tower_overlap))
+            total_stmt = total_stmt.where(Line.id.in_(tower_overlap))
 
     total = int(db.scalar(total_stmt) or 0)
     stmt = stmt.order_by(Line.update_date.desc(), Line.code.asc())
@@ -230,6 +240,7 @@ def list_lines(
                 tower_count=tower_count_map.get(item.id, 0),
                 preparation_json=preparation_map.get(item.id, {}),
                 estimated_length_km=estimated_length_map.get(item.id),
+                bbox_overlap=(item.id in bbox_overlap_ids) if bbox_overlap_ids else None,
             )
             for item in items
         ],

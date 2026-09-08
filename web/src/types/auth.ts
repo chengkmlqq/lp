@@ -658,6 +658,7 @@ export type LineSummary = {
   preparation_json: Record<string, unknown>;
   tower_count: number;
   estimated_length_km: number | null;
+  bbox_overlap: boolean | null;
   create_date: string;
   create_user: string | null;
   update_date: string;
@@ -1444,6 +1445,21 @@ export type LightningLinkedLineSummary = {
 
 export type LightningLinkedLinesResponse = {
   items: LightningLinkedLineSummary[];
+  total: number;
+};
+
+export type LightningDensityBackfillTowerDetail = {
+  tower_id: string;
+  tower_no: string | null;
+  longitude: number | null;
+  latitude: number | null;
+  lightning_density: number | null;
+  strike_count: number | null;
+  prepared_at: string | null;
+};
+
+export type LightningDensityBackfillTowersResponse = {
+  items: LightningDensityBackfillTowerDetail[];
   total: number;
 };
 

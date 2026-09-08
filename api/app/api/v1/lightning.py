@@ -36,6 +36,7 @@ from ...schemas.lightning import (
     LightningLpDrawResponse,
     LightningLinkedLineSummary,
     LightningLinkedLinesResponse,
+    LightningDensityBackfillTowersResponse,
     LightningTempUploadResponse,
 )
 from ...services.lightning_service import (
@@ -53,6 +54,7 @@ from ...services.lightning_service import (
     get_lightning_distribution_circle_image_content,
     get_lightning_distribution_status,
     get_linked_lines_for_distribution,
+    get_lightning_density_backfill_towers,
     get_peak_exceedance_curve,
     import_lightning_amplitude_from_file,
     import_lightning_distribution_from_file,
@@ -390,6 +392,30 @@ def get_lightning_distribution_linked_lines_endpoint(
 ) -> LightningLinkedLinesResponse:
     """反查该分布回填过的线路列表（供「关联线路」小窗与杆塔数据 Tab 使用）。"""
     return get_linked_lines_for_distribution(db, distribution_id)
+
+
+@router.get(
+    "/distributions/{distribution_id}/density-towers",
+    response_model=LightningDensityBackfillTowersResponse,
+)
+def get_lightning_distribution_density_towers_endpoint(
+    distribution_id: str,
+    line_id: str = Query(..., min_length=1),
+    keyword: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningDensityBackfillTowersResponse:
+    """反查某地闪分布回填到某线路的杆塔 Ng 值明细（供「详情」抽屉）。"""
+    return get_lightning_density_backfill_towers(
+        db,
+        distribution_id,
+        line_id,
+        keyword=keyword,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # ---------------------------------------------------------------------------

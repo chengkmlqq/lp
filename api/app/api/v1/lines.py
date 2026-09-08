@@ -44,13 +44,21 @@ router = APIRouter(prefix="/lines", tags=["lines"], dependencies=[Depends(requir
 def get_line_list(
     keyword: str | None = Query(default=None),
     bbox: str | None = Query(default=None),
+    bbox_mode: str | None = Query(default=None, pattern="^(filter|mark)$"),
     limit: int | None = Query(default=None, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     _: CurrentUser = Depends(require_any_permission("line.read", "line.manage", "tower.read", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> LineListResponse:
     parsed_bbox = _parse_bbox(bbox)
-    return list_lines(db, keyword=keyword, bbox=parsed_bbox, limit=limit, offset=offset)
+    return list_lines(
+        db,
+        keyword=keyword,
+        bbox=parsed_bbox,
+        bbox_mode=bbox_mode or "filter",
+        limit=limit,
+        offset=offset,
+    )
 
 
 def _parse_bbox(bbox: str | None) -> tuple[float, float, float, float] | None:

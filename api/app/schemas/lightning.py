@@ -339,3 +339,23 @@ class LightningCurrentBackfillTowerDetail(BaseModel):
 class LightningCurrentBackfillTaskDetail(BaseModel):
     task: LightningCurrentBackfillTaskSummary
     towers: list[LightningCurrentBackfillTowerDetail]
+
+
+# ---------------------------------------------------------------------------
+# 地闪密度回填：分布 → 线路 → 杆塔 Ng 值反查
+# ---------------------------------------------------------------------------
+class LightningDensityBackfillTowerDetail(BaseModel):
+    """某地闪分布回填到某线路的杆塔 Ng 明细。"""
+
+    tower_id: str
+    tower_no: str | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+    lightning_density: float | None = None  # 杆塔 Ng 值（次/km²·年）
+    strike_count: int | None = None         # 该塔所在分组的落雷数
+    prepared_at: str | None = None          # 最近一次回填时间
+
+
+class LightningDensityBackfillTowersResponse(BaseModel):
+    items: list[LightningDensityBackfillTowerDetail]
+    total: int

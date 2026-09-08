@@ -8,6 +8,7 @@ import {
   Badge,
   Card,
   Descriptions,
+  Drawer,
   Dropdown,
   Empty,
   Form,
@@ -34,6 +35,7 @@ import {
 import {
   CheckCircleOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EnvironmentOutlined,
   EyeOutlined,
   FileTextOutlined,
@@ -61,6 +63,8 @@ import type {
   LightningDistributionRecord,
   LightningDistributionListResponse,
   LightningDistributionStatusResponse,
+  LightningDensityBackfillTowerDetail,
+  LightningDensityBackfillTowersResponse,
   LightningLpDrawResponse,
   LightningLinkedLineSummary,
   LightningLinkedLinesResponse,
@@ -223,7 +227,6 @@ export default function AdminLightningDistributionPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
   const [lpDrawRow, setLpDrawRow] = useState<LightningDistributionRecord | null>(null);
-  const [linkedLinesRow, setLinkedLinesRow] = useState<LightningDistributionRecord | null>(null);
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
 
@@ -536,8 +539,31 @@ export default function AdminLightningDistributionPage() {
   }, [fetchWithAuth]);
 
   const openLinkedLinesModal = useCallback((record: LightningDistributionRecord) => {
-    setLinkedLinesRow(record);
-  }, []);
+    // 回填记录改为动态 Tab 展示（对齐 fl-analysis 详情 Tab 交互）
+    const key = `backfill-${record.id}`;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: <span>{truncateFileName(record.source_file_name)} - 回填记录</span>,
+          closable: true,
+          children: (
+            <BackfillRecordsView
+              record={record}
+              fetchWithAuth={fetchWithAuth}
+              canReadLogs={canReadLogs}
+              onOpenLog={openLogViewer}
+            />
+          ),
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, [fetchWithAuth, canReadLogs, openLogViewer]);
 
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
@@ -1162,13 +1188,6 @@ export default function AdminLightningDistributionPage() {
         onConfirm={handleImportConfirm}
       />
 
-      <LinkedLinesModal
-        open={!!linkedLinesRow}
-        data={linkedLinesRow}
-        onClose={() => setLinkedLinesRow(null)}
-        fetchWithAuth={fetchWithAuth}
-      />
-
       {canManage && (
         <DrawLpModal
           open={!!lpDrawRow}
@@ -1438,27 +1457,36 @@ function DistributionDetailView({
   );
 }
 
-function LinkedLinesModal({
-  open,
-  data,
-  onClose,
+function BackfillRecordsView({
+  record,
   fetchWithAuth,
+  canReadLogs,
+  onOpenLog,
 }: {
-  open: boolean;
-  data: LightningDistributionRecord | null;
-  onClose: () => void;
+  record: LightningDistributionRecord;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
+  canReadLogs: boolean;
+  onOpenLog: (taskId: string | null | undefined, label: string, fileName: string) => void;
 }) {
-  const linkedLinesPath = data
-    ? `/api/v1/lightning-currents/distributions/${data.id}/linked-lines`
-    : null;
+  const [keywordInput, setKeywordInput] = useState("");
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  const { current: page, pageSize } = pagination;
+  const [towerDrawer, setTowerDrawer] = useState<LightningLinkedLineSummary | null>(null);
+  const [ngImageDrawer, setNgImageDrawer] = useState<LightningLinkedLineSummary | null>(null);
+
+  const linkedLinesPath = useMemo(() => {
+    const params = new URLSearchParams();
+    const trimmed = searchKeyword.trim();
+    if (trimmed) params.set("keyword", trimmed);
+    params.set("limit", String(pageSize));
+    params.set("offset", String((page - 1) * pageSize));
+    return `/api/v1/lightning-currents/distributions/${record.id}/linked-lines?${params.toString()}`;
+  }, [record.id, searchKeyword, page, pageSize]);
+
   const linkedLinesQuery = useQuery({
     queryKey: [linkedLinesPath],
-    enabled: !!linkedLinesPath,
     queryFn: async () => {
-      if (!linkedLinesPath) {
-        return { items: [], total: 0 } satisfies LightningLinkedLinesResponse;
-      }
       const response = await fetchWithAuth(linkedLinesPath);
       if (!response.ok) {
         throw new Error(await readApiError(response));
@@ -1471,6 +1499,12 @@ function LinkedLinesModal({
     () => linkedLinesQuery.data?.items ?? [],
     [linkedLinesQuery.data],
   );
+  const total = linkedLinesQuery.data?.total ?? 0;
+
+  const handleSearch = () => {
+    setSearchKeyword(keywordInput.trim());
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  };
 
   const linkedColumns = useMemo<ColumnsType<LightningLinkedLineSummary>>(
     () => [
@@ -1502,29 +1536,88 @@ function LinkedLinesModal({
       {
         title: "最近回填时间",
         dataIndex: "prepared_at",
-        width: 150,
+        width: 160,
         render: (value: string | null) => (value ? formatDateTime(value) : "-"),
       },
+      {
+        title: "操作",
+        key: "actions",
+        width: 200,
+        fixed: "right",
+        render: (_: unknown, row: LightningLinkedLineSummary) => (
+          <Space size={4}>
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0 }}
+              disabled={!canReadLogs}
+              onClick={() => onOpenLog(record.task_id, "回填日志", record.source_file_name)}
+            >
+              日志
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0 }}
+              onClick={() => setTowerDrawer(row)}
+            >
+              详情
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0 }}
+              onClick={() => setNgImageDrawer(row)}
+            >
+              Ng图
+            </Button>
+          </Space>
+        ),
+      },
     ],
-    [],
+    [canReadLogs, onOpenLog, record.task_id, record.source_file_name],
   );
 
   return (
-    <Modal
-      title={`关联线路 - ${data?.source_file_name ?? ""}`}
-      open={open}
-      onCancel={onClose}
-      footer={null}
-      width={600}
-      destroyOnHidden
-    >
+    <div className="admin-lightning-distribution-backfill-view" style={{ padding: "0 4px" }}>
+      <div className="admin-filter-bar" style={{ marginBottom: 12 }}>
+        <Form layout="inline">
+          <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+            <Input
+              allowClear
+              placeholder="按线路编号/名称筛选"
+              value={keywordInput}
+              onChange={(event) => setKeywordInput(event.target.value)}
+              onPressEnter={handleSearch}
+            />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
+              查询
+            </Button>
+          </Form.Item>
+        </Form>
+      </div>
       <Table<LightningLinkedLineSummary>
         rowKey="line_id"
         size="small"
         columns={linkedColumns}
         dataSource={linkedLines}
         loading={linkedLinesQuery.isFetching}
-        pagination={false}
+        tableLayout="fixed"
+        scroll={{ x: 760 }}
+        pagination={{
+          current: page,
+          pageSize,
+          total,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50, 100],
+          showTotal: (totalCount) => `共 ${totalCount} 条`,
+          hideOnSinglePage: false,
+          onChange: (nextPage, nextPageSize) => {
+            setPagination({ current: nextPage, pageSize: nextPageSize });
+          },
+        }}
         locale={{
           emptyText: linkedLinesQuery.isLoading ? (
             <Spin size="small" />
@@ -1533,7 +1626,263 @@ function LinkedLinesModal({
           ),
         }}
       />
-    </Modal>
+
+      <TowerNgDrawer
+        record={record}
+        line={towerDrawer}
+        fetchWithAuth={fetchWithAuth}
+        onClose={() => setTowerDrawer(null)}
+      />
+      <NgImageDrawer
+        record={record}
+        line={ngImageDrawer}
+        fetchWithAuth={fetchWithAuth}
+        onClose={() => setNgImageDrawer(null)}
+      />
+    </div>
+  );
+}
+
+function TowerNgDrawer({
+  record,
+  line,
+  fetchWithAuth,
+  onClose,
+}: {
+  record: LightningDistributionRecord;
+  line: LightningLinkedLineSummary | null;
+  fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
+  onClose: () => void;
+}) {
+  const [keywordInput, setKeywordInput] = useState("");
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  const { current: page, pageSize } = pagination;
+
+  const towersPath = useMemo(() => {
+    if (!line) return null;
+    const params = new URLSearchParams();
+    params.set("line_id", line.line_id);
+    const trimmed = searchKeyword.trim();
+    if (trimmed) params.set("keyword", trimmed);
+    params.set("limit", String(pageSize));
+    params.set("offset", String((page - 1) * pageSize));
+    return `/api/v1/lightning-currents/distributions/${record.id}/density-towers?${params.toString()}`;
+  }, [record.id, line, searchKeyword, page, pageSize]);
+
+  const towersQuery = useQuery({
+    queryKey: [towersPath],
+    enabled: !!towersPath,
+    queryFn: async () => {
+      if (!towersPath) return { items: [], total: 0 } satisfies LightningDensityBackfillTowersResponse;
+      const response = await fetchWithAuth(towersPath);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LightningDensityBackfillTowersResponse;
+    },
+  });
+
+  const towers = useMemo(() => towersQuery.data?.items ?? [], [towersQuery.data]);
+  const total = towersQuery.data?.total ?? 0;
+
+  const handleSearch = () => {
+    setSearchKeyword(keywordInput.trim());
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  };
+
+  const towerColumns = useMemo<ColumnsType<LightningDensityBackfillTowerDetail>>(
+    () => [
+      {
+        title: "杆塔号",
+        dataIndex: "tower_no",
+        width: 110,
+        render: (value: string | null) => value || "-",
+      },
+      {
+        title: "Ng 值(次/km²·年)",
+        dataIndex: "lightning_density",
+        width: 140,
+        render: (value: number | null) => formatNumber(value, 4),
+      },
+      {
+        title: "落雷数",
+        dataIndex: "strike_count",
+        width: 90,
+        render: (value: number | null) => (value === null || value === undefined ? "-" : value),
+      },
+      {
+        title: "经度",
+        dataIndex: "longitude",
+        width: 120,
+        render: (value: number | null) => formatNumber(value, 6),
+      },
+      {
+        title: "纬度",
+        dataIndex: "latitude",
+        width: 120,
+        render: (value: number | null) => formatNumber(value, 6),
+      },
+      {
+        title: "最近回填时间",
+        dataIndex: "prepared_at",
+        width: 160,
+        render: (value: string | null) => (value ? formatDateTime(value) : "-"),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <Drawer
+      title={`回填杆塔 Ng 值 - ${line?.line_name ?? ""}`}
+      open={!!line}
+      onClose={onClose}
+      width={720}
+      destroyOnHidden
+    >
+      <div className="admin-filter-bar" style={{ marginBottom: 12 }}>
+        <Form layout="inline">
+          <Form.Item label="杆塔号" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+            <Input
+              allowClear
+              placeholder="按杆塔号筛选"
+              value={keywordInput}
+              onChange={(event) => setKeywordInput(event.target.value)}
+              onPressEnter={handleSearch}
+            />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
+              查询
+            </Button>
+          </Form.Item>
+        </Form>
+      </div>
+      <Table<LightningDensityBackfillTowerDetail>
+        rowKey="tower_id"
+        size="small"
+        columns={towerColumns}
+        dataSource={towers}
+        loading={towersQuery.isFetching}
+        tableLayout="fixed"
+        scroll={{ x: 740, y: 480 }}
+        pagination={{
+          current: page,
+          pageSize,
+          total,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50, 100],
+          showTotal: (totalCount) => `共 ${totalCount} 条`,
+          hideOnSinglePage: false,
+          onChange: (nextPage, nextPageSize) => {
+            setPagination({ current: nextPage, pageSize: nextPageSize });
+          },
+        }}
+        locale={{
+          emptyText: towersQuery.isLoading ? (
+            <Spin size="small" />
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该线路无回填杆塔数据" />
+          ),
+        }}
+      />
+    </Drawer>
+  );
+}
+
+function NgImageDrawer({
+  record,
+  line,
+  fetchWithAuth,
+  onClose,
+}: {
+  record: LightningDistributionRecord;
+  line: LightningLinkedLineSummary | null;
+  fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
+  onClose: () => void;
+}) {
+  const { message: messageApi } = App.useApp();
+
+  const circleImagePath = line
+    ? `/api/v1/lightning-currents/distributions/${record.id}/circle-image`
+    : null;
+  const circleImageQuery = useQuery({
+    queryKey: [circleImagePath],
+    enabled: !!circleImagePath,
+    queryFn: async () => {
+      if (!circleImagePath) return null;
+      const response = await fetchWithAuth(circleImagePath);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const blob = await response.blob();
+      if (blob.size === 0) return null;
+      return URL.createObjectURL(blob);
+    },
+  });
+
+  useEffect(() => {
+    const objectUrl = circleImageQuery.data;
+    if (!objectUrl) return;
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [circleImageQuery.data]);
+
+  const loading = circleImageQuery.isFetching;
+  const failed = !!circleImageQuery.error;
+  const errorText = circleImageQuery.error instanceof Error ? circleImageQuery.error.message : "";
+  const imageUrl = circleImageQuery.data;
+
+  const handleDownload = async () => {
+    try {
+      const response = await fetchWithAuth(`/api/v1/lightning-currents/distributions/${record.id}/circle-image`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${record.source_file_name || "lightning_density"}-沿线圆密度图.png`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "下载失败");
+    }
+  };
+
+  return (
+    <Drawer
+      title={`沿线圆密度图 - ${line?.line_name ?? ""}`}
+      open={!!line}
+      onClose={onClose}
+      width={720}
+      destroyOnHidden
+      extra={
+        <Button icon={<DownloadOutlined />} onClick={handleDownload}>
+          下载
+        </Button>
+      }
+    >
+      <div style={{ textAlign: "center", minHeight: 240 }}>
+        {loading ? (
+          <Spin tip="加载中…" style={{ marginTop: 80 }}>
+            <div style={{ height: 160 }} />
+          </Spin>
+        ) : failed ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={errorText || "暂无沿线圆密度图（回填线路后生成）"}
+          />
+        ) : imageUrl ? (
+          <Image src={imageUrl} alt="沿线圆密度图" style={{ maxWidth: "100%" }} />
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无沿线圆密度图（回填线路后生成）" />
+        )}
+      </div>
+    </Drawer>
   );
 }
 
@@ -1598,7 +1947,11 @@ function DrawLpBody({
       params.set("limit", "200");
       params.set("offset", "0");
       if (lineSearchText.trim()) params.set("keyword", lineSearchText.trim());
-      if (bboxParam) params.set("bbox", bboxParam);
+      if (bboxParam) {
+        // bbox_mode=mark：返回全部线路并标记每条是否与落雷数据区域重叠（不隐藏）
+        params.set("bbox", bboxParam);
+        params.set("bbox_mode", "mark");
+      }
       const resp = await fetchWithAuth(`/api/v1/lines?${params.toString()}`);
       if (!resp.ok) throw new Error(await readApiError(resp));
       return (await resp.json()) as LineListResponse;
@@ -1606,11 +1959,23 @@ function DrawLpBody({
   });
 
   const lineOptions = useMemo(() =>
-    (linesQuery.data?.items ?? []).map((l: LineSummary) => ({
-      label: `${l.code} - ${l.name}${l.voltage_kv ? ` (${l.voltage_kv}kV)` : ""}`,
-      value: l.id,
-    })),
-    [linesQuery.data],
+    (linesQuery.data?.items ?? []).map((l: LineSummary) => {
+      const inRange = bboxParam ? (l.bbox_overlap !== false) : true;
+      const label = `${l.code} - ${l.name}${l.voltage_kv ? ` (${l.voltage_kv}kV)` : ""}`;
+      return {
+        label: (
+          <Space size={6} style={{ width: "100%", justifyContent: "space-between" }}>
+            <span>{label}</span>
+            {bboxParam && !inRange && (
+              <Tag color="warning" style={{ marginInlineEnd: 0 }}>不在数据范围内</Tag>
+            )}
+          </Space>
+        ),
+        value: l.id,
+        disabled: bboxParam ? !inRange : false,
+      };
+    }),
+    [linesQuery.data, bboxParam],
   );
 
   const drawMutation = useMutation({
@@ -1664,17 +2029,7 @@ function DrawLpBody({
   return (
     <>
       <Form layout="vertical">
-        <Form.Item
-          required
-          label={(
-            <Space size={4}>
-              选择线路
-              <Tooltip title="仅展示与当前地闪密度数据区域有重叠的线路；未覆盖区域的线路绘图无有效数据，故不展示">
-                <QuestionCircleOutlined style={{ color: "var(--ant-color-text-quaternary)" }} />
-              </Tooltip>
-            </Space>
-          )}
-        >
+        <Form.Item required label="选择线路">
           <Select
             showSearch
             placeholder="选择线路（按该线路杆塔分组绘图）"

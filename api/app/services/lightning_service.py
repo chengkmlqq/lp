@@ -51,6 +51,8 @@ from ..schemas.lightning import (
     LightningLpDrawResponse,
     LightningLinkedLineSummary,
     LightningLinkedLinesResponse,
+    LightningDensityBackfillTowerDetail,
+    LightningDensityBackfillTowersResponse,
 )
 from .line_preparation_service import record_line_preparation_source, summarize_line_preparation
 from .line_service import serialize_line
@@ -1467,6 +1469,16 @@ def _serialize_distribution(
 # ---------------------------------------------------------------------------
 # 回填关系反查（关联线路）
 # ---------------------------------------------------------------------------
+def _as_optional_int(value: Any) -> int | None:
+    """安全转 int；None/非数值返回 None。"""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _iter_linked_towers(
     db: Session,
     distribution_id: str,
@@ -1828,6 +1840,66 @@ def get_lightning_distribution_circle_image_content(
     from ..services import minio_storage
     content = minio_storage.get_object(dist.circle_image_object_key)
     return content, "image/png"
+
+
+def get_lightning_density_backfill_towers(
+    db: Session,
+    distribution_id: str,
+    line_id: str,
+    *,
+    keyword: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> LightningDensityBackfillTowersResponse:
+    """反查某地闪分布回填到某线路的杆塔 Ng 值明细。
+
+    关联方式：`power_line_tower.raw_extra_json.lightning_density.source_distribution_id == distribution_id`
+    （与 get_linked_lines_for_distribution 同一链路），Ng 值取杆塔表 `lightning_density` 列，
+    prepared_at/strike_count 取 raw_extra_json.lightning_density 内字段。
+    """
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
+    line = db.execute(select(Line.id).where(Line.id == line_id)).scalar_one_or_none()
+    if not line:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="线路不存在")
+
+    raw_json_text = cast(LineTower.raw_extra_json, String)
+    stmt = (
+        select(LineTower)
+        .where(
+            LineTower.line_id == line_id,
+            raw_json_text.ilike(f"%{distribution_id}%"),
+        )
+        .order_by(LineTower.tower_no.asc())
+    )
+    normalized = (keyword or "").strip()
+    if normalized:
+        like = f"%{normalized}%"
+        stmt = stmt.where(LineTower.tower_no.ilike(like))
+    total = int(db.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0)
+    rows = db.execute(stmt.limit(limit).offset(offset)).scalars().all()
+
+    items: list[LightningDensityBackfillTowerDetail] = []
+    for tower in rows:
+        extra = tower.raw_extra_json or {}
+        density = extra.get("lightning_density") or {}
+        if not isinstance(density, dict):
+            continue
+        if density.get("source_distribution_id") != distribution_id:
+            continue
+        items.append(
+            LightningDensityBackfillTowerDetail(
+                tower_id=tower.id,
+                tower_no=tower.tower_no,
+                longitude=tower.longitude,
+                latitude=tower.latitude,
+                lightning_density=tower.lightning_density,
+                strike_count=_as_optional_int(density.get("strike_count")),
+                prepared_at=density.get("prepared_at"),
+            )
+        )
+    return LightningDensityBackfillTowersResponse(items=items, total=len(items))
 
 
 def retry_lightning_distribution(
