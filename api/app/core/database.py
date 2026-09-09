@@ -664,6 +664,53 @@ def _ensure_lightning_distribution_lp_image_column_compatibility() -> None:
         )
 
 
+def _ensure_lightning_density_backfill_async_column_compatibility() -> None:
+    """
+    Keep `lightning_density_backfill_task` async/status + circle-image columns
+    aligned with the ORM mapping.
+
+    The ORM now expects status/progress/task_id/error_message/circle_image_object_key
+    columns, but deployments created the table before they existed (migration 021).
+    Without them, every SELECT on `lightning_density_backfill_task` fails.
+    """
+    if not database_url.startswith("postgresql"):
+        return
+
+    schema = settings.resolved_db_schema
+    with engine.begin() as connection:
+        db_inspector = inspect(connection)
+        if not db_inspector.has_table("lightning_density_backfill_task", schema=schema):
+            return
+
+        column_names = {
+            column["name"]
+            for column in db_inspector.get_columns("lightning_density_backfill_task", schema=schema)
+        }
+        additions: list[tuple[str, str]] = [
+            ("status", "VARCHAR(32) NOT NULL DEFAULT 'completed'"),
+            ("progress", "INTEGER NOT NULL DEFAULT 0"),
+            ("task_id", "VARCHAR(255)"),
+            ("error_message", "TEXT"),
+            ("circle_image_object_key", "VARCHAR(512)"),
+        ]
+        pending = [(name, ddl) for name, ddl in additions if name not in column_names]
+        if not pending:
+            return
+
+        for name, ddl in pending:
+            connection.execute(
+                text(
+                    f"ALTER TABLE lightning_density_backfill_task "
+                    f"ADD COLUMN IF NOT EXISTS {name} {ddl}"
+                )
+            )
+        logger.warning(
+            "Detected missing lightning_density_backfill_task columns (%s); "
+            "added columns for ORM compatibility.",
+            ", ".join(name for name, _ in pending),
+        )
+
+
 def _ensure_system_param_encrypted_column_compatibility() -> None:
     """
     Keep `system_params.is_encrypted` column aligned with the ORM mapping (LP-310).
@@ -854,6 +901,7 @@ def init_db() -> None:
     _ensure_tower_profile_column_compatibility()
     _ensure_dimension_item_type_id_column_compatibility()
     _ensure_lightning_distribution_lp_image_column_compatibility()
+    _ensure_lightning_density_backfill_async_column_compatibility()
     _ensure_system_param_encrypted_column_compatibility()
     _ensure_fault_analysis_upload_files_column_compatibility()
     _ensure_fault_analysis_progress_column_compatibility()

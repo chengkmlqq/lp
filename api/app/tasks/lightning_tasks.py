@@ -12,6 +12,7 @@ from ..models.line import Line
 from ..models.line_tower import LineTower
 from ..models.lightning_amplitude import LightningAmplitude
 from ..models.lightning_current_backfill import LightningCurrentBackfillTask
+from ..models.lightning_density_backfill import LightningDensityBackfillTask
 from ..models.lightning_distribution import LightningDistribution
 from ..services.lightning_service import (
     LIGHTNING_AMPLITUDE_TOPIC,
@@ -879,6 +880,177 @@ def prepare_line_lightning_current_job(
                     failed_task.error_message = str(exc)
                     db.commit()
             _publish_backfill_event("backfill.failed", {
+                "backfill_task_id": backfill_task_id or "",
+                "line_id": line_id,
+                "task_id": task_id,
+                "status": "failed",
+                "error": str(exc),
+            })
+        except Exception:
+            db.rollback()
+        return {"status": "failed", "line_id": line_id, "backfill_task_id": backfill_task_id, "error": str(exc)}
+
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# 异步线路地闪密度回填任务（LP：POST /prepare-density 异步化）
+# ---------------------------------------------------------------------------
+def _publish_density_backfill_event(event_name: str, payload: dict[str, Any]) -> None:
+    """向 admin.lightning-distribution 主题推送地闪密度回填任务事件（经 Redis 桥）。
+
+    requires_refetch 覆盖分布列表接口；回填历史接口由页面订阅处理器
+    refreshAll() 统一失效（前缀匹配 /api/v1/lightning-currents）。
+    """
+    try:
+        from ..services.ws_event_bridge import publish_ws_event_from_worker
+
+        publish_ws_event_from_worker(
+            LIGHTNING_DISTRIBUTION_TOPIC,
+            name=event_name,
+            payload=payload,
+            requires_refetch=["/api/v1/lightning-currents/distributions"],
+            dedupe_key=f"{event_name}:{payload.get('backfill_task_id', payload.get('line_id', 'unknown'))}",
+        )
+    except Exception:
+        pass
+
+
+@celery_app.task(
+    name="app.tasks.lightning_tasks.prepare_line_lightning_density_job",
+    bind=True,
+    queue="celery",
+    max_retries=1,
+    default_retry_delay=30,
+    acks_late=True,
+    soft_time_limit=1200,
+    time_limit=1800,
+)
+def prepare_line_lightning_density_job(
+    self,
+    line_id: str,
+    distribution_id: str | None = None,
+    radius_km: float | None = None,
+    region_id: str | None = None,
+    years: float | None = None,
+    backfill_task_id: str | None = None,
+    actor_user_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    异步执行线路地闪密度回填（API 已提前创建 pending 回填任务并派发本任务）。
+
+    流程：标记 processing → 复用 LightningDensityBackfillTask 记录执行计算 →
+    推送 started / completed / failed 事件。计算逻辑复用
+    services.lightning_service._execute_line_lightning_density_backfill。
+    """
+    task_id = self.request.id
+    log_parts: list[str] = [f"[{task_id}] 开始线路地闪密度回填：线路ID={line_id}"]
+
+    db: Session = SessionLocal()
+    backfill_task: LightningDensityBackfillTask | None = None
+    try:
+        from ..schemas.lightning import LightningDensityPreparationRequest
+        from ..services.lightning_service import _execute_line_lightning_density_backfill
+
+        line = db.execute(select(Line).where(Line.id == line_id)).scalar_one_or_none()
+        log_parts.append(
+            f"[{task_id}] 线路信息：编号={line.code if line else 'N/A'}，名称={line.name if line else 'N/A'}"
+            if line
+            else f"[{task_id}] 线路未找到：{line_id}"
+        )
+
+        if backfill_task_id:
+            backfill_task = db.execute(
+                select(LightningDensityBackfillTask).where(LightningDensityBackfillTask.id == backfill_task_id)
+            ).scalar_one_or_none()
+            if backfill_task:
+                backfill_task.status = "processing"
+                backfill_task.progress = 10
+                backfill_task.task_id = task_id
+                db.commit()
+                log_parts.append(f"[{task_id}] 回填任务记录已更新为 processing（ID={backfill_task_id}）")
+
+        _append_log(log_parts, task_id,
+            f"[{task_id}] 回填参数：distribution_id={distribution_id}，radius_km={radius_km}，"
+            f"region_id={region_id}，years={years}")
+        _publish_density_backfill_event("density_backfill.started", {
+            "backfill_task_id": backfill_task_id or "",
+            "line_id": line_id,
+            "task_id": task_id,
+            "status": "processing",
+            "progress": 10,
+        })
+
+        payload = LightningDensityPreparationRequest(
+            line_id=line_id,
+            distribution_id=distribution_id,
+            radius_km=radius_km,
+            region_id=region_id,
+            years=years,
+        )
+        log_parts.append(f"[{task_id}] 开始执行地闪密度回填计算（解析落雷→逐塔统计→渲染沿线圆图）...")
+        result = _execute_line_lightning_density_backfill(
+            db,
+            payload,
+            backfill_task_id=backfill_task_id,
+            actor_user_id=actor_user_id or "system",
+        )
+        log_parts.append(
+            f"[{task_id}] 回填计算完成：更新杆塔数={result.updated_tower_count}，"
+            f"缺少经纬度塔数={result.missing_geo_count}，"
+            f"平均Ng={result.avg_density}，min={result.min_density}，max={result.max_density}，"
+            f"警告数={result.warning_count}"
+        )
+        if result.warnings:
+            for warning in result.warnings[:10]:
+                log_parts.append(f"[{task_id}] 回填警告：{warning}")
+        _upload_log(task_id, log_parts)
+
+        has_circle_image = bool(
+            backfill_task
+            and backfill_task.circle_image_object_key
+        )
+        _publish_density_backfill_event("density_backfill.completed", {
+            "backfill_task_id": backfill_task_id or "",
+            "line_id": line_id,
+            "task_id": task_id,
+            "status": "completed",
+            "progress": 100,
+            "updated_tower_count": result.updated_tower_count,
+            "missing_geo_count": result.missing_geo_count,
+            "avg_density": result.avg_density,
+            "min_density": result.min_density,
+            "max_density": result.max_density,
+            "has_circle_image": has_circle_image,
+            "warning_count": result.warning_count,
+            "warnings": result.warnings[:50],
+        })
+        return {
+            "status": "completed",
+            "line_id": line_id,
+            "backfill_task_id": backfill_task_id,
+            "updated_tower_count": result.updated_tower_count,
+            "has_circle_image": has_circle_image,
+        }
+
+    except Exception as exc:
+        import traceback
+
+        db.rollback()
+        _append_log(log_parts, task_id, f"[{task_id}] 回填失败：{exc}")
+        _append_log(log_parts, task_id, f"[{task_id}] 异常堆栈：{traceback.format_exc()}")
+        _upload_log(task_id, log_parts)
+        try:
+            if backfill_task_id:
+                failed_task = db.execute(
+                    select(LightningDensityBackfillTask).where(LightningDensityBackfillTask.id == backfill_task_id)
+                ).scalar_one_or_none()
+                if failed_task:
+                    failed_task.status = "failed"
+                    failed_task.error_message = str(exc)
+                    db.commit()
+            _publish_density_backfill_event("density_backfill.failed", {
                 "backfill_task_id": backfill_task_id or "",
                 "line_id": line_id,
                 "task_id": task_id,

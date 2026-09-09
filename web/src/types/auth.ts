@@ -1332,6 +1332,13 @@ export type LightningCurrentPreparationAsyncResponse = {
   status: string;
 };
 
+export type LightningDensityPreparationAsyncResponse = {
+  task_id: string;
+  backfill_task_id: string;
+  line_id: string;
+  status: string;
+};
+
 export type LightningDensityPreparationResponse = {
   line: LineSummary;
   updated_tower_count: number;
@@ -1480,6 +1487,11 @@ export type LightningDensityBackfillTaskSummary = {
   max_density: number | null;
   strike_count: number | null;
   warnings: string[];
+  status: string;
+  progress: number;
+  task_id: string | null;
+  error_message: string | null;
+  has_circle_image: boolean;
 };
 
 export type LightningDensityBackfillHistoryResponse = {

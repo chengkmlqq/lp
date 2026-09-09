@@ -18,6 +18,7 @@ from ..models.base import utcnow
 from ..models.lightning_amplitude import LightningAmplitude
 from ..models.line_amplitude_backfill import LineAmplitudeBackfill
 from ..models.lightning_current_backfill import LightningCurrentBackfillTask, LightningCurrentBackfillTower
+from ..models.lightning_density_backfill import LightningDensityBackfillTask
 from ..models.lightning_distribution import LightningDistribution
 from ..models.line import Line
 from ..models.line_amplitude_backfill import LineAmplitudeBackfill
@@ -44,6 +45,7 @@ from ..schemas.lightning import (
     LightningDistributionStatusResponse,
     LightningDensityPreparationRequest,
     LightningDensityPreparationResponse,
+    LightningDensityPreparationAsyncResponse,
     LightningCurrentExceedancePoint,
     LightningCurrentExceedanceResponse,
     LightningPolarity,
@@ -1844,6 +1846,25 @@ def get_lightning_distribution_circle_image_content(
     return content, "image/png"
 
 
+def get_lightning_density_backfill_circle_image_content(
+    db: Session,
+    backfill_task_id: str,
+) -> tuple[bytes | None, str | None]:
+    """读取某次地闪密度回填任务自带的「沿线圆」密度图；不存在返回 (None, None)。
+
+    每次回填各自生成一张图（对象键落在回填任务记录上），因此按任务读取
+    能拿到该次回填对应的图，而不是被后续回填覆盖的最新一张。
+    """
+    task = db.execute(
+        select(LightningDensityBackfillTask).where(LightningDensityBackfillTask.id == backfill_task_id)
+    ).scalar_one_or_none()
+    if not task or not task.circle_image_object_key:
+        return None, None
+    from ..services import minio_storage
+    content = minio_storage.get_object(task.circle_image_object_key)
+    return content, "image/png"
+
+
 def get_lightning_density_backfill_towers(
     db: Session,
     distribution_id: str,
@@ -1960,6 +1981,11 @@ def list_lightning_density_backfill_history(
                 max_density=task.max_density,
                 strike_count=task.strike_count,
                 warnings=list(task.warnings or []),
+                status=task.status or "completed",
+                progress=task.progress or 0,
+                task_id=task.task_id,
+                error_message=task.error_message,
+                has_circle_image=bool(task.circle_image_object_key),
             )
         )
     return LightningDensityBackfillHistoryResponse(distribution_id=distribution_id, items=items, total=total)
@@ -2042,14 +2068,109 @@ def trigger_lp_density_draw(
 
 
 # ---------------------------------------------------------------------------
-# 线路密度回填（同步版，/prepare-density 使用）
+# 线路密度回填（异步版，/prepare-density 使用）
 # ---------------------------------------------------------------------------
 def prepare_line_lightning_density(
     db: Session,
     payload: LightningDensityPreparationRequest,
     *,
     actor_user_id: str,
+) -> LightningDensityPreparationAsyncResponse:
+    """提交线路地闪密度回填任务（异步，LP：地闪密度回填异步化）。
+
+    API 层只做前置校验 + 创建 pending 回填任务记录 + 派发 Celery 任务，
+    立即返回 task_id。实际计算（解析落雷→逐塔统计→渲染沿线圆图→写历史）
+    由 Celery worker 执行（prepare_line_lightning_density_job）。
+    """
+    # 前置校验：线路存在
+    line = db.execute(select(Line).where(Line.id == payload.line_id)).scalar_one_or_none()
+    if not line:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="线路不存在")
+
+    # 前置校验：线路有可回填杆塔
+    tower_count = db.execute(
+        select(func.count()).select_from(LineTower).where(LineTower.line_id == line.id)
+    ).scalar() or 0
+    if tower_count == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前线路没有可回填的杆塔数据")
+
+    # 前置校验：有可用地闪分布数据（指定 distribution_id 优先，否则线路关联的最新 completed 分布）
+    dist = None
+    if payload.distribution_id:
+        dist = db.execute(
+            select(LightningDistribution).where(LightningDistribution.id == payload.distribution_id)
+        ).scalar_one_or_none()
+        if dist is not None and dist.status != "completed":
+            dist = None
+    if dist is None:
+        dist = db.execute(
+            select(LightningDistribution)
+            .where(
+                LightningDistribution.line_id == line.id,
+                LightningDistribution.status == "completed",
+            )
+            .order_by(LightningDistribution.create_date.desc())
+        ).scalars().first()
+    if not dist or not dist.source_object_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="未找到可用于地闪密度计算的地闪分布数据（请先导入并关联线路）",
+        )
+
+    now = utcnow()
+    normalized_region = _normalize_str(payload.region_id)
+    task = LightningDensityBackfillTask(
+        line_id=line.id,
+        distribution_id=dist.id,
+        prepared_at=now,
+        prepared_by_user_id=actor_user_id,
+        radius_km=payload.radius_km,
+        status="pending",
+        progress=0,
+    )
+    db.add(task)
+    db.commit()
+
+    from ..core.celery_app import celery_app
+
+    celery_task = celery_app.send_task(
+        "app.tasks.lightning_tasks.prepare_line_lightning_density_job",
+        kwargs={
+            "line_id": line.id,
+            "distribution_id": dist.id,
+            "radius_km": payload.radius_km,
+            "region_id": normalized_region,
+            "years": payload.years,
+            "backfill_task_id": task.id,
+            "actor_user_id": actor_user_id,
+        },
+        queue="celery",
+    )
+    task.task_id = str(celery_task.id)
+    task.status = "processing"
+    task.progress = 5
+    db.commit()
+
+    return LightningDensityPreparationAsyncResponse(
+        task_id=str(celery_task.id),
+        backfill_task_id=task.id,
+        line_id=line.id,
+        status="processing",
+    )
+
+
+def _execute_line_lightning_density_backfill(
+    db: Session,
+    payload: LightningDensityPreparationRequest,
+    *,
+    backfill_task_id: str | None,
+    actor_user_id: str,
 ) -> LightningDensityPreparationResponse:
+    """执行地闪密度回填计算（供 Celery worker 调用）。
+
+    解析分布源文件落雷 → 按杆塔半径统计 Ng → 更新塔表 → 渲染「沿线圆」密度图
+    并存 MinIO（对象键写入回填任务记录，每次回填各自一张，互不覆盖）→ 写历史。
+    """
     line = db.execute(select(Line).where(Line.id == payload.line_id)).scalar_one_or_none()
     if not line:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="线路不存在")
@@ -2198,11 +2319,10 @@ def prepare_line_lightning_density(
         },
     )
 
-    # ---- 同步生成「沿线圆」密度图（对齐 C# banjin 分组圆画法）并存 MinIO ----
+    # ---- 生成「沿线圆」密度图（对齐 C# banjin 分组圆画法）并存 MinIO ----
     # 失败不阻塞回填主流程：matplotlib 不可用 / 渲染异常时仅跳过图生成
-    circle_uploaded = False
+    circle_image_object_key: str | None = None
     try:
-        from uuid import uuid4 as _uuid4
         from ..services import lightning_statistics as _ls
 
         # 按电压等级分组（与桌面版 banjin group_size 一致）
@@ -2238,37 +2358,43 @@ def prepare_line_lightning_density(
         )
         if png:
             from ..services import minio_storage
+            from uuid import uuid4 as _uuid4
             circle_key = f"lightning/dist/circle/{dist.id}/{_uuid4().hex}.png"
             minio_storage.put_object(circle_key, png, content_type="image/png")
-            dist.circle_image_object_key = circle_key
-            circle_uploaded = True
+            circle_image_object_key = circle_key
     except Exception:
-        circle_uploaded = False
+        circle_image_object_key = None
 
     # ---- 写入回填历史记录（每次回填一条，供回填记录 tab 展示全部历史，最新在上）----
-    try:
-        from ..models.lightning_density_backfill import LightningDensityBackfillTask as _LDBT
-
-        db.add(
-            _LDBT(
-                line_id=line.id,
-                distribution_id=dist.id if dist else None,
-                prepared_at=now,
-                prepared_by_user_id=actor_user_id,
-                radius_km=actual_radius_km,
-                data_years=round(source_years, 6),
-                updated_tower_count=updated_tower_count,
-                missing_geo_count=missing_geo_count,
-                avg_density=round(sum(density_values) / len(density_values), 6) if density_values else None,
-                min_density=round(min(density_values), 6) if density_values else None,
-                max_density=round(max(density_values), 6) if density_values else None,
-                strike_count=len(candidate_rows),
-                warnings=warnings,
-            )
+    backfill_task: LightningDensityBackfillTask | None = None
+    if backfill_task_id:
+        backfill_task = db.execute(
+            select(LightningDensityBackfillTask).where(LightningDensityBackfillTask.id == backfill_task_id)
+        ).scalar_one_or_none()
+    if backfill_task is None:
+        backfill_task = LightningDensityBackfillTask(
+            line_id=line.id,
+            distribution_id=dist.id if dist else None,
+            prepared_at=now,
+            prepared_by_user_id=actor_user_id,
+            status="completed",
+            progress=100,
         )
-    except Exception:
-        # 历史记录写入失败不阻塞回填主流程
-        pass
+        db.add(backfill_task)
+    backfill_task.radius_km = actual_radius_km
+    backfill_task.data_years = round(source_years, 6)
+    backfill_task.updated_tower_count = updated_tower_count
+    backfill_task.missing_geo_count = missing_geo_count
+    backfill_task.avg_density = round(sum(density_values) / len(density_values), 6) if density_values else None
+    backfill_task.min_density = round(min(density_values), 6) if density_values else None
+    backfill_task.max_density = round(max(density_values), 6) if density_values else None
+    backfill_task.strike_count = len(candidate_rows)
+    backfill_task.warnings = warnings
+    backfill_task.status = "completed"
+    backfill_task.progress = 100
+    backfill_task.error_message = None
+    if circle_image_object_key:
+        backfill_task.circle_image_object_key = circle_image_object_key
 
     db.commit()
 

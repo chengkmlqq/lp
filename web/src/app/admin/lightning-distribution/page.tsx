@@ -67,6 +67,7 @@ import type {
   LightningDensityBackfillTowersResponse,
   LightningDensityBackfillTaskSummary,
   LightningDensityBackfillHistoryResponse,
+  LightningDensityPreparationAsyncResponse,
   LightningLpDrawResponse,
   LightningLinkedLineSummary,
   LightningLinkedLinesResponse,
@@ -366,6 +367,17 @@ export default function AdminLightningDistributionPage() {
         void refreshAll();
       } else if (name === "distribution.lp_draw_failed") {
         setError(payload?.error || "LP 分区密度图绘制失败");
+        void refreshAll();
+      } else if (name === "density_backfill.started") {
+        setError("");
+        setSuccess("地闪密度回填任务已开始，可在回填记录中查看进度。");
+        void refreshAll();
+      } else if (name === "density_backfill.completed") {
+        setError("");
+        setSuccess("地闪密度回填完成，可在回填记录中查看 Ng 图。");
+        void refreshAll();
+      } else if (name === "density_backfill.failed") {
+        setError(payload?.error || "地闪密度回填失败，请在回填记录中查看详情");
         void refreshAll();
       }
     }, [refreshAll]),
@@ -1468,6 +1480,14 @@ function BackfillRecordsView({
 
   const linkedLinesQuery = useQuery({
     queryKey: [linkedLinesPath],
+    // 存在 pending/processing 回填任务时按 ~5s 轮询，WS 断开也能推进到最终态
+    refetchInterval: (query) => {
+      const items = (query.state.data as LightningDensityBackfillHistoryResponse | undefined)?.items ?? [];
+      const hasActive = items.some(
+        (row) => row.status === "pending" || row.status === "processing",
+      );
+      return hasActive ? 5000 : false;
+    },
     queryFn: async () => {
       const response = await fetchWithAuth(linkedLinesPath);
       if (!response.ok) {
@@ -1509,6 +1529,25 @@ function BackfillRecordsView({
         render: (value: string | null) => value || "-",
       },
       {
+        title: "回填状态",
+        dataIndex: "status",
+        width: 110,
+        render: (value: string, row: LightningDensityBackfillTaskSummary) => {
+          const meta = STATUS_META[value] ?? { color: "default" as const, label: value || "-" };
+          const tip =
+            value === "failed"
+              ? row.error_message || "回填失败"
+              : value === "processing" || value === "pending"
+                ? `进度 ${row.progress ?? 0}%`
+                : undefined;
+          return (
+            <Tooltip title={tip}>
+              <Tag color={meta.color}>{meta.label}</Tag>
+            </Tooltip>
+          );
+        },
+      },
+      {
         title: "回填塔数",
         dataIndex: "updated_tower_count",
         width: 90,
@@ -1537,35 +1576,50 @@ function BackfillRecordsView({
         key: "actions",
         width: 200,
         fixed: "right",
-        render: (_: unknown, row: LightningDensityBackfillTaskSummary) => (
-          <Space size={4}>
-            <Button
-              type="link"
-              size="small"
-              style={{ padding: 0 }}
-              disabled={!canReadLogs}
-              onClick={() => onOpenLog(record.task_id, "回填日志", record.source_file_name)}
-            >
-              日志
-            </Button>
-            <Button
-              type="link"
-              size="small"
-              style={{ padding: 0 }}
-              onClick={() => setTowerDrawer(row)}
-            >
-              详情
-            </Button>
-            <Button
-              type="link"
-              size="small"
-              style={{ padding: 0 }}
-              onClick={() => setNgImageDrawer(row)}
-            >
-              Ng图
-            </Button>
-          </Space>
-        ),
+        render: (_: unknown, row: LightningDensityBackfillTaskSummary) => {
+          const busy = row.status === "pending" || row.status === "processing";
+          return (
+            <Space size={4}>
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0 }}
+                disabled={!canReadLogs}
+                onClick={() => onOpenLog(record.task_id, "回填日志", record.source_file_name)}
+              >
+                日志
+              </Button>
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0 }}
+                disabled={busy}
+                onClick={() => setTowerDrawer(row)}
+              >
+                详情
+              </Button>
+              <Tooltip
+                title={
+                  busy
+                    ? "回填处理中，完成后可查看"
+                    : !row.has_circle_image
+                      ? "该次回填未生成沿线圆图（历史数据），重新回填后可查看"
+                      : undefined
+                }
+              >
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0 }}
+                  disabled={busy || !row.has_circle_image}
+                  onClick={() => setNgImageDrawer(row)}
+                >
+                  Ng图
+                </Button>
+              </Tooltip>
+            </Space>
+          );
+        },
       },
     ],
     [canReadLogs, onOpenLog, record.task_id, record.source_file_name],
@@ -1628,6 +1682,7 @@ function BackfillRecordsView({
         onClose={() => setTowerDrawer(null)}
       />
       <NgImageDrawer
+        key={ngImageDrawer?.id ?? "closed"}
         record={record}
         line={ngImageDrawer}
         fetchWithAuth={fetchWithAuth}
@@ -1832,38 +1887,65 @@ function NgImageDrawer({
 }) {
   const { message: messageApi } = App.useApp();
 
+  // 按回填任务读取各自生成的「沿线圆」图（每次回填一张，互不覆盖）；
+  // 对象 URL 放在本地 state 而非 react-query 缓存，避免关抽屉后清理
+  // revoke 导致重新打开命中已失效 URL（连续快速点击 Ng图 加载不出来的根因）。
+  // 父级以 key=line.id 重挂载本组件，切行/重开时状态自然复位。
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(() => !!line);
+  const [failed, setFailed] = useState(false);
+  const [errorText, setErrorText] = useState("");
+
   const circleImagePath = line
-    ? `/api/v1/lightning-currents/distributions/${record.id}/circle-image`
+    ? `/api/v1/lightning-currents/density-backfill-tasks/${line.id}/circle-image`
     : null;
-  const circleImageQuery = useQuery({
-    queryKey: [circleImagePath],
-    enabled: !!circleImagePath,
-    queryFn: async () => {
-      if (!circleImagePath) return null;
-      const response = await fetchWithAuth(circleImagePath);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      const blob = await response.blob();
-      if (blob.size === 0) return null;
-      return URL.createObjectURL(blob);
-    },
-  });
 
   useEffect(() => {
-    const objectUrl = circleImageQuery.data;
-    if (!objectUrl) return;
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [circleImageQuery.data]);
+    if (!circleImagePath) return;
+    let cancelled = false;
+    fetchWithAuth(circleImagePath)
+      .then(async (response) => {
+        if (cancelled) return;
+        if (!response.ok) {
+          const detail = await readApiError(response);
+          throw new Error(detail);
+        }
+        const blob = await response.blob();
+        if (cancelled) return;
+        if (blob.size === 0) {
+          setImageUrl(null);
+          setFailed(false);
+          setErrorText("");
+          return;
+        }
+        setImageUrl(URL.createObjectURL(blob));
+        setFailed(false);
+        setErrorText("");
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setFailed(true);
+        setErrorText(error instanceof Error ? error.message : "加载失败");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [circleImagePath, fetchWithAuth]);
 
-  const loading = circleImageQuery.isFetching;
-  const failed = !!circleImageQuery.error;
-  const errorText = circleImageQuery.error instanceof Error ? circleImageQuery.error.message : "";
-  const imageUrl = circleImageQuery.data;
+  // 行切换 / 组件卸载时回收当前对象 URL，避免内存泄漏
+  useEffect(() => {
+    return () => {
+      if (imageUrl) URL.revokeObjectURL(imageUrl);
+    };
+  }, [imageUrl]);
 
   const handleDownload = async () => {
+    if (!circleImagePath) return;
     try {
-      const response = await fetchWithAuth(`/api/v1/lightning-currents/distributions/${record.id}/circle-image`);
+      const response = await fetchWithAuth(circleImagePath);
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
@@ -1871,7 +1953,7 @@ function NgImageDrawer({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${record.source_file_name || "lightning_density"}-沿线圆密度图.png`;
+      anchor.download = `${record.source_file_name || "lightning_density"}-${line?.line_name || "line"}-沿线圆密度图.png`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -1889,7 +1971,7 @@ function NgImageDrawer({
       width={720}
       destroyOnHidden
       extra={
-        <Button icon={<DownloadOutlined />} onClick={handleDownload}>
+        <Button icon={<DownloadOutlined />} onClick={handleDownload} disabled={!imageUrl}>
           下载
         </Button>
       }
@@ -2012,7 +2094,7 @@ function DrawLpBody({
       const body = { line_id: lineId, distribution_id: data?.id };
       const results: string[] = [];
 
-      // 1. 绘图任务
+      // 1. 绘图任务（异步，立即返回 task_id）
       try {
         const drawResp = await fetchWithAuth(
           `/api/v1/lightning-currents/distributions/${data?.id}/draw-lp`,
@@ -2026,16 +2108,17 @@ function DrawLpBody({
         results.push("绘图任务提交失败");
       }
 
-      // 2. 线路密度回填
+      // 2. 线路密度回填（异步，立即返回 task_id，计算由 Worker 执行）
       try {
         const densityResp = await fetchWithAuth(
           `/api/v1/lightning-currents/prepare-density`,
           { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
         );
         if (densityResp.ok) {
-          results.push("密度回填完成");
+          const p = (await densityResp.json()) as LightningDensityPreparationAsyncResponse;
+          results.push(`密度回填任务已提交（ID: ${p.task_id}），请稍后在回填记录中查看进度`);
         } else {
-          results.push("密度回填失败");
+          results.push("密度回填任务提交失败");
         }
       } catch {
         results.push("密度回填提交失败");

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.database import Base
@@ -17,9 +17,10 @@ if TYPE_CHECKING:
 class LightningDensityBackfillTask(Base):
     """地闪密度回填历史记录（每次回填生成一条，最新在上）。
 
-    与雷电流回填历史（lightning_current_backfill_task）对齐；回填操作本身是同步的
-    （prepare-density 直接改塔的 raw_extra_json.lightning_density），这里只保留
-    「哪次回填、用了哪个分布、回填了多少塔、Ng 范围」的历史快照，供回填记录 tab 展示。
+    与雷电流回填历史（lightning_current_backfill_task）对齐；回填操作由
+    Celery 异步驱动（prepare_line_lightning_density_job），本表同时承载
+    任务状态机（status/progress/task_id/error_message）与「哪次回填、用了哪个
+    分布、回填了多少塔、Ng 范围」的历史快照，供回填记录 tab 展示。
     """
 
     __tablename__ = "lightning_density_backfill_task"
@@ -45,6 +46,15 @@ class LightningDensityBackfillTask(Base):
     strike_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     warnings: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+    # ---- 异步任务状态机（对齐 lightning_current_backfill_task，LP-432 模式）----
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # 本次回填生成的「沿线圆」密度图对象键（每次回填各自一张，互不覆盖）
+    circle_image_object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

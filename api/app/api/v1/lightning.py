@@ -27,7 +27,7 @@ from ...schemas.lightning import (
     LightningCurrentExceedanceResponse,
     LightningCurrentBackfillTaskSummary,
     LightningDensityPreparationRequest,
-    LightningDensityPreparationResponse,
+    LightningDensityPreparationAsyncResponse,
     LightningDistributionImportResponse,
     LightningDistributionListResponse,
     LightningDistributionRecord,
@@ -53,6 +53,7 @@ from ...services.lightning_service import (
     get_lightning_distribution_image_content,
     get_lightning_distribution_lp_image_content,
     get_lightning_distribution_circle_image_content,
+    get_lightning_density_backfill_circle_image_content,
     get_lightning_distribution_status,
     get_linked_lines_for_distribution,
     get_lightning_density_backfill_towers,
@@ -479,6 +480,19 @@ def get_lightning_distribution_circle_image_endpoint(
     return StreamingResponse(iter([content]), media_type=media_type or "image/png")
 
 
+@router.get("/density-backfill-tasks/{backfill_task_id}/circle-image")
+def get_lightning_density_backfill_circle_image_endpoint(
+    backfill_task_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """读取某次地闪密度回填任务自带的「沿线圆」密度图（每次回填各自一张）。"""
+    content, media_type = get_lightning_density_backfill_circle_image_content(db, backfill_task_id)
+    if content is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="该次回填未生成沿线圆密度图")
+    return StreamingResponse(iter([content]), media_type=media_type or "image/png")
+
+
 # ---------------------------------------------------------------------------
 # 线路回填（prepare）
 # ---------------------------------------------------------------------------
@@ -491,12 +505,12 @@ def prepare_lightning_current_for_line(
     return prepare_line_lightning_current(db, payload, actor_user_id=current_user.user.id)
 
 
-@router.post("/prepare-density", response_model=LightningDensityPreparationResponse)
+@router.post("/prepare-density", response_model=LightningDensityPreparationAsyncResponse)
 def prepare_lightning_density_for_line(
     payload: LightningDensityPreparationRequest,
     current_user: CurrentUser = Depends(require_permission("lightning.manage")),
     db: Session = Depends(get_db),
-) -> LightningDensityPreparationResponse:
+) -> LightningDensityPreparationAsyncResponse:
     return prepare_line_lightning_density(db, payload, actor_user_id=current_user.user.id)
 
 

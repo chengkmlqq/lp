@@ -284,12 +284,27 @@ class LightningDensityBackfillTaskSummary(BaseModel):
     max_density: float | None = None
     strike_count: int | None = None
     warnings: list[str] = Field(default_factory=list)
+    # ---- 异步任务状态（LP：地闪密度回填异步化）----
+    status: str = "completed"
+    progress: int = 0
+    task_id: str | None = None
+    error_message: str | None = None
+    has_circle_image: bool = False
 
 
 class LightningDensityBackfillHistoryResponse(BaseModel):
     distribution_id: str
     items: list[LightningDensityBackfillTaskSummary]
     total: int
+
+
+class LightningDensityPreparationAsyncResponse(BaseModel):
+    """地闪密度回填异步提交响应（POST /prepare-density）。"""
+
+    task_id: str
+    backfill_task_id: str
+    line_id: str
+    status: str = "processing"
 
 
 # ---------------------------------------------------------------------------
