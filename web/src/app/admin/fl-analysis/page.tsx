@@ -72,7 +72,11 @@ export default function AdminFlAnalysisPage() {
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [createJobForm] = Form.useForm<CreateJobFormValues>();
   const selectedLineId = Form.useWatch("line_id", createJobForm);
-  const selectedCreateJobType = Form.useWatch("job_type", createJobForm) ?? CREATE_JOB_DEFAULTS.job_type;
+  // job_type 的 Form.Item 仅在第 1 步（基础信息）挂载，进入第 2/3 步后字段注销，
+  // 默认 useWatch 只读「已注册字段」的快照，会导致任务类型瞬时回落为默认值 normal，
+  // 使「同跳计算」等非默认类型在点下一步后又被重置回第一步。preserve:true 读取全量
+  // store（含已注销但保留值的字段），保证跨步骤任务类型稳定。
+  const selectedCreateJobType = Form.useWatch("job_type", { form: createJobForm, preserve: true }) ?? CREATE_JOB_DEFAULTS.job_type;
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage") || hasPermission("tower.manage");
