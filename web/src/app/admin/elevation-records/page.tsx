@@ -103,6 +103,8 @@ type LineSummary = {
   id: string;
   code: string | null;
   name: string | null;
+  voltage_kv: number | null;
+  bbox_overlap: boolean | null;
 };
 
 type LineListResponse = {
@@ -301,11 +303,32 @@ export default function ElevationRecordsPage() {
     },
   });
 
-  // Fetch lines for apply dialog
+  // Fetch lines for apply dialog（对齐地闪密度页面：bbox_mode=mark 标记线路是否在高程文件覆盖范围内）
+  const applyBboxParam = useMemo(() => {
+    if (!selectedRecord) return null;
+    const { bbox_min_lon, bbox_max_lon, bbox_min_lat, bbox_max_lat } = selectedRecord;
+    if (
+      typeof bbox_min_lon !== "number" ||
+      typeof bbox_max_lon !== "number" ||
+      typeof bbox_min_lat !== "number" ||
+      typeof bbox_max_lat !== "number"
+    ) {
+      return null;
+    }
+    return `${bbox_min_lat},${bbox_min_lon},${bbox_max_lat},${bbox_max_lon}`;
+  }, [selectedRecord]);
+
   const { data: linesData } = useQuery({
-    queryKey: ["lines"],
+    queryKey: ["lines", applyBboxParam, selectedRecord?.id],
     queryFn: async () => {
-      const response = await fetchWithAuth("/api/v1/lines?limit=1000");
+      const params = new URLSearchParams();
+      params.set("limit", "1000");
+      if (applyBboxParam) {
+        // bbox_mode=mark：返回全部线路并标记每条是否与高程文件覆盖范围重叠（不隐藏）
+        params.set("bbox", applyBboxParam);
+        params.set("bbox_mode", "mark");
+      }
+      const response = await fetchWithAuth(`/api/v1/lines?${params.toString()}`);
       return readJsonResponse<LineListResponse>(response);
     },
   });
@@ -1163,10 +1186,22 @@ export default function ElevationRecordsPage() {
               placeholder="选择线路"
               showSearch
               optionFilterProp="label"
-              options={linesData?.items?.map((line) => ({
-                label: `${line.code ?? "-"} - ${line.name ?? "-"}`,
-                value: line.id,
-              }))}
+              options={(linesData?.items ?? []).map((line) => {
+                const inRange = applyBboxParam ? (line.bbox_overlap !== false) : true;
+                const label = `${line.code ?? "-"} - ${line.name ?? "-"}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`;
+                return {
+                  label: (
+                    <Space size={6} style={{ width: "100%", justifyContent: "space-between" }}>
+                      <span>{label}</span>
+                      {applyBboxParam && !inRange && (
+                        <Tag color="warning" style={{ marginInlineEnd: 0 }}>不在数据范围内</Tag>
+                      )}
+                    </Space>
+                  ),
+                  value: line.id,
+                  disabled: applyBboxParam ? !inRange : false,
+                };
+              })}
             />
           </Form.Item>
 
