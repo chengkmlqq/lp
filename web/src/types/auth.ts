@@ -600,6 +600,7 @@ export type ElevationApplyJobSummary = {
   finished_at: string | null;
   create_date: string;
   create_user: string | null;
+  create_user_name: string | null;
   update_date: string;
   update_user: string | null;
 };

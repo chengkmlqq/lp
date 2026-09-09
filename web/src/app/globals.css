@@ -4221,7 +4221,7 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 12px;
+  padding: 24px;
 }
 
 /* LP-249: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，

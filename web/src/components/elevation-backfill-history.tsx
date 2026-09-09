@@ -330,12 +330,6 @@ export function ElevationBackfillHistoryTable({
   const columns = useMemo<ColumnsType<ElevationApplyJobSummary>>(
     () => [
       {
-        title: "回填时间",
-        dataIndex: "create_date",
-        width: 170,
-        render: (value: string) => formatDateTime(value),
-      },
-      {
         title: "线路名称",
         dataIndex: "line_name",
         width: 180,
@@ -347,6 +341,12 @@ export function ElevationBackfillHistoryTable({
         dataIndex: "status",
         width: 100,
         render: (value: string) => renderStatus(value),
+      },
+      {
+        title: "回填时间",
+        dataIndex: "create_date",
+        width: 170,
+        render: (value: string) => formatDateTime(value),
       },
       {
         title: "总杆塔",
@@ -381,21 +381,9 @@ export function ElevationBackfillHistoryTable({
       {
         title: "操作人",
         dataIndex: "create_user",
-        width: 100,
+        width: 140,
         ellipsis: true,
-        render: (value: string | null) => value || "-",
-      },
-      {
-        title: "错误信息",
-        dataIndex: "error_message",
-        width: 200,
-        ellipsis: { showTitle: true },
-        render: (value: string | null) => {
-          if (!value) {
-            return <Typography.Text type="secondary">-</Typography.Text>;
-          }
-          return <Typography.Text type="danger">{value}</Typography.Text>;
-        },
+        render: (value: string | null, row: ElevationApplyJobSummary) => row.create_user_name || value || "-",
       },
       {
         title: "操作",
@@ -441,7 +429,7 @@ export function ElevationBackfillHistoryTable({
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
-      style={{ padding: 16, minHeight: ELEVATION_HISTORY_MIN_SCROLL_Y }}
+      style={{ padding: 24, minHeight: ELEVATION_HISTORY_MIN_SCROLL_Y }}
     >
       {/* 线路名称过滤 + 查询（点击查询后走后端 keyword 过滤） */}
       <div className="admin-filter-bar">
@@ -526,7 +514,7 @@ export function ElevationBackfillHistoryTable({
                 {renderStatus(detailJob.status)}
               </Descriptions.Item>
               <Descriptions.Item label="操作人">
-                {detailJob.create_user || "-"}
+                {detailJob.create_user_name || detailJob.create_user || "-"}
               </Descriptions.Item>
               <Descriptions.Item label="总杆塔">
                 {detailJob.total_tower_count ?? 0}

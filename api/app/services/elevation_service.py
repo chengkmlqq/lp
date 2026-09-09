@@ -134,7 +134,11 @@ def _detect_gdem_dataset(filename: str) -> dict[str, Any] | None:
     return None
 
 
-def serialize_job(item: ElevationApplyJob) -> ElevationApplyJobSummary:
+def serialize_job(
+    item: ElevationApplyJob,
+    *,
+    create_user_name: str | None = None,
+) -> ElevationApplyJobSummary:
     line = item.line
     file_record = item.file_record
     return ElevationApplyJobSummary(
@@ -157,6 +161,7 @@ def serialize_job(item: ElevationApplyJob) -> ElevationApplyJobSummary:
         finished_at=item.finished_at,
         create_date=item.create_date,
         create_user=item.create_user,
+        create_user_name=create_user_name,
         update_date=item.update_date,
         update_user=item.update_user,
     )
@@ -326,8 +331,19 @@ def list_jobs(
     items = db.execute(
         stmt.order_by(ElevationApplyJob.create_date.desc(), ElevationApplyJob.id.desc()).limit(limit)
     ).scalars().all()
+
+    # 批量解析操作人 username（一次查询避免 N+1），供前端中文/可读名展示
+    user_ids = {item.create_user for item in items if item.create_user}
+    create_user_names: dict[str, str] = {}
+    if user_ids:
+        user_rows = db.execute(select(User.id, User.username).where(User.id.in_(list(user_ids)))).all()
+        create_user_names = {str(row[0]): str(row[1]) for row in user_rows}
+
     return ElevationApplyJobListResponse(
-        items=[serialize_job(item) for item in items],
+        items=[
+            serialize_job(item, create_user_name=create_user_names.get(item.create_user))
+            for item in items
+        ],
         total=total,
     )
 

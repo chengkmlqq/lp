@@ -221,6 +221,7 @@ class ElevationApplyJobSummary(BaseModel):
     finished_at: datetime | None = None
     create_date: datetime
     create_user: str | None = None
+    create_user_name: str | None = None
     update_date: datetime
     update_user: str | None = None
 
