@@ -2,12 +2,30 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Empty, Space, Table, Tag, Typography } from "antd";
+import {
+  Button,
+  Descriptions,
+  Drawer,
+  Empty,
+  Form,
+  Input,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { SearchOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
-import type { ElevationApplyJobListResponse, ElevationApplyJobSummary } from "@/types/auth";
+import type {
+  ElevationApplyJobListResponse,
+  ElevationApplyJobSummary,
+  ElevationApplyJobTowerAction,
+  ElevationApplyJobTowerDetail,
+  ElevationApplyJobTowerListResponse,
+} from "@/types/auth";
 
 const ELEVATION_HISTORY_MIN_SCROLL_Y = 180;
 const ELEVATION_HISTORY_ESTIMATED_HEADER_HEIGHT = 56;
@@ -56,6 +74,36 @@ function renderMode(mode: string) {
   return <Tag>{mode}</Tag>;
 }
 
+function formatNumber(value: number | null | undefined, digits = 3): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "-";
+  }
+  return value.toFixed(digits);
+}
+
+function formatCoordinate(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "-";
+  }
+  return value.toFixed(6);
+}
+
+function renderTowerAction(action: ElevationApplyJobTowerAction) {
+  if (action === "updated") {
+    return <Tag color="green">已更新</Tag>;
+  }
+  if (action === "skipped") {
+    return <Tag color="default">已跳过</Tag>;
+  }
+  if (action === "missing_geo") {
+    return <Tag color="orange">缺坐标</Tag>;
+  }
+  if (action === "unmatched") {
+    return <Tag color="red">未命中</Tag>;
+  }
+  return <Tag>{action}</Tag>;
+}
+
 export function ElevationBackfillHistoryTable({
   recordId,
 }: ElevationBackfillHistoryTableProps) {
@@ -64,6 +112,15 @@ export function ElevationBackfillHistoryTable({
 
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(ELEVATION_HISTORY_MIN_SCROLL_Y);
+
+  // 回填任务 → 杆塔回填数据明细（抽屉）
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailJob, setDetailJob] = useState<ElevationApplyJobSummary | null>(null);
+  const [towerPagination, setTowerPagination] = useState({ current: 1, pageSize: 20 });
+
+  // 线路名称过滤（表单草稿值 + 已应用值，点击「查询」后走后端过滤）
+  const [keywordDraft, setKeywordDraft] = useState("");
+  const [keyword, setKeyword] = useState("");
 
   const canRead = hasPermission("elevation.read") || hasPermission("elevation.manage");
 
@@ -130,8 +187,17 @@ export function ElevationBackfillHistoryTable({
     const params = new URLSearchParams();
     params.set("limit", String(pagination.pageSize));
     params.set("offset", String((pagination.current - 1) * pagination.pageSize));
+    const trimmedKeyword = keyword.trim();
+    if (trimmedKeyword) {
+      params.set("keyword", trimmedKeyword);
+    }
     return `/api/v1/elevation/records/${recordId}/jobs?${params.toString()}`;
-  }, [recordId, pagination.current, pagination.pageSize]);
+  }, [keyword, pagination.current, pagination.pageSize, recordId]);
+
+  const handleSearch = useCallback(() => {
+    setKeyword(keywordDraft.trim());
+    setPagination((previous) => ({ ...previous, current: 1 }));
+  }, [keywordDraft]);
 
   const listQuery = useQuery<ElevationApplyJobListResponse>({
     queryKey: [listPath],
@@ -145,6 +211,122 @@ export function ElevationBackfillHistoryTable({
     },
   });
 
+  const detailTowersPath = useMemo(() => {
+    if (!detailJob || !detailOpen) {
+      return null;
+    }
+    const params = new URLSearchParams();
+    params.set("limit", String(towerPagination.pageSize));
+    params.set("offset", String((towerPagination.current - 1) * towerPagination.pageSize));
+    return `/api/v1/elevation/jobs/${detailJob.id}/towers?${params.toString()}`;
+  }, [detailJob, detailOpen, towerPagination.current, towerPagination.pageSize]);
+
+  const detailTowersQuery = useQuery<ElevationApplyJobTowerListResponse>({
+    queryKey: ["elevation", "job-towers", detailJob?.id ?? "", towerPagination.current, towerPagination.pageSize],
+    enabled: !!user && canRead && !!detailJob && !!detailOpen && !!detailTowersPath,
+    queryFn: async () => {
+      const response = await fetchWithAuth(detailTowersPath!);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as ElevationApplyJobTowerListResponse;
+    },
+  });
+
+  const openDetail = useCallback((job: ElevationApplyJobSummary) => {
+    setTowerPagination({ current: 1, pageSize: 20 });
+    setDetailJob(job);
+    setDetailOpen(true);
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    setDetailOpen(false);
+    setDetailJob(null);
+  }, []);
+
+  const towerColumns = useMemo<ColumnsType<ElevationApplyJobTowerDetail>>(
+    () => [
+      {
+        title: "序号",
+        dataIndex: "seq_no",
+        key: "seq_no",
+        width: 60,
+        render: (value: number | null) => value ?? "-",
+      },
+      {
+        title: "杆塔编号",
+        dataIndex: "tower_no",
+        key: "tower_no",
+        width: 120,
+        render: (value: string | null, row) => value || row.tower_id || "-",
+      },
+      {
+        title: "经度",
+        dataIndex: "longitude",
+        key: "longitude",
+        width: 110,
+        render: (value: number | null) => formatCoordinate(value),
+      },
+      {
+        title: "纬度",
+        dataIndex: "latitude",
+        key: "latitude",
+        width: 110,
+        render: (value: number | null) => formatCoordinate(value),
+      },
+      {
+        title: "回填结果",
+        dataIndex: "action",
+        key: "action",
+        width: 90,
+        render: (value: ElevationApplyJobTowerAction) => renderTowerAction(value),
+      },
+      {
+        title: "回填前海拔(m)",
+        dataIndex: "altitude_before_m",
+        key: "altitude_before_m",
+        width: 110,
+        render: (value: number | null) => formatNumber(value, 3),
+      },
+      {
+        title: "回填后海拔(m)",
+        dataIndex: "altitude_after_m",
+        key: "altitude_after_m",
+        width: 110,
+        render: (value: number | null) => formatNumber(value, 3),
+      },
+      {
+        title: "回填前倾角1(°)",
+        dataIndex: "slope_1_before",
+        key: "slope_1_before",
+        width: 110,
+        render: (value: number | null) => formatNumber(value, 3),
+      },
+      {
+        title: "回填后倾角1(°)",
+        dataIndex: "slope_1_after",
+        key: "slope_1_after",
+        width: 110,
+        render: (value: number | null) => formatNumber(value, 3),
+      },
+      {
+        title: "回填前倾角2(°)",
+        dataIndex: "slope_2_before",
+        key: "slope_2_before",
+        width: 110,
+        render: (value: number | null) => formatNumber(value, 3),
+      },
+      {
+        title: "回填后倾角2(°)",
+        dataIndex: "slope_2_after",
+        key: "slope_2_after",
+        width: 110,
+        render: (value: number | null) => formatNumber(value, 3),
+      },
+    ],
+    [],
+  );
+
   const columns = useMemo<ColumnsType<ElevationApplyJobSummary>>(
     () => [
       {
@@ -154,23 +336,11 @@ export function ElevationBackfillHistoryTable({
         render: (value: string) => formatDateTime(value),
       },
       {
-        title: "线路编号",
-        dataIndex: "line_code",
-        width: 120,
-        render: (value: string | null) => value || "-",
-      },
-      {
         title: "线路名称",
         dataIndex: "line_name",
         width: 180,
         ellipsis: { showTitle: true },
         render: (value: string | null) => value || "-",
-      },
-      {
-        title: "模式",
-        dataIndex: "mode",
-        width: 100,
-        render: (value: string) => renderMode(value),
       },
       {
         title: "状态",
@@ -227,8 +397,23 @@ export function ElevationBackfillHistoryTable({
           return <Typography.Text type="danger">{value}</Typography.Text>;
         },
       },
+      {
+        title: "操作",
+        key: "actions",
+        width: 90,
+        render: (_: unknown, row) => (
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0 }}
+            onClick={() => openDetail(row)}
+          >
+            查看明细
+          </Button>
+        ),
+      },
     ],
-    [],
+    [openDetail],
   );
 
   if (initializing) {
@@ -255,43 +440,161 @@ export function ElevationBackfillHistoryTable({
 
   return (
     <div
-      ref={tableScrollAnchorRef}
       className="flex min-h-0 flex-1 flex-col"
-      style={{ minHeight: ELEVATION_HISTORY_MIN_SCROLL_Y }}
+      style={{ padding: 16, minHeight: ELEVATION_HISTORY_MIN_SCROLL_Y }}
     >
-      <Space style={{ marginBottom: 8 }}>
-        <Typography.Text type="secondary">
-          共 {listQuery.data?.total ?? 0} 条回填记录
-        </Typography.Text>
-      </Space>
-      <Table<ElevationApplyJobSummary>
-        rowKey="id"
-        size="small"
-        loading={listQuery.isFetching}
-        dataSource={listQuery.data?.items ?? []}
-        columns={columns}
-        tableLayout="fixed"
-        scroll={{ y: tableScrollY }}
-        pagination={{
-          current: pagination.current,
-          pageSize: pagination.pageSize,
-          total: listQuery.data?.total ?? 0,
-          showSizeChanger: true,
-          pageSizeOptions: [10, 20, 50],
-          showTotal: (total) => `共 ${total} 条`,
-          onChange: (page, pageSize) => {
-            setPagination({ current: page, pageSize });
-          },
-        }}
-        locale={{
-          emptyText: (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="暂无回填记录。"
+      {/* 线路名称过滤 + 查询（点击查询后走后端 keyword 过滤） */}
+      <div className="admin-filter-bar">
+        <Form layout="inline" onFinish={handleSearch}>
+          <Form.Item label="线路名称" style={{ marginBottom: 0 }}>
+            <Input
+              allowClear
+              placeholder="输入线路名称/编号"
+              style={{ width: 280 }}
+              value={keywordDraft}
+              onChange={(event) => setKeywordDraft(event.target.value)}
+              onPressEnter={handleSearch}
             />
-          ),
-        }}
-      />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
+              查询
+            </Button>
+          </Form.Item>
+        </Form>
+      </div>
+
+      {/* 表格自适应高度区域：动态计算 body 滚动高度，分页固定表格右下角 */}
+      <div ref={tableScrollAnchorRef} className="flex-1 min-h-0">
+        <Table<ElevationApplyJobSummary>
+          rowKey="id"
+          size="small"
+          loading={listQuery.isFetching}
+          dataSource={listQuery.data?.items ?? []}
+          columns={columns}
+          tableLayout="fixed"
+          scroll={{ y: tableScrollY }}
+          pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: listQuery.data?.total ?? 0,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50],
+            showTotal: (total) => `共 ${total} 条`,
+            position: ["bottomRight"],
+            onChange: (page, pageSize) => {
+              setPagination({ current: page, pageSize });
+            },
+          }}
+          locale={{
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="暂无回填记录。"
+              />
+            ),
+          }}
+        />
+      </div>
+
+      {/* 回填任务 → 杆塔回填数据明细 */}
+      <Drawer
+        title={detailJob
+          ? `回填任务明细 - ${[detailJob.line_code, detailJob.line_name].filter(Boolean).join(" ")}`
+          : "回填任务明细"}
+        open={detailOpen}
+        onClose={closeDetail}
+        width={1120}
+        destroyOnHidden
+      >
+        {detailJob && (
+          <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            <Descriptions bordered size="small" column={3}>
+              <Descriptions.Item label="线路">
+                {[detailJob.line_code, detailJob.line_name].filter(Boolean).join(" ") || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="回填时间">
+                {formatDateTime(detailJob.create_date)}
+              </Descriptions.Item>
+              <Descriptions.Item label="完成时间">
+                {formatDateTime(detailJob.finished_at)}
+              </Descriptions.Item>
+              <Descriptions.Item label="模式">
+                {renderMode(detailJob.mode)}
+              </Descriptions.Item>
+              <Descriptions.Item label="状态">
+                {renderStatus(detailJob.status)}
+              </Descriptions.Item>
+              <Descriptions.Item label="操作人">
+                {detailJob.create_user || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="总杆塔">
+                {detailJob.total_tower_count ?? 0}
+              </Descriptions.Item>
+              <Descriptions.Item label="更新杆塔">
+                {detailJob.updated_tower_count ?? 0}
+              </Descriptions.Item>
+              <Descriptions.Item label="跳过">
+                {detailJob.skipped_tower_count ?? 0}
+              </Descriptions.Item>
+              <Descriptions.Item label="缺坐标">
+                {detailJob.missing_geo_count ?? 0}
+              </Descriptions.Item>
+              <Descriptions.Item label="未命中">
+                {detailJob.unmatched_count ?? 0}
+              </Descriptions.Item>
+              <Descriptions.Item label="任务ID">
+                {detailJob.task_id || "-"}
+              </Descriptions.Item>
+              {detailJob.error_message && (
+                <Descriptions.Item label="错误/警告" span={3}>
+                  <Typography.Text type={detailJob.status === "failed" ? "danger" : "warning"}>
+                    {detailJob.error_message}
+                  </Typography.Text>
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+
+            <div>
+              <Typography.Title level={5} style={{ marginTop: 0 }}>
+                杆塔回填数据明细
+              </Typography.Title>
+              <Table<ElevationApplyJobTowerDetail>
+                rowKey="id"
+                columns={towerColumns}
+                dataSource={detailTowersQuery.data?.items ?? []}
+                loading={detailTowersQuery.isFetching}
+                size="small"
+                tableLayout="fixed"
+                scroll={{ x: 1160 }}
+                pagination={{
+                  current: towerPagination.current,
+                  pageSize: towerPagination.pageSize,
+                  total: detailTowersQuery.data?.total ?? 0,
+                  showSizeChanger: true,
+                  pageSizeOptions: [10, 20, 50, 100],
+                  showTotal: (total) => `共 ${total} 条`,
+                  onChange: (page, pageSize) => {
+                    setTowerPagination({ current: page, pageSize });
+                  },
+                }}
+                locale={{
+                  emptyText: (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={
+                        detailJob.status === "success"
+                          ? "该任务暂无杆塔明细（历史任务未保存逐塔快照，重新回填后即可查看）。"
+                          : "任务尚未生成杆塔明细，处理完成后可查看。"
+                      }
+                    />
+                  ),
+                }}
+              />
+            </div>
+          </Space>
+        )}
+      </Drawer>
     </div>
   );
 }

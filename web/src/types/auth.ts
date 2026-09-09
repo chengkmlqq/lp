@@ -260,6 +260,7 @@ export type ElevationDatasetUsageStatus = "idle" | "in_use";
 export type ElevationDatasetTerrainStatus = "pending" | "processing" | "ready" | "failed" | "not_supported";
 export type ElevationApplyMode = "fill_null_only" | "overwrite_all";
 export type ElevationApplyJobStatus = "pending" | "running" | "success" | "failed";
+export type ElevationApplyJobTowerAction = "updated" | "skipped" | "missing_geo" | "unmatched";
 export type ElevationDataImportJobStatus = "pending" | "running" | "success" | "failed";
 
 export type ElevationTerrainBounds = {
@@ -605,6 +606,30 @@ export type ElevationApplyJobSummary = {
 
 export type ElevationApplyJobListResponse = {
   items: ElevationApplyJobSummary[];
+  total: number;
+};
+
+export type ElevationApplyJobTowerDetail = {
+  id: string;
+  job_id: string;
+  tower_id: string;
+  tower_no: string | null;
+  seq_no: number | null;
+  longitude: number | null;
+  latitude: number | null;
+  // updated=已更新 / skipped=已跳过 / missing_geo=缺坐标 / unmatched=未命中
+  action: ElevationApplyJobTowerAction;
+  altitude_before_m: number | null;
+  altitude_after_m: number | null;
+  slope_1_before: number | null;
+  slope_1_after: number | null;
+  slope_2_before: number | null;
+  slope_2_after: number | null;
+  create_date: string;
+};
+
+export type ElevationApplyJobTowerListResponse = {
+  items: ElevationApplyJobTowerDetail[];
   total: number;
 };
 

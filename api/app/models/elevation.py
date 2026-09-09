@@ -64,6 +64,55 @@ class ElevationApplyJob(Base):
     file_record: Mapped[ElevationFileRecord | None] = relationship("ElevationFileRecord", lazy="selectin", foreign_keys=[file_record_id])
 
 
+class ElevationApplyJobTower(Base):
+    """高程回填任务杆塔明细（回填任务 → 逐杆塔快照，1:N）。
+
+    与雷电流回填杆塔明细（lightning_current_backfill_tower）对齐：任务执行时
+    为每个杆塔记录回填前/后值与结果（updated/skipped/missing_geo/unmatched），
+    供「回填任务列表 → 查看杆塔回填数据明细」展示。只对本次改动落地后新建的
+    回填任务生成明细（历史任务不回溯迁移，重新回填后可见）。
+    """
+
+    __tablename__ = "elevation_apply_job_tower"
+    __table_args__ = (
+        Index("idx_elevation_apply_job_tower_job", "job_id"),
+        Index("idx_elevation_apply_job_tower_tower", "tower_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(32),
+        primary_key=True,
+        default=lambda: uuid4().hex,
+    )
+    job_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("elevation_apply_job.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    tower_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("power_line_tower.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # 快照身份信息（回填时点），展示明细时不依赖当前线路杆塔
+    tower_no: Mapped[str | None] = mapped_column(String(64))
+    seq_no: Mapped[int | None] = mapped_column(Integer)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    latitude: Mapped[float | None] = mapped_column(Float)
+    # 结果：updated/skipped/missing_geo/unmatched（与 job 汇总列语义一致）
+    action: Mapped[str] = mapped_column(String(32), default="updated", index=True)
+    # 回填前/后快照
+    altitude_before_m: Mapped[float | None] = mapped_column(Float)
+    altitude_after_m: Mapped[float | None] = mapped_column(Float)
+    slope_1_before: Mapped[float | None] = mapped_column(Float)
+    slope_1_after: Mapped[float | None] = mapped_column(Float)
+    slope_2_before: Mapped[float | None] = mapped_column(Float)
+    slope_2_after: Mapped[float | None] = mapped_column(Float)
+    create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 
 
 

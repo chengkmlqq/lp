@@ -97,6 +97,15 @@ function renderParamValue(value: string, record: SystemParamSummary): React.Reac
   return value || "-";
 }
 
+// 从参数列表查询 URL 中取出 category_id 参数值：category_id 变化即表示切换到另一份
+// 数据集（点击左侧分类树），此时不应沿用上一份数据作占位。
+function identityCategoryOf(path: unknown): string {
+  if (typeof path !== "string") return "";
+  const search = path.split("?")[1];
+  if (!search) return "";
+  return new URLSearchParams(search).get("category_id") ?? "";
+}
+
 export default function AdminSystemParamsPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -106,6 +115,9 @@ export default function AdminSystemParamsPage() {
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
+  // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [statusFilterInput, setStatusFilterInput] = useState<StatusFilter>(undefined);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(undefined);
   const [categoryIdFilter, setCategoryIdFilter] = useState<number | null>(null);
@@ -379,7 +391,7 @@ export default function AdminSystemParamsPage() {
   }, [paginationCurrent, paginationPageSize, statusFilter, trimmedKeyword, categoryIdFilter]);
 
   const listQuery = useQuery({
-    queryKey: [listPath],
+    queryKey: [listPath, searchNonce],
     enabled: !!user && canRead,
     queryFn: async () => {
       const response = await fetchWithAuth(listPath);
@@ -387,6 +399,14 @@ export default function AdminSystemParamsPage() {
         throw new Error(await readApiError(response));
       }
       return (await response.json()) as SystemParamListResponse;
+    },
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询/翻页时列表闪空。
+    // category_id 属数据身份：切换分类后沿用旧占位会短暂显示上一个分类下的参数，故仅当
+    // 两次查询的 category_id 一致时才沿用上一份数据；关键词/状态/翻页变化时保留，行不闪空。
+    placeholderData: (previousData, previousQuery) => {
+      const previousKey = previousQuery?.queryKey;
+      const previousPath = Array.isArray(previousKey) ? previousKey[0] : undefined;
+      return identityCategoryOf(previousPath) === identityCategoryOf(listPath) ? previousData : undefined;
     },
   });
 
@@ -656,12 +676,16 @@ export default function AdminSystemParamsPage() {
   };
 
   const handleQuery = () => {
+    // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
+    // 即便关键词/分页均未变化（旧实现仅 refetchQueries，目标 key 已被 react-query 缓存时
+    // 会短路不发请求）也会产生新 key 重新拉取；关键词/状态照常提交并回到第 1 页。
+    // 卡片累积列表不清空：新查询进行中旧卡片保留在 Spin 遮罩之下，接口返回后再由
+    // 累积 effect（cardViewPage===1）整体替换，避免查询开始时卡片闪空。
     setSearchKeyword(keywordInput);
     setStatusFilter(statusFilterInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(() => 1);
-    setAllLoadedParams(() => []);
-    void queryClient.refetchQueries({ queryKey: [listPath] });
+    setSearchNonce((n) => n + 1);
   };
 
   const rawItems = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items]);
@@ -683,7 +707,9 @@ export default function AdminSystemParamsPage() {
   });
 
   useEffect(() => {
-    if (viewMode !== "card" || listQuery.isLoading) {
+    // isPlaceholderData 期间展示的是上一份占位数据（新查询进行中），与 isLoading 一样
+    // 不能写入累积列表，否则翻页加载会被提前合并、打乱加载更多顺序
+    if (viewMode !== "card" || listQuery.isLoading || listQuery.isPlaceholderData) {
       return;
     }
 
@@ -706,7 +732,7 @@ export default function AdminSystemParamsPage() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [items, listQuery.isLoading, viewMode, cardViewPage]);
+  }, [items, listQuery.isLoading, listQuery.isPlaceholderData, viewMode, cardViewPage]);
 
   // Handle infinite scroll for card view
   useEffect(() => {
@@ -1231,7 +1257,9 @@ export default function AdminSystemParamsPage() {
                 rowKey="id"
                 dataSource={items}
                 columns={columns}
-                loading={listQuery.isLoading}
+                // 列表始终渲染：查询进行中仅叠加 antd Table 自带居中遮罩，保留现有行，
+                // 接口返回后再更新，避免查询开始时清空表格
+                loading={listQuery.isFetching}
                 tableLayout="fixed"
                 pagination={{
                   current: pagination.current,
@@ -1259,7 +1287,7 @@ export default function AdminSystemParamsPage() {
             </div>
           ) : (
             <div className="admin-system-params-card-view">
-              {listQuery.isLoading && allLoadedParams.length === 0 ? (
+              {(listQuery.isLoading || listQuery.isFetching) && allLoadedParams.length === 0 ? (
                 <div className="admin-system-params-card-view-state">
                   <Spin />
                 </div>
@@ -1271,27 +1299,30 @@ export default function AdminSystemParamsPage() {
                   />
                 </div>
               ) : (
-                <div className="admin-system-params-card-view-content">
-                  <Row gutter={[12, 12]}>
-                    {allLoadedParams.map((param) => (
-                      <Col key={param.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                        {renderParamCard(param)}
-                      </Col>
-                    ))}
-                  </Row>
-                  {isLoadingMore && (
-                    <div style={{ textAlign: "center", padding: "20px 0" }}>
-                      <Spin />
-                    </div>
-                  )}
-                  {allLoadedParams.length >= (listQuery.data?.total ?? 0) && allLoadedParams.length > 0 && (
-                    <div style={{ textAlign: "center", padding: "20px 0" }}>
-                      <Typography.Text type="secondary">
-                        已加载全部 {allLoadedParams.length} 条数据
-                      </Typography.Text>
-                    </div>
-                  )}
-                </div>
+                // 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据
+                <Spin spinning={listQuery.isFetching}>
+                  <div className="admin-system-params-card-view-content">
+                    <Row gutter={[12, 12]}>
+                      {allLoadedParams.map((param) => (
+                        <Col key={param.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                          {renderParamCard(param)}
+                        </Col>
+                      ))}
+                    </Row>
+                    {isLoadingMore && (
+                      <div style={{ textAlign: "center", padding: "20px 0" }}>
+                        <Spin />
+                      </div>
+                    )}
+                    {allLoadedParams.length >= (listQuery.data?.total ?? 0) && allLoadedParams.length > 0 && (
+                      <div style={{ textAlign: "center", padding: "20px 0" }}>
+                        <Typography.Text type="secondary">
+                          已加载全部 {allLoadedParams.length} 条数据
+                        </Typography.Text>
+                      </div>
+                    )}
+                  </div>
+                </Spin>
               )}
             </div>
           )}

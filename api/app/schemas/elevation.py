@@ -230,6 +230,32 @@ class ElevationApplyJobListResponse(BaseModel):
     total: int
 
 
+class ElevationApplyJobTowerDetail(BaseModel):
+    """一次高程回填任务中单个杆塔的回填数据明细快照。"""
+
+    id: str
+    job_id: str
+    tower_id: str
+    tower_no: str | None = None
+    seq_no: int | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+    # updated=已更新 / skipped=已跳过 / missing_geo=缺坐标 / unmatched=未命中
+    action: str = "updated"
+    altitude_before_m: float | None = None
+    altitude_after_m: float | None = None
+    slope_1_before: float | None = None
+    slope_1_after: float | None = None
+    slope_2_before: float | None = None
+    slope_2_after: float | None = None
+    create_date: datetime
+
+
+class ElevationApplyJobTowerListResponse(BaseModel):
+    items: list[ElevationApplyJobTowerDetail]
+    total: int
+
+
 class ElevationLinkedLineSummary(BaseModel):
     """高程文件回填过的关联线路摘要（按线路聚合取最近一次回填任务）。"""
 

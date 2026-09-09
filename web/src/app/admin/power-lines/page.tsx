@@ -147,6 +147,9 @@ export default function AdminPowerLinesPage() {
   const [keyword, setKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
+  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
+  // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [lineModalOpen, setLineModalOpen] = useState(false);
   const [editingLine, setEditingLine] = useState<LineSummary | null>(null);
   const [error, setError] = useState("");
@@ -202,7 +205,7 @@ export default function AdminPowerLinesPage() {
     return `/api/v1/lines${query ? `?${query}` : ""}`;
   }, [keyword, paginationCurrent, paginationPageSize]);
   const linesQuery = useQuery({
-    queryKey: [lineListPath],
+    queryKey: [lineListPath, searchNonce],
     enabled: !!user && canRead,
     queryFn: async () => {
       const response = await fetchWithAuth(lineListPath);
@@ -211,6 +214,8 @@ export default function AdminPowerLinesPage() {
       }
       return (await response.json()) as LineListResponse;
     },
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询时列表闪空
+    placeholderData: (previousData) => previousData,
   });
   const lineError = linesQuery.error instanceof Error ? linesQuery.error.message : "";
   useToastFeedback({
@@ -267,15 +272,13 @@ export default function AdminPowerLinesPage() {
   }, [updateTableScrollHeight, viewMode, lines.length]);
 
   const handleSearch = () => {
-    // 关键词/分页都未变化时查询键不变，react-query 不会自动重新拉取；
-    // 这里手动强制刷新，保证重复点击「查询」也会触发查询（如拉取新数据）。
-    const keywordChanged = keywordInput.trim() !== keyword.trim();
-    const pageChanged = paginationCurrent !== 1;
+    // 每次点击「查询」都强制触发一次接口请求：
+    // searchNonce 作为 queryKey 的一部分自增，保证即便关键词/分页均未变化（旧实现只对
+    // 这种情况 refetchQueries，且目标 key 若已被 react-query 缓存会短路不发请求）也会
+    // 产生新 key 重新拉取；关键词/分页照常提交并回到第 1 页。
     setKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    if (!keywordChanged && !pageChanged) {
-      void queryClient.refetchQueries({ queryKey: [lineListPath] });
-    }
+    setSearchNonce((n) => n + 1);
   };
   const saveLineMutation = useMutation({
     mutationFn: async (values: LineFormValues) => {
@@ -511,12 +514,16 @@ export default function AdminPowerLinesPage() {
                   />
                 )}
 
-                {linesQuery.isLoading ? (
-                  <div className="admin-power-lines-loading flex justify-center items-center py-12">
-                    <Spin />
-                  </div>
-                ) : lines.length === 0 ? (
-                  <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                {lines.length === 0 ? (
+                  linesQuery.isFetching ? (
+                    // 首载/空结果且请求进行中：列表区域整体垂直+水平居中显示加载指示；
+                    // 已有数据时走下方卡片/表格分支保留旧数据并叠加遮罩，避免查询开始时列表闪空
+                    <div className="flex w-full flex-1 items-center justify-center">
+                      <Spin />
+                    </div>
+                  ) : (
+                    <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  )
                 ) : viewMode === "card" ? (
                   <div className="relative flex min-h-0 flex-1 flex-col">
                     <div className="admin-power-lines-card-scroll">

@@ -106,7 +106,11 @@ export default function AdminScheduledTasksPage() {
   const queryClient = useQueryClient();
   const [formApi] = Form.useForm<FormState>();
 
+  const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
+  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
+  // 即使关键词/状态筛选未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -132,7 +136,7 @@ export default function AdminScheduledTasksPage() {
   }, [keyword, statusFilter]);
 
   const listQuery = useQuery({
-    queryKey: [listPath],
+    queryKey: [listPath, searchNonce],
     enabled: !!user && canRead,
     queryFn: async () => {
       const response = await fetchWithAuth(listPath);
@@ -141,7 +145,17 @@ export default function AdminScheduledTasksPage() {
       }
       return (await response.json()) as ScheduledTaskListResponse;
     },
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询/刷新时列表闪空
+    placeholderData: (previousData) => previousData,
   });
+
+  const handleSearch = () => {
+    // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
+    // 即便关键词/状态筛选均未变化（旧实现仅 invalidateQueries，目标 key 已被 react-query
+    // 缓存时会短路不发请求）也会产生新 key 重新拉取；关键词照常提交。
+    setKeyword(keywordInput);
+    setSearchNonce((n) => n + 1);
+  };
 
   const refreshList = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -481,11 +495,11 @@ export default function AdminScheduledTasksPage() {
                   <Form layout="inline">
                     <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
-                        value={keyword}
+                        value={keywordInput}
                         allowClear
-                        onChange={(event) => setKeyword(event.currentTarget.value)}
+                        onChange={(event) => setKeywordInput(event.currentTarget.value)}
                         placeholder="按任务键/名称/Cron 筛选"
-                        onPressEnter={() => void refreshList()}
+                        onPressEnter={handleSearch}
                       />
                     </Form.Item>
 
@@ -501,7 +515,7 @@ export default function AdminScheduledTasksPage() {
                       <Button
                         htmlType="button"
                         icon={<SearchOutlined />}
-                        onClick={() => void refreshList()}
+                        onClick={handleSearch}
                         className="admin-search-btn"
                       >
                         查询

@@ -17,6 +17,7 @@ import {
   Progress,
   Select,
   Space,
+  Spin,
   Table,
   Tabs,
   Tag,
@@ -77,6 +78,9 @@ export default function AdminPowerLineTowersPage() {
   const [towerKeyword, setTowerKeyword] = useState("");
   const [towerTypeFilter, setTowerTypeFilter] = useState("");
   const [towerPagination, setTowerPagination] = useState({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE });
+  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
+  // 即使关键词/塔型/分页均未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [tempFileId, setTempFileId] = useState<string | null>(null);
@@ -131,7 +135,7 @@ export default function AdminPowerLineTowersPage() {
   }, [lineId, towerKeyword, towerTypeFilter, towerPagination]);
 
   const towersQuery = useQuery({
-    queryKey: [towerListPath],
+    queryKey: [towerListPath, searchNonce],
     enabled: !!user && canTowerRead && !!lineDetail && !lineLoading,
     queryFn: async () => {
       const response = await fetchWithAuth(towerListPath);
@@ -140,6 +144,8 @@ export default function AdminPowerLineTowersPage() {
       }
       return (await response.json()) as LineTowerListResponse;
     },
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免点击查询/切页时表格闪空
+    placeholderData: (previousData) => previousData,
   });
 
   const towerDetailQuery = useQuery({
@@ -155,6 +161,14 @@ export default function AdminPowerLineTowersPage() {
   });
 
   const towers = useMemo(() => towersQuery.data?.items ?? [], [towersQuery.data?.items]);
+
+  const handleSearch = () => {
+    // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
+    // 保证即便关键词/塔型/分页均未变化（目标 key 若已被 react-query 缓存会短路不发请求）
+    // 也会产生新 key 重新拉取；同时回到第 1 页。
+    setTowerPagination({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE });
+    setSearchNonce((n) => n + 1);
+  };
 
   const refreshLines = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -407,6 +421,7 @@ export default function AdminPowerLineTowersPage() {
               allowClear
               onChange={(event) => setTowerKeyword(event.target.value)}
               placeholder="按塔号/模型筛选"
+              onPressEnter={handleSearch}
             />
           </Form.Item>
           <Form.Item label="塔型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -420,9 +435,7 @@ export default function AdminPowerLineTowersPage() {
             <Button
               htmlType="button"
               icon={<SearchOutlined />}
-              onClick={() =>
-                setTowerPagination({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE })
-              }
+              onClick={handleSearch}
               className="admin-search-btn"
             >
               查询
@@ -445,25 +458,33 @@ export default function AdminPowerLineTowersPage() {
         </Form>
       </div>
 
-      <div className="relative mt-3 flex-1 min-h-0">
-        <Table<LineTowerSummary>
-          rowKey={(row) => row.id}
-          columns={towerColumns}
-          dataSource={towers}
-          loading={towersQuery.isFetching}
-          pagination={{
-            current: towerPagination.current,
-            pageSize: towerPagination.pageSize,
-            total: towersQuery.data?.total ?? 0,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条`,
-            hideOnSinglePage: false,
-            onChange: (page, pageSize) => {
-              setTowerPagination({ current: page, pageSize });
-            },
-          }}
-          scroll={{ x: 1400 }}
-        />
+      <div className="relative mt-3 flex min-h-0 flex-1 flex-col">
+        {towers.length === 0 && towersQuery.isFetching ? (
+          // 首载/空结果且请求进行中：整区垂直+水平居中加载指示；已有数据时保留 Table 并
+          // 由 antd 内置 loading 遮罩覆盖，接口返回前不清空现有行
+          <div className="flex w-full flex-1 items-center justify-center">
+            <Spin />
+          </div>
+        ) : (
+          <Table<LineTowerSummary>
+            rowKey={(row) => row.id}
+            columns={towerColumns}
+            dataSource={towers}
+            loading={towersQuery.isFetching}
+            pagination={{
+              current: towerPagination.current,
+              pageSize: towerPagination.pageSize,
+              total: towersQuery.data?.total ?? 0,
+              showSizeChanger: true,
+              showTotal: (total) => `共 ${total} 条`,
+              hideOnSinglePage: false,
+              onChange: (page, pageSize) => {
+                setTowerPagination({ current: page, pageSize });
+              },
+            }}
+            scroll={{ x: 1400 }}
+          />
+        )}
       </div>
 
       <Modal

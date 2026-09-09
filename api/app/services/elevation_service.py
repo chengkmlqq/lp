@@ -10,12 +10,12 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..core.database import SessionLocal
 from ..models.base import utcnow
-from ..models.elevation import ElevationApplyJob, ElevationFileRecord
+from ..models.elevation import ElevationApplyJob, ElevationApplyJobTower, ElevationFileRecord
 from ..models.line import Line
 from ..models.line_tower import LineTower
 from ..models.user import User
@@ -24,6 +24,8 @@ from ..schemas.elevation import (
     ElevationApplyJobCreateResponse,
     ElevationApplyJobListResponse,
     ElevationApplyJobSummary,
+    ElevationApplyJobTowerDetail,
+    ElevationApplyJobTowerListResponse,
     ElevationFileRecordTaskStatusResponse,
     ElevationFileRecordTerrainTaskStatusResponse,
     ElevationFileRecordPreviewResponse,
@@ -297,6 +299,7 @@ def list_jobs(
     status_filter: str | None,
     limit: int,
     file_record_id: str | None = None,
+    keyword: str | None = None,
 ) -> ElevationApplyJobListResponse:
     stmt = select(ElevationApplyJob)
     total_stmt = select(func.count()).select_from(ElevationApplyJob)
@@ -310,6 +313,14 @@ def list_jobs(
     if status_filter in {"pending", "running", "success", "failed"}:
         stmt = stmt.where(ElevationApplyJob.status == status_filter)
         total_stmt = total_stmt.where(ElevationApplyJob.status == status_filter)
+    if keyword and keyword.strip():
+        # 后台查询：按线路名称/编号模糊匹配（关联 line_id 子查询）
+        kw = f"%{keyword.strip()}%"
+        matched_line_ids = select(Line.id).where(
+            or_(Line.code.ilike(kw), Line.name.ilike(kw))
+        )
+        stmt = stmt.where(ElevationApplyJob.line_id.in_(matched_line_ids))
+        total_stmt = total_stmt.where(ElevationApplyJob.line_id.in_(matched_line_ids))
 
     total = int(db.scalar(total_stmt) or 0)
     items = db.execute(
@@ -325,6 +336,58 @@ def get_job_by_id(db: Session, job_id: str) -> ElevationApplyJob | None:
     return db.execute(
         select(ElevationApplyJob).where(ElevationApplyJob.id == job_id)
     ).scalar_one_or_none()
+
+
+def serialize_apply_job_tower(item: ElevationApplyJobTower) -> ElevationApplyJobTowerDetail:
+    """把任务杆塔明细 ORM 对象序列化为响应 schema。"""
+    return ElevationApplyJobTowerDetail(
+        id=item.id,
+        job_id=item.job_id,
+        tower_id=item.tower_id,
+        tower_no=item.tower_no,
+        seq_no=item.seq_no,
+        longitude=item.longitude,
+        latitude=item.latitude,
+        action=item.action,
+        altitude_before_m=item.altitude_before_m,
+        altitude_after_m=item.altitude_after_m,
+        slope_1_before=item.slope_1_before,
+        slope_1_after=item.slope_1_after,
+        slope_2_before=item.slope_2_before,
+        slope_2_after=item.slope_2_after,
+        create_date=item.create_date,
+    )
+
+
+def list_job_towers(
+    db: Session,
+    *,
+    job_id: str,
+    limit: int,
+    offset: int,
+) -> ElevationApplyJobTowerListResponse:
+    """回填任务下的逐杆塔回填数据明细（分页，按杆塔序号升序）。"""
+    if get_job_by_id(db, job_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="回填任务不存在")
+
+    total_stmt = (
+        select(func.count())
+        .select_from(ElevationApplyJobTower)
+        .where(ElevationApplyJobTower.job_id == job_id)
+    )
+    total = int(db.scalar(total_stmt) or 0)
+    stmt = (
+        select(ElevationApplyJobTower)
+        .where(ElevationApplyJobTower.job_id == job_id)
+        .order_by(ElevationApplyJobTower.seq_no.asc().nulls_last(), ElevationApplyJobTower.tower_no.asc(), ElevationApplyJobTower.id.asc())
+        .offset(offset)
+        .limit(limit)
+    )
+    items = db.execute(stmt).scalars().all()
+    return ElevationApplyJobTowerListResponse(
+        items=[serialize_apply_job_tower(item) for item in items],
+        total=total,
+    )
 
 
 def get_linked_lines_for_file_record(
@@ -511,6 +574,7 @@ def execute_apply_job(job_id: str, actor_user_id: str | None = None) -> None:
             line_id=line.id,
             elevation_source=elevation_source,
             mode=job.mode,
+            job_id=job.id,
         )
 
         _log_task(
@@ -1120,6 +1184,7 @@ def _apply_raster_to_line_towers(
     line_id: str,
     elevation_source: ElevationFileRecord,
     mode: str,
+    job_id: str | None = None,
 ) -> tuple[dict[str, int], list[str]]:
     towers = db.execute(
         select(LineTower)
@@ -1132,6 +1197,39 @@ def _apply_raster_to_line_towers(
     missing_geo_count = 0
     unmatched_count = 0
     warnings: list[str] = []
+    # 任务杆塔明细快照（job_id 提供时逐塔记录，供回填任务列表查看明细）
+    job_tower_rows: list[ElevationApplyJobTower] | None = [] if job_id else None
+
+    def _snapshot(
+        tower: LineTower,
+        *,
+        action: str,
+        before_altitude: float | None,
+        before_slope_1: float | None,
+        before_slope_2: float | None,
+        after_altitude: float | None,
+        after_slope_1: float | None,
+        after_slope_2: float | None,
+    ) -> None:
+        if job_tower_rows is None:
+            return
+        job_tower_rows.append(
+            ElevationApplyJobTower(
+                job_id=job_id or "",
+                tower_id=tower.id,
+                tower_no=tower.tower_no,
+                seq_no=tower.seq_no,
+                longitude=tower.longitude,
+                latitude=tower.latitude,
+                action=action,
+                altitude_before_m=before_altitude,
+                altitude_after_m=after_altitude,
+                slope_1_before=before_slope_1,
+                slope_1_after=after_slope_1,
+                slope_2_before=before_slope_2,
+                slope_2_after=after_slope_2,
+            )
+        )
 
     with _open_raster_dataset(db, elevation_source) as opened:
         rasterio = opened.rasterio
@@ -1144,14 +1242,38 @@ def _apply_raster_to_line_towers(
         raster_sampler = _build_raster_sampler(rasterio=rasterio, src=src, src_crs=src_crs, band_nodata=band_nodata)
 
         for index, tower in enumerate(towers):
+            before_altitude = tower.altitude_m
+            before_slope_1 = tower.slope_1
+            before_slope_2 = tower.slope_2
+
             if tower.longitude is None or tower.latitude is None:
                 missing_geo_count += 1
+                _snapshot(
+                    tower,
+                    action="missing_geo",
+                    before_altitude=before_altitude,
+                    before_slope_1=before_slope_1,
+                    before_slope_2=before_slope_2,
+                    after_altitude=before_altitude,
+                    after_slope_1=before_slope_1,
+                    after_slope_2=before_slope_2,
+                )
                 continue
 
-            skip_altitude_update = mode == "fill_null_only" and tower.altitude_m is not None
-            skip_slope_update = mode == "fill_null_only" and tower.slope_1 is not None and tower.slope_2 is not None
+            skip_altitude_update = mode == "fill_null_only" and before_altitude is not None
+            skip_slope_update = mode == "fill_null_only" and before_slope_1 is not None and before_slope_2 is not None
             if skip_altitude_update and skip_slope_update:
                 skipped_tower_count += 1
+                _snapshot(
+                    tower,
+                    action="skipped",
+                    before_altitude=before_altitude,
+                    before_slope_1=before_slope_1,
+                    before_slope_2=before_slope_2,
+                    after_altitude=before_altitude,
+                    after_slope_1=before_slope_1,
+                    after_slope_2=before_slope_2,
+                )
                 continue
 
             lon = float(tower.longitude)
@@ -1159,12 +1281,26 @@ def _apply_raster_to_line_towers(
             altitude = raster_sampler(lon, lat)
             if altitude is None:
                 unmatched_count += 1
+                _snapshot(
+                    tower,
+                    action="unmatched",
+                    before_altitude=before_altitude,
+                    before_slope_1=before_slope_1,
+                    before_slope_2=before_slope_2,
+                    after_altitude=before_altitude,
+                    after_slope_1=before_slope_1,
+                    after_slope_2=before_slope_2,
+                )
                 continue
 
             changed = False
+            after_altitude = before_altitude
+            after_slope_1 = before_slope_1
+            after_slope_2 = before_slope_2
             sampled_altitude = round(float(altitude), 3)
             if not skip_altitude_update:
                 tower.altitude_m = sampled_altitude
+                after_altitude = sampled_altitude
                 changed = True
 
             slope_pair = _compute_tower_slope_pair(
@@ -1175,7 +1311,9 @@ def _apply_raster_to_line_towers(
             )
             if slope_pair is not None and not skip_slope_update:
                 tower.slope_1 = round(slope_pair[0], 3)
+                after_slope_1 = tower.slope_1
                 tower.slope_2 = round(slope_pair[1], 3)
+                after_slope_2 = tower.slope_2
                 changed = True
 
             raw_extra = dict(tower.raw_extra_json or {})
@@ -1188,11 +1326,25 @@ def _apply_raster_to_line_towers(
             }
             tower.raw_extra_json = raw_extra
             tower.update_date = utcnow()
+            _snapshot(
+                tower,
+                action="updated" if changed else "skipped",
+                before_altitude=before_altitude,
+                before_slope_1=before_slope_1,
+                before_slope_2=before_slope_2,
+                after_altitude=after_altitude,
+                after_slope_1=after_slope_1,
+                after_slope_2=after_slope_2,
+            )
             if changed:
                 updated_tower_count += 1
             else:
                 skipped_tower_count += 1
 
+    # 幂等：同一任务重复执行（如失败重试）先清掉旧明细再写入本次快照
+    if job_tower_rows is not None:
+        db.execute(delete(ElevationApplyJobTower).where(ElevationApplyJobTower.job_id == job_id))
+        db.add_all(job_tower_rows)
     db.commit()
     return (
         {

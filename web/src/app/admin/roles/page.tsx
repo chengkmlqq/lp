@@ -69,6 +69,9 @@ export default function AdminRolesPage() {
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  // 手动刷新计数：每次点击「查询」都自增并作为查询 key 的一部分，强制走一次接口，
+  // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
 
   const [error, setError] = useState<ApiError | null>(null);
@@ -110,9 +113,13 @@ export default function AdminRolesPage() {
   }, [fetchWithAuth, rolesQueryUrl]);
 
   const rolesQuery = useQuery({
-    queryKey: ["admin.roles", rolesQueryParams],
+    // searchNonce 作为 queryKey 的一部分：每次点击「查询」自增，即使关键词/分页均未变化
+    // 也会产生新 key 强制重新拉取；首个元素仍是 "admin.roles"，不影响失效/刷新逻辑
+    queryKey: ["admin.roles", rolesQueryParams, searchNonce],
     queryFn: loadRolesWithMenus,
     enabled: !!user && canRead,
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询时列表闪空
+    placeholderData: (previousData) => previousData,
   });
 
   useTopicSubscription(
@@ -409,10 +416,14 @@ export default function AdminRolesPage() {
   };
 
   const handleSearch = () => {
+    // 每次点击「查询」都强制触发一次接口请求：
+    // searchNonce 作为 queryKey 的一部分自增，保证即便关键词/分页均未变化（旧实现只对
+    // 这种情况 refetchQueries，且目标 key 若已被 react-query 缓存会短路不发请求）也会
+    // 产生新 key 重新拉取；关键词/分页照常提交并回到第 1 页。
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(1);
-    void queryClient.refetchQueries({ queryKey: ["admin.roles"] });
+    setSearchNonce((n) => n + 1);
   };
 
   const queryError = useMemo<ApiError | null>(() => rolesQuery.error instanceof Error ? new ApiError(rolesQuery.error.message) : null, [rolesQuery.error]);
@@ -896,7 +907,9 @@ export default function AdminRolesPage() {
                       rowKey="id"
                       columns={columns}
                       dataSource={roles}
-                      loading={rolesQuery.isLoading}
+                      // 列表始终渲染：查询进行中仅叠加 antd Table 自带居中遮罩，保留现有行，
+                      // 接口返回后再更新，避免查询开始时清空表格
+                      loading={rolesQuery.isFetching}
                       tableLayout="fixed"
                       scroll={{ y: tableScrollY }}
                       pagination={{
@@ -924,7 +937,7 @@ export default function AdminRolesPage() {
                   </div>
                 ) : (
                   <div className="admin-roles-card-view">
-                    {rolesQuery.isLoading && allLoadedRoles.length === 0 ? (
+                    {rolesQuery.isFetching && allLoadedRoles.length === 0 ? (
                       <div className="admin-roles-card-view-state">
                         <Spin />
                       </div>
@@ -937,13 +950,16 @@ export default function AdminRolesPage() {
                       </div>
                     ) : (
                       <div className="admin-roles-card-view-content">
-                        <Row gutter={[12, 12]}>
-                          {allLoadedRoles.map((role) => (
-                            <Col key={role.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                              {renderRoleCard(role)}
-                            </Col>
-                          ))}
-                        </Row>
+                        {/* 查询/刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
+                        <Spin spinning={rolesQuery.isFetching}>
+                          <Row gutter={[12, 12]}>
+                            {allLoadedRoles.map((role) => (
+                              <Col key={role.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                                {renderRoleCard(role)}
+                              </Col>
+                            ))}
+                          </Row>
+                        </Spin>
                         {isLoadingMore && (
                           <div style={{ textAlign: "center", padding: "20px 0" }}>
                             <Spin />

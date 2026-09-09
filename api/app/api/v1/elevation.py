@@ -16,6 +16,7 @@ from ...schemas.elevation import (
     ElevationApplyJobCreateResponse,
     ElevationApplyJobListResponse,
     ElevationApplyJobSummary,
+    ElevationApplyJobTowerListResponse,
     ElevationDatasetListResponse,
     ElevationLinkedLineListResponse,
     ElevationTerrainLayerResponse,
@@ -35,6 +36,7 @@ from ...services.elevation_service import (
     create_apply_job,
     get_job_by_id,
     get_linked_lines_for_file_record,
+    list_job_towers,
     list_jobs,
     serialize_job,
     get_file_record_analysis_task_status,
@@ -211,12 +213,21 @@ def get_elevation_file_record_linked_lines(
 def get_elevation_file_record_jobs(
     record_id: str,
     status: str | None = Query(default=None),
+    line_id: str | None = Query(default=None),
+    keyword: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     _: CurrentUser = Depends(require_any_permission("elevation.read", "elevation.manage")),
     db: Session = Depends(get_db),
 ) -> ElevationApplyJobListResponse:
-    """查询单个高程文件的所有回填任务记录。"""
-    return list_jobs(db, line_id=None, status_filter=status, limit=limit, file_record_id=record_id)
+    """查询单个高程文件的所有回填任务记录（支持按线路名称/编号关键词后台过滤）。"""
+    return list_jobs(
+        db,
+        line_id=line_id,
+        status_filter=status,
+        keyword=keyword,
+        limit=limit,
+        file_record_id=record_id,
+    )
 
 
 @router.get("/records/{record_id}/analysis-status", response_model=ElevationFileRecordTaskStatusResponse)
@@ -257,6 +268,18 @@ def get_elevation_file_record_terrain_tile_endpoint(
 ) -> Response:
     content = get_file_record_terrain_tile(db, record_id=record_id, z=z, x=x, y=y)
     return Response(content=content, media_type="application/octet-stream")
+
+
+@router.get("/jobs/{job_id}/towers", response_model=ElevationApplyJobTowerListResponse)
+def get_elevation_apply_job_towers(
+    job_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    _: CurrentUser = Depends(require_any_permission("elevation.read", "elevation.manage")),
+    db: Session = Depends(get_db),
+) -> ElevationApplyJobTowerListResponse:
+    """查询一个高程回填任务的逐杆塔回填数据明细（分页）。"""
+    return list_job_towers(db, job_id=job_id, limit=limit, offset=offset)
 
 
 @router.post("/jobs/apply-line", response_model=ElevationApplyJobCreateResponse)

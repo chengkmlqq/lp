@@ -169,6 +169,9 @@ export default function AdminMenusPage() {
   const [keywordInput, setKeywordInput] = useState("");
   const [statusFilter, setStatusFilter] = useState<"enabled" | "disabled" | undefined>(undefined);
   const [searchKeyword, setSearchKeyword] = useState("");
+  // 手动刷新计数：每次点击「查询」都自增并作为查询 key 的一部分，强制走一次接口，
+  // 即使关键词/分页均未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [selectedTreeKey, setSelectedTreeKey] = useState<string | null>(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(MENU_TABLE_MIN_SCROLL_Y);
@@ -243,9 +246,13 @@ export default function AdminMenusPage() {
   }, [fetchWithAuth, menusPath]);
 
   const menusQuery = useQuery({
-    queryKey: ["admin.menus", menusQueryParams],
+    // searchNonce 作为 queryKey 的一部分：每次点击「查询」自增，即使关键词/分页均未变化
+    // 也会产生新 key 强制重新拉取；首个元素仍是 "admin.menus"，不影响失效/刷新逻辑
+    queryKey: ["admin.menus", menusQueryParams, searchNonce],
     queryFn: loadMenus,
     enabled: !!user && canRead,
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询时列表闪空
+    placeholderData: (previousData) => previousData,
   });
 
   const menus = useMemo(() => menusQuery.data?.items ?? [], [menusQuery.data?.items]);
@@ -431,11 +438,15 @@ export default function AdminMenusPage() {
   };
 
   const handleSearch = () => {
+    // 每次点击「查询」都强制触发一次接口请求：
+    // searchNonce 作为 queryKey 的一部分自增，保证即便关键词/分页均未变化（旧实现只对
+    // 这种情况 refetchQueries，且目标 key 若已被 react-query 缓存会短路不发请求）也会
+    // 产生新 key 重新拉取；关键词/分页照常提交并回到第 1 页。卡片视图不清空已加载列表，
+    // 由下方 Spin 遮罩保留现有卡片，接口返回后再更新，避免查询开始时闪空。
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(1);
-    setAllLoadedMenus([]);
-    void queryClient.refetchQueries({ queryKey: ["admin.menus"] });
+    setSearchNonce((n) => n + 1);
   };
 
   const handleStatusFilterChange = (value?: "enabled" | "disabled") => {
@@ -1060,7 +1071,9 @@ export default function AdminMenusPage() {
                   rowKey="id"
                   dataSource={filteredMenus}
                   columns={columns}
-                  loading={menusQuery.isLoading}
+                  // 列表始终渲染：查询进行中仅叠加 antd Table 自带居中遮罩，保留现有行，
+                  // 接口返回后再更新，避免查询开始时清空表格
+                  loading={menusQuery.isFetching}
                   tableLayout="fixed"
                   scroll={{ y: tableScrollY }}
                   pagination={{
@@ -1088,7 +1101,7 @@ export default function AdminMenusPage() {
               </div>
             ) : (
               <div className="admin-menus-card-view">
-                {menusQuery.isLoading && allLoadedMenus.length === 0 ? (
+                {menusQuery.isFetching && allLoadedMenus.length === 0 ? (
                   <div className="admin-menus-card-view-state">
                     <Spin />
                   </div>
@@ -1101,13 +1114,16 @@ export default function AdminMenusPage() {
                   </div>
                 ) : (
                   <div className="admin-menus-card-view-content">
-                    <Row gutter={[12, 12]}>
-                      {allLoadedMenus.map((menuItem) => (
-                        <Col key={menuItem.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                          {renderMenuCard(menuItem)}
-                        </Col>
-                      ))}
-                    </Row>
+                    {/* 查询/刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
+                    <Spin spinning={menusQuery.isFetching}>
+                      <Row gutter={[12, 12]}>
+                        {allLoadedMenus.map((menuItem) => (
+                          <Col key={menuItem.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                            {renderMenuCard(menuItem)}
+                          </Col>
+                        ))}
+                      </Row>
+                    </Spin>
                     {isLoadingMore && (
                       <div style={{ textAlign: "center", padding: "20px 0" }}>
                         <Spin />

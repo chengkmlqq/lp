@@ -4,7 +4,6 @@ import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Alert,
   App,
   Badge,
   Button,
@@ -27,16 +26,15 @@ import {
   Tooltip,
   Typography,
   Upload,
-  type MenuProps,
 } from "antd";
 import {
   AppstoreOutlined,
   CheckCircleOutlined,
-  CloudUploadOutlined,
+  DatabaseOutlined,
   DeleteOutlined,
+  EditOutlined,
   FileOutlined,
   FileTextOutlined,
-  GlobalOutlined,
   HistoryOutlined,
   InboxOutlined,
   MoreOutlined,
@@ -49,7 +47,6 @@ import type { ColumnsType } from "antd/es/table";
 
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
-import { ElevationTowerView } from "@/components/elevation-tower-view";
 import { ElevationBackfillHistoryTable } from "@/components/elevation-backfill-history";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { getApiBaseUrl, readApiError } from "@/lib/api";
@@ -132,22 +129,6 @@ type ElevationTempUploadResponse = {
   file_name: string;
 };
 
-type ElevationLinkedLineSummary = {
-  line_id: string;
-  line_code: string | null;
-  line_name: string | null;
-  voltage_kv: number | null;
-  apply_status: string;
-  tower_count: number;
-  updated_tower_count: number;
-  applied_at: string | null;
-};
-
-type ElevationLinkedLineListResponse = {
-  items: ElevationLinkedLineSummary[];
-  total: number;
-};
-
 type DetailTabItem = {
   key: string;
   label: ReactNode;
@@ -163,51 +144,34 @@ type UploadFormValues = {
   notes?: string;
 };
 
-type ApplyFormValues = {
-  line_id: string;
-  file_record_id: string;
-  mode: "fill_null_only" | "overwrite_all";
+type EditFormValues = {
+  source?: string;
+  resolution_m?: number;
+  notes?: string;
 };
 
-const DEFAULT_APPLY_FORM: ApplyFormValues = {
-  line_id: "",
-  file_record_id: "",
-  mode: "fill_null_only",
+type ApplyFormValues = {
+  line_ids: string[];
+  file_record_id: string;
 };
 
 const ELEVATION_TABLE_MIN_SCROLL_Y = 180;
 const ELEVATION_TABLE_VIEWPORT_GAP = 40;
 const ELEVATION_TABLE_FALLBACK_RESERVE = 220;
 
-function statusTagColor(status: string): string {
-  if (status === "success" || status === "active" || status === "ready") return "green";
-  if (status === "running" || status === "processing") return "blue";
-  if (status === "pending" || status === "queued") return "orange";
-  if (status === "failed" || status === "disabled") return "red";
-  return "default";
-}
-
-function applyStatusLabel(status: string): string {
-  if (status === "success") return "成功";
-  if (status === "running") return "处理中";
-  if (status === "pending") return "待处理";
-  if (status === "failed") return "失败";
-  return status;
-}
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) {
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
     return "-";
   }
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  const K = 1024;
+  const M = K * 1024;
+  const G = M * 1024;
+  const T = G * 1024;
+  if (bytes >= T) return `${(bytes / T).toFixed(2)} T`;
+  if (bytes >= G) return `${(bytes / G).toFixed(2)} G`;
+  if (bytes >= M) return `${(bytes / M).toFixed(2)} M`;
+  if (bytes >= K) return `${(bytes / K).toFixed(2)} K`;
+  return `${bytes} B`;
 }
 
 type ParseStatusInfo = { label: string; color: "success" | "processing" | "error" };
@@ -265,6 +229,7 @@ export default function ElevationRecordsPage() {
 
   const [uploadForm] = Form.useForm();
   const [applyForm] = Form.useForm<ApplyFormValues>();
+  const [editForm] = Form.useForm<EditFormValues>();
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -280,15 +245,15 @@ export default function ElevationRecordsPage() {
   const [uploadError, setUploadError] = useState("");
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<ElevationFileRecordSummary | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<ElevationFileRecordSummary | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // 动态详情 Tab（参照 lightning-distribution LP-264 的 detailTabs 机制）
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
-  // 关联线路小窗
-  const [linkedLinesModalOpen, setLinkedLinesModalOpen] = useState(false);
-  const [linkedLinesRecord, setLinkedLinesRecord] = useState<ElevationFileRecordSummary | null>(null);
 
   // Fetch file records
   const { data: recordsData, isLoading } = useQuery<FileRecordListResponse>({
@@ -490,51 +455,110 @@ export default function ElevationRecordsPage() {
     },
   });
 
-  // Apply mutation
-  const applyMutation = useMutation({
-    mutationFn: async (values: ApplyFormValues) => {
-      const response = await fetchWithAuth("/api/v1/elevation/jobs/apply-line", {
-        method: "POST",
+  // 编辑文件记录（来源/分辨率/备注）mutation
+  const editMutation = useMutation({
+    mutationFn: async (args: { id: string; values: EditFormValues }) => {
+      const response = await fetchWithAuth(`/api/v1/elevation/records/${args.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          source: args.values.source?.trim() || null,
+          resolution_m: args.values.resolution_m ?? null,
+          notes: args.values.notes?.trim() || null,
+        }),
       });
-      return readJsonResponse(response);
+      return readJsonResponse<ElevationFileRecordSummary>(response);
+    },
+    onMutate: (args) => {
+      setEditingId(args.id);
     },
     onSuccess: () => {
-      messageApi.success("回填任务已创建");
+      messageApi.success("保存成功");
+      setEditModalOpen(false);
+      setEditingRecord(null);
+      editForm.resetFields();
+      queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
+    },
+    onError: (error) => {
+      messageApi.error(readMutationError(error, "保存失败"));
+    },
+    onSettled: () => setEditingId(null),
+  });
+
+  // Apply mutation（支持一次勾选多条线路，逐条创建回填任务）
+  const applyMutation = useMutation({
+    mutationFn: async (values: ApplyFormValues) => {
+      const lineIds = Array.from(new Set(values.line_ids ?? []));
+      if (lineIds.length === 0) {
+        throw new Error("请选择至少一条线路");
+      }
+      const failed: Array<{ line_id: string; detail: string }> = [];
+      for (const lineId of lineIds) {
+        try {
+          const response = await fetchWithAuth("/api/v1/elevation/jobs/apply-line", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              line_id: lineId,
+              file_record_id: values.file_record_id,
+              mode: "overwrite_all",
+            }),
+          });
+          if (!response.ok) {
+            failed.push({ line_id: lineId, detail: await readApiError(response) });
+          }
+        } catch (error) {
+          failed.push({
+            line_id: lineId,
+            detail: error instanceof Error && error.message ? error.message : "请求失败",
+          });
+        }
+      }
+      const createdCount = lineIds.length - failed.length;
+      if (failed.length > 0) {
+        throw new Error(
+          `成功创建 ${createdCount} 个，失败 ${failed.length} 个（${failed.map((item) => item.detail).join("；")}）`,
+        );
+      }
+      return { createdCount };
+    },
+    onSuccess: (data) => {
+      messageApi.success(`已创建 ${data.createdCount} 个回填任务`);
       setApplyModalOpen(false);
       applyForm.resetFields();
+      queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
       messageApi.error(readMutationError(error, "创建任务失败"));
     },
   });
 
-  // 关联线路明细（小窗）
-  const linkedLinesQuery = useQuery<ElevationLinkedLineListResponse>({
-    queryKey: ["elevation-records", linkedLinesRecord?.id, "linked-lines"],
-    enabled: !!linkedLinesRecord,
-    queryFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/elevation/records/${linkedLinesRecord?.id}/linked-lines`);
-      return readJsonResponse<ElevationLinkedLineListResponse>(response);
-    },
-  });
-
-  const openLinkedLinesModal = (record: ElevationFileRecordSummary) => {
-    setLinkedLinesRecord(record);
-    setLinkedLinesModalOpen(true);
-  };
-
   // 打开回填弹窗
   const openApplyModal = useCallback((record: ElevationFileRecordSummary) => {
     setSelectedRecord(record);
     applyForm.setFieldsValue({
       file_record_id: record.id,
-      line_id: "",
-      mode: "fill_null_only",
+      line_ids: [],
     });
     setApplyModalOpen(true);
   }, [applyForm]);
+
+  // 打开编辑弹窗（来源/分辨率/备注）
+  const openEditModal = useCallback((record: ElevationFileRecordSummary) => {
+    setEditingRecord(record);
+    editForm.setFieldsValue({
+      source: record.source ?? "",
+      resolution_m: record.resolution_m ?? undefined,
+      notes: record.notes ?? "",
+    });
+    setEditModalOpen(true);
+  }, [editForm]);
+
+  const closeEditModal = useCallback(() => {
+    setEditModalOpen(false);
+    setEditingRecord(null);
+    editForm.resetFields();
+  }, [editForm]);
 
   // 打开回填记录 Tab
   const openBackfillHistoryTab = useCallback((record: ElevationFileRecordSummary) => {
@@ -548,10 +572,7 @@ export default function ElevationRecordsPage() {
         {
           key,
           label: (
-            <Space size={6}>
-              <span>{record.file_name}</span>
-              <Tag color="geekblue">回填记录</Tag>
-            </Space>
+            <span>{record.file_name}</span>
           ),
           closable: true,
           children: (
@@ -562,36 +583,6 @@ export default function ElevationRecordsPage() {
     });
     setActiveTabKey(key);
   }, []);
-
-  // 打开回填数据 Tab（key 用 towers-{record.id} 去重，已存在只切换）
-  const openTowerTab = useCallback((record: ElevationFileRecordSummary) => {
-    const key = `towers-${record.id}`;
-    setDetailTabs((previous) => {
-      if (previous.some((tab) => tab.key === key)) {
-        return previous;
-      }
-      return [
-        ...previous,
-        {
-          key,
-          label: (
-            <Space size={6}>
-              <span>{record.file_name}</span>
-              <Tag color="blue">回填数据</Tag>
-            </Space>
-          ),
-          closable: true,
-          children: (
-            <ElevationTowerView
-              record={record}
-              fetchWithAuth={fetchWithAuth}
-            />
-          ),
-        },
-      ];
-    });
-    setActiveTabKey(key);
-  }, [fetchWithAuth]);
 
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
@@ -732,31 +723,15 @@ export default function ElevationRecordsPage() {
       },
     },
     {
-      title: "关联线路",
-      key: "linked_lines",
-      width: 100,
-      render: (_value, record) => (
-        <Button
-          type="link"
-          size="small"
-          style={{ padding: 0 }}
-          onClick={() => openLinkedLinesModal(record)}
-        >
-          {record.linked_line_count ?? 0} 条
-        </Button>
-      ),
-    },
-    {
       title: "操作",
       key: "actions",
       fixed: "right",
-      width: 140,
+      width: 180,
       render: (_value, row) => {
         const analyzing = analyzeMutation.isPending && analyzingId === row.id;
         const deleting = deleteMutation.isPending && deletingId === row.id;
-        const rowBusy = analyzing || deleting;
-
-        const moreMenuItems: MenuProps["items"] = [];
+        const editing = editMutation.isPending && editingId === row.id;
+        const rowBusy = analyzing || deleting || editing;
 
         return (
           <Space wrap>
@@ -771,24 +746,50 @@ export default function ElevationRecordsPage() {
             <Button
               size="small"
               disabled={rowBusy}
-              onClick={() => openBackfillHistoryTab(row)}
+              onClick={() => openEditModal(row)}
             >
-              回填记录
+              编辑
             </Button>
 
-            <Button danger size="small" loading={deleting} disabled={rowBusy}
-              onClick={() => {
-                Modal.confirm({
-                  title: `确认删除文件 "${row.file_name}"？`,
-                  okText: "删除",
-                  cancelText: "取消",
-                  okButtonProps: { danger: true, loading: deleting },
-                  onOk: () => deleteMutation.mutate(row.id),
-                });
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "backfill-history",
+                    label: "回填记录",
+                    icon: <HistoryOutlined />,
+                    disabled: rowBusy,
+                    onClick: () => openBackfillHistoryTab(row),
+                  },
+                  {
+                    key: "delete",
+                    label: "删除",
+                    icon: <DeleteOutlined />,
+                    danger: true,
+                    disabled: rowBusy,
+                    onClick: () => {
+                      Modal.confirm({
+                        title: `确认删除文件 "${row.file_name}"？`,
+                        okText: "删除",
+                        cancelText: "取消",
+                        okButtonProps: { danger: true, loading: deleting },
+                        onOk: () => deleteMutation.mutate(row.id),
+                      });
+                    },
+                  },
+                ],
               }}
+              trigger={["click"]}
             >
-              删除
-            </Button>
+              <Tooltip title="更多">
+                <Button
+                  type="text"
+                  size="small"
+                  disabled={rowBusy}
+                  icon={<MoreOutlined />}
+                />
+              </Tooltip>
+            </Dropdown>
           </Space>
         );
       },
@@ -798,7 +799,8 @@ export default function ElevationRecordsPage() {
   const renderRecordCard = (record: ElevationFileRecordSummary) => {
     const analyzing = analyzeMutation.isPending && analyzingId === record.id;
     const deleting = deleteMutation.isPending && deletingId === record.id;
-    const rowBusy = analyzing || deleting;
+    const editing = editMutation.isPending && editingId === record.id;
+    const rowBusy = analyzing || deleting || editing;
     const recordStatus = computedParseStatus(record);
     // 分析生命周期：queued（已提交）→ running（执行中）→ success/failed；
     // 进行中即展示底部进度条（分析无增量进度数据，用全宽动画条表示处理中）
@@ -811,7 +813,7 @@ export default function ElevationRecordsPage() {
         className="admin-elevation-record-card"
         size="small"
         hoverable
-        onClick={() => openTowerTab(record)}
+        onClick={() => openBackfillHistoryTab(record)}
       >
         <div className="flex flex-col">
           <div className="admin-elevation-record-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
@@ -827,11 +829,11 @@ export default function ElevationRecordsPage() {
             <div className="flex items-center gap-2">
               <FileTextOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs">格式：</Typography.Text>
-              <Tag className="text-xs">{record.file_format.toUpperCase()}</Tag>
+              <Tag color="blue" className="text-xs">{record.file_format.toUpperCase()}</Tag>
             </div>
             <div className="flex items-center gap-2">
-              <GlobalOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">来源：{record.source ?? "-"}</Typography.Text>
+              <DatabaseOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">大小：{formatFileSize(record.file_size)}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <AppstoreOutlined className="text-xs text-gray-500" />
@@ -849,16 +851,16 @@ export default function ElevationRecordsPage() {
             ) : (
               <div />
             )}
-            <Space size="small" className="shrink-0">
-              <Tooltip title="应用">
+            <Space size={4} className="shrink-0">
+              <Tooltip title="编辑">
                 <Button
                   type="text"
                   size="small"
-                  icon={<CloudUploadOutlined />}
+                  icon={<EditOutlined />}
                   disabled={rowBusy}
                   onClick={(event) => {
                     event.stopPropagation();
-                    openTowerTab(record);
+                    openEditModal(record);
                   }}
                 />
               </Tooltip>
@@ -1105,7 +1107,6 @@ export default function ElevationRecordsPage() {
           <Form.Item
             label="文件"
             required
-            help="选择文件后立即上传到临时存储，支持 .tif/.tiff 和 .zip 格式"
           >
             <Upload.Dragger
               accept=".tif,.tiff,.zip"
@@ -1156,6 +1157,35 @@ export default function ElevationRecordsPage() {
         </Form>
       </Modal>
 
+      {/* 编辑文件记录 Modal（来源/分辨率/备注） */}
+      <Modal
+        title={editingRecord ? `编辑文件 - ${editingRecord.file_name}` : "编辑文件"}
+        open={editModalOpen}
+        onCancel={closeEditModal}
+        onOk={() => editForm.submit()}
+        confirmLoading={editMutation.isPending}
+        okText="保存"
+        width={600}
+      >
+        <Form form={editForm} layout="vertical" onFinish={(values) => {
+          if (editingRecord) {
+            editMutation.mutate({ id: editingRecord.id, values });
+          }
+        }}>
+          <Form.Item label="来源" name="source">
+            <Input placeholder="例如：SRTM、DEM 数据" allowClear />
+          </Form.Item>
+
+          <Form.Item label="分辨率(米)" name="resolution_m">
+            <InputNumber min={0.1} step={0.1} style={{ width: "100%" }} placeholder="例如：30" />
+          </Form.Item>
+
+          <Form.Item label="备注" name="notes">
+            <Input.TextArea rows={3} placeholder="文件说明..." />
+          </Form.Item>
+        </Form>
+      </Modal>
+
       {/* Apply Modal */}
       <Modal
         title="回填线路高程"
@@ -1169,24 +1199,18 @@ export default function ElevationRecordsPage() {
         confirmLoading={applyMutation.isPending}
         width={600}
       >
-        {selectedRecord && (
-          <Alert
-            message={`将使用文件: ${selectedRecord.file_name}`}
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-          />
-        )}
         <Form form={applyForm} layout="vertical" onFinish={(values) => applyMutation.mutate(values)}>
           <Form.Item name="file_record_id" hidden>
             <Input />
           </Form.Item>
 
-          <Form.Item label="选择线路" name="line_id" rules={[{ required: true, message: "请选择线路" }]}>
+          <Form.Item label="选择线路" name="line_ids" rules={[{ required: true, message: "请至少选择一条线路" }]}>
             <Select
-              placeholder="选择线路"
+              mode="multiple"
+              placeholder="请选择线路（可多选，范围外线路已置灰）"
               showSearch
               optionFilterProp="label"
+              maxTagCount="responsive"
               options={(linesData?.items ?? []).map((line) => {
                 const inRange = applyBboxParam ? (line.bbox_overlap !== false) : true;
                 const label = `${line.code ?? "-"} - ${line.name ?? "-"}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`;
@@ -1205,106 +1229,9 @@ export default function ElevationRecordsPage() {
               })}
             />
           </Form.Item>
-
-          <Form.Item
-            label="回填模式"
-            name="mode"
-            rules={[{ required: true }]}
-            initialValue="fill_null_only"
-          >
-            <Select
-              options={[
-                { label: "仅填空（只更新空值）", value: "fill_null_only" },
-                { label: "全部覆盖（覆盖所有数据）", value: "overwrite_all" },
-              ]}
-            />
-          </Form.Item>
         </Form>
       </Modal>
 
-      {/* 关联线路小窗 */}
-      <Modal
-        title={linkedLinesRecord ? `关联线路 - ${linkedLinesRecord.file_name}` : "关联线路"}
-        open={linkedLinesModalOpen}
-        onCancel={() => {
-          setLinkedLinesModalOpen(false);
-          setLinkedLinesRecord(null);
-        }}
-        footer={null}
-        width={560}
-      >
-        <Table<ElevationLinkedLineSummary>
-          rowKey="line_id"
-          size="small"
-          loading={linkedLinesQuery.isFetching}
-          dataSource={linkedLinesQuery.data?.items ?? []}
-          tableLayout="fixed"
-          pagination={false}
-          scroll={{ y: 320 }}
-          columns={[
-            {
-              title: "线路编号",
-              dataIndex: "line_code",
-              key: "line_code",
-              width: 120,
-              render: (value: string | null) => value || "-",
-            },
-            {
-              title: "线路名称",
-              dataIndex: "line_name",
-              key: "line_name",
-              width: 140,
-              ellipsis: true,
-              render: (value: string | null) => value || "-",
-            },
-            {
-              title: "电压(kV)",
-              dataIndex: "voltage_kv",
-              key: "voltage_kv",
-              width: 80,
-              render: (value: number | null) => (value == null ? "-" : value),
-            },
-            {
-              title: "回填状态",
-              dataIndex: "apply_status",
-              key: "apply_status",
-              width: 90,
-              render: (value: string) => (
-                <Tag color={statusTagColor(value)}>{applyStatusLabel(value)}</Tag>
-              ),
-            },
-            {
-              title: "杆塔数",
-              dataIndex: "tower_count",
-              key: "tower_count",
-              width: 70,
-              render: (value: number) => value ?? 0,
-            },
-            {
-              title: "更新数",
-              dataIndex: "updated_tower_count",
-              key: "updated_tower_count",
-              width: 70,
-              render: (value: number) => value ?? 0,
-            },
-            {
-              title: "回填时间",
-              dataIndex: "applied_at",
-              key: "applied_at",
-              width: 150,
-              render: (value: string | null) => (value ? formatDateTime(value) : "-"),
-            },
-          ]}
-          locale={{
-            emptyText: (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="暂无回填线路"
-              />
-            ),
-          }}
-        />
-      </Modal>
     </div>
   );
 }

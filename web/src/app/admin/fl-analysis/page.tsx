@@ -61,8 +61,15 @@ export default function AdminFlAnalysisPage() {
   const { modal: modalApi, message: messageApi } = App.useApp();
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  // 新建任务打开代次：每次点击「新建任务」自增并传给 CreateJobForm，触发其回到第一步。
+  // （antd Modal 关闭后隐藏 DOM 不重渲染，子组件收不到 open=false，旧版 prevOpen 判断
+  // 在二次打开时失效，导致向导停留在上次使用的步骤；用代次变化驱动重置。）
+  const [createModalEpoch, setCreateModalEpoch] = useState(0);
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
+  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
+  // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const [error, setError] = useState("");
@@ -118,7 +125,7 @@ export default function AdminFlAnalysisPage() {
   }, [keyword, paginationCurrent, paginationPageSize]);
 
   const jobsQuery = useQuery({
-    queryKey: [jobsListPath],
+    queryKey: [jobsListPath, searchNonce],
     enabled: !!user && canRead,
     queryFn: async () => {
       const response = await fetchWithAuth(jobsListPath);
@@ -127,6 +134,8 @@ export default function AdminFlAnalysisPage() {
       }
       return (await response.json()) as FlAnalysisJobListResponse;
     },
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询时列表闪空
+    placeholderData: (previousData) => previousData,
   });
 
   const jobs = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data?.items]);
@@ -141,6 +150,20 @@ export default function AdminFlAnalysisPage() {
     if (firstLine && !createJobForm.getFieldValue("line_id")) {
       createJobForm.setFieldsValue({ line_id: firstLine.id });
     }
+  }, [createJobForm, linesQuery.data?.items]);
+
+  // 新建任务：打开弹窗即清空上一次遗留的表单数据（任务名/线路/杆塔勾选/计算方法/高级参数等），
+  // 全部回到初始默认值；线路默认回填第一条可用线路，与首次打开行为保持一致
+  // （lines 尚未加载完成时 line_id 留空，由上面的 effect 在线路数据到达后兜底回填）。
+  const openCreateJobModal = useCallback(() => {
+    createJobForm.resetFields();
+    createJobForm.setFieldsValue(CREATE_JOB_DEFAULTS);
+    const firstLine = linesQuery.data?.items[0];
+    if (firstLine) {
+      createJobForm.setFieldValue("line_id", firstLine.id);
+    }
+    setCreateModalEpoch((epoch) => epoch + 1);
+    setCreateModalOpen(true);
   }, [createJobForm, linesQuery.data?.items]);
 
   const invalidateFlAnalysisQueries = useCallback(async () => {
@@ -275,15 +298,13 @@ export default function AdminFlAnalysisPage() {
   }
 
   const handleSearch = () => {
-    // LP-545：关键词/分页都未变化时查询键不变，react-query 不会自动重新拉取；
-    // 手动强制刷新，保证重复点击「查询」也会触发查询（如拉取新数据）。
-    const keywordChanged = keywordInput.trim() !== keyword.trim();
-    const pageChanged = paginationCurrent !== 1;
+    // 每次点击「查询」都强制触发一次接口请求：
+    // searchNonce 作为 queryKey 的一部分自增，保证即便关键词/分页均未变化（旧实现只对
+    // 这种情况 refetchQueries，且目标 key 若已被 react-query 缓存会短路不发请求）也会
+    // 产生新 key 重新拉取；关键词/分页照常提交并回到第 1 页。
     setKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    if (!keywordChanged && !pageChanged) {
-      void queryClient.refetchQueries({ queryKey: [jobsListPath] });
-    }
+    setSearchNonce((n) => n + 1);
   };
 
   const createJobMutation = useMutation({
@@ -402,7 +423,7 @@ export default function AdminFlAnalysisPage() {
     setScenarioRows(rows);
     setScenarioBaseJobs(baseJobs);
     setScenarioTowerIds(rows.map((row) => row.tower_id));
-    scenarioForm.setFieldsValue({ job_name: "" });
+    scenarioForm.setFieldsValue({ job_name: "", base_job_id: undefined });
     setScenarioOpen(true);
   }, [scenarioForm]);
 
@@ -558,7 +579,7 @@ export default function AdminFlAnalysisPage() {
         tabBarExtraContent={
           <Space>
             {canManage && (
-              <Button type="primary" onClick={() => setCreateModalOpen(true)}>
+              <Button type="primary" onClick={openCreateJobModal}>
                 新建任务
               </Button>
             )}
@@ -608,7 +629,7 @@ export default function AdminFlAnalysisPage() {
                 ) : viewMode === "card" ? (
                   <>
                     <div className="admin-power-lines-card-scroll">
-                      <JobCardList jobs={jobs} loading={jobsQuery.isLoading} onDeleteJob={handleDeleteJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
+                      <JobCardList jobs={jobs} loading={jobsQuery.isFetching} onDeleteJob={handleDeleteJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
                     </div>
                     <div className="admin-power-lines-pagination">
                       <Pagination
@@ -631,7 +652,7 @@ export default function AdminFlAnalysisPage() {
                   >
                     <JobTable
                       jobs={jobs}
-                      loading={jobsQuery.isLoading}
+                      loading={jobsQuery.isFetching}
                       total={total}
                       pagination={pagination}
                       onPaginationChange={(next) => setPagination(next)}
@@ -689,6 +710,7 @@ export default function AdminFlAnalysisPage() {
         <CreateJobForm
           form={createJobForm}
           open={createModalOpen}
+          openEpoch={createModalEpoch}
           submitting={createJobMutation.isPending}
           onCancel={() => {
             if (createJobMutation.isPending) {

@@ -88,6 +88,9 @@ export default function AdminSyslogPage() {
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [draftFilters, setDraftFilters] = useState<Filters>(EMPTY_FILTERS);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
+  // 即使筛选条件/分页均未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [error, setError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState("");
   const [tableScrollY, setTableScrollY] = useState(SYSLOG_TABLE_MIN_SCROLL_Y);
@@ -111,19 +114,18 @@ export default function AdminSyslogPage() {
   };
 
   const handleSearch = () => {
+    // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
+    // 即便筛选条件/分页均未变化（旧实现仅 refetchQueries，目标 key 已被 react-query 缓存时
+    // 会短路不发请求）也会产生新 key 重新拉取；筛选条件照常提交并回到第 1 页。
+    // 卡片视图的累积列表不再在查询开始时清空，刷新期间旧卡片保持可见（叠加 loading
+    // 遮罩），待接口返回后再整体替换，避免列表闪空。
     setFilters({
       action: draftFilters.action.trim(),
       user_id: draftFilters.user_id.trim(),
     });
     setOffset(0);
     setCardViewPage(1);
-    setAllLoadedLogs([]);
-    void queryClient.refetchQueries({
-      predicate: (query) =>
-        Array.isArray(query.queryKey)
-        && typeof query.queryKey[0] === "string"
-        && query.queryKey[0].startsWith("/api/v1/admin/audit-logs"),
-    });
+    setSearchNonce((n) => n + 1);
   };
 
   const logsPath = useMemo(() => {
@@ -148,9 +150,11 @@ export default function AdminSyslogPage() {
   }, [fetchWithAuth, logsPath]);
 
   const logsQuery = useQuery({
-    queryKey: [logsPath],
+    queryKey: [logsPath, searchNonce],
     queryFn: loadLogs,
     enabled: !!user && canRead,
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询/翻页时列表闪空
+    placeholderData: (previousData) => previousData,
   });
 
   // Fetch action options for the Select dropdown
@@ -201,7 +205,9 @@ export default function AdminSyslogPage() {
 
   // Update allLoadedLogs when logs data changes in card view
   useEffect(() => {
-    if (viewMode !== "card" || logsQuery.isLoading) {
+    // isPlaceholderData 期间展示的是上一份占位数据（新查询进行中），与 isLoading 一样
+    // 不能写入累积列表，否则翻页加载会被提前合并、打乱加载更多顺序
+    if (viewMode !== "card" || logsQuery.isLoading || logsQuery.isPlaceholderData) {
       return;
     }
 
@@ -224,7 +230,7 @@ export default function AdminSyslogPage() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [logs, logsQuery.isLoading, viewMode, cardViewPage]);
+  }, [logs, logsQuery.isLoading, logsQuery.isPlaceholderData, viewMode, cardViewPage]);
 
   // Handle infinite scroll for card view
   useEffect(() => {
@@ -538,7 +544,7 @@ export default function AdminSyslogPage() {
                       rowKey={(record) => String(record.id)}
                       columns={columns}
                       dataSource={logs}
-                      loading={logsQuery.isLoading}
+                      loading={logsQuery.isFetching}
                       tableLayout="fixed"
                       pagination={{
                         current: currentPage,
@@ -562,7 +568,7 @@ export default function AdminSyslogPage() {
                   </div>
                 ) : (
                   <div className="admin-syslog-card-view">
-                    {logsQuery.isLoading && allLoadedLogs.length === 0 ? (
+                    {(logsQuery.isLoading || logsQuery.isFetching) && allLoadedLogs.length === 0 ? (
                       <div className="admin-syslog-card-view-state">
                         <Spin />
                       </div>
@@ -574,27 +580,30 @@ export default function AdminSyslogPage() {
                         />
                       </div>
                     ) : (
-                      <div className="admin-syslog-card-view-content">
-                        <Row gutter={[12, 12]}>
-                          {allLoadedLogs.map((log) => (
-                            <Col key={log.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                              {renderLogCard(log)}
-                            </Col>
-                          ))}
-                        </Row>
-                        {isLoadingMore && (
-                          <div style={{ textAlign: "center", padding: "20px 0" }}>
-                            <Spin />
-                          </div>
-                        )}
-                        {allLoadedLogs.length >= total && allLoadedLogs.length > 0 && (
-                          <div style={{ textAlign: "center", padding: "20px 0" }}>
-                            <Typography.Text type="secondary">
-                              已加载全部 {allLoadedLogs.length} 条数据
-                            </Typography.Text>
-                          </div>
-                        )}
-                      </div>
+                      // 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据
+                      <Spin spinning={logsQuery.isFetching}>
+                        <div className="admin-syslog-card-view-content">
+                          <Row gutter={[12, 12]}>
+                            {allLoadedLogs.map((log) => (
+                              <Col key={log.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                                {renderLogCard(log)}
+                              </Col>
+                            ))}
+                          </Row>
+                          {isLoadingMore && (
+                            <div style={{ textAlign: "center", padding: "20px 0" }}>
+                              <Spin />
+                            </div>
+                          )}
+                          {allLoadedLogs.length >= total && allLoadedLogs.length > 0 && (
+                            <div style={{ textAlign: "center", padding: "20px 0" }}>
+                              <Typography.Text type="secondary">
+                                已加载全部 {allLoadedLogs.length} 条数据
+                              </Typography.Text>
+                            </div>
+                          )}
+                        </div>
+                      </Spin>
                     )}
                   </div>
                 )}

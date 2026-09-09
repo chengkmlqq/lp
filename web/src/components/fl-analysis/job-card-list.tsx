@@ -70,28 +70,34 @@ function isJobLocked(job: FlAnalysisJobSummary) {
 }
 
 export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog, onOpenDetail }: JobCardListProps) {
-  if (loading) {
-    return <Spin />;
-  }
-
   if (jobs.length === 0) {
+    // 无数据可展示时（首载/无结果）：用居中加载指示；其余情况保留现有数据，仅在刷新时叠加遮罩
+    if (loading) {
+      return (
+        <div className="flex w-full flex-1 items-center justify-center">
+          <Spin />
+        </div>
+      );
+    }
     return <Empty description="暂无防雷分析任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      {jobs.map((job) => {
-        const lineName = job.line_name || job.line_code || "-";
+    // 查询刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据
+    <Spin spinning={loading}>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {jobs.map((job) => {
+          const lineName = job.line_name || job.line_code || "-";
 
-        // 底部操作列表：查看结果/查看日志/删除；多于 2 个时其余收进 ⋯ 三点下拉
-        const actions: CardAction[] = [];
-        if (onOpenDetail) {
-          actions.push({
-            key: "result",
-            tooltip: "查看结果",
-            icon: <BarChartOutlined />,
-            onClick: (event) => {
-              event.stopPropagation();
+          // 底部操作列表：查看结果/查看日志/删除；多于 2 个时其余收进 ⋯ 三点下拉
+          const actions: CardAction[] = [];
+          if (onOpenDetail) {
+            actions.push({
+              key: "result",
+              tooltip: "查看结果",
+              icon: <BarChartOutlined />,
+              onClick: (event) => {
+                event.stopPropagation();
               onOpenDetail?.(job);
             },
           });
@@ -230,6 +236,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
           </Card>
         );
       })}
-    </div>
+      </div>
+    </Spin>
   );
 }

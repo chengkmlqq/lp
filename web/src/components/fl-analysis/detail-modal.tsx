@@ -258,6 +258,10 @@ export function TowerDetailView({
                 <Descriptions.Item label="闪络相">{readOptionalString(detailResultObject, "flashover_phase") ?? "-"}</Descriptions.Item>
               </>
             ) : null}
+            {/* 计算参数固定 11 项（同跳另加 2 项），均为奇数，会导致其后的整行项(span=2)
+                触发 antd "Sum of column span ... not match column" 告警并将整行降宽；
+                此处补一个空项凑成偶数行。 */}
+            <Descriptions.Item label="">{""}</Descriptions.Item>
           </>
         ) : null}
         <Descriptions.Item label="原因分析" span={2}>

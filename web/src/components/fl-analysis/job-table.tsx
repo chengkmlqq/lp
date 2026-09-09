@@ -150,8 +150,14 @@ export function JobTable({
       : []),
   ], [onDeleteJob, canReadLogs, onOpenLog]);
 
-  if (loading) {
-    return <Spin />;
+  if (jobs.length === 0 && loading) {
+    // 无数据可展示时的首载/空结果：居中加载指示；有数据时由下方 Table 的 loading
+    // 遮罩保留现有行，接口返回后再更新，避免查询开始时清空表格
+    return (
+      <div className="flex w-full flex-1 items-center justify-center">
+        <Spin />
+      </div>
+    );
   }
 
   return (
@@ -160,6 +166,7 @@ export function JobTable({
       className="admin-fl-analysis-job-table"
       columns={columns}
       dataSource={jobs}
+      loading={loading}
       pagination={{
         current: pagination.current,
         pageSize: pagination.pageSize,

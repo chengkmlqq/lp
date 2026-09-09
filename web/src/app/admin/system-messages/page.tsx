@@ -305,6 +305,9 @@ export default function AdminSystemMessagesPage() {
   const contentPreview = Form.useWatch("content", formApi) ?? "";
   const [messageTypeFilter, setMessageTypeFilter] = useState<SystemMessageType | undefined>(undefined);
   const [readStatus, setReadStatus] = useState<"read" | "unread" | undefined>(undefined);
+  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
+  // 即使类型/状态筛选均未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [createMessageModalOpen, setCreateMessageModalOpen] = useState(false);
   const [detailMessage, setDetailMessage] = useState<SystemMessageSummary | null>(null);
@@ -339,7 +342,7 @@ export default function AdminSystemMessagesPage() {
   }, [readStatus, viewMode, cardViewPage, messageTypeFilter]);
 
   const listQuery = useQuery({
-    queryKey: ["admin.system-messages", listPath],
+    queryKey: ["admin.system-messages", listPath, searchNonce],
     enabled: !!user,
     queryFn: async () => {
       const response = await fetchWithAuth(listPath);
@@ -348,11 +351,20 @@ export default function AdminSystemMessagesPage() {
       }
       return (await response.json()) as SystemMessageListResponse;
     },
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询时列表闪空
+    placeholderData: (previousData) => previousData,
   });
 
   const refreshMessages = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["admin.system-messages"] });
   }, [queryClient]);
+
+  const handleSearch = () => {
+    // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
+    // 即便类型/状态等筛选条件均未变化（旧实现直接 invalidateQueries，目标 key 已被
+    // react-query 缓存时可能短路不发请求）也会产生新 key 重新拉取当前筛选条件的列表。
+    setSearchNonce((n) => n + 1);
+  };
 
   const createMutation = useMutation({
     mutationFn: async (values: CreateMessageValues) => {
@@ -529,7 +541,9 @@ export default function AdminSystemMessagesPage() {
 
   // Update allLoadedMessages when messages data changes in card view
   useEffect(() => {
-    if (viewMode !== "card" || listQuery.isLoading) {
+    // isPlaceholderData 期间展示的是上一份占位数据（新查询进行中），与 isLoading 一样
+    // 不能写入累积列表，否则翻页加载会被提前合并、打乱加载更多顺序
+    if (viewMode !== "card" || listQuery.isLoading || listQuery.isPlaceholderData) {
       return;
     }
 
@@ -552,7 +566,7 @@ export default function AdminSystemMessagesPage() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [messages, listQuery.isLoading, viewMode, cardViewPage]);
+  }, [messages, listQuery.isLoading, listQuery.isPlaceholderData, viewMode, cardViewPage]);
 
   // Handle infinite scroll for card view
   useEffect(() => {
@@ -910,7 +924,7 @@ export default function AdminSystemMessagesPage() {
                       <Form.Item style={{ marginBottom: 0 }}>
                         <Button
                           htmlType="button"
-                          icon={<SearchOutlined />} onClick={refreshMessages} className="admin-search-btn">
+                          icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
                           查询
                         </Button>
                       </Form.Item>
@@ -951,7 +965,7 @@ export default function AdminSystemMessagesPage() {
                       <Form.Item style={{ marginBottom: 0 }}>
                         <Button
                           htmlType="button"
-                          icon={<SearchOutlined />} onClick={refreshMessages} className="admin-search-btn">
+                          icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
                           查询
                         </Button>
                       </Form.Item>
@@ -991,7 +1005,7 @@ export default function AdminSystemMessagesPage() {
                   </div>
                 ) : (
                   <div className="admin-system-messages-card-view">
-                    {listQuery.isLoading && allLoadedMessages.length === 0 ? (
+                    {(listQuery.isLoading || listQuery.isFetching) && allLoadedMessages.length === 0 ? (
                       <div className="admin-system-messages-card-view-state">
                         <Spin />
                       </div>
@@ -1003,27 +1017,30 @@ export default function AdminSystemMessagesPage() {
                         />
                       </div>
                     ) : (
-                      <div className="admin-system-messages-card-view-content">
-                        <Row gutter={[12, 12]}>
-                          {allLoadedMessages.map((item) => (
-                            <Col key={item.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                              {renderMessageCard(item)}
-                            </Col>
-                          ))}
-                        </Row>
-                        {isLoadingMore && (
-                          <div style={{ textAlign: "center", padding: "20px 0" }}>
-                            <Spin />
-                          </div>
-                        )}
-                        {allLoadedMessages.length >= (listQuery.data?.total ?? 0) && allLoadedMessages.length > 0 && (
-                          <div style={{ textAlign: "center", padding: "20px 0" }}>
-                            <Typography.Text type="secondary">
-                              已加载全部 {allLoadedMessages.length} 条数据
-                            </Typography.Text>
-                          </div>
-                        )}
-                      </div>
+                      // 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据
+                      <Spin spinning={listQuery.isFetching}>
+                        <div className="admin-system-messages-card-view-content">
+                          <Row gutter={[12, 12]}>
+                            {allLoadedMessages.map((item) => (
+                              <Col key={item.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                                {renderMessageCard(item)}
+                              </Col>
+                            ))}
+                          </Row>
+                          {isLoadingMore && (
+                            <div style={{ textAlign: "center", padding: "20px 0" }}>
+                              <Spin />
+                            </div>
+                          )}
+                          {allLoadedMessages.length >= (listQuery.data?.total ?? 0) && allLoadedMessages.length > 0 && (
+                            <div style={{ textAlign: "center", padding: "20px 0" }}>
+                              <Typography.Text type="secondary">
+                                已加载全部 {allLoadedMessages.length} 条数据
+                              </Typography.Text>
+                            </div>
+                          )}
+                        </div>
+                      </Spin>
                     )}
                   </div>
                 )}

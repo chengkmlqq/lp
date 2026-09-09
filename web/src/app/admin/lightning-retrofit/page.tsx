@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
   Badge,
@@ -12,6 +12,7 @@ import {
   Pagination,
   Segmented,
   Space,
+  Spin,
   Table,
   Tooltip,
   Typography,
@@ -49,6 +50,9 @@ export default function AdminLightningRetrofitPage() {
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
+  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
+  // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
@@ -56,7 +60,6 @@ export default function AdminLightningRetrofitPage() {
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage") || hasPermission("tower.manage");
-  const queryClient = useQueryClient();
 
   const jobsListPath = useMemo(() => {
     const params = new URLSearchParams();
@@ -70,7 +73,7 @@ export default function AdminLightningRetrofitPage() {
   }, [keyword, paginationCurrent, paginationPageSize]);
 
   const jobsQuery = useQuery({
-    queryKey: [jobsListPath],
+    queryKey: [jobsListPath, searchNonce],
     enabled: !!user && canRead,
     queryFn: async () => {
       const response = await fetchWithAuth(jobsListPath);
@@ -79,6 +82,8 @@ export default function AdminLightningRetrofitPage() {
       }
       return (await response.json()) as FlAnalysisJobListResponse;
     },
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询时列表闪空
+    placeholderData: (previousData) => previousData,
   });
 
   const jobs = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data?.items]);
@@ -93,15 +98,13 @@ export default function AdminLightningRetrofitPage() {
   });
 
   const handleSearch = () => {
-    // LP-545：关键词/分页都未变化时查询键不变，react-query 不会自动重新拉取；
-    // 手动强制刷新，保证重复点击「查询」也会触发查询（如拉取新数据）。
-    const keywordChanged = keywordInput.trim() !== keyword.trim();
-    const pageChanged = paginationCurrent !== 1;
+    // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
+    // 保证即便关键词/分页均未变化（旧实现只对这种情况 refetchQueries，且目标 key 若已
+    // 被 react-query 缓存会短路不发请求）也会产生新 key 重新拉取；关键词/分页照常提交并
+    // 回到第 1 页。
     setKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    if (!keywordChanged && !pageChanged) {
-      void queryClient.refetchQueries({ queryKey: [jobsListPath] });
-    }
+    setSearchNonce((n) => n + 1);
   };
 
   const handleDeleteJob = async (job: FlAnalysisJobSummary) => {
@@ -256,12 +259,22 @@ export default function AdminLightningRetrofitPage() {
             />
           )}
 
-          {viewMode === "list" ? (
+          {jobs.length === 0 ? (
+            // 无任务可展示（首载/空结果）：查询中显示全区域居中加载指示，加载完成后再显示空状态
+            jobsQuery.isFetching ? (
+              <div className="flex w-full flex-1 items-center justify-center">
+                <Spin />
+              </div>
+            ) : (
+              <Empty description="暂无防雷改造任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )
+          ) : viewMode === "list" ? (
             <div
               ref={tableScrollAnchorRef}
               className="admin-fl-analysis-table-view"
               style={{ "--admin-fl-analysis-table-body-min-height": `${tableScrollY}px` } as React.CSSProperties}
             >
+              {/* 有数据时始终渲染 Table，查询期间仅叠加 loading 遮罩，保留现有行不闪空 */}
               <Table<RetrofitTaskItem>
                 rowKey="id"
                 className="admin-fl-analysis-job-table"
@@ -292,7 +305,9 @@ export default function AdminLightningRetrofitPage() {
           ) : (
             <div className="admin-fl-analysis-card-view">
               <div className="admin-power-lines-card-scroll">
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {/* 查询刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
+                <Spin spinning={jobsQuery.isFetching}>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {jobs.map((job) => (
                     <Card
                       key={job.id}
@@ -352,7 +367,8 @@ export default function AdminLightningRetrofitPage() {
                       </div>
                     </Card>
                   ))}
-                </div>
+                  </div>
+                </Spin>
               </div>
               <div className="admin-power-lines-pagination">
                 <Pagination

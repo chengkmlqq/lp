@@ -168,6 +168,9 @@ export default function AdminFaultAnalysisPage() {
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  // 手动刷新计数：每次点击「查询」都自增并作为列表查询 key 的一部分，强制走一次接口，
+  // 即使关键词未变化、或该 key 此前已被 react-query 缓存，也不会被缓存/进行中的请求短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
@@ -184,8 +187,6 @@ export default function AdminFaultAnalysisPage() {
   const { modal: modalApi } = App.useApp();
   const [wsProgressMap, setWsProgressMap] = useState<Record<string, { progress: number; status: string; error?: string; step?: string }>>({});
 
-  const searchKeywordCacheRef = useRef(searchKeyword);
-  searchKeywordCacheRef.current = searchKeyword;
   const wsProgressCacheRef = useRef(wsProgressMap);
   wsProgressCacheRef.current = wsProgressMap;
 
@@ -206,15 +207,18 @@ export default function AdminFaultAnalysisPage() {
     [messageApi],
   );
 
-  // 查询按钮/回车触发：设置关键词与分页，并强制刷新列表（关键词未变时 refetchQueries 保证重新拉取）。
+  // 查询按钮/回车触发：提交关键词并回到第 1 页，同时自增 searchNonce。
+  // searchNonce 作为列表查询 key 的一部分，每次点击都会产生新 key 强制走一次接口，
+  // 即使关键词/分页均未变化，也不会被 react-query 缓存短路（旧实现依赖 refetchQueries，
+  // 目标 key 若已被缓存/正在请求会去重不发请求）。
   const handleQuery = useCallback(() => {
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    void queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"] });
-  }, [keywordInput, queryClient]);
+    setSearchNonce((n) => n + 1);
+  }, [keywordInput]);
 
   const analysesQuery = useQuery({
-    queryKey: ["/api/v1/fault-analysis", searchKeyword],
+    queryKey: ["/api/v1/fault-analysis", searchKeyword, searchNonce],
     enabled: !!user && canRead,
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -228,6 +232,8 @@ export default function AdminFaultAnalysisPage() {
       }
       return (await response.json()) as FaultAnalysisListResponse;
     },
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免切换关键词/手动刷新时列表闪空
+    placeholderData: (previousData) => previousData,
   });
 
   useTopicSubscription(
@@ -280,20 +286,30 @@ export default function AdminFaultAnalysisPage() {
             };
           });
         }
-        // 进度事件密集，只增量更新，不整表刷新
-        void queryClient.setQueryData<FaultAnalysisListResponse>(["/api/v1/fault-analysis", searchKeywordCacheRef.current], (old) => {
-          if (!old?.items) return old;
-          return {
-            ...old,
-            items: old.items.map((item) => {
-              if (item.id !== analysisId || !analysisId) return item;
-              const meta = wsProgressCacheRef.current[analysisId];
-              const progress = meta ? meta.progress : item.progress ?? 0;
-              const status = meta ? meta.status : item.status;
-              return { ...item, progress, status: status as typeof item.status };
-            }),
-          };
-        });
+        // 进度事件密集，只增量更新，不整表刷新。
+        // 列表查询 key 现含自增的 searchNonce（[path, keyword, nonce]，长度 3），无法用固定
+        // 精确 key 写入；改用前缀匹配命中所有列表缓存（含当前生效 key），详情缓存（长度 2）不受影响。
+        void queryClient.setQueriesData<FaultAnalysisListResponse>(
+          {
+            predicate: (query) =>
+              Array.isArray(query.queryKey)
+              && query.queryKey.length === 3
+              && query.queryKey[0] === "/api/v1/fault-analysis",
+          },
+          (old) => {
+            if (!old?.items) return old;
+            return {
+              ...old,
+              items: old.items.map((item) => {
+                if (item.id !== analysisId || !analysisId) return item;
+                const meta = wsProgressCacheRef.current[analysisId];
+                const progress = meta ? meta.progress : item.progress ?? 0;
+                const status = meta ? meta.status : item.status;
+                return { ...item, progress, status: status as typeof item.status };
+              }),
+            };
+          },
+        );
       } else {
         void queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
       }

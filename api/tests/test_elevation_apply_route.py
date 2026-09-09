@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base, get_db
 from app.core.dependencies import CurrentUser, get_current_user
-from app.models.elevation import ElevationApplyJob, ElevationFileRecord
+from app.models.elevation import ElevationApplyJob, ElevationApplyJobTower, ElevationFileRecord
 from app.models.line import Line
 from app.models.line_tower import LineTower
 from app.models.tower_analysis import TowerAnalysis
@@ -65,6 +65,7 @@ def _build_session_factory() -> sessionmaker:
             TowerAnalysis.__table__,
             ElevationFileRecord.__table__,
             ElevationApplyJob.__table__,
+            ElevationApplyJobTower.__table__,
         ],
     )
     return sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
@@ -341,5 +342,153 @@ def test_list_records_includes_linked_line_count() -> None:
         body = response.json()
         assert body["total"] == 1
         assert body["items"][0]["linked_line_count"] == 2
+    finally:
+        session.close()
+
+
+def test_job_towers_endpoint_404_for_missing_job() -> None:
+    session_factory = _build_session_factory()
+    try:
+        client = _build_app(session_factory)
+        response = client.get("/api/v1/elevation/jobs/nope/towers")
+        assert response.status_code == 404
+        assert "回填任务不存在" in response.json()["detail"]
+    finally:
+        session_factory().close()
+
+
+def test_job_towers_endpoint_returns_paged_rows() -> None:
+    """GET /elevation/jobs/{job_id}/towers 返回该任务逐杆塔明细（分页 + 按序号排序）。"""
+    session_factory = _build_session_factory()
+    session = session_factory()
+    try:
+        line = Line(code="L-TOW-001", name="明细路由线路", voltage_kv=220, lightning_param_json={})
+        record = ElevationFileRecord(
+            file_name="record.tif",
+            file_path="/elevation/records/ab/cd/record.tif",
+            file_format="tif",
+            file_size=32,
+            mount_code="default",
+            status="active",
+        )
+        session.add_all([line, record])
+        session.flush()
+        towers = [
+            LineTower(line_id=line.id, seq_no=1, tower_no="T1", longitude=120.0, latitude=30.0),
+            LineTower(line_id=line.id, seq_no=2, tower_no="T2", longitude=120.1, latitude=30.1),
+            LineTower(line_id=line.id, seq_no=3, tower_no="T3", longitude=None, latitude=None),
+        ]
+        session.add_all(towers)
+        session.flush()
+        job_a = ElevationApplyJob(line_id=line.id, file_record_id=record.id, mode="overwrite_all", status="success", total_tower_count=3)
+        job_b = ElevationApplyJob(line_id=line.id, file_record_id=record.id, mode="fill_null_only", status="success", total_tower_count=1)
+        session.add_all([job_a, job_b])
+        session.flush()
+
+        # job_a 三条明细（乱序写入，接口应按 seq_no 升序返回）
+        session.add_all([
+            ElevationApplyJobTower(job_id=job_a.id, tower_id=towers[2].id, tower_no="T3", seq_no=3, longitude=None, latitude=None, action="missing_geo"),
+            ElevationApplyJobTower(job_id=job_a.id, tower_id=towers[0].id, tower_no="T1", seq_no=1, longitude=120.0, latitude=30.0, action="updated", altitude_before_m=None, altitude_after_m=88.8),
+            ElevationApplyJobTower(job_id=job_a.id, tower_id=towers[1].id, tower_no="T2", seq_no=2, longitude=120.1, latitude=30.1, action="unmatched"),
+            # job_b 的明细不应出现在 job_a 查询中
+            ElevationApplyJobTower(job_id=job_b.id, tower_id=towers[0].id, tower_no="T1", seq_no=1, longitude=120.0, latitude=30.0, action="skipped"),
+        ])
+        session.commit()
+
+        client = _build_app(session_factory)
+        response = client.get(f"/api/v1/elevation/jobs/{job_a.id}/towers")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["total"] == 3
+        assert [item["seq_no"] for item in body["items"]] == [1, 2, 3]
+        assert [item["action"] for item in body["items"]] == ["updated", "unmatched", "missing_geo"]
+        first = body["items"][0]
+        assert first["job_id"] == job_a.id
+        assert first["tower_no"] == "T1"
+        assert first["altitude_before_m"] is None
+        assert first["altitude_after_m"] == 88.8
+        assert first["longitude"] == 120.0
+
+        # 分页：limit=2 offset=0 → 前两条，total 不变
+        response_page = client.get(f"/api/v1/elevation/jobs/{job_a.id}/towers?limit=2&offset=0")
+        assert response_page.status_code == 200, response_page.text
+        page_body = response_page.json()
+        assert page_body["total"] == 3
+        assert [item["seq_no"] for item in page_body["items"]] == [1, 2]
+    finally:
+        session.close()
+
+
+def test_record_jobs_endpoint_filters_by_line_id() -> None:
+    """GET /records/{record_id}/jobs 支持 line_id 过滤。"""
+    session_factory = _build_session_factory()
+    session = session_factory()
+    try:
+        line_a = Line(code="L-FA", name="线路A", voltage_kv=220, lightning_param_json={})
+        line_b = Line(code="L-FB", name="线路B", voltage_kv=220, lightning_param_json={})
+        record = ElevationFileRecord(
+            file_name="record.tif",
+            file_path="/elevation/records/ab/cd/record.tif",
+            file_format="tif",
+            file_size=32,
+            mount_code="default",
+            status="active",
+        )
+        session.add_all([line_a, line_b, record])
+        session.flush()
+        session.add(ElevationApplyJob(line_id=line_a.id, file_record_id=record.id, mode="overwrite_all", status="success"))
+        session.add(ElevationApplyJob(line_id=line_b.id, file_record_id=record.id, mode="overwrite_all", status="success"))
+        session.commit()
+
+        client = _build_app(session_factory)
+        response = client.get(f"/api/v1/elevation/records/{record.id}/jobs?line_id={line_b.id}")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["total"] == 1
+        assert body["items"][0]["line_id"] == line_b.id
+        assert body["items"][0]["line_code"] == "L-FB"
+    finally:
+        session.close()
+
+
+def test_record_jobs_endpoint_keyword_filters_line_name_and_code() -> None:
+    """GET /records/{record_id}/jobs?keyword=... 按线路名称/编号模糊过滤（后台查询）。"""
+    session_factory = _build_session_factory()
+    session = session_factory()
+    try:
+        line_a = Line(code="L-NAME-A", name="白水线路", voltage_kv=220, lightning_param_json={})
+        line_b = Line(code="L-NAME-B", name="青山线路", voltage_kv=110, lightning_param_json={})
+        record = ElevationFileRecord(
+            file_name="record.tif",
+            file_path="/elevation/records/ab/cd/record.tif",
+            file_format="tif",
+            file_size=32,
+            mount_code="default",
+            status="active",
+        )
+        session.add_all([line_a, line_b, record])
+        session.flush()
+        session.add(ElevationApplyJob(line_id=line_a.id, file_record_id=record.id, mode="overwrite_all", status="success"))
+        session.add(ElevationApplyJob(line_id=line_b.id, file_record_id=record.id, mode="overwrite_all", status="success"))
+        session.commit()
+
+        client = _build_app(session_factory)
+
+        # 按名称关键词
+        response = client.get(f"/api/v1/elevation/records/{record.id}/jobs?keyword=白水")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["total"] == 1
+        assert body["items"][0]["line_id"] == line_a.id
+
+        # 按线路编号关键词
+        response_code = client.get(f"/api/v1/elevation/records/{record.id}/jobs?keyword=L-NAME-B")
+        assert response_code.status_code == 200, response_code.text
+        assert response_code.json()["total"] == 1
+
+        # 空关键词返回全部
+        response_all = client.get(f"/api/v1/elevation/records/{record.id}/jobs?keyword=   ")
+        assert response_all.status_code == 200, response_all.text
+        assert response_all.json()["total"] == 2
     finally:
         session.close()

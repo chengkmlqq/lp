@@ -62,6 +62,8 @@ type CreateJobFormProps = {
   selectedLine: LineSummary | null;
   selectedJobType: CreateJobFormValues["job_type"];
   open: boolean;
+  /** 每次「新建任务」打开时自增；用于关闭后再次打开时强制向导回到第一步。 */
+  openEpoch?: number;
   submitting: boolean;
   onCancel: () => void;
   onSubmit: (values: CreateJobFormValues) => void;
@@ -97,6 +99,7 @@ export function CreateJobForm({
   selectedLine,
   selectedJobType,
   open,
+  openEpoch = 0,
   submitting,
   onCancel,
   onSubmit,
@@ -104,6 +107,7 @@ export function CreateJobForm({
   const { user, fetchWithAuth } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [prevOpen, setPrevOpen] = useState(open);
+  const [prevEpoch, setPrevEpoch] = useState(openEpoch);
   const [prevJobType, setPrevJobType] = useState(selectedJobType);
   const selectedLineId = Form.useWatch("line_id", form) ?? "";
   const selectedTowerIds = Form.useWatch("selected_tower_ids", form) ?? [];
@@ -147,6 +151,13 @@ export function CreateJobForm({
     if (open) {
       setCurrentStep(0);
     }
+  }
+  // antd Modal 关闭后隐藏 DOM 不重渲染，子组件收不到 open=false（prevOpen 恒为 true），
+  // 因此「关闭后再点新建任务」无法靠 open 切换重置步骤；改为由父级每次打开自增的
+  // openEpoch 驱动：epoch 变化即代表一次全新的「新建任务」会话，向导回到第一步。
+  if (openEpoch !== prevEpoch) {
+    setPrevEpoch(openEpoch);
+    setCurrentStep(0);
   }
   if (selectedJobType !== prevJobType) {
     setPrevJobType(selectedJobType);

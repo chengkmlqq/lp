@@ -124,6 +124,9 @@ export default function AtpModelsPage() {
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
+  // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<AtpAssetSummary | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -156,7 +159,9 @@ export default function AtpModelsPage() {
   }, [paginationCurrent, paginationPageSize, trimmedKeyword]);
 
   const assetsQuery = useQuery({
-    queryKey: ["atp-assets", assetsQueryParams],
+    // searchNonce 作为 queryKey 的一部分：每次点击「查询」自增，即使关键词/分页均未变化
+    // 也会产生新 key 强制重新拉取；首个元素仍是 "atp-assets"，不影响失效/刷新逻辑
+    queryKey: ["atp-assets", assetsQueryParams, searchNonce],
     enabled: Boolean(user && canRead),
     queryFn: async () => {
       const response = await fetchWithAuth(`/api/v1/atp/assets?${assetsQueryParams}`);
@@ -165,6 +170,8 @@ export default function AtpModelsPage() {
       }
       return (await response.json()) as AtpAssetListResponse;
     },
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询时列表闪空
+    placeholderData: (previousData) => previousData,
   });
 
   const createAssetMutation = useMutation({
@@ -437,16 +444,14 @@ export default function AtpModelsPage() {
   };
 
   const handleSearch = useCallback(() => {
-    // LP-545：关键词/分页都未变化时查询键不变，react-query 不会自动重新拉取；
-    // 手动强制刷新，保证重复点击「查询」也会触发查询（如拉取新数据）。
-    const keywordChanged = keywordInput.trim() !== searchKeyword.trim();
-    const pageChanged = paginationCurrent !== 1;
+    // 每次点击「查询」都强制触发一次接口请求：
+    // searchNonce 作为 queryKey 的一部分自增，保证即便关键词/分页均未变化（旧实现只对
+    // 这种情况 refetchQueries，且目标 key 若已被 react-query 缓存会短路不发请求）也会
+    // 产生新 key 重新拉取；关键词/分页照常提交并回到第 1 页。
     setSearchKeyword(keywordInput);
     setPagination((previous) => ({ ...previous, current: 1 }));
-    if (!keywordChanged && !pageChanged) {
-      void queryClient.refetchQueries({ queryKey: ["atp-assets"] });
-    }
-  }, [keywordInput, searchKeyword, paginationCurrent, queryClient]);
+    setSearchNonce((n) => n + 1);
+  }, [keywordInput]);
 
   const assetItems = useMemo(() => assetsQuery.data?.items ?? [], [assetsQuery.data?.items]);
 
@@ -824,7 +829,9 @@ export default function AtpModelsPage() {
                   >
                     <Table<AtpAssetSummary>
                       rowKey="id"
-                      loading={assetsQuery.isLoading || assetsQuery.isFetching}
+                      // 列表始终渲染：查询进行中仅叠加 antd Table 自带居中遮罩，保留现有行，
+                      // 接口返回后再更新，避免查询开始时清空表格
+                      loading={assetsQuery.isFetching}
                       columns={columns}
                       dataSource={assetItems}
                       tableLayout="fixed"
@@ -850,38 +857,49 @@ export default function AtpModelsPage() {
                       scroll={{ x: 1200, y: tableScrollY }}
                     />
                   </div>
-                ) : assetsQuery.isFetching ? (
-                  <div className="admin-atp-models-card-view-state">
-                    <Spin />
-                  </div>
-                ) : assetItems.length === 0 ? (
-                  <Empty description="暂无 ATP 模型数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : (
                   <div className="admin-atp-models-card-view">
-                    <div className="admin-atp-models-card-scroll">
-                       <AtpModelCardList
-                        assets={assetItems}
-                        canManage={canManage}
-                        deleteLoading={deleteMutation.isPending}
-                        onView={(asset) => openDetail(asset)}
-                        onEdit={(asset) => openEditModal(asset)}
-                        onDelete={(id) => deleteMutation.mutate(id)}
-                        dimensionLabelMap={dimensionLabelMap}
-                      />
-                    </div>
+                    {assetItems.length === 0 ? (
+                      // 无数据可展示且请求进行中（首载/切换关键词后暂无结果）：整区居中加载指示；
+                      // 有卡片时由下方 Spin 遮罩保留现有卡片，接口返回后再更新，避免查询时闪空
+                      assetsQuery.isFetching ? (
+                        <div className="flex w-full flex-1 items-center justify-center">
+                          <Spin />
+                        </div>
+                      ) : (
+                        <Empty description="暂无 ATP 模型数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                      )
+                    ) : (
+                      <>
+                        <div className="admin-atp-models-card-scroll">
+                          {/* 查询/刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
+                          <Spin spinning={assetsQuery.isFetching}>
+                            <AtpModelCardList
+                              assets={assetItems}
+                              canManage={canManage}
+                              deleteLoading={deleteMutation.isPending}
+                              onView={(asset) => openDetail(asset)}
+                              onEdit={(asset) => openEditModal(asset)}
+                              onDelete={(id) => deleteMutation.mutate(id)}
+                              dimensionLabelMap={dimensionLabelMap}
+                            />
+                          </Spin>
+                        </div>
 
-                    <div className="admin-atp-models-pagination">
-                      <Pagination
-                        current={pagination.current}
-                        pageSize={pagination.pageSize}
-                        total={Math.max(assetTotal, 1)}
-                        onChange={(page, pageSize) => {
-                          setPagination({ current: page, pageSize });
-                        }}
-                        showSizeChanger
-                        showTotal={() => `共 ${assetTotal} 条`}
-                      />
-                    </div>
+                        <div className="admin-atp-models-pagination">
+                          <Pagination
+                            current={pagination.current}
+                            pageSize={pagination.pageSize}
+                            total={Math.max(assetTotal, 1)}
+                            onChange={(page, pageSize) => {
+                              setPagination({ current: page, pageSize });
+                            }}
+                            showSizeChanger
+                            showTotal={() => `共 ${assetTotal} 条`}
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

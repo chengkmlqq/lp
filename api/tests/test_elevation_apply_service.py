@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
-from app.models.elevation import ElevationApplyJob, ElevationFileRecord
+from app.models.elevation import ElevationApplyJob, ElevationApplyJobTower, ElevationFileRecord
 from app.models.line import Line
 from app.models.line_tower import LineTower
 from app.models.tower_analysis import TowerAnalysis
@@ -35,6 +35,7 @@ def _build_session_factory() -> sessionmaker[Session]:
             TowerAnalysis.__table__,
             ElevationFileRecord.__table__,
             ElevationApplyJob.__table__,
+            ElevationApplyJobTower.__table__,
         ],
     )
     return sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
@@ -168,7 +169,7 @@ def test_execute_apply_job_uses_saved_actor_for_preparation_source(monkeypatch) 
         session.add(job)
         session.commit()
 
-        def _fake_apply_raster(db, *, line_id, elevation_source, mode):
+        def _fake_apply_raster(db, *, line_id, elevation_source, mode, job_id=None):
             ts = db.execute(select(LineTower).where(LineTower.line_id == line_id)).scalars().all()
             for t in ts:
                 t.altitude_m = 120.0
@@ -244,7 +245,7 @@ def test_execute_apply_job_uses_file_record_source(monkeypatch) -> None:
         session.add(job)
         session.commit()
 
-        def _fake_apply_raster(db, *, line_id, elevation_source, mode):
+        def _fake_apply_raster(db, *, line_id, elevation_source, mode, job_id=None):
             ts = db.execute(select(LineTower).where(LineTower.line_id == line_id)).scalars().all()
             for t in ts:
                 t.altitude_m = 120.0
@@ -279,5 +280,114 @@ def test_execute_apply_job_uses_file_record_source(monkeypatch) -> None:
             assert source["job_id"] == job.id
         finally:
             verification_session.close()
+    finally:
+        session.close()
+
+
+def test_apply_raster_snapshots_job_tower_details(monkeypatch) -> None:
+    """回填任务执行时为每个杆塔写入明细快照（updated/skipped/missing_geo/unmatched）。
+
+    覆盖：已更新（采样命中并写值）/ 已跳过（fill_null 且已有完整值）/
+    缺坐标（无经纬度）/ 未命中（采样无值）；重复执行同一任务幂等替换明细。
+    """
+    import contextlib
+
+    from app.models.elevation import ElevationApplyJobTower as JobTower
+
+    testing_session = _build_session_factory()
+    session = testing_session()
+    try:
+        line = Line(code="L-SNAP-001", name="明细快照线路", voltage_kv=110, lightning_param_json={})
+        record = _make_record(session, file_name="snapshot.tif")
+        session.add_all([line, record])
+        session.flush()
+        session.add_all(
+            [
+                # 缺坐标（missing_geo）
+                LineTower(line_id=line.id, seq_no=1, tower_no="M1", longitude=None, latitude=None),
+                # 采样命中（updated，mode=fill_null_only 时无原值 → 回填）
+                LineTower(line_id=line.id, seq_no=2, tower_no="H1", longitude=120.0, latitude=30.0),
+                # 采样未命中（unmatched）
+                LineTower(line_id=line.id, seq_no=3, tower_no="U1", longitude=121.0, latitude=31.0),
+                # 已有完整值且 fill_null_only → 跳过（skipped）
+                LineTower(line_id=line.id, seq_no=4, tower_no="S1", longitude=122.0, latitude=32.0, altitude_m=11.1, slope_1=0.5, slope_2=0.6),
+            ]
+        )
+        session.flush()
+        job = ElevationApplyJob(
+            line_id=line.id,
+            file_record_id=record.id,
+            mode="fill_null_only",
+            status="running",
+            total_tower_count=4,
+            create_user="tester",
+            update_user="tester",
+        )
+        session.add(job)
+        session.commit()
+
+        # 采样器：仅 (120.0, 30.0) 命中 88.8，其余返回 None
+        def _fake_sampler(lon: float, lat: float):
+            if lon == 120.0 and lat == 30.0:
+                return 88.8
+            return None
+
+        @contextlib.contextmanager
+        def _fake_open(db, record):  # noqa: ARG001
+            yield SimpleNamespace(
+                rasterio=SimpleNamespace(),
+                dataset=SimpleNamespace(crs=None, nodatavals=None),
+            )
+
+        monkeypatch.setattr(elevation_service, "_open_raster_dataset", _fake_open)
+        monkeypatch.setattr(elevation_service, "_build_raster_sampler", lambda *args, **kwargs: _fake_sampler)
+        monkeypatch.setattr(elevation_service, "_append_non_wgs84_bounds_warning", lambda *args, **kwargs: None)
+
+        stats, _ = elevation_service._apply_raster_to_line_towers(
+            session,
+            line_id=line.id,
+            elevation_source=record,
+            mode="fill_null_only",
+            job_id=job.id,
+        )
+        assert stats == {
+            "updated_tower_count": 1,
+            "skipped_tower_count": 1,
+            "missing_geo_count": 1,
+            "unmatched_count": 1,
+        }
+
+        details = session.execute(
+            select(JobTower)
+            .where(JobTower.job_id == job.id)
+            .order_by(JobTower.seq_no.asc())
+        ).scalars().all()
+        assert len(details) == 4
+        assert [item.action for item in details] == ["missing_geo", "updated", "unmatched", "skipped"]
+        assert [item.seq_no for item in details] == [1, 2, 3, 4]
+        assert [item.tower_no for item in details] == ["M1", "H1", "U1", "S1"]
+
+        hit = details[1]
+        assert hit.altitude_before_m is None
+        assert hit.altitude_after_m == 88.8
+        assert hit.longitude == 120.0 and hit.latitude == 30.0
+        skip_row = details[3]
+        assert skip_row.altitude_before_m == 11.1
+        assert skip_row.altitude_after_m == 11.1
+        assert skip_row.slope_1_before == 0.5 and skip_row.slope_1_after == 0.5
+        assert skip_row.slope_2_before == 0.6 and skip_row.slope_2_after == 0.6
+
+        # 同任务重复执行：先清旧明细再写入（行数不变，无重复）
+        elevation_service._apply_raster_to_line_towers(
+            session,
+            line_id=line.id,
+            elevation_source=record,
+            mode="fill_null_only",
+            job_id=job.id,
+        )
+        details_again = session.execute(
+            select(JobTower).where(JobTower.job_id == job.id)
+        ).scalars().all()
+        assert len(details_again) == 4
     finally:
         session.close()

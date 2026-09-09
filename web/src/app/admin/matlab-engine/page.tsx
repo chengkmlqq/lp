@@ -159,6 +159,9 @@ export default function AdminMatlabEnginePage() {
   // 版本筛选（仅关键词）
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  // 版本列表手动刷新计数：每次点击「查询」自增并作为 versionsQuery 的 queryKey 一部分，
+  // 强制走一次接口，即使关键词/分页未变化、或目标结果此前已被 react-query 缓存也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   // 模块筛选（左侧栏）
   const [moduleKeywordInput, setModuleKeywordInput] = useState("");
   const [moduleKeyword, setModuleKeyword] = useState("");
@@ -226,12 +229,16 @@ export default function AdminMatlabEnginePage() {
   const effectiveSlug = selectedSlug ?? modules[0]?.slug ?? null;
 
   const versionsQuery = useQuery({
-    queryKey: ["admin.matlab.versions", effectiveSlug],
+    queryKey: ["admin.matlab.versions", effectiveSlug, searchNonce],
     enabled: Boolean(user && canRead && effectiveSlug),
     queryFn: async () => {
       if (!effectiveSlug) return { slug: "", releases: [] };
       return fetchMatlabModuleVersions(effectiveSlug);
     },
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，点击查询/刷新期间列表不闪空。
+    // 仅当仍是同一模块时才沿用旧数据，避免切换模块时短暂显示上一个模块的版本列表。
+    placeholderData: (previousData) =>
+      previousData && previousData.slug === effectiveSlug ? previousData : undefined,
   });
 
   const refreshCurrent = useCallback(async () => {
@@ -625,18 +632,16 @@ export default function AdminMatlabEnginePage() {
   );
 
   const handleQuery = useCallback(() => {
-    // LP-545：关键词/分页都未变化时查询键不变，react-query 不会自动重新拉取；
-    // 手动强制刷新，保证重复点击「查询」也会触发查询（如拉取新数据）。
-    const keywordChanged = keywordInput.trim() !== searchKeyword.trim();
-    const pageChanged = paginationCurrent !== 1;
+    // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
+    // 保证即使关键词/分页均未变化（旧实现只在两者均未变化时才手动 refetchQueries，
+    // 且命中缓存时会短路不发请求）也会产生新 key 重新拉取最新数据；
+    // 关键词照常提交并回到第 1 页。卡片视图不在此清空已有卡片，由下方 effect 在
+    // 关键词提交后按第 1 页数据重建，刷新期间保留旧卡片并叠加 loading 遮罩。
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(1);
-    setAllLoadedVersions([]);
-    if (!keywordChanged && !pageChanged) {
-      void queryClient.refetchQueries({ queryKey: ["admin.matlab.versions", effectiveSlug] });
-    }
-  }, [keywordInput, searchKeyword, paginationCurrent, queryClient, effectiveSlug]);
+    setSearchNonce((n) => n + 1);
+  }, [keywordInput]);
 
   const handleModuleSearch = useCallback(() => {
     setModuleKeyword(moduleKeywordInput);
@@ -1235,39 +1240,45 @@ export default function AdminMatlabEnginePage() {
                       </div>
                     ) : selectedModule ? (
                       <div className="admin-matlab-card-view">
-                        {versionsQuery.isLoading && allLoadedVersions.length === 0 ? (
-                          <div className="admin-matlab-card-view-state">
-                            <Spin />
-                          </div>
-                        ) : allLoadedVersions.length === 0 ? (
-                          <div className="admin-matlab-card-view-state">
-                            <Empty
-                              image={Empty.PRESENTED_IMAGE_SIMPLE}
-                              description="未找到符合筛选条件的版本。"
-                            />
-                          </div>
+                        {allLoadedVersions.length === 0 ? (
+                          versionsQuery.isFetching ? (
+                            // 无卡片可展示且请求进行中（首载/切换模块/刷新）：整区居中加载指示
+                            <div className="admin-matlab-card-view-state">
+                              <Spin />
+                            </div>
+                          ) : (
+                            <div className="admin-matlab-card-view-state">
+                              <Empty
+                                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                description="未找到符合筛选条件的版本。"
+                              />
+                            </div>
+                          )
                         ) : (
-                          <div className="admin-matlab-card-view-content">
-                            <Row gutter={[12, 12]}>
-                              {allLoadedVersions.map((item) => (
-                                <Col key={item.version_hash} xs={24} sm={24} md={12} lg={8} xl={6}>
-                                  {renderVersionCard(item)}
-                                </Col>
-                              ))}
-                            </Row>
-                            {isLoadingMore && (
-                              <div style={{ textAlign: "center", padding: "20px 0" }}>
-                                <Spin />
-                              </div>
-                            )}
-                            {allLoadedVersions.length >= filteredVersions.length && allLoadedVersions.length > 0 && (
-                              <div style={{ textAlign: "center", padding: "20px 0" }}>
-                                <Typography.Text type="secondary">
-                                  已加载全部 {allLoadedVersions.length} 条数据
-                                </Typography.Text>
-                              </div>
-                            )}
-                          </div>
+                          // 已有卡片：查询/刷新期间不清空，仅叠加 loading 遮罩，接口返回后再更新数据
+                          <Spin spinning={versionsQuery.isFetching}>
+                            <div className="admin-matlab-card-view-content">
+                              <Row gutter={[12, 12]}>
+                                {allLoadedVersions.map((item) => (
+                                  <Col key={item.version_hash} xs={24} sm={24} md={12} lg={8} xl={6}>
+                                    {renderVersionCard(item)}
+                                  </Col>
+                                ))}
+                              </Row>
+                              {isLoadingMore && (
+                                <div style={{ textAlign: "center", padding: "20px 0" }}>
+                                  <Spin />
+                                </div>
+                              )}
+                              {allLoadedVersions.length >= filteredVersions.length && allLoadedVersions.length > 0 && (
+                                <div style={{ textAlign: "center", padding: "20px 0" }}>
+                                  <Typography.Text type="secondary">
+                                    已加载全部 {allLoadedVersions.length} 条数据
+                                  </Typography.Text>
+                                </div>
+                              )}
+                            </div>
+                          </Spin>
                         )}
                       </div>
                     ) : (

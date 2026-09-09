@@ -73,6 +73,15 @@ function findType(types: DimensionTypeTreeItem[] | undefined | null, id: string)
   return null;
 }
 
+// 从维度列表查询 URL 中取出 type_id 参数值：type_id 变化即表示切换到另一份数据集
+// （点击左侧类型树/移动端类型下拉），此时不应沿用上一份数据作占位。
+function identityTypeOf(path: unknown): string {
+  if (typeof path !== "string") return "";
+  const search = path.split("?")[1];
+  if (!search) return "";
+  return new URLSearchParams(search).get("type_id") ?? "";
+}
+
 export default function AdminDimensionsPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -80,6 +89,9 @@ export default function AdminDimensionsPage() {
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
+  // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [statusFilterInput, setStatusFilterInput] = useState<StatusFilter>(undefined);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(undefined);
   const [typeIdFilter, setTypeIdFilter] = useState<string | null>(null);
@@ -314,7 +326,7 @@ export default function AdminDimensionsPage() {
   }, [paginationCurrent, paginationPageSize, statusFilter, trimmedKeyword, typeIdFilter]);
 
   const listQuery = useQuery({
-    queryKey: [listPath],
+    queryKey: [listPath, searchNonce],
     enabled: !!user && canRead,
     queryFn: async () => {
       const response = await fetchWithAuth(listPath);
@@ -322,6 +334,14 @@ export default function AdminDimensionsPage() {
         throw new Error(await readApiError(response));
       }
       return (await response.json()) as DimensionItemListResponse;
+    },
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询/翻页时列表闪空。
+    // type_id 属数据身份：切换类型后沿用旧占位会短暂显示上一个类型下的维度项，故仅当
+    // 两次查询的 type_id 一致时才沿用上一份数据；关键词/状态/翻页变化时保留，行不闪空。
+    placeholderData: (previousData, previousQuery) => {
+      const previousKey = previousQuery?.queryKey;
+      const previousPath = Array.isArray(previousKey) ? previousKey[0] : undefined;
+      return identityTypeOf(previousPath) === identityTypeOf(listPath) ? previousData : undefined;
     },
   });
 
@@ -497,12 +517,16 @@ export default function AdminDimensionsPage() {
   }, [updateStatusMutation]);
 
   const handleQuery = () => {
+    // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
+    // 即便关键词/分页均未变化（旧实现仅 refetchQueries，目标 key 已被 react-query 缓存时
+    // 会短路不发请求）也会产生新 key 重新拉取；关键词/状态照常提交并回到第 1 页。
+    // 卡片累积列表不清空：新查询进行中旧卡片保留在 Spin 遮罩之下，接口返回后再由
+    // 累积 effect（cardViewPage===1）整体替换，避免查询开始时卡片闪空。
     setSearchKeyword(keywordInput);
     setStatusFilter(statusFilterInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(() => 1);
-    setAllLoadedDimensions(() => []);
-    void queryClient.refetchQueries({ queryKey: [listPath] });
+    setSearchNonce((n) => n + 1);
   };
 
   const rawItems = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items]);
@@ -525,7 +549,9 @@ export default function AdminDimensionsPage() {
 
   // Card-view infinite scroll accumulation
   useEffect(() => {
-    if (viewMode !== "card" || listQuery.isLoading) {
+    // isPlaceholderData 期间展示的是上一份占位数据（新查询进行中），与 isLoading 一样
+    // 不能写入累积列表，否则翻页加载会被提前合并、打乱加载更多顺序
+    if (viewMode !== "card" || listQuery.isLoading || listQuery.isPlaceholderData) {
       return;
     }
     const frameId = window.requestAnimationFrame(() => {
@@ -546,7 +572,7 @@ export default function AdminDimensionsPage() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [items, listQuery.isLoading, viewMode, cardViewPage]);
+  }, [items, listQuery.isLoading, listQuery.isPlaceholderData, viewMode, cardViewPage]);
 
   useEffect(() => {
     if (viewMode !== "card") return;
@@ -1105,7 +1131,9 @@ export default function AdminDimensionsPage() {
                   rowKey="id"
                   dataSource={items}
                   columns={columns}
-                  loading={listQuery.isLoading}
+                  // 列表始终渲染：查询进行中仅叠加 antd Table 自带居中遮罩，保留现有行，
+                  // 接口返回后再更新，避免查询开始时清空表格
+                  loading={listQuery.isFetching}
                   tableLayout="fixed"
                   pagination={{
                     current: pagination.current,
@@ -1133,7 +1161,7 @@ export default function AdminDimensionsPage() {
               </div>
             ) : (
               <div className="admin-system-params-card-view">
-                {listQuery.isLoading && allLoadedDimensions.length === 0 ? (
+                {(listQuery.isLoading || listQuery.isFetching) && allLoadedDimensions.length === 0 ? (
                   <div className="admin-system-params-card-view-state">
                     <Spin />
                   </div>
@@ -1145,27 +1173,30 @@ export default function AdminDimensionsPage() {
                     />
                   </div>
                 ) : (
-                  <div className="admin-system-params-card-view-content">
-                    <Row gutter={[12, 12]}>
-                      {allLoadedDimensions.map((item) => (
-                        <Col key={item.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                          {renderDimensionCard(item)}
-                        </Col>
-                      ))}
-                    </Row>
-                    {isLoadingMore && (
-                      <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Spin />
-                      </div>
-                    )}
-                    {allLoadedDimensions.length >= (listQuery.data?.total ?? 0) && allLoadedDimensions.length > 0 && (
-                      <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Typography.Text type="secondary">
-                          已加载全部 {allLoadedDimensions.length} 条数据
-                        </Typography.Text>
-                      </div>
-                    )}
-                  </div>
+                  // 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据
+                  <Spin spinning={listQuery.isFetching}>
+                    <div className="admin-system-params-card-view-content">
+                      <Row gutter={[12, 12]}>
+                        {allLoadedDimensions.map((item) => (
+                          <Col key={item.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                            {renderDimensionCard(item)}
+                          </Col>
+                        ))}
+                      </Row>
+                      {isLoadingMore && (
+                        <div style={{ textAlign: "center", padding: "20px 0" }}>
+                          <Spin />
+                        </div>
+                      )}
+                      {allLoadedDimensions.length >= (listQuery.data?.total ?? 0) && allLoadedDimensions.length > 0 && (
+                        <div style={{ textAlign: "center", padding: "20px 0" }}>
+                          <Typography.Text type="secondary">
+                            已加载全部 {allLoadedDimensions.length} 条数据
+                          </Typography.Text>
+                        </div>
+                      )}
+                    </div>
+                  </Spin>
                 )}
               </div>
             )}

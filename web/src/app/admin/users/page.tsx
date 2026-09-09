@@ -107,6 +107,9 @@ export default function AdminUsersPage() {
   const [roleForm] = Form.useForm<{ role_codes: string[] }>();
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
+  // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
+  const [searchNonce, setSearchNonce] = useState(0);
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled" | undefined>(undefined);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(USERS_TABLE_MIN_SCROLL_Y);
@@ -156,9 +159,11 @@ export default function AdminUsersPage() {
   }, [fetchWithAuth]);
 
   const usersQuery = useQuery({
-    queryKey: ["admin.users", usersQueryParams],
+    queryKey: ["admin.users", usersQueryParams, searchNonce],
     queryFn: loadUsers,
     enabled: !!user && canManage,
+    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询/翻页时列表闪空
+    placeholderData: (previousData) => previousData,
   });
 
   const rolesQuery = useQuery({
@@ -761,10 +766,13 @@ export default function AdminUsersPage() {
   };
 
   const handleSearch = () => {
+    // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
+    // 即便关键词/分页均未变化（旧实现仅 refetchQueries，目标 key 已被 react-query 缓存时
+    // 会短路不发请求）也会产生新 key 重新拉取；关键词/分页照常提交并回到第 1 页。
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCardViewPage(1);
-    void queryClient.refetchQueries({ queryKey: ["admin.users"] });
+    setSearchNonce((n) => n + 1);
   };
 
   const queryError = useMemo<ApiError | null>(() =>
@@ -783,7 +791,9 @@ export default function AdminUsersPage() {
 
   // Update allLoadedUsers when users data changes in card view
   useEffect(() => {
-    if (viewMode !== "card" || usersQuery.isLoading) {
+    // isPlaceholderData 期间展示的是上一份占位数据（新查询进行中），与 isLoading 一样
+    // 不能写入累积列表，否则翻页加载会被提前合并、打乱加载更多顺序
+    if (viewMode !== "card" || usersQuery.isLoading || usersQuery.isPlaceholderData) {
       return;
     }
 
@@ -807,7 +817,7 @@ export default function AdminUsersPage() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [users, usersQuery.isLoading, viewMode, cardViewPage]);
+  }, [users, usersQuery.isLoading, usersQuery.isPlaceholderData, viewMode, cardViewPage]);
 
   // Handle infinite scroll for card view
   useEffect(() => {
@@ -1312,7 +1322,7 @@ export default function AdminUsersPage() {
                   rowKey="id"
                   dataSource={users}
                   columns={columns}
-                  loading={usersQuery.isLoading || rolesQuery.isLoading}
+                  loading={usersQuery.isFetching || rolesQuery.isLoading}
                   tableLayout="fixed"
                   pagination={{
                     current: pagination.current,
@@ -1340,7 +1350,7 @@ export default function AdminUsersPage() {
               </div>
             ) : (
               <div className="admin-users-card-view">
-                {usersQuery.isLoading && allLoadedUsers.length === 0 ? (
+                {(usersQuery.isLoading || usersQuery.isFetching) && allLoadedUsers.length === 0 ? (
                   <div className="admin-users-card-view-state">
                     <Spin />
                   </div>
@@ -1352,27 +1362,30 @@ export default function AdminUsersPage() {
                     />
                   </div>
                 ) : (
-                  <div className="admin-users-card-view-content">
-                    <Row gutter={[12, 12]}>
-                      {allLoadedUsers.map((userItem) => (
-                        <Col key={userItem.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                          {renderUserCard(userItem)}
-                        </Col>
-                      ))}
-                    </Row>
-                    {isLoadingMore && (
-                      <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Spin />
-                      </div>
-                    )}
-                    {allLoadedUsers.length >= (usersQuery.data?.total ?? 0) && allLoadedUsers.length > 0 && (
-                      <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Typography.Text type="secondary">
-                          已加载全部 {allLoadedUsers.length} 条数据
-                        </Typography.Text>
-                      </div>
-                    )}
-                  </div>
+                  // 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据
+                  <Spin spinning={usersQuery.isFetching}>
+                    <div className="admin-users-card-view-content">
+                      <Row gutter={[12, 12]}>
+                        {allLoadedUsers.map((userItem) => (
+                          <Col key={userItem.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                            {renderUserCard(userItem)}
+                          </Col>
+                        ))}
+                      </Row>
+                      {isLoadingMore && (
+                        <div style={{ textAlign: "center", padding: "20px 0" }}>
+                          <Spin />
+                        </div>
+                      )}
+                      {allLoadedUsers.length >= (usersQuery.data?.total ?? 0) && allLoadedUsers.length > 0 && (
+                        <div style={{ textAlign: "center", padding: "20px 0" }}>
+                          <Typography.Text type="secondary">
+                            已加载全部 {allLoadedUsers.length} 条数据
+                          </Typography.Text>
+                        </div>
+                      )}
+                    </div>
+                  </Spin>
                 )}
               </div>
             )}
