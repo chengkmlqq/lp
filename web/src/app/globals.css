@@ -3918,16 +3918,21 @@ body {
   min-height: var(--lightning-table-body-min-height, 180px);
 }
 
-/* LP-303: 详情动态 Tab 内容容器：10px 内边距，内容超高时纵向滚动；LP-311: 对齐线路页详情容器样式 */
+/* LP-303: 详情动态 Tab 内容容器：24px 内边距，内容超高时纵向滚动；LP-311: 对齐线路页详情容器样式
+   LP-xxx: 块间距统一走容器 gap:12px，Title 自带 margin-bottom 会叠加导致块间距不均，这里归零 */
 .admin-lightning-currents-detail-pane {
   display: flex;
   flex: 1;
   min-height: 0;
   flex-direction: column;
   gap: 12px;
-  padding: 10px;
+  padding: 24px;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.admin-lightning-currents-detail-pane .ant-typography-title {
+  margin-bottom: 0;
 }
 
 /* LP-583: 详情页「基本信息 / 波形特征参数」两个 Descriptions 的列宽保持一致，上下表格列对齐。
