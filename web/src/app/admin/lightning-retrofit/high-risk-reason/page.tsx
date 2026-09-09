@@ -14,8 +14,8 @@ import {
   Table,
   Tag,
   Typography,
-  useQueryClient,
 } from "antd";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ColumnsType } from "antd/es/table";
 import { ArrowUpOutlined } from "@ant-design/icons";
 
