@@ -1181,6 +1181,7 @@ export type AtpAssetFileEntry = {
   size: number;
   mime_type: string | null;
   file_role: string | null;
+  modified_at: string | null;
 };
 
 export type AtpAssetFileListResponse = {

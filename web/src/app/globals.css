@@ -3969,6 +3969,28 @@ body {
   white-space: nowrap;
 }
 
+/* ATP 模型详情页容器：对齐雷电流幅值详情页——24px 内边距、块间 12px、整体纵向滚动（表格自身不出滚动条） */
+.admin-atp-models-detail-pane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.admin-atp-models-detail-pane .ant-typography-title {
+  margin-bottom: 0;
+}
+
+/* 文件列表表格：禁用表体独立滚动，让整页滚动接管 */
+.admin-atp-models-detail-pane .admin-atp-models-files-table .ant-table-body {
+  overflow-y: visible !important;
+  max-height: none !important;
+}
+
 /* LP-246: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
    内部列表 Tab 的布局才能延续原有 flex 自适应滚动布局 */
 .admin-lightning-currents-tabs {

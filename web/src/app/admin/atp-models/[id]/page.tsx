@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Card, Descriptions, Empty, Space, Spin, Table, Typography } from "antd";
+import { Alert, Descriptions, Empty, Spin, Table, Typography } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
@@ -14,6 +14,14 @@ function formatDateTime(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function formatSize(bytes: number | "-"): string {
+  if (bytes === "-") return "-";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
 function ATPAssetDetailPage() {
@@ -79,83 +87,64 @@ function ATPAssetDetailPage() {
   const fileItemRow = (file: AtpAssetFileListResponse["items"][number]) => ({
     key: file.relative_path,
     name: file.name,
-    path: file.relative_path,
     size: file.is_dir ? "-" : file.size,
-    role: file.file_role || "-",
+    modified: file.is_dir ? "-" : file.modified_at,
     is_dir: file.is_dir,
   });
 
   return (
-    <div className="flex flex-col gap-4">
-      <Space align="center" size={8}>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          ATP 模型详情
-        </Typography.Title>
-      </Space>
-
+    <div className="admin-atp-models-detail-pane">
       {assetQuery.isLoading ? (
-        <Card>
-          <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <Spin />
-          </div>
-        </Card>
+        <div style={{ textAlign: "center", padding: "40px 0" }}>
+          <Spin />
+        </div>
       ) : assetQuery.isError ? (
-        <Card>
-          <Alert type="error" showIcon message="加载 ATP 模型失败" description={assetQuery.error instanceof Error ? assetQuery.error.message : ""} />
-        </Card>
+        <Alert type="error" showIcon message="加载 ATP 模型失败" description={assetQuery.error instanceof Error ? assetQuery.error.message : ""} />
       ) : asset ? (
-        <Card size="small">
-          <div className="flex flex-col gap-2">
-            <Typography.Title level={5} style={{ margin: 0 }}>基本信息</Typography.Title>
-            <Descriptions
-              bordered
-              size="small"
-              column={2}
-              className="admin-atp-models-meta-table"
-              items={[
-                { key: "code", label: "编码", children: asset.code },
-                { key: "name", label: "名称", children: asset.name },
-                { key: "voltage", label: "电压等级", children: asset.voltage_level || "-" },
-                { key: "tower", label: "塔型", children: asset.tower_type || "-" },
-                { key: "scene", label: "场景", children: asset.scene_type || "-" },
-                { key: "arrester", label: "避雷器组合", children: asset.arrester_config || "-" },
-                { key: "run_count", label: "运行次数", children: asset.run_count },
-                { key: "last_run", label: "最近运行", children: asset.last_run_status ? `${asset.last_run_status} · ${formatDateTime(asset.last_run_date)}` : "-" },
-                { key: "storage", label: "存储挂载", children: asset.storage_mount_code || "-" },
-                { key: "create_date", label: "创建时间", children: formatDateTime(asset.create_date) },
-              ]}
-            />
-          </div>
-        </Card>
+        <div>
+          <Typography.Title level={5}>基本信息</Typography.Title>
+          <Descriptions
+            bordered
+            size="small"
+            column={2}
+            className="admin-atp-models-meta-table"
+            items={[
+              { key: "code", label: "编码", children: asset.code },
+              { key: "name", label: "名称", children: asset.name },
+              { key: "voltage", label: "电压等级", children: asset.voltage_level || "-" },
+              { key: "tower", label: "塔型", children: asset.tower_type || "-" },
+              { key: "scene", label: "场景", children: asset.scene_type || "-" },
+              { key: "arrester", label: "避雷器组合", children: asset.arrester_config || "-" },
+              { key: "run_count", label: "运行次数", children: asset.run_count },
+              { key: "last_run", label: "最近运行", children: asset.last_run_status ? `${asset.last_run_status} · ${formatDateTime(asset.last_run_date)}` : "-" },
+              { key: "storage", label: "存储挂载", children: asset.storage_mount_code || "-" },
+              { key: "create_date", label: "创建时间", children: formatDateTime(asset.create_date) },
+            ]}
+          />
+        </div>
       ) : null}
 
-      <Card size="small" styles={{ body: { padding: 0 } }}>
-        <div className="flex flex-col">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <Typography.Title level={5} style={{ margin: 0 }}>
-              文件列表 ({files.length})
-            </Typography.Title>
+      <div>
+        <Typography.Title level={5}>文件列表 ({files.length})</Typography.Title>
+        {files.length === 0 && !filesQuery.isLoading ? (
+          <div style={{ padding: "24px 0" }}>
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无文件" />
           </div>
-          {files.length === 0 && !filesQuery.isLoading ? (
-            <div style={{ padding: "24px 0" }}>
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无文件" />
-            </div>
-          ) : (
-            <Table
-              rowKey="path"
-              loading={filesQuery.isLoading}
-              dataSource={files.map(fileItemRow)}
-              pagination={false}
-              columns={[
-                { title: "名称", dataIndex: "name", key: "name", width: 220 },
-                { title: "路径", dataIndex: "path", key: "path" },
-                { title: "大小(字节)", dataIndex: "size", key: "size", width: 120 },
-                { title: "角色", dataIndex: "role", key: "role", width: 120 },
-              ]}
-            />
-          )}
-        </div>
-      </Card>
+        ) : (
+          <Table
+            rowKey="key"
+            loading={filesQuery.isLoading}
+            dataSource={files.map(fileItemRow)}
+            pagination={false}
+            className="admin-atp-models-files-table"
+            columns={[
+              { title: "文件名", dataIndex: "name", key: "name" },
+              { title: "文件大小", dataIndex: "size", key: "size", width: 120, render: (v: number | "-") => formatSize(v) },
+              { title: "更新时间", dataIndex: "modified", key: "modified", width: 180, render: (v: string | "-") => (v === "-" ? "-" : formatDateTime(v)) },
+            ]}
+          />
+        )}
+      </div>
     </div>
   );
 }

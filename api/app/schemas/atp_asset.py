@@ -77,6 +77,7 @@ class AtpAssetFileEntry(BaseModel):
     size: int = 0
     mime_type: str | None = None
     file_role: str | None = None
+    modified_at: str | None = None
 
 
 class AtpAssetFileListResponse(BaseModel):

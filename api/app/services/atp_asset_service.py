@@ -955,6 +955,7 @@ def list_asset_files(db: Session, *, asset_id: str) -> AtpAssetFileListResponse:
             size=item.size,
             mime_type=item.mime_type,
             file_role=_infer_asset_file_role(asset, _relative_from_root(storage_root_path, item.path), False),
+            modified_at=item.modified_at.isoformat() if item.modified_at else None,
         )
         for item in tree.files
     ]
@@ -966,6 +967,7 @@ def list_asset_files(db: Session, *, asset_id: str) -> AtpAssetFileListResponse:
             size=0,
             mime_type=None,
             file_role=_infer_asset_file_role(asset, path, True),
+            modified_at=None,
         )
         for path in tree.directories
     ]
