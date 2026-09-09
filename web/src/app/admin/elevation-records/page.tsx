@@ -67,6 +67,7 @@ type ElevationFileRecordSummary = {
   status: string;
   data_source_type: string;
   linked_line_count: number;
+  // 高程文件覆盖范围（bbox），用于回填线路选择的范围标记
   bbox_min_lon: number | null;
   bbox_max_lon: number | null;
   bbox_min_lat: number | null;
