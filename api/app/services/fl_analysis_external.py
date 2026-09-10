@@ -226,6 +226,7 @@ def execute_shielding_binary_search_external(
     snapshot: FlAnalysisTowerSnapshot,
     execution_options: dict[str, Any],
     baseline_result: dict[str, Any],
+    payload: dict[str, Any] | None = None,
 ) -> ExternalTowerExecutionResult:
     """LP-570 绕击耐雷水平 ATP 二分（对齐 C# 任务2 绕击=ATP raoji 模板）。
 
@@ -262,10 +263,11 @@ def execute_shielding_binary_search_external(
     from .fl_analysis_rules import _calculate_shielding_trip_rate  # noqa: PLC0415
     from .fl_analysis_rules import _normalize_lightning_inputs  # noqa: PLC0415
 
-    payload = {
-        "base_tower_json": baseline_result.get("base_tower_json") or {},
-        "profile_json": baseline_result.get("profile_json") or {},
-    }
+    if payload is None:
+        payload = {
+            "base_tower_json": baseline_result.get("base_tower_json") or {},
+            "profile_json": baseline_result.get("profile_json") or {},
+        }
     try:
         normalized = _normalize_lightning_inputs(payload)
         if normalized is None:

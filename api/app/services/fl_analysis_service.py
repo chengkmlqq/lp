@@ -635,6 +635,7 @@ def execute_job(job_id: str) -> None:
                                     snapshot=snapshot,
                                     execution_options=execution_options,
                                     baseline_result=baseline_result,
+                                    payload=payload,
                                 )
                                 merged_sh = dict(execution.result_json)
                                 # 只合并绕击相关字段（execute_shielding 内部已保证不污染反击字段）
