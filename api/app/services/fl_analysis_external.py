@@ -217,6 +217,68 @@ def execute_multi_phase_binary_search_external(
     )
 
 
+def execute_shielding_binary_search_external(
+    resolved_job: ResolvedExternalWaveformJob,
+    *,
+    db: Session,
+    job: FlAnalysisJob,
+    snapshot: FlAnalysisTowerSnapshot,
+    execution_options: dict[str, Any],
+    baseline_result: dict[str, Any],
+) -> ExternalTowerExecutionResult:
+    """LP-570 绕击耐雷水平 ATP 二分（对齐 C# 任务2 绕击=ATP raoji 模板）。
+
+    C# 普通计算（任务2 反ATP/绕ATP）：绕击耐雷水平 = ATP 二分单相档
+    （raoji 模板，判据 Close switch >= 1）。Web 端此前把反击二分值
+    直接塞 shielding_withstand_ka（511 异常），现用独立 raoji 资产二分。
+    绕击倍率查 BeiShu（500kV guxing raoji=1.1），绕击跳闸率由 rules
+    的 EGM/规程公式重算（_calculate_shielding_trip_rate 已验证 P3 0.149）。
+    """
+    execution = execute_binary_search_external(
+        resolved_job,
+        db=db,
+        job=job,
+        snapshot=snapshot,
+        execution_options=execution_options,
+        baseline_result=baseline_result,
+        target_flashover_phases=1,
+    )
+    merged = dict(baseline_result)
+    # ⚠️ 只取绕击字段：execute_binary_search_external 内部会把 counterstrike_withstand_ka
+    # 也写成二分值（它不知道场景），这里必须从 execution.result_json 提取 shielding 相关，
+    # 不能整体 update（会污染反击字段）。
+    search = dict(execution.result_json.get("binary_search") or {})
+    withstand = search.get("final_withstand_ka")
+    merged["shielding_withstand_ka"] = withstand
+    merged["binary_search"] = merged.get("binary_search") or {}
+    # 绕击跳闸率用 rules 公式重算（对齐 C# EGM/规程跳闸率，avoid 511 残留值）
+    from .fl_analysis_rules import _calculate_shielding_trip_rate  # noqa: PLC0415
+    from .fl_analysis_rules import _normalize_lightning_inputs  # noqa: PLC0415
+
+    payload = {
+        "base_tower_json": baseline_result.get("base_tower_json") or {},
+        "profile_json": baseline_result.get("profile_json") or {},
+    }
+    try:
+        normalized = _normalize_lightning_inputs(payload)
+        if normalized is None:
+            merged["shielding_trip_rate"] = None
+        else:
+            trip_rate, alpha = _calculate_shielding_trip_rate(normalized, withstand)
+            merged["shielding_trip_rate"] = trip_rate
+            merged["shielding_alpha_deg"] = alpha
+    except Exception:
+        merged["shielding_trip_rate"] = None
+    merged["shielding_binary_search"] = search
+    return ExternalTowerExecutionResult(
+        result_json=merged,
+        engine_command=execution.engine_command,
+        working_dir=execution.working_dir,
+        stdout_text=execution.stdout_text,
+        stderr_text=execution.stderr_text,
+    )
+
+
 def _normalize_tower_shape_code(value: str) -> str:
     """规范化塔型编码用于资产子目录名（LP-560）。
 

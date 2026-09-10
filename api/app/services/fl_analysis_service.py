@@ -38,7 +38,7 @@ from ..schemas.fl_analysis import (
     FlAnalysisTowerResultSummary,
 )
 from .atp_asset_service import _truncate_output
-from .fl_analysis_external import ResolvedExternalWaveformJob, execute_binary_search_external, execute_external_waveform_tower_analysis, execute_multi_phase_binary_search_external, resolve_external_waveform_job
+from .fl_analysis_external import ResolvedExternalWaveformJob, execute_binary_search_external, execute_external_waveform_tower_analysis, execute_multi_phase_binary_search_external, execute_shielding_binary_search_external, resolve_external_waveform_job
 from .legacy_atp_adapter import ResolvedLegacyAtpJob, _normalize_tower_shape_code, execute_legacy_atp_tower_analysis, resolve_legacy_atp_job
 from .fl_analysis_report import build_report_document, build_report_summary_payload
 from .fl_analysis_rules import (
@@ -612,6 +612,46 @@ def execute_job(job_id: str) -> None:
                             baseline_result=baseline_result,
                         )
                     graded = execution.result_json
+                    # LP-570 绕击分流：adapter_config_json.shielding_asset_id 配置了绕击资产
+                    # （raoji 模板）时，用其单独二分绕击耐雷水平（C# 任务2 绕击=ATP raoji 模板）。
+                    # 此前把反击二分值直接塞 shielding_withstand_ka（511 异常）。
+                    shielding_asset_id = str(
+                        (job.adapter_config_json or {}).get("shielding_asset_id") or ""
+                    ).strip()
+                    if shielding_asset_id and execution_options.get("binary_search", True):
+                        try:
+                            shielding_job = resolve_external_waveform_job(
+                                db,
+                                external_adapter=job.external_adapter,
+                                adapter_config_json={**dict(job.adapter_config_json or {}), "asset_id": shielding_asset_id},
+                                tower_type=snapshot.tower_type or "",
+                            )
+                            if shielding_job is not None:
+                                shielding_exec = execute_shielding_binary_search_external(
+                                    shielding_job,
+                                    db=db,
+                                    job=job,
+                                    snapshot=snapshot,
+                                    execution_options=execution_options,
+                                    baseline_result=baseline_result,
+                                )
+                                merged_sh = dict(execution.result_json)
+                                # 只合并绕击相关字段（execute_shielding 内部已保证不污染反击字段）
+                                for _key in (
+                                    "shielding_withstand_ka",
+                                    "shielding_trip_rate",
+                                    "shielding_alpha_deg",
+                                    "shielding_binary_search",
+                                ):
+                                    if _key in shielding_exec.result_json:
+                                        merged_sh[_key] = shielding_exec.result_json[_key]
+                                graded = merged_sh
+                                if shielding_exec.stdout_text:
+                                    stdout_chunks.append(f"[{snapshot.tower_no}][绕击] {shielding_exec.stdout_text}")
+                                if shielding_exec.stderr_text:
+                                    stderr_chunks.append(f"[{snapshot.tower_no}][绕击] {shielding_exec.stderr_text}")
+                        except Exception as exc:
+                            logger.warning("[ATP] 绕击资产二分失败（%s）：%s，保留反击值", snapshot.tower_no, exc)
                     run.engine_command = run.engine_command or execution.engine_command
                     run.working_dir = run.working_dir or execution.working_dir
                     if execution.stdout_text:
