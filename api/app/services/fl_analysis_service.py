@@ -38,7 +38,7 @@ from ..schemas.fl_analysis import (
     FlAnalysisTowerResultSummary,
 )
 from .atp_asset_service import _truncate_output
-from .fl_analysis_external import ResolvedExternalWaveformJob, execute_binary_search_external, execute_external_waveform_tower_analysis, resolve_external_waveform_job
+from .fl_analysis_external import ResolvedExternalWaveformJob, execute_binary_search_external, execute_external_waveform_tower_analysis, execute_multi_phase_binary_search_external, resolve_external_waveform_job
 from .legacy_atp_adapter import ResolvedLegacyAtpJob, _normalize_tower_shape_code, execute_legacy_atp_tower_analysis, resolve_legacy_atp_job
 from .fl_analysis_report import build_report_document, build_report_summary_payload
 from .fl_analysis_rules import (
@@ -645,15 +645,18 @@ def execute_job(job_id: str) -> None:
                     if resolved_job is None:
                         raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
                     # 二分法默认开启（对齐 C# 桌面版 ThreadCompute5 二分雷电流扫描求耐雷水平）；
-                    # 仅当显式传 binary_search=false 时回退单次仿真
+                    # 仅当显式传 binary_search=false 时回退单次仿真。
+                    # LP-570 同跳：C# 双回 ThreadCompute5_work_atp 循环 level_lightning=1..6 逐档
+                    # 二分出单/双/三..六相反击耐雷 + fjtzlDanXiang 每档跳闸率（fjType=1 配置）。
                     if execution_options.get("binary_search", True):
-                        execution = execute_binary_search_external(
+                        execution = execute_multi_phase_binary_search_external(
                             resolved_job,
                             db=db,
                             job=job,
                             snapshot=snapshot,
                             execution_options=execution_options,
                             baseline_result=baseline_result,
+                            payload=payload,
                         )
                     else:
                         execution = execute_external_waveform_tower_analysis(

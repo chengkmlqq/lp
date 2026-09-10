@@ -65,6 +65,148 @@ from .storage_driver import (
 PLACEHOLDER_PATTERN = re.compile(r"{{\s*([^{}]+?)\s*}}")
 
 
+def execute_multi_phase_binary_search_external(
+    resolved_job: ResolvedExternalWaveformJob,
+    *,
+    db: Session,
+    job: FlAnalysisJob,
+    snapshot: FlAnalysisTowerSnapshot,
+    execution_options: dict[str, Any],
+    baseline_result: dict[str, Any],
+    payload: dict[str, Any] | None = None,
+    max_phases: int = 6,
+) -> ExternalTowerExecutionResult:
+    """LP-570 同跳多相二分：对齐 C# ThreadCompute5_work_atp 双回 level_lightning=1..N 循环。
+
+    C# 逻辑（ComputeLightningProtection.cs 2025-09-29 region）：
+    - 对每个目标闪络相数 level（1..6）独立折半二分：numLightning >= level 视为闪络
+    - 每档得闪络电流 → 单/双/三..N相反击耐雷水平（mArray_Current_kV）
+    - fjType=1（guxing 等配置）：每档用 fjtzlDanXiang((int)current) 算该档跳闸率（mArray_TZL）
+    - 主输出"反击跳闸率"取第一 ready 档（count==0 → danXiang_tzl，即单相档）
+    - 高档未 ready（二分到上限仍未闪络够数）→ mArray_ShanLuoXiang_Ready[i]=false 跳过
+    Web 对齐：level 从低到高依次二分（low 从上一档结果起搜，与 C# currentLeft 推进一致）；
+    每档跳闸率用 baseline_result 里已对齐的规程公式输入重算（fjtzlDanXiang 同源），
+    输出 multi_phase_results 对齐 C# arrayStringCurrent/TZL 列（单相..六相）。
+    """
+    from .fl_analysis_rules import _counterstrike_trip_arc_rate, _trip_span_factor  # noqa: PLC0415
+    from .fl_analysis_rules import _is_gentle_slope, _normalize_lightning_inputs  # noqa: PLC0415
+
+    if payload is None:
+        payload = {
+            "base_tower_json": baseline_result.get("base_tower_json") or {},
+            "profile_json": baseline_result.get("profile_json") or {},
+        }
+    normalized = _normalize_lightning_inputs(payload)
+
+    # 与单档二分一致的参数
+    default_low = _coerce_positive_float(execution_options.get("binary_search_low_ka"), default=0.1)
+    default_high = _coerce_positive_float(execution_options.get("binary_search_high_ka"), default=2000.0)
+
+    phase_entries: list[dict[str, Any]] = []
+    level_results: list[ExternalTowerExecutionResult] = []
+    carry_low = default_low
+    last_execution: ExternalTowerExecutionResult | None = None
+
+    phase_labels = ["单相", "双相", "三相", "四相", "五相", "六相"]
+    for level in range(1, max_phases + 1):
+        level_options = dict(execution_options)
+        level_options["binary_search_low_ka"] = carry_low
+        level_options["binary_search_high_ka"] = default_high
+        execution = execute_binary_search_external(
+            resolved_job,
+            db=db,
+            job=job,
+            snapshot=snapshot,
+            execution_options=level_options,
+            baseline_result=baseline_result,
+            target_flashover_phases=level,
+        )
+        level_results.append(execution)
+        last_execution = execution
+        merged = execution.result_json
+        search = merged.get("binary_search") or {}
+        converged = bool(search.get("converged"))
+        withstand_raw = search.get("final_withstand_ka")
+        withstand: float | None = (
+            _coerce_positive_float(withstand_raw, default=0.0) if withstand_raw is not None else None
+        )
+        final_count = search.get("final_flashover_count")
+        # C#：收敛（闪络相数达标）→ Ready=true；未达标档不输出
+        ready = converged and withstand is not None and withstand > 0
+        entry: dict[str, Any] = {
+            "phase_count": level,
+            "label": phase_labels[level - 1] if level <= len(phase_labels) else f"{level}相",
+            "counterstrike_withstand_ka": withstand,
+            "converged": converged,
+            "final_flashover_count": final_count,
+            "ready": ready,
+        }
+        if ready:
+            # fjtzlDanXiang 同源公式（对齐 C# mArray_TZL[i] = fjtzlDanXiang((int)current)）
+            if normalized is not None:
+                denominator = 6.0 if _is_gentle_slope(normalized) else 4.0
+                withstood_int = float(int(withstand or 0))
+                span = _trip_span_factor(normalized)
+                density = normalized.lightning_density or 0.0
+                a_param = normalized.current_a
+                b_param = normalized.current_b
+                if span > 0 and density > 0 and a_param > 0 and b_param > 0:
+                    import math as _math  # noqa: PLC0415
+
+                    trip_rate = (
+                        0.1
+                        * density
+                        * span
+                        * _counterstrike_trip_arc_rate(normalized)
+                        / denominator
+                        / (1.0 + _math.pow(withstood_int / a_param, b_param))
+                    )
+                    entry["trip_rate"] = round(max(trip_rate, 0.0), 6)
+                else:
+                    entry["trip_rate"] = None
+            else:
+                entry["trip_rate"] = None
+            # C#：下一档从本档收敛值继续抬升（currentLeft=currentRight 推进）
+            if (
+                _coerce_positive_float(search.get("multiplier"), default=1.0) == 1.0
+                and withstand is not None
+                and withstand > carry_low
+            ):
+                carry_low = withstand
+        phase_entries.append(entry)
+
+    ready_entries = [item for item in phase_entries if item.get("ready")]
+    # C# danXiang_tzl：第一个 ready 档（level=1）作为主输出
+    dominant = ready_entries[0] if ready_entries else None
+    merged = dict(last_execution.result_json) if last_execution is not None else dict(baseline_result)
+    merged["multi_phase_binary_search"] = {
+        "phase_entries": phase_entries,
+        "ready_count": len(ready_entries),
+        "max_phases": max_phases,
+    }
+    # 兼容 tongtiao 结果列：multi_phase_results（保留 C# 列语义：单相..N相耐雷+跳闸率）
+    merged["multi_phase_results"] = [
+        {
+            "phase_count": item["phase_count"],
+            "label": item["label"],
+            "flashover_phase": "",
+            "counterstrike_withstand_ka": item.get("counterstrike_withstand_ka"),
+            "trip_rate": item.get("trip_rate"),
+        }
+        for item in phase_entries
+    ]
+    if dominant is not None and dominant.get("counterstrike_withstand_ka") is not None:
+        merged["counterstrike_withstand_ka"] = dominant["counterstrike_withstand_ka"]
+        merged["counterstrike_trip_rate"] = dominant.get("trip_rate")
+    return ExternalTowerExecutionResult(
+        result_json=merged,
+        engine_command=last_execution.engine_command if last_execution is not None else "",
+        working_dir=last_execution.working_dir if last_execution is not None else "",
+        stdout_text=last_execution.stdout_text if last_execution is not None else None,
+        stderr_text=last_execution.stderr_text if last_execution is not None else None,
+    )
+
+
 def _normalize_tower_shape_code(value: str) -> str:
     """规范化塔型编码用于资产子目录名（LP-560）。
 
@@ -871,11 +1013,15 @@ def execute_binary_search_external(
     snapshot: FlAnalysisTowerSnapshot,
     execution_options: dict[str, Any],
     baseline_result: dict[str, Any],
+    target_flashover_phases: int = 1,
 ) -> ExternalTowerExecutionResult:
     low = _coerce_positive_float(execution_options.get("binary_search_low_ka"), default=0.1)
     high = _coerce_positive_float(execution_options.get("binary_search_high_ka"), default=2000.0)
     tolerance = _coerce_positive_float(execution_options.get("binary_search_tolerance_ka"), default=0.1)
     max_iterations = int(execution_options.get("binary_search_max_iterations") or 20)
+    # LP-570 多相二分：C# ThreadCompute5_work_atp 双回循环 level_lightning=1..6，
+    # 判据 numLightning >= level_lightning（Check_Lightning_work_lis 返回总闪络相数）。
+    # target=1 即原单相档（flashover_count > 0）。
     # 显示倍率对齐 C# BeiShu.txt（ComputeLightningProtection.cs:6685 × mBeiShu_fanji/raoji）。
     # ⚠️ 不能硬编码 0.7：MyConst 默认 mBeiShu_fanji=0.7 会被 BeiShu.txt 覆盖，
     #    500kV fanji 实际为 1.0（仅 35kV guxing 为 0.7）；raoji 500kV 多数塔型为 1.1。
@@ -936,7 +1082,7 @@ def execute_binary_search_external(
                 "high": high,
             }
         )
-        if flashover_count > 0:
+        if flashover_count is not None and flashover_count >= target_flashover_phases:
             high = candidate
         else:
             low = candidate
@@ -959,6 +1105,7 @@ def execute_binary_search_external(
         "search_history": search_history,
         "converged": (high - low) < tolerance,
         "final_flashover_count": final_flashover_count,
+        "target_flashover_phases": target_flashover_phases,
         "final_withstand_ka": withstand_ka,
     }
     merged = dict(final_execution.result_json) if final_execution is not None else dict(baseline_result)
