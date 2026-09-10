@@ -801,6 +801,36 @@ def execute_job(job_id: str) -> None:
                     actor_user_id=job.update_user or job.create_user,
                 )
 
+            # 每塔完成推进度事件（LP-xxx：任务执行中逐塔实时进度，前端进度条刷新）
+            try:
+                _publish_change(
+                    "fl_analysis.tower_done",
+                    {
+                        "action": "tower_done",
+                        "job_id": job.id,
+                        "run_id": run.id,
+                        "tower_id": snapshot.tower_id,
+                        "tower_no": snapshot.tower_no,
+                        "seq_no": snapshot.seq_no,
+                        "processed": idx,
+                        "total": len(snapshots),
+                        "risk_level": graded.get("risk_level"),
+                    },
+                )
+            except Exception:
+                logger.debug("[WS] 塔进度事件推送失败 tower=%s", snapshot.tower_no, exc_info=True)
+
+            # 执行中日志流式上传（每塔完成后把累计 stdout/stderr 覆盖写 MinIO，
+            # 前端日志面板即可看到进行中的内容；最终上传由 celery 任务兜底幂等）
+            try:
+                if job.task_id and (stdout_chunks or stderr_chunks):
+                    from ..services.task_log_service import upload_task_log  # noqa: PLC0415
+
+                    _log_body = "\n".join(stdout_chunks + stderr_chunks)
+                    upload_task_log(job.task_id, _log_body)
+            except Exception:
+                logger.debug("[WS] 塔日志上传失败 tower=%s", snapshot.tower_no, exc_info=True)
+
         run.snapshot_tower_count = snapshot_count
         run.result_tower_count = result_count
         job.total_tower_count = len(towers)
