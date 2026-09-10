@@ -120,6 +120,7 @@ def execute_multi_phase_binary_search_external(
             snapshot=snapshot,
             execution_options=level_options,
             baseline_result=baseline_result,
+            payload=payload,
             target_flashover_phases=level,
         )
         level_results.append(execution)
@@ -244,15 +245,17 @@ def execute_shielding_binary_search_external(
         target_flashover_phases=1,
     )
     merged = dict(baseline_result)
-    # ⚠️ 只取绕击字段：execute_binary_search_external 内部会把 counterstrike_withstand_ka
-    # 也写成二分值（它不知道场景），这里必须从 execution.result_json 提取 shielding 相关，
-    # 不能整体 update（会污染反击字段）。
     search = dict(execution.result_json.get("binary_search") or {})
     # ⚠️ 绕击显示不乘 BeiShu：C# AC 绕击耐雷（OneRecord P1=24.210）与 raoji 二分 raw
     # 一致（24.2077），C# EGM/ATP 绕击路径实际倍率=1.0（BeiShu.txt raoji 1.1 未作用于
     # AC 绕击耐雷显示）。乘 1.1 会得到 26.7 偏离基准。
-    withstand_raw = search.get("final_withstand_ka")
-    withstand = withstand_raw
+    # final_withstand_ka 是乘倍率后的值，raw 用二分原始上界 high_ka（C# currentRight 语义）。
+    raw_high = search.get("high_ka")
+    try:
+        raw_withstand = round(float(raw_high), 4) if raw_high is not None else None
+    except (TypeError, ValueError):
+        raw_withstand = None
+    withstand = raw_withstand
     merged["shielding_withstand_ka"] = withstand
     merged["binary_search"] = merged.get("binary_search") or {}
     # 绕击跳闸率用 rules 公式重算（对齐 C# EGM/规程跳闸率，avoid 511 残留值）
@@ -1118,6 +1121,7 @@ def execute_binary_search_external(
     snapshot: FlAnalysisTowerSnapshot,
     execution_options: dict[str, Any],
     baseline_result: dict[str, Any],
+    payload: dict[str, Any] | None = None,
     target_flashover_phases: int = 1,
 ) -> ExternalTowerExecutionResult:
     low = _coerce_positive_float(execution_options.get("binary_search_low_ka"), default=0.1)
@@ -1224,10 +1228,11 @@ def execute_binary_search_external(
         from .fl_analysis_rules import _calculate_counterstrike_trip_rate  # noqa: PLC0415
         from .fl_analysis_rules import _normalize_lightning_inputs  # noqa: PLC0415
 
-        payload = {
-            "base_tower_json": baseline_result.get("base_tower_json") or {},
-            "profile_json": baseline_result.get("profile_json") or {},
-        }
+        if payload is None:
+            payload = {
+                "base_tower_json": baseline_result.get("base_tower_json") or {},
+                "profile_json": baseline_result.get("profile_json") or {},
+            }
         try:
             normalized = _normalize_lightning_inputs(payload)
             if normalized is not None:

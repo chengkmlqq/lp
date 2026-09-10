@@ -601,6 +601,7 @@ def execute_job(job_id: str) -> None:
                             snapshot=snapshot,
                             execution_options=execution_options,
                             baseline_result=baseline_result,
+                            payload=payload,
                         )
                     else:
                         execution = execute_external_waveform_tower_analysis(
