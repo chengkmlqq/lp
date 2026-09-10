@@ -2350,16 +2350,38 @@ def _normalize_positive_number(value: Any, *, default: float) -> float:
 
 
 def _publish_change(event_name: str, payload: dict[str, Any]) -> None:
-    _fire_and_forget(
-        publish_topic(
-            FL_ANALYSIS_TOPIC,
-            name=event_name,
-            payload=payload,
-            requires_refetch=[],
-            dedupe_key=f"fl-analysis:{event_name}:{payload.get('job_id', '-')}:"
-            f"{payload.get('run_id', payload.get('line_id', '-'))}",
+    """推送 fl-analysis 变更事件到 WS topic。
+
+    Web(FastAPI) 进程：asyncio 事件循环存在 → publish_topic 直接推本地 WS 连接。
+    Celery worker：无事件循环 → 走 Redis Stream 桥（publish_ws_event_from_worker，
+    Web 进程 ws_event_forwarder 读到后转发给前端），否则进度静默丢弃。
+    """
+    try:
+        asyncio.get_running_loop()
+        _fire_and_forget(
+            publish_topic(
+                FL_ANALYSIS_TOPIC,
+                name=event_name,
+                payload=payload,
+                requires_refetch=[],
+                dedupe_key=f"fl-analysis:{event_name}:{payload.get('job_id', '-')}:"
+                f"{payload.get('run_id', payload.get('line_id', '-'))}",
+            )
         )
-    )
+    except RuntimeError:
+        from .ws_event_bridge import publish_ws_event_from_worker  # noqa: PLC0415
+
+        try:
+            publish_ws_event_from_worker(
+                FL_ANALYSIS_TOPIC,
+                name=event_name,
+                payload=payload,
+                requires_refetch=[],
+                dedupe_key=f"fl-analysis:{event_name}:{payload.get('job_id', '-')}:"
+                f"{payload.get('run_id', payload.get('line_id', '-'))}",
+            )
+        except Exception:
+            logger.exception("[WS] worker 上下文推送事件失败 event=%s", event_name)
 
 
 def _fire_and_forget(coro: object) -> None:
