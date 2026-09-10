@@ -820,16 +820,32 @@ def execute_job(job_id: str) -> None:
             except Exception:
                 logger.debug("[WS] 塔进度事件推送失败 tower=%s", snapshot.tower_no, exc_info=True)
 
-            # 执行中日志流式上传（每塔完成后把累计 stdout/stderr 覆盖写 MinIO，
-            # 前端日志面板即可看到进行中的内容；最终上传由 celery 任务兜底幂等）
+            # 执行中日志流式推送（每塔完成后把该塔 stdout/stderr 行 XADD 到 Redis Stream，
+            # SSE /task-logs/{id}/sse 实时增量读；MinIO 全量文件由 celery 任务兜底最终上传）
             try:
-                if job.task_id and (stdout_chunks or stderr_chunks):
-                    from ..services.task_log_service import upload_task_log  # noqa: PLC0415
+                _exec = locals().get("execution")
+                _exec_out = getattr(_exec, "stdout_text", None) if _exec is not None else None
+                _exec_err = getattr(_exec, "stderr_text", None) if _exec is not None else None
+                if job.task_id and (_exec_out or _exec_err):
+                    from ..services.task_log_service import append_task_log_lines  # noqa: PLC0415
 
-                    _log_body = "\n".join(stdout_chunks + stderr_chunks)
-                    upload_task_log(job.task_id, _log_body)
+                    _log_lines = []
+                    if _exec_out:
+                        _log_lines.extend(
+                            f"[{snapshot.tower_no}][stdout] {line}"
+                            for line in _exec_out.splitlines()
+                            if line.strip()
+                        )
+                    if _exec_err:
+                        _log_lines.extend(
+                            f"[{snapshot.tower_no}][stderr] {line}"
+                            for line in _exec_err.splitlines()
+                            if line.strip()
+                        )
+                    if _log_lines:
+                        append_task_log_lines(job.task_id, _log_lines)
             except Exception:
-                logger.debug("[WS] 塔日志上传失败 tower=%s", snapshot.tower_no, exc_info=True)
+                logger.debug("[WS] 塔日志流推送失败 tower=%s", snapshot.tower_no, exc_info=True)
 
         run.snapshot_tower_count = snapshot_count
         run.result_tower_count = result_count
