@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +186,7 @@ def list_jobs(
     total = int(db.scalar(total_stmt) or 0)
     items = db.execute(
         stmt.order_by(FlAnalysisJob.update_date.desc(), FlAnalysisJob.id.desc())
+        .options(selectinload(FlAnalysisJob.line))
         .limit(limit)
         .offset(offset)
     ).scalars().all()
@@ -203,6 +204,7 @@ def list_tower_results(db: Session, *, job_id: str, run_id: str | None = None) -
     total = int(db.scalar(total_stmt) or 0)
     items = db.execute(
         stmt.order_by(FlAnalysisTowerResult.risk_level.desc(), FlAnalysisTowerResult.create_date.asc())
+        .options(selectinload(FlAnalysisTowerResult.snapshot))
     ).scalars().all()
     return FlAnalysisTowerResultListResponse(items=[serialize_tower_result(item) for item in items], total=total)
 
@@ -1137,7 +1139,9 @@ def _filter_rows_by_tower_ids(rows: list[dict[str, Any]], tower_ids: list[str]) 
 
 def _load_result_rows(db: Session, *, job_id: str, run_id: str) -> list[FlAnalysisTowerResult]:
     rows = db.execute(
-        select(FlAnalysisTowerResult).where(
+        select(FlAnalysisTowerResult)
+        .options(selectinload(FlAnalysisTowerResult.snapshot))
+        .where(
             FlAnalysisTowerResult.job_id == job_id,
             FlAnalysisTowerResult.run_id == run_id,
         )
@@ -2182,6 +2186,7 @@ def _load_source_result_map(db: Session, *, execution_options: dict[str, Any]) -
         return {}
     rows = db.execute(
         select(FlAnalysisTowerResult)
+        .options(selectinload(FlAnalysisTowerResult.snapshot))
         .where(FlAnalysisTowerResult.job_id == source_job_id, FlAnalysisTowerResult.run_id == source_run_id)
     ).scalars().all()
     result: dict[str, dict[str, Any]] = {}

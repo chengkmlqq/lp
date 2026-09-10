@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import delete, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..core.database import SessionLocal
 from ..models.base import utcnow
@@ -329,7 +329,12 @@ def list_jobs(
 
     total = int(db.scalar(total_stmt) or 0)
     items = db.execute(
-        stmt.order_by(ElevationApplyJob.create_date.desc(), ElevationApplyJob.id.desc()).limit(limit)
+        stmt.order_by(ElevationApplyJob.create_date.desc(), ElevationApplyJob.id.desc())
+        .options(
+            selectinload(ElevationApplyJob.line),
+            selectinload(ElevationApplyJob.file_record),
+        )
+        .limit(limit)
     ).scalars().all()
 
     # 批量解析操作人 username（一次查询避免 N+1），供前端中文/可读名展示
@@ -422,6 +427,7 @@ def get_linked_lines_for_file_record(
 
     jobs = db.execute(
         select(ElevationApplyJob)
+        .options(selectinload(ElevationApplyJob.line))
         .where(ElevationApplyJob.file_record_id == record_id)
         .order_by(
             ElevationApplyJob.line_id.asc(),

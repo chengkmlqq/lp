@@ -5,12 +5,13 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..core.config import get_settings
 from ..models.base import utcnow
 from ..models.fault_analysis import FaultAnalysis
 from ..models.line import Line
+from ..models.line_tower import LineTower
 from ..models.user import User
 from ..schemas.fault_analysis import (
     FaultAnalysisCreateRequest,
@@ -294,8 +295,18 @@ def assemble_ledger_rows(db: Session, line_id: str) -> list[dict[str, object]]:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="所选故障线路不存在",
         )
+    # selectinload 消除 line.towers → profile/lightning_result 的 N+1 懒加载
+    towers = db.execute(
+        select(LineTower)
+        .options(
+            selectinload(LineTower.profile),
+            selectinload(LineTower.lightning_result),
+        )
+        .where(LineTower.line_id == line_id)
+        .order_by(LineTower.seq_no.asc())
+    ).scalars().all()
     rows: list[dict[str, object]] = []
-    for tower in line.towers:
+    for tower in towers:
         profile = tower.profile
         lightning = tower.lightning_result
         insulator_mm = (

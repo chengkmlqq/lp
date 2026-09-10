@@ -78,6 +78,7 @@ def list_conversations(
     items = (
         db.execute(
             stmt.order_by(AiChatConversation.updated_at.desc(), AiChatConversation.id.desc())
+            .options(selectinload(AiChatConversation.user))
             .offset(offset)
             .limit(limit)
         )
@@ -86,11 +87,19 @@ def list_conversations(
     )
 
     result_items = []
-    for item in items:
-        msg_count = db.scalar(
-            select(func.count()).select_from(AiChatMessage).where(AiChatMessage.conversation_id == item.id)
-        ) or 0
-        result_items.append(serialize_conversation(item, message_count=msg_count))
+    if items:
+        # 批量统计每会话消息数（一次 GROUP BY 查询避免 N+1）
+        conv_ids = [item.id for item in items]
+        count_rows = db.execute(
+            select(AiChatMessage.conversation_id, func.count())
+            .where(AiChatMessage.conversation_id.in_(conv_ids))
+            .group_by(AiChatMessage.conversation_id)
+        ).all()
+        msg_count_map = {int(row[0]): int(row[1]) for row in count_rows}
+        result_items = [
+            serialize_conversation(item, message_count=msg_count_map.get(item.id, 0))
+            for item in items
+        ]
 
     return AiChatConversationListResponse(items=result_items, total=total)
 

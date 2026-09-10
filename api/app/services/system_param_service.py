@@ -108,6 +108,10 @@ def list_system_params(
     items = (
         db.execute(
             stmt.order_by(SystemParam.updated_at.desc(), SystemParam.id.desc())
+            .options(
+                selectinload(SystemParam.created_by),
+                selectinload(SystemParam.updated_by),
+            )
             .offset(offset)
             .limit(limit)
         )

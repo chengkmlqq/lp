@@ -110,6 +110,10 @@ def list_scheduled_tasks(
     total = db.scalar(total_stmt) or 0
     items = db.execute(
         stmt.order_by(ScheduledTask.enabled.desc(), ScheduledTask.next_run_at.asc(), ScheduledTask.id.asc())
+        .options(
+            selectinload(ScheduledTask.creator),
+            selectinload(ScheduledTask.updater),
+        )
     ).scalars().all()
     return ScheduledTaskListResponse(items=[serialize_scheduled_task(item) for item in items], total=total)
 
