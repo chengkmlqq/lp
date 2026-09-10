@@ -258,8 +258,11 @@ def read_task_log_messages(task_id: str, last_id: str = "0", block_ms: int = 100
         for entry_id, fields in entries:
             # Redis 返回 bytes；decode 成 str 后与 Last-Event-ID（str）才能匹配
             entry_id_str = entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
-            field = fields.get("field")
-            line = fields.get("line")
+            # ⚠️ redis-py XREAD 返回的 fields 字典 key 是 bytes（b"line"/b"field"），
+            # 必须用 bytes key 取，否则 .get("line") 恒 None → 全部行被 continue 丢弃，
+            # SSE 只发心跳不发日志（2026-09-11 实测：XADD 用 str key 但读侧混用）。
+            field = fields.get(b"field")
+            line = fields.get(b"line")
             field_str = field.decode() if isinstance(field, bytes) else field
             line_str = line.decode() if isinstance(line, bytes) else line
             if field_str is None and line_str is None:
