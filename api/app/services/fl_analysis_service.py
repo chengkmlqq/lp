@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, noload, selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,12 @@ def list_jobs(
     total = int(db.scalar(total_stmt) or 0)
     items = db.execute(
         stmt.order_by(FlAnalysisJob.update_date.desc(), FlAnalysisJob.id.desc())
-        .options(selectinload(FlAnalysisJob.line))
+        .options(
+            selectinload(FlAnalysisJob.line),
+            # 抑制模型默认 lazy="selectin" 的 runs 级联（列表不需要 runs，
+            # 否则自动带出 fl_analysis_run + tower_result/snapshot 整条链 8 条 SQL）
+            noload(FlAnalysisJob.runs),
+        )
         .limit(limit)
         .offset(offset)
     ).scalars().all()

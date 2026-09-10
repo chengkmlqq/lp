@@ -46,7 +46,7 @@ class Line(Base):
     towers: Mapped[list[LineTower]] = relationship(
         "LineTower",
         back_populates="line",
-        lazy="selectin",
+        lazy="select",
         cascade="all, delete-orphan",
         order_by="LineTower.seq_no.asc()",
     )
