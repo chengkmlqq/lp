@@ -53,6 +53,20 @@ from .push_service import publish_topic
 FL_ANALYSIS_TOPIC = "admin.fl-analysis"
 
 
+def _auto_scene_type_for_options(execution_options: dict[str, Any]) -> str:
+    """根据任务方法选项推断 ATP 资产场景（fanji=反击 / raoji1=绕击）。
+
+    normal/tongtiao 普通计算主场景是反击（fanji）；当绕击方法选了 atp 而反击是
+    guicheng 时，自动选资产以绕击场景为主（raoji1）。实际执行时反击与绕击各自
+    独立二分（shielding_asset_id 分流），这里只决定任务级默认资产。
+    """
+    fanji = str(execution_options.get("fanji_naleishuiping_method") or "").strip().lower()
+    raoji = str(execution_options.get("raoji_naleishuiping_method") or "").strip().lower()
+    if raoji == "atp" and fanji != "atp":
+        return "raoji1"
+    return "fanji"
+
+
 def serialize_run(item: FlAnalysisRun) -> FlAnalysisRunSummary:
     return FlAnalysisRunSummary(
         id=item.id,
@@ -498,15 +512,27 @@ def execute_job(job_id: str) -> None:
         stdout_chunks: list[str] = []
         stderr_chunks: list[str] = []
         if waveform_job_type in {"normal", "tongtiao"}:
-            if job.external_adapter in {"atp", "wine"}:
-                external_job = resolve_external_waveform_job(
-                    db,
-                    external_adapter=job.external_adapter,
-                    adapter_config_json=job.adapter_config_json or {},
-                )
-                summary["external_model_id"] = external_job.asset.id
-                summary["external_model_code"] = external_job.asset.code
-                summary["external_model_name"] = external_job.asset.name
+            _method_fanji = str(execution_options.get("fanji_naleishuiping_method") or "").strip().lower()
+            _method_raoji = str(execution_options.get("raoji_naleishuiping_method") or "").strip().lower()
+            # 方法选项选了 atp（反击或绕击任一）→ 自动启用 external ATP 路径（LP-xxx 自动选资产，
+            # 对齐 C# 桌面版：不要求用户在页面选资产，按线路/杆塔参数自动匹配模板）。
+            # 显式 external_adapter 仍优先（老任务/脚本直传兼容）。
+            if job.external_adapter in {"atp", "wine"} or _method_fanji == "atp" or _method_raoji == "atp":
+                try:
+                    external_job = resolve_external_waveform_job(
+                        db,
+                        external_adapter=job.external_adapter if job.external_adapter in {"atp", "wine"} else "atp",
+                        adapter_config_json=job.adapter_config_json or {},
+                        line_voltage_kv=job.line.voltage_kv if job.line else None,
+                        scene_type=_auto_scene_type_for_options(execution_options),
+                    )
+                    summary["external_model_id"] = external_job.asset.id
+                    summary["external_model_code"] = external_job.asset.code
+                    summary["external_model_name"] = external_job.asset.name
+                except Exception as exc:
+                    # 自动选资产失败（如无对应模板）→ 记录但继续走 placeholder 公式（不拖垮任务）
+                    logger.warning("[ATP] 自动选资产失败（job=%s）：%s", job.id, exc)
+                    external_job = None
             elif job.external_adapter == "legacy_atp":
                 legacy_external_job = resolve_legacy_atp_job(
                     adapter_config_json=job.adapter_config_json or {},
@@ -559,6 +585,8 @@ def execute_job(job_id: str) -> None:
                     external_adapter=job.external_adapter,
                     adapter_config_json=job.adapter_config_json or {},
                     tower_type=tower_type,
+                    line_voltage_kv=job.line.voltage_kv if job.line else None,
+                    scene_type=_auto_scene_type_for_options(execution_options),
                 )
             except Exception as exc:  # 塔型子目录缺失时回退资产根目录模板，避免单塔失败拖垮整批
                 logger.warning(

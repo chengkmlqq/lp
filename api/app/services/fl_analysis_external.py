@@ -675,6 +675,77 @@ def get_asset_by_id(db: Session, asset_id: str) -> AtpAsset | None:
     return db.execute(select(AtpAsset).where(AtpAsset.id == asset_id)).scalar_one_or_none()
 
 
+def _auto_resolve_asset(
+    db: Session,
+    *,
+    tower_type: str | None,
+    line_voltage_kv: int | None,
+    scene_type: str | None,
+    adapter_config_json: dict[str, Any],
+) -> AtpAsset:
+    """按线路杆塔参数自动选 ATP 资产（对齐 C# 桌面版 match_model 自动匹配模板）。
+
+    匹配优先级：
+      1. (voltage_level, tower_type, scene_type, arrester_config) 精确
+      2. (voltage_level, tower_type, scene_type) 任意避雷器配置
+      3. (voltage_level, scene_type) 任意塔型
+    避雷器配置缺省取 noM（C# 任务输入 A/B/C相=否，即无避雷器）。
+    塔型支持 C# 式编码（s500guxing→guxing）与 DB 规范编码（500-guxing）归一。
+    """
+    from ..models.atp_asset import AtpAsset  # noqa: PLC0415
+
+    config = dict(adapter_config_json or {})
+    voltage_kv = line_voltage_kv
+    if voltage_kv is None:
+        try:
+            voltage_kv = int(float(str(config.get("voltage_level") or 0)))
+        except (TypeError, ValueError):
+            voltage_kv = None
+    scene = str(scene_type or config.get("scene_type") or "").strip().lower()
+    if not scene:
+        # 缺省按反击 fanji（普通计算主场景）
+        scene = "fanji"
+    arrester = str(config.get("arrester_config") or "noM").strip()
+    if not arrester:
+        arrester = "noM"
+    # 塔型归一：s500guxing / 500-guxing / guxing → guxing
+    tower = _normalize_tower_shape_code(tower_type or "") or str(config.get("tower_type") or "").strip()
+    if not tower:
+        tower = "ganzi"
+
+    def _query(tower_filter: str | None, arrester_filter: str | None) -> AtpAsset | None:
+        stmt = select(AtpAsset).where(AtpAsset.status == "enabled")
+        if voltage_kv is not None:
+            stmt = stmt.where(AtpAsset.voltage_level == str(voltage_kv))
+        if tower_filter:
+            stmt = stmt.where(AtpAsset.tower_type == tower_filter)
+        stmt = stmt.where(AtpAsset.scene_type == scene)
+        if arrester_filter:
+            stmt = stmt.where(AtpAsset.arrester_config == arrester_filter)
+        return db.execute(stmt.limit(1)).scalar_one_or_none()
+
+    asset = _query(tower, arrester)
+    if asset is None:
+        asset = _query(tower, None)
+    if asset is None:
+        asset = _query(None, arrester)
+    if asset is None:
+        asset = _query(None, None)
+    if asset is None:
+        raise RuntimeError(
+            f"未找到匹配的 ATP 资产（电压={voltage_kv} 塔型={tower} 场景={scene} 避雷器={arrester}），请先在资产库导入对应模板"
+        )
+    logger.info(
+        "[ATP] 自动选资产：电压=%s 塔型=%s 场景=%s → asset=%s (%s)",
+        voltage_kv,
+        tower,
+        scene,
+        asset.code,
+        asset.id,
+    )
+    return asset
+
+
 
 
 
@@ -810,6 +881,8 @@ def resolve_external_waveform_job(
     external_adapter: str,
     adapter_config_json: dict[str, Any],
     tower_type: str | None = None,
+    line_voltage_kv: int | None = None,
+    scene_type: str | None = None,
 ) -> ResolvedExternalWaveformJob:
     adapter = str(external_adapter or "").strip().lower()
     if adapter not in {"atp", "wine"}:
@@ -817,12 +890,19 @@ def resolve_external_waveform_job(
 
     config = dict(adapter_config_json or {})
     asset_id = str(config.get("asset_id") or config.get("model_id") or "").strip()
-    if not asset_id:
-        raise RuntimeError("外部 ATP/Wine 任务缺少 adapter_config_json.asset_id")
-
-    asset = get_asset_by_id(db, asset_id)
-    if asset is None:
-        raise RuntimeError(f"指定的 ATP 资产不存在: {asset_id}")
+    if asset_id:
+        asset = get_asset_by_id(db, asset_id)
+        if asset is None:
+            raise RuntimeError(f"指定的 ATP 资产不存在: {asset_id}")
+    else:
+        # LP-xxx 自动选资产（对齐 C# 桌面版：不选资产，按线路电压等级 + 塔型 + 场景自动匹配模板）
+        asset = _auto_resolve_asset(
+            db,
+            tower_type=tower_type,
+            line_voltage_kv=line_voltage_kv,
+            scene_type=scene_type,
+            adapter_config_json=config,
+        )
 
     worktree = _resolve_asset_worktree(db, asset=asset, tower_type=tower_type)
     atp_text = worktree["atp_text"]
