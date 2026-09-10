@@ -182,9 +182,23 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
 
               {/* 操作区：默认展示 2 个直接按钮，多了才收进 ⋯ 三点下拉 */}
               <div className="admin-fl-analysis-job-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
-                <div className="min-w-0">
+                <div className="min-w-0 flex items-center gap-2">
                   {job.status === "running" ? (
-                    <Progress percent={0} size="small" className="flex-1 max-w-40" />
+                    <>
+                      {/* 实时进度：result_tower_count / total_tower_count（WS 事件 invalidate 刷新驱动） */}
+                      <Progress
+                        percent={
+                          job.total_tower_count > 0
+                            ? Math.min(100, Math.round((job.result_tower_count / job.total_tower_count) * 100))
+                            : 0
+                        }
+                        size="small"
+                        className="flex-1 max-w-40"
+                      />
+                      <Typography.Text type="secondary" className="text-xs whitespace-nowrap">
+                        {job.result_tower_count}/{job.total_tower_count}
+                      </Typography.Text>
+                    </>
                   ) : null}
                 </div>
                 <Space size="small" className="shrink-0">

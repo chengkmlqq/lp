@@ -820,6 +820,15 @@ def execute_job(job_id: str) -> None:
             except Exception:
                 logger.debug("[WS] 塔进度事件推送失败 tower=%s", snapshot.tower_no, exc_info=True)
 
+            # 每塔实时落库进度计数（前端 invalidate 后能读到 result_tower_count 驱动进度条；
+            # 原循环结束才统一写 job.result_tower_count，运行中 DB 恒 0 → 进度条不动）
+            try:
+                job.result_tower_count = result_count
+                run.result_tower_count = result_count
+                db.flush()
+            except Exception:
+                logger.debug("[DB] 塔进度计数落库失败 tower=%s", snapshot.tower_no, exc_info=True)
+
             # 执行中日志流式推送（每塔完成后把该塔 stdout/stderr 行 XADD 到 Redis Stream，
             # SSE /task-logs/{id}/sse 实时增量读；MinIO 全量文件由 celery 任务兜底最终上传）
             try:
