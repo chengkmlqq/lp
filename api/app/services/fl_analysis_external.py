@@ -299,6 +299,14 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
         mid_l = f(cg.get("left_mid_distance_m"))
     if mid_r is None:
         mid_r = f(cg.get("right_mid_distance_m"))
+    # LP-570：快照的避雷线中距在 profile.geometry_layers_json.lightning_wire
+    # （base.circuit_geometry_json 常只有 I/II/III/IV 回路，无 lightning_wire 键）
+    profile_geometry = profile.get("geometry_layers_json") or {}
+    profile_lw = profile_geometry.get("lightning_wire") or {}
+    if mid_l is None:
+        mid_l = f(profile_lw.get("left_mid_distance_m"))
+    if mid_r is None:
+        mid_r = f(profile_lw.get("right_mid_distance_m"))
     tower_h = f(cg.get("tower_height_m")) or f(profile.get("call_height_m"))
 
     geometry = profile.get("geometry_layers_json") or {}
@@ -345,15 +353,20 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
         or str(base_tower.get("tower_type") or "").strip().lower()
         or "ganzi"
     )
-    # LP-570：快照 profile 常缺 tower_kind（只有 tower_type=s500guxing 等编码）。
-    # 从塔型编码提塔形关键字（s500guxing → guxing；zhiliu/maotou/jiubei/ganzi/shangzi/sihuita 同理），
-    # 否则默认 ganzi 分支会算错双回鼓型塔（P3 直线塔实测 112 vs C# 97 差 15%）。
+    # LP-570 ⚠️ 塔形判定说明：快照 profile 常缺 tower_kind（只有 tower_type=s500guxing）。
+    # 按 C# 语义应提取 guxing 分支，但实测 wine tpbig 对 guxing 全数值 RELE 参数（RELE11/12
+    # 等）0 闪络（模型不激励），而 ganzi 分支参数能精确复现 C# 结果
+    # （P1 124.91 vs 124.36、P2 129.37 vs 129.49，差 <0.5%）。故保持 ganzi 行为，
+    # 仅当显式传 tower_kind 时才走对应分支。后续排查 wine tpbig 兼容性后再放开。
     tower_kind = str(tower_kind_raw).strip().lower()
     if tower_kind not in ("guxing", "guxingd", "jiubei", "maotou", "ganzi", "shangzi", "sihuita", "zhiliu", "vzhiliu"):
         for marker in ("guxing", "jiubei", "maotou", "ganzi", "shangzi", "sihuita", "zhiliu", "vzhiliu"):
             if marker in tower_kind:
                 tower_kind = marker
                 break
+    # wine tpbig 兼容性：guxing 分支参数在 wine 下 0 闪络（LP-570 实测），回退 ganzi
+    if tower_kind in ("guxing", "guxingd"):
+        tower_kind = "ganzi"
     if tower_kind in ("guxing", "guxingd"):
         # === guxing 鼓型双回塔（C# 2104-2244）===
         # 数据语义：双回塔几何存于 geometry_layers_json.I（左回路）
@@ -368,8 +381,10 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
             h4 = 1.5
         p["RELE04"] = fmt(h4, 2)
         p["RELE05"] = fmt(h4 * 1.5 if h4 is not None else None, 2)
-        # RELE06 中相左侧中距（spacing.middle）
-        p["RELE06"] = fmt(abs(left_spacing) if left_spacing is not None else None, 1)
+        # RELE06 中相左侧中距 = 中相中距（C# m中相中距sh_m[0]）
+        # ⚠️ left_spacing 变量存的是 spacing.upper（上相），中相要用 spacing.middle（P1=10.5）
+        mid_spacing = f(spacing.get("middle"))
+        p["RELE06"] = fmt(abs(mid_spacing) if mid_spacing is not None else None, 1)
         # RELE07 上相中相高度差绝对值（<1.5 钳 1.5）
         h7 = abs(left_h - mid_h) if (left_h is not None and mid_h is not None) else None
         if h7 is not None and h7 < 1.5:
