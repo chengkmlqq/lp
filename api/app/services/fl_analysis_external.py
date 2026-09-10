@@ -248,7 +248,11 @@ def execute_shielding_binary_search_external(
     # 也写成二分值（它不知道场景），这里必须从 execution.result_json 提取 shielding 相关，
     # 不能整体 update（会污染反击字段）。
     search = dict(execution.result_json.get("binary_search") or {})
-    withstand = search.get("final_withstand_ka")
+    # ⚠️ 绕击显示不乘 BeiShu：C# AC 绕击耐雷（OneRecord P1=24.210）与 raoji 二分 raw
+    # 一致（24.2077），C# EGM/ATP 绕击路径实际倍率=1.0（BeiShu.txt raoji 1.1 未作用于
+    # AC 绕击耐雷显示）。乘 1.1 会得到 26.7 偏离基准。
+    withstand_raw = search.get("final_withstand_ka")
+    withstand = withstand_raw
     merged["shielding_withstand_ka"] = withstand
     merged["binary_search"] = merged.get("binary_search") or {}
     # 绕击跳闸率用 rules 公式重算（对齐 C# EGM/规程跳闸率，avoid 511 残留值）
@@ -1213,6 +1217,25 @@ def execute_binary_search_external(
     merged["binary_search"] = binary_search_payload
     merged["counterstrike_withstand_ka"] = withstand_ka
     merged["shielding_withstand_ka"] = withstand_ka
+    # LP-570 反跳率用 ATP 二分耐雷重算：C# 任务2/3（反击耐雷=ATP）的反跳率
+    # = fjtzlDanXiang((int)ATP耐雷)，不是规程耐雷。此前 external 路径保留 baseline
+    # （规程耐雷 109.45）算的 0.1428，与 C# ATP 基准 0.0906 不符。
+    if _is_counterstrike:
+        from .fl_analysis_rules import _calculate_counterstrike_trip_rate  # noqa: PLC0415
+        from .fl_analysis_rules import _normalize_lightning_inputs  # noqa: PLC0415
+
+        payload = {
+            "base_tower_json": baseline_result.get("base_tower_json") or {},
+            "profile_json": baseline_result.get("profile_json") or {},
+        }
+        try:
+            normalized = _normalize_lightning_inputs(payload)
+            if normalized is not None:
+                trip_rate = _calculate_counterstrike_trip_rate(normalized, withstand_ka)
+                if trip_rate is not None:
+                    merged["counterstrike_trip_rate"] = trip_rate
+        except Exception:
+            pass
     return ExternalTowerExecutionResult(
         result_json=merged,
         engine_command=final_execution.engine_command if final_execution is not None else "",
