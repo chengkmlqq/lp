@@ -1140,7 +1140,13 @@ def execute_external_waveform_tower_analysis(
             f"{snapshot.tower_no} 外部 ATP/Wine 执行失败，退出码 {result.returncode}"
         )
 
-    logger.info("[ATP] 开始解析结果：%s，期望结果文件=%s", snapshot.tower_no, resolved_job.result_file)
+    if resolved_job.result_file:
+        logger.info("[ATP] 开始解析结果：%s，结果文件=%s", snapshot.tower_no, resolved_job.result_file)
+    else:
+        # 资产目录只有模板（work.atp/lib/dat），无 work.lis/pl4 契约——
+        # 属正常情况：运行产物在 run_dir 生成，闪络判据直接用 work.lis 的 Close switch。
+        # 明确提示而非显示 None，避免误以为资产配置缺失。
+        logger.info("[ATP] 开始解析结果：%s，资产无结果契约，使用 lis 闪络检测", snapshot.tower_no)
     # ATP 模板无结果契约时（result_file=None 且 stdout 为 tpbig 文本日志），
     # 解析会失败；此时降级为 pl4 闪络检测结果，保证二分法可运行。
     try:
@@ -1151,7 +1157,8 @@ def execute_external_waveform_tower_analysis(
             result_file=resolved_job.result_file,
         )
     except Exception as exc:
-        logger.warning("[ATP] 结果契约解析失败（%s），降级为 pl4 闪络检测：%s", snapshot.tower_no, exc)
+        # 无契约资产必然走到这里（降级是预期路径，非异常）
+        logger.debug("[ATP] 结果契约解析降级（%s）：%s", snapshot.tower_no, exc)
         parsed_payload = {}
     # 闪络判据（对齐 C# Check_Lightning_work_lis = 读 work.lis "Close switch" 行数）：
     # tpbig 用 both 参数跑后生成 work.lis，绝缘子闪络时模型闭合开关，
