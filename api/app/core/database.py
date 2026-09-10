@@ -22,7 +22,11 @@ elif database_url.startswith("postgresql"):
 
 engine = create_engine(
     database_url,
-    pool_pre_ping=True,
+    # 容器内 api→db 网络稳定，关 pre_ping 避免每请求 SELECT 1 往返（实测省 ~0.1s/请求）
+    pool_pre_ping=False,
+    pool_size=10,
+    max_overflow=20,
+    pool_recycle=300,
     connect_args=connect_args,
 )
 

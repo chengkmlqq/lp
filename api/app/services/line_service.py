@@ -12,7 +12,7 @@ from uuid import uuid4
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..models.base import utcnow
 from ..models.line import Line
@@ -257,7 +257,8 @@ def get_line_detail_summary(db: Session, line_id: str) -> LineSummary | None:
     line = get_line_by_id(db, line_id)
     if not line:
         return None
-    tower_count = int(len(line.towers))
+    # 用 COUNT 代替 len(line.towers)（lazy 加载整条线路塔对象，252 塔会拖慢详情接口）
+    tower_count = int(db.scalar(select(func.count()).select_from(LineTower).where(LineTower.line_id == line_id)) or 0)
     estimated_length_map = _load_line_estimated_lengths(db, [line_id])
     return serialize_line(
         line,
@@ -386,6 +387,12 @@ def list_line_towers(
     total = int(db.scalar(select(func.count()).select_from(LineTower).where(*filters)) or 0)
     items = db.execute(
         select(LineTower)
+        .options(
+            selectinload(LineTower.profile),
+            selectinload(LineTower.circuits),
+            selectinload(LineTower.lightning_result),
+            selectinload(LineTower.analysis),
+        )
         .where(*filters)
         .order_by(LineTower.seq_no.asc(), LineTower.id.asc())
         .offset(offset)
