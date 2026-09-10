@@ -1495,6 +1495,13 @@ def _build_profile_json(profile: TowerProfile | None, tower: LineTower | None = 
     }
     if tower is not None:
         result["geometry_layers_json"] = _build_legacy_geometry_from_circuits(tower.circuits)
+        # LP-570 透传 extra_profile_json.lightning_wire（避雷线中距/高度），供
+        # _merge_geometry_layers 合并进计算几何——此前计算链路拿不到真实中距（回填 10m 默认值）
+        _lw = (profile.extra_profile_json or {}).get("lightning_wire")
+        if isinstance(_lw, dict):
+            _geo_layers = dict(result["geometry_layers_json"])
+            _geo_layers["lightning_wire"] = dict(_lw)
+            result["geometry_layers_json"] = _geo_layers
         analysis = tower.analysis
         if analysis is not None:
             result["cause_analysis"] = analysis.cause_analysis

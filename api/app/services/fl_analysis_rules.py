@@ -614,34 +614,15 @@ def _build_waveform_severity(
 ) -> dict[str, float]:
     base = dict(payload.get("base_tower_json") or {})
     altitude_m = _as_float(base.get("altitude_m")) or 0.0
-    waveform_factor = {
-        "heidler": 1.0,
-        "double_slope": 1.05,
-        "double_exponential": 0.97,
-    }.get(execution.current_waveform, 1.0)
-    flashover_factor = {
-        "guideline": 1.0,
-        "intersection": 1.06,
-        "leader_development": 1.12,
-    }.get(execution.flashover_method, 1.0)
-    induced_voltage_factor = 1.0 if execution.induced_voltage_formula == "formula1" else 1.04
-    if execution.altitude_correction == "formula1":
-        altitude_factor = 1.0 + max(altitude_m - 1000.0, 0.0) / 1000.0 * 0.03
-    elif execution.altitude_correction == "formula2":
-        altitude_factor = 1.0 + max(altitude_m - 1000.0, 0.0) / 1000.0 * 0.05
-    else:
-        altitude_factor = 1.0
-
-    head_factor = _clamp(
-        math.pow(_DEFAULT_HEAD_TIME_US / max(head_time_us, 0.2), 0.22),
-        minimum=0.85,
-        maximum=1.25,
-    )
-    tail_factor = _clamp(
-        math.pow(_DEFAULT_TAIL_TIME_US / max(tail_time_us, 1.0), 0.08),
-        minimum=0.92,
-        maximum=1.12,
-    )
+    # LP-570 对齐 C#：规程法结果不受波形/闪络判据/海拔公式缩放（C# ThreadCompute5 规程法分支
+    # 直接输出公式值，无任何 severity 系数）。原自创系数（intersection×1.06 等）导致
+    # 反击耐雷偏低 ~6%、与 C# 基准不可比，已全部归 1。波头/波尾扫描仅保留记录用途。
+    waveform_factor = 1.0
+    flashover_factor = 1.0
+    induced_voltage_factor = 1.0
+    altitude_factor = 1.0
+    head_factor = 1.0
+    tail_factor = 1.0
     counterstrike = waveform_factor * flashover_factor * altitude_factor * head_factor * tail_factor
     shielding = waveform_factor * induced_voltage_factor * altitude_factor * math.pow(head_factor, 0.9) * tail_factor
     if execution.job_type == "tongtiao":
@@ -955,8 +936,11 @@ def _grade_formula_snapshot_payload(payload: Mapping[str, Any]) -> dict[str, Any
     if normalized is not None:
         counterstrike_withstand_ka, coupling_details = _calculate_counterstrike_withstand_ka(normalized)
         shielding_withstand_ka = _calculate_shielding_withstand_ka(normalized)
-        # 显示倍率对齐 C# BeiShu.txt：反击(fanji) 500kV 为 1.0（仅 35kV guxing=0.7），
-        # 绕击(raoji) 110/220/500kV 多数塔型为 1.1。⚠️ 不可拿 MyConst 默认 0.7 当最终倍率。
+        # LP-570 显示倍率对齐 C# BeiShu.txt 实际用法：
+        # - 反击(fanji)：规程法/ATP 均乘（6524/6685 行 showCurrent_kV=|current|*mBeiShu_fanji），
+        #   500kV 等大多为 1.0，仅 35kV guxing=0.7。
+        # - 绕击(raoji)：仅 ATP 分支乘（7838 行）；规程法分支（7673 行 i_star==2）直接输出
+        #   串长公式值、不乘倍率。⚠️ 不可拿 MyConst 默认 0.7 当最终倍率。
         _fj_mult = _csharp_beishu_multiplier_rules(
             tower_type=normalized.tower_type,
             structure_kind=normalized.structure_kind,
@@ -972,7 +956,8 @@ def _grade_formula_snapshot_payload(payload: Mapping[str, Any]) -> dict[str, Any
         if counterstrike_withstand_ka is not None:
             counterstrike_withstand_ka = round(counterstrike_withstand_ka * _fj_mult, 4)
         if shielding_withstand_ka is not None:
-            shielding_withstand_ka = round(shielding_withstand_ka * _rj_mult, 4)
+            # 规程法绕击耐雷 = 串长×526.258/100，C# 不乘倍率（乘 1.0）；ATP 路径在外层适配器另行乘
+            shielding_withstand_ka = round(shielding_withstand_ka, 4)
         counterstrike_trip_rate = _calculate_counterstrike_trip_rate(normalized, counterstrike_withstand_ka)
         shielding_trip_rate, shielding_alpha_deg = _calculate_shielding_trip_rate(normalized, shielding_withstand_ka)
         risk_index, risk_threshold, risk_grade = _calculate_risk_grade(
@@ -1304,7 +1289,10 @@ def _select_reference_phases(
         coupling_candidate = min(circuits[0][2], key=lambda item: item.x_m)
         shielding_candidate = max(circuits[0][2], key=lambda item: item.x_m)
 
-    coupling_phase, changed_left = _force_phase_side(coupling_candidate, side="left")
+    # LP-570 对齐 C# fetch_CouplingCoefficient：x3 直接取"上相中距"原值（正数，与右避雷线
+    # 中距同侧），不翻符号。此前强制左侧使耦合系数 k 偏小（P1: 0.2529 vs C# 0.258968）、
+    # 反击耐雷偏低 ~1%（108.30 vs 109.45）。单回"左相中距"同理按正幅值使用。
+    coupling_phase, changed_left = _force_phase_side(coupling_candidate, side="right")
     shielding_phase, changed_right = _force_phase_side(shielding_candidate, side="right")
     return coupling_phase, shielding_phase, changed_left or changed_right
 
@@ -1463,13 +1451,15 @@ def _calculate_counterstrike_trip_rate(
     ):
         return None
     denominator = 6.0 if _is_gentle_slope(normalized) else 4.0
+    # LP-570 对齐 C#：反击耐雷水平传入跳闸率公式前先 (int) 截断取整（fjtzlDanXiang((int)fjCurrent1)）
+    withstood_ka_int = float(int(counterstrike_withstand_ka))
     trip_rate = (
         0.1
         * normalized.lightning_density
         * span_factor
         * _counterstrike_trip_arc_rate(normalized)
         / denominator
-        / (1.0 + math.pow(counterstrike_withstand_ka / normalized.current_a, normalized.current_b))
+        / (1.0 + math.pow(withstood_ka_int / normalized.current_a, normalized.current_b))
     )
     return round(max(trip_rate, 0.0), 6)
 
@@ -1732,11 +1722,16 @@ def _counterstrike_level_coefficient(normalized: _NormalizedLightningInputs) -> 
 
 
 def _counterstrike_trip_arc_rate(normalized: _NormalizedLightningInputs) -> float:
+    # LP-570 对齐 C# fjtzlDanXiang 建弧率：35/66kV=0.8，110=0.85，220=0.918，330=0.95，其余=1
     voltage = normalized.line_voltage_kv or 0
+    if voltage in {35, 66}:
+        return 0.8
     if voltage == 110:
         return 0.85
     if voltage == 220:
         return 0.918
+    if voltage == 330:
+        return 0.95
     return 1.0
 
 

@@ -1289,6 +1289,21 @@ def _upsert_tower_profile_from_legacy_row(
         extra_profile_json["cause_analysis"] = cause_analysis
     if mitigation_recommendation is not None:
         extra_profile_json["mitigation_recommendation"] = mitigation_recommendation
+    # LP-570 避雷线中距写入 extra_profile_json.lightning_wire：fl-analysis 快照组装
+    # (_build_profile_json) 与防雷计算 (_merge_geometry_layers) 依赖该键取真实中距；
+    # 此前仅借用 protection_angle_*_deg 字段存储，计算链路拿不到 → 耦合系数偏差。
+    lightning_wire = extra_profile_json.get("lightning_wire") if isinstance(extra_profile_json.get("lightning_wire"), dict) else {}
+    _lw_left = _parse_float(row.get("左避雷中距m"))
+    _lw_right = _parse_float(row.get("右避雷中距m"))
+    _lw_height = _parse_float(row.get("避雷线高度m"))
+    if _lw_left is not None:
+        lightning_wire["left_mid_distance_m"] = _lw_left  # type: ignore[index]
+    if _lw_right is not None:
+        lightning_wire["right_mid_distance_m"] = _lw_right  # type: ignore[index]
+    if _lw_height is not None:
+        lightning_wire["height_m"] = _lw_height  # type: ignore[index]
+    if lightning_wire:
+        extra_profile_json["lightning_wire"] = lightning_wire
     profile.extra_profile_json = extra_profile_json
     profile.update_date = now
     profile.update_user = actor_user_id
