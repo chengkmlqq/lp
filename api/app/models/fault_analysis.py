@@ -32,8 +32,8 @@ class FaultAnalysis(Base):
         index=True,
     )
     line_name: Mapped[str | None] = mapped_column(String(255))
-    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
-    risk_level: Mapped[str | None] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    risk_level: Mapped[str | None] = mapped_column(String(32))
 
     # 故障基本信息
     fault_time: Mapped[str | None] = mapped_column(String(64))

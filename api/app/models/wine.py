@@ -24,7 +24,7 @@ class WineRun(Base):
         default=lambda: uuid4().hex,
     )
     task_id: Mapped[str | None] = mapped_column(String(128), index=True)
-    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
     exe_path: Mapped[str] = mapped_column(String(1000), nullable=False)
     arguments_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     working_dir: Mapped[str] = mapped_column(String(1000), nullable=False)
@@ -41,7 +41,7 @@ class WineRun(Base):
     stdout_text: Mapped[str | None] = mapped_column(Text)
     stderr_text: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
-    create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)
     update_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

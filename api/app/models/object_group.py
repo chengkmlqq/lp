@@ -24,7 +24,7 @@ class ObjectGroup(Base):
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     label: Mapped[str] = mapped_column(String(256), nullable=False)
-    type: Mapped[str | None] = mapped_column(String(64), index=True)
+    type: Mapped[str | None] = mapped_column(String(64))
     descr: Mapped[str | None] = mapped_column(String(512))
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)

@@ -32,16 +32,14 @@ class ElevationApplyJob(Base):
         String(32),
         ForeignKey("power_line.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     file_record_id: Mapped[str | None] = mapped_column(
         String(32),
         ForeignKey("elevation_file_record.id", ondelete="CASCADE"),
         nullable=True,
-        index=True,
     )
     mode: Mapped[str] = mapped_column(String(32), default="fill_null_only", index=True)
-    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending")
     task_id: Mapped[str | None] = mapped_column(String(128), index=True)
     total_tower_count: Mapped[int] = mapped_column(Integer, default=0)
     updated_tower_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -88,13 +86,11 @@ class ElevationApplyJobTower(Base):
         String(32),
         ForeignKey("elevation_apply_job.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     tower_id: Mapped[str] = mapped_column(
         String(32),
         ForeignKey("power_line_tower.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     # 快照身份信息（回填时点），展示明细时不依赖当前线路杆塔
     tower_no: Mapped[str | None] = mapped_column(String(64))
@@ -135,20 +131,20 @@ class ElevationFileRecord(Base):
     file_format: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     file_size: Mapped[int] = mapped_column(Integer, default=0)
     source: Mapped[str | None] = mapped_column(String(512), index=True)
-    mount_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    mount_code: Mapped[str] = mapped_column(String(64), nullable=False)
     resolution_m: Mapped[float | None] = mapped_column(Float)
-    status: Mapped[str] = mapped_column(String(32), default="active", index=True)
+    status: Mapped[str] = mapped_column(String(32), default="active")
     bbox_min_lon: Mapped[float | None] = mapped_column(Float)
     bbox_max_lon: Mapped[float | None] = mapped_column(Float)
     bbox_min_lat: Mapped[float | None] = mapped_column(Float)
     bbox_max_lat: Mapped[float | None] = mapped_column(Float)
     sample_count: Mapped[int] = mapped_column(Integer, default=0)
     analysis_task_id: Mapped[str | None] = mapped_column(String(128), index=True)
-    analysis_status: Mapped[str] = mapped_column(String(32), default="not_started", index=True)
+    analysis_status: Mapped[str] = mapped_column(String(32), default="not_started")
     analysis_error_message: Mapped[str | None] = mapped_column(Text)
     analysis_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     analysis_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    terrain_status: Mapped[str] = mapped_column(String(32), default="not_supported", index=True)
+    terrain_status: Mapped[str] = mapped_column(String(32), default="not_supported")
     terrain_task_id: Mapped[str | None] = mapped_column(String(128), index=True)
     terrain_error_message: Mapped[str | None] = mapped_column(Text)
     terrain_root_path: Mapped[str | None] = mapped_column(String(2048))

@@ -30,18 +30,18 @@ class DimensionItem(Base):
         primary_key=True,
         default=lambda: uuid4().hex,
     )
-    dimension_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    dimension_type: Mapped[str] = mapped_column(String(64), nullable=False)
     type_id: Mapped[str | None] = mapped_column(
         String(32),
         ForeignKey("dimension_type.id", ondelete="RESTRICT"),
         index=True,
     )
-    code: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(128), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    parent_id: Mapped[str | None] = mapped_column(String(32), index=True)
+    parent_id: Mapped[str | None] = mapped_column(String(32))
     description: Mapped[str | None] = mapped_column(Text)
-    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)

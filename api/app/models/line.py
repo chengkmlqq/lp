@@ -29,11 +29,11 @@ class Line(Base):
     )
     code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    voltage_kv: Mapped[int | None] = mapped_column(Integer, index=True)
+    voltage_kv: Mapped[int | None] = mapped_column(Integer)
     phase_sequence_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     arrester_install_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     lightning_param_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    status: Mapped[str] = mapped_column(String(20), default="enabled", index=True)
+    status: Mapped[str] = mapped_column(String(20), default="enabled")
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)
     update_date: Mapped[datetime] = mapped_column(

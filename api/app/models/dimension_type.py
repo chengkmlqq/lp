@@ -37,8 +37,8 @@ class DimensionType(Base):
         index=True,
     )
     description: Mapped[str | None] = mapped_column(Text)
-    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)

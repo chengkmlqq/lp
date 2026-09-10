@@ -76,6 +76,6 @@ class LightningDistribution(Base):
 
     # ---- 审计 ----
     create_user: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     update_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     update_user: Mapped[str | None] = mapped_column(String(64), nullable=True)

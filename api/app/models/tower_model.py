@@ -25,14 +25,14 @@ class TowerModel(Base):
         primary_key=True,
         default=lambda: uuid4().hex,
     )
-    code: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    tower_type: Mapped[str | None] = mapped_column(String(32), index=True)
+    tower_type: Mapped[str | None] = mapped_column(String(32))
     description: Mapped[str | None] = mapped_column(Text)
     image_mount_code: Mapped[str | None] = mapped_column(String(64), index=True)
     image_path: Mapped[str | None] = mapped_column(String(2048))
     source_tag: Mapped[str | None] = mapped_column(String(64), index=True)
-    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
 
     default_altitude_m: Mapped[float | None] = mapped_column(Float)

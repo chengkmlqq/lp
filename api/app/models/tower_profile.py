@@ -49,7 +49,7 @@ class TowerProfile(Base):
     current_b: Mapped[float | None] = mapped_column(Float)
     structure_kind: Mapped[str | None] = mapped_column(String(64), index=True)
     stroke_mode: Mapped[str | None] = mapped_column(String(32), index=True)
-    current_type: Mapped[str | None] = mapped_column(String(32), index=True)
+    current_type: Mapped[str | None] = mapped_column(String(32))
     current_head_time_us: Mapped[float | None] = mapped_column(Float)
     current_tail_time_us: Mapped[float | None] = mapped_column(Float)
     extra_profile_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

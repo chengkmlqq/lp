@@ -33,18 +33,17 @@ class FlAnalysisJob(Base):
         String(32),
         ForeignKey("power_line.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     job_name: Mapped[str | None] = mapped_column(String(255), index=True)
-    job_type: Mapped[str] = mapped_column(String(32), default="normal", index=True)
+    job_type: Mapped[str] = mapped_column(String(32), default="normal")
     source_kind: Mapped[str] = mapped_column(String(32), default="line", index=True)
-    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending")
     task_id: Mapped[str | None] = mapped_column(String(128), index=True)
     latest_run_id: Mapped[str | None] = mapped_column(String(32), index=True)
     total_tower_count: Mapped[int] = mapped_column(Integer, default=0)
     snapshotted_tower_count: Mapped[int] = mapped_column(Integer, default=0)
     result_tower_count: Mapped[int] = mapped_column(Integer, default=0)
-    external_adapter: Mapped[str] = mapped_column(String(32), default="placeholder", index=True)
+    external_adapter: Mapped[str] = mapped_column(String(32), default="placeholder")
     adapter_config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     execution_options_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     result_summary_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -86,10 +85,9 @@ class FlAnalysisRun(Base):
         String(32),
         ForeignKey("fl_analysis_job.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
-    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
-    runner_kind: Mapped[str] = mapped_column(String(32), default="placeholder", index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    runner_kind: Mapped[str] = mapped_column(String(32), default="placeholder")
     engine_command: Mapped[str | None] = mapped_column(String(2048))
     working_dir: Mapped[str | None] = mapped_column(String(2048))
     stdout_text: Mapped[str | None] = mapped_column(Text)
@@ -130,19 +128,16 @@ class FlAnalysisTowerSnapshot(Base):
         String(32),
         ForeignKey("fl_analysis_job.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     run_id: Mapped[str] = mapped_column(
         String(32),
         ForeignKey("fl_analysis_run.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     tower_id: Mapped[str] = mapped_column(
         String(32),
         ForeignKey("power_line_tower.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     seq_no: Mapped[int] = mapped_column(Integer, default=0)
     tower_no: Mapped[str] = mapped_column(String(64), index=True)
@@ -180,22 +175,19 @@ class FlAnalysisTowerResult(Base):
         String(32),
         ForeignKey("fl_analysis_job.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     run_id: Mapped[str] = mapped_column(
         String(32),
         ForeignKey("fl_analysis_run.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     snapshot_id: Mapped[str] = mapped_column(
         String(32),
         ForeignKey("fl_analysis_tower_snapshot.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
-    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
-    risk_level: Mapped[str | None] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    risk_level: Mapped[str | None] = mapped_column(String(32))
     summary_text: Mapped[str | None] = mapped_column(Text)
     result_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
