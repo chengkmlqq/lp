@@ -100,7 +100,8 @@ def execute_multi_phase_binary_search_external(
 
     # 与单档二分一致的参数
     default_low = _coerce_positive_float(execution_options.get("binary_search_low_ka"), default=0.1)
-    default_high = _coerce_positive_float(execution_options.get("binary_search_high_ka"), default=2000.0)
+    default_high_raw = _coerce_positive_float(execution_options.get("binary_search_high_ka"), default=2000.0)
+    default_high: float | None = default_high_raw if (default_high_raw is None or default_high_raw > 0) else 2000.0
 
     phase_entries: list[dict[str, Any]] = []
     level_results: list[ExternalTowerExecutionResult] = []
@@ -131,6 +132,7 @@ def execute_multi_phase_binary_search_external(
             _coerce_positive_float(withstand_raw, default=0.0) if withstand_raw is not None else None
         )
         final_count = search.get("final_flashover_count")
+        search_history = list(search.get("search_history") or [])
         # C#：收敛（闪络相数达标）→ Ready=true；未达标档不输出
         ready = converged and withstand is not None and withstand > 0
         entry: dict[str, Any] = {
@@ -140,6 +142,7 @@ def execute_multi_phase_binary_search_external(
             "converged": converged,
             "final_flashover_count": final_count,
             "ready": ready,
+            "search_history": search_history,
         }
         if ready:
             # fjtzlDanXiang 同源公式（对齐 C# mArray_TZL[i] = fjtzlDanXiang((int)current)）
@@ -167,18 +170,25 @@ def execute_multi_phase_binary_search_external(
             else:
                 entry["trip_rate"] = None
             # C#：下一档从本档收敛值继续抬升（currentLeft=currentRight 推进）
+            # ⚠️ 钳制在 high 之下：若本档收敛值已达二分上限（2000 边界、未真正达标），
+            # 直接抬 low 到 2000 会让下一档 high<=low 报错（实测 P3 修复后 6 相档触发）。
             if (
-                _coerce_positive_float(search.get("multiplier"), default=1.0) == 1.0
+                default_high is not None
+                and _coerce_positive_float(search.get("multiplier"), default=1.0) == 1.0
                 and withstand is not None
                 and withstand > carry_low
+                and withstand < default_high
             ):
-                carry_low = withstand
+                carry_low = min(withstand, default_high * 0.999)
         phase_entries.append(entry)
 
     ready_entries = [item for item in phase_entries if item.get("ready")]
     # C# danXiang_tzl：第一个 ready 档（level=1）作为主输出
     dominant = ready_entries[0] if ready_entries else None
+    # 主结果 binary_search 保留第一档（单相，C# 主输出列语义），而非最后一档
+    first_search = dict(level_results[0].result_json.get("binary_search") or {}) if level_results else {}
     merged = dict(last_execution.result_json) if last_execution is not None else dict(baseline_result)
+    merged["binary_search"] = first_search
     merged["multi_phase_binary_search"] = {
         "phase_entries": phase_entries,
         "ready_count": len(ready_entries),
@@ -329,7 +339,21 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
     p["RER001"] = fmt(ground_r, 1)
     p["RELENS____"] = fmt(insul_m, 2)
 
-    tower_kind = str(execution_options.get("tower_kind") or profile.get("tower_kind") or "ganzi").strip().lower()
+    tower_kind_raw = (
+        execution_options.get("tower_kind")
+        or profile.get("tower_kind")
+        or str(base_tower.get("tower_type") or "").strip().lower()
+        or "ganzi"
+    )
+    # LP-570：快照 profile 常缺 tower_kind（只有 tower_type=s500guxing 等编码）。
+    # 从塔型编码提塔形关键字（s500guxing → guxing；zhiliu/maotou/jiubei/ganzi/shangzi/sihuita 同理），
+    # 否则默认 ganzi 分支会算错双回鼓型塔（P3 直线塔实测 112 vs C# 97 差 15%）。
+    tower_kind = str(tower_kind_raw).strip().lower()
+    if tower_kind not in ("guxing", "guxingd", "jiubei", "maotou", "ganzi", "shangzi", "sihuita", "zhiliu", "vzhiliu"):
+        for marker in ("guxing", "jiubei", "maotou", "ganzi", "shangzi", "sihuita", "zhiliu", "vzhiliu"):
+            if marker in tower_kind:
+                tower_kind = marker
+                break
     if tower_kind in ("guxing", "guxingd"):
         # === guxing 鼓型双回塔（C# 2104-2244）===
         # 数据语义：双回塔几何存于 geometry_layers_json.I（左回路）
