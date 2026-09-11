@@ -311,8 +311,8 @@ export function CreateJobForm({
                     dataSource={towersQuery.data?.items ?? []}
                     loading={towersQuery.isFetching}
                     size="small"
-                    pagination={{ pageSize: 8, showSizeChanger: false, hideOnSinglePage: true }}
-                    scroll={{ x: 760 }}
+                    pagination={false}
+                    scroll={{ x: 760, y: 320 }}
                     rowSelection={{
                       selectedRowKeys: selectedTowerIds,
                       onChange: (selectedRowKeys) => form.setFieldValue("selected_tower_ids", selectedRowKeys),
