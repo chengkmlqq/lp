@@ -6717,10 +6717,15 @@ body {
   margin-bottom: 16px;
 }
 
+/* 块内最后一个表单项与边框的间距（块 padding-bottom 为 0，靠最后一项的 margin 收尾） */
+.fl-create-form-block > .ant-form-item:last-child {
+  margin-bottom: 16px;
+}
+
 .fl-create-form-advanced {
-  margin-top: 4px;
-  border-top: 1px solid var(--ant-color-border-secondary);
-  padding-top: 4px;
+  margin-top: 0;
+  padding: 8px 16px 8px;
+  background: transparent;
 }
 
 .fl-create-form-advanced .ant-collapse-header {
@@ -6732,4 +6737,17 @@ body {
   .fl-create-form-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+/* 表单分块：用边框块划分（替代分隔线） */
+.fl-create-form-block {
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 8px;
+  padding: 16px 16px 0;
+  margin-bottom: 16px;
+}
+
+.fl-create-form-block-title {
+  font-weight: 600;
+  margin-bottom: 12px;
+  line-height: 1.5;
 }

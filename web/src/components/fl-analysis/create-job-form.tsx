@@ -198,8 +198,10 @@ export function CreateJobForm({
     >
       {/* 单页面表单：基础信息 + 计算方法 双列；高级参数默认折叠 */}
       <div className="fl-create-form-scroll">
-        <div className="fl-create-form-grid">
-          <Form.Item name="job_name" label="任务名" rules={[{ required: true, message: "请输入任务名" }]}>
+        <div className="fl-create-form-block">
+          <div className="fl-create-form-block-title">基础信息</div>
+          <div className="fl-create-form-grid">
+            <Form.Item name="job_name" label="任务名" rules={[{ required: true, message: "请输入任务名" }]}>
             <Input
               placeholder={selectedLine
                 ? `${selectedLine.name || selectedLine.code}-${formatJobType(selectedJobType)}`
@@ -261,6 +263,12 @@ export function CreateJobForm({
             />
           </Form.Item>
 
+          </div>
+        </div>
+
+        <div className="fl-create-form-block">
+          <div className="fl-create-form-block-title">计算方法</div>
+          <div className="fl-create-form-grid">
         {showWaveformBlock ? (
           <>
             {showNormalBlock ? (
@@ -318,11 +326,12 @@ export function CreateJobForm({
           ) : null}
           </>
         ) : null}
+          </div>
         </div>
 
         <Collapse
           ghost
-          className="fl-create-form-advanced"
+          className="fl-create-form-advanced fl-create-form-block"
           items={[
             {
               key: "advanced",
@@ -396,7 +405,7 @@ export function CreateJobForm({
           ]}
         />
           {selectedLineId ? (
-            <>
+            <div className="fl-create-form-block">
               {/* 注册 selected_tower_ids 字段（受控 rowSelection 的 form 存储） */}
               <Form.Item name="selected_tower_ids" hidden>
                 <Input />
@@ -425,7 +434,7 @@ export function CreateJobForm({
                   />
                 )}
               </Form.Item>
-            </>
+            </div>
           ) : null}
       </div>
 
