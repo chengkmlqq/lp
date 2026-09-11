@@ -435,9 +435,11 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
             if marker in tower_kind:
                 tower_kind = marker
                 break
-    # wine tpbig 兼容性：guxing 分支参数在 wine 下 0 闪络（LP-570 实测），回退 ganzi
-    if tower_kind in ("guxing", "guxingd"):
-        tower_kind = "ganzi"
+    # wine tpbig 兼容性：早期实测 guxing 分支参数在 wine 下 0 闪络（LP-570 误判）。
+    # 2026-09-11 完整复现验证：用干净 noM 模板 + C# guxing 语义参数（RELE01=下相高
+    # 42/REHG=67.5/REHC1=51.6），wine 下 100kA→0 相、150kA→2 相、500kA→4 相、
+    # 1000kA→6 相——闪络单调正常（此前 0 闪络是测试脚本 grep 错 lis 文件名所致）。
+    # 取消强制回退 ganzi，guxing 走正确分支以对齐 C# 同跳基准。
     if tower_kind in ("guxing", "guxingd"):
         # === guxing 鼓型双回塔（C# 2104-2244）===
         # 数据语义：双回塔几何存于 geometry_layers_json.I（左回路）
