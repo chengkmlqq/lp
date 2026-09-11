@@ -109,7 +109,14 @@ def execute_multi_phase_binary_search_external(
     last_execution: ExternalTowerExecutionResult | None = None
 
     phase_labels = ["单相", "双相", "三相", "四相", "五相", "六相"]
-    for level in range(1, max_phases + 1):
+    # C# ThreadCompute5_work_atp（6537 行）：只对 1/2/3 相独立二分（level_lightning<=3），
+    # 4/5/6 相不是独立搜索——是二分迭代中"实际闪络数>=4"时顺带记录电流
+    # （mArray_Current_kV[mCount_ShanLuoXiang-1] = showCurrent_kV，6702-6704 行）。
+    # Web 若对 4/5/6 相独立二分，会与基准 CSV 的"顺带记录值"无对应关系（实测偏差巨大）。
+    max_binary_phases = min(max_phases, 3)
+    # 顺带记录：phase_count -> 最低电流（C# 每次达标仿真都覆盖，取最后一次即收敛附近）
+    incidental: dict[int, float] = {}
+    for level in range(1, max_binary_phases + 1):
         level_options = dict(execution_options)
         level_options["binary_search_low_ka"] = carry_low
         level_options["binary_search_high_ka"] = default_high
@@ -182,8 +189,28 @@ def execute_multi_phase_binary_search_external(
             ):
                 carry_low = min(withstand, default_high * 0.999)
         phase_entries.append(entry)
+        # C# 顺带记录（mArray_Current_kV[mCount-1]）：本档二分迭代中实际闪络数>=4 的电流
+        for hist in search_history:
+            fc = hist.get("flashover_count")
+            if isinstance(fc, (int, float)) and int(fc) >= 4:
+                ka = hist.get("current_ka")
+                if isinstance(ka, (int, float)) and ka > 0:
+                    incidental[int(fc)] = ka  # 覆盖，取最后一次（收敛附近）
 
     ready_entries = [item for item in phase_entries if item.get("ready")]
+    # C# 4/5/6 相：顺带记录（无独立二分）——从 incidental 补 entries，
+    # 无顺带记录时输出 None（C# 未记录也不输出）
+    for lvl in range(4, max_phases + 1):
+        ka = incidental.get(lvl)
+        phase_entries.append({
+            "phase_count": lvl,
+            "label": phase_labels[lvl - 1] if lvl <= len(phase_labels) else f"{lvl}相",
+            "counterstrike_withstand_ka": ka,
+            "converged": ka is not None,
+            "final_flashover_count": lvl if ka is not None else None,
+            "ready": ka is not None,
+            "search_history": [],
+        })
     # C# danXiang_tzl：第一个 ready 档（level=1）作为主输出
     dominant = ready_entries[0] if ready_entries else None
     # 主结果 binary_search 保留第一档（单相，C# 主输出列语义），而非最后一档
