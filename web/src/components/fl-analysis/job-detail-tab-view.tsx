@@ -282,7 +282,8 @@ export function JobDetailTabView({
     <>
       {contextHolder}
       <div className="admin-fl-analysis-detail-pane">
-        <Typography.Title level={5} style={{ margin: 0 }}>
+        <div>
+        <Typography.Title level={5}>
           任务信息
         </Typography.Title>
         <JobDetailPanel
@@ -320,6 +321,7 @@ export function JobDetailTabView({
             downloadReportMutation.mutate(job.id);
           }}
         />
+        </div>
 
         <Tabs
           type="editable-card"

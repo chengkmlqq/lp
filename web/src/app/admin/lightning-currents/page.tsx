@@ -1635,7 +1635,7 @@ function AmplitudeDetailView({
   retryLoading: boolean;
 }) {
   return (
-    <Space direction="vertical" size={12} className="w-full admin-lightning-currents-detail-pane">
+    <Space direction="vertical" size={24} className="w-full admin-lightning-currents-detail-pane">
       <div>
         <Typography.Title level={5}>基本信息</Typography.Title>
         <Descriptions bordered size="small" column={2} className="admin-lightning-currents-meta-table">
@@ -1730,7 +1730,7 @@ function AmplitudeDetailView({
       {record.stroke_peaks_json && record.stroke_peaks_json.length > 0 && (
         <div>
           <Typography.Title level={5}>多回击峰值分布</Typography.Title>
-          <ResponsiveContainer width="100%" height={250}>
+          <ResponsiveContainer width="100%" height={320}>
             <LineChart data={record.stroke_peaks_json.map((peak: Record<string, unknown>, idx: number) => ({
               index: idx + 1,
               time_us: Number(peak.time_us) || 0,

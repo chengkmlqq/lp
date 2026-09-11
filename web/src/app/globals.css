@@ -3925,14 +3925,18 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 12px;
+  /* 说明：antd Space 会以 inline style 的 rowGap 覆盖此值（见 AmplitudeDetailView 的 size 属性） */
+  gap: 24px;
   padding: 24px;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
+/* 分区标题与下方内容的间距（原为 antd 默认 ~8px，加大到 12px）；
+   说明：antd Typography.Title 渲染为 <h5 class="ant-typography">，没有 ant-typography-title 类 */
+.admin-lightning-currents-detail-pane h5.ant-typography,
 .admin-lightning-currents-detail-pane .ant-typography-title {
-  margin-bottom: 0;
+  margin-bottom: 12px;
 }
 
 /* LP-583: 详情页「基本信息 / 波形特征参数」两个 Descriptions 的列宽保持一致，上下表格列对齐。
@@ -6644,7 +6648,7 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 12px;
+  gap: 24px;
   padding: 24px;
   overflow-y: auto;
   overflow-x: hidden;
@@ -6656,7 +6660,7 @@ body {
 .admin-fl-analysis-detail-pane h3.ant-typography,
 .admin-fl-analysis-detail-pane h4.ant-typography,
 .admin-fl-analysis-detail-pane h5.ant-typography {
-  margin-bottom: 0;
+  margin-bottom: 12px;
 }
 
 .admin-fl-analysis-detail-pane .ant-table-pagination {

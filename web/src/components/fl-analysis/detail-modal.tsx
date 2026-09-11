@@ -195,7 +195,7 @@ export function TowerDetailView({
   const detailExternalExecution = readObject(detailResultObject.external_execution);
 
   return (
-    <Space direction="vertical" size={12} className="flex w-full">
+    <Space direction="vertical" size={24} className="flex w-full">
       <Space className="flex w-full" style={{ justifyContent: "space-between" }} align="center">
         <Typography.Text type="secondary" style={{ marginBottom: 0 }}>
           任务：{selectedJob?.job_name || selectedJob?.line_name || selectedJob?.line_code || "-"
@@ -215,7 +215,8 @@ export function TowerDetailView({
           </Button>
         ) : null}
       </Space>
-      <Typography.Title level={5} style={{ margin: 0 }}>
+      <div>
+      <Typography.Title level={5}>
         基本信息
       </Typography.Title>
       <Descriptions bordered size="small" column={2}>
@@ -284,8 +285,10 @@ export function TowerDetailView({
             : String(readOptionalNumber(detailResultObject, "score") ?? "-")}
         </Descriptions.Item>
       </Descriptions>
+      </div>
 
-      <Typography.Title level={5} style={{ margin: 0 }}>
+      <div>
+      <Typography.Title level={5}>
         原因细项
       </Typography.Title>
       {reasonDetails.length === 0 ? (
@@ -299,10 +302,12 @@ export function TowerDetailView({
           size="small"
         />
       )}
+      </div>
 
       {selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
         <>
-          <Typography.Title level={5} style={{ margin: 0 }}>
+          <div>
+          <Typography.Title level={5}>
             波形扫描
           </Typography.Title>
           {scanPoints.length === 0 ? (
@@ -317,12 +322,14 @@ export function TowerDetailView({
               scroll={{ x: 1000 }}
             />
           )}
+          </div>
         </>
       ) : null}
 
       {selectedJobDetailWaveformType === "tongtiao" ? (
         <>
-          <Typography.Title level={5} style={{ margin: 0 }}>
+          <div>
+          <Typography.Title level={5}>
             相别结果
           </Typography.Title>
           {phaseResults.length === 0 ? (
@@ -337,8 +344,10 @@ export function TowerDetailView({
               scroll={{ x: 1200 }}
             />
           )}
+          </div>
 
-          <Typography.Title level={5} style={{ margin: 0 }}>
+          <div>
+          <Typography.Title level={5}>
             多相结果
           </Typography.Title>
           {multiPhaseResults.length === 0 ? (
@@ -353,10 +362,12 @@ export function TowerDetailView({
               scroll={{ x: 900 }}
             />
           )}
+          </div>
         </>
       ) : null}
 
-      <Typography.Title level={5} style={{ margin: 0 }}>
+      <div>
+      <Typography.Title level={5}>
         改造动作
       </Typography.Title>
       {mitigationActions.length === 0 ? (
@@ -370,6 +381,7 @@ export function TowerDetailView({
           size="small"
         />
       )}
+      </div>
     </Space>
   );
 }
