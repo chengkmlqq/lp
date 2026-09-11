@@ -443,6 +443,20 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
         except (TypeError, ValueError):
             return "1."
 
+    # 配置化参数模板（ATP_MAPPING_MODE=config|config_db，默认 config_db）：
+    # 优先走配置路径；任何异常/不可用都自动回落本函数的代码路径，保证不影响计算。
+    try:
+        from . import atp_param_config as _atp_cfg
+
+        if _atp_cfg.mode() != "code":
+            configured = _atp_cfg.compute_params_from_runtime(
+                base_tower=base_tower, profile=profile, execution_options=execution_options
+            )
+            if configured:
+                return configured
+    except Exception:  # noqa: BLE001 - 兜底：配置不可用即回到代码路径
+        pass
+
     p: dict[str, str] = {}
     p["RER001"] = fmt(ground_r, 1)
     p["RELENS____"] = fmt(insul_m, 2)

@@ -11,6 +11,11 @@
 
 from __future__ import annotations
 
+import os
+
+# 对照必须走代码路径：强制 code 模式（运行时默认 config_db 会短路到配置路径）
+os.environ["ATP_MAPPING_MODE"] = "code"
+
 import itertools
 import sys
 from typing import Any

@@ -1,6 +1,11 @@
 """验证 DB 路径（atp_param_template + atp_param_global）与代码路径逐字节一致。"""
 from __future__ import annotations
 
+import os
+
+# 对照必须走代码路径：强制 code 模式（运行时默认 config_db 会短路到配置路径）
+os.environ["ATP_MAPPING_MODE"] = "code"
+
 import itertools
 import json
 import sys
