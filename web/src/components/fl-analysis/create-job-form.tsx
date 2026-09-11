@@ -199,7 +199,7 @@ export function CreateJobForm({
       {/* 单页面表单：基础信息 + 计算方法 双列；高级参数默认折叠 */}
       <div className="fl-create-form-scroll">
         <div className="fl-create-form-block">
-          <div className="fl-create-form-block-title">基础信息</div>
+          <div className="fl-create-form-block-title">任务信息</div>
           <div className="fl-create-form-grid">
             <Form.Item name="job_name" label="任务名" rules={[{ required: true, message: "请输入任务名" }]}>
             <Input
@@ -216,52 +216,6 @@ export function CreateJobForm({
             />
           </Form.Item>
 
-          <Form.Item
-            name="line_id"
-            label="线路"
-            rules={[{ required: true, message: "请选择线路" }]}
-          >
-            <Select
-              showSearch
-              optionFilterProp="label"
-              placeholder="选择线路"
-              loading={linesLoading}
-              options={lines.map((item) => {
-                const preparation = readLinePreparation(item);
-                const statuses = [
-                  preparation.lightning_current,
-                  preparation.lightning_density,
-                  preparation.ground_slope,
-                ];
-                return {
-                  value: item.id,
-                  label: item.name || item.code,
-                  disabled: !preparation.all_ready,
-                  optionRender: ({ value: optionValue }: { value: string }) => {
-                    const line = lines.find((current) => current.id === optionValue);
-                    const currentPreparation = line ? readLinePreparation(line) : preparation;
-                    const currentStatuses = [
-                      currentPreparation.lightning_current,
-                      currentPreparation.lightning_density,
-                      currentPreparation.ground_slope,
-                    ];
-                    return (
-                      <div className="flex flex-col gap-1">
-                        <span>{line ? line.name || line.code : item.name || item.code}</span>
-                        <Space size={[4, 4]} wrap>
-                          {currentStatuses.map((status) => (
-                            <Tag key={status.key} color={preparationColor(status.ready)}>
-                              {status.label}
-                            </Tag>
-                          ))}
-                        </Space>
-                      </div>
-                    );
-                  },
-                };
-              })}
-            />
-          </Form.Item>
 
           </div>
         </div>
@@ -404,8 +358,58 @@ export function CreateJobForm({
             },
           ]}
         />
+        <div className="fl-create-form-block">
+          <div className="fl-create-form-block-title">计算线路</div>
+          <div className="fl-create-form-grid">
+            <Form.Item
+              name="line_id"
+              label="线路"
+              rules={[{ required: true, message: "请选择线路" }]}
+            >
+              <Select
+                showSearch
+                optionFilterProp="label"
+                placeholder="选择线路"
+                loading={linesLoading}
+                options={lines.map((item) => {
+                  const preparation = readLinePreparation(item);
+                  const statuses = [
+                    preparation.lightning_current,
+                    preparation.lightning_density,
+                    preparation.ground_slope,
+                  ];
+                  return {
+                    value: item.id,
+                    label: item.name || item.code,
+                    disabled: !preparation.all_ready,
+                    optionRender: ({ value: optionValue }: { value: string }) => {
+                      const line = lines.find((current) => current.id === optionValue);
+                      const currentPreparation = line ? readLinePreparation(line) : preparation;
+                      const currentStatuses = [
+                        currentPreparation.lightning_current,
+                        currentPreparation.lightning_density,
+                        currentPreparation.ground_slope,
+                      ];
+                      return (
+                        <div className="flex flex-col gap-1">
+                          <span>{line ? line.name || line.code : item.name || item.code}</span>
+                          <Space size={[4, 4]} wrap>
+                            {currentStatuses.map((status) => (
+                              <Tag key={status.key} color={preparationColor(status.ready)}>
+                                {status.label}
+                              </Tag>
+                            ))}
+                          </Space>
+                        </div>
+                      );
+                    },
+                  };
+                })}
+              />
+            </Form.Item>
+          </div>
           {selectedLineId ? (
-            <div className="fl-create-form-block">
+            <>
               {/* 注册 selected_tower_ids 字段（受控 rowSelection 的 form 存储） */}
               <Form.Item name="selected_tower_ids" hidden>
                 <Input />
@@ -434,8 +438,9 @@ export function CreateJobForm({
                   />
                 )}
               </Form.Item>
-            </div>
+            </>
           ) : null}
+        </div>
       </div>
 
       <div className="mt-4 flex items-center justify-end gap-2">
