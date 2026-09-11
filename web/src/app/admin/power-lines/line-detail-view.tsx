@@ -384,12 +384,16 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     if (!anchor) {
       return;
     }
-    const anchorHeight = anchor.getBoundingClientRect().height;
+    // 用「视口可用高度」推导表体高度：anchor 自身高度会随表体 min-height 同步变大，
+    // 用它反推会形成正反馈（每次翻页 +12px 持续增长，LP 缺陷修复 2026-09-12）。
+    const anchorTop = anchor.getBoundingClientRect().top;
     const tableHeader = anchor.querySelector<HTMLElement>(".ant-table-header");
     const tablePagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = tableHeader?.getBoundingClientRect().height ?? 56;
-    const paginationHeight = tablePagination?.getBoundingClientRect().height ?? 64;
-    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - 8);
+    const paginationHeight = tablePagination?.getBoundingClientRect().height ?? 32;
+    // 视口底部预留 12px；分页器上方 margin 预留 16px
+    const available = window.innerHeight - anchorTop - 12;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16);
     const clampedHeight = Math.max(180, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);

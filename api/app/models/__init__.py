@@ -40,3 +40,4 @@ __all__ = [
     "wine",
     "worker_registry",
 ]
+from app.models.feature_requirement import FeatureRequirement  # noqa: E402,F401
