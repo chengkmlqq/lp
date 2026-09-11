@@ -510,37 +510,89 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
         # REHC1/2/3 上/中/下相平均高度 = |相高 - 绝缘子串长 - 修正|（500kV: -8）
         for name, h in (("REHC1_____", left_h), ("REHC2_____", mid_h), ("REHC3_____", right_h)):
             p[name] = fmt(abs(h - insul_m - vadj([10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0])) if (h is not None and insul_m is not None) else None, 1)
-    elif tower_kind in ("jiubei", "maotou"):
+    elif tower_kind in ("jiubei", "jiubeino"):
         # === jiubei 酒杯型塔（C# 2548-2750）===
-        # RELE01 第一节主材 = |呼高 - 电压修正|（500kV: -14）
+        # RELE01 第一节主材 = |呼高 - 电压修正|（35:3.5 66/110:8.6 220:8.5 330:10.5 500:14 750:20 1000:28.9）
         rel01 = abs(tower_h - rel01_adj) if tower_h else None
         p["RELE01"] = fmt(rel01, 1)
         p["RELE02"] = fmt(rel01 * 1.5 if rel01 is not None else None, 1)
-        # RELE03 左波阻抗 = |左相中距 - 修正|（500kV: -5）
+        # RELE03/04 左/右波阻抗 = |相中距 - 修正|（C# 2612-2634）
         p["RELE03"] = fmt(abs(left_spacing - vadj([2.45, 2.9, 2.9, 3.7, 5.0, 5.0, 7.75, 9.7])) if left_spacing is not None else None, 1)
         p["RELE04"] = fmt(abs(right_spacing - vadj([2.45, 2.9, 2.9, 3.7, 5.0, 5.0, 7.75, 9.7])) if right_spacing is not None else None, 1)
-        # RELE05 左避雷线斜线距离 = sqrt(|左中距-修正|² + (避雷线高-左相高-修正)²)
+        # RELE05/06 左/右避雷线斜线距离 = sqrt((|避雷中距|-c1)² + (避雷线高-相高-c2)²)（C# 2555-2610）
         if mid_l is not None and shield_h is not None and left_h is not None:
             d5 = math.sqrt((abs(mid_l) - vadj([2.45, 2.2, 2.9, 3.7, 5.0, 3.7, 7.75, 9.7])) ** 2
                            + (shield_h - left_h - vadj([0.0, 1.0, 1.0, 1.0, 1.2, 1.7, -0.5, 0.0])) ** 2)
             p["RELE05"] = fmt(abs(d5), 2)
         else:
             p["RELE05"] = "1."
-        # RELE06 右避雷线斜线距离
         if mid_r is not None and shield_h is not None and right_h is not None:
             d6 = math.sqrt((abs(mid_r) - vadj([2.45, 2.2, 2.9, 3.7, 5.0, 3.7, 7.75, 9.7])) ** 2
                            + (shield_h - right_h - vadj([0.0, 1.0, 1.0, 1.0, 1.2, 1.7, -0.5, 0.0])) ** 2)
             p["RELE06"] = fmt(abs(d6), 2)
         else:
             p["RELE06"] = "1."
-        # RELE07 左避雷线中距、RELE08 右避雷线中距
-        p["RELE07"] = fmt(abs(mid_l) if mid_l is not None else None, 2)
-        p["RELE08"] = fmt(abs(mid_r) if mid_r is not None else None, 2)
-        p["RELE09"] = "1."
-        p["RELE10"] = "1."
-        p["REHG______"] = fmt(abs(shield_h - rehg_adj) if shield_h is not None else None, 1)
+        # REHG = |避雷线高 - 修正|（C# 2652-2661：35:-1.2 66/110:-2 220/330:-10/3 500:-6 750:-10/3 1000:0）
+        p["REHG______"] = fmt(abs(shield_h - vadj([1.2, 2.0, 2.0, 10.0 / 3.0, 10.0 / 3.0, 6.0, 10.0 / 3.0, 0.0])) if shield_h is not None else None, 1)
+        # REHC1/2/3 = 相高 - 绝缘子 - 修正（C# 2664-2698：35:-1.0 66/110:-10/3 220/330:-14/3 500:-8 750:-14/3 1000:0）
         for name, h in (("REHC1_____", left_h), ("REHC2_____", mid_h), ("REHC3_____", right_h)):
-            p[name] = fmt(abs(h - insul_m - rehc_adj) if (h is not None and insul_m is not None) else None, 1)
+            p[name] = fmt(abs(h - insul_m - vadj([1.0, 10.0 / 3.0, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0])) if (h is not None and insul_m is not None) else None, 1)
+    elif tower_kind in ("maotou", "maotouno"):
+        # === maotou 猫头型塔（C# 2392-2544）——与 jiubei 公式完全不同 ===
+        vv = (35 if voltage <= 35 else 66 if voltage <= 66 else 110 if voltage <= 110
+              else 220 if voltage <= 220 else 330 if voltage <= 330 else 500 if voltage <= 500
+              else 750 if voltage <= 750 else 1000)
+        # 电压分级系数：(RELE01乘数k1, RELE03除数k2, RELE05修正, REHG修正, REHC1/3修正, REHC2分子修正)
+        if vv == 750:
+            # C# 750 无定义 → 不做任何调整
+            rel01 = tower_h
+            rel03 = abs(mid_l) if mid_l is not None else None
+            sub3 = sub4 = sub5 = sub6 = 0.0
+        elif vv == 1000:
+            base_l = (abs(mid_l) - 3.5) if mid_l is not None else None
+            rel01 = abs(tower_h - base_l * 1.19) if (tower_h is not None and base_l is not None) else None
+            rel03 = (base_l / 0.6428) if base_l is not None else None
+            sub3, sub4, sub5, sub6 = 3.5, 0.0, 0.0, 3.5
+        else:
+            k1, k2, sub3, sub4, sub5, sub6 = {
+                35: (0.4245, 0.9205, 1.5, 2.0, 10.0 / 3.0, 1.5),
+                66: (0.4245, 0.9205, 1.5, 2.0, 10.0 / 3.0, 1.5),
+                110: (0.4245, 0.9205, 1.5, 2.0, 10.0 / 3.0, 1.5),
+                220: (0.7954, 0.7826, 2.7, 10.0 / 3.0, 14.0 / 3.0, 2.0),
+                330: (0.7954, 0.7826, 1.9, 10.0 / 3.0, 14.0 / 3.0, 2.0),
+                500: (0.6249, 0.8480, 3.6, 6.0, 8.0, 1.6),
+            }[vv]
+            rel01 = abs(tower_h - abs(mid_l) * k1) if (tower_h is not None and mid_l is not None) else None
+            rel03 = abs(mid_l) / k2 if mid_l is not None else None
+        # RELE01/02 第一节主材/斜材
+        p["RELE01"] = fmt(rel01, 2)
+        p["RELE02"] = fmt(rel01 * 1.5 if rel01 is not None else None, 2)
+        # RELE03/04 左侧波阻抗 / 右侧=左侧×1.5（C# 2407-2418）
+        p["RELE03"] = fmt(rel03, 2)
+        p["RELE04"] = fmt(rel03 * 1.5 if rel03 is not None else None, 2)
+        # RELE05/06 中间主材/斜材长度 = |避雷线高-左相高-sub3|，<1.5 钳 1.5（C# 2419-2440）
+        h5 = abs(shield_h - left_h - sub3) if (shield_h is not None and left_h is not None) else None
+        if h5 is not None:
+            h5 = round(h5, 2)
+            if h5 < 1.5:
+                h5 = 1.5
+        p["RELE05"] = fmt(h5, 2)
+        p["RELE06"] = fmt(h5 * 1.5 if h5 is not None else None, 2)
+        # RELE07/08 左/右避雷线中距（C# 2441-2452，原值；1000kV 减 3.5）
+        tweak = 3.5 if vv == 1000 else 0.0
+        p["RELE07"] = fmt((mid_l - tweak) if mid_l is not None else None, 2)
+        p["RELE08"] = fmt((mid_r - tweak) if mid_r is not None else None, 2)
+        # REHG = |避雷线高 - sub4|（C# 2455-2464）
+        p["REHG______"] = fmt(abs(shield_h - sub4) if shield_h is not None else None, 1)
+        # REHC1/3 = 左/右相高 - 绝缘子 - sub5（C# 2465-2492）
+        for name, h in (("REHC1_____", left_h), ("REHC3_____", right_h)):
+            p[name] = fmt(abs(h - insul_m - sub5) if (h is not None and insul_m is not None) else None, 1)
+        # REHC2 = |(左相高 + 避雷线高 - sub6)/2 - sub5|（C# 2475-2483 特殊公式）
+        if left_h is not None and shield_h is not None:
+            rehc2 = abs((left_h + shield_h - sub6) / 2.0 - sub5)
+        else:
+            rehc2 = None
+        p["REHC2_____"] = fmt(rehc2, 1)
     elif tower_kind in ("menxing", "menxingd"):
         # === menxing 门型塔（C# 1818-1925）===
         p["RELE01"] = fmt(tower_h if tower_h is not None else None, 1)
