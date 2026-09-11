@@ -326,7 +326,7 @@ export function CreateJobForm({
           items={[
             {
               key: "advanced",
-              label: "高级参数（点击展开）",
+              label: "高级参数",
               forceRender: true,
               children: (
                 <div className="fl-create-form-grid">
@@ -401,7 +401,7 @@ export function CreateJobForm({
               <Form.Item name="selected_tower_ids" hidden>
                 <Input />
               </Form.Item>
-              <Form.Item label="选择计算杆塔">
+              <Form.Item>
                 {towersQuery.isError ? (
                   <Alert
                     type="error"
