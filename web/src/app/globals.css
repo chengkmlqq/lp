@@ -6693,3 +6693,42 @@ body {
 .admin-fl-analysis-detail-pane .admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab {
   background: transparent !important;
 }
+/* ── 新建防雷计算表单：单页面（原三步向导合并）、双列布局、高级参数折叠 ───────── */
+.fl-create-form-scroll {
+  max-height: 520px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.fl-create-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+  row-gap: 0;
+}
+
+.fl-create-form-grid > .fl-span-2 {
+  grid-column: 1 / -1;
+}
+
+/* 双列下减少表单项底部留白，保持紧凑 */
+.fl-create-form-grid .ant-form-item {
+  margin-bottom: 16px;
+}
+
+.fl-create-form-advanced {
+  margin-top: 4px;
+  border-top: 1px solid var(--ant-color-border-secondary);
+  padding-top: 4px;
+}
+
+.fl-create-form-advanced .ant-collapse-header {
+  padding-inline: 0 !important;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .fl-create-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

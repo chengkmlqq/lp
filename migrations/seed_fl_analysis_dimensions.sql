@@ -115,14 +115,13 @@ CROSS JOIN (VALUES
 WHERE t.code = 'raoji_naleishuiping_method'
   AND NOT EXISTS (SELECT 1 FROM dimension_item i WHERE i.type_id = t.id AND i.code = v.code);
 
--- 2.8 反击跳闸率方法
+-- 2.8 反击跳闸率方法（2026-09-12：去掉 EGM，见 migrations/disable_fanji_tzl_egm.sql）
 INSERT INTO dimension_item (id, dimension_type, type_id, code, name, is_enabled, sort_order, create_date, create_user, update_date, update_user)
 SELECT replace(gen_random_uuid()::text, '-', ''), 'fanji_tzl_method', t.id, v.code, v.name, TRUE, v.sort_order, NOW() AT TIME ZONE 'UTC', 'system', NOW() AT TIME ZONE 'UTC', 'system'
 FROM dimension_type t
 CROSS JOIN (VALUES
   ('none', '无', 0),
-  ('guicheng', '规程', 1),
-  ('egm', 'EGM', 2)
+  ('guicheng', '规程', 1)
 ) AS v(code, name, sort_order)
 WHERE t.code = 'fanji_tzl_method'
   AND NOT EXISTS (SELECT 1 FROM dimension_item i WHERE i.type_id = t.id AND i.code = v.code);

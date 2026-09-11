@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, Button, Form, Input, InputNumber, Select, Space, Steps, Table, Tag, Typography } from "antd";
+import { Alert, Button, Collapse, Form, Input, InputNumber, Select, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { FormInstance } from "antd";
 import { useQuery } from "@tanstack/react-query";
@@ -49,7 +49,12 @@ const NALEISHUIPING_METHOD_FALLBACK_OPTIONS: FlDimensionOption[] = [
   { value: "guicheng", label: "规程" },
   { value: "atp", label: "ATP" },
 ];
-const TZL_METHOD_FALLBACK_OPTIONS: FlDimensionOption[] = [
+// 反击跳闸率：不含 EGM（2026-09-12 需求，后端维度项 fanji_tzl_method 已同步停用）
+const FANJI_TZL_METHOD_FALLBACK_OPTIONS: FlDimensionOption[] = [
+  { value: "none", label: "无" },
+  { value: "guicheng", label: "规程" },
+];
+const RAOJI_TZL_METHOD_FALLBACK_OPTIONS: FlDimensionOption[] = [
   { value: "none", label: "无" },
   { value: "guicheng", label: "规程" },
   { value: "egm", label: "EGM" },
@@ -105,7 +110,6 @@ export function CreateJobForm({
   onSubmit,
 }: CreateJobFormProps) {
   const { user, fetchWithAuth } = useAuth();
-  const [currentStep, setCurrentStep] = useState(0);
   const [prevOpen, setPrevOpen] = useState(open);
   const [prevEpoch, setPrevEpoch] = useState(openEpoch);
   const [prevJobType, setPrevJobType] = useState(selectedJobType);
@@ -121,8 +125,8 @@ export function CreateJobForm({
   const altitudeCorrectionOptions = useSelectOptions(optionMap.altitude_correction, ALTITUDE_CORRECTION_FALLBACK_OPTIONS);
   const fanjiNaleishuipingMethodOptions = useSelectOptions(optionMap.fanji_naleishuiping_method, NALEISHUIPING_METHOD_FALLBACK_OPTIONS);
   const raojiNaleishuipingMethodOptions = useSelectOptions(optionMap.raoji_naleishuiping_method, NALEISHUIPING_METHOD_FALLBACK_OPTIONS);
-  const fanjiTzlMethodOptions = useSelectOptions(optionMap.fanji_tzl_method, TZL_METHOD_FALLBACK_OPTIONS);
-  const raojiTzlMethodOptions = useSelectOptions(optionMap.raoji_tzl_method, TZL_METHOD_FALLBACK_OPTIONS);
+  const fanjiTzlMethodOptions = useSelectOptions(optionMap.fanji_tzl_method, FANJI_TZL_METHOD_FALLBACK_OPTIONS);
+  const raojiTzlMethodOptions = useSelectOptions(optionMap.raoji_tzl_method, RAOJI_TZL_METHOD_FALLBACK_OPTIONS);
 
   const isNormal = selectedJobType === "normal";
   const isTongtiao = selectedJobType === "tongtiao";
@@ -130,8 +134,6 @@ export function CreateJobForm({
   const showNormalBlock = isNormal;
   const showTongtiaoBlock = isTongtiao;
   // 新建表单已不提供「风险评估」，但保留单步分支防御（历史任务 / 兼容 flow 仍可能带 risk 类型）。
-  const stepCount = isNormal || isTongtiao ? 3 : 1;
-  const lastStepIndex = stepCount - 1;
 
   const towersQuery = useQuery({
     queryKey: ["/api/v1/lines", selectedLineId, "towers"],
@@ -149,7 +151,7 @@ export function CreateJobForm({
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) {
-      setCurrentStep(0);
+      /* 打开即恢复默认（高级参数折叠） */
     }
   }
   // antd Modal 关闭后隐藏 DOM 不重渲染，子组件收不到 open=false（prevOpen 恒为 true），
@@ -157,29 +159,10 @@ export function CreateJobForm({
   // openEpoch 驱动：epoch 变化即代表一次全新的「新建任务」会话，向导回到第一步。
   if (openEpoch !== prevEpoch) {
     setPrevEpoch(openEpoch);
-    setCurrentStep(0);
   }
   if (selectedJobType !== prevJobType) {
     setPrevJobType(selectedJobType);
-    setCurrentStep(0);
   }
-
-  const goNext = async () => {
-    const fields =
-      currentStep === 0
-        ? ["job_name", "job_type", "line_id"]
-        : currentStep === 1
-          ? isTongtiao
-            ? ["fanji_tzl_method", "raoji_tzl_method"]
-            : ["fanji_naleishuiping_method", "raoji_naleishuiping_method", "fanji_tzl_method", "raoji_tzl_method"]
-          : [];
-    try {
-      await form.validateFields(fields);
-      setCurrentStep((step) => step + 1);
-    } catch {
-      // 校验失败信息由 Form.Item 展示，停留在当前步骤
-    }
-  };
 
   const towerColumns: ColumnsType<LineTowerSummary> = [
     { title: "序号", dataIndex: "seq_no", width: 70 },
@@ -206,15 +189,6 @@ export function CreateJobForm({
     { title: "风险等级", dataIndex: "risk_level", width: 90, render: towerRiskTag },
   ];
 
-  const stepItems = (isNormal || isTongtiao
-    ? [
-        { title: "基础信息" },
-        { title: "计算方法" },
-        { title: "高级参数" },
-      ]
-    : [{ title: "基础信息" }]
-  ).map((item, index) => ({ ...item, key: index }));
-
   return (
     <Form<CreateJobFormValues>
       form={form}
@@ -222,12 +196,9 @@ export function CreateJobForm({
       initialValues={CREATE_JOB_DEFAULTS}
       onFinish={() => onSubmit(form.getFieldsValue(true) as CreateJobFormValues)}
     >
-      <Steps current={currentStep} items={stepItems} size="small" style={{ marginBottom: 32 }} />
-
-      {/* 步骤内容区固定高度 520px，不随表单项目数量自动伸缩；超高时内部滚动 */}
-      <div style={{ height: 520, overflowY: "auto", overflowX: "hidden" }}>
-      {currentStep === 0 ? (
-        <>
+      {/* 单页面表单：基础信息 + 计算方法 双列；高级参数默认折叠 */}
+      <div className="fl-create-form-scroll">
+        <div className="fl-create-form-grid">
           <Form.Item name="job_name" label="任务名" rules={[{ required: true, message: "请输入任务名" }]}>
             <Input
               placeholder={selectedLine
@@ -296,7 +267,7 @@ export function CreateJobForm({
               <Form.Item name="selected_tower_ids" hidden>
                 <Input />
               </Form.Item>
-              <Form.Item label="选择计算杆塔">
+              <Form.Item label="选择计算杆塔" className="fl-span-2">
                 {towersQuery.isError ? (
                   <Alert
                     type="error"
@@ -322,13 +293,10 @@ export function CreateJobForm({
               </Form.Item>
             </>
           ) : null}
-        </>
-      ) : null}
-
-      {currentStep === 1 && showWaveformBlock ? (
-        <>
-          {showNormalBlock ? (
-            <>
+        {showWaveformBlock ? (
+          <>
+            {showNormalBlock ? (
+              <>
               <Form.Item name="fanji_naleishuiping_method" label="反击耐雷水平计算方法" rules={[{ required: true, message: "请选择反击耐雷水平计算方法" }]}>
                 <Select
                   loading={dimensionsLoading}
@@ -353,8 +321,8 @@ export function CreateJobForm({
                   options={raojiTzlMethodOptions}
                 />
               </Form.Item>
-            </>
-          ) : null}
+              </>
+            ) : null}
 
           {showTongtiaoBlock ? (
             <>
@@ -380,11 +348,20 @@ export function CreateJobForm({
               </Form.Item>
             </>
           ) : null}
-        </>
-      ) : null}
+          </>
+        ) : null}
+        </div>
 
-      {currentStep === 2 && showWaveformBlock ? (
-        <>
+        <Collapse
+          ghost
+          className="fl-create-form-advanced"
+          items={[
+            {
+              key: "advanced",
+              label: "高级参数（点击展开）",
+              forceRender: true,
+              children: (
+                <div className="fl-create-form-grid">
           <Form.Item name="current_waveform" label="雷电流波形">
             <Select
               loading={dimensionsLoading}
@@ -445,29 +422,20 @@ export function CreateJobForm({
               </Form.Item>
             </div>
           </Form.Item>
-        </>
-      ) : null}
-
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
 
       <div className="mt-4 flex items-center justify-end gap-2">
         <Button onClick={onCancel} disabled={submitting}>
           取消
         </Button>
-        {currentStep > 0 ? (
-          <Button onClick={() => setCurrentStep((step) => step - 1)} disabled={submitting}>
-            上一步
-          </Button>
-        ) : null}
-        {currentStep < lastStepIndex ? (
-          <Button type="primary" onClick={goNext}>
-            下一步
-          </Button>
-        ) : (
-          <Button type="primary" loading={submitting} onClick={() => form.submit()}>
-            创建并启动任务
-          </Button>
-        )}
+        <Button type="primary" loading={submitting} onClick={() => form.submit()}>
+          创建并启动任务
+        </Button>
       </div>
     </Form>
   );
