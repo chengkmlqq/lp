@@ -535,7 +535,7 @@ export default function AtpParamTemplatesPage() {
                           {item}
                         </Tag>
                       ))}
-                      {preview.diff.length ? <Tag color="red">本次覆盖 {preview.diff.length} 个槽位</Tag> : null}
+                      {preview.diff.length ? <Tag color="red">本层定义/覆盖 {preview.diff.length} 个槽位</Tag> : null}
                     </div>
                     <Table size="small" rowKey="slot" pagination={false} scroll={{ y: 240 }} columns={previewColumns} dataSource={preview.slots} />
                   </>

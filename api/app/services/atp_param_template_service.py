@@ -425,13 +425,23 @@ def resolve_preview(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
             for slot in set(resolved.values) | set(baseline.values)
             if resolved.values.get(slot) != baseline.values.get(slot)
         )
-    focus_name = _rule_names_for(db, payload["rule_id"]) if payload.get("rule_id") else set()
+    # 来源标签：基规则（仅 tower_type 维度）在 resolve 中以「塔型标记」作为来源，
+    # 细分规则以「规则名」作为来源——据此判断每个槽位是本级定义还是继承。
+    focus_source: str | None = None
+    if payload.get("rule_id"):
+        focus_row = db.get(AtpParamTemplate, payload["rule_id"])
+        if focus_row is not None:
+            focus_source = (
+                resolved.tower_kind
+                if focus_row.tower_type and not _finer_dimensions(focus_row)
+                else focus_row.name
+            )
     slots = [
         {
             "slot": slot,
             "value": value,
             "source": resolved.sources.get(slot, ""),
-            "inherited": bool(focus_name) and resolved.sources.get(slot, "") not in focus_name,
+            "inherited": focus_source is not None and resolved.sources.get(slot, "") != focus_source,
         }
         for slot, value in sorted(resolved.values.items())
     ]
