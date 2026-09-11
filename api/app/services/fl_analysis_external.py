@@ -349,15 +349,17 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
     head_t_raw_ms = f(profile.get("current_head_time_ms"))
     if head_t_raw_ms is None:
         head_t_us = f(profile.get("current_head_time_us"))
-        # C# 桌面版默认波头 2.6ms（LP_Task.txt）
-        head_t_ms = head_t_us / 1000.0 if head_t_us is not None else 2.6
+        # ⚠️ C# 语义（LP_Task.txt 波头=2.6）：m雷电流波头时间_ms 直接取配置值（毫秒语义，
+        # 实际是"数值直接用"——C# 残留 work.atp REBB=-1E6/2.6=-384615、REAA1=2.6E-6）。
+        # 不能除以 1000：否则 REBB=-1E6/0.0026 差 1000 倍、REAA1=2.6E-9 波形时间≈0 → 恒闪络。
+        head_t_ms = head_t_us if head_t_us is not None else 2.6
     else:
         head_t_ms = head_t_raw_ms
     tail_t_raw_ms = f(profile.get("current_tail_time_ms"))
     if tail_t_raw_ms is None:
         tail_t_us = f(profile.get("current_tail_time_us"))
-        # C# 桌面版默认波尾 50ms（LP_Task.txt）
-        tail_t_ms = tail_t_us / 1000.0 if tail_t_us is not None else 50.0
+        # C# 语义同上：波尾 50（毫秒语义数值直接用）→ REAA=-1E6/50=-20000、REBB1=50E-6
+        tail_t_ms = tail_t_us if tail_t_us is not None else 50.0
     else:
         tail_t_ms = tail_t_raw_ms
     ground_r = f(base_tower.get("ground_resistance_ohm"))
