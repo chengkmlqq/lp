@@ -6636,3 +6636,56 @@ body {
     max-width: none;
   }
 }
+/* ── 防雷计算结果详情页：对齐「雷电流幅值统计」详情页 ──────────────────────
+   结构：垂直分区（Typography.Title level=5 + Descriptions/表格），
+   整页只有一个滚动条（本面板自身滚动），表内不设固定高度滚动条。 */
+.admin-fl-analysis-detail-pane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.admin-fl-analysis-detail-pane .ant-typography-title,
+.admin-fl-analysis-detail-pane h1.ant-typography,
+.admin-fl-analysis-detail-pane h2.ant-typography,
+.admin-fl-analysis-detail-pane h3.ant-typography,
+.admin-fl-analysis-detail-pane h4.ant-typography,
+.admin-fl-analysis-detail-pane h5.ant-typography {
+  margin-bottom: 0;
+}
+
+.admin-fl-analysis-detail-pane .ant-table-pagination {
+  margin: 12px 0 0 !important;
+}
+
+/* 表格不设固定高度：内容随详情面板一起滚动，避免出现表格自身的滚动条 */
+.admin-fl-analysis-detail-pane .ant-table-body,
+.admin-fl-analysis-detail-pane .ant-table-content {
+  max-height: none !important;
+  overflow-y: visible !important;
+}
+/* 详情面板内的 Tabs：内容自然展开（滚动交给外层详情面板），避免出现第二根滚动条 */
+.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs,
+.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs > .ant-tabs-content-holder,
+.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs > .ant-tabs-content-holder > .ant-tabs-content,
+.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs .ant-tabs-tabpane,
+.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs .ant-tabs-tabpane-active {
+  display: block;
+  flex: none;
+  min-height: auto;
+  overflow: visible;
+}
+
+.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs > .ant-tabs-nav {
+  padding: 0;
+  background: transparent;
+}
+
+.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: transparent !important;
+}

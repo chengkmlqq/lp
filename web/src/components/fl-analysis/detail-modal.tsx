@@ -195,7 +195,7 @@ export function TowerDetailView({
   const detailExternalExecution = readObject(detailResultObject.external_execution);
 
   return (
-    <Space direction="vertical" size={16} className="flex w-full">
+    <Space direction="vertical" size={12} className="flex w-full">
       <Space className="flex w-full" style={{ justifyContent: "space-between" }} align="center">
         <Typography.Text type="secondary" style={{ marginBottom: 0 }}>
           任务：{selectedJob?.job_name || selectedJob?.line_name || selectedJob?.line_code || "-"
@@ -215,6 +215,9 @@ export function TowerDetailView({
           </Button>
         ) : null}
       </Space>
+      <Typography.Title level={5} style={{ margin: 0 }}>
+        基本信息
+      </Typography.Title>
       <Descriptions bordered size="small" column={2}>
         <Descriptions.Item label="当前结论">{detailRow.summary_text || "-"}</Descriptions.Item>
         <Descriptions.Item label={selectedJob?.job_type === "mitigation" ? "预期风险/风险等级" : "风险等级"}>

@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { message, Space, Tabs, Tag } from "antd";
+import { message, Space, Tabs, Tag, Typography } from "antd";
 
-import { Card } from "@/components/ui-antd";
 import { useAuth } from "@/components/auth-provider";
 import { TowerDetailView } from "@/components/fl-analysis/detail-modal";
 import { JobDetailPanel } from "@/components/fl-analysis/job-detail-panel";
@@ -282,44 +281,45 @@ export function JobDetailTabView({
   return (
     <>
       {contextHolder}
-      <div className="admin-fl-analysis-job-pane">
-        <Card size="small">
-          <JobDetailPanel
-            selectedJob={liveJob}
-            selectedJobDetail={selectedJobDetail}
-            loading={jobDetailQuery.isLoading}
-            error={jobDetailQuery.error}
-            canManage={canManage}
-            canCreateMitigation={canCreateMitigation}
-            canCreateScenario={canCreateScenario}
-            canCreateReport={canCreateReport}
-            canDownloadResults={canDownloadResults}
-            selectedJobDetailWaveformType={selectedJobDetailWaveformType}
-            candidateMitigationRows={candidateMitigationRows}
-            candidateScenarioRows={candidateScenarioRows}
-            candidateScenarioBaseJobs={candidateScenarioBaseJobs}
-            candidateReportRows={candidateReportRows}
-            startPending={startJobMutation.isPending}
-            downloadResultsPending={downloadResultsMutation.isPending}
-            downloadReportPending={downloadReportMutation.isPending}
-            onStart={() => {
+      <div className="admin-fl-analysis-detail-pane">
+        <Typography.Title level={5} style={{ margin: 0 }}>
+          任务信息
+        </Typography.Title>
+        <JobDetailPanel
+          selectedJob={liveJob}
+          selectedJobDetail={selectedJobDetail}
+          loading={jobDetailQuery.isLoading}
+          error={jobDetailQuery.error}
+          canManage={canManage}
+          canCreateMitigation={canCreateMitigation}
+          canCreateScenario={canCreateScenario}
+          canCreateReport={canCreateReport}
+          canDownloadResults={canDownloadResults}
+          selectedJobDetailWaveformType={selectedJobDetailWaveformType}
+          candidateMitigationRows={candidateMitigationRows}
+          candidateScenarioRows={candidateScenarioRows}
+          candidateScenarioBaseJobs={candidateScenarioBaseJobs}
+          candidateReportRows={candidateReportRows}
+          startPending={startJobMutation.isPending}
+          downloadResultsPending={downloadResultsMutation.isPending}
+          downloadReportPending={downloadReportMutation.isPending}
+          onStart={() => {
               startJobMutation.mutate(job.id);
             }}
-            onOpenMitigation={() => onOpenMitigation(liveJob, candidateMitigationRows)}
-            onOpenScenario={() => onOpenScenario(liveJob, candidateScenarioRows, candidateScenarioBaseJobs)}
-            onOpenReport={() => onOpenReport(liveJob, candidateReportRows)}
-            onDownloadResults={() => {
+          onOpenMitigation={() => onOpenMitigation(liveJob, candidateMitigationRows)}
+          onOpenScenario={() => onOpenScenario(liveJob, candidateScenarioRows, candidateScenarioBaseJobs)}
+          onOpenReport={() => onOpenReport(liveJob, candidateReportRows)}
+          onDownloadResults={() => {
               downloadResultsMutation.mutate({
                 jobId: job.id,
                 runId: selectedJobDetail?.latest_run_id ?? job.latest_run_id,
                 jobType: job.job_type,
               });
             }}
-            onDownloadReport={() => {
-              downloadReportMutation.mutate(job.id);
-            }}
-          />
-        </Card>
+          onDownloadReport={() => {
+            downloadReportMutation.mutate(job.id);
+          }}
+        />
 
         <Tabs
           type="editable-card"
@@ -334,16 +334,14 @@ export function JobDetailTabView({
               label: <span className="admin-fl-analysis-tab-title">分级结果</span>,
               closable: false,
               children: (
-                <div className="admin-fl-analysis-list-pane">
-                  <ResultTable
+                <ResultTable
                     selectedJob={liveJob}
                     selectedWaveformJobType={selectedJobDetailWaveformType}
                     rows={towerRows}
                     loading={towerResultsQuery.isLoading}
                     error={towerResultsQuery.error}
-                    onOpenDetail={openTowerDetail}
-                  />
-                </div>
+                  onOpenDetail={openTowerDetail}
+                />
               ),
             },
             ...towerTabs,
