@@ -1,0 +1,140 @@
+{
+  "marker": "sihuita",
+  "tower_type": "sihuita",
+  "name": "四回路型",
+  "priority": 100,
+  "slots": {
+    "RELE01": {
+      "expr": "c3_l",
+      "fmt": 1
+    },
+    "RELE02": {
+      "expr": "c3_l * 1.5",
+      "fmt": 1
+    },
+    "RELE03": {
+      "expr": "abs(c3_sp_l)",
+      "fmt": 1
+    },
+    "RELE04": {
+      "expr": "abs(c4_sp_l)",
+      "fmt": 1
+    },
+    "RELE05": {
+      "expr": "clamp(abs(c3_m - c3_l), 1.5)",
+      "fmt": 2
+    },
+    "RELE06": {
+      "expr": "RELE05 * 1.5",
+      "fmt": 2
+    },
+    "RELE07": {
+      "expr": "abs(c3_sp_m)",
+      "fmt": 2
+    },
+    "RELE08": {
+      "expr": "abs(c4_sp_m)",
+      "fmt": 2
+    },
+    "RELE09": {
+      "expr": "clamp(abs(c3_u - c3_m), 1.5)",
+      "fmt": 2
+    },
+    "RELE10": {
+      "expr": "RELE09 * 1.5",
+      "fmt": 2
+    },
+    "RELE11": {
+      "expr": "abs(c3_sp_u)",
+      "fmt": 2
+    },
+    "RELE12": {
+      "expr": "abs(c4_sp_u)",
+      "fmt": 2
+    },
+    "RELE13": {
+      "expr": "abs(c1_l - c3_u)",
+      "fmt": 2
+    },
+    "RELE14": {
+      "expr": "RELE13 * 1.5",
+      "fmt": 2
+    },
+    "RELE15": {
+      "expr": "abs(c1_sp_l)",
+      "fmt": 1
+    },
+    "RELE16": {
+      "expr": "abs(c2_sp_l)",
+      "fmt": 1
+    },
+    "RELE17": {
+      "expr": "clamp(abs(c1_m - c1_l), 1.5)",
+      "fmt": 2
+    },
+    "RELE18": {
+      "expr": "RELE17 * 1.5",
+      "fmt": 2
+    },
+    "RELE19": {
+      "expr": "abs(c1_sp_m)",
+      "fmt": 2
+    },
+    "RELE20": {
+      "expr": "abs(c2_sp_m)",
+      "fmt": 2
+    },
+    "RELE21": {
+      "expr": "clamp(abs(c1_u - c1_m), 1.5)",
+      "fmt": 2
+    },
+    "RELE22": {
+      "expr": "RELE21 * 1.5",
+      "fmt": 2
+    },
+    "RELE23": {
+      "expr": "abs(c1_sp_u)",
+      "fmt": 2
+    },
+    "RELE24": {
+      "expr": "abs(c2_sp_u)",
+      "fmt": 2
+    },
+    "RELE25": {
+      "expr": "abs(sqrt((shield_h - c1_u) ** 2 + (lw_l - c1_sp_u) ** 2))",
+      "fmt": 2
+    },
+    "RELE26": {
+      "expr": "abs(sqrt((shield_h - c2_u) ** 2 + (lw_r - c2_sp_u) ** 2))",
+      "fmt": 2
+    },
+    "REHG______": {
+      "expr": "abs(shield_h - v(2.0, 0.0, 2.0, 10.0 / 3.0, 10.0 / 3.0, 6.0, 10.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC1_____": {
+      "expr": "abs(c1_u - insul_m - v(10.0 / 3.0, 0.0, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC2_____": {
+      "expr": "abs(c1_m - insul_m - v(10.0 / 3.0, 0.0, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC3_____": {
+      "expr": "abs(c1_l - insul_m - v(10.0 / 3.0, 0.0, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC4_____": {
+      "expr": "abs(c3_u - insul_m - v(10.0 / 3.0, 0.0, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC5_____": {
+      "expr": "abs(c3_m - insul_m - v(10.0 / 3.0, 0.0, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC6_____": {
+      "expr": "abs(c3_l - insul_m - v(10.0 / 3.0, 0.0, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    }
+  }
+}

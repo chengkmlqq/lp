@@ -1,0 +1,74 @@
+{
+  "marker": "guxing",
+  "tower_type": "guxing",
+  "name": "鼓型（含单回 guxingd）",
+  "priority": 100,
+  "fallback_to": "ganzi",
+  "fallback_enabled": true,
+  "slots": {
+    "RELE01": {
+      "expr": "h_l",
+      "fmt": 1
+    },
+    "RELE02": {
+      "expr": "h_l * 1.5",
+      "fmt": 1
+    },
+    "RELE03": {
+      "expr": "abs(sp_l)",
+      "fmt": 1
+    },
+    "RELE04": {
+      "expr": "clamp(abs(h_m - h_l), 1.5)",
+      "fmt": 2
+    },
+    "RELE05": {
+      "expr": "RELE04 * 1.5",
+      "fmt": 2
+    },
+    "RELE06": {
+      "expr": "abs(sp_m)",
+      "fmt": 1
+    },
+    "RELE07": {
+      "expr": "clamp(abs(h_u - h_m), 1.5)",
+      "fmt": 2
+    },
+    "RELE08": {
+      "expr": "RELE07 * 1.5",
+      "fmt": 2
+    },
+    "RELE09": {
+      "expr": "abs(sp_u)",
+      "fmt": 2
+    },
+    "RELE10": {
+      "expr": "clamp(abs(shield_h - h_u), 1.5)",
+      "fmt": 2
+    },
+    "RELE11": {
+      "expr": "RELE10 * 1.5",
+      "fmt": 2
+    },
+    "RELE12": {
+      "expr": "abs(lw_l)",
+      "fmt": 2
+    },
+    "REHG______": {
+      "expr": "abs(shield_h - v(2.0, 1.2, 2.0, 10.0 / 3.0, 10.0 / 3.0, 6.0, 10.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC1_____": {
+      "expr": "abs(h_u - insul_m - v(10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC2_____": {
+      "expr": "abs(h_m - insul_m - v(10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC3_____": {
+      "expr": "abs(h_l - insul_m - v(10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    }
+  }
+}

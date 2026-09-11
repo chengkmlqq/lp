@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "exact_canonical": [
+    "guxing",
+    "guxingd",
+    "jiubei",
+    "maotou",
+    "ganzi",
+    "shangzi",
+    "sihuita",
+    "zhiliu",
+    "vzhiliu",
+    "menxing"
+  ],
+  "marker_order": [
+    "guxing",
+    "jiubei",
+    "maotou",
+    "ganzi",
+    "shangzi",
+    "sihuita",
+    "zhiliu",
+    "vzhiliu",
+    "menxing"
+  ],
+  "default_marker": "ganzi",
+  "globals": {
+    "RER001": {
+      "expr": "ground_r",
+      "fmt": 1
+    },
+    "RELENS____": {
+      "expr": "insul_m",
+      "fmt": 2
+    },
+    "REIGAN____": {
+      "expr": "abs(current_ka)",
+      "fmt": 1
+    },
+    "REIAMP____": {
+      "expr": "-abs(current_ka) * 1000.0",
+      "fmt": 1
+    },
+    "HIAMP_____": {
+      "expr": "-abs(current_ka) * 1000.0 * 0.5",
+      "fmt": 1
+    },
+    "REBB______": {
+      "expr": "-1.0E6 / head_ms",
+      "when": "head_ms and head_ms > 0",
+      "else": "1.",
+      "fmt": 1
+    },
+    "REAA1_____": {
+      "expr": "head_ms * 1.0E-6",
+      "when": "head_ms and head_ms > 0",
+      "else": "1.",
+      "fmt": 7
+    },
+    "REAA______": {
+      "expr": "-1.0E6 / tail_ms",
+      "when": "tail_ms and tail_ms > 0",
+      "else": "1.",
+      "fmt": 1
+    },
+    "REBB1_____": {
+      "expr": "tail_ms * 1.0E-6",
+      "when": "tail_ms and tail_ms > 0",
+      "else": "1.",
+      "fmt": 7
+    },
+    "REHHEI____": {
+      "value": "1.",
+      "when": "wave_type != 2 and wave_type != 3",
+      "else": "0."
+    },
+    "REHSLO____": {
+      "value": "1.",
+      "when": "wave_type == 2",
+      "else": "0."
+    },
+    "REHSUR____": {
+      "value": "1.",
+      "when": "wave_type == 3",
+      "else": "0."
+    }
+  }
+}

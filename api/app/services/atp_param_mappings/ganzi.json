@@ -1,0 +1,64 @@
+{
+  "marker": "ganzi",
+  "tower_type": "ganzi",
+  "name": "干字（默认分支）",
+  "priority": 100,
+  "slots": {
+    "RELE01": {
+      "expr": "h_u",
+      "fmt": 1
+    },
+    "RELE02": {
+      "expr": "h_u * 1.5",
+      "fmt": 1
+    },
+    "RELE03": {
+      "expr": "abs(sp_u)",
+      "fmt": 1
+    },
+    "RELE04": {
+      "expr": "abs(sp_l)",
+      "fmt": 1
+    },
+    "RELE05": {
+      "expr": "clamp(abs(h_m - h_u), 1.5)",
+      "fmt": 2
+    },
+    "RELE06": {
+      "expr": "RELE05 * 1.5",
+      "fmt": 2
+    },
+    "RELE07": {
+      "expr": "clamp(abs(shield_h - h_m), 1.5)",
+      "fmt": 2
+    },
+    "RELE08": {
+      "expr": "RELE07 * 1.5",
+      "fmt": 2
+    },
+    "RELE09": {
+      "expr": "abs(lw_l_eff)",
+      "fmt": 2
+    },
+    "RELE10": {
+      "expr": "abs(lw_r_eff)",
+      "fmt": 2
+    },
+    "REHG______": {
+      "expr": "abs(shield_h - v(2.0, 1.2, 2.0, 10.0 / 3.0, 10.0 / 3.0, 8.0, 10.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC1_____": {
+      "expr": "abs(h_u - insul_m - v(10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 6.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC2_____": {
+      "expr": "abs(h_m - insul_m - v(10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 6.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    },
+    "REHC3_____": {
+      "expr": "abs(h_l - insul_m - v(10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 6.0, 14.0 / 3.0, 0.0))",
+      "fmt": 1
+    }
+  }
+}
