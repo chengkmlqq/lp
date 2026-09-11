@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, Button, Collapse, Form, Input, InputNumber, Select, Space, Table, Tag, Typography } from "antd";
+import { Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { FormInstance } from "antd";
 import { useQuery } from "@tanstack/react-query";
@@ -111,6 +111,7 @@ export function CreateJobForm({
 }: CreateJobFormProps) {
   const { user, fetchWithAuth } = useAuth();
   const [prevOpen, setPrevOpen] = useState(open);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [prevEpoch, setPrevEpoch] = useState(openEpoch);
   const [prevJobType, setPrevJobType] = useState(selectedJobType);
   const selectedLineId = Form.useWatch("line_id", form) ?? "";
@@ -201,7 +202,7 @@ export function CreateJobForm({
         <div className="fl-create-form-block">
           <div className="fl-create-form-block-title">任务信息</div>
           <div className="fl-create-form-grid">
-            <Form.Item name="job_name" label="任务名" rules={[{ required: true, message: "请输入任务名" }]}>
+            <Form.Item className="fl-span-2" name="job_name" label="任务名" rules={[{ required: true, message: "请输入任务名" }]}>
             <Input
               placeholder={selectedLine
                 ? `${selectedLine.name || selectedLine.code}-${formatJobType(selectedJobType)}`
@@ -213,6 +214,53 @@ export function CreateJobForm({
             <Select
               loading={dimensionsLoading}
               options={jobTypeOptions}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="line_id"
+            label="线路"
+            rules={[{ required: true, message: "请选择线路" }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="选择线路"
+              loading={linesLoading}
+              options={lines.map((item) => {
+                const preparation = readLinePreparation(item);
+                const statuses = [
+                  preparation.lightning_current,
+                  preparation.lightning_density,
+                  preparation.ground_slope,
+                ];
+                return {
+                  value: item.id,
+                  label: item.name || item.code,
+                  disabled: !preparation.all_ready,
+                  optionRender: ({ value: optionValue }: { value: string }) => {
+                    const line = lines.find((current) => current.id === optionValue);
+                    const currentPreparation = line ? readLinePreparation(line) : preparation;
+                    const currentStatuses = [
+                      currentPreparation.lightning_current,
+                      currentPreparation.lightning_density,
+                      currentPreparation.ground_slope,
+                    ];
+                    return (
+                      <div className="flex flex-col gap-1">
+                        <span>{line ? line.name || line.code : item.name || item.code}</span>
+                        <Space size={[4, 4]} wrap>
+                          {currentStatuses.map((status) => (
+                            <Tag key={status.key} color={preparationColor(status.ready)}>
+                              {status.label}
+                            </Tag>
+                          ))}
+                        </Space>
+                      </div>
+                    );
+                  },
+                };
+              })}
             />
           </Form.Item>
 
@@ -283,16 +331,71 @@ export function CreateJobForm({
           </div>
         </div>
 
-        <Collapse
-          ghost
-          className="fl-create-form-advanced fl-create-form-block"
-          items={[
-            {
-              key: "advanced",
-              label: "高级参数",
-              forceRender: true,
-              children: (
-                <div className="fl-create-form-grid">
+        <div className="fl-create-form-block">
+          <div className="fl-create-form-block-title">杆塔列表</div>
+          {selectedLineId ? (
+            <>
+              {/* 注册 selected_tower_ids 字段（受控 rowSelection 的 form 存储） */}
+              <Form.Item name="selected_tower_ids" hidden>
+                <Input />
+              </Form.Item>
+              <Form.Item>
+                {towersQuery.isError ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    message="杆塔列表加载失败"
+                    description={towersQuery.error instanceof Error ? towersQuery.error.message : "未知错误"}
+                  />
+                ) : (
+                  <Table<LineTowerSummary>
+                    rowKey={(row) => row.id}
+                    columns={towerColumns}
+                    dataSource={towersQuery.data?.items ?? []}
+                    loading={towersQuery.isFetching}
+                    size="small"
+                    pagination={false}
+                    scroll={{ x: 760, y: 320 }}
+                    rowSelection={{
+                      selectedRowKeys: selectedTowerIds,
+                      onChange: (selectedRowKeys) => form.setFieldValue("selected_tower_ids", selectedRowKeys),
+                    }}
+                  />
+                )}
+              </Form.Item>
+            </>
+          ) : null}
+        </div>
+
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <Button onClick={() => setAdvancedOpen(true)}>高级参数</Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={onCancel} disabled={submitting}>
+            取消
+          </Button>
+          <Button type="primary" loading={submitting} onClick={() => form.submit()}>
+            创建并启动任务
+          </Button>
+        </div>
+      </div>
+
+      {/* 高级参数：独立弹窗展示（不在新建表单中平铺） */}
+      <Modal
+        title="高级参数"
+        open={advancedOpen}
+        onCancel={() => setAdvancedOpen(false)}
+        width={720}
+        forceRender
+        destroyOnHidden={false}
+        footer={
+          <Button type="primary" onClick={() => setAdvancedOpen(false)}>
+            确定
+          </Button>
+        }
+      >
+        <div className="fl-create-form-grid">
           <Form.Item name="current_waveform" label="雷电流波形">
             <Select
               loading={dimensionsLoading}
@@ -353,104 +456,8 @@ export function CreateJobForm({
               </Form.Item>
             </div>
           </Form.Item>
-                </div>
-              ),
-            },
-          ]}
-        />
-        <div className="fl-create-form-block">
-          <div className="fl-create-form-block-title">计算线路</div>
-          <div className="fl-create-form-grid">
-            <Form.Item
-              name="line_id"
-              label="线路"
-              rules={[{ required: true, message: "请选择线路" }]}
-            >
-              <Select
-                showSearch
-                optionFilterProp="label"
-                placeholder="选择线路"
-                loading={linesLoading}
-                options={lines.map((item) => {
-                  const preparation = readLinePreparation(item);
-                  const statuses = [
-                    preparation.lightning_current,
-                    preparation.lightning_density,
-                    preparation.ground_slope,
-                  ];
-                  return {
-                    value: item.id,
-                    label: item.name || item.code,
-                    disabled: !preparation.all_ready,
-                    optionRender: ({ value: optionValue }: { value: string }) => {
-                      const line = lines.find((current) => current.id === optionValue);
-                      const currentPreparation = line ? readLinePreparation(line) : preparation;
-                      const currentStatuses = [
-                        currentPreparation.lightning_current,
-                        currentPreparation.lightning_density,
-                        currentPreparation.ground_slope,
-                      ];
-                      return (
-                        <div className="flex flex-col gap-1">
-                          <span>{line ? line.name || line.code : item.name || item.code}</span>
-                          <Space size={[4, 4]} wrap>
-                            {currentStatuses.map((status) => (
-                              <Tag key={status.key} color={preparationColor(status.ready)}>
-                                {status.label}
-                              </Tag>
-                            ))}
-                          </Space>
-                        </div>
-                      );
-                    },
-                  };
-                })}
-              />
-            </Form.Item>
-          </div>
-          {selectedLineId ? (
-            <>
-              {/* 注册 selected_tower_ids 字段（受控 rowSelection 的 form 存储） */}
-              <Form.Item name="selected_tower_ids" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item>
-                {towersQuery.isError ? (
-                  <Alert
-                    type="error"
-                    showIcon
-                    message="杆塔列表加载失败"
-                    description={towersQuery.error instanceof Error ? towersQuery.error.message : "未知错误"}
-                  />
-                ) : (
-                  <Table<LineTowerSummary>
-                    rowKey={(row) => row.id}
-                    columns={towerColumns}
-                    dataSource={towersQuery.data?.items ?? []}
-                    loading={towersQuery.isFetching}
-                    size="small"
-                    pagination={false}
-                    scroll={{ x: 760, y: 320 }}
-                    rowSelection={{
-                      selectedRowKeys: selectedTowerIds,
-                      onChange: (selectedRowKeys) => form.setFieldValue("selected_tower_ids", selectedRowKeys),
-                    }}
-                  />
-                )}
-              </Form.Item>
-            </>
-          ) : null}
         </div>
-      </div>
-
-      <div className="mt-4 flex items-center justify-end gap-2">
-        <Button onClick={onCancel} disabled={submitting}>
-          取消
-        </Button>
-        <Button type="primary" loading={submitting} onClick={() => form.submit()}>
-          创建并启动任务
-        </Button>
-      </div>
+      </Modal>
     </Form>
   );
 }
