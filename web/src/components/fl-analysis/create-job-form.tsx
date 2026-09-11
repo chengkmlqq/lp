@@ -261,38 +261,6 @@ export function CreateJobForm({
             />
           </Form.Item>
 
-          {selectedLineId ? (
-            <>
-              {/* 注册 selected_tower_ids 字段（受控 rowSelection 的 form 存储） */}
-              <Form.Item name="selected_tower_ids" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item label="选择计算杆塔" className="fl-span-2">
-                {towersQuery.isError ? (
-                  <Alert
-                    type="error"
-                    showIcon
-                    message="杆塔列表加载失败"
-                    description={towersQuery.error instanceof Error ? towersQuery.error.message : "未知错误"}
-                  />
-                ) : (
-                  <Table<LineTowerSummary>
-                    rowKey={(row) => row.id}
-                    columns={towerColumns}
-                    dataSource={towersQuery.data?.items ?? []}
-                    loading={towersQuery.isFetching}
-                    size="small"
-                    pagination={false}
-                    scroll={{ x: 760, y: 320 }}
-                    rowSelection={{
-                      selectedRowKeys: selectedTowerIds,
-                      onChange: (selectedRowKeys) => form.setFieldValue("selected_tower_ids", selectedRowKeys),
-                    }}
-                  />
-                )}
-              </Form.Item>
-            </>
-          ) : null}
         {showWaveformBlock ? (
           <>
             {showNormalBlock ? (
@@ -427,6 +395,38 @@ export function CreateJobForm({
             },
           ]}
         />
+          {selectedLineId ? (
+            <>
+              {/* 注册 selected_tower_ids 字段（受控 rowSelection 的 form 存储） */}
+              <Form.Item name="selected_tower_ids" hidden>
+                <Input />
+              </Form.Item>
+              <Form.Item label="选择计算杆塔">
+                {towersQuery.isError ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    message="杆塔列表加载失败"
+                    description={towersQuery.error instanceof Error ? towersQuery.error.message : "未知错误"}
+                  />
+                ) : (
+                  <Table<LineTowerSummary>
+                    rowKey={(row) => row.id}
+                    columns={towerColumns}
+                    dataSource={towersQuery.data?.items ?? []}
+                    loading={towersQuery.isFetching}
+                    size="small"
+                    pagination={false}
+                    scroll={{ x: 760, y: 320 }}
+                    rowSelection={{
+                      selectedRowKeys: selectedTowerIds,
+                      onChange: (selectedRowKeys) => form.setFieldValue("selected_tower_ids", selectedRowKeys),
+                    }}
+                  />
+                )}
+              </Form.Item>
+            </>
+          ) : null}
       </div>
 
       <div className="mt-4 flex items-center justify-end gap-2">

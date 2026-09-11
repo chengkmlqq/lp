@@ -6695,7 +6695,8 @@ body {
 }
 /* ── 新建防雷计算表单：单页面（原三步向导合并）、双列布局、高级参数折叠 ───────── */
 .fl-create-form-scroll {
-  max-height: 520px;
+  /* 弹窗内容区高度：调大（上限 700px，且不超过视口可用高度） */
+  max-height: min(700px, calc(100vh - 240px));
   overflow-y: auto;
   overflow-x: hidden;
 }
