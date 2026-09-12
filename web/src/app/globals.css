@@ -6721,7 +6721,7 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 24px;
+  gap: 12px;
   padding: 24px;
   overflow-y: auto;
   overflow-x: hidden;
@@ -6736,6 +6736,15 @@ body {
   margin-bottom: 12px;
 }
 
+
+/* 结果详情页：缩小「评估结果」块与其下杆塔表格之间的间距 */
+.admin-fl-analysis-detail-pane .fl-create-form-block:last-child {
+  margin-bottom: 0;
+}
+.admin-fl-analysis-detail-pane > .fl-create-form-block {
+  padding-top: 0;
+  margin-bottom: 0;
+}
 .admin-fl-analysis-detail-pane .ant-table-pagination {
   margin: 12px 0 0 !important;
 }

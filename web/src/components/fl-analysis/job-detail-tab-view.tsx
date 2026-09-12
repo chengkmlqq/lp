@@ -270,7 +270,6 @@ export function JobDetailTabView({
 
         {/* 分级结果：不再用选项卡，表格直接展示在下方 */}
         <section className="fl-create-form-block">
-          <div className="fl-create-form-block-title">杆塔明细</div>
           <ResultTable
           selectedJob={liveJob}
           selectedWaveformJobType={selectedJobDetailWaveformType}
