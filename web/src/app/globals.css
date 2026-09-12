@@ -6824,25 +6824,8 @@ body {
   margin-bottom: 12px;
   line-height: 1.5;
 }
-/* ── 功能需求单页面 ─────────────────────────────────────────────── */
-.admin-feature-requirements-page {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 24px;
-}
 
-.admin-feature-requirements-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
 
-.admin-feature-requirements-page .ant-typography-title {
-  margin-bottom: 0;
-}
 
 /* ── 线路地图页：左侧筛选面板（与详情页筛选表单一致） ───────────── */
 .admin-map-filter-panel {

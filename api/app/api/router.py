@@ -11,7 +11,6 @@ from .v1.dimension_types import router as dimension_types_router
 from .v1.dimensions import router as dimensions_router
 from .v1.documents import router as documents_router
 from .v1.elevation import router as elevation_router
-from .v1.feature_requirements import router as feature_requirements_router
 from .v1.fault_analysis import router as fault_analysis_router
 from .v1.fault_matlab_engine import router as fault_matlab_engine_router
 from .v1.fault_recurrence import router as fault_recurrence_router
@@ -54,7 +53,6 @@ v1_router.include_router(system_messages_router)
 v1_router.include_router(system_params_router)
 v1_router.include_router(param_category_router)
 v1_router.include_router(elevation_router)
-v1_router.include_router(feature_requirements_router)
 v1_router.include_router(fault_analysis_router)
 v1_router.include_router(fault_matlab_engine_router)
 v1_router.include_router(fault_recurrence_router)
