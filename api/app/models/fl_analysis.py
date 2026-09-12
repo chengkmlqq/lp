@@ -43,6 +43,9 @@ class FlAnalysisJob(Base):
     total_tower_count: Mapped[int] = mapped_column(Integer, default=0)
     snapshotted_tower_count: Mapped[int] = mapped_column(Integer, default=0)
     result_tower_count: Mapped[int] = mapped_column(Integer, default=0)
+    # 塔内进度：当前正在计算的那根杆塔已完成的比例（0~1），用于进度条细分到单塔内部子步骤
+    fractional_progress: Mapped[float] = mapped_column(Float, default=0.0)
+    current_step_text: Mapped[str | None] = mapped_column(String(255))
     external_adapter: Mapped[str] = mapped_column(String(32), default="placeholder")
     adapter_config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     execution_options_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

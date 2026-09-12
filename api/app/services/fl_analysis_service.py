@@ -53,6 +53,92 @@ from .push_service import publish_topic
 FL_ANALYSIS_TOPIC = "admin.fl-analysis"
 
 
+class _TowerProgressTracker:
+    """单根杆塔内部子步骤进度追踪（方案 C · 进度细分到塔内）。
+
+    每根塔 = 若干「命名阶段」（基准计算 / 单相二分 / 双相二分 / … / 绕击二分 / 回填），
+    每阶段带权重；二分搜索阶段的完成比例按 iteration/max_iterations 折算。
+    对外只暴露一个随阶段推进单调递增的 0~1 fractional_progress，
+    供 execute_job 实时写库 + 推 WS 事件，前端据此把进度条细分到单塔内部。
+    注意二分收敛次数不定，该比例是「加权估计」而非精确步数，但单调且能反映真实推进。
+    """
+
+    def __init__(self, phase_weights: list[tuple[str, float]]) -> None:
+        # phase_weights: [(label, weight), ...]，权重代表该阶段的相对耗时
+        self._labels = [label for label, _w in phase_weights]
+        self._weights = [max(w, 0.0) for _l, w in phase_weights]
+        self._total = sum(self._weights) or 1.0
+        self._cum = 0.0  # 已结束阶段的权重和
+        self._phase_idx = 0
+        self._phase_done = 0  # 当前阶段已完成的"步数"（如二分迭代次数）
+        self._phase_total = 1  # 当前阶段估计总步数
+
+    @property
+    def phase_label(self) -> str:
+        if self._phase_idx < len(self._labels):
+            return self._labels[self._phase_idx]
+        return self._labels[-1] if self._labels else ""
+
+    def mark_phase_done(self) -> None:
+        """当前阶段结束，权重累计，进入下一阶段。"""
+        if self._phase_idx < len(self._weights):
+            self._cum += self._weights[self._phase_idx]
+        self._phase_idx += 1
+        self._phase_done = 0
+        self._phase_total = 1
+
+    def report_phase_step(self, done: int, total: int, label: str | None = None) -> float:
+        """当前阶段进行中上报一步（二分迭代）。返回整体 fractional_progress（0~1）。"""
+        self._phase_done = max(0, done)
+        if total > 0:
+            self._phase_total = total
+        frac = self._fraction()
+        # 阶段标签可被外部覆盖（如精确的「二分搜索 第N相」）
+        return max(0.0, min(1.0, frac))
+
+    def _fraction(self) -> float:
+        if self._phase_idx >= len(self._weights):
+            return 1.0
+        done_w = self._cum
+        cur_w = self._weights[self._phase_idx]
+        cur_frac = min(1.0, self._phase_done / max(1, self._phase_total))
+        return min(1.0, (done_w + cur_w * cur_frac) / self._total)
+
+
+def _build_tower_phase_plan(
+    *,
+    job_type: str,
+    waveform_job_type: str,
+    has_external: bool,
+    has_shielding: bool,
+    max_phases: int = 3,
+) -> list[tuple[str, float]]:
+    """按任务类型/执行路径生成一根塔内部阶段的(标签, 权重)计划。
+
+    权重为相对耗时估计：基准计算轻(1)、单相二分中(6)、绕击二分另算(6)、回填轻(1)。
+    同跳多相按 max_phases 个二分阶段展开（单回=3，双回修好后=6）。
+    """
+    if job_type in {"mitigation", "scenario"}:
+        return [("基准计算", 1.0), ("结果回填", 0.5)]
+    plan: list[tuple[str, float]] = [("收集输入/基准计算", 1.0)]
+    if waveform_job_type == "normal":
+        if has_external:
+            plan.append(("单相反击二分", 6.0))
+        if has_shielding:
+            plan.append(("绕击二分", 6.0))
+    elif waveform_job_type == "tongtiao":
+        if has_external:
+            phase_labels = ["单相", "双相", "三相", "四相", "五相", "六相"]
+            for i in range(max_phases):
+                plan.append((f"{phase_labels[i]}相反击二分", 6.0))
+        if has_shielding:
+            plan.append(("绕击二分", 6.0))
+    else:
+        plan.append(("综合判定", 4.0))
+    plan.append(("结果回填落库", 0.5))
+    return plan
+
+
 def _auto_scene_type_for_options(execution_options: dict[str, Any]) -> str:
     """根据任务方法选项推断 ATP 资产场景（fanji=反击 / raoji1=绕击）。
 
@@ -104,6 +190,8 @@ def serialize_job(item: FlAnalysisJob, *, include_runs: bool = False) -> FlAnaly
         "total_tower_count": item.total_tower_count,
         "snapshotted_tower_count": item.snapshotted_tower_count,
         "result_tower_count": item.result_tower_count,
+        "fractional_progress": item.fractional_progress,
+        "current_step_text": item.current_step_text,
         "external_adapter": item.external_adapter,
         "adapter_config_json": item.adapter_config_json or {},
         "execution_options_json": item.execution_options_json or {},
@@ -599,11 +687,50 @@ def execute_job(job_id: str) -> None:
             external_job_cache[cache_key] = resolved
             return resolved
 
+        # 方案C：构建单塔内部阶段计划（进度条细分用）。shielding/外部二分是否启用对整任务一致。
+        _shielding_asset_id = str((job.adapter_config_json or {}).get("shielding_asset_id") or "").strip()
+        _has_shielding_plan = bool(_shielding_asset_id) and bool(execution_options.get("binary_search", True))
+        _has_external_tower_plan = external_job is not None or legacy_external_job is not None
+        _tower_phase_plan = _build_tower_phase_plan(
+            job_type=job.job_type,
+            waveform_job_type=waveform_job_type,
+            has_external=_has_external_tower_plan,
+            has_shielding=_has_shielding_plan,
+            max_phases=3,
+        )
+
         for idx, snapshot in enumerate(snapshots, start=1):
             payload = {
                 "base_tower_json": snapshot.base_tower_json or {},
                 "profile_json": snapshot.profile_json or {},
             }
+            # 每根塔独立追踪内部子步骤进度
+            tower_tracker = _TowerProgressTracker(_tower_phase_plan)
+            # 记录上一次二分的目标相数，用于在 tongtiao 多相循环内检测阶段切换
+            _tower_last_phase_done = [False]
+            _tower_last_target = [0]
+            _report_tower_fractional(
+                db=db, job=job, run=run, tracker=tower_tracker,
+                fraction=0.0, step_label=f"开始计算杆塔 {snapshot.tower_no}",
+            )
+            def _tower_on_step(done: int, total: int, label: str | None = None) -> None:
+                # 从标签解析目标相数（"二分搜索 第 N 相"）；tongtiao 多相循环内各相独立二分，
+                # 相数变化代表上一相阶段结束，推进 tracker 到下一阶段。
+                import re as _re
+                target_phase: int | None = None
+                if label:
+                    _m = _re.search(r"第\s*(\d+)\s*相", label)
+                    if _m:
+                        target_phase = int(_m.group(1))
+                if target_phase is not None and _tower_last_target[0] and target_phase != _tower_last_target[0]:
+                    tower_tracker.mark_phase_done()
+                _tower_last_target[0] = target_phase or 0
+                frac = tower_tracker.report_phase_step(done, total, label)
+                _report_tower_fractional(
+                    db=db, job=job, run=run, tracker=tower_tracker,
+                    fraction=frac, step_label=label or tower_tracker.phase_label,
+                )
+
             logger.info(
                 "[ATP] 开始处理杆塔 %s（第 %d/%d 根）",
                 snapshot.tower_no,
@@ -622,6 +749,8 @@ def execute_job(job_id: str) -> None:
                 )
             elif waveform_job_type == "normal":
                 baseline_result = grade_normal_snapshot_payload(payload, execution_options=execution_options)
+                # 基准计算阶段完成，进入二分阶段
+                tower_tracker.mark_phase_done()
                 if external_job is not None:
                     resolved_job = _resolve_external_job_for_tower(snapshot)
                     if resolved_job is None:
@@ -637,6 +766,7 @@ def execute_job(job_id: str) -> None:
                             execution_options=execution_options,
                             baseline_result=baseline_result,
                             payload=payload,
+                            on_step=_tower_on_step,
                         )
                     else:
                         execution = execute_external_waveform_tower_analysis(
@@ -648,6 +778,8 @@ def execute_job(job_id: str) -> None:
                             baseline_result=baseline_result,
                         )
                     graded = execution.result_json
+                    # 单相反击二分阶段完成
+                    tower_tracker.mark_phase_done()
                     # LP-570 绕击分流：adapter_config_json.shielding_asset_id 配置了绕击资产
                     # （raoji 模板）时，用其单独二分绕击耐雷水平（C# 任务2 绕击=ATP raoji 模板）。
                     # 此前把反击二分值直接塞 shielding_withstand_ka（511 异常）。
@@ -671,7 +803,10 @@ def execute_job(job_id: str) -> None:
                                     execution_options=execution_options,
                                     baseline_result=baseline_result,
                                     payload=payload,
+                                    on_step=_tower_on_step,
                                 )
+                                # 绕击二分阶段完成
+                                tower_tracker.mark_phase_done()
                                 merged_sh = dict(execution.result_json)
                                 # 只合并绕击相关字段（execute_shielding 内部已保证不污染反击字段）
                                 for _key in (
@@ -734,6 +869,7 @@ def execute_job(job_id: str) -> None:
                             execution_options=execution_options,
                             baseline_result=baseline_result,
                             payload=payload,
+                            on_step=_tower_on_step,
                         )
                     else:
                         execution = execute_external_waveform_tower_analysis(
@@ -745,6 +881,8 @@ def execute_job(job_id: str) -> None:
                             baseline_result=baseline_result,
                         )
                     graded = execution.result_json
+                    # 多相二分阶段完成，进入下一阶段（绕击二分或结果回填）
+                    tower_tracker.mark_phase_done()
                     run.engine_command = run.engine_command or execution.engine_command
                     run.working_dir = run.working_dir or execution.working_dir
                     if execution.stdout_text:
@@ -788,6 +926,15 @@ def execute_job(job_id: str) -> None:
             )
             result_count += 1
             _accumulate_result_summary(summary, graded)
+            # 本塔所有阶段完成：推进到末尾并回填最终进度（1.0 代表本塔完成）
+            try:
+                tower_tracker.mark_phase_done()
+                _report_tower_fractional(
+                    db=db, job=job, run=run, tracker=tower_tracker,
+                    fraction=1.0, step_label=f"杆塔 {snapshot.tower_no} 计算完成",
+                )
+            except Exception:
+                logger.debug("[ATP] 塔完成进度上报失败 tower=%s", snapshot.tower_no, exc_info=True)
 
             tower = tower_map.get(snapshot.tower_id)
             if tower is not None and job.job_type not in {"mitigation", "scenario"}:
@@ -2443,6 +2590,43 @@ def _publish_change(event_name: str, payload: dict[str, Any]) -> None:
             )
         except Exception:
             logger.exception("[WS] worker 上下文推送事件失败 event=%s", event_name)
+
+
+def _report_tower_fractional(
+    *,
+    db: Session,
+    job: FlAnalysisJob,
+    run: FlAnalysisRun,
+    tracker: _TowerProgressTracker,
+    fraction: float,
+    step_label: str,
+) -> None:
+    """把当前塔内进度（fractional_progress + 步骤文字）实时写库并推 WS 事件。
+
+    供 execute_job 在每个塔内子步骤（基准/二分迭代/绕击/回填）后调用，前端 invalidate
+    刷新后读到最新值，进度条据此细分到单塔内部。
+    写入失败仅告警，不阻断任务主体逻辑。
+    """
+    job.fractional_progress = round(fraction, 4)
+    job.current_step_text = step_label
+    try:
+        db.flush()
+    except Exception:
+        logger.debug("[DB] 塔内进度落库失败 job=%s", job.id, exc_info=True)
+    try:
+        _publish_change(
+            "fl_analysis.tower_step",
+            {
+                "action": "tower_step",
+                "job_id": job.id,
+                "run_id": run.id,
+                "step_key": tracker.phase_label or step_label,
+                "step": step_label,
+                "fractional_progress": round(fraction, 4),
+            },
+        )
+    except Exception:
+        logger.debug("[WS] 塔内进度事件推送失败 job=%s", job.id, exc_info=True)
 
 
 def _fire_and_forget(coro: object) -> None:

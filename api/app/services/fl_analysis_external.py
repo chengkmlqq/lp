@@ -9,7 +9,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,7 @@ def execute_multi_phase_binary_search_external(
     baseline_result: dict[str, Any],
     payload: dict[str, Any] | None = None,
     max_phases: int = 6,
+    on_step: Callable[[int, int, str], None] | None = None,
 ) -> ExternalTowerExecutionResult:
     """LP-570 同跳多相二分：对齐 C# ThreadCompute5_work_atp 双回 level_lightning=1..N 循环。
 
@@ -129,6 +130,7 @@ def execute_multi_phase_binary_search_external(
             baseline_result=baseline_result,
             payload=payload,
             target_flashover_phases=level,
+            on_step=on_step,
         )
         level_results.append(execution)
         last_execution = execution
@@ -254,6 +256,7 @@ def execute_shielding_binary_search_external(
     execution_options: dict[str, Any],
     baseline_result: dict[str, Any],
     payload: dict[str, Any] | None = None,
+    on_step: Callable[[int, int, str], None] | None = None,
 ) -> ExternalTowerExecutionResult:
     """LP-570 绕击耐雷水平 ATP 二分（对齐 C# 任务2 绕击=ATP raoji 模板）。
 
@@ -271,6 +274,7 @@ def execute_shielding_binary_search_external(
         execution_options=execution_options,
         baseline_result=baseline_result,
         target_flashover_phases=1,
+        on_step=on_step,
     )
     merged = dict(baseline_result)
     search = dict(execution.result_json.get("binary_search") or {})
@@ -1423,6 +1427,7 @@ def execute_binary_search_external(
     baseline_result: dict[str, Any],
     payload: dict[str, Any] | None = None,
     target_flashover_phases: int = 1,
+    on_step: Callable[[int, int, str], None] | None = None,
 ) -> ExternalTowerExecutionResult:
     low = _coerce_positive_float(execution_options.get("binary_search_low_ka"), default=0.1)
     high = _coerce_positive_float(execution_options.get("binary_search_high_ka"), default=2000.0)
@@ -1497,6 +1502,12 @@ def execute_binary_search_external(
             low = candidate
         final_flashover_count = flashover_count
         final_execution = execution
+        # 塔内子步骤进度：每次 ATP 仿真完成即上报一次（on_step(done, total_estimate, step_label)）
+        if on_step is not None:
+            try:
+                on_step(iteration, max_iterations, f"二分搜索 第 {target_flashover_phases} 相")
+            except Exception:
+                logger.debug("[ATP] on_step 上报失败 tower=%s", snapshot.tower_no, exc_info=True)
 
     # C# 桌面版：折半收敛后 current = currentRight（闪络边界高值），
     # showCurrent_kV = |currentRight|/1000 * mBeiShu（ComputeLightningProtection.cs:6685）。

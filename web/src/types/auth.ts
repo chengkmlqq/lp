@@ -902,6 +902,8 @@ export type FlAnalysisJobSummary = {
   total_tower_count: number;
   snapshotted_tower_count: number;
   result_tower_count: number;
+  fractional_progress: number;
+  current_step_text: string | null;
   external_adapter: string;
   adapter_config_json: Record<string, unknown>;
   execution_options_json: Record<string, unknown>;

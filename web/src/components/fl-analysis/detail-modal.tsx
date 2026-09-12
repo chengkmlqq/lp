@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Descriptions, Empty, Space, Table, Tag, Typography } from "antd";
+import { Button, Collapse, Descriptions, Empty, Space, Table, Tag, Typography } from "antd";
 
 const ATP_TOWER_TEXT: Record<string, string> = {
   guxing: "鼓型", maotou: "猫头型", ganzi: "干字型", jiubei: "酒杯型",
@@ -191,6 +191,142 @@ const multiPhaseColumns: ColumnsType<MultiPhaseResult> = [
   },
 ];
 
+/** 二分搜索的扫描历史一行（对应后端 binary_search.search_history） */
+interface BinarySearchStepItem {
+  iteration: number;
+  current_ka: number | null;
+  flashover_count: number | null;
+  low: number | null;
+  high: number | null;
+}
+
+/** 计算过程：可展开步骤项 */
+interface ComputationStepItem {
+  key: string;
+  header: string;
+  summaryRows: { label: string; value: string }[];
+  scanItems: BinarySearchStepItem[];
+}
+
+/**
+ * 从单塔 result_json 构建「计算过程」步骤（仿故障分析 · 计算过程 tab 的可展开步骤）。
+ * 数据全部来自已落库结果：binary_search（反击二分）/ multi_phase_results（同跳各相）/
+ * shielding_binary_search（绕击二分）。不增加后端计算负担、不改计算结果。
+ */
+function buildComputationSteps(
+  resultObject: Record<string, unknown> | undefined,
+  waveformType: string | null,
+): ComputationStepItem[] {
+  const steps: ComputationStepItem[] = [];
+  if (!resultObject) return steps;
+
+  const readNum = (v: unknown): number | null => (typeof v === "number" ? v : null);
+  const fmt = (v: number | null | undefined, suffix = ""): string =>
+    v === null || v === undefined ? "-" : `${v.toFixed(4)}${suffix}`;
+
+  // 通用：把一次二分搜索渲染成步骤
+  const binarySearchSteps = (
+    prefix: string,
+    search: Record<string, unknown> | undefined,
+    keyBase: string,
+  ) => {
+    if (!search) return;
+    const history = Array.isArray(search.search_history) ? search.search_history : [];
+    const scanItems: BinarySearchStepItem[] = history
+      .map((row: unknown) => {
+        const r = (row || {}) as Record<string, unknown>;
+        return {
+          iteration: readNum(r.iteration) ?? 0,
+          current_ka: readNum(r.current_ka),
+          flashover_count: readNum(r.flashover_count),
+          low: readNum(r.low),
+          high: readNum(r.high),
+        };
+      })
+      .filter((item) => item.current_ka !== null);
+    const finalWithstand = readNum(search.final_withstand_ka);
+    const converged = Boolean(search.converged);
+    const target = readNum(search.target_flashover_phases);
+    steps.push({
+      key: `${keyBase}-${target ?? "x"}`,
+      header: `${prefix}（目标闪络相数 ≥ ${target ?? "?"}）`,
+      summaryRows: [
+        { label: "收敛", value: converged ? "是" : "否" },
+        { label: "耐雷水平(kA)", value: fmt(finalWithstand) },
+        { label: "扫描次数", value: String(scanItems.length) },
+      ],
+      scanItems,
+    });
+  };
+
+  // 反击二分（normal 单相 / tongtiao 主结果）
+  const binarySearch = resultObject.binary_search as Record<string, unknown> | undefined;
+  if (binarySearch) {
+    binarySearchSteps("反击二分", binarySearch, "counterstrike");
+  }
+
+  // 同跳各相（multi_phase_results）
+  const multiPhase = Array.isArray(resultObject.multi_phase_results)
+    ? (resultObject.multi_phase_results as Record<string, unknown>[])
+    : [];
+  if (multiPhase.length > 0 && waveformType === "tongtiao") {
+    multiPhase.forEach((phase, index) => {
+      const label = typeof phase.label === "string" ? phase.label : `第${index + 1}相`;
+      const withstand = readNum(phase.counterstrike_withstand_ka);
+      const tripRate = readNum(phase.trip_rate);
+      const phSearch = phase.search_history as Record<string, unknown>[] | undefined;
+      const scanItems: BinarySearchStepItem[] = Array.isArray(phSearch)
+        ? phSearch.map((row) => ({
+            iteration: readNum(row.iteration) ?? 0,
+            current_ka: readNum(row.current_ka),
+            flashover_count: readNum(row.flashover_count),
+            low: readNum(row.low),
+            high: readNum(row.high),
+          }))
+        : [];
+      steps.push({
+        key: `multi-${phase.phase_count ?? index}`,
+        header: `${label}反击二分`,
+        summaryRows: [
+          { label: "耐雷水平(kA)", value: fmt(withstand) },
+          {
+            label: "跳闸率",
+            value: tripRate === null ? "-" : tripRate.toFixed(6),
+          },
+          { label: "扫描次数", value: String(scanItems.length) },
+        ],
+        scanItems,
+      });
+    });
+  }
+
+  // 绕击二分
+  const shieldingSearch = resultObject.shielding_binary_search as Record<string, unknown> | undefined;
+  if (shieldingSearch) {
+    binarySearchSteps("绕击二分", shieldingSearch, "shielding");
+  }
+
+  // 结果回填/落库
+  steps.push({
+    key: "finalize",
+    header: "结果回填落库",
+    summaryRows: [
+      { label: "风险等级", value: typeof resultObject.risk_level === "string" ? resultObject.risk_level : "-" },
+      { label: "是否收敛", value: Boolean(binarySearch?.converged) ? "是" : "-" },
+    ],
+    scanItems: [],
+  });
+  return steps;
+}
+
+const binaryScanColumns: ColumnsType<BinarySearchStepItem> = [
+  { title: "迭代", dataIndex: "iteration", width: 60 },
+  { title: "电流(kA)", dataIndex: "current_ka", width: 100, render: (v: number | null) => v ?? "-" },
+  { title: "闪络相数", dataIndex: "flashover_count", width: 90, render: (v: number | null) => v ?? "-" },
+  { title: "下限", dataIndex: "low", width: 100, render: (v: number | null) => v ?? "-" },
+  { title: "上限", dataIndex: "high", width: 100, render: (v: number | null) => v ?? "-" },
+];
+
 /**
  * 杆塔详情内容组件（LP-274）。
  * 由原 DetailModal 的展示主体抽出，作为动态选项卡（Tabs editable-card）各 Tab 的 children
@@ -221,6 +357,11 @@ export function TowerDetailView({
   const detailSelectedCase = readSelectedCase(detailRow);
   const selectedJobDetailWaveformType = waveformJobType(selectedJobDetail ?? selectedJob);
   const detailExternalExecution = readObject(detailResultObject.external_execution);
+  // 计算过程：从已落库结果构建可展开步骤（仅普通/同跳波形任务展示）
+  const computationSteps =
+    selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao"
+      ? buildComputationSteps(detailResultObject, selectedJobDetailWaveformType)
+      : [];
 
   return (
     <Space direction="vertical" size={24} className="flex w-full">
@@ -390,6 +531,42 @@ export function TowerDetailView({
           )}
           </div>
         </>
+      ) : null}
+
+      {computationSteps.length > 0 ? (
+        <div>
+          <Typography.Title level={5}>
+            计算过程
+          </Typography.Title>
+          <Collapse
+            size="small"
+            items={computationSteps.map((step) => ({
+              key: step.key,
+              label: step.header,
+              children: (
+                <Space direction="vertical" size={12} className="w-full">
+                  <Descriptions size="small" column={3}>
+                    {step.summaryRows.map((row) => (
+                      <Descriptions.Item key={row.label} label={row.label}>
+                        {row.value}
+                      </Descriptions.Item>
+                    ))}
+                  </Descriptions>
+                  {step.scanItems.length > 0 ? (
+                    <Table<BinarySearchStepItem>
+                      rowKey={(row) => `${step.key}-${row.iteration}`}
+                      columns={binaryScanColumns}
+                      dataSource={step.scanItems}
+                      pagination={false}
+                      size="small"
+                      scroll={{ x: 500 }}
+                    />
+                  ) : null}
+                </Space>
+              ),
+            }))}
+          />
+        </div>
       ) : null}
 
       <div>

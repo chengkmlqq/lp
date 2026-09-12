@@ -70,6 +70,9 @@ class FlAnalysisJobSummary(BaseModel):
     total_tower_count: int = 0
     snapshotted_tower_count: int = 0
     result_tower_count: int = 0
+    # 塔内进度：当前计算塔已完成比例（0~1）；0 表示未在单塔内部步骤
+    fractional_progress: float = 0.0
+    current_step_text: str | None = None
     external_adapter: FlAnalysisAdapter | str
     adapter_config_json: dict[str, Any] = Field(default_factory=dict)
     execution_options_json: dict[str, Any] = Field(default_factory=dict)

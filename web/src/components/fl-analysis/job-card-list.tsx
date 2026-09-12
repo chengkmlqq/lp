@@ -178,6 +178,14 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
                     杆塔：{job.total_tower_count} / 结果：{job.result_tower_count}
                   </Typography.Text>
                 </div>
+                {job.status === "running" && job.current_step_text ? (
+                  <div className="flex items-center gap-2">
+                    <ThunderboltOutlined className="text-xs text-amber-500" />
+                    <Typography.Text type="secondary" className="text-xs truncate" title={job.current_step_text}>
+                      {job.current_step_text}
+                    </Typography.Text>
+                  </div>
+                ) : null}
               </div>
 
               {/* 操作区：默认展示 2 个直接按钮，多了才收进 ⋯ 三点下拉 */}
@@ -185,18 +193,29 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
                 <div className="min-w-0 flex items-center gap-2">
                   {job.status === "running" ? (
                     <>
-                      {/* 实时进度：result_tower_count / total_tower_count（WS 事件 invalidate 刷新驱动） */}
+                      {/* 实时进度：已完成塔数 + 当前塔内部比例(fractional_progress) / 总塔数
+                          （WS 事件 invalidate 刷新驱动）。fractional 是 0~1，代表当前塔完成比例，
+                          使单根塔计算时进度条也细分到内部子步骤。 */}
                       <Progress
                         percent={
                           job.total_tower_count > 0
-                            ? Math.min(100, Math.round((job.result_tower_count / job.total_tower_count) * 100))
+                            ? Math.min(
+                                100,
+                                Math.round(
+                                  ((job.result_tower_count + (job.fractional_progress || 0)) /
+                                    job.total_tower_count) *
+                                    100,
+                                ),
+                              )
                             : 0
                         }
                         size="small"
                         className="flex-1 max-w-40"
                       />
                       <Typography.Text type="secondary" className="text-xs whitespace-nowrap">
-                        {job.result_tower_count}/{job.total_tower_count}
+                        {job.result_tower_count + (job.fractional_progress || 0) > 0
+                          ? `${(job.result_tower_count + (job.fractional_progress || 0)).toFixed(1)}/${job.total_tower_count}`
+                          : `0/${job.total_tower_count}`}
                       </Typography.Text>
                     </>
                   ) : null}
