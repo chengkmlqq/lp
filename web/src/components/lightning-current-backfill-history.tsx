@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Button,
@@ -106,15 +107,26 @@ export function LightningCurrentBackfillHistoryTable({
     if (!anchor) {
       return;
     }
-    // 用「视口可用高度」推导：anchor 自身高度会被表体 min-height 撑大，用它反推会形成
-    // 正反馈（每次翻页多累加一次未计入间距 → 表体持续变高）。2026-09-12 修复
+    // 与线路管理-列表页同一套算法：用「可滚动面板(.admin-lightning-backfill-pane)的
+    // padding-box 底边」推导表体高度。2026-09-12 对齐
+    //   ① 不用 anchor 自身高度反推（会被表体 min-height 撑大 → 正反馈、越翻越高）
+    //   ② 不用 window.innerHeight（漏掉面板底部内边距与页面底边距 → 溢出 12px、多出纵向滚动条）
+    //   ③ 分页器上方 margin 16px + 4px 余量，保证容器内不产生滚动条
     const anchorTop = anchor.getBoundingClientRect().top;
+    const pane = anchor.closest<HTMLElement>(".admin-lightning-backfill-pane");
+    const container = pane ?? document.documentElement;
+    const containerRect = container.getBoundingClientRect();
+    const containerPadBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
     const tableHeader = anchor.querySelector<HTMLElement>(".ant-table-header");
     const tablePagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = tableHeader?.getBoundingClientRect().height ?? BACKFILL_HISTORY_ESTIMATED_HEADER_HEIGHT;
     const paginationHeight = tablePagination?.getBoundingClientRect().height ?? BACKFILL_HISTORY_ESTIMATED_PAGINATION_HEIGHT;
-    const available = window.innerHeight - anchorTop - BACKFILL_HISTORY_BOTTOM_GAP;
-    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16);
+    // 面板底边常低于视口底边（页面上方还有页签栏等），取较小值；并将面板自身已有的纵向溢出扣掉，
+    // 避免表体算高撑出页面滚动条或面板内滚动条。2026-09-12
+    const containerBottom = Math.min(containerRect.bottom, document.documentElement.clientHeight);
+    const paneOverflow = Math.max(0, container.scrollHeight - container.clientHeight);
+    const available = containerBottom - containerPadBottom - anchorTop - BACKFILL_HISTORY_BOTTOM_GAP - paneOverflow;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16 - 4);
     const clampedHeight = Math.max(BACKFILL_HISTORY_MIN_SCROLL_Y, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);
@@ -428,7 +440,7 @@ export function LightningCurrentBackfillHistoryTable({
   const tableLoading = isAmplitudeMode ? amplitudeLinesQuery.isFetching : listQuery.isFetching;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="admin-lightning-backfill-pane">
       {isAmplitudeMode && (
         <div className="admin-filter-bar">
           <Form layout="inline" onFinish={handleSearch}>
@@ -493,7 +505,11 @@ export function LightningCurrentBackfillHistoryTable({
         </div>
       )}
 
-      <div ref={tableScrollAnchorRef} className="flex-1 min-h-0">
+      <div
+        ref={tableScrollAnchorRef}
+        className="admin-lightning-backfill-table-view flex-1 min-h-0"
+        style={{ "--admin-lightning-backfill-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+      >
         <Table<LightningCurrentBackfillTaskSummary | LightningAmplitudeBackfillLine>
           rowKey={(row) => {
             if (isAmplitudeMode && "line_id" in row) {

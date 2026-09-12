@@ -1204,7 +1204,7 @@ export default function AdminLightningDistributionPage() {
         title={logModalTitle}
         open={logModalOpen}
         onClose={() => setLogModalOpen(false)}
-        variant="modal"
+        variant="drawer"
       />
     </div>
   );
@@ -1446,16 +1446,27 @@ function BackfillRecordsView({
     if (typeof window === "undefined") return;
     const anchor = tableScrollAnchorRef.current;
     if (!anchor) return;
-    // 用「视口可用高度」推导：anchor 自身高度会被表体 min-height 撑大，用它反推
-    // 会形成正反馈（每次翻页多累加一次未计入间距，表体持续变高）。2026-09-12 修复
+    // 与线路管理-列表页同一套算法：用「面板(.admin-lightning-distribution-backfill-view)的
+    // padding-box 底边」推导表体高度。2026-09-12 对齐
+    //   ① 不用 anchor 自身高度反推（会被表体 min-height 撑大 → 正反馈、越翻越高）
+    //   ② 不用 window.innerHeight（漏掉面板底部内边距与页面底边距 → 溢出、出现多余纵向滚动条）
     const anchorTop = anchor.getBoundingClientRect().top;
+    const pane = anchor.closest<HTMLElement>(".admin-lightning-distribution-backfill-view");
+    const container = pane ?? document.documentElement;
+    const containerRect = container.getBoundingClientRect();
+    const containerPadBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
     const header = anchor.querySelector<HTMLElement>(".ant-table-header");
     const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = header?.getBoundingClientRect().height ?? 39;
     const paginationHeight = paginationEl?.getBoundingClientRect().height ?? 64;
-    const available = window.innerHeight - anchorTop - 8;
-    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16);
-    setTableScrollY((previous) => (Math.abs(previous - Math.max(160, nextHeight)) <= 1 ? previous : Math.max(160, nextHeight)));
+    // 面板底边常低于视口底边（页面上方还有顶部页签/记录卡片），取两者较小值，
+    // 否则表体算高会撑出整页纵向滚动条。2026-09-12
+    const containerBottom = Math.min(containerRect.bottom, document.documentElement.clientHeight);
+    // 面板自身若已有纵向溢出（内容比面板高），把溢出量一并扣掉，避免面板内出现多余滚动条
+    const paneOverflow = Math.max(0, (pane ? pane.scrollHeight - pane.clientHeight : 0));
+    const available = containerBottom - containerPadBottom - anchorTop - 8 - paneOverflow;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16 - 4);
+    setTableScrollY((previous) => (Math.abs(previous - Math.max(LIGHTNING_TABLE_MIN_SCROLL_Y, nextHeight)) <= 1 ? previous : Math.max(LIGHTNING_TABLE_MIN_SCROLL_Y, nextHeight)));
   }, []);
 
   useEffect(() => {
@@ -1517,21 +1528,9 @@ function BackfillRecordsView({
   const linkedColumns = useMemo<ColumnsType<LightningDensityBackfillTaskSummary>>(
     () => [
       {
-        title: "回填时间",
-        dataIndex: "prepared_at",
-        width: 160,
-        render: (value: string | null) => (value ? formatDateTime(value) : "-"),
-      },
-      {
         title: "线路名称",
         dataIndex: "line_name",
         width: 150,
-        render: (value: string | null) => value || "-",
-      },
-      {
-        title: "线路编号",
-        dataIndex: "line_code",
-        width: 130,
         render: (value: string | null) => value || "-",
       },
       {
@@ -1552,6 +1551,12 @@ function BackfillRecordsView({
             </Tooltip>
           );
         },
+      },
+      {
+        title: "回填时间",
+        dataIndex: "prepared_at",
+        width: 160,
+        render: (value: string | null) => (value ? formatDateTime(value) : "-"),
       },
       {
         title: "回填塔数",
@@ -1632,7 +1637,11 @@ function BackfillRecordsView({
   );
 
   return (
-    <div className="admin-lightning-distribution-backfill-view" style={{ padding: "0 4px" }} ref={tableScrollAnchorRef}>
+    <div
+      className="admin-lightning-distribution-backfill-view"
+      ref={tableScrollAnchorRef}
+      style={{ "--admin-lightning-distribution-backfill-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+    >
       <div className="admin-filter-bar" style={{ marginBottom: 12 }}>
         <Form layout="inline">
           <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -1658,7 +1667,7 @@ function BackfillRecordsView({
         dataSource={linkedLines}
         loading={linkedLinesQuery.isFetching}
         tableLayout="fixed"
-        scroll={{ x: 900, y: tableScrollY }}
+        scroll={{ x: 800, y: tableScrollY }}
         style={{ height: "100%" }}
         pagination={{
           current: page,
@@ -1720,15 +1729,20 @@ function TowerNgDrawer({
     if (typeof window === "undefined") return;
     const anchor = tableScrollAnchorRef.current;
     if (!anchor) return;
-    // 用「视口可用高度」推导：anchor 自身高度会被表体 min-height 撑大，用它反推
-    // 会形成正反馈（每次翻页多累加一次未计入间距，表体持续变高）。2026-09-12 修复
+    // 与回填记录列表同一套算法：用「抽屉内面板(.admin-lightning-density-drawer-pane)的
+    // padding-box 底边」推导表体高度（不再用 window.innerHeight 反推，避免溢出）。2026-09-12
     const anchorTop = anchor.getBoundingClientRect().top;
+    const pane = anchor.closest<HTMLElement>(".admin-lightning-density-drawer-pane");
+    const container = pane ?? document.documentElement;
+    const containerRect = container.getBoundingClientRect();
+    const containerPadBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
     const header = anchor.querySelector<HTMLElement>(".ant-table-header");
     const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = header?.getBoundingClientRect().height ?? 39;
     const paginationHeight = paginationEl?.getBoundingClientRect().height ?? 64;
-    const available = window.innerHeight - anchorTop - 8;
-    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16);
+    const containerBottom = Math.min(containerRect.bottom, document.documentElement.clientHeight);
+    const available = containerBottom - containerPadBottom - anchorTop - 8;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16 - 4);
     setTableScrollY((previous) => (Math.abs(previous - Math.max(160, nextHeight)) <= 1 ? previous : Math.max(160, nextHeight)));
   }, []);
 
@@ -1813,12 +1827,6 @@ function TowerNgDrawer({
         width: 120,
         render: (value: number | null) => formatNumber(value, 6),
       },
-      {
-        title: "最近回填时间",
-        dataIndex: "prepared_at",
-        width: 160,
-        render: (value: string | null) => (value ? formatDateTime(value) : "-"),
-      },
     ],
     [],
   );
@@ -1831,7 +1839,7 @@ function TowerNgDrawer({
       width={720}
       destroyOnHidden
     >
-      <div ref={tableScrollAnchorRef} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div ref={tableScrollAnchorRef} className="admin-lightning-density-drawer-pane">
         <div className="admin-filter-bar" style={{ marginBottom: 12 }}>
           <Form layout="inline">
             <Form.Item label="杆塔号" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>

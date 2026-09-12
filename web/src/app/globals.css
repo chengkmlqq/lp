@@ -6368,6 +6368,79 @@ body {
   min-height: var(--admin-power-lines-table-body-min-height, 180px);
 }
 
+/* 雷电流幅值统计-回填记录（含任务模式）：与线路管理列表页一致的
+   面板内边距（12px）+ 表体动态最小高度（由组件按面板 padding-box 底边推导后写入 CSS 变量） */
+.admin-lightning-backfill-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.admin-lightning-backfill-table-view .ant-table-body {
+  min-height: var(--admin-lightning-backfill-table-body-min-height, 180px);
+}
+
+/* 地闪密度统计-回填记录：面板内边距 12px + 表体动态最小高度（与线路管理列表页一致）。
+   底部间距由组件按面板 padding-box 底边推导后写入 CSS 变量。 */
+.admin-lightning-distribution-backfill-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.admin-lightning-distribution-backfill-view .ant-table-body {
+  min-height: var(--admin-lightning-distribution-backfill-table-body-min-height, 180px);
+}
+
+/* 高程数据-回填记录：与线路管理列表页一致的面板内边距(12px) + 表体动态最小高度 */
+.admin-elevation-backfill-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.admin-elevation-backfill-table-view .ant-table-body {
+  min-height: var(--admin-elevation-backfill-table-body-min-height, 180px);
+}
+
+/* 与线路管理列表页一致：表容器弹性吸收剩余高度并自行滚动，避免面板内出现多余滚动条 */
+.admin-lightning-backfill-table-view .ant-table-wrapper,
+.admin-lightning-distribution-backfill-view .ant-table-wrapper,
+.admin-elevation-backfill-table-view .ant-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* 地闪密度-杆塔 Ng 详情抽屉：占满抽屉高度，内部表格自行滚动（不引入额外滚动条） */
+.admin-lightning-density-drawer-pane {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 回填记录/明细表头底色加深一档（原为 --ant-color-primary-bg，改为主题的更深一档 bg-hover），
+   地闪密度与雷电流幅值统计两处回填视图统一 */
+.admin-lightning-backfill-table-view .ant-table-wrapper .ant-table-thead > tr > th,
+.admin-lightning-distribution-backfill-view .ant-table-wrapper .ant-table-thead > tr > th,
+.admin-elevation-backfill-table-view .ant-table-wrapper .ant-table-thead > tr > th {
+  background: #e6ddfb;
+}
+
 /* LP-320: 分页条：右对齐并固定上下边距（顶部 12px、底部 8px），
    与列表视图 Table 内置分页（margin-top 12px + 表格底部 BOTTOM_GAP 8px）保持一致，
    切换卡片/列表视图时分页组件不上下晃动 */

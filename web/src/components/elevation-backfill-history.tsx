@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Button,
@@ -132,15 +133,22 @@ export function ElevationBackfillHistoryTable({
     if (!anchor) {
       return;
     }
-    // 用「视口可用高度」推导：anchor 自身高度会被表体 min-height 撑大，用它反推会形成
-    // 正反馈（每次翻页多累加一次未计入间距 → 表体持续变高）。2026-09-12 修复
+    // 与线路管理-列表页同一套算法：用「面板(.admin-elevation-backfill-pane)的 padding-box 底边」
+    // 推导表体高度；面板底边若低于视口底边取其较小值，避免撑出整页纵向滚动条。2026-09-12 对齐
     const anchorTop = anchor.getBoundingClientRect().top;
+    const pane = anchor.closest<HTMLElement>(".admin-elevation-backfill-pane");
+    const container = pane ?? document.documentElement;
+    const containerRect = container.getBoundingClientRect();
+    const containerPadBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
     const tableHeader = anchor.querySelector<HTMLElement>(".ant-table-header");
     const tablePagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = tableHeader?.getBoundingClientRect().height ?? ELEVATION_HISTORY_ESTIMATED_HEADER_HEIGHT;
     const paginationHeight = tablePagination?.getBoundingClientRect().height ?? ELEVATION_HISTORY_ESTIMATED_PAGINATION_HEIGHT;
-    const available = window.innerHeight - anchorTop - ELEVATION_HISTORY_BOTTOM_GAP;
-    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16);
+    const containerBottom = Math.min(containerRect.bottom, document.documentElement.clientHeight);
+    // 面板自身若已有纵向溢出（内容比面板高），把溢出量一并扣掉，避免面板内出现多余滚动条
+    const paneOverflow = Math.max(0, (pane ? pane.scrollHeight - pane.clientHeight : 0));
+    const available = containerBottom - containerPadBottom - anchorTop - ELEVATION_HISTORY_BOTTOM_GAP - paneOverflow;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16 - 4);
     const clampedHeight = Math.max(ELEVATION_HISTORY_MIN_SCROLL_Y, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);
@@ -430,10 +438,7 @@ export function ElevationBackfillHistoryTable({
   }
 
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col"
-      style={{ padding: 24, minHeight: ELEVATION_HISTORY_MIN_SCROLL_Y }}
-    >
+    <div className="admin-elevation-backfill-pane">
       {/* 线路名称过滤 + 查询（点击查询后走后端 keyword 过滤） */}
       <div className="admin-filter-bar">
         <Form layout="inline" onFinish={handleSearch}>
@@ -456,7 +461,11 @@ export function ElevationBackfillHistoryTable({
       </div>
 
       {/* 表格自适应高度区域：动态计算 body 滚动高度，分页固定表格右下角 */}
-      <div ref={tableScrollAnchorRef} className="flex-1 min-h-0">
+      <div
+        ref={tableScrollAnchorRef}
+        className="admin-elevation-backfill-table-view flex-1 min-h-0"
+        style={{ "--admin-elevation-backfill-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+      >
         <Table<ElevationApplyJobSummary>
           rowKey="id"
           size="small"
