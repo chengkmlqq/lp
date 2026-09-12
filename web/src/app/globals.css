@@ -6758,15 +6758,15 @@ body {
   overflow-x: auto !important;
 }
 /* 分块描述表：固定表格布局，标签列定宽 190px，值列自动等分 → 各块列完全对齐 */
-.admin-fl-analysis-detail-pane .ant-descriptions-view table {
-  table-layout: fixed;
-  width: 100%;
+.admin-fl-analysis-detail-pane .ant-descriptions-view > table {
+  table-layout: fixed !important;
+  width: 100% !important;
 }
 .admin-fl-analysis-detail-pane .ant-descriptions-item-label {
-  width: 190px;
+  width: 190px !important;
 }
 .admin-fl-analysis-detail-pane .ant-descriptions-item-content {
-  width: auto;
+  width: 380px !important;
 }
 /* 详情面板内的 Tabs：内容自然展开（滚动交给外层详情面板），避免出现第二根滚动条 */
 .admin-fl-analysis-detail-pane .admin-fl-analysis-tabs,
