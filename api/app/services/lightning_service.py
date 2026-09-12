@@ -400,11 +400,15 @@ def get_lightning_amplitude_status(
 def get_backfill_lines_for_amplitude(
     db: Session,
     amplitude_id: str,
+    *,
+    keyword: str | None = None,
+    offset: int = 0,
+    limit: int | None = None,
 ) -> LightningAmplitudeBackfillLineListResponse:
     """查询一条雷电流幅值记录被哪些线路回填使用过（回填线路小窗）。
 
     反查路径：`line_amplitude_backfill` WHERE amplitude_id = ? JOIN power_line，
-    按 prepared_at 倒序（最近一次回填在前）。
+    按 prepared_at 倒序（最近一次回填在前）；支持线路编号/名称关键词与分页。
     """
     amp = get_lightning_amplitude_by_id(db, amplitude_id)
     if not amp:
@@ -416,9 +420,14 @@ def get_backfill_lines_for_amplitude(
         .order_by(LineAmplitudeBackfill.prepared_at.desc(), LineAmplitudeBackfill.create_date.desc())
     ).scalars().all()
 
+    kw = (keyword or "").strip().lower()
     items: list[LightningAmplitudeBackfillLine] = []
     for row in rows:
         line = row.line
+        if kw:
+            haystack = f"{(line.code or '')} {(line.name or '')}".lower()
+            if kw not in haystack:
+                continue
         items.append(
             LightningAmplitudeBackfillLine(
                 line_id=row.line_id,
@@ -433,7 +442,44 @@ def get_backfill_lines_for_amplitude(
                 sampled_event_count=row.sampled_event_count,
             )
         )
-    return LightningAmplitudeBackfillLineListResponse(items=items, total=len(items))
+    total = len(items)
+    if limit is not None:
+        items = items[offset: offset + limit]
+    elif offset:
+        items = items[offset:]
+    return LightningAmplitudeBackfillLineListResponse(items=items, total=total)
+
+
+def get_backfill_task_detail_for_amplitude_line(
+    db: Session,
+    amplitude_id: str,
+    line_id: str,
+) -> LightningCurrentBackfillTaskDetail:
+    """某幅值在某线路上的回填明细（含每塔回填前/后幅值与变化量）。
+
+    幅值回填会按线路写入 `lightning_current_backfill_task`，并在
+    `source_amplitude_ids`（JSON 字符串数组）中记录来源幅值 id；
+    这里取最近一条匹配记录，复用任务详情序列化，保证与"回填任务详情"口径一致。
+    """
+    rows = db.execute(
+        select(LightningCurrentBackfillTask)
+        .where(LightningCurrentBackfillTask.line_id == line_id)
+        .order_by(
+            LightningCurrentBackfillTask.prepared_at.desc(),
+            LightningCurrentBackfillTask.create_date.desc(),
+        )
+        .limit(100)
+    ).scalars().all()
+    task = next(
+        (row for row in rows if amplitude_id in (row.source_amplitude_ids or [])),
+        None,
+    )
+    if task is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="该线路在此幅值下没有可展示的回填明细",
+        )
+    return get_lightning_current_backfill_task_detail(db, task.id)
 
 
 def retry_lightning_amplitude(

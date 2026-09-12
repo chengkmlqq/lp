@@ -44,6 +44,7 @@ from ...services.lightning_service import (
     delete_lightning_amplitude,
     delete_lightning_distribution,
     get_backfill_lines_for_amplitude,
+    get_backfill_task_detail_for_amplitude_line,
     get_lightning_amplitude_detail,
     get_lightning_amplitude_status,
     get_lightning_current_backfill_task_detail,
@@ -149,11 +150,28 @@ def get_lightning_amplitude_detail_endpoint(
 @router.get("/amplitudes/{amplitude_id}/backfill-lines", response_model=LightningAmplitudeBackfillLineListResponse)
 def get_lightning_amplitude_backfill_lines_endpoint(
     amplitude_id: str,
+    keyword: str | None = Query(default=None, description="按线路编号/名称模糊筛选"),
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
     _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
     db: Session = Depends(get_db),
 ) -> LightningAmplitudeBackfillLineListResponse:
-    """回填线路小窗：展示该幅值被哪些线路的回填使用过（按 prepared_at 倒序）。"""
-    return get_backfill_lines_for_amplitude(db, amplitude_id)
+    """回填线路小窗：展示该幅值被哪些线路的回填使用过（按 prepared_at 倒序，支持分页/关键词）。"""
+    return get_backfill_lines_for_amplitude(db, amplitude_id, keyword=keyword, offset=offset, limit=limit)
+
+
+@router.get(
+    "/amplitudes/{amplitude_id}/backfill-lines/{line_id}/task",
+    response_model=LightningCurrentBackfillTaskDetail,
+)
+def get_lightning_amplitude_backfill_line_task_endpoint(
+    amplitude_id: str,
+    line_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningCurrentBackfillTaskDetail:
+    """某幅值在某线路上的回填明细（含每塔回填前/后幅值与变化量）。"""
+    return get_backfill_task_detail_for_amplitude_line(db, amplitude_id, line_id)
 
 
 @router.patch("/amplitudes/{amplitude_id}", response_model=LightningAmplitudeRecord)

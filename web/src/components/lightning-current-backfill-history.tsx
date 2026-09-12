@@ -6,6 +6,7 @@ import {
   Button,
   DatePicker,
   Descriptions,
+  Input,
   Drawer,
   Empty,
   Form,
@@ -90,6 +91,9 @@ export function LightningCurrentBackfillHistoryTable({
   const [tableScrollY, setTableScrollY] = useState(BACKFILL_HISTORY_MIN_SCROLL_Y);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  // 幅值模式：筛选关键词 + 点击某线路查看该次回填具体填了什么值
+  const [keyword, setKeyword] = useState("");
+  const [amplitudeLineTarget, setAmplitudeLineTarget] = useState<{ lineId: string; lineName: string | null } | null>(null);
 
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
   const isAmplitudeMode = !!amplitudeId;
@@ -185,17 +189,35 @@ export function LightningCurrentBackfillHistoryTable({
   });
 
   const amplitudeLinesQuery = useQuery<LightningAmplitudeBackfillLineListResponse>({
-    queryKey: ["lightning-currents", amplitudeId, "backfill-lines", pagination.current, pagination.pageSize],
+    queryKey: ["lightning-currents", amplitudeId, "backfill-lines", keyword, pagination.current, pagination.pageSize],
     enabled: !!user && canRead && isAmplitudeMode,
     queryFn: async () => {
       const params = new URLSearchParams();
-      params.set("page", String(pagination.current));
-      params.set("page_size", String(pagination.pageSize));
+      params.set("offset", String((pagination.current - 1) * pagination.pageSize));
+      params.set("limit", String(pagination.pageSize));
+      if (keyword.trim()) {
+        params.set("keyword", keyword.trim());
+      }
       const response = await fetchWithAuth(`/api/v1/lightning-currents/amplitudes/${amplitudeId}/backfill-lines?${params.toString()}`);
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
       return (await response.json()) as LightningAmplitudeBackfillLineListResponse;
+    },
+  });
+
+  // 幅值模式：某线路使用该幅值那一次回填的明细（含每塔回填前/后幅值）
+  const amplitudeTaskQuery = useQuery<LightningCurrentBackfillTaskDetail>({
+    queryKey: ["lightning-currents", amplitudeId, "line-task", amplitudeLineTarget?.lineId],
+    enabled: !!user && canRead && isAmplitudeMode && !!amplitudeId && !!amplitudeLineTarget,
+    queryFn: async () => {
+      const response = await fetchWithAuth(
+        `/api/v1/lightning-currents/amplitudes/${amplitudeId}/backfill-lines/${amplitudeLineTarget?.lineId}/task`,
+      );
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as LightningCurrentBackfillTaskDetail;
     },
   });
 
@@ -261,6 +283,20 @@ export function LightningCurrentBackfillHistoryTable({
         dataIndex: "prepared_at",
         width: 170,
         render: (value: string | null) => formatDateTime(value),
+      },
+      {
+        title: "操作",
+        key: "actions",
+        width: 110,
+        fixed: "right",
+        render: (_: unknown, row) => (
+          <Button
+            size="small"
+            onClick={() => setAmplitudeLineTarget({ lineId: row.line_id, lineName: row.line_name ?? null })}
+          >
+            查看详情
+          </Button>
+        ),
       },
     ],
     [],
@@ -375,7 +411,11 @@ export function LightningCurrentBackfillHistoryTable({
     [],
   );
 
-  const task = detailQuery.data?.task;
+  // 抽屉数据源：任务模式用任务详情，幅值模式用「幅值+线路」明细
+  const detailData = isAmplitudeMode ? amplitudeTaskQuery.data : detailQuery.data;
+  const detailLoading = isAmplitudeMode ? amplitudeTaskQuery.isLoading : detailQuery.isLoading;
+  const detailFetching = isAmplitudeMode ? amplitudeTaskQuery.isFetching : detailQuery.isFetching;
+  const task = detailData?.task;
 
   const handleSearch = useCallback(() => {
     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -389,6 +429,28 @@ export function LightningCurrentBackfillHistoryTable({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {isAmplitudeMode && (
+        <div className="admin-filter-bar">
+          <Form layout="inline" onFinish={handleSearch}>
+            <Form.Item label="线路" style={{ marginBottom: 0 }}>
+              <Input
+                allowClear
+                placeholder="按线路编号/名称筛选"
+                style={{ width: 240 }}
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                onPressEnter={handleSearch}
+              />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button type="primary" htmlType="submit">
+                查询
+              </Button>
+            </Form.Item>
+          </Form>
+        </div>
+      )}
+
       {!isAmplitudeMode && (
         <div className="admin-filter-bar">
           <Form layout="inline" onFinish={handleSearch}>
@@ -467,15 +529,18 @@ export function LightningCurrentBackfillHistoryTable({
         />
       </div>
 
-      {!isAmplitudeMode && (
-        <Drawer
-          title="回填任务详情"
-          open={detailOpen}
-          onClose={closeDetail}
-          width={920}
-          destroyOnHidden
-        >
-          {detailQuery.isLoading && !task ? (
+      <Drawer
+        title={
+          isAmplitudeMode
+            ? (amplitudeLineTarget?.lineName ? `回填明细 - ${amplitudeLineTarget.lineName}` : "回填明细")
+            : "回填任务详情"
+        }
+        open={isAmplitudeMode ? !!amplitudeLineTarget : detailOpen}
+        onClose={isAmplitudeMode ? () => setAmplitudeLineTarget(null) : closeDetail}
+        width={920}
+        destroyOnHidden
+      >
+          {(detailLoading && !task) ? (
             <AdminPageLoading minHeightClassName="min-h-[240px]" />
           ) : task ? (
             <Space direction="vertical" size={16} className="w-full">
@@ -528,8 +593,8 @@ export function LightningCurrentBackfillHistoryTable({
                 <Table<LightningCurrentBackfillTowerDetail>
                   rowKey="tower_id"
                   columns={towerColumns}
-                  dataSource={detailQuery.data?.towers ?? []}
-                  loading={detailQuery.isFetching}
+                  dataSource={detailData?.towers ?? []}
+                  loading={detailFetching}
                   size="small"
                   tableLayout="fixed"
                   scroll={{ x: 860 }}
@@ -551,8 +616,7 @@ export function LightningCurrentBackfillHistoryTable({
               description="加载失败或任务不存在"
             />
           )}
-        </Drawer>
-      )}
+      </Drawer>
     </div>
   );
 }
