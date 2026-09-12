@@ -237,8 +237,6 @@ export function JobDetailPanel({
       <section className="fl-create-form-block">
         <div className="fl-create-form-block-title">评估结果</div>
         <Descriptions bordered size="small" column={2}>
-          <Descriptions.Item label="平均得分">{String(selectedJobDetail.result_summary_json?.score_average ?? "-")}</Descriptions.Item>
-          <Descriptions.Item label="平均扫描点">{String(readObject(selectedJobDetail.result_summary_json).scan_point_average ?? "-")}</Descriptions.Item>
           <Descriptions.Item label="风险计数" span={2}>{formatRiskCounts(selectedJobDetail.result_summary_json?.risk_counts)}</Descriptions.Item>
         </Descriptions>
       </section>
