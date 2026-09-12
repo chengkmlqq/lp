@@ -116,7 +116,6 @@ export function CreateJobForm({
 
   const isNormal = selectedJobType === "normal";
   const isTongtiao = selectedJobType === "tongtiao";
-  const showWaveformBlock = isNormal || isTongtiao;
   const showNormalBlock = isNormal;
   const showTongtiaoBlock = isTongtiao;
   // 新建表单已不提供「风险评估」，但保留单步分支防御（历史任务 / 兼容 flow 仍可能带 risk 类型）。
@@ -175,7 +174,9 @@ export function CreateJobForm({
     {
       title: "地理坐标°",
       key: "geo",
-      width: 180,
+      // 经纬度拼成「经度|纬度」较长，加宽并禁止换行（避免两行显示）
+      width: 210,
+      onCell: () => ({ style: { whiteSpace: "nowrap" } }),
       render: (_: unknown, row: LineTowerSummary) => joinPair(row.longitude, row.latitude, "|"),
     },
     {
@@ -296,13 +297,12 @@ export function CreateJobForm({
           </div>
         </div>
 
-        <div className="fl-create-form-block">
-          <div className="fl-create-form-block-title">计算方法</div>
-          <div className="fl-create-form-grid">
-        {showWaveformBlock ? (
-          <>
-            {showNormalBlock ? (
-              <>
+        {/* 「计算方法」分区仅普通计算需要：同跳计算的跳闸率方法由 C# 固定、
+            「包含杆塔」由杆塔列表勾选体现，因此同跳下整栏不渲染（避免空标题）。 */}
+        {showNormalBlock ? (
+          <div className="fl-create-form-block">
+            <div className="fl-create-form-block-title">计算方法</div>
+            <div className="fl-create-form-grid">
               <Form.Item name="fanji_naleishuiping_method" label="反击耐雷水平计算方法" rules={[{ required: true, message: "请选择反击耐雷水平计算方法" }]}>
                 <Select
                   loading={dimensionsLoading}
@@ -327,29 +327,27 @@ export function CreateJobForm({
                   options={raojiTzlMethodOptions}
                 />
               </Form.Item>
-              </>
-            ) : null}
+            </div>
+          </div>
+        ) : null}
 
-          {showTongtiaoBlock ? (
-            <>
-              {/* 同跳计算：反击/绕击跳闸率计算方法由 C# 固定（Form_TongTiaoJiSuan.cs:226-229
-                  反击=规程、绕击=EGM），不暴露给用户配置；「包含杆塔」在 C# 里是杆塔列表的勾选列，
-                  本页由列表行勾选（selected_tower_ids）实现，故也不再提供手输杆塔 ID 的入口。 */}
-              <Form.Item name="fanji_tzl_method" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="raoji_tzl_method" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="include_tower_ids" hidden>
-                <Input />
-              </Form.Item>
-            </>
-          ) : null}
+        {showTongtiaoBlock ? (
+          <>
+            {/* 同跳计算：反击/绕击跳闸率计算方法由 C# 固定（Form_TongTiaoJiSuan.cs:226-229
+                反击=规程、绕击=EGM），不暴露给用户配置；「包含杆塔」在 C# 里是杆塔列表的勾选列，
+                本页由列表行勾选（selected_tower_ids）实现，故也不再提供手输杆塔 ID 的入口。
+                这里仅保留 hidden 字段，保证这两个值随请求提交（供 ATP 模板 CAL_MODE 使用）。 */}
+            <Form.Item name="fanji_tzl_method" hidden>
+              <Input />
+            </Form.Item>
+            <Form.Item name="raoji_tzl_method" hidden>
+              <Input />
+            </Form.Item>
+            <Form.Item name="include_tower_ids" hidden>
+              <Input />
+            </Form.Item>
           </>
         ) : null}
-          </div>
-        </div>
 
         <div className="fl-create-form-block">
           <div className="fl-create-form-block-title">杆塔列表</div>
@@ -375,7 +373,7 @@ export function CreateJobForm({
                     loading={towersQuery.isFetching}
                     size="small"
                     pagination={false}
-                    scroll={{ x: 1400, y: 320 }}
+                    scroll={{ x: 1440, y: 320 }}
                     rowSelection={{
                       selectedRowKeys: selectedTowerIds,
                       onChange: (selectedRowKeys) => form.setFieldValue("selected_tower_ids", selectedRowKeys),
