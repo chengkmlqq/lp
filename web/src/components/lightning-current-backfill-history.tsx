@@ -102,12 +102,15 @@ export function LightningCurrentBackfillHistoryTable({
     if (!anchor) {
       return;
     }
-    const anchorHeight = anchor.getBoundingClientRect().height;
+    // 用「视口可用高度」推导：anchor 自身高度会被表体 min-height 撑大，用它反推会形成
+    // 正反馈（每次翻页多累加一次未计入间距 → 表体持续变高）。2026-09-12 修复
+    const anchorTop = anchor.getBoundingClientRect().top;
     const tableHeader = anchor.querySelector<HTMLElement>(".ant-table-header");
     const tablePagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = tableHeader?.getBoundingClientRect().height ?? BACKFILL_HISTORY_ESTIMATED_HEADER_HEIGHT;
     const paginationHeight = tablePagination?.getBoundingClientRect().height ?? BACKFILL_HISTORY_ESTIMATED_PAGINATION_HEIGHT;
-    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - BACKFILL_HISTORY_BOTTOM_GAP);
+    const available = window.innerHeight - anchorTop - BACKFILL_HISTORY_BOTTOM_GAP;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16);
     const clampedHeight = Math.max(BACKFILL_HISTORY_MIN_SCROLL_Y, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);

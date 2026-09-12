@@ -632,12 +632,15 @@ export default function AdminLightningDistributionPage() {
       return;
     }
 
-    const anchorHeight = anchor.getBoundingClientRect().height;
+    // 用「视口可用高度」推导：anchor 自身高度会被表体 min-height 撑大，用它反推
+    // 会形成正反馈（每次翻页多累加一次未计入间距，表体持续变高）。2026-09-12 修复
+    const anchorTop = anchor.getBoundingClientRect().top;
     const header = anchor.querySelector<HTMLElement>(".ant-table-header");
     const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = header?.getBoundingClientRect().height ?? LIGHTNING_TABLE_ESTIMATED_HEADER_HEIGHT;
     const paginationHeight = paginationEl?.getBoundingClientRect().height ?? LIGHTNING_TABLE_ESTIMATED_PAGINATION_HEIGHT;
-    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - LIGHTNING_TABLE_BOTTOM_GAP);
+    const available = window.innerHeight - anchorTop - LIGHTNING_TABLE_BOTTOM_GAP;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16);
 
     const clampedHeight = Math.max(LIGHTNING_TABLE_MIN_SCROLL_Y, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
@@ -1443,12 +1446,15 @@ function BackfillRecordsView({
     if (typeof window === "undefined") return;
     const anchor = tableScrollAnchorRef.current;
     if (!anchor) return;
-    const anchorHeight = anchor.getBoundingClientRect().height;
+    // 用「视口可用高度」推导：anchor 自身高度会被表体 min-height 撑大，用它反推
+    // 会形成正反馈（每次翻页多累加一次未计入间距，表体持续变高）。2026-09-12 修复
+    const anchorTop = anchor.getBoundingClientRect().top;
     const header = anchor.querySelector<HTMLElement>(".ant-table-header");
     const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = header?.getBoundingClientRect().height ?? 39;
     const paginationHeight = paginationEl?.getBoundingClientRect().height ?? 64;
-    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - 8);
+    const available = window.innerHeight - anchorTop - 8;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16);
     setTableScrollY((previous) => (Math.abs(previous - Math.max(160, nextHeight)) <= 1 ? previous : Math.max(160, nextHeight)));
   }, []);
 
@@ -1714,12 +1720,15 @@ function TowerNgDrawer({
     if (typeof window === "undefined") return;
     const anchor = tableScrollAnchorRef.current;
     if (!anchor) return;
-    const anchorHeight = anchor.getBoundingClientRect().height;
+    // 用「视口可用高度」推导：anchor 自身高度会被表体 min-height 撑大，用它反推
+    // 会形成正反馈（每次翻页多累加一次未计入间距，表体持续变高）。2026-09-12 修复
+    const anchorTop = anchor.getBoundingClientRect().top;
     const header = anchor.querySelector<HTMLElement>(".ant-table-header");
     const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = header?.getBoundingClientRect().height ?? 39;
     const paginationHeight = paginationEl?.getBoundingClientRect().height ?? 64;
-    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - 8);
+    const available = window.innerHeight - anchorTop - 8;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16);
     setTableScrollY((previous) => (Math.abs(previous - Math.max(160, nextHeight)) <= 1 ? previous : Math.max(160, nextHeight)));
   }, []);
 

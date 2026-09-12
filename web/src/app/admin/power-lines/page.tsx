@@ -172,12 +172,21 @@ export default function AdminPowerLinesPage() {
     if (!anchor) {
       return POWER_LINES_TABLE_MIN_SCROLL_Y;
     }
-    const anchorHeight = anchor.getBoundingClientRect().height;
+    // 用「可滚动容器（列表面板）的 padding-box 底边」推导表体高度：
+    // 1) 不用 anchor 自身高度反推（会被表体 min-height 撑大 → 正反馈逐次变高）
+    // 2) 不用 window.innerHeight（漏掉面板底部 padding 与页面底边距 → 溢出 12px，出现多余纵向滚动条）
+    // 3) 分页器上方 margin 16px + 4px 余量，确保容器内不产生滚动条
+    const anchorTop = anchor.getBoundingClientRect().top;
+    const pane = anchor.closest<HTMLElement>(".admin-power-lines-list-pane");
+    const container = pane ?? document.documentElement;
+    const containerRect = container.getBoundingClientRect();
+    const containerPadBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
     const header = anchor.querySelector<HTMLElement>(".ant-table-header");
     const pagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = header?.getBoundingClientRect().height ?? POWER_LINES_TABLE_ESTIMATED_HEADER_HEIGHT;
     const paginationHeight = pagination?.getBoundingClientRect().height ?? POWER_LINES_TABLE_ESTIMATED_PAGINATION_HEIGHT;
-    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - POWER_LINES_TABLE_BOTTOM_GAP);
+    const available = containerRect.bottom - containerPadBottom - anchorTop - POWER_LINES_TABLE_BOTTOM_GAP;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16 - 4);
     return Math.max(POWER_LINES_TABLE_MIN_SCROLL_Y, nextHeight);
   }, []);
 

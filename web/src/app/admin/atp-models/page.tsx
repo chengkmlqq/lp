@@ -567,12 +567,21 @@ export default function AtpModelsPage() {
       return;
     }
 
-    const anchorHeight = anchor.getBoundingClientRect().height;
+    // 用「视口可用高度」推导：anchor 自身高度会被表体 min-height 撑大，用它反推
+    // 会形成正反馈（每次翻页多累加一次未计入间距，表体持续变高）。2026-09-12 修复
+    const anchorTop = anchor.getBoundingClientRect().top;
+    // 以可滚动容器（列表面板）的 padding-box 底边为准：用 window.innerHeight 会漏掉
+    // 面板底部 padding 与页面底边距 → 溢出约 12px，表格外层出现多余纵向滚动条
+    const pane = anchor.closest<HTMLElement>(".admin-atp-models-list-pane");
+    const container = pane ?? document.documentElement;
+    const containerRect = container.getBoundingClientRect();
+    const containerPadBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
     const tableHeader = anchor.querySelector<HTMLElement>(".ant-table-header");
     const tablePagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = tableHeader?.getBoundingClientRect().height ?? ATP_TABLE_ESTIMATED_HEADER_HEIGHT;
     const paginationHeight = tablePagination?.getBoundingClientRect().height ?? ATP_TABLE_ESTIMATED_PAGINATION_HEIGHT;
-    const nextHeight = Math.floor(anchorHeight - headerHeight - paginationHeight - ATP_TABLE_BOTTOM_GAP);
+    const available = containerRect.bottom - containerPadBottom - anchorTop - ATP_TABLE_BOTTOM_GAP;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16 - 4);
     const clampedHeight = Math.max(ATP_TABLE_MIN_SCROLL_Y, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);

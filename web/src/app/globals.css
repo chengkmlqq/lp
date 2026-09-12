@@ -6770,3 +6770,21 @@ body {
 .admin-feature-requirements-page .ant-typography-title {
   margin-bottom: 0;
 }
+
+/* ── 线路地图页：左侧筛选面板（与详情页筛选表单一致） ───────────── */
+.admin-map-filter-panel {
+  display: flex;
+  width: 260px;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 8px;
+  background: var(--ant-color-bg-container);
+  overflow-y: auto;
+}
+
+.admin-map-filter-panel .ant-form-item-label > label {
+  font-size: 13px;
+}

@@ -384,15 +384,25 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     if (!anchor) {
       return;
     }
-    // 用「视口可用高度」推导表体高度：anchor 自身高度会随表体 min-height 同步变大，
-    // 用它反推会形成正反馈（每次翻页 +12px 持续增长，LP 缺陷修复 2026-09-12）。
+    // 表体高度推导（2026-09-12 修复）：
+    // 1) 不用 anchor 自身高度反推（会被表体 min-height 撑大 → 正反馈，翻页逐次 +12px）
+    // 2) 不用 window.innerHeight（漏掉 tab 面板边界与根容器 padding → 详情页整体溢出 18px，
+    //    出现「始终存在」的纵向滚动条）
+    // 3) 以可视滚动容器（tab 面板）padding-box 底边为界，再扣除根容器底部 padding
     const anchorTop = anchor.getBoundingClientRect().top;
+    const pane = anchor.closest<HTMLElement>(".ant-tabs-tabpane") ?? document.documentElement;
+    const parent = anchor.parentElement;
+    const paneRect = pane.getBoundingClientRect();
+    const panePadBottom = Number.parseFloat(getComputedStyle(pane).paddingBottom) || 0;
+    const parentPadBottom =
+      parent && parent !== pane ? Number.parseFloat(getComputedStyle(parent).paddingBottom) || 0 : 0;
     const tableHeader = anchor.querySelector<HTMLElement>(".ant-table-header");
     const tablePagination = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = tableHeader?.getBoundingClientRect().height ?? 56;
     const paginationHeight = tablePagination?.getBoundingClientRect().height ?? 32;
-    // 视口底部预留 12px；分页器上方 margin 预留 16px
-    const available = window.innerHeight - anchorTop - 12;
+    // 分页器上方 margin 16px + 4px 余量，确保容器内不产生滚动条
+    const bottomLimit = paneRect.bottom - panePadBottom - parentPadBottom - 4;
+    const available = bottomLimit - anchorTop;
     const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16);
     const clampedHeight = Math.max(180, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
@@ -587,7 +597,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
 
   if (lineError || !lineDetail) {
     return (
-      <div className="flex flex-1 flex-col p-4">
+      <div className="flex flex-1 flex-col p-6">
         <Card size="small" className="admin-power-line-detail-meta">
           <Space direction="vertical" size={12}>
             <Typography.Text type="danger">{lineError || "加载线路失败"}</Typography.Text>
@@ -598,7 +608,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
   }
 
   return (
-    <div className="flex flex-1 flex-col p-4">
+    <div className="flex flex-1 flex-col p-6">
       <div className="admin-filter-bar">
         <Form layout="inline" className="flex flex-wrap items-center gap-2">
           <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>

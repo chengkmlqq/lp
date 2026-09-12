@@ -34,6 +34,8 @@ type PowerLineCesiumMapProps = {
   exaggeration?: number;
   loading?: boolean;
   height?: number;
+  /** 高度自适应：填满父容器（父容器需为 flex 布局且 min-height: 0） */
+  fillHeight?: boolean;
   onRouteLengthChange?: (lengthKm: number) => void;
 };
 
@@ -121,6 +123,7 @@ export function PowerLineCesiumMap({
   exaggeration = 1,
   loading = false,
   height = DEFAULT_MAP_HEIGHT,
+  fillHeight = false,
   onRouteLengthChange,
 }: PowerLineCesiumMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -574,7 +577,8 @@ export function PowerLineCesiumMap({
   }, [ready, towerGeoPoints, routeSegments, colorByRisk, showLabels, focusRoute]);
 
   return (
-    <div className="space-y-3">
+    /* fillHeight: 填满父容器（不设固定高度）；否则沿用固定 height */
+<div className={fillHeight ? "flex h-full min-h-0 flex-col gap-3" : "space-y-3"}>
       {terrainDataset ? (
         <Typography.Text type="secondary">
           地形底图：{terrainDataset.name}，状态 {terrainDataset.terrain_status}
@@ -596,20 +600,6 @@ export function PowerLineCesiumMap({
           message={`地形瓦片加载失败，已回退到平面模式：${terrainError}`}
         />
       ) : null}
-      <div className="admin-filter-bar flex-wrap">
-        <Checkbox checked={colorByRisk} onChange={(event) => setColorByRisk(event.target.checked)}>
-          按风险着色
-        </Checkbox>
-        <Checkbox checked={showLabels} onChange={(event) => setShowLabels(event.target.checked)}>
-          显示塔号
-        </Checkbox>
-        <Segmented
-          value={effectiveBaseLayer}
-          options={[...TIANDITU_BASE_LAYER_OPTIONS]}
-          onChange={(value) => setBaseLayerOverride(value)}
-          disabled={!tiandituEnabled}
-        />
-      </div>
       {initError ? (
         <Space>
           <Alert type="error" showIcon message="走向图加载失败" description={initError} />
@@ -617,9 +607,12 @@ export function PowerLineCesiumMap({
         </Space>
       ) : null}
 
-      <div className="relative w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-900/90" style={{ height }}>
+      <div
+        className={`relative w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-900/90${fillHeight ? " min-h-0 flex-1" : ""}`}
+        style={fillHeight ? undefined : { height }}
+      >
         <div ref={containerRef} className="h-full w-full" />
-        <div className="absolute right-3 top-3 z-10 flex flex-col gap-2 rounded-md border border-slate-700/80 bg-slate-950/70 p-1.5 shadow-lg backdrop-blur-sm">
+        <div className="absolute right-3 top-16 z-10 flex flex-col gap-2 rounded-md border border-slate-700/80 bg-slate-950/70 p-1.5 shadow-lg backdrop-blur-sm">
           <Button
             size="small"
             shape="circle"
@@ -650,6 +643,22 @@ export function PowerLineCesiumMap({
         </div>
         <div className="pointer-events-none absolute left-3 top-3 rounded bg-slate-950/75 px-2 py-1 text-xs text-slate-200">
           线路走向专题视图
+        </div>
+        {/* 显示控制（按风险着色 / 显示塔号 / 矢量·影像·地形）——靠右侧 */}
+        <div className="absolute right-3 top-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-700/80 bg-slate-950/70 px-2.5 py-1.5 shadow-lg backdrop-blur-sm">
+          <Checkbox checked={colorByRisk} onChange={(event) => setColorByRisk(event.target.checked)}>
+            <span className="text-xs text-slate-200">按风险着色</span>
+          </Checkbox>
+          <Checkbox checked={showLabels} onChange={(event) => setShowLabels(event.target.checked)}>
+            <span className="text-xs text-slate-200">显示塔号</span>
+          </Checkbox>
+          <Segmented
+            size="small"
+            value={effectiveBaseLayer}
+            options={[...TIANDITU_BASE_LAYER_OPTIONS]}
+            onChange={(value) => setBaseLayerOverride(value)}
+            disabled={!tiandituEnabled}
+          />
         </div>
         {(loading || !ready) && !initError ? (
           <div className="absolute inset-0 flex items-center justify-center bg-black/25">

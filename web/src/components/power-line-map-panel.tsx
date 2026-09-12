@@ -1,17 +1,20 @@
 "use client";
 
+import { SearchOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Card, Space, Typography } from "antd";
+import { Button, Card, Form, Input, Space, Typography } from "antd";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { PowerLineCesiumMap } from "@/components/power-line-cesium-map";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
-import type { LineSummary, LineTowerListResponse, LineTowerSummary } from "@/types/auth";
+import type { LineSummary, LineTowerListResponse } from "@/types/auth";
 
 const TOWER_MAP_QUERY_LIMIT = 500;
+
+type AppliedFilters = { keyword: string; towerType: string };
 
 type PowerLineMapPanelProps = {
   lineId: string;
@@ -22,6 +25,10 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
+
+  const [keyword, setKeyword] = useState("");
+  const [towerType, setTowerType] = useState("");
+  const [filters, setFilters] = useState<AppliedFilters>({ keyword: "", towerType: "" });
 
   const lineDetailQuery = useQuery({
     queryKey: ["line-detail-map", lineId],
@@ -36,12 +43,18 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
   });
 
   const mapTowersQuery = useQuery({
-    queryKey: ["line-towers-map", lineId],
+    queryKey: ["line-towers-map", lineId, filters.keyword, filters.towerType],
     enabled: !!user && canTowerRead && !!lineDetailQuery.data,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", String(TOWER_MAP_QUERY_LIMIT));
       params.set("offset", "0");
+      if (filters.keyword.trim()) {
+        params.set("keyword", filters.keyword.trim());
+      }
+      if (filters.towerType.trim()) {
+        params.set("tower_type", filters.towerType.trim());
+      }
       const query = params.toString();
       const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers${query ? `?${query}` : ""}`);
       if (!response.ok) {
@@ -53,6 +66,16 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
 
   const towers = useMemo(() => mapTowersQuery.data?.items ?? [], [mapTowersQuery.data?.items]);
   const lineDetail = lineDetailQuery.data;
+
+  const applyFilters = () => {
+    setFilters({ keyword, towerType });
+  };
+
+  const resetFilters = () => {
+    setKeyword("");
+    setTowerType("");
+    setFilters({ keyword: "", towerType: "" });
+  };
 
   if (initializing) {
     return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
@@ -83,7 +106,43 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-3">
+      {/* 顶部：与线路详情页一致的表单过滤（上下结构） */}
+      <div className="admin-filter-bar">
+        <Form layout="inline" className="flex flex-wrap items-center gap-2">
+          <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+            <Input
+              value={keyword}
+              allowClear
+              onChange={(event) => setKeyword(event.target.value)}
+              placeholder="按塔号/模型筛选"
+              onPressEnter={applyFilters}
+            />
+          </Form.Item>
+          <Form.Item label="塔型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+            <Input
+              value={towerType}
+              allowClear
+              onChange={(event) => setTowerType(event.target.value)}
+              placeholder="塔型编码（如 d500shangzi）"
+              onPressEnter={applyFilters}
+            />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button htmlType="button" icon={<SearchOutlined />} onClick={applyFilters} className="admin-search-btn">
+              查询
+            </Button>
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button onClick={resetFilters}>重置</Button>
+          </Form.Item>
+          <Typography.Text type="secondary" className="text-xs">
+            当前加载 {towers.length} 基（上限 {TOWER_MAP_QUERY_LIMIT}）
+          </Typography.Text>
+        </Form>
+      </div>
+
+      {/* 下方：地图高度自适应填满剩余空间 */}
       <div className="relative min-h-0 flex-1">
         <PowerLineCesiumMap
           lineCode={lineDetail?.code}
@@ -93,7 +152,7 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
           accessToken={accessToken}
           exaggeration={1}
           loading={mapTowersQuery.isFetching || lineDetailQuery.isFetching}
-          height={560}
+          fillHeight
         />
       </div>
     </div>
