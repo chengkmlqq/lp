@@ -19,7 +19,6 @@ import {
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
   Typography,
   Upload,
@@ -94,6 +93,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     slope_2?: number | null;
   }>({});
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const towerDetailScrollRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(180);
 
   useEffect(() => {
@@ -958,7 +958,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       <Drawer
         title={selectedTowerForDetail ? `杆塔详情 - ${selectedTowerForDetail.tower_no}` : "杆塔详情"}
         open={towerDetailDrawerOpen}
-        width={720}
+        width={880}
         onClose={closeTowerDetailDrawer}
         destroyOnHidden
       >
@@ -978,8 +978,8 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
             const detail = towerDetailQuery.data;
             const tower = detail.tower;
             return (
-              <Tabs
-                items={[
+              (() => {
+                const towerDetailSections = [
                   {
                     key: "basic",
                     label: "基本信息",
@@ -1079,8 +1079,21 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                       </Space>
                     ),
                   },
-                ]}
-              />
+                ];
+
+                return (
+                  <div ref={towerDetailScrollRef} className="admin-tower-detail-content">
+                      {towerDetailSections.map((section) => (
+                        <section key={section.key} id={`tower-detail-${section.key}`} className="admin-tower-detail-section">
+                          <Typography.Title level={5} style={{ margin: 0 }}>
+                            {section.label}
+                          </Typography.Title>
+                          <div className="mt-3">{section.children}</div>
+                        </section>
+                      ))}
+                  </div>
+                );
+              })()
             );
           })()
         ) : null}

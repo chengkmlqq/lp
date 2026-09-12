@@ -6788,3 +6788,24 @@ body {
 .admin-map-filter-panel .ant-form-item-label > label {
   font-size: 13px;
 }
+
+/* ── 线路详情·杆塔详情抽屉：单一纵向滚动的内容分区（无选项卡、无左导航） ── */
+.admin-tower-detail-content {
+  height: 100%;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 4px 8px 0;
+  box-sizing: border-box;
+}
+
+.admin-tower-detail-section {
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.admin-tower-detail-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
