@@ -148,6 +148,11 @@ export function CreateJobForm({
   }
   if (selectedJobType !== prevJobType) {
     setPrevJobType(selectedJobType);
+    if (selectedJobType === "tongtiao") {
+      // 对齐 C# Form_TongTiaoJiSuan.cs:226-229：同跳任务的跳闸率计算方法固定为
+      // 反击=规程(guicheng)、绕击=EGM(egm)，界面上不提供选择（仍需随请求提交，供 ATP 模板 CAL_MODE 使用）。
+      form.setFieldsValue({ fanji_tzl_method: "guicheng", raoji_tzl_method: "egm" });
+    }
   }
 
   /** 复合列取值：与 C# 一致用固定分隔符拼接（地理坐标 经度|纬度，其余 前者,后者）。 */
@@ -327,25 +332,17 @@ export function CreateJobForm({
 
           {showTongtiaoBlock ? (
             <>
-              <Form.Item name="fanji_tzl_method" label="反击跳闸率计算方法" rules={[{ required: true, message: "请选择反击跳闸率计算方法" }]}>
-                <Select
-                  loading={dimensionsLoading}
-                  options={fanjiTzlMethodOptions}
-                />
+              {/* 同跳计算：反击/绕击跳闸率计算方法由 C# 固定（Form_TongTiaoJiSuan.cs:226-229
+                  反击=规程、绕击=EGM），不暴露给用户配置；「包含杆塔」在 C# 里是杆塔列表的勾选列，
+                  本页由列表行勾选（selected_tower_ids）实现，故也不再提供手输杆塔 ID 的入口。 */}
+              <Form.Item name="fanji_tzl_method" hidden>
+                <Input />
               </Form.Item>
-              <Form.Item name="raoji_tzl_method" label="绕击跳闸率计算方法" rules={[{ required: true, message: "请选择绕击跳闸率计算方法" }]}>
-                <Select
-                  loading={dimensionsLoading}
-                  options={raojiTzlMethodOptions}
-                />
+              <Form.Item name="raoji_tzl_method" hidden>
+                <Input />
               </Form.Item>
-              <Form.Item name="include_tower_ids" label="包含杆塔ID">
-                <Select
-                  mode="tags"
-                  tokenSeparators={[","]}
-                  placeholder="输入杆塔ID后回车，支持多个"
-                  options={[]}
-                />
+              <Form.Item name="include_tower_ids" hidden>
+                <Input />
               </Form.Item>
             </>
           ) : null}

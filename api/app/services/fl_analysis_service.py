@@ -1909,6 +1909,12 @@ def _normalize_execution_options(job_type: str, execution_options: dict[str, Any
         else:
             normalized.pop("selected_tower_ids", None)
             normalized.pop("include_tower_ids", None)
+        if job_type == "tongtiao":
+            # 对齐 C# Form_TongTiaoJiSuan.cs:226-229：同跳任务的反击跳闸率方法固定「规程」、
+            # 绕击跳闸率固定「EGM」，C# 不提供给用户配置；此处兜底，保证 API 直建的同跳任务
+            # 与界面/桌面版行为一致（这两个值会作为 ATP 模板 CAL_MODE 的取值来源）。
+            normalized.setdefault("fanji_tzl_method", "guicheng")
+            normalized.setdefault("raoji_tzl_method", "egm")
         normalized.pop("source_job_id", None)
         normalized.pop("source_run_id", None)
         normalized.pop("mitigation_job_id", None)
