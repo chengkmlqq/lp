@@ -1,6 +1,34 @@
 "use client";
 
 import { Button, Descriptions, Empty, Space, Table, Tag, Typography } from "antd";
+
+const ATP_TOWER_TEXT: Record<string, string> = {
+  guxing: "鼓型", maotou: "猫头型", ganzi: "干字型", jiubei: "酒杯型",
+  menxing: "门型", shangzi: "上字型", sihuita: "四回塔", zhiliu: "直流塔",
+};
+const ATP_SCENE_TEXT: Record<string, string> = {
+  fanji: "反击", raoji: "绕击", raoji1: "绕击1", raoji2: "绕击2", raoji3: "绕击3",
+};
+
+/** ATP 模型编码 → 中文（如 atp500-guxing-fanji-M1 → 500kV 鼓型 反击 避雷器组合 M1） */
+function formatAtpModel(src?: string | null) {
+  const text = (src || "").trim();
+  if (!text) return "-";
+  const parts = text.split("-").filter(Boolean);
+  const kv = parts.find((part) => /kv/i.test(part));
+  const label = kv ? `${kv.replace(/^atp/i, "").toUpperCase()}` : "";
+  const rest = parts
+    .filter((part) => part !== kv && !/^atp\d*$/i.test(part))
+    .map((part) => {
+      const key = part.toLowerCase();
+      if (ATP_TOWER_TEXT[key]) return ATP_TOWER_TEXT[key];
+      if (ATP_SCENE_TEXT[key]) return ATP_SCENE_TEXT[key];
+      const arrester = /^M\d+/i.exec(part);
+      if (arrester) return `避雷器组合 ${arrester[0].toUpperCase()}`;
+      return part;
+    });
+  return [label, ...rest].filter(Boolean).join(" ") || "-";
+}
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
 
@@ -249,12 +277,7 @@ export function TowerDetailView({
               {formatExternalAdapter(readOptionalString(detailExternalExecution, "adapter"))}
             </Descriptions.Item>
             <Descriptions.Item label="ATP模型">
-              {readOptionalString(detailExternalExecution, "model_name") || readOptionalString(detailExternalExecution, "model_code") || "-"}
-            </Descriptions.Item>
-            <Descriptions.Item label="模型版本">
-              {typeof readOptionalNumber(detailExternalExecution, "version_no") === "number"
-                ? `v${readOptionalNumber(detailExternalExecution, "version_no")}`
-                : "-"}
+              {formatAtpModel(readOptionalString(detailExternalExecution, "model_name") || readOptionalString(detailExternalExecution, "model_code"))}
             </Descriptions.Item>
             {selectedJobDetailWaveformType === "tongtiao" ? (
               <>

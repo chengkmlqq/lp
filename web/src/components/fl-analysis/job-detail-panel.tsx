@@ -119,6 +119,46 @@ export function JobDetailPanel({
     none: "无",
   };
   const showMethod = (v: unknown) => (typeof v === "string" && v ? (METHOD_TEXT[v] ?? v) : "-");
+  // ATP 模型：把 "atp500-guxing-fanji-M1" 这类编码翻译成中文，不展示编码
+  const ATP_TOWER_TEXT: Record<string, string> = {
+    guxing: "鼓型", maotou: "猫头型", ganzi: "干字型", jiubei: "酒杯型",
+    menxing: "门型", shangzi: "上字型", sihuita: "四回塔", zhiliu: "直流塔",
+  };
+  const ATP_SCENE_TEXT: Record<string, string> = {
+    fanji: "反击", raoji: "绕击", raoji1: "绕击1", raoji2: "绕击2", raoji3: "绕击3",
+  };
+  const formatAtpModel = (src?: string | null) => {
+    const text = (src || "").trim();
+    if (!text) return "-";
+    const parts = text.split("-").filter(Boolean);
+    const kv = parts.find((part) => /kv/i.test(part));
+    const label = kv ? `${kv.replace(/^atp/i, "").toUpperCase()}` : "";
+    const rest = parts
+      .filter((part) => part !== kv && !/^atp\d*$/i.test(part))
+      .map((part) => {
+        const key = part.toLowerCase();
+        if (ATP_TOWER_TEXT[key]) return ATP_TOWER_TEXT[key];
+        if (ATP_SCENE_TEXT[key]) return ATP_SCENE_TEXT[key];
+        const arrester = /^M\d+/i.exec(part);
+        if (arrester) return `避雷器组合 ${arrester[0].toUpperCase()}`;
+        return part;
+      });
+    return [label, ...rest].filter(Boolean).join(" ") || "-";
+  };
+  // 风险计数：high/medium/low → 高/中/低风险 + 座数
+  const formatRiskCounts = (counts?: unknown) => {
+    if (!counts || typeof counts !== "object") return "-";
+    const map: Array<[string, string]> = [["high", "高风险"], ["medium", "中风险"], ["low", "低风险"]];
+    const record = counts as Record<string, unknown>;
+    const parts = map
+      .filter(([key]) => record[key] !== undefined && record[key] !== null)
+      .map(([key, label]) => `${label} ${Number(record[key]) || 0} 座`);
+    const extra = Object.entries(record)
+      .filter(([key]) => !map.some(([k]) => k === key))
+      .map(([key, value]) => `${key} ${value}`);
+    const all = [...parts, ...extra];
+    return all.length ? all.join("；") : "无";
+  };
   return (
     <Space direction="vertical" size={16} className="flex w-full">
       <section className="fl-create-form-block">
@@ -132,9 +172,6 @@ export function JobDetailPanel({
         <Descriptions.Item label="任务类型">{formatJobType(selectedJobDetail.job_type, mitigationMode(selectedJobDetail))}</Descriptions.Item>
         <Descriptions.Item label="结果杆塔数">{selectedJobDetail.result_tower_count}</Descriptions.Item>
         <Descriptions.Item label="完成时间">{formatDateTime(selectedJobDetail.finished_at)}</Descriptions.Item>
-        <Descriptions.Item label="风险计数" span={2}>
-          {JSON.stringify(selectedJobDetail.result_summary_json?.risk_counts ?? {}, null, 2)}
-        </Descriptions.Item>
         {selectedJobDetail.job_type === "mitigation" ? (
           <>
             <Descriptions.Item label="前驱风险任务">{sourceJobId || "-"}</Descriptions.Item>
@@ -178,13 +215,7 @@ export function JobDetailPanel({
             <Descriptions.Item label="绕击耐雷水平计算方法">{showMethod(readObject(selectedJobExecutionOptions).raoji_naleishuiping_method)}</Descriptions.Item>
             <Descriptions.Item label="反击跳闸率计算方法">{showMethod(readObject(selectedJobExecutionOptions).fanji_tzl_method)}</Descriptions.Item>
             <Descriptions.Item label="绕击跳闸率计算方法">{showMethod(readObject(selectedJobExecutionOptions).raoji_tzl_method)}</Descriptions.Item>
-            <Descriptions.Item label="ATP模型">
-              {selectedJobExternalModelName || selectedJobExternalModelCode || "-"}
-              {selectedJobExternalModelName && selectedJobExternalModelCode ? ` / ${selectedJobExternalModelCode}` : ""}
-            </Descriptions.Item>
-            <Descriptions.Item label="模型版本">
-              {typeof selectedJobExternalVersionNo === "number" ? `v${selectedJobExternalVersionNo}` : "-"}
-            </Descriptions.Item>
+            <Descriptions.Item label="ATP模型">{formatAtpModel(selectedJobExternalModelName || selectedJobExternalModelCode)}</Descriptions.Item>
           </Descriptions>
         </section>
       ) : null}
@@ -208,9 +239,7 @@ export function JobDetailPanel({
         <Descriptions bordered size="small" column={2}>
           <Descriptions.Item label="平均得分">{String(selectedJobDetail.result_summary_json?.score_average ?? "-")}</Descriptions.Item>
           <Descriptions.Item label="平均扫描点">{String(readObject(selectedJobDetail.result_summary_json).scan_point_average ?? "-")}</Descriptions.Item>
-          <Descriptions.Item label="风险计数" span={2}>
-            {JSON.stringify(selectedJobDetail.result_summary_json?.risk_counts ?? {}, null, 2)}
-          </Descriptions.Item>
+          <Descriptions.Item label="风险计数" span={2}>{formatRiskCounts(selectedJobDetail.result_summary_json?.risk_counts)}</Descriptions.Item>
         </Descriptions>
       </section>
 
