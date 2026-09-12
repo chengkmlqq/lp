@@ -416,18 +416,7 @@ export function CreateJobForm({
         }
       >
         <div className="fl-create-form-grid">
-          <Form.Item name="current_waveform" label="雷电流波形">
-            <Select
-              loading={dimensionsLoading}
-              options={currentWaveformOptions}
-            />
-          </Form.Item>
-          <Form.Item name="flashover_method" label="绝缘子闪络判据">
-            <Select
-              loading={dimensionsLoading}
-              options={flashoverMethodOptions}
-            />
-          </Form.Item>
+          {/* 是否海拔修正 / 感应电压公式：按需求提到高级参数弹窗最上方展示 */}
           <Form.Item name="altitude_correction" label="是否海拔修正">
             <Select
               loading={dimensionsLoading}
@@ -440,6 +429,18 @@ export function CreateJobForm({
                 { value: "formula1", label: "公式1" },
                 { value: "formula2", label: "公式2" },
               ]}
+            />
+          </Form.Item>
+          <Form.Item name="current_waveform" label="雷电流波形">
+            <Select
+              loading={dimensionsLoading}
+              options={currentWaveformOptions}
+            />
+          </Form.Item>
+          <Form.Item name="flashover_method" label="绝缘子闪络判据">
+            <Select
+              loading={dimensionsLoading}
+              options={flashoverMethodOptions}
             />
           </Form.Item>
           {/* 波头时间：Min/Max/步长 一行（对齐 C# 高级设置 Form_GJSZ_PuTongJiSuan） */}
