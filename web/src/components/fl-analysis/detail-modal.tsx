@@ -291,6 +291,9 @@ export function TowerDetailView({
             <Descriptions.Item label="">{""}</Descriptions.Item>
           </>
         ) : null}
+        <Descriptions.Item label="综合结论" span={2}>
+          {readOptionalString(detailRow, "summary_text") ?? "-"}
+        </Descriptions.Item>
         <Descriptions.Item label="原因分析" span={2}>
           {readString(detailResultObject, "cause_analysis")}
         </Descriptions.Item>

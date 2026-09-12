@@ -153,26 +153,6 @@ export function ResultTable({
       );
     }
 
-    resultColumns.push(
-      {
-        title: "综合结论",
-        dataIndex: "summary_text",
-        ellipsis: true,
-      },
-      {
-        title: "高风险原因",
-        key: "cause_analysis",
-        ellipsis: true,
-        render: (_value, row) => readString(readObject(row.result_json), "cause_analysis"),
-      },
-      {
-        title: "措施建议",
-        key: "mitigation_recommendation",
-        ellipsis: true,
-        render: (_value, row) => readString(readObject(row.result_json), "mitigation_recommendation"),
-      },
-    );
-
     if (selectedJob?.job_type === "mitigation") {
       resultColumns.push(
         {
@@ -194,15 +174,6 @@ export function ResultTable({
     }
 
     resultColumns.push(
-      {
-        title: "得分",
-        key: "score",
-        width: 90,
-        render: (_value, row) => {
-          const value = readObject(row.result_json).score;
-          return typeof value === "number" ? value : "-";
-        },
-      },
       {
         title: "详情",
         key: "actions",

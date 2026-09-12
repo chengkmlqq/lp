@@ -13,6 +13,9 @@ const LOGIN_REMEMBER_KEY = "login.remember";
 const LOGIN_USER_ID_KEY = "login.user_id";
 const LOGIN_PASSWORD_KEY = "login.password";
 
+// 登录成功/会话失效重登后的落地页：固定为「线路管理」（此前会落到「用户管理」）
+const DEFAULT_LANDING_PATH = "/admin/power-lines";
+
 function findFirstMenuPath(items: MenuTreeItem[]): string | null {
   for (const item of items) {
     if (item.path) {
@@ -44,16 +47,17 @@ export default function LoginPage() {
         try {
           const response = await fetchWithAuth("/api/v1/admin/me/menus");
           if (!response.ok) {
-            router.replace("/admin/users");
+            router.replace(DEFAULT_LANDING_PATH);
             return;
           }
 
           const menuData = (await response.json()) as MenuTreeItem[];
           const firstRawPath = findFirstMenuPath(menuData);
 
-          router.replace(firstRawPath || "/admin/users");
+          const targetPath = firstRawPath && firstRawPath !== "/admin/users" ? firstRawPath : DEFAULT_LANDING_PATH;
+          router.replace(targetPath);
         } catch {
-          router.replace("/admin/users");
+          router.replace(DEFAULT_LANDING_PATH);
         }
       };
 
