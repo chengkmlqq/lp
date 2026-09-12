@@ -665,15 +665,17 @@ export function PowerLineCesiumMap({
             <Spin size="large" />
           </div>
         ) : null}
+        {/* 无可绘制数据：居中提示浮层（不影响地图区域高度） */}
+        {towerGeoPoints.length === 0 && !(loading || !ready) ? (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6 text-center">
+            <div className="rounded-md bg-slate-950/80 px-4 py-3 text-sm text-slate-200">
+              当前筛选条件下没有可用经纬度数据，无法绘制线路走向。
+            </div>
+          </div>
+        ) : null}
       </div>
       {pointerInfo ? <div className="text-xs text-slate-500">{pointerInfo}</div> : null}
 
-      {towerGeoPoints.length === 0 ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="当前筛选条件下没有可用经纬度数据，无法绘制线路走向。"
-        />
-      ) : null}
     </div>
   );
 }

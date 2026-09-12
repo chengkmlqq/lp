@@ -106,7 +106,7 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-3 p-6">
       {/* 顶部：与线路详情页一致的表单过滤（上下结构） */}
       <div className="admin-filter-bar">
         <Form layout="inline" className="flex flex-wrap items-center gap-2">
