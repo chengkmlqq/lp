@@ -425,13 +425,13 @@ export function CreateJobForm({
               options={currentWaveformOptions}
             />
           </Form.Item>
-          <Form.Item name="flashover_method" label="闪络判据">
+          <Form.Item name="flashover_method" label="绝缘子闪络判据">
             <Select
               loading={dimensionsLoading}
               options={flashoverMethodOptions}
             />
           </Form.Item>
-          <Form.Item name="altitude_correction" label="海拔修正">
+          <Form.Item name="altitude_correction" label="是否海拔修正">
             <Select
               loading={dimensionsLoading}
               options={altitudeCorrectionOptions}

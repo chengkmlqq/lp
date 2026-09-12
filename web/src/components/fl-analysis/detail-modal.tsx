@@ -240,8 +240,8 @@ export function TowerDetailView({
             </Descriptions.Item>
             <Descriptions.Item label="扫描点数">{String(detailWorkflow.scan_point_count ?? "-")}</Descriptions.Item>
             <Descriptions.Item label="雷电流波形">{formatDimensionValue(detailWorkflow.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
-            <Descriptions.Item label="闪络判据">{formatDimensionValue(detailWorkflow.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
-            <Descriptions.Item label="海拔修正">{formatDimensionValue(detailWorkflow.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
+            <Descriptions.Item label="绝缘子闪络判据">{formatDimensionValue(detailWorkflow.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
+            <Descriptions.Item label="是否海拔修正">{formatDimensionValue(detailWorkflow.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
             <Descriptions.Item label="感应电压公式">{formatInducedVoltageFormula(detailWorkflow.induced_voltage_formula)}</Descriptions.Item>
             <Descriptions.Item label="波头范围">{formatRangeSummary(detailWorkflow.head_time_range_us)}</Descriptions.Item>
             <Descriptions.Item label="波尾范围">{formatRangeSummary(detailWorkflow.tail_time_range_us)}</Descriptions.Item>

@@ -109,7 +109,7 @@ class FlAnalysisJobCreateRequest(BaseModel):
     execution_options_json: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "normal/tongtiao 任务可传波形、闪络判据以及波头/波尾扫描参数；"
+            "normal/tongtiao 任务可传波形、绝缘子闪络判据以及波头/波尾扫描参数；"
             "mitigation 任务可传 source_job_id、selected_tower_ids、non_construction；"
             "scenario 任务可传 source_job_id、base_job_id、selected_tower_ids；"
             "report 任务可传 source_job_id、selected_tower_ids。"

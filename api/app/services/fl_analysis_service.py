@@ -1318,8 +1318,8 @@ def _normal_result_export_columns() -> list[tuple[str, Callable[[dict[str, Any]]
         ("最不利波头时间(μs)", lambda ctx: _pick_export_number(ctx["selected_case"].get("head_time_us"))),
         ("最不利波尾时间(μs)", lambda ctx: _pick_export_number(ctx["selected_case"].get("tail_time_us"))),
         ("雷电流波形", lambda ctx: ctx["workflow"].get("current_waveform")),
-        ("闪络判据", lambda ctx: ctx["workflow"].get("flashover_method")),
-        ("海拔修正", lambda ctx: ctx["workflow"].get("altitude_correction")),
+        ("绝缘子闪络判据", lambda ctx: ctx["workflow"].get("flashover_method")),
+        ("是否海拔修正", lambda ctx: ctx["workflow"].get("altitude_correction")),
         ("感应电压公式", lambda ctx: ctx["workflow"].get("induced_voltage_formula")),
         ("扫描点数", lambda ctx: _pick_export_number(ctx["workflow"].get("scan_point_count"))),
     ]

@@ -170,8 +170,8 @@ export function JobDetailPanel({
             <Descriptions.Item label="平均得分">{String(selectedJobDetail.result_summary_json?.score_average ?? "-")}</Descriptions.Item>
             <Descriptions.Item label="平均扫描点">{String(readObject(selectedJobDetail.result_summary_json).scan_point_average ?? "-")}</Descriptions.Item>
             <Descriptions.Item label="雷电流波形">{formatDimensionValue(selectedJobWorkflow?.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
-            <Descriptions.Item label="闪络判据">{formatDimensionValue(selectedJobWorkflow?.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
-            <Descriptions.Item label="海拔修正">{formatDimensionValue(selectedJobWorkflow?.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
+            <Descriptions.Item label="绝缘子闪络判据">{formatDimensionValue(selectedJobWorkflow?.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
+            <Descriptions.Item label="是否海拔修正">{formatDimensionValue(selectedJobWorkflow?.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
             <Descriptions.Item label="感应电压公式">{formatInducedVoltageFormula(selectedJobWorkflow?.induced_voltage_formula)}</Descriptions.Item>
             <Descriptions.Item label="波头范围">{formatRangeSummary(selectedJobWorkflow?.head_time_range_us)}</Descriptions.Item>
             <Descriptions.Item label="波尾范围">{formatRangeSummary(selectedJobWorkflow?.tail_time_range_us)}</Descriptions.Item>
