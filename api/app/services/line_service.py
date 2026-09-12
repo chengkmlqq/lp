@@ -43,7 +43,21 @@ from .line_preparation_service import summarize_line_preparation, summarize_line
 from .push_service import publish_topic
 
 LINE_TOPIC = "admin.power-lines"
-CSV_ENCODINGS = ("utf-8-sig", "utf-8", "gbk", "latin-1")
+# 与 C# MyLoad_GanTas 的编码探测集合对齐（UTF8 → 本机默认(GBK) → ASCII → UTF-16 → UTF-7 → UTF-32）；
+# 选择规则见 _decode_csv_bytes：优先取「解码后文本含表头关键字」的结果。
+CSV_ENCODINGS = (
+    "utf-8-sig",
+    "utf-8",
+    "gbk",
+    "gb18030",
+    "ascii",
+    "utf-16",
+    "utf-16-le",
+    "utf-16-be",
+    "utf-7",
+    "utf-32",
+    "latin-1",
+)
 LINE_CODE_PREFIX = "PL"
 
 
@@ -656,12 +670,15 @@ def import_line_towers_from_csv(
         if "序号" in candidate and "塔号" in candidate:
             break
         header_index += 1
-    if header_index >= len(rows):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV 中未找到包含序号/塔号的表头")
-
-    raw_header = rows[header_index]
-    if not raw_header:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV header is empty")
+    # 对齐 C# MyLoad_GanTas：整表找不到「序号/塔号」表头时，按固定列序（1-63 列）解析，所有行均视为数据行。
+    positional_parsing = header_index >= len(rows)
+    if positional_parsing:
+        header_index = -1
+        raw_header = list(LINE_TOWER_CSV_HEADERS_63)
+    else:
+        raw_header = rows[header_index]
+        if not raw_header:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV header is empty")
 
     max_row_len = max((len(row) for row in rows[header_index + 1 :]), default=len(raw_header))
     header = list(raw_header)
@@ -672,6 +689,9 @@ def import_line_towers_from_csv(
         header.extend(extra_headers)
 
     stats = CsvImportStats()
+    if positional_parsing:
+        stats.warnings = stats.warnings or []
+        stats.warnings.append("未找到「序号/塔号」表头，已按固定列序（1-63 列）解析")
     existing_towers = db.execute(select(LineTower).where(LineTower.line_id == line.id)).scalars().all()
     tower_by_seq = {item.seq_no: item for item in existing_towers}
     tower_by_no = {item.tower_no: item for item in existing_towers}
@@ -813,6 +833,77 @@ def import_line_towers_from_csv(
     )
 
 
+# 线路杆塔 CSV 列定义：与 C# 端 GanTaData.MyHead_ToString() 严格对齐（1-63 列同名列序，
+# 64/65 列 = 原因分析 / 措施推荐）。导入解析与此常量共用，保证导入导出对称。
+LINE_TOWER_CSV_HEADERS_63: tuple[str, ...] = (
+    "线路编号",
+    "序号",
+    "线路名称",
+    "电压等级",
+    "塔号",
+    "杆塔模型",
+    "塔形",
+    "经度",
+    "纬度",
+    "I回相序",
+    "II回相序",
+    "III回相序",
+    "IV回相序",
+    "A相是否安装避雷器",
+    "B相是否安装避雷器",
+    "C相是否安装避雷器",
+    "接地电阻",
+    "左避雷中距m",
+    "右避雷中距m",
+    "避雷线高度m",
+    "绝缘子串长度mm",
+    "杆塔呼高m",
+    "I回上相中距m",
+    "I回中相中距m",
+    "I回下相中距m",
+    "I回上相高度m",
+    "I回中相高度m",
+    "I回下相高度m",
+    "II回上相中距m",
+    "II回中相中距m",
+    "II回下相中距m",
+    "II回上相高度m",
+    "II回中相高度m",
+    "II回下相高度m",
+    "III回上相中距m",
+    "III回中相中距m",
+    "III回下相中距m",
+    "III回上相高度m",
+    "III回中相高度m",
+    "III回下相高度m",
+    "IV回上相中距m",
+    "IV回中相中距m",
+    "IV回下相中距m",
+    "IV回上相高度m",
+    "IV回中相高度m",
+    "IV回下相高度m",
+    "小号侧档距",
+    "大号侧档距",
+    "电角度",
+    "雷电流幅值a",
+    "雷电流幅值b",
+    "地面倾角1",
+    "地面倾角2",
+    "海拔m",
+    "地形",
+    "地闪密度",
+    "直线或耐张杆塔",
+    "绕击反击",
+    "反击耐雷水平kA",
+    "反击跳闸率(次/100km.a)",
+    "绕击耐雷水平kA",
+    "绕击跳闸率(次/100km.a)",
+    "雷击风险等级",
+)
+
+LINE_TOWER_CSV_HEADERS: tuple[str, ...] = (*LINE_TOWER_CSV_HEADERS_63, "原因分析", "措施推荐")
+
+
 def export_line_towers_to_csv(db: Session, *, line: Line) -> tuple[str, bytes]:
     towers = db.execute(
         select(LineTower)
@@ -829,74 +920,7 @@ def export_line_towers_to_csv(db: Session, *, line: Line) -> tuple[str, bytes]:
             else []
         )
     }
-    headers = [
-        "线路编号",
-        "序号",
-        "线路名称",
-        "电压等级",
-        "塔号",
-        "杆塔模型",
-        "塔形",
-        "经度",
-        "纬度",
-        "I回相序",
-        "II回相序",
-        "III回相序",
-        "IV回相序",
-        "A相是否安装避雷器",
-        "B相是否安装避雷器",
-        "C相是否安装避雷器",
-        "接地电阻",
-        "左避雷中距m",
-        "右避雷中距m",
-        "避雷线高度m",
-        "绝缘子串长度mm",
-        "杆塔呼高m",
-        "I回上相中距m",
-        "I回中相中距m",
-        "I回下相中距m",
-        "I回上相高度m",
-        "I回中相高度m",
-        "I回下相高度m",
-        "II回上相中距m",
-        "II回中相中距m",
-        "II回下相中距m",
-        "II回上相高度m",
-        "II回中相高度m",
-        "II回下相高度m",
-        "III回上相中距m",
-        "III回中相中距m",
-        "III回下相中距m",
-        "III回上相高度m",
-        "III回中相高度m",
-        "III回下相高度m",
-        "IV回上相中距m",
-        "IV回中相中距m",
-        "IV回下相中距m",
-        "IV回上相高度m",
-        "IV回中相高度m",
-        "IV回下相高度m",
-        "小号侧档距",
-        "大号侧档距",
-        "电角度",
-        "雷电流幅值a",
-        "雷电流幅值b",
-        "地面倾角1",
-        "地面倾角2",
-        "海拔m",
-        "地形",
-        "地闪密度",
-        "直线或耐张杆塔",
-        "绕击反击",
-        "反击耐雷水平kA",
-        "反击跳闸率(次/100km.a)",
-        "绕击耐雷水平kA",
-        "绕击跳闸率(次/100km.a)",
-        "雷击风险等级",
-        "几何参数JSON",
-        "雷电参数JSON",
-        "额外字段JSON",
-    ]
+    headers = list(LINE_TOWER_CSV_HEADERS)
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -991,14 +1015,13 @@ def export_line_towers_to_csv(db: Session, *, line: Line) -> tuple[str, bytes]:
                 _to_csv_number(lightning_result.shielding_withstand_ka if lightning_result else None),
                 _to_csv_number(lightning_result.shielding_trip_rate if lightning_result else None),
                 _normalize_str(_pick_export_value(tower.risk_level, lightning_result.risk_level if lightning_result else None)) or "",
-                _json_dumps_compact(circuit_geometry or {}),
-                _json_dumps_compact(_build_lightning_result_dict(lightning_result)),
-                _json_dumps_compact(_build_analysis_dict(analysis) if analysis else {}),
+                _escape_multiline(_normalize_str(analysis.cause_analysis) or "") if analysis else "",
+                _escape_multiline(_normalize_str(analysis.mitigation_recommendation) or "") if analysis else "",
             ]
         )
 
     filename = f"{line.code}_towers_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    return filename, output.getvalue().encode("utf-8-sig")
+    return filename, output.getvalue().encode("utf-8")
 
 
 def _load_tower_counts(db: Session, line_ids: list[str]) -> dict[str, int]:
@@ -1542,12 +1565,31 @@ def _extract_extra_values(row: dict[str, str], extra_headers: list[str]) -> dict
     return result
 
 
+def _escape_multiline(value: str) -> str:
+    """对齐 C# GanTaData.MyToString()：多行字段（原因分析/措施推荐）内的 CR/LF 转义为字面 \\r \\n。"""
+
+    return value.replace("\r", "\\r").replace("\n", "\\n")
+
+
 def _decode_csv_bytes(content: bytes) -> str:
+    """解码 CSV 字节流。
+
+    对齐 C# MyLoad_GanTas：按 CSV_ENCODINGS 顺序尝试，**取解码后文本包含「塔号」的编码**；
+    若都不包含（例如无表头文件），则回退到第一个可成功解码的结果，由上层表头校验决定后续处理。
+    """
+
+    first_decoded: str | None = None
     for encoding in CSV_ENCODINGS:
         try:
-            return content.decode(encoding)
-        except UnicodeDecodeError:
+            text = content.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
             continue
+        if first_decoded is None:
+            first_decoded = text
+        if "塔号" in text:
+            return text
+    if first_decoded is not None:
+        return first_decoded
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV encoding is not supported")
 
 

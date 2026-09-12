@@ -237,7 +237,8 @@ def test_export_line_towers_to_csv_includes_legacy_professional_columns() -> Non
 
         assert filename.startswith("PL-LEGACY-001_towers_")
 
-        rows = list(csv.DictReader(io.StringIO(content.decode("utf-8-sig"))))
+        # 导出对齐 C#：UTF-8 无 BOM、固定 65 列（1-63 + 原因分析 + 措施推荐），不含 JSON 列
+        rows = list(csv.DictReader(io.StringIO(content.decode("utf-8"))))
         assert len(rows) == 1
 
         row = rows[0]
@@ -261,9 +262,11 @@ def test_export_line_towers_to_csv_includes_legacy_professional_columns() -> Non
         assert row["反击耐雷水平kA"] == "45"
         assert row["绕击跳闸率(次/100km.a)"] == "0.3"
         assert row["雷击风险等级"] == "高"
-        assert row["几何参数JSON"].startswith("{")
-        assert row["雷电参数JSON"].startswith("{")
-        assert row["额外字段JSON"] == "{}"
+        assert row["原因分析"] == ""
+        assert row["措施推荐"] == ""
+        header = next(csv.reader(io.StringIO(content.decode("utf-8"))))
+        assert len(header) == 65
+        assert not any("JSON" in name for name in header)
     finally:
         session.close()
 
