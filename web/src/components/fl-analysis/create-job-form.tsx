@@ -81,21 +81,6 @@ function useSelectOptions(
   return dimensionOptions.length > 0 ? dimensionOptions : fallbackOptions;
 }
 
-function towerRiskTag(value: string | null | undefined): React.ReactNode {
-  if (!value) {
-    return "-";
-  }
-  const level = value.trim();
-  let color = "default";
-  if (level === "1") {
-    color = "green";
-  } else if (level === "2") {
-    color = "orange";
-  } else if (level === "3") {
-    color = "red";
-  }
-  return <Tag color={color}>{value}</Tag>;
-}
 
 export function CreateJobForm({
   form,
@@ -165,29 +150,67 @@ export function CreateJobForm({
     setPrevJobType(selectedJobType);
   }
 
+  /** 复合列取值：与 C# 一致用固定分隔符拼接（地理坐标 经度|纬度，其余 前者,后者）。 */
+  function joinPair(first: number | null | undefined, second: number | null | undefined, sep: string): string {
+    if (first === null && second === null) return "-";
+    if (first === null || second === null) return `${first ?? ""}${sep}${second ?? ""}`;
+    return `${first}${sep}${second}`;
+  }
+
+  // 杆塔列表列：与 C# 端「新建计算任务」（Form_PuTongJiSuan / Form_TongTiaoJiSuan）
+  // 的 11 列严格对齐（列名、列序、复合值分隔符）。
   const towerColumns: ColumnsType<LineTowerSummary> = [
-    { title: "序号", dataIndex: "seq_no", width: 70 },
     {
       title: "塔号",
       dataIndex: "tower_no",
       width: 120,
       render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
-    { title: "模型", dataIndex: "tower_model", width: 160, render: (value: string | null) => value || "-" },
-    { title: "塔型", dataIndex: "tower_type", width: 90, render: (value: string | null) => value || "-" },
+    { title: "杆塔模型", dataIndex: "tower_model", width: 150, render: (value: string | null) => value || "-" },
     {
-      title: "接地电阻(Ω)",
+      title: "地理坐标°",
+      key: "geo",
+      width: 180,
+      render: (_: unknown, row: LineTowerSummary) => joinPair(row.longitude, row.latitude, "|"),
+    },
+    {
+      title: "档距",
+      key: "span",
+      width: 130,
+      render: (_: unknown, row: LineTowerSummary) => joinPair(row.span_small_m, row.span_large_m, ","),
+    },
+    {
+      title: "海拔高度m",
+      dataIndex: "altitude_m",
+      width: 110,
+      render: (value: number | null) => value ?? "-",
+    },
+    { title: "地形", dataIndex: "terrain", width: 90, render: (value: string | null) => value || "-" },
+    {
+      title: "接地电阻Ω",
       dataIndex: "ground_resistance_ohm",
       width: 110,
       render: (value: number | null) => value ?? "-",
     },
     {
-      title: "地闪密度",
+      title: "地闪密度 次/(km^2*年)",
       dataIndex: "lightning_density",
-      width: 100,
+      width: 170,
       render: (value: number | null) => value ?? "-",
     },
-    { title: "风险等级", dataIndex: "risk_level", width: 90, render: towerRiskTag },
+    {
+      title: "雷电流",
+      key: "current",
+      width: 120,
+      render: (_: unknown, row: LineTowerSummary) => joinPair(row.current_a, row.current_b, ","),
+    },
+    {
+      title: "倾角",
+      key: "slope",
+      width: 110,
+      render: (_: unknown, row: LineTowerSummary) => joinPair(row.slope_1, row.slope_2, ","),
+    },
+    { title: "塔型", dataIndex: "tower_type", width: 110, render: (value: string | null) => value || "-" },
   ];
 
   return (
@@ -355,7 +378,7 @@ export function CreateJobForm({
                     loading={towersQuery.isFetching}
                     size="small"
                     pagination={false}
-                    scroll={{ x: 760, y: 320 }}
+                    scroll={{ x: 1400, y: 320 }}
                     rowSelection={{
                       selectedRowKeys: selectedTowerIds,
                       onChange: (selectedRowKeys) => form.setFieldValue("selected_tower_ids", selectedRowKeys),
