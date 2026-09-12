@@ -39,19 +39,19 @@
     },
     "REHG______": {
       "expr": "abs(shield_h)",
-      "fmt": 1
+      "fmt": 2
     },
     "REHC1_____": {
       "expr": "abs(h_u - insul_m)",
-      "fmt": 1
+      "fmt": 2
     },
     "REHC2_____": {
       "expr": "abs((h_u + shield_h - 3.5) / 2.0)",
-      "fmt": 1
+      "fmt": 2
     },
     "REHC3_____": {
       "expr": "abs(h_l - insul_m)",
-      "fmt": 1
+      "fmt": 2
     }
   }
 }

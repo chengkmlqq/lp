@@ -238,10 +238,28 @@ def evaluate(expr: str, variables: Mapping[str, Any], *, tree: ast.Expression | 
 # --------------------------------------------------------------------------------------
 
 def format_value(value: Any, digits: int = 2) -> str:
-    """等价现有 fmt(v, digits)：None → "1."；否则定点小数。"""
+    """对齐 C# FeatureSetOfATP.SetFeatureValue（MyConst.cs:455-505）：
+
+    ① `_value.ToString("F" + 精度)`；
+    ② 去掉尾随的 '0'（但保留小数点，如 30.00 → "30."、34.10 → "34.1"）；
+    ③ 精度为 0 时补 "."（F0 → "30."）；
+    ④ None → "1."（原行为，保证 ATP 数值必带小数点）。
+    """
     if value is None:
         return "1."
     try:
-        return f"{float(value):.{int(digits)}f}"
+        digits = max(0, int(digits))
+    except (TypeError, ValueError):
+        digits = 2
+    try:
+        text = f"{float(value):.{digits}f}"
     except (TypeError, ValueError):
         return "1."
+    # ② 去尾随零：只删小数点后的零，且至少保留小数点本身
+    if "." in text:
+        text = text.rstrip("0")
+        if text.endswith("."):
+            return text
+        return text
+    # ③ 无小数点（digits=0 或 .rstrip 无零可删）→ 补 "."
+    return text + "."

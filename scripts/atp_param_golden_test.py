@@ -131,8 +131,10 @@ def main() -> int:
                 break
 
     # 鼓型公式语义检查（代码路径因 wine 回退走不到 guxing 分支，单独锚定已核对过的 C# 语义值）
+    # 期望值按 C# FeatureSetOfATP.SetFeatureValue 的格式（ToString("F{精度}") + 去尾随零）：
+    #   RELE01/RELE02 规格 F2 → 42.00→"42."、63.00→"63."；REHC1 规格 F2 → 51.55 保留两位。
     guxing_expected = {
-        "RELE01": "42.0", "RELE02": "63.0", "REHG______": "67.5", "REHC1_____": "51.6",
+        "RELE01": "42.", "RELE02": "63.", "REHG______": "67.5", "REHC1_____": "51.55",
     }
     base_tower, profile, options = build_case("s500guxing", 500, GEOMETRIES[0], 1, 2.6, 50.0, 146.0)
     resolved = resolve_params(build_context(base_tower=base_tower, profile=profile, execution_options=options), rules, allow_fallback=False)
