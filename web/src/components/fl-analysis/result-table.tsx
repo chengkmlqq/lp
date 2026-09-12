@@ -246,7 +246,7 @@ export function ResultTable({
       rowKey="id"
       columns={columns}
       dataSource={rows}
-      pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: false }}
+      pagination={false}
       scroll={{ x: "max-content" }}
     />
   );
