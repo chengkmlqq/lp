@@ -128,11 +128,18 @@ def execute_multi_phase_binary_search_external(
     last_execution: ExternalTowerExecutionResult | None = None
 
     phase_labels = ["单相", "双相", "三相", "四相", "五相", "六相"]
-    # C# ThreadCompute5_work_atp（6537 行）：只对 1/2/3 相独立二分（level_lightning<=3），
-    # 4/5/6 相不是独立搜索——是二分迭代中"实际闪络数>=4"时顺带记录电流
-    # （mArray_Current_kV[mCount_ShanLuoXiang-1] = showCurrent_kV，6702-6704 行）。
-    # Web 若对 4/5/6 相独立二分，会与基准 CSV 的"顺带记录值"无对应关系（实测偏差巨大）。
-    max_binary_phases = min(max_phases, 3)
+    # C# ThreadCompute5_work_atp：回路数决定独立折半档数
+    #   - 单回路(==1)/四回路(==4)分支：只对 1/2/3 相独立二分（level_lightning<=3），
+    #     4/5/6 相是二分迭代中"实际闪络数>=4"时顺带记录电流
+    #     （mArray_Current_kV[mCount_ShanLuoXiang-1] = showCurrent_kV，6702-6704 行）。
+    #   - 双回路(==2)分支（ComputeLightningProtection.cs:7251-7454）：level_lightning=1..6
+    #     逐档独立折半 + 边界接续（currentLeft=currentRight）+ 跳档。Web 此前 cap=3，
+    #     对双回路是错的（症状：五相恒 None、六相靠撞 585.5 vs 基准 362.582）。
+    # Web 若对 4/5/6 相独立二分而基准是"顺带记录值"，会无对应关系——仅双回路(tower guxing/guxingd)放行 6 档。
+    if _circuit_count_for_snapshot(snapshot) == 2:
+        max_binary_phases = min(max_phases, 6)
+    else:
+        max_binary_phases = min(max_phases, 3)
     # 顺带记录：phase_count -> 最低电流（C# 每次达标仿真都覆盖，取最后一次即收敛附近）
     incidental: dict[int, float] = {}
     for level in range(1, max_binary_phases + 1):
@@ -219,10 +226,12 @@ def execute_multi_phase_binary_search_external(
 
     ready_entries = [item for item in phase_entries if item.get("ready")]
     # C# 4/5/6 相：顺带记录（无独立二分）——从 incidental 补 entries，
-    # 无顺带记录时输出 None（C# 未记录也不输出）
-    for lvl in range(4, max_phases + 1):
-        ka = incidental.get(lvl)
-        phase_entries.append({
+    # 无顺带记录时输出 None（C# 未记录也不输出）。
+    # 仅当未独立折半 4/5/6 相（单回路 cap=3）时才需要补；双回路已独立折半满 6 档。
+    if max_binary_phases < 6:
+        for lvl in range(4, max_phases + 1):
+            ka = incidental.get(lvl)
+            phase_entries.append({
             "phase_count": lvl,
             "label": phase_labels[lvl - 1] if lvl <= len(phase_labels) else f"{lvl}相",
             "counterstrike_withstand_ka": ka,
