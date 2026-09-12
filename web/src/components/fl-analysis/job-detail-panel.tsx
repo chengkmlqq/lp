@@ -107,9 +107,23 @@ export function JobDetailPanel({
   const reportScenarioJobName = readOptionalString(selectedJobSummary, "scenario_job_name");
   const reportDocumentName = readOptionalString(selectedJobSummary, "document_filename");
 
+
+  const METHOD_TEXT: Record<string, string> = {
+    egm: "EGM",
+    guicheng: "规程",
+    guideline: "规程法",
+    intersection: "相交法",
+    leader_development: "先导发展法",
+    xiangjiao: "相交法",
+    xiandao: "先导发展法",
+    none: "无",
+  };
+  const showMethod = (v: unknown) => (typeof v === "string" && v ? (METHOD_TEXT[v] ?? v) : "-");
   return (
     <Space direction="vertical" size={16} className="flex w-full">
-      <Descriptions bordered size="small" column={2}>
+      <section className="fl-create-form-block">
+        <div className="fl-create-form-block-title">任务信息</div>
+        <Descriptions bordered size="small" column={2}>
         <Descriptions.Item label="任务名称">{selectedJobDetail.job_name || "-"}</Descriptions.Item>
         <Descriptions.Item label="任务状态">
           <Tag color={statusColor(selectedJobDetail.status)}>{selectedJobDetail.status}</Tag>
@@ -152,8 +166,18 @@ export function JobDetailPanel({
             <Descriptions.Item label="关联复算任务">{reportScenarioJobName || "未关联"}</Descriptions.Item>
             <Descriptions.Item label="文档名" span={2}>{reportDocumentName || "-"}</Descriptions.Item>
           </>
-        ) : selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
-          <>
+        ) : null}
+      </Descriptions>
+      </section>
+
+      {selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
+        <section className="fl-create-form-block">
+          <div className="fl-create-form-block-title">计算方法</div>
+          <Descriptions bordered size="small" column={2}>
+            <Descriptions.Item label="反击耐雷水平计算方法">{showMethod(readObject(selectedJobExecutionOptions).fanji_naleishuiping_method)}</Descriptions.Item>
+            <Descriptions.Item label="绕击耐雷水平计算方法">{showMethod(readObject(selectedJobExecutionOptions).raoji_naleishuiping_method)}</Descriptions.Item>
+            <Descriptions.Item label="反击跳闸率计算方法">{showMethod(readObject(selectedJobExecutionOptions).fanji_tzl_method)}</Descriptions.Item>
+            <Descriptions.Item label="绕击跳闸率计算方法">{showMethod(readObject(selectedJobExecutionOptions).raoji_tzl_method)}</Descriptions.Item>
             <Descriptions.Item label="ATP模型">
               {selectedJobExternalModelName || selectedJobExternalModelCode || "-"}
               {selectedJobExternalModelName && selectedJobExternalModelCode ? ` / ${selectedJobExternalModelCode}` : ""}
@@ -161,21 +185,34 @@ export function JobDetailPanel({
             <Descriptions.Item label="模型版本">
               {typeof selectedJobExternalVersionNo === "number" ? `v${selectedJobExternalVersionNo}` : "-"}
             </Descriptions.Item>
-            <Descriptions.Item label="平均得分">{String(selectedJobDetail.result_summary_json?.score_average ?? "-")}</Descriptions.Item>
-            <Descriptions.Item label="平均扫描点">{String(readObject(selectedJobDetail.result_summary_json).scan_point_average ?? "-")}</Descriptions.Item>
+          </Descriptions>
+        </section>
+      ) : null}
+
+      {selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
+        <section className="fl-create-form-block">
+          <div className="fl-create-form-block-title">高级参数</div>
+          <Descriptions bordered size="small" column={2}>
             <Descriptions.Item label="雷电流波形">{formatDimensionValue(selectedJobWorkflow?.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
             <Descriptions.Item label="绝缘子闪络判据">{formatDimensionValue(selectedJobWorkflow?.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
             <Descriptions.Item label="是否海拔修正">{formatDimensionValue(selectedJobWorkflow?.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
             <Descriptions.Item label="感应电压公式">{formatInducedVoltageFormula(selectedJobWorkflow?.induced_voltage_formula)}</Descriptions.Item>
             <Descriptions.Item label="波头范围">{formatRangeSummary(selectedJobWorkflow?.head_time_range_us)}</Descriptions.Item>
             <Descriptions.Item label="波尾范围">{formatRangeSummary(selectedJobWorkflow?.tail_time_range_us)}</Descriptions.Item>
-          </>
-        ) : (
-          <>
-            <Descriptions.Item label="平均得分">{String(selectedJobDetail.result_summary_json?.score_average ?? "-")}</Descriptions.Item>
-          </>
-        )}
-      </Descriptions>
+          </Descriptions>
+        </section>
+      ) : null}
+
+      <section className="fl-create-form-block">
+        <div className="fl-create-form-block-title">评估结果</div>
+        <Descriptions bordered size="small" column={2}>
+          <Descriptions.Item label="平均得分">{String(selectedJobDetail.result_summary_json?.score_average ?? "-")}</Descriptions.Item>
+          <Descriptions.Item label="平均扫描点">{String(readObject(selectedJobDetail.result_summary_json).scan_point_average ?? "-")}</Descriptions.Item>
+          <Descriptions.Item label="风险计数" span={2}>
+            {JSON.stringify(selectedJobDetail.result_summary_json?.risk_counts ?? {}, null, 2)}
+          </Descriptions.Item>
+        </Descriptions>
+      </section>
 
       {canManage || selectedJob.job_type === "report" ? (
         <Space size={12} wrap split={<Divider type="vertical" />}>

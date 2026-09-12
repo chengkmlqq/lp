@@ -6855,6 +6855,18 @@ body {
   margin-bottom: 12px;
 }
 
+/* 结果详情页：分块不加外边框，块内信息用带边框表格呈现（对齐雷电流幅值详情页） */
+.admin-fl-analysis-detail-pane .fl-create-form-block {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+.admin-fl-analysis-title-row--actions-only {
+  justify-content: flex-end;
+}
+
 .admin-tower-detail-content {
   height: 100%;
   min-width: 0;

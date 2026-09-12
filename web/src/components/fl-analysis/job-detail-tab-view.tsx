@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Drawer, message, Typography } from "antd";
+import { Button, Drawer, message } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { TowerDetailView } from "@/components/fl-analysis/detail-modal";
@@ -220,10 +220,7 @@ export function JobDetailTabView({
       <div className="admin-fl-analysis-detail-pane">
         <div>
           {/* 「任务信息」标题行：导出结果按钮右对齐放在同一行最右侧 */}
-          <div className="admin-fl-analysis-title-row">
-            <Typography.Title level={5} style={{ margin: 0 }}>
-              任务信息
-            </Typography.Title>
+          <div className="admin-fl-analysis-title-row admin-fl-analysis-title-row--actions-only">
             {liveJob.job_type !== "report" ? (
               <Button
                 onClick={() => {
@@ -269,7 +266,9 @@ export function JobDetailTabView({
         </div>
 
         {/* 分级结果：不再用选项卡，表格直接展示在下方 */}
-        <ResultTable
+        <section className="fl-create-form-block">
+          <div className="fl-create-form-block-title">杆塔明细</div>
+          <ResultTable
           selectedJob={liveJob}
           selectedWaveformJobType={selectedJobDetailWaveformType}
           rows={towerRows}
@@ -277,6 +276,7 @@ export function JobDetailTabView({
           error={towerResultsQuery.error}
           onOpenDetail={openTowerDetail}
         />
+        </section>
       </div>
 
       {/* 杆塔详情抽屉：版式参照线路管理详情页（宽 880、单一纵向滚动容器） */}
