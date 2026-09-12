@@ -6877,7 +6877,7 @@ body {
 /* 结果详情页：分块不加外边框，块内信息用带边框表格呈现（对齐雷电流幅值详情页） */
 /* 结果详情页分块表格：统一标签列宽，使各分块的列左右对齐（对齐雷电流幅值详情页观感） */
 .admin-fl-analysis-detail-pane .ant-descriptions-item-label {
-  width: 150px;
+  width: 190px;
   min-width: 150px;
   white-space: nowrap;
 }
