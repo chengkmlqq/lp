@@ -6847,12 +6847,22 @@ body {
 
 /* ── 线路详情·杆塔详情抽屉：单一纵向滚动的内容分区（无选项卡、无左导航） ── */
 /* 结果详情页：「任务信息」标题行 —— 标题左、导出结果按钮右对齐同一行 */
+.admin-fl-analysis-detail-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
 .admin-fl-analysis-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.admin-fl-analysis-title-row {
+  margin-bottom: 16px;
 }
 
 /* 结果详情页：分块不加外边框，块内信息用带边框表格呈现（对齐雷电流幅值详情页） */

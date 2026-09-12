@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Drawer, message } from "antd";
+import { Button, Drawer, message, Typography } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { TowerDetailView } from "@/components/fl-analysis/detail-modal";
@@ -220,7 +220,10 @@ export function JobDetailTabView({
       <div className="admin-fl-analysis-detail-pane">
         <div>
           {/* 「任务信息」标题行：导出结果按钮右对齐放在同一行最右侧 */}
-          <div className="admin-fl-analysis-title-row admin-fl-analysis-title-row--actions-only">
+          <div className="admin-fl-analysis-title-row">
+            <Typography.Title level={4} className="admin-fl-analysis-detail-title">
+              计算任务-计算结果
+            </Typography.Title>
             {liveJob.job_type !== "report" ? (
               <Button
                 onClick={() => {
