@@ -50,6 +50,25 @@ type JobDetailPanelProps = {
   onDownloadReport: () => void;
 };
 
+const JOB_STATUS_TEXT: Record<string, string> = {
+  pending: "待执行",
+  queued: "排队中",
+  running: "执行中",
+  success: "已完成",
+  failed: "失败",
+  cancelled: "已取消",
+  canceled: "已取消",
+};
+
+// 完成时间：年月日之间用横杠（YYYY-MM-DD HH:mm）
+function formatFinishedAt(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).replace(/\//g, "-");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function JobDetailPanel({
   selectedJob,
   selectedJobDetail,
@@ -166,12 +185,12 @@ export function JobDetailPanel({
         <Descriptions bordered size="small" column={2}>
         <Descriptions.Item label="任务名称">{selectedJobDetail.job_name || "-"}</Descriptions.Item>
         <Descriptions.Item label="任务状态">
-          <Tag color={statusColor(selectedJobDetail.status)}>{selectedJobDetail.status}</Tag>
+          <Tag color={statusColor(selectedJobDetail.status)}>{JOB_STATUS_TEXT[selectedJobDetail.status] ?? selectedJobDetail.status}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label="线路">{selectedJobDetail.line_name || selectedJobDetail.line_code || "-"}</Descriptions.Item>
         <Descriptions.Item label="任务类型">{formatJobType(selectedJobDetail.job_type, mitigationMode(selectedJobDetail))}</Descriptions.Item>
         <Descriptions.Item label="结果杆塔数">{selectedJobDetail.result_tower_count}</Descriptions.Item>
-        <Descriptions.Item label="完成时间">{formatDateTime(selectedJobDetail.finished_at)}</Descriptions.Item>
+        <Descriptions.Item label="完成时间">{formatFinishedAt(selectedJobDetail.finished_at)}</Descriptions.Item>
         {selectedJobDetail.job_type === "mitigation" ? (
           <>
             <Descriptions.Item label="前驱风险任务">{sourceJobId || "-"}</Descriptions.Item>
@@ -204,7 +223,8 @@ export function JobDetailPanel({
             <Descriptions.Item label="文档名" span={2}>{reportDocumentName || "-"}</Descriptions.Item>
           </>
         ) : null}
-      </Descriptions>
+                <Descriptions.Item label="风险计数" span={2}>{formatRiskCounts(selectedJobDetail.result_summary_json?.risk_counts)}</Descriptions.Item>
+</Descriptions>
       </section>
 
       {selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
@@ -234,12 +254,6 @@ export function JobDetailPanel({
         </section>
       ) : null}
 
-      <section className="fl-create-form-block">
-        <div className="fl-create-form-block-title">评估结果</div>
-        <Descriptions bordered size="small" column={2}>
-          <Descriptions.Item label="风险计数" span={2}>{formatRiskCounts(selectedJobDetail.result_summary_json?.risk_counts)}</Descriptions.Item>
-        </Descriptions>
-      </section>
 
       {canManage || selectedJob.job_type === "report" ? (
         <Space size={12} wrap split={<Divider type="vertical" />}>

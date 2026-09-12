@@ -247,7 +247,7 @@ export function ResultTable({
       columns={columns}
       dataSource={rows}
       pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: false }}
-      scroll={{ x: 1400 }}
+      scroll={{ x: "max-content" }}
     />
   );
 }

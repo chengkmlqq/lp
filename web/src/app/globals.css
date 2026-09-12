@@ -6754,6 +6754,19 @@ body {
 .admin-fl-analysis-detail-pane .ant-table-content {
   max-height: none !important;
   overflow-y: visible !important;
+  /* 列多/宽度不足时出现横向滚动条 */
+  overflow-x: auto !important;
+}
+/* 分块描述表：固定表格布局，标签列定宽 190px，值列自动等分 → 各块列完全对齐 */
+.admin-fl-analysis-detail-pane .ant-descriptions-view table {
+  table-layout: fixed;
+  width: 100%;
+}
+.admin-fl-analysis-detail-pane .ant-descriptions-item-label {
+  width: 190px;
+}
+.admin-fl-analysis-detail-pane .ant-descriptions-item-content {
+  width: auto;
 }
 /* 详情面板内的 Tabs：内容自然展开（滚动交给外层详情面板），避免出现第二根滚动条 */
 .admin-fl-analysis-detail-pane .admin-fl-analysis-tabs,
