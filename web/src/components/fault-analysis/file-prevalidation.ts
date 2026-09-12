@@ -1,5 +1,3 @@
-import * as XLSX from "xlsx";
-
 export type PreviewKind = "wave_data" | "lightning_data" | "ledger_data" | "traveling_wave" | "optical_data";
 
 export interface ValidationResult {
@@ -154,6 +152,8 @@ function buildLightningFieldStatus(headers: string[]): Record<string, boolean> {
 }
 
 async function readXlsxHeaders(file: File): Promise<string[]> {
+  // xlsx（SheetJS，约 400KB）按需动态加载：只在真正选中 xlsx 文件时下载该 chunk
+  const XLSX = await import("xlsx");
   const buffer = await readFileAsArrayBuffer(file);
   const workbook = XLSX.read(buffer, { type: "array" });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];

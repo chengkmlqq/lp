@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Theme } from "@/components/ui-antd";
+import { Theme } from "@/components/ui-theme";
 
 import { AntdReact19Compat } from "@/components/antd-react19-compat";
 import { AppQueryProvider } from "@/components/app-query-provider";

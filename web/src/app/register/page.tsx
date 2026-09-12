@@ -3,10 +3,9 @@
 import { IdcardOutlined, LockOutlined, MailOutlined, UserOutlined } from "@ant-design/icons";
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Input, Space, Typography } from "antd";
+import { Alert, Button, Card, Input, Space, Typography } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
-import { Card } from "@/components/ui-antd";
 import { withBasePath } from "@/lib/base-path";
 
 export default function RegisterPage() {

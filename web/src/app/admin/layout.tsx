@@ -44,7 +44,7 @@ import { readApiError, getApiBaseUrl } from "@/lib/api";
 import { normalizeAppRoutePath } from "@/lib/app-route-path";
 import { findFirstMenuPath } from "@/lib/menu-tree-path";
 import type { MenuTreeItem, SystemMessageListResponse, SystemMessageSummary } from "@/types/auth";
-import { useThemeAppearance } from "@/components/ui-antd";
+import { useThemeAppearance } from "@/components/ui-theme";
 import { withBasePath } from "@/lib/base-path";
 
 const { Header, Sider, Content } = AntLayout;

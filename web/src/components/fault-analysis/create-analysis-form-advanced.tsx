@@ -239,7 +239,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
     form.setFieldsValue(patch);
   }, [form, lines, messageApi]);
 
-  const handleDownloadExtracted = useCallback((response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string }) => {
+  const handleDownloadExtracted = useCallback(async (response: { ok: boolean; extracted: Record<string, unknown>; missing: string[]; ocr_used: boolean; raw_text_preview?: string }) => {
     try {
       const wsData = [
         ['录波记录厂站', '故障时刻', '故障线路名称', '故障相', '故障持续时间(ms)', '重合闸情况', '故障相电压', '故障相电流', '最大零序电流(A)', '零序补偿系数K', '线路总长度L(km)', '线路正序灵敏角(°)', '线路正序阻抗定值(Ω)'],
@@ -259,6 +259,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
           response.extracted.positive_sequence_impedance_ohm ?? '',
         ]
       ];
+      // xlsx（SheetJS，约 400KB）按需动态加载：仅在实际导出录波结果时下载该 chunk
+      const XLSX = await import("xlsx");
       const ws = XLSX.utils.aoa_to_sheet(wsData);
       ws['!cols'] = wsData[0].map(() => ({ wch: 22 }));
       const wb = XLSX.utils.book_new();

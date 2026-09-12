@@ -3,10 +3,9 @@
 import { IdcardOutlined, LockOutlined } from "@ant-design/icons";
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Checkbox, Input, Space, Typography } from "antd";
+import { Alert, Button, Card, Checkbox, Input, Space, Typography } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
-import { Card } from "@/components/ui-antd";
 import { withBasePath } from "@/lib/base-path";
 import type { MenuTreeItem } from "@/types/auth";
 

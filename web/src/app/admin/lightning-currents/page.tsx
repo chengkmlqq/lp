@@ -51,7 +51,13 @@ import {
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, type TooltipValueType } from "recharts";
+import dynamic from "next/dynamic";
+
+// recharts（约 400KB）按需加载：仅当打开详情且存在多回击数据时才下载图表库
+const MultiReturnPeakChart = dynamic(() => import("@/components/lightning-currents/multi-return-peak-chart"), {
+  ssr: false,
+  loading: () => <div style={{ height: 320 }} />,
+});
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
@@ -1733,27 +1739,7 @@ function AmplitudeDetailView({
       {record.stroke_peaks_json && record.stroke_peaks_json.length > 0 && (
         <div>
           <Typography.Title level={5}>多回击峰值分布</Typography.Title>
-          <ResponsiveContainer width="100%" height={320}>
-            <LineChart data={record.stroke_peaks_json.map((peak: Record<string, unknown>, idx: number) => ({
-              index: idx + 1,
-              time_us: Number(peak.time_us) || 0,
-              current_ka: Number(peak.current_ka) || 0,
-            }))}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="index" label={{ value: "回击序号", position: "insideBottomRight", offset: -5 }} />
-              <YAxis label={{ value: "峰值电流 (kA)", angle: -90, position: "insideLeft", offset: 10 }} />
-              <Tooltip
-                formatter={(value: TooltipValueType | undefined, name?: string | number) => {
-                  if (name === "current_ka") return [formatNumber(Number(value), 3), "峰值电流 (kA)"] as [ReactNode, string | number];
-                  if (name === "time_us") return [formatNumber(Number(value), 2), "时间 (μs)"] as [ReactNode, string | number];
-                  return [value, name ?? ""] as [ReactNode, string | number];
-                }}
-                labelFormatter={(label) => `回击 ${label}`}
-              />
-              <Legend />
-              <Line type="monotone" dataKey="current_ka" stroke="#1890ff" name="峰值电流 (kA)" strokeWidth={2} dot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          <MultiReturnPeakChart peaks={record.stroke_peaks_json as Record<string, unknown>[]} />
         </div>
       )}
 
