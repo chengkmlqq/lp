@@ -65,6 +65,24 @@ from .storage_driver import (
 PLACEHOLDER_PATTERN = re.compile(r"{{\s*([^{}]+?)\s*}}")
 
 
+def _circuit_count_for_snapshot(snapshot: FlAnalysisTowerSnapshot) -> int:
+    """判定杆塔回路数（对齐 C# Method.cs mNumber_HuiLu 赋值）。
+
+    C# 依据塔型设置（Method.cs 633/636/770/906）：
+      - guxing / guxingd → 2（双回路，ThreadCompute5_work_atp 双回分支 1..6 独立折半）
+      - sihuita → 4（四回路，但 ThreadCompute5_work_atp 用 ==1||==4 单回分支，非双回 6 相独立）
+      - 其余（ganzi/maotou/jiubei/menxing/shangzi…）→ 1（单回路，1..3 独立 + 4-6 顺带）
+    返回 2 = 需走 6 相独立折半双回路径；否则按原单回逻辑。
+    """
+    tt = (snapshot.tower_type or "").strip().lower()
+    if tt in {"guxing", "guxingd"}:
+        return 2
+    if tt == "sihuita":
+        return 4
+    return 1
+
+
+
 def execute_multi_phase_binary_search_external(
     resolved_job: ResolvedExternalWaveformJob,
     *,
