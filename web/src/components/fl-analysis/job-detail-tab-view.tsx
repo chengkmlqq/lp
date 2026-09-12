@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { message, Space, Tabs, Tag, Typography } from "antd";
+import { Button, Drawer, message, Typography } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { TowerDetailView } from "@/components/fl-analysis/detail-modal";
@@ -16,15 +16,9 @@ import type {
   FlAnalysisTowerResultSummary,
 } from "@/types/auth";
 import {
-  formatRiskLevel,
   readDownloadFilename,
-  riskColor,
   waveformJobType,
-  type DetailTabItem,
 } from "@/components/fl-analysis/types";
-
-/** 任务 Tab 内「分级结果」固定主 Tab（不可关闭），塔详情 Tab 依次追加在其后 */
-const RESULTS_TAB_KEY = "results";
 
 type JobDetailTabViewProps = {
   /** 打开 Tab 时的任务快照（FlAnalysisJobSummary），用于稳定标识与详情展示 */
@@ -62,17 +56,8 @@ export function JobDetailTabView({
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
 
-  // ---- 任务 Tab 内「分级结果」+ 塔详情动态选项卡（LP-274 挂为任务 Tab 子级）----
-  const [towerTabs, setTowerTabs] = useState<DetailTabItem[]>([]);
-  const [towerActiveTabKey, setTowerActiveTabKey] = useState<string>(RESULTS_TAB_KEY);
-  const towerTabsRef = useRef(towerTabs);
-  const towerActiveTabKeyRef = useRef(towerActiveTabKey);
-  useEffect(() => {
-    towerTabsRef.current = towerTabs;
-  }, [towerTabs]);
-  useEffect(() => {
-    towerActiveTabKeyRef.current = towerActiveTabKey;
-  }, [towerActiveTabKey]);
+  // ---- 杆塔详情：原「塔详情动态选项卡」改为抽屉展示（版式参照线路管理详情页的杆塔抽屉）----
+  const [towerDetailRow, setTowerDetailRow] = useState<FlAnalysisTowerResultSummary | null>(null);
 
   const jobDetailQuery = useQuery({
     queryKey: ["/api/v1/fl-analysis/jobs/detail", job.id],
@@ -225,131 +210,95 @@ export function JobDetailTabView({
     },
   });
 
-  // ---- 塔详情动态选项卡（LP-274，挂为任务 Tab 子级）----
+  // 点击分级结果中的杆塔行 → 打开抽屉查看该杆塔详情
   const openTowerDetail = useCallback((row: FlAnalysisTowerResultSummary) => {
-    const tabKey = row.id;
-    setTowerTabs((previous) => {
-      if (previous.some((tab) => tab.key === tabKey)) {
-        return previous;
-      }
-      const riskLabel = (
-        <Tag color={riskColor(row.risk_level)}>{formatRiskLevel(row.risk_level)}</Tag>
-      );
-      return [
-        ...previous,
-        {
-          key: tabKey,
-          label: (
-            <Space size={6}>
-              <span>{row.tower_no}</span>
-              {riskLabel}
-            </Space>
-          ),
-          closable: true,
-          children: (
-            <TowerDetailView
-              detailRow={row}
-              selectedJob={job}
-              selectedJobDetail={selectedJobDetail}
-              canReadLogs={canReadLogs}
-              onOpenLog={onOpenLog}
-            />
-          ),
-        } satisfies DetailTabItem,
-      ];
-    });
-    setTowerActiveTabKey(tabKey);
-  }, [job, selectedJobDetail, canReadLogs, onOpenLog]);
-
-  const handleTowerTabsEdit = useCallback((
-    targetKey: ReactMouseEvent | ReactKeyboardEvent | string,
-    action: "add" | "remove",
-  ) => {
-    if (action !== "remove") {
-      return;
-    }
-    const key = String(targetKey);
-    const removedIndex = towerTabsRef.current.findIndex((tab) => tab.key === key);
-    const next = towerTabsRef.current.filter((tab) => tab.key !== key);
-    setTowerTabs(next);
-    if (towerActiveTabKeyRef.current === key) {
-      const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? RESULTS_TAB_KEY;
-      setTowerActiveTabKey(fallback);
-    }
+    setTowerDetailRow(row);
   }, []);
-
   return (
     <>
       {contextHolder}
       <div className="admin-fl-analysis-detail-pane">
         <div>
-        <Typography.Title level={5}>
-          任务信息
-        </Typography.Title>
-        <JobDetailPanel
-          selectedJob={liveJob}
-          selectedJobDetail={selectedJobDetail}
-          loading={jobDetailQuery.isLoading}
-          error={jobDetailQuery.error}
-          canManage={canManage}
-          canCreateMitigation={canCreateMitigation}
-          canCreateScenario={canCreateScenario}
-          canCreateReport={canCreateReport}
-          canDownloadResults={canDownloadResults}
-          selectedJobDetailWaveformType={selectedJobDetailWaveformType}
-          candidateMitigationRows={candidateMitigationRows}
-          candidateScenarioRows={candidateScenarioRows}
-          candidateScenarioBaseJobs={candidateScenarioBaseJobs}
-          candidateReportRows={candidateReportRows}
-          startPending={startJobMutation.isPending}
-          downloadResultsPending={downloadResultsMutation.isPending}
-          downloadReportPending={downloadReportMutation.isPending}
-          onStart={() => {
-              startJobMutation.mutate(job.id);
+          {/* 「任务信息」标题行：导出结果按钮右对齐放在同一行最右侧 */}
+          <div className="admin-fl-analysis-title-row">
+            <Typography.Title level={5} style={{ margin: 0 }}>
+              任务信息
+            </Typography.Title>
+            {liveJob.job_type !== "report" ? (
+              <Button
+                onClick={() => {
+                  downloadResultsMutation.mutate({
+                    jobId: job.id,
+                    runId: selectedJobDetail?.latest_run_id ?? job.latest_run_id,
+                    jobType: job.job_type,
+                  });
+                }}
+                loading={downloadResultsMutation.isPending}
+                disabled={!canDownloadResults}
+              >
+                导出结果
+              </Button>
+            ) : null}
+          </div>
+          <JobDetailPanel
+            selectedJob={liveJob}
+            selectedJobDetail={selectedJobDetail}
+            loading={jobDetailQuery.isLoading}
+            error={jobDetailQuery.error}
+            canManage={canManage}
+            canCreateMitigation={canCreateMitigation}
+            canCreateScenario={canCreateScenario}
+            canCreateReport={canCreateReport}
+            selectedJobDetailWaveformType={selectedJobDetailWaveformType}
+            candidateMitigationRows={candidateMitigationRows}
+            candidateScenarioRows={candidateScenarioRows}
+            candidateScenarioBaseJobs={candidateScenarioBaseJobs}
+            candidateReportRows={candidateReportRows}
+            startPending={startJobMutation.isPending}
+            downloadReportPending={downloadReportMutation.isPending}
+            onStart={() => {
+                startJobMutation.mutate(job.id);
+              }}
+            onOpenMitigation={() => onOpenMitigation(liveJob, candidateMitigationRows)}
+            onOpenScenario={() => onOpenScenario(liveJob, candidateScenarioRows, candidateScenarioBaseJobs)}
+            onOpenReport={() => onOpenReport(liveJob, candidateReportRows)}
+            onDownloadReport={() => {
+              downloadReportMutation.mutate(job.id);
             }}
-          onOpenMitigation={() => onOpenMitigation(liveJob, candidateMitigationRows)}
-          onOpenScenario={() => onOpenScenario(liveJob, candidateScenarioRows, candidateScenarioBaseJobs)}
-          onOpenReport={() => onOpenReport(liveJob, candidateReportRows)}
-          onDownloadResults={() => {
-              downloadResultsMutation.mutate({
-                jobId: job.id,
-                runId: selectedJobDetail?.latest_run_id ?? job.latest_run_id,
-                jobType: job.job_type,
-              });
-            }}
-          onDownloadReport={() => {
-            downloadReportMutation.mutate(job.id);
-          }}
-        />
+          />
         </div>
 
-        <Tabs
-          type="editable-card"
-          hideAdd
-          activeKey={towerActiveTabKey}
-          onChange={setTowerActiveTabKey}
-          onEdit={handleTowerTabsEdit}
-          className="admin-fl-analysis-tabs admin-fl-analysis-job-tabs"
-          items={[
-            {
-              key: RESULTS_TAB_KEY,
-              label: <span className="admin-fl-analysis-tab-title">分级结果</span>,
-              closable: false,
-              children: (
-                <ResultTable
-                    selectedJob={liveJob}
-                    selectedWaveformJobType={selectedJobDetailWaveformType}
-                    rows={towerRows}
-                    loading={towerResultsQuery.isLoading}
-                    error={towerResultsQuery.error}
-                  onOpenDetail={openTowerDetail}
-                />
-              ),
-            },
-            ...towerTabs,
-          ]}
+        {/* 分级结果：不再用选项卡，表格直接展示在下方 */}
+        <ResultTable
+          selectedJob={liveJob}
+          selectedWaveformJobType={selectedJobDetailWaveformType}
+          rows={towerRows}
+          loading={towerResultsQuery.isLoading}
+          error={towerResultsQuery.error}
+          onOpenDetail={openTowerDetail}
         />
       </div>
+
+      {/* 杆塔详情抽屉：版式参照线路管理详情页（宽 880、单一纵向滚动容器） */}
+      <Drawer
+        title={towerDetailRow ? `杆塔详情 - ${towerDetailRow.tower_no}` : "杆塔详情"}
+        open={towerDetailRow !== null}
+        width={880}
+        onClose={() => setTowerDetailRow(null)}
+        destroyOnHidden
+      >
+        {towerDetailRow ? (
+          <div className="admin-tower-detail-content">
+            <TowerDetailView
+              detailRow={towerDetailRow}
+              selectedJob={job}
+              selectedJobDetail={selectedJobDetail}
+              canReadLogs={canReadLogs}
+              onOpenLog={onOpenLog}
+            />
+          </div>
+        ) : null}
+      </Drawer>
     </>
   );
 }

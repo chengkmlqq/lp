@@ -36,20 +36,17 @@ type JobDetailPanelProps = {
   canCreateMitigation: boolean;
   canCreateScenario: boolean;
   canCreateReport: boolean;
-  canDownloadResults: boolean;
   selectedJobDetailWaveformType: "normal" | "tongtiao" | null;
   candidateMitigationRows: FlAnalysisTowerResultSummary[];
   candidateScenarioRows: FlAnalysisTowerResultSummary[];
   candidateScenarioBaseJobs: FlAnalysisJobSummary[];
   candidateReportRows: FlAnalysisTowerResultSummary[];
   startPending: boolean;
-  downloadResultsPending: boolean;
   downloadReportPending: boolean;
   onStart: () => void;
   onOpenMitigation: () => void;
   onOpenScenario: () => void;
   onOpenReport: () => void;
-  onDownloadResults: () => void;
   onDownloadReport: () => void;
 };
 
@@ -62,20 +59,17 @@ export function JobDetailPanel({
   canCreateMitigation,
   canCreateScenario,
   canCreateReport,
-  canDownloadResults,
   selectedJobDetailWaveformType,
   candidateMitigationRows,
   candidateScenarioRows,
   candidateScenarioBaseJobs,
   candidateReportRows,
   startPending,
-  downloadResultsPending,
   downloadReportPending,
   onStart,
   onOpenMitigation,
   onOpenScenario,
   onOpenReport,
-  onDownloadResults,
   onDownloadReport,
 }: JobDetailPanelProps) {
   const { labelMap } = useFlDimensionOptions();
@@ -187,9 +181,12 @@ export function JobDetailPanel({
         <Space size={12} wrap split={<Divider type="vertical" />}>
           {canManage ? (
             <Space wrap>
-              <Button onClick={onStart} loading={startPending}>
-                {selectedJob.status === "success" ? "重新执行任务" : "启动任务"}
-              </Button>
+              {/* 已完成的成功任务不再提供「重新执行任务」入口（结果详情页要求） */}
+              {selectedJob.status === "success" ? null : (
+                <Button onClick={onStart} loading={startPending}>
+                  启动任务
+                </Button>
+              )}
             </Space>
           ) : null}
           {canManage && (canCreateMitigation || canCreateScenario || canCreateReport) ? (
@@ -222,15 +219,6 @@ export function JobDetailPanel({
             </Space>
           ) : null}
           <Space wrap>
-            {selectedJob.job_type !== "report" ? (
-              <Button
-                onClick={onDownloadResults}
-                loading={downloadResultsPending}
-                disabled={!canDownloadResults}
-              >
-                导出结果
-              </Button>
-            ) : null}
             {selectedJob.job_type === "report" ? (
               <Button
                 type="primary"

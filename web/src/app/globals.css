@@ -6790,6 +6790,15 @@ body {
 }
 
 /* ── 线路详情·杆塔详情抽屉：单一纵向滚动的内容分区（无选项卡、无左导航） ── */
+/* 结果详情页：「任务信息」标题行 —— 标题左、导出结果按钮右对齐同一行 */
+.admin-fl-analysis-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .admin-tower-detail-content {
   height: 100%;
   min-width: 0;
