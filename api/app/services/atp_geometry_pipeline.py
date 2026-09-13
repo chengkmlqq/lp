@@ -141,6 +141,13 @@ def regenerate_line_models(
         )
         dat_path.write_bytes(rewritten.encode("gbk", errors="replace"))
 
+        # ⚡ 几何没变且 .lib 已存在 → 跳过 LCC（二分期间几何不变，每塔只需一次）
+        if rewritten == original and (engine_dir / f"{name}.lib").exists():
+            done.append(name)
+            print(f"[ATP] {name} 几何未变，复用已有 .lib（跳过 LCC）",
+                  file=sys.stdout, flush=True)
+            continue
+
         command = build_command(input_path=dat_path)
         result = subprocess.run(command, cwd=str(engine_dir), env=env,
                                 capture_output=True, text=True, encoding="utf-8",
