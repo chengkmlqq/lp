@@ -14,7 +14,6 @@
  - 档距槽：第 17 行（频率卡），offset 44，宽 8，F2；dahao.dat←大号档距、xiaohao.dat←小号档距
  - 偏移 0-based；值右对齐到宽；格式 F{digits}；去尾随 0（保留小数点）
 """
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass
@@ -193,4 +192,44 @@ def build_values(section: str, **ctx) -> dict[str, float]:
     raise RuntimeError(
         f"塔型段 '{section}' 的 .dat 几何取值尚未移植（需按 C# ComputeLightningProtection.cs 对应分支实现）；"
         f"为避免静默产出错误几何，此处显式报错"
+    )
+
+
+_BRANCH_HEAD = re.compile(r"^-\d+(IN___[A-Z]+)(OUT__[A-Z]+)")
+
+
+def pch_to_lib(pch_text: str) -> str:
+    lines = pch_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    di = next((i for i, x in enumerate(lines) if x.startswith("-1IN___")), None)
+    if di is None:
+        raise ValueError("pch 中找不到数据起点 (-1IN___ ...)")
+    data = lines[di:]
+    while data and not data[-1].strip():
+        data.pop()                            # 丢掉尾部空行（C# 不写它们）
+    heads = [(i, x) for i, x in enumerate(data) if _BRANCH_HEAD.match(x)]
+    if not heads:
+        raise ValueError("pch 中找不到分支头")
+    ptrs = [i + 2 for i, _ in heads]          # 行号(1-based)+1
+    nodes = [m.groups() for m in (_BRANCH_HEAD.match(x) for _, x in heads) if m]
+    n = len(nodes)
+    kard = "".join("%3d" % p for p in ptrs)
+    kard = "".join("%3d" % v for p in ptrs for v in (p, p))
+    karg = "".join("%3d" % v for i in range(1, n + 1) for v in (i, i + n))
+    kbeg = "".join("%3d" % v for _ in range(n) for v in (3, n + 1))
+    kend = "".join("%3d" % v for _ in range(n) for v in (n, n + 6))
+    ktex = "".join("%3d" % v for _ in range(n) for v in (1, 1))
+    ins = [a for a, _ in nodes]
+    outs = [b for _, b in nodes]
+    body = "\n".join(data)
+    arg = "ARG, " + ", ".join(ins + outs) + ","
+    return (
+        "KARD" + kard + "\n"
+        + "KARG" + karg + "\n"
+        + "KBEG" + kbeg + "\n"
+        + "KEND" + kend + "\n"
+        + "KTEX" + ktex + "\n"
+        + "/BRANCH\n"
+        + body + "\n"
+        + "$EOF\n"
+        + arg + "\n"
     )
