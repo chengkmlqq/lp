@@ -930,6 +930,27 @@ def execute_job(job_id: str) -> None:
                         _raoji_merged["shielding_trip_rate"] = _egm_rate
                         _raoji_merged["shielding_trip_rate_method"] = "egm"
                         graded = _raoji_merged
+                        # ── 顶层口径对齐 C# 交流同跳，并用 EGM 跳闸率重算风险等级 ──
+                        # （C# 引擎对 IDout24/26 只注册不赋值 → 顶层耐雷/反击跳闸率输出 0；
+                        #   风险等级 C# 用 EGM 后的绕击跳闸率算，故此处需在 EGM 之后重算）
+                        graded["counterstrike_withstand_ka"] = 0.0
+                        graded["counterstrike_trip_rate"] = 0.0
+                        graded["shielding_withstand_ka"] = 0.0
+                        try:
+                            from .fl_analysis_rules import (  # noqa: PLC0415
+                                _calculate_risk_grade,
+                                _normalize_lightning_inputs,
+                                _risk_level_from_grade,
+                            )
+
+                            _norm = _normalize_lightning_inputs(payload)
+                            _ri, _th, _rg = _calculate_risk_grade(_norm, 0.0, _egm_rate)
+                            if _rg is not None:
+                                graded["risk_grade"] = _rg
+                                graded["risk_level"] = _risk_level_from_grade(_rg) or graded.get("risk_level")
+                                graded["risk_index_s"] = _ri
+                        except Exception as _exc:  # noqa: BLE001
+                            logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
                     run.engine_command = run.engine_command or execution.engine_command
                     run.working_dir = run.working_dir or execution.working_dir
                     if execution.stdout_text:

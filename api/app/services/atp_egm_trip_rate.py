@@ -223,7 +223,7 @@ def compute_shielding_trip_rate(
     tower_type: str,
     raoji_withstand_ka: float,
     env: dict[str, str],
-    timeout: int = 120,
+    timeout: int = 600,
 ) -> tuple[float, float]:
     """按 C# EGM 流程计算绕击跳闸率。返回 (跳闸率, alpha?)。"""
     circuits = _circuit_geometry(base_tower)
@@ -246,7 +246,14 @@ def compute_shielding_trip_rate(
         (work_dir / "name_egm{}.txt".format(egm_type)).write_text(
             "param_main_cic.txt\nparam_main_Ic.txt\nresult_main.txt\n", encoding="gbk", errors="replace"
         )
+        # 两轮输入（倾角1 / -倾角2）相同时复用同一次 EGM 运行结果——
+        # EGM 为 MATLAB 编译程序，单次约 113s，能省一半时间。
+        _run_cache: dict[float, list[float]] = {}
         for turn, slope in ((1, slope1), (2, -slope2)):
+            _key = round(float(slope), 9)
+            if _key in _run_cache:
+                total += _extract(egm_type, _run_cache[_key], turn=turn)
+                continue
             ic_text = build_ic(
                 base_tower=base_tower,
                 profile=profile,
@@ -259,6 +266,7 @@ def compute_shielding_trip_rate(
             values = _run_egm(
                 exe=exe, work_dir=work_dir, name_file=f"name_egm{egm_type}.txt", env=env, timeout=timeout
             )
+            _run_cache[_key] = values
             total += _extract(egm_type, values, turn=turn)
 
     divisor = _tower_divisor(tower_type)
