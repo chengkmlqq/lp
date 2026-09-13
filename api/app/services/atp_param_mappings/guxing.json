@@ -4,7 +4,7 @@
   "name": "鼓型（含单回 guxingd）",
   "priority": 100,
   "fallback_to": "ganzi",
-  "fallback_enabled": true,
+  "fallback_enabled": false,
   "slots": {
     "RELE01": {
       "expr": "h_l",

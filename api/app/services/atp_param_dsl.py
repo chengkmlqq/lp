@@ -244,6 +244,10 @@ def format_value(value: Any, digits: int = 2) -> str:
     ② 去掉尾随的 '0'（但保留小数点，如 30.00 → "30."、34.10 → "34.1"）；
     ③ 精度为 0 时补 "."（F0 → "30."）；
     ④ None → "1."（原行为，保证 ATP 数值必带小数点）。
+
+    ⚠️ 舍入必须用「四舍五入（half-away-from-zero）」：C# 的 `ToString("F2")` 是四舍五入，
+    而 Python 的 f-string 格式化按 IEEE 二进制真值截断（51.555 的 double 实为 51.5549999…
+    → 得 51.55）。实测差异：REHC 51.56(C#) vs 51.55(旧实现)。改用 Decimal(repr) + ROUND_HALF_UP。
     """
     if value is None:
         return "1."
@@ -252,8 +256,14 @@ def format_value(value: Any, digits: int = 2) -> str:
     except (TypeError, ValueError):
         digits = 2
     try:
-        text = f"{float(value):.{digits}f}"
-    except (TypeError, ValueError):
+        from decimal import ROUND_HALF_UP, Decimal  # noqa: PLC0415
+
+        # repr → 最短往返字符串，避免把二进制噪声带进舍入；quantize 后按 C# 的 F2 语义输出
+        dec = Decimal(repr(float(value))).quantize(
+            Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP
+        )
+        text = f"{dec:.{digits}f}"
+    except (TypeError, ValueError, ArithmeticError):
         return "1."
     # ② 去尾随零：只删小数点后的零，且至少保留小数点本身
     if "." in text:

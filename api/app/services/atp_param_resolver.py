@@ -387,12 +387,19 @@ def build_context(
     head_raw = _f(prof.get("current_head_time_ms"))
     if head_raw is None:
         head_us = _f(prof.get("current_head_time_us"))
+        # ⚠️ 2026-09-13 修复：profile 缺波头/波尾时（63 列导入格式无这两列 → 恒 None），
+        # 回退到任务级执行选项（页面「波头时间/μs」= head_time_min_us）。此前恒用 2.6/50 默认，
+        # 导致用户在任务里设 2/40 也无效、渲染出来的 REAA/REBB 与 C# 不一致。
+        if head_us is None:
+            head_us = _f(options.get("head_time_min_us"))
         head_ms = head_us if head_us is not None else 2.6
     else:
         head_ms = head_raw
     tail_raw = _f(prof.get("current_tail_time_ms"))
     if tail_raw is None:
         tail_us = _f(prof.get("current_tail_time_us"))
+        if tail_us is None:
+            tail_us = _f(options.get("tail_time_min_us"))
         tail_ms = tail_us if tail_us is not None else 50.0
     else:
         tail_ms = tail_raw

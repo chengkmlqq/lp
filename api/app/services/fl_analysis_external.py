@@ -419,6 +419,10 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
     head_t_raw_ms = f(profile.get("current_head_time_ms"))
     if head_t_raw_ms is None:
         head_t_us = f(profile.get("current_head_time_us"))
+        # ⚠️ 2026-09-13 修复：profile 缺波头/波尾时回退任务级选项 head_time_min_us（页面「波头时间/μs」），
+        # 否则用户在任务里设 2/40 也无效、渲染恒为默认 2.6/50（与 C# work.atp 不一致）。
+        if head_t_us is None:
+            head_t_us = f(execution_options.get("head_time_min_us"))
         # ⚠️ C# 语义（LP_Task.txt 波头=2.6）：m雷电流波头时间_ms 直接取配置值（毫秒语义，
         # 实际是"数值直接用"——C# 残留 work.atp REBB=-1E6/2.6=-384615、REAA1=2.6E-6）。
         # 不能除以 1000：否则 REBB=-1E6/0.0026 差 1000 倍、REAA1=2.6E-9 波形时间≈0 → 恒闪络。
@@ -428,6 +432,8 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
     tail_t_raw_ms = f(profile.get("current_tail_time_ms"))
     if tail_t_raw_ms is None:
         tail_t_us = f(profile.get("current_tail_time_us"))
+        if tail_t_us is None:
+            tail_t_us = f(execution_options.get("tail_time_min_us"))
         # C# 语义同上：波尾 50（毫秒语义数值直接用）→ REAA=-1E6/50=-20000、REBB1=50E-6
         tail_t_ms = tail_t_us if tail_t_us is not None else 50.0
     else:

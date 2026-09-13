@@ -27,7 +27,7 @@
   "globals": {
     "RER001": {
       "expr": "ground_r",
-      "fmt": 1
+      "fmt": 2
     },
     "RELENS____": {
       "expr": "insul_m",
@@ -35,7 +35,7 @@
     },
     "REIGAN____": {
       "expr": "abs(current_ka)",
-      "fmt": 1
+      "fmt": 2
     },
     "REIAMP____": {
       "expr": "-abs(current_ka) * 1000.0",
