@@ -7,16 +7,18 @@ import {
   Checkbox,
   Empty,
   Form,
+  Input,
   message,
   Pagination,
   Progress,
+  Segmented,
   Select,
   Space,
   Table,
   Tag,
   Typography,
 } from "antd";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnsType } from "antd/es/table";
 import { PlusOutlined } from "@ant-design/icons";
 
@@ -111,7 +113,7 @@ export default function AdminLightningMeasureRecommendPage() {
       tower_no: row.tower_no,
       risk_level: row.risk_level,
       status: row.status,
-      include: row.risk_level === "high" || (row.risk_level && parseInt(row.risk_level, 10) > 2),
+      include: Boolean(row.risk_level === "high" || (row.risk_level && parseInt(row.risk_level, 10) > 2)),
     }));
   }, [towerQuery.data?.items]);
 

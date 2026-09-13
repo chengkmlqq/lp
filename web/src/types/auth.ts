@@ -949,6 +949,17 @@ export type FlAnalysisTowerResultListResponse = {
   total: number;
 };
 
+/** 防雷改造（措施推荐）任务选中杆塔的行结构，由页面从 FlAnalysisTowerResultSummary 映射而来 */
+export type TowerSelectionRow = {
+  id: string;
+  tower_id: string;
+  tower_no: string;
+  risk_level: string | null;
+  status: string;
+  /** 是否包含该塔（用户勾选），页面按风险等级计算为布尔 */
+    include: boolean;
+  };
+
 export type FaultAnalysisStatus = "pending" | "processing" | "completed" | "failed";
 
 export type FaultAnalysisSummary = {
