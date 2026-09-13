@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import subprocess
 import sys
@@ -141,10 +142,18 @@ def regenerate_line_models(
         )
         dat_path.write_bytes(rewritten.encode("gbk", errors="replace"))
 
-        # ⚡ 几何没变且 .lib 已存在 → 跳过 LCC（二分期间几何不变，每塔只需一次）
-        if rewritten == original and (engine_dir / f"{name}.lib").exists():
+        # ⚡ 几何指纹未变 → 复用已生成的 .lib。
+        # ⚠️ 必须每轮把缓存的 .lib 写回：_materialize_asset_files 每轮都用资产里的
+        # 旧 .lib 覆盖回来，只"跳过 LCC"不写回会导致主仿真仍用旧几何的 .lib。
+        geo_key = hashlib.sha1(rewritten.encode("gbk", errors="replace")).hexdigest()[:16]
+        marker = engine_dir / f".geo_key_{name}"
+        gen_cache = engine_dir / f".gen_lib_{name}"
+        if (marker.exists()
+                and marker.read_text(encoding="utf-8", errors="replace").strip() == geo_key
+                and gen_cache.exists()):
+            (engine_dir / f"{name}.lib").write_bytes(gen_cache.read_bytes())
             done.append(name)
-            print(f"[ATP] {name} 几何未变，复用已有 .lib（跳过 LCC）",
+            print(f"[ATP] {name} 几何未变({geo_key})，写回缓存 .lib（跳过 LCC）",
                   file=sys.stdout, flush=True)
             continue
 
@@ -160,6 +169,8 @@ def regenerate_line_models(
             )
         lib_text = pch_to_lib(pch_path.read_bytes().decode("gbk", errors="replace"))
         (engine_dir / f"{name}.lib").write_bytes(lib_text.encode("gbk", errors="replace"))
+        gen_cache.write_bytes(lib_text.encode("gbk", errors="replace"))
+        marker.write_text(geo_key, encoding="utf-8")
         done.append(name)
         print(f"[ATP] 线路模型已重生成：{name}.lib（几何改写 + LCC）", file=sys.stdout, flush=True)
     if not done:
