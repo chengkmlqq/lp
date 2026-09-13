@@ -511,9 +511,14 @@ def _evaluate_waveform_case(
         "risk_level": risk_level,
         "risk_grade": risk_grade if risk_grade is not None else base_result.get("risk_grade"),
         "score": score,
-        "counterstrike_withstand_ka": dominant_counterstrike_withstand_ka,
-        "counterstrike_trip_rate": dominant_counterstrike_trip_rate,
-        "shielding_withstand_ka": shielding_withstand_ka,
+        # ── 顶层耐雷/跳闸率口径（对齐 C# 交流同跳）───────────────────────
+        # 证据：C# 引擎（ComputeLightningProtection.cs）对 IDout24「反击耐雷水平」、
+        # IDout26「绕击耐雷水平」只在 MyParamClass 注册、**全源码无赋值** → 输出保持 0；
+        # 基准 CSV《同跳-500kV双回雁船线-测试相序输出.csv》六行顶层均为 0。明细各档值
+        # 仍完整保留在 multi_phase_results / phase_results（对应 CSV 的单相…六相列）。
+        "counterstrike_withstand_ka": 0.0,
+        "counterstrike_trip_rate": 0.0,
+        "shielding_withstand_ka": 0.0,
         "shielding_trip_rate": shielding_trip_rate,
         "cause_analysis": cause_analysis,
         "mitigation_recommendation": mitigation_recommendation,

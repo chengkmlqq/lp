@@ -5,7 +5,9 @@ import csv
 import io
 import json
 import logging
+import os
 import time
+from pathlib import Path
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -903,6 +905,30 @@ def execute_job(job_id: str) -> None:
                                 stdout_chunks.append(f"[{snapshot.tower_no}][绕击{['A', 'B', 'C'][_idx - 1]}相] {_sh.stdout_text}")
                         _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
                         tower_tracker.mark_phase_done()
+                        # ── 绕击跳闸率：C# EGM 电气几何模型（rjtzl_egm*.exe，wine 跑）──
+                        # C# rjtzl_AC_GroundAngle2 用「中间相绕击耐雷的整数部分」作 Ic
+                        # （(int)mRaojiCurrent），跑 egm 两轮（地面倾角1 / -地面倾角2）求和，
+                        # 鼓型塔再 ÷2。已用 C# 0913 中间文件逐位验证：0.406567 ✓
+                        _egm_ic = _raoji_values.get("B相") or _raoji_values.get("A相")
+                        if _egm_ic is None:
+                            raise RuntimeError(
+                                f"{snapshot.tower_no}: 绕击耐雷水平缺失，无法计算 EGM 绕击跳闸率"
+                            )
+                        from .atp_egm_trip_rate import compute_shielding_trip_rate  # noqa: PLC0415
+
+                        _egm_env = os.environ.copy()
+                        _egm_env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
+                        _egm_rate, _egm_alpha = compute_shielding_trip_rate(
+                            atp_root=Path("/app/data/wine/ATP"),
+                            voltage_kv=job.line.voltage_kv if job.line else None,
+                            base_tower=snapshot.base_tower_json or {},
+                            profile=snapshot.profile_json or {},
+                            tower_type=snapshot.tower_type or "",
+                            raoji_withstand_ka=float(_egm_ic),
+                            env=_egm_env,
+                        )
+                        _raoji_merged["shielding_trip_rate"] = _egm_rate
+                        _raoji_merged["shielding_trip_rate_method"] = "egm"
                         graded = _raoji_merged
                     run.engine_command = run.engine_command or execution.engine_command
                     run.working_dir = run.working_dir or execution.working_dir
