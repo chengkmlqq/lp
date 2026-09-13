@@ -786,23 +786,43 @@ def execute_job(job_id: str) -> None:
                     graded = execution.result_json
                     # 单相反击二分阶段完成
                     tower_tracker.mark_phase_done()
-                    # LP-570 绕击分流：adapter_config_json.shielding_asset_id 配置了绕击资产
-                    # （raoji 模板）时，用其单独二分绕击耐雷水平（C# 任务2 绕击=ATP raoji 模板）。
-                    # 此前把反击二分值直接塞 shielding_withstand_ka（511 异常）。
-                    shielding_asset_id = str(
-                        (job.adapter_config_json or {}).get("shielding_asset_id") or ""
-                    ).strip()
-                    if shielding_asset_id and execution_options.get("binary_search", True):
-                        try:
-                            shielding_job = resolve_external_waveform_job(
-                                db,
-                                external_adapter=job.external_adapter,
-                                adapter_config_json={**dict(job.adapter_config_json or {}), "asset_id": shielding_asset_id},
-                                tower_type=snapshot.tower_type or "",
-                            )
-                            if shielding_job is not None:
-                                shielding_exec = execute_shielding_binary_search_external(
-                                    shielding_job,
+                    # ── 绕击（raoji1/raoji2/raoji3 = A/B/C 相）──────────────
+                    # C# ThreadCompute5_work_atp：start compute raoji1/raoji2/raoji3
+                    # （Alert.txt 实测），即 A/B/C 三相各用独立 raoji 模板二分绕击耐雷水平。
+                    # 对齐 C#：任何 raoji 资产解不出 → 明确报错，绝不静默用公式兜底。
+                    if execution_options.get("binary_search", True):
+                        _method_raoji = str(
+                            (job.execution_options_json or {}).get("raoji_naleishuiping_method") or ""
+                            or (execution_options or {}).get("raoji_naleishuiping_method") or ""
+                        ).strip().lower()
+                        _want_atp_raoji = (
+                            _method_raoji == "atp"
+                            or (job.adapter_config_json or {}).get("shielding_asset_id")
+                        )
+                        if _want_atp_raoji or _method_raoji == "atp":
+                            _raoji_values: dict[str, float | None] = {}
+                            _raoji_merged = dict(execution.result_json)
+                            for _idx, _raoji_scene in enumerate(("raoji1", "raoji2", "raoji3"), start=1):
+                                _raoji_job = None
+                                try:
+                                    _raoji_job = resolve_external_waveform_job(
+                                        db,
+                                        external_adapter=job.external_adapter
+                                        if job.external_adapter in {"atp", "wine"} else "atp",
+                                        adapter_config_json=dict(job.adapter_config_json or {}),
+                                        tower_type=snapshot.tower_type or "",
+                                        line_voltage_kv=job.line.voltage_kv if job.line else None,
+                                        scene_type=_raoji_scene,
+                                    )
+                                except Exception as _exc:
+                                    # ⚠️ 对齐 C#：绕击方法选 ATP 或任务要绕击时，raoji 资产解不出必须报错
+                                    raise RuntimeError(
+                                        f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
+                                        f"({'场景=' + _raoji_scene}, tower={snapshot.tower_type}, "
+                                        f"{job.line.voltage_kv if job.line else '?'}kV)：{_exc}"
+                                    ) from _exc
+                                _sh = execute_shielding_binary_search_external(
+                                    _raoji_job,
                                     db=db,
                                     job=job,
                                     snapshot=snapshot,
@@ -811,25 +831,21 @@ def execute_job(job_id: str) -> None:
                                     payload=payload,
                                     on_step=_tower_on_step,
                                 )
-                                # 绕击二分阶段完成
-                                tower_tracker.mark_phase_done()
-                                merged_sh = dict(execution.result_json)
-                                # 只合并绕击相关字段（execute_shielding 内部已保证不污染反击字段）
+                                # 逐相记录：A=raoji1, B=raoji2, C=raoji3
+                                _raoji_values[f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
                                 for _key in (
                                     "shielding_withstand_ka",
                                     "shielding_trip_rate",
                                     "shielding_alpha_deg",
                                     "shielding_binary_search",
                                 ):
-                                    if _key in shielding_exec.result_json:
-                                        merged_sh[_key] = shielding_exec.result_json[_key]
-                                graded = merged_sh
-                                if shielding_exec.stdout_text:
-                                    stdout_chunks.append(f"[{snapshot.tower_no}][绕击] {shielding_exec.stdout_text}")
-                                if shielding_exec.stderr_text:
-                                    stderr_chunks.append(f"[{snapshot.tower_no}][绕击] {shielding_exec.stderr_text}")
-                        except Exception as exc:
-                            logger.warning("[ATP] 绕击资产二分失败（%s）：%s，保留反击值", snapshot.tower_no, exc)
+                                    if _key in _sh.result_json:
+                                        _raoji_merged[_key] = _sh.result_json[_key]
+                                if _sh.stdout_text:
+                                    stdout_chunks.append(f"[{snapshot.tower_no}][绕击{['A', 'B', 'C'][_idx - 1]}相] {_sh.stdout_text}")
+                            _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
+                            tower_tracker.mark_phase_done()
+                            graded = _raoji_merged
                     run.engine_command = run.engine_command or execution.engine_command
                     run.working_dir = run.working_dir or execution.working_dir
                     if execution.stdout_text:
