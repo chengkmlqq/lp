@@ -2227,6 +2227,16 @@ def _normalize_execution_options(job_type: str, execution_options: dict[str, Any
             # 静默回退到规程公式（避免计算结果与 C# 不一致）。
             normalized["fanji_naleishuiping_method"] = "atp"
             normalized["raoji_naleishuiping_method"] = "atp"
+        if job_type == "normal":
+            # ⚠️ 对齐 C#：普通计算的耐雷水平方法**默认走 ATP 引擎**（C# 桌面版 ThreadCompute
+            # 恒用 ATP/tpbig，不存在"规程公式"这条计算路径）。
+            # 用 setdefault（非强制）：用户在页面显式选了规程法仍尊重其选择。
+            # 不加这个默认值 → execute_job 里 _method_fanji/_method_raoji 都非 atp、且
+            # external_adapter 是 placeholder → external/legacy 两条分支都不进 →
+            # 结果用规程公式算（与 C# 差 18%+，且绕击跳闸率完全不对）。
+            normalized.setdefault("fanji_naleishuiping_method", "atp")
+            normalized.setdefault("raoji_naleishuiping_method", "atp")
+            normalized.setdefault("raoji_tzl_method", "egm")
         normalized.pop("source_job_id", None)
         normalized.pop("source_run_id", None)
         normalized.pop("mitigation_job_id", None)
