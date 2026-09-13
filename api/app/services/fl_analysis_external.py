@@ -73,11 +73,16 @@ def _circuit_count_for_snapshot(snapshot: FlAnalysisTowerSnapshot) -> int:
       - sihuita → 4（四回路，但 ThreadCompute5_work_atp 用 ==1||==4 单回分支，非双回 6 相独立）
       - 其余（ganzi/maotou/jiubei/menxing/shangzi…）→ 1（单回路，1..3 独立 + 4-6 顺带）
     返回 2 = 需走 6 相独立折半双回路径；否则按原单回逻辑。
+
+    ⚠️ 塔型编码带电压前缀（真实数据如 's500guxing'/'d500guxing'/'s500guxingd'），
+    必须用「包含基名」判断而非精确匹配（e57168b 曾因精确匹配把 s500guxing 误判成 1，
+    导致双回路修复实际未生效——数值无变化但也没风险）。
     """
     tt = (snapshot.tower_type or "").strip().lower()
-    if tt in {"guxing", "guxingd"}:
+    # guxing 与 guxingd 均为双回路，且 AC 塔型中仅这两个名含 "guxing"，用包含判断安全
+    if "guxing" in tt:
         return 2
-    if tt == "sihuita":
+    if "sihui" in tt:  # sihuita（四回塔）
         return 4
     return 1
 
