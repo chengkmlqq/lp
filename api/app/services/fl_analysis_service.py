@@ -788,7 +788,97 @@ def execute_job(job_id: str) -> None:
                     graded = execution.result_json
                     # 单相反击二分阶段完成
                     tower_tracker.mark_phase_done()
-                    # （normal 分支不做绕击；绕击在下方 tongtiao 分支统一处理）
+                    # ── 绕击（raoji1/raoji2/raoji3 = A/B/C 相）—— 普通计算同样要做 ──
+                    # C# 普通计算输出含绕击耐雷水平 + 绕击跳闸率（如 500源上 1号塔
+                    # 绕击耐雷 35.153 / 绕击跳闸率 1.2824），故此处与 tongtiao 同流程。
+                    _raoji_values: dict[str, float | None] = {}
+                    _raoji_merged = dict(graded)
+                    for _idx, _raoji_scene in enumerate(("raoji1", "raoji2", "raoji3"), start=1):
+                        try:
+                            _raoji_job = resolve_external_waveform_job(
+                                db,
+                                external_adapter=job.external_adapter
+                                if job.external_adapter in {"atp", "wine"} else "atp",
+                                adapter_config_json=dict(job.adapter_config_json or {}),
+                                tower_type=snapshot.tower_type or "",
+                                line_voltage_kv=job.line.voltage_kv if job.line else None,
+                                scene_type=_raoji_scene,
+                            )
+                        except Exception as _exc:
+                            # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
+                            raise RuntimeError(
+                                f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
+                                f"(场景={_raoji_scene}, tower={snapshot.tower_type}, "
+                                f"{job.line.voltage_kv if job.line else '?'}kV)：{_exc}"
+                            ) from _exc
+                        _sh = execute_shielding_binary_search_external(
+                            _raoji_job,
+                            db=db,
+                            job=job,
+                            snapshot=snapshot,
+                            execution_options=execution_options,
+                            baseline_result=baseline_result,
+                            payload=payload,
+                            on_step=_tower_on_step,
+                        )
+                        _raoji_values[f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
+                        for _key in (
+                            "shielding_withstand_ka",
+                            "shielding_trip_rate",
+                            "shielding_alpha_deg",
+                            "shielding_binary_search",
+                            "shielding_raoji_index",
+                        ):
+                            if _key in _sh.result_json:
+                                _raoji_merged[_key] = _sh.result_json[_key]
+                        _raoji_merged.setdefault("shielding_raoji_by_phase", {})[
+                            f"{['A', 'B', 'C'][_idx - 1]}相"
+                        ] = _sh.result_json.get("shielding_withstand_ka")
+                    _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
+                    tower_tracker.mark_phase_done()
+                    # ── 绕击跳闸率：C# EGM（rjtzl_egm*.exe）；Ic 取中间相绕击耐雷整数部分 ──
+                    _egm_ic = _raoji_values.get("B相") or _raoji_values.get("A相")
+                    if _egm_ic is None:
+                        raise RuntimeError(
+                            f"{snapshot.tower_no}: 绕击耐雷水平缺失，无法计算 EGM 绕击跳闸率"
+                        )
+                    from .atp_egm_trip_rate import compute_shielding_trip_rate  # noqa: PLC0415
+
+                    _egm_env = os.environ.copy()
+                    _egm_env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
+                    _egm_rate, _egm_alpha = compute_shielding_trip_rate(
+                        atp_root=Path("/app/data/wine/ATP"),
+                        voltage_kv=job.line.voltage_kv if job.line else None,
+                        base_tower=snapshot.base_tower_json or {},
+                        profile=snapshot.profile_json or {},
+                        tower_type=snapshot.tower_type or "",
+                        raoji_withstand_ka=float(_egm_ic),
+                        env=_egm_env,
+                    )
+                    _raoji_merged["shielding_trip_rate"] = _egm_rate
+                    _raoji_merged["shielding_trip_rate_method"] = "egm"
+                    graded = _raoji_merged
+                    # 普通计算：顶层耐雷/跳闸率保留实际值（C# 口径），但风险等级要用
+                    # EGM 之后的绕击跳闸率重算。
+                    try:
+                        from .fl_analysis_rules import (  # noqa: PLC0415
+                            _calculate_risk_grade,
+                            _normalize_lightning_inputs,
+                            _risk_level_from_grade,
+                        )
+
+                        _norm = _normalize_lightning_inputs(payload)
+                        _ri, _th, _rg = _calculate_risk_grade(
+                            _norm,
+                            graded.get("counterstrike_trip_rate"),
+                            _egm_rate,
+                        )
+                        if _rg is not None:
+                            graded["risk_grade"] = _rg
+                            graded["risk_level"] = _risk_level_from_grade(_rg) or graded.get("risk_level")
+                            graded["risk_index_s"] = _ri
+                    except Exception as _exc:  # noqa: BLE001
+                        logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
                     run.engine_command = run.engine_command or execution.engine_command
                     run.working_dir = run.working_dir or execution.working_dir
                     if execution.stdout_text:

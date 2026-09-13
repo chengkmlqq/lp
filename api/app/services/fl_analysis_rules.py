@@ -506,6 +506,9 @@ def _evaluate_waveform_case(
         }
     )
 
+    # 顶层「反击/绕击耐雷水平」置 0 仅适用于交流同跳（C# 普通计算顶层保留实际值）
+    _zero_top = (getattr(execution, "job_type", "") or "") == "tongtiao"
+
     graded = {
         **base_result,
         "risk_level": risk_level,
@@ -516,9 +519,11 @@ def _evaluate_waveform_case(
         # IDout26「绕击耐雷水平」只在 MyParamClass 注册、**全源码无赋值** → 输出保持 0；
         # 基准 CSV《同跳-500kV双回雁船线-测试相序输出.csv》六行顶层均为 0。明细各档值
         # 仍完整保留在 multi_phase_results / phase_results（对应 CSV 的单相…六相列）。
-        "counterstrike_withstand_ka": 0.0,
-        "counterstrike_trip_rate": 0.0,
-        "shielding_withstand_ka": 0.0,
+        # ⚠ 只对「交流同跳」成立：C# 普通计算的顶层是有值的（如 500源上 1号塔
+        # 顶层反击耐雷 232.388 / 反击跳闸率 0.2458 / 绕击耐雷 35.153 / 绕击跳闸率 1.2824）。
+        "counterstrike_withstand_ka": 0.0 if _zero_top else base_result.get("counterstrike_withstand_ka"),
+        "counterstrike_trip_rate": 0.0 if _zero_top else base_result.get("counterstrike_trip_rate"),
+        "shielding_withstand_ka": 0.0 if _zero_top else base_result.get("shielding_withstand_ka"),
         "shielding_trip_rate": shielding_trip_rate,
         "cause_analysis": cause_analysis,
         "mitigation_recommendation": mitigation_recommendation,
