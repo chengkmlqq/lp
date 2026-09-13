@@ -63,6 +63,43 @@ def _num(params: dict[str, str], name: str) -> float | None:
         return None
 
 
+def _voltage_offset(voltage_kv) -> float:
+    """C# 平均高度扣减量 K（:1855-1872 / :2016-2048）。"""
+    try:
+        v = int(voltage_kv or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return {35: 10.0 / 3.0, 66: 1.5, 110: 10.0 / 3.0, 220: 14.0 / 3.0,
+            330: 14.0 / 3.0, 500: 8.0, 750: 14.0 / 3.0, 1000: 0.0}.get(v, 0.0)
+
+
+def _insulator_m(profile: dict) -> float:
+    raw = (profile or {}).get("insulator_length_m")
+    try:
+        return float(raw or 0.0) / 1000.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _circuit_entry(cg, key) -> dict:
+    node = (cg or {}).get(key)
+    if not isinstance(node, dict):
+        return {"spacing": {}, "height": {}}
+    return {"spacing": node.get("phase_spacing_m") or {},
+            "height": node.get("phase_height_m") or {}}
+
+
+def _num_or_none(cg, key, group, sub):
+    node = (cg or {}).get(key)
+    if not isinstance(node, dict):
+        return None
+    val = (node.get(f"phase_{group}_m") or {}).get(sub)
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
 def build_dat_values(*, section: str, params: dict[str, str],
                      profile: dict[str, Any],
                      base_tower: dict[str, Any] | None = None) -> dict[str, float]:
@@ -111,6 +148,16 @@ def build_dat_values(*, section: str, params: dict[str, str],
         rehc2=need("REHC2"),
         rehc3=need("REHC3"),
         rehg=need("REHG"),
+        h_upper=_num_or_none(_cg, "I", "height", "upper"),
+        h_middle=_num_or_none(_cg, "I", "height", "middle"),
+        h_lower=_num_or_none(_cg, "I", "height", "lower"),
+        sp_left=_num_or_none(_cg, "I", "spacing", "upper") or abs(float(lw_left)),
+        sp_right=_num_or_none(_cg, "I", "spacing", "lower") or abs(float(lw_right)),
+        h_left=_num_or_none(_cg, "I", "height", "upper"),
+        h_right=_num_or_none(_cg, "I", "height", "lower"),
+        insulator=_insulator_m(profile),
+        voltage_offset=_voltage_offset(voltage_kv),
+        circuits=[_circuit_entry(_cg, k) for k in ("I", "II", "III", "IV")],
     )
 
 

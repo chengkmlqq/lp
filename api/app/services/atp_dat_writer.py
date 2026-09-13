@@ -232,15 +232,97 @@ def _shangzi(ctx: dict) -> dict[str, float]:
     相高取「平均高度」= 相高 − 绝缘子 − 1.5；避雷线中距为 0；
     避雷线高度 = |避雷线高 − 1.2|（C# averageHeightBLX = Math.Abs(h - 1.2)）。
     """
+    ins = float(ctx.get("insulator") or 0.0)
     return {
         "左相中距(负值)": -abs(ctx["sp_upper"]),
-        "左相平均高度": ctx["rehc1"] - 1.5,
+        "左相平均高度": abs(abs(ctx["h_upper"] or 0.0) - ins) - 1.5,
         "中相中距(正值)": abs(ctx["sp_middle"]),
-        "中相平均高度": ctx["rehc2"] - 1.5,
+        "中相平均高度": abs(abs(ctx["h_middle"] or 0.0) - ins) - 1.5,
         "右相中距(正值)": abs(ctx["sp_lower"]),
-        "右相平均高度": ctx["rehc3"] - 1.5,
+        "右相平均高度": abs(abs(ctx["h_lower"] or 0.0) - ins) - 1.5,
         "避雷线中距(正值)": 0.0,
         "避雷线平均高度": abs(ctx["rehg"] - 1.2),
+    }
+
+
+def _avg_h(phase_h, ctx) -> float:
+    """C# 平均高度 = |相高 − 绝缘子 − K(电压)|（:1855-1872 / :2161-2191）。"""
+    ins = float(ctx.get("insulator") or 0.0)
+    k = float(ctx.get("voltage_offset") or 0.0)
+    return abs(abs(float(phase_h or 0.0)) - ins - k)
+
+
+def _sihuita(ctx: dict) -> dict[str, float]:
+    """四回型 —— C# :3853-3909（中距 I/III 回为负、II/IV 回为正）。
+
+    规格 <sihuita>：II 回高度沿用 I 回特征名、IV 回沿用 III 回特征名。
+    """
+    circ = ctx.get("circuits") or []
+    out: dict[str, float] = {}
+    for circ_no, sign, src in (("I", -1, 0), ("II", 1, 0), ("III", -1, 1), ("IV", 1, 1)):
+        if len(circ) <= src:
+            raise RuntimeError(f"四回型缺少第 {src + 1} 组导线几何，无法改写 .dat")
+        c = circ[src]
+        for key, label in (("upper", "上相"), ("middle", "中相"), ("lower", "下相")):
+            out[f"{circ_no}回线路{label}中距({'负值' if sign < 0 else '正值'})"] = (
+                sign * abs(float(c["spacing"].get(key) or 0.0))
+            )
+            if circ_no in ("I", "III"):
+                out[f"{circ_no}回线路{label}平均高度"] = _avg_h(c["height"].get(key), ctx)
+    out["左避雷线中距(负值)"] = -abs(ctx["lw_left"])
+    out["避雷线平均高度"] = ctx["rehg"]
+    out["右避雷线中距(正值)"] = abs(ctx["lw_right"])
+    return out
+
+
+def _dc(ctx: dict, *, left_label: str, right_label: str, neg_left: bool,
+        avg_height: bool) -> dict[str, float]:
+    """直流类（2 相）—— C# :4180-4470。
+
+    zj/zx/zxj/ky/nz：写原始相高；zhiliu/vzhiliu：写 |相高 − 绝缘子|（mMinusAbstract）。
+    """
+    ins = float(ctx.get("insulator") or 0.0)
+    lh = ctx["h_left"]
+    rh = ctx["h_right"]
+    if avg_height:
+        lh = abs(abs(float(lh or 0.0)) - ins)
+        rh = abs(abs(float(rh or 0.0)) - ins)
+    out = {
+        f"{left_label}中距({'负值' if neg_left else '正值'})m": (-1 if neg_left else 1) * abs(ctx["sp_left"]),
+        f"{left_label}高度m": lh,
+        f"{right_label}中距({'正值' if neg_left else '负值'})m": (1 if neg_left else -1) * abs(ctx["sp_right"]),
+        f"{right_label}高度m": rh,
+        "左避雷线中距(负值)m": -abs(ctx["lw_left"]),
+        "左避雷线高度m": ctx["rehg"],
+        "右避雷线中距(正值)m": abs(ctx["lw_right"]),
+        "右避雷线高度m": ctx["rehg"],
+    }
+    if avg_height:
+        out[f"{left_label}平均高度m"] = lh
+        out[f"{right_label}平均高度m"] = rh
+        out["避雷线平均高度m"] = abs(float(ctx["rehg"] or 0.0))
+    return out
+
+
+def _zhiliu(ctx: dict) -> dict[str, float]:
+    """直流（zhiliu / vzhiliu）—— C# :4362-4470。
+
+    注意与 zj/zx 相反：**左侧取正值、右侧取负值**；含「平均高度」。
+    """
+    ins = float(ctx.get("insulator") or 0.0)
+    lh = abs(abs(float(ctx["h_left"] or 0.0)) - ins)
+    rh = abs(abs(float(ctx["h_right"] or 0.0)) - ins)
+    return {
+        "左相导线中距(正值)m": abs(ctx["sp_left"]),
+        "左相导线高度m": ctx["h_left"],
+        "左相平均高度m": lh,
+        "右相导线中距(负值)m": -abs(ctx["sp_right"]),
+        "右相导线高度m": ctx["h_right"],
+        "右相平均高度m": rh,
+        "左避雷线中距(正值)m": abs(ctx["lw_left"]),
+        "避雷线高度m": ctx["rehg"],
+        "避雷线平均高度m": abs(float(ctx["rehg"] or 0.0)),
+        "右避雷线中距(负值)m": -abs(ctx["lw_right"]),
     }
 
 
@@ -252,6 +334,19 @@ def build_values(section: str, **ctx) -> dict[str, float]:
         return _si_ping_mian(ctx)
     if kind == "shangzi":
         return _shangzi(ctx)
+    if kind == "sihuita":
+        return _sihuita(ctx)
+    if kind in {"zj", "zx", "zxj"}:
+        return _dc(ctx, left_label="左相导线", right_label="右相导线",
+                   neg_left=True, avg_height=False)
+    if kind == "ky":
+        return _dc(ctx, left_label="左侧导线", right_label="右侧导线",
+                   neg_left=True, avg_height=False)
+    if kind == "nz":
+        return _dc(ctx, left_label="左侧横担正下方跳线", right_label="右侧横担正下方跳线",
+                   neg_left=True, avg_height=False)
+    if kind in {"zhiliu", "vzhiliu"}:
+        return _zhiliu(ctx)
     raise RuntimeError(
         f"塔型段 '{section}' 的 .dat 几何取值尚未移植（需按 C# ComputeLightningProtection.cs 对应分支实现）；"
         f"为避免静默产出错误几何，此处显式报错"
