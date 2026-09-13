@@ -258,6 +258,17 @@ def execute_multi_phase_binary_search_external(
         "ready_count": len(ready_entries),
         "max_phases": max_phases,
     }
+    # 对齐 C#：各档"闪络相"= 最高档闪络相列表的前 N 个（C# 导出即此前缀规律：
+    # 单相 A1 / 双相 A1C1 / 三相 A1C1C2 / … 六相 A1C1C2A2B2B1）。
+    _ref_phases = ""
+    for _it in reversed(phase_entries):
+        if _it.get("flashover_phase"):
+            _ref_phases = str(_it["flashover_phase"])
+            break
+    if _ref_phases:
+        for _it in phase_entries:
+            _n = int(_it.get("phase_count") or 0)
+            _it["flashover_phase"] = _ref_phases[: 2 * _n] if _n else ""
     # 兼容 tongtiao 结果列：multi_phase_results（保留 C# 列语义：单相..N相耐雷+跳闸率）
     merged["multi_phase_results"] = [
         {
