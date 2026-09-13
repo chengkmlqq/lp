@@ -182,6 +182,8 @@ def execute_multi_phase_binary_search_external(
             "converged": converged,
             "final_flashover_count": final_count,
             "ready": ready,
+            # 闪络相（如 A1 / A1C1 / A1C1C2）——对齐 C# 各档闪络相列
+            "flashover_phase": str((search or {}).get("flashover_phases") or ""),
             "search_history": search_history,
         }
         if ready:
@@ -261,7 +263,7 @@ def execute_multi_phase_binary_search_external(
         {
             "phase_count": item["phase_count"],
             "label": item["label"],
-            "flashover_phase": "",
+            "flashover_phase": item.get("flashover_phase") or "",
             "counterstrike_withstand_ka": item.get("counterstrike_withstand_ka"),
             "trip_rate": item.get("trip_rate"),
         }
@@ -270,6 +272,9 @@ def execute_multi_phase_binary_search_external(
     if dominant is not None and dominant.get("counterstrike_withstand_ka") is not None:
         merged["counterstrike_withstand_ka"] = dominant["counterstrike_withstand_ka"]
         merged["counterstrike_trip_rate"] = dominant.get("trip_rate")
+        # 顶层"闪络相"= 单相档闪络相（对齐 C# 导出的"单相闪络相"列）
+        if dominant.get("flashover_phase"):
+            merged["flashover_phase"] = dominant["flashover_phase"]
     return ExternalTowerExecutionResult(
         result_json=merged,
         engine_command=last_execution.engine_command if last_execution is not None else "",
@@ -1472,10 +1477,15 @@ def execute_external_waveform_tower_analysis(
     # ⚠️ 不用 Type-99 "begins operation"（恒=2 不随电流变）也不以 pl4 阈值覆盖——
     # 两者都会把闪络判成恒定值，令二分法空转。
     try:
-        lis_flash = _read_lis_flashover(run_dir)
-        if lis_flash is not None:
+        lis_detail = _read_lis_flashover_detail(run_dir)
+        if lis_detail is not None:
+            lis_flash, lis_phases = lis_detail
             parsed_payload["flashover_count"] = lis_flash
-            logger.info("[ATP] lis 闪络检测（Close switch）：%s，闪络相数=%d", snapshot.tower_no, lis_flash)
+            if lis_phases:
+                # 闪络相名（按 .lis 闭合顺序，如 ["A1","C1","C2",...]）——对齐 C# strXiang
+                parsed_payload["flashover_phases"] = lis_phases
+            logger.info("[ATP] lis 闪络检测（Close switch）：%s，闪络相数=%d，相=%s",
+                        snapshot.tower_no, lis_flash, ",".join(lis_phases) or "-")
     except Exception as exc:
         logger.warning("[ATP] lis 闪络检测失败（%s）：%s", snapshot.tower_no, exc)
     # 仅当 lis 判据不可用（work.lis 缺失/无 Close switch 信息）时，才回退到
@@ -1561,6 +1571,7 @@ def execute_binary_search_external(
     search_history: list[dict[str, Any]] = []
     iteration = 0
     final_flashover_count: int | None = None
+    final_phases: list[str] = []
     final_execution: ExternalTowerExecutionResult | None = None
 
     while (high - low) >= tolerance and iteration < max_iterations:
@@ -1587,6 +1598,10 @@ def execute_binary_search_external(
         )
         if flashover_count is not None and flashover_count >= target_flashover_phases:
             high = candidate
+            # 达标档：记录该电流下的闪络相名（对齐 C# strXiang）
+            _iter_phases = execution.result_json.get("flashover_phases") if isinstance(execution.result_json, dict) else None
+            if _iter_phases:
+                final_phases = list(_iter_phases)
         else:
             low = candidate
         final_flashover_count = flashover_count
@@ -1616,6 +1631,8 @@ def execute_binary_search_external(
         "final_flashover_count": final_flashover_count,
         "target_flashover_phases": target_flashover_phases,
         "final_withstand_ka": withstand_ka,
+        # 闪络相名（达标档，按闭合顺序取前 target 个）——对齐 C# 单/双/三..相闪络相列
+        "flashover_phases": "".join(final_phases[:target_flashover_phases]),
     }
     merged = dict(final_execution.result_json) if final_execution is not None else dict(baseline_result)
     merged["binary_search"] = binary_search_payload
@@ -1902,6 +1919,22 @@ def _format_value(value: Any, format_spec: str) -> str:
 
 
 def _read_lis_flashover(run_dir: Path) -> int | None:
+    """从 work.lis 解析闪络相数（对齐 C# Check_Lightning_work_lis）。"""
+    detail = _read_lis_flashover_detail(run_dir)
+    return None if detail is None else detail[0]
+
+
+# C# .atp 中绝缘子闪络开关 SWU1~SWU6 ↔ 相名 的映射（双回 6 相）。
+# 推导依据：C# 500 的 work.lis 闭合顺序 SWU1→SWU4→SWU5→SWU2→SWU3→SWU6
+# 与 C# 报告的单相..六相闪络相 A1 / A1C1 / A1C1C2 / A1C1C2A2 / A1C1C2A2B2
+# / A1C1C2A2B2B1 逐档自洽（前 N 个即为 N 相档）。110 的 A1C2A2B1B2C1 亦吻合。
+_SWU_PHASE_MAP: dict[str, str] = {
+    "SWU1": "A1", "SWU2": "A2", "SWU3": "B2",
+    "SWU4": "C1", "SWU5": "C2", "SWU6": "B1",
+}
+
+
+def _read_lis_flashover_detail(run_dir: Path) -> tuple[int, list[str]] | None:
     """从 work.lis（tpbig both 模式日志）解析闪络相数。
 
     判据对齐 C# Check_Lightning_work_lis（ComputeLightningProtection.cs:11880）：
@@ -1935,6 +1968,7 @@ def _read_lis_flashover(run_dir: Path) -> int | None:
     #   ④ 开关名非空才计数（valueRet++），并记录相名 strXiang[valueRet]；
     #   ⑤ 引号缺失时 C# 会抛异常 → valueRet=-1（解析失败）。
     count = 0
+    phases: list[str] = []
     lines = text.splitlines()
     idx = 0
     total = len(lines)
@@ -1963,17 +1997,18 @@ def _read_lis_flashover(run_dir: Path) -> int | None:
         first_quote = detail.find('"')
         if first_quote < 0:
             logger.warning("[ATP] work.lis 出现无引号的 Close 行（对齐 C# = 解析失败）")
-            return -1
+            return -1, []
         rest = detail[first_quote + 1:]
         second_quote = rest.find('"')
         if second_quote < 0:
             logger.warning("[ATP] work.lis Close 行引号不成对（对齐 C# = 解析失败）")
-            return -1
+            return -1, []
         switch_name = rest[:second_quote].strip()
         # ④ 仅当开关名非空才计数
         if switch_name:
             count += 1
-    return count
+            phases.append(_SWU_PHASE_MAP.get(switch_name.strip().upper(), switch_name.strip()))
+    return count, phases
 
 
 def _read_pl4_flashover_count(run_dir: Path, storage_root: str | None = None) -> int | None:
