@@ -64,7 +64,8 @@ def _num(params: dict[str, str], name: str) -> float | None:
 
 
 def build_dat_values(*, section: str, params: dict[str, str],
-                     profile: dict[str, Any]) -> dict[str, float]:
+                     profile: dict[str, Any],
+                     base_tower: dict[str, Any] | None = None) -> dict[str, float]:
     """从 work.atp 参数 + 杆塔资料推导 .dat 需要的几何值。"""
 
     def need(name: str) -> float:
@@ -86,11 +87,24 @@ def build_dat_values(*, section: str, params: dict[str, str],
     if lw_left is None or lw_right is None:
         raise RuntimeError("缺少避雷线左/右中距，无法改写 .dat 几何")
 
+    # 相中距：鼓型等模板由 RELE09/06/03 承载；单回塔型（猫头/酒杯/干字/门型/上子型）
+    # 模板没有 RELE09 → 回退到杆塔几何（circuit_geometry_json 的上/中/下相中距）。
+    def _spacing(rele: str, key: str) -> float:
+        v = _num(params, rele)
+        if v is not None:
+            return v
+        geo = (base_tower or {}).get("circuit_geometry_json") or {}
+        first = geo.get("I") or (next(iter(geo.values())) if geo else None)
+        val = ((first or {}).get("phase_spacing_m") or {}).get(key)
+        if val is None:
+            raise RuntimeError(f"缺少 {rele} 且杆塔几何无 phase_spacing_m.{key}，无法改写 .dat 几何")
+        return abs(float(val))
+
     return build_values(
         section,
-        sp_upper=need("RELE09"),
-        sp_middle=need("RELE06"),
-        sp_lower=need("RELE03"),
+        sp_upper=_spacing("RELE09", "upper"),
+        sp_middle=_spacing("RELE06", "middle"),
+        sp_lower=_spacing("RELE03", "lower"),
         lw_left=abs(float(lw_left)),
         lw_right=abs(float(lw_right)),
         rehc1=need("REHC1"),
@@ -128,7 +142,7 @@ def regenerate_line_models(
 ) -> list[str]:
     """改写 4 个 .dat 并重生成 .lib。返回处理过的文件名（供日志）。"""
     section = resolve_section(tower_kind, voltage_kv)
-    values = build_dat_values(section=section, params=params, profile=profile)
+    values = build_dat_values(section=section, params=params, profile=profile, base_tower=base_tower)
     _ensure_engine_files(engine_dir)
     done: list[str] = []
     for name in _DAT_NAMES:
