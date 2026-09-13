@@ -618,9 +618,14 @@ def execute_job(job_id: str) -> None:
                     summary["external_model_code"] = external_job.asset.code
                     summary["external_model_name"] = external_job.asset.name
                 except Exception as exc:
-                    # 自动选资产失败（如无对应模板）→ 记录但继续走 placeholder 公式（不拖垮任务）
-                    logger.warning("[ATP] 自动选资产失败（job=%s）：%s", job.id, exc)
-                    external_job = None
+                    # ⚠️ 对齐 C#：计算方法明确选了 ATP（或适配器为 atp/wine）时，必须用 ATP 引擎。
+                    # 若解不出资产/引擎，直接抛错，绝不静默回退到规程公式——否则计算结果与 C# 不一致
+                    # 且用户无感知（原实现 external_job=None fallback 到 placeholder，是本需求要消除的）。
+                    raise RuntimeError(
+                        f"计算方法已选 ATP，但无法解析 ATP 引擎/资产（job={job.id}, "
+                        f"tower/voltage={job.line.voltage_kv if job.line else '?'}kV, "
+                        f"scene={_auto_scene_type_for_options(execution_options)}）：{exc}"
+                    ) from exc
             elif job.external_adapter == "legacy_atp":
                 legacy_external_job = resolve_legacy_atp_job(
                     adapter_config_json=job.adapter_config_json or {},
@@ -2057,11 +2062,18 @@ def _normalize_execution_options(job_type: str, execution_options: dict[str, Any
             normalized.pop("selected_tower_ids", None)
             normalized.pop("include_tower_ids", None)
         if job_type == "tongtiao":
-            # 对齐 C# Form_TongTiaoJiSuan.cs:226-229：同跳任务的反击跳闸率方法固定「规程」、
+            # 对齐 C# Form_TongTiaoJiSuan.cs:226-229：同跳任务的跳闸率方法固定「规程」、
             # 绕击跳闸率固定「EGM」，C# 不提供给用户配置；此处兜底，保证 API 直建的同跳任务
             # 与界面/桌面版行为一致（这两个值会作为 ATP 模板 CAL_MODE 的取值来源）。
             normalized.setdefault("fanji_tzl_method", "guicheng")
             normalized.setdefault("raoji_tzl_method", "egm")
+            # ⚠️ 对齐 C#：同跳的耐雷水平计算方法固定为 ATP（C# ThreadCompute5 同跳分支写死
+            # mFanJi_NaiLeiShuiPing/mRaoJi_NaiLeiShuiPing = "ATP"，界面无选择）。这里**强制覆盖**
+            # 用户传值（不是 setdefault），因为 C# 同跳不可选、固定 ATP。由此 execute_job 里
+            # _method_fanji=_method_raoji="atp" → 必然走 ATP 引擎；无资产/未配引擎时抛错而不是
+            # 静默回退到规程公式（避免计算结果与 C# 不一致）。
+            normalized["fanji_naleishuiping_method"] = "atp"
+            normalized["raoji_naleishuiping_method"] = "atp"
         normalized.pop("source_job_id", None)
         normalized.pop("source_run_id", None)
         normalized.pop("mitigation_job_id", None)
