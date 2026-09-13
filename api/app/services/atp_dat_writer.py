@@ -105,6 +105,21 @@ def resolve_section(tower_type: str, voltage_kv) -> str:
     return kind if kind in sections else ""
 
 
+def _conductor_line_offset(lines: list[str]) -> int:
+    """推导「导体卡起始行号」（导体 1 所在行）。
+
+    各塔型 .dat 头部行数不同（双回有 2 行 BRANCH，单回只有 1 行），
+    因此不能硬编码。统一以 METRIC 行的下一行为导体卡起始；找不到时回退 7
+    （历史值，对双回鼓型等成立）。
+    """
+    for i, ln in enumerate(lines):
+        if ln.strip().upper() == "METRIC":
+            # 导体卡起始行 = METRIC 行的下一行；本函数返回值用于
+            # index = conductor + 返回值 - 1（lines 为 0-based）
+            return i + 1
+    return 7
+
+
 def _span_block(lines: list[str]) -> list[int]:
     """返回「频率卡」块的 0-based 行号列表（导体卡结束 → 频率卡结束之间）。"""
     start = end = None
@@ -121,9 +136,13 @@ def _span_block(lines: list[str]) -> list[int]:
 
 
 def _fmt(value: float, digits: int, width: int) -> str:
-    txt = f"{float(value):.{digits}f}"
+    v = float(value)
+    if abs(v) < 1e-12:
+        # C# 对零值输出 "0.0"（实测 maotou .dat 中相中距），不参与去尾零
+        return ("0.0" if digits == 1 else f"{v:.{digits}f}").rjust(width)
+    txt = f"{v:.{digits}f}"
     if "." in txt:
-        txt = txt.rstrip("0")
+        txt = txt.rstrip("0")      # C# 去尾零：12.0 → "12."
     return txt.rjust(width)
 
 
@@ -135,6 +154,8 @@ def rewrite_dat_text(text: str, section: str, values: dict[str, float], *,
         raise RuntimeError(f"long_short_dat_model.txt 无塔型段 '{section}'，无法改写 .dat 几何")
     parts = re.split(r"(\r\n|\n)", text)
     lines = [ln.rstrip("\r") for ln in parts[0::2]]
+
+    conductor_offset = _conductor_line_offset(lines)
 
     missing = sorted({n for n, s in slots if not s.is_span and n not in values})
     if missing:
@@ -155,7 +176,7 @@ def rewrite_dat_text(text: str, section: str, values: dict[str, float], *,
                 for idx0 in _span_block(lines):
                     _write(idx0, _SPAN_OFFSET, _SPAN_WIDTH, _fmt(span_km, slot.digits, slot.width))
             continue
-        _write(slot.conductor + _CONDUCTOR_LINE_OFFSET - 1, slot.offset, slot.width,
+        _write(slot.conductor + conductor_offset - 1, slot.offset, slot.width,
                _fmt(values[name], slot.digits, slot.width))
 
     out: list[str] = []
@@ -185,10 +206,52 @@ def _guxing(ctx: dict) -> dict[str, float]:
     }
 
 
+def _si_ping_mian(ctx: dict) -> dict[str, float]:
+    """猫头/酒杯/干字/门型（单回三相同平面）—— C# ComputeLightningProtection.cs:4117-4166。
+
+    与鼓型同构，差别：feature 名为「左/中/右相」；中相中距由 C# 硬编码为 0。
+    高度取渲染后的 REHC1/2/3（= 相高 − 绝缘子串长）。
+    """
+    return {
+        "左相中距(负值)": -abs(ctx["sp_upper"]),
+        "左相高度": ctx["rehc1"],
+        "中相中距(0值)": 0.0,
+        "中相高度": ctx["rehc2"],
+        "右相中距(正值)": abs(ctx["sp_lower"]),
+        "右相高度": ctx["rehc3"],
+        "左避雷线中距(负值)": -abs(ctx["lw_left"]),
+        "左避雷线高度": ctx["rehg"],
+        "右避雷线中距(正值)": abs(ctx["lw_right"]),
+        "右避雷线高度": ctx["rehg"],
+    }
+
+
+def _shangzi(ctx: dict) -> dict[str, float]:
+    """上子型（单避雷线）—— C# ComputeLightningProtection.cs:4079-4113。
+
+    相高取「平均高度」= 相高 − 绝缘子 − 1.5；避雷线中距为 0；
+    避雷线高度 = |避雷线高 − 1.2|（C# averageHeightBLX = Math.Abs(h - 1.2)）。
+    """
+    return {
+        "左相中距(负值)": -abs(ctx["sp_upper"]),
+        "左相平均高度": ctx["rehc1"] - 1.5,
+        "中相中距(正值)": abs(ctx["sp_middle"]),
+        "中相平均高度": ctx["rehc2"] - 1.5,
+        "右相中距(正值)": abs(ctx["sp_lower"]),
+        "右相平均高度": ctx["rehc3"] - 1.5,
+        "避雷线中距(正值)": 0.0,
+        "避雷线平均高度": abs(ctx["rehg"] - 1.2),
+    }
+
+
 def build_values(section: str, **ctx) -> dict[str, float]:
     kind = section.split("-", 1)[0]
     if kind == "guxing":
         return _guxing(ctx)
+    if kind in {"maotou", "jiubei", "ganzi", "menxing"}:
+        return _si_ping_mian(ctx)
+    if kind == "shangzi":
+        return _shangzi(ctx)
     raise RuntimeError(
         f"塔型段 '{section}' 的 .dat 几何取值尚未移植（需按 C# ComputeLightningProtection.cs 对应分支实现）；"
         f"为避免静默产出错误几何，此处显式报错"
