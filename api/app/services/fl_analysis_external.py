@@ -1305,15 +1305,51 @@ def execute_external_waveform_tower_analysis(
         resolved_job=resolved_job,
     )
 
+    env = os.environ.copy()
+    env.update(resolved_job.environment)
+    # Wine 在容器环境需要 XDG_RUNTIME_DIR，否则 wineserver 启动失败
+    env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
+
+    # ── 按塔几何改写 4 个 .dat 并重生成 .lib（对齐 C#：C# 每塔都执行这两步）──
+    # 不做的后果：主仿真 work.atp 引用的仍是资产里那份「别的塔」的静态几何
+    # → .lib 线路模型几何错误 → 多相/仿真数值系统性偏差（2026-09-13 查明）。
+    # 每塔只需一次（几何与雷电流无关，二分期间复用同一份 .lib）。
+    from .atp_geometry_pipeline import regenerate_line_models
+
+    _segs = [seg for seg in (resolved_job.storage_root_path or "").strip("/").split("/") if seg]
+    if _segs and _segs[0] == "atp-assets":
+        _segs = _segs[1:]
+    if _segs:
+        _engine_dir = Path("/app/data/wine/ATP").joinpath(*_segs)
+        _voltage_kv = (snapshot.base_tower_json or {}).get("line_voltage_kv")
+        if _voltage_kv is None and job.line is not None:
+            _voltage_kv = job.line.voltage_kv
+        _params = compute_csharp_atp_params(
+            base_tower=snapshot.base_tower_json or {},
+            profile=snapshot.profile_json or {},
+            execution_options=execution_options,
+        )
+        regenerate_line_models(
+            engine_dir=_engine_dir,
+            tower_kind=str(snapshot.tower_type or ""),
+            voltage_kv=_voltage_kv,
+            params=_params,
+            profile=snapshot.profile_json or {},
+            base_tower=snapshot.base_tower_json or {},
+            build_command=lambda *, input_path: _build_command(
+                adapter=resolved_job.adapter,
+                input_path=input_path,
+                extra_args=resolved_job.extra_args,
+            ),
+            env=env,
+            timeout_seconds=resolved_job.timeout_seconds,
+        )
+
     command = _build_command(
         adapter=resolved_job.adapter,
         input_path=input_path,
         extra_args=resolved_job.extra_args,
     )
-    env = os.environ.copy()
-    env.update(resolved_job.environment)
-    # Wine 在容器环境需要 XDG_RUNTIME_DIR，否则 wineserver 启动失败
-    env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
     logger.info("[ATP] 执行命令：%s，工作目录：%s", " ".join(command), run_dir)
     # 同时输出到 stderr，确保 docker logs 可见
     print(f"[ATP][STDOUT] 执行命令：{' '.join(command)}，工作目录：{run_dir}", file=sys.stdout, flush=True)
