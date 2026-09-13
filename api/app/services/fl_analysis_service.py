@@ -611,6 +611,10 @@ def execute_job(job_id: str) -> None:
                         db,
                         external_adapter=job.external_adapter if job.external_adapter in {"atp", "wine"} else "atp",
                         adapter_config_json=job.adapter_config_json or {},
+                        # ⚠️ 2026-09-13 修复：原实现不传 tower_type → _auto_resolve_asset 拿不到塔型
+                        # → 退到硬编码默认 "ganzi"，导致任务级资产恒为 ganzi（日志里看到的 ganzi 来源）。
+                        # 传首塔塔型作为任务级代表资产；实际每塔仍在循环内按各自塔型解析。
+                        tower_type=snapshots[0].tower_type if snapshots else None,
                         line_voltage_kv=job.line.voltage_kv if job.line else None,
                         scene_type=_auto_scene_type_for_options(execution_options),
                     )
@@ -672,23 +676,20 @@ def execute_job(job_id: str) -> None:
             cache_key = _normalize_tower_shape_code(tower_type) or "<default>"
             if cache_key in external_job_cache:
                 return external_job_cache[cache_key]
-            try:
-                resolved = resolve_external_waveform_job(
-                    db,
-                    external_adapter=job.external_adapter,
-                    adapter_config_json=job.adapter_config_json or {},
-                    tower_type=tower_type,
-                    line_voltage_kv=job.line.voltage_kv if job.line else None,
-                    scene_type=_auto_scene_type_for_options(execution_options),
-                )
-            except Exception as exc:  # 塔型子目录缺失时回退资产根目录模板，避免单塔失败拖垮整批
-                logger.warning(
-                    "[ATP] 按塔型解析资产模板失败（tower=%s type=%s）：%s，回退默认模板",
-                    snapshot.tower_no,
-                    tower_type,
-                    exc,
-                )
-                resolved = external_job
+            # ⚠️ 2026-09-13 修复：必须传「有效适配器」——job.external_adapter 对页面建的任务是
+            # placeholder，而 resolve_external_waveform_job 只认 atp/wine，传 placeholder 会直接
+            # 抛 "Unsupported external adapter: placeholder" → 每塔解析 100% 失败 → 回退到任务级
+            # 资产（曾恒为 ganzi）。对齐任务级 resolve 的写法。
+            # ⚠️ 同时不再「解析失败回退任务级模板」：按用户要求，不具备条件时抛错而非静默降级
+            # （回退会让塔型不匹配、用错模型算出错误结果，且用户无感知）。
+            resolved = resolve_external_waveform_job(
+                db,
+                external_adapter=job.external_adapter if job.external_adapter in {"atp", "wine"} else "atp",
+                adapter_config_json=job.adapter_config_json or {},
+                tower_type=tower_type,
+                line_voltage_kv=job.line.voltage_kv if job.line else None,
+                scene_type=_auto_scene_type_for_options(execution_options),
+            )
             external_job_cache[cache_key] = resolved
             return resolved
 

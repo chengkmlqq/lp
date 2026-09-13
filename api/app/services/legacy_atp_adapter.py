@@ -930,7 +930,13 @@ def _normalize_tower_shape_code(value: str) -> str:
     normalized = re.sub(r"[^a-z0-9]", "", value.lower())
     if not normalized or not re.search(r"[a-z]", normalized):
         return ""
-    return normalized
+    # ⚠️ 2026-09-13 修复（与 fl_analysis_external._normalize_tower_shape_code 一致）：
+    # 剥掉 C# 式电压/回路前缀（s500guxing→guxing / zhiliu500→zhiliu），否则子目录/资产
+    # 塔型匹配全部失败。
+    stripped = re.sub(r"^[a-z]{0,2}\d+", "", normalized)
+    if stripped == normalized:
+        stripped = re.sub(r"\d+$", "", normalized)
+    return stripped or normalized
 
 
 def _discover_model_file(template_dir: Path, raw_path: Any) -> str | None:

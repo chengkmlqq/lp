@@ -362,7 +362,14 @@ def _normalize_tower_shape_code(value: str) -> str:
     normalized = re.sub(r"[^a-z0-9]", "", value.lower())
     if not normalized or not re.search(r"[a-z]", normalized):
         return ""
-    return normalized
+    # ⚠️ 2026-09-13 修复：C# 式编码带电压/回路前缀（s500guxing / d500ganzi /
+    # 500-guxing / s110guxing），必须剥掉前缀才能与资产 tower_type
+    # （guxing/ganzi/jiubei/... 纯基名）匹配。此前不剥前缀 →
+    # _auto_resolve_asset 查不到塔型专属资产 → 静默回退到错误塔型（ganzi）。
+    stripped = re.sub(r"^[a-z]{0,2}\d+", "", normalized)   # s500guxing → guxing
+    if stripped == normalized:
+        stripped = re.sub(r"\d+$", "", normalized)          # zhiliu500 → zhiliu
+    return stripped or normalized
 
 
 # ---------------------------------------------------------------------------
@@ -957,8 +964,6 @@ def _auto_resolve_asset(
         arrester = "noM"
     # 塔型归一：s500guxing / 500-guxing / guxing → guxing
     tower = _normalize_tower_shape_code(tower_type or "") or str(config.get("tower_type") or "").strip()
-    if not tower:
-        tower = "ganzi"
 
     def _query(tower_filter: str | None, arrester_filter: str | None) -> AtpAsset | None:
         stmt = select(AtpAsset).where(AtpAsset.status == "enabled")
@@ -971,17 +976,27 @@ def _auto_resolve_asset(
             stmt = stmt.where(AtpAsset.arrester_config == arrester_filter)
         return db.execute(stmt.limit(1)).scalar_one_or_none()
 
-    asset = _query(tower, arrester)
-    if asset is None:
-        asset = _query(tower, None)
-    if asset is None:
+    if tower:
+        # ⚠️ 2026-09-13 修复：指定塔型时必须命中「该塔型」的资产；查不到就抛错，
+        # 绝不回退到「任意塔型」（原实现会退到 _query(None,...) 任取一条，比如把
+        # s500guxing 静默换成 ganzi 模板 → 用错模型算出错误结果）。
+        asset = _query(tower, arrester)
+        if asset is None:
+            asset = _query(tower, None)
+        if asset is None:
+            raise RuntimeError(
+                f"未找到匹配的 ATP 资产（电压={voltage_kv} 塔型={tower} 场景={scene} 避雷器={arrester}），"
+                f"请先在资产库导入对应塔型模板"
+            )
+    else:
+        # 未指定塔型（仅创建期适配器校验等无塔型上下文场景）：按电压+场景任取一个可用资产。
         asset = _query(None, arrester)
-    if asset is None:
-        asset = _query(None, None)
-    if asset is None:
-        raise RuntimeError(
-            f"未找到匹配的 ATP 资产（电压={voltage_kv} 塔型={tower} 场景={scene} 避雷器={arrester}），请先在资产库导入对应模板"
-        )
+        if asset is None:
+            asset = _query(None, None)
+        if asset is None:
+            raise RuntimeError(
+                f"未找到匹配的 ATP 资产（电压={voltage_kv} 场景={scene} 避雷器={arrester}），请先在资产库导入对应模板"
+            )
     logger.info(
         "[ATP] 自动选资产：电压=%s 塔型=%s 场景=%s → asset=%s (%s)",
         voltage_kv,
