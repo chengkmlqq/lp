@@ -109,6 +109,8 @@ class _NormalizedLightningInputs:
     shielding_phase: _PhasePoint | None
     all_arresters_installed: bool
     synthetic_signed_geometry: bool
+    # C# 保护角公式需要"一回"的上/中/下相三个点（Method.cs 取三相最大保护角）
+    circuit_one_phases: tuple[_PhasePoint, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1220,6 +1222,7 @@ def _normalize_lightning_inputs(payload: Mapping[str, Any]) -> _NormalizedLightn
         shielding_phase=shielding_phase,
         all_arresters_installed=all_arresters_installed,
         synthetic_signed_geometry=synthetic_signed_geometry,
+        circuit_one_phases=tuple(circuits[0][2]) if circuits else (),
     )
 
 
@@ -1489,13 +1492,31 @@ def _calculate_shielding_trip_rate(
     ):
         return None, None
 
-    height_gap = normalized.shield_wire_height_m - normalized.shielding_phase.height_m
-    if "直线" in normalized.structure_kind:
-        height_gap += normalized.insulator_length_m or 0.0
-    if math.isclose(height_gap, 0.0, abs_tol=1e-9):
+    # ── 保护角 α：严格对齐 C# Method.cs（2026-09-15 用全线 98 塔复算 98/98 吻合）──
+    # C# 原式（对"一回"的上/中/下相各算一次，取最大值，结果保留 1 位小数）：
+    #   if (直线塔) dJYZCD_m = 0;                    // ← 绝缘子串长度只有耐张塔计入
+    #   α_i = atan((相中距_i − 左避雷线中距) / (避雷线高度 − 相高_i + dJYZCD_m))
+    # 注意三点与旧实现的差异：①取三相最大值（旧：只算中相）②用**左**避雷线中距
+    # （旧：右）③绝缘子计入条件相反（旧：直线计入；C#：直线清零、耐张计入）。
+    jyzcd_m = 0.0 if "直线" in normalized.structure_kind else (normalized.insulator_length_m or 0.0)
+    # ⚠️ C# 数据模型里"中距"一律是**正幅值**（左/右避雷线中距、各相中距都是到塔中心线的距离），
+    # 公式直接相减判断相偏在哪一侧；而 Web 把避雷线归一成了带符号坐标（左负右正），
+    # 因此这里必须取幅值比较，否则会算出 +75° 这种垃圾值（实测踩过）。
+    x_shield = abs(normalized.left_shield_x_m) if normalized.left_shield_x_m is not None else (
+        abs(normalized.right_shield_x_m) if normalized.right_shield_x_m is not None else None
+    )
+    phase_points = tuple(normalized.circuit_one_phases) or (normalized.shielding_phase,)
+    alphas: list[float] = []
+    for point in phase_points:
+        if point is None or x_shield is None:
+            continue
+        gap = normalized.shield_wire_height_m - point.height_m + jyzcd_m
+        if math.isclose(gap, 0.0, abs_tol=1e-9):
+            continue
+        alphas.append(round(math.degrees(math.atan((abs(point.x_m) - x_shield) / gap)), 1))
+    if not alphas:
         return None, None
-
-    alpha_deg = math.degrees(math.atan((normalized.shielding_phase.x_m - normalized.right_shield_x_m) / height_gap))
+    alpha_deg = max(alphas)
     exponent_shift = 3.9 if _is_gentle_slope(normalized) else 3.35
     trip_rate = (
         0.1
