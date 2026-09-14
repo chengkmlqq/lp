@@ -232,7 +232,18 @@ def _regenerate_line_models_unlocked(
                   file=sys.stdout, flush=True)
             continue
 
-        command = build_command(input_path=dat_path)
+        # ⚠️ 必须传**相对文件名**（cwd 已是 engine_dir）——2026-09-15 实测定位：
+        # ATP 的 Fortran 代码会把命令行传入的文件名整串**小写化**后在（大小写敏感的）
+        # Linux/Wine 上打开。绝对路径含大写段时（/app/data/wine/ATP/500/guxing/fanji/noM/…）
+        # 会被小写成 …/atp/… 而打不开，ATP 于是退到交互提示（"EMTP begins… BOTH:>"）
+        # 把对话框无限写进 GB 级 <pid>.tmp 并挂到 1800s 超时，且 .pch 不被更新
+        # → 几何静默沿用旧 .pch。实测：相对名 0.6 CPU 秒成功出 .pch，绝对路径 rc=3 失败。
+        # 记录旧 .pch 时间戳：ATP 调用失败时旧文件仍在，只查 exists() 会**静默沿用旧几何**
+        # （2026-09-15 实测：路径写法不对导致 LCC 从未成功，却因旧 .pch 存在而一路"成功"）。
+        pch_path = engine_dir / f"{name}.pch"
+        stale_mtime = pch_path.stat().st_mtime_ns if pch_path.exists() else None
+
+        command = build_command(input_path=Path(dat_path.name))
         # LCC 几何计算同样是长耗时引擎调用 → 带心跳，避免静默期被误判为卡死。
         from ..core.subprocess_heartbeat import run_with_heartbeat
 
@@ -248,6 +259,12 @@ def _regenerate_line_models_unlocked(
             raise RuntimeError(
                 f"{name}.dat 的 LCC 运行未产出 .pch（退出码={result.returncode}）："
                 f"{(result.stderr or result.stdout or '')[:400]}"
+            )
+        # 旧 .pch 没被刷新 = ATP 实际没算成功（只是旧文件还在）→ 必须报错，禁止静默沿用旧几何
+        if stale_mtime is not None and pch_path.stat().st_mtime_ns == stale_mtime:
+            raise RuntimeError(
+                f"{name}.dat 的 LCC 未刷新 {name}.pch（仍是旧文件，几何可能未更新）；"
+                f"退出码={result.returncode}，输出尾部：{(result.stdout or result.stderr or '')[-400:]}"
             )
         lib_text = pch_to_lib(pch_path.read_bytes().decode("gbk", errors="replace"))
         (engine_dir / f"{name}.lib").write_bytes(lib_text.encode("gbk", errors="replace"))
