@@ -1969,12 +1969,14 @@ def _read_lis_flashover(run_dir: Path) -> int | None:
 
 
 # C# .atp 中绝缘子闪络开关 SWU1~SWU6 ↔ 相名 的映射（双回 6 相）。
-# 推导依据：C# 500 的 work.lis 闭合顺序 SWU1→SWU4→SWU5→SWU2→SWU3→SWU6
-# 与 C# 报告的单相..六相闪络相 A1 / A1C1 / A1C1C2 / A1C1C2A2 / A1C1C2A2B2
-# / A1C1C2A2B2B1 逐档自洽（前 N 个即为 N 相档）。110 的 A1C2A2B1B2C1 亦吻合。
+# ★2026-09-15 改为 C# 权威源码表：ComputeLightningProtection.cs::MyXiangXu_from_TeZheng()
+#   case "SWU1": "A1"; "SWU2": "B1"; "SWU3": "C1"; "SWU4": "A2"; "SWU5": "B2"; "SWU6": "C2";
+# 旧表（SWU1→A1, SWU2→A2, SWU3→B2, SWU4→C1, SWU5→C2, SWU6→B1）是当年从 work.lis 闭合顺序
+# **反推**出来的，与 C# 源码不符：用真实 .lis 闭合顺序离线映射，旧表只能命中 C# 期望的
+# 2/2/0 个档位（塔42/61/98），权威表命中 6/5/4 个档位。
 _SWU_PHASE_MAP: dict[str, str] = {
-    "SWU1": "A1", "SWU2": "A2", "SWU3": "B2",
-    "SWU4": "C1", "SWU5": "C2", "SWU6": "B1",
+    "SWU1": "A1", "SWU2": "B1", "SWU3": "C1",
+    "SWU4": "A2", "SWU5": "B2", "SWU6": "C2",
 }
 
 
