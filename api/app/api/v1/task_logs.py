@@ -172,10 +172,20 @@ async def stream_log(
         #   断线重连（含前端重建连接）：优先取前端显式传回的 last_event_id 查询参数，
         #     否则回落到 EventSource 自动携带的 Last-Event-ID header，据此续读，断线日志一条不丢。
         last_id = last_event_id or request.headers.get("last-event-id") or "0"
+        # XREAD 阻塞窗口 = 心跳周期：有日志立刻返回（实时推送），无日志到点返回（发心跳保活）。
+        block_ms = max(1000, int(heartbeat_seconds * 1000))
         while True:
             if await request.is_disconnected():
                 return
-            messages = read_task_log_messages(task_id, last_id=last_id, block_ms=1000)
+            # ⚠️ 同步 redis XREAD 必须丢到线程池：直接放在 async 生成器里会阻塞整个
+            # API 进程的事件循环。原实现是 block_ms=1000 读一轮 + 无条件
+            # sleep(heartbeat_seconds=15) → 日志最多延迟约 16 秒才推一批，前端表现为
+            # "日志不实时更新"（2026-09-14 修复）。改为：XREAD 阻塞等待到日志到达即返回，
+            # 只在无日志时发心跳。
+            messages = await asyncio.to_thread(
+                read_task_log_messages, task_id, last_id, block_ms
+            )
+            delivered = 0
             for msg in messages:
                 last_id = msg["id"]
                 if msg["field"] == "__end__":
@@ -183,6 +193,7 @@ async def stream_log(
                     continue
                 if msg["line"] is None:
                     continue
+                delivered += 1
                 yield f"id: {last_id}\ndata: {json.dumps({'line': msg['line']})}\n\n"
             # 检查一次最终状态：若刚结束则补推全量 + done
             current_state, current_path = get_task_state_and_log_path(task_id)
@@ -194,7 +205,7 @@ async def stream_log(
                 yield f"data: {json.dumps({'lines': log_content})}\n\n"
                 yield "event: done\ndata: {}\n\n"
                 return
-            yield f": ping\n\n"
-            await asyncio.sleep(heartbeat_seconds)
+            if not delivered:
+                yield f": ping\n\n"
 
     return StreamingResponse(event_generator(), headers=headers)

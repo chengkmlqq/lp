@@ -299,6 +299,20 @@ class TaskLogCapture:
         return None
 
     @classmethod
+    def get_single_active(cls) -> _TaskLogBuffer | None:
+        """进程内**唯一**活跃缓冲；用于没有 celery 任务上下文的并行子线程回落。
+
+        prefork worker 每个子进程同时只跑一个任务 → 活跃缓冲最多 1 个；返回恰好 1 个时
+        可判定"当前任务"就是它（子线程的日志不会丢）。0 个（无任务）或多个（线程池并发
+        多任务，本部署不存在）时返回 None，避免把日志串写到别的任务。
+        """
+        with cls._lock:
+            active = [b for b in cls._registry.values() if not b._closed]  # noqa: SLF001
+        if len(active) == 1:
+            return active[0]
+        return None
+
+    @classmethod
     def flush_all(cls) -> int:
         """周期兜底任务用：清理 closed 缓冲，并对仍活跃的缓冲 flush 增量。
 
@@ -426,19 +440,29 @@ def _register_setup_logging_receiver() -> None:
 
 
 def _current_buffer() -> _TaskLogBuffer | None:
-    """当前线程（任务）对应的缓冲；无任务上下文或未 start 时返回 None。"""
+    """当前线程（任务）对应的缓冲；无任务上下文或未 start 时返回 None。
+
+    解析顺序（2026-09-14 修复「并行优化后任务日志只剩第一行」）：
+      1. ``celery._state.get_current_task()`` —— 任务主线程内的常规路径；
+      2. **进程内唯一活跃缓冲** —— 并行优化（``ThreadPoolExecutor`` 跑六档/三相二分）
+         开的子线程没有 celery 任务上下文（``get_current_task()`` 是 thread-local，
+         子线程里恒为 None）→ 子线程的 ``logger.info`` / ``print`` 只写容器 stdout、
+         不进任务日志缓冲，前端 SSE 只看得到第一行。
+         worker 为 prefork 单进程单任务模型（``--concurrency=N`` = N 个独立子进程），
+         同一进程内同时只处理一个任务，故回落到"唯一活跃缓冲"是安全的；
+         活跃缓冲 > 1（线程池并发多任务）时返回 None —— 宁可丢日志也不串写。
+    """
     from celery._state import get_current_task
 
     current_task = get_current_task()
-    if current_task is None:
-        return None
-    request = getattr(current_task, "request", None)
-    if request is None:
-        return None
-    task_id = getattr(request, "id", None)
-    if not task_id:
-        return None
-    return TaskLogCapture.get(task_id)
+    if current_task is not None:
+        request = getattr(current_task, "request", None)
+        task_id = getattr(request, "id", None) if request is not None else None
+        if task_id:
+            buffer = TaskLogCapture.get(task_id)
+            if buffer is not None:
+                return buffer
+    return TaskLogCapture.get_single_active()
 
 
 def _should_install() -> bool:
