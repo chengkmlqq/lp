@@ -358,7 +358,6 @@ export default function AdminFlAnalysisPage() {
 
   // ---- 任务详情动态 Tab（LP-274：点击任务打开详情，可多开）----
   const [detailTabs, setDetailTabs] = useState<{ key: string; job: FlAnalysisJobSummary }[]>([]);
-  const [submittingByJob, setSubmittingByJob] = useState<Record<string, boolean>>({});
 
   const openJobDetail = useCallback((job: FlAnalysisJobSummary) => {
     const tabKey = job.id;
@@ -376,10 +375,6 @@ export default function AdminFlAnalysisPage() {
       return;
     }
     const key = String(targetKey);
-    if (submittingByJob[key]) {
-      // 任务提交中（措施推荐/复算/报告）禁止关闭详情 Tab
-      return;
-    }
     setDetailTabs((previous) => {
       const removedIndex = previous.findIndex((tab) => tab.key === key);
       const next = previous.filter((tab) => tab.key !== key);
@@ -389,7 +384,7 @@ export default function AdminFlAnalysisPage() {
       }
       return next;
     });
-  }, [activeTabKey, submittingByJob]);
+  }, [activeTabKey]);
 
   // ---- 措施推荐 / 加装避雷器复算 / 报告生成 Modal 状态 ----
   const mitigationForm = Form.useForm<MitigationFormValues>()[0];
@@ -687,9 +682,6 @@ export default function AdminFlAnalysisPage() {
                 onOpenMitigation={openMitigation}
                 onOpenScenario={openScenario}
                 onOpenReport={openReport}
-                onSubmittingChange={(jobId, submitting) => {
-                  setSubmittingByJob((previous) => ({ ...previous, [jobId]: submitting }));
-                }}
                 onOpenLog={openLogViewer}
               />
             ),

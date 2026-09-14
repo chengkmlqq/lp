@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Drawer, message, Typography } from "antd";
+import { Button, Drawer, message } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { TowerDetailView } from "@/components/fl-analysis/detail-modal";
@@ -34,8 +34,6 @@ type JobDetailTabViewProps = {
     baseJobs: FlAnalysisJobSummary[],
   ) => void;
   onOpenReport: (job: FlAnalysisJobSummary, rows: FlAnalysisTowerResultSummary[]) => void;
-  /** 上报提交状态：外层据此锁定/解锁该任务 Tab 的关闭 */
-  onSubmittingChange: (jobId: string, submitting: boolean) => void;
   onOpenLog: (taskId: string | null | undefined, label: string, title: string) => void;
 };
 
@@ -47,7 +45,6 @@ export function JobDetailTabView({
   onOpenMitigation,
   onOpenScenario,
   onOpenReport,
-  onSubmittingChange,
   onOpenLog,
 }: JobDetailTabViewProps) {
   const { user, fetchWithAuth, hasPermission } = useAuth();
@@ -126,29 +123,8 @@ export function JobDetailTabView({
     });
   }
 
-  // 任务 Tab 内自持的开始/下载操作：pending 状态按 Tab 隔离，
+  // 任务 Tab 内自持的下载操作：pending 状态按 Tab 隔离，
   // 不依赖外层 mutation（外层 detailTabs children 为打开时快照，props 不会随外层刷新）。
-  const startJobMutation = useMutation({
-    mutationFn: async (jobId: string) => {
-      const response = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${jobId}/start`, {
-        method: "POST",
-      });
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as { job: FlAnalysisJobDetail };
-    },
-    onMutate: () => onSubmittingChange(job.id, true),
-    onSettled: () => onSubmittingChange(job.id, false),
-    onSuccess: async () => {
-      await invalidateFlAnalysisQueries();
-      messageApi.success("任务已启动");
-    },
-    onError: (error) => {
-      messageApi.error(error instanceof Error ? error.message : "任务启动失败");
-    },
-  });
-
   const downloadResultsMutation = useMutation({
     mutationFn: async ({ jobId, runId, jobType }: { jobId: string; runId?: string | null; jobType: string }) => {
       const params = new URLSearchParams();
@@ -219,27 +195,6 @@ export function JobDetailTabView({
       {contextHolder}
       <div className="admin-fl-analysis-detail-pane">
         <div>
-          {/* 「任务信息」标题行：导出结果按钮右对齐放在同一行最右侧 */}
-          <div className="admin-fl-analysis-title-row">
-            <Typography.Title level={4} className="admin-fl-analysis-detail-title">
-              计算任务-计算结果
-            </Typography.Title>
-            {liveJob.job_type !== "report" ? (
-              <Button
-                onClick={() => {
-                  downloadResultsMutation.mutate({
-                    jobId: job.id,
-                    runId: selectedJobDetail?.latest_run_id ?? job.latest_run_id,
-                    jobType: job.job_type,
-                  });
-                }}
-                loading={downloadResultsMutation.isPending}
-                disabled={!canDownloadResults}
-              >
-                导出结果
-              </Button>
-            ) : null}
-          </div>
           <JobDetailPanel
             selectedJob={liveJob}
             selectedJobDetail={selectedJobDetail}
@@ -254,11 +209,7 @@ export function JobDetailTabView({
             candidateScenarioRows={candidateScenarioRows}
             candidateScenarioBaseJobs={candidateScenarioBaseJobs}
             candidateReportRows={candidateReportRows}
-            startPending={startJobMutation.isPending}
             downloadReportPending={downloadReportMutation.isPending}
-            onStart={() => {
-                startJobMutation.mutate(job.id);
-              }}
             onOpenMitigation={() => onOpenMitigation(liveJob, candidateMitigationRows)}
             onOpenScenario={() => onOpenScenario(liveJob, candidateScenarioRows, candidateScenarioBaseJobs)}
             onOpenReport={() => onOpenReport(liveJob, candidateReportRows)}
@@ -268,16 +219,33 @@ export function JobDetailTabView({
           />
         </div>
 
-        {/* 分级结果：不再用选项卡，表格直接展示在下方 */}
+        {/* 分级结果：不再用选项卡，表格直接展示在下方；导出结果按钮置于表格右上方 */}
         <section className="fl-create-form-block">
           <ResultTable
-          selectedJob={liveJob}
-          selectedWaveformJobType={selectedJobDetailWaveformType}
-          rows={towerRows}
-          loading={towerResultsQuery.isLoading}
-          error={towerResultsQuery.error}
-          onOpenDetail={openTowerDetail}
-        />
+            selectedJob={liveJob}
+            selectedWaveformJobType={selectedJobDetailWaveformType}
+            rows={towerRows}
+            loading={towerResultsQuery.isLoading}
+            error={towerResultsQuery.error}
+            onOpenDetail={openTowerDetail}
+            headerExtra={
+              liveJob.job_type !== "report" ? (
+                <Button
+                  onClick={() => {
+                    downloadResultsMutation.mutate({
+                      jobId: job.id,
+                      runId: selectedJobDetail?.latest_run_id ?? job.latest_run_id,
+                      jobType: job.job_type,
+                    });
+                  }}
+                  loading={downloadResultsMutation.isPending}
+                  disabled={!canDownloadResults}
+                >
+                  导出结果
+                </Button>
+              ) : null
+            }
+          />
         </section>
       </div>
 

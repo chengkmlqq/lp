@@ -236,6 +236,19 @@ export function statusColor(value: string | null | undefined): string {
   return "default";
 }
 
+/**
+ * 任务是否「处理中/未处理完成」（pending/queued/running）。
+ * 此类状态的结果尚未得出，禁用详情入口，避免用户在结果未就绪时打开详情。
+ */
+export const DETAIL_LOCKED_STATUSES = new Set(["pending", "queued", "running"]);
+
+export function isJobDetailLocked(job: FlAnalysisJobSummary | FlAnalysisJobDetail | null): boolean {
+  if (!job) {
+    return false;
+  }
+  return DETAIL_LOCKED_STATUSES.has(job.status);
+}
+
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return "-";
@@ -244,10 +257,28 @@ export function formatDateTime(value: string | null | undefined): string {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return date.toLocaleString("zh-CN", {
-    hour12: false,
+  // 亚洲/上海时区，日期部分用横杠连接（YYYY-MM-DD HH:mm:ss），避免 toLocaleString 的斜杠格式
+  const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai",
-  });
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const map: Record<string, string> = {};
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      map[part.type] = part.value;
+    }
+  }
+  const pad = (n: string) => n.padStart(2, "0");
+  const hh = pad(map.hour ?? "00");
+  const mm = pad(map.minute ?? "00");
+  const ss = pad(map.second ?? "00");
+  return `${map.year}-${pad(map.month ?? "01")}-${pad(map.day ?? "01")} ${hh}:${mm}:${ss}`;
 }
 
 export function stringifyJson(value: unknown): string {

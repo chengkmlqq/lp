@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Alert, Button, Empty, Spin, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
@@ -28,6 +28,8 @@ type ResultTableProps = {
   loading: boolean;
   error: unknown;
   onOpenDetail: (row: FlAnalysisTowerResultSummary) => void;
+  /** 表格右上方附加操作区（如导出结果按钮） */
+  headerExtra?: ReactNode;
 };
 
 export function ResultTable({
@@ -37,6 +39,7 @@ export function ResultTable({
   loading,
   error,
   onOpenDetail,
+  headerExtra,
 }: ResultTableProps) {
   const columns = useMemo<ColumnsType<FlAnalysisTowerResultSummary>>(() => {
     const resultColumns: ColumnsType<FlAnalysisTowerResultSummary> = [
@@ -213,12 +216,20 @@ export function ResultTable({
   }
 
   return (
-    <Table<FlAnalysisTowerResultSummary>
-      rowKey="id"
-      columns={columns}
-      dataSource={rows}
-      pagination={false}
-      scroll={{ x: "max-content" }}
-    />
+    <>
+      {headerExtra ? (
+        <div className="flex items-center justify-between mb-3">
+          <div className="fl-create-form-block-title" style={{ marginBottom: 0 }}>杆塔明细</div>
+          {headerExtra}
+        </div>
+      ) : null}
+      <Table<FlAnalysisTowerResultSummary>
+        rowKey="id"
+        columns={columns}
+        dataSource={rows}
+        pagination={false}
+        scroll={{ x: "max-content" }}
+      />
+    </>
   );
 }

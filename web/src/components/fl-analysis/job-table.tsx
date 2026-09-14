@@ -9,6 +9,7 @@ import type { FlAnalysisJobSummary } from "@/types/auth";
 import {
   formatDateTime,
   formatJobType,
+  isJobDetailLocked,
   mitigationMode,
   statusColor,
 } from "./types";
@@ -119,6 +120,7 @@ export function JobTable({
                   <Button
                     type="link"
                     size="small"
+                    disabled={isJobDetailLocked(job)}
                     onClick={() => onOpenDetail(job)}
                   >
                     查看结果

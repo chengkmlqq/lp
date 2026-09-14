@@ -18,6 +18,7 @@ import type { FlAnalysisJobSummary } from "@/types/auth";
 import {
   formatDateTime,
   formatJobType,
+  isJobDetailLocked,
   mitigationMode,
 } from "./types";
 
@@ -96,6 +97,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
               key: "result",
               tooltip: "查看结果",
               icon: <BarChartOutlined />,
+              disabled: isJobDetailLocked(job),
               onClick: (event) => {
                 event.stopPropagation();
               onOpenDetail?.(job);
@@ -134,7 +136,12 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
             size="small"
             hoverable
             className="admin-fl-analysis-job-card"
-            onClick={() => onOpenDetail?.(job)}
+            onClick={() => {
+              if (isJobDetailLocked(job)) {
+                return;
+              }
+              onOpenDetail?.(job);
+            }}
           >
             <div className="flex flex-col">
               {/* 标题区：状态徽标置于右上角（对齐雷电流幅值统计页） */}
@@ -169,7 +176,13 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
                 <div className="flex items-center gap-2">
                   <ClockCircleOutlined className="text-xs text-gray-500" />
                   <Typography.Text type="secondary" className="text-xs">
-                    创建：{formatDateTime(job.create_date)} / 完成：{formatDateTime(job.finished_at)}
+                    创建时间：{formatDateTime(job.create_date)}
+                  </Typography.Text>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ClockCircleOutlined className="text-xs text-gray-500" />
+                  <Typography.Text type="secondary" className="text-xs">
+                    完成时间：{formatDateTime(job.finished_at)}
                   </Typography.Text>
                 </div>
                 <div className="flex items-center gap-2">

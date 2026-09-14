@@ -41,9 +41,7 @@ type JobDetailPanelProps = {
   candidateScenarioRows: FlAnalysisTowerResultSummary[];
   candidateScenarioBaseJobs: FlAnalysisJobSummary[];
   candidateReportRows: FlAnalysisTowerResultSummary[];
-  startPending: boolean;
   downloadReportPending: boolean;
-  onStart: () => void;
   onOpenMitigation: () => void;
   onOpenScenario: () => void;
   onOpenReport: () => void;
@@ -83,9 +81,7 @@ export function JobDetailPanel({
   candidateScenarioRows,
   candidateScenarioBaseJobs,
   candidateReportRows,
-  startPending,
   downloadReportPending,
-  onStart,
   onOpenMitigation,
   onOpenScenario,
   onOpenReport,
@@ -257,16 +253,6 @@ export function JobDetailPanel({
 
       {canManage || selectedJob.job_type === "report" ? (
         <Space size={12} wrap split={<Divider type="vertical" />}>
-          {canManage ? (
-            <Space wrap>
-              {/* 已完成的成功任务不再提供「重新执行任务」入口（结果详情页要求） */}
-              {selectedJob.status === "success" ? null : (
-                <Button onClick={onStart} loading={startPending}>
-                  启动任务
-                </Button>
-              )}
-            </Space>
-          ) : null}
           {canManage && (canCreateMitigation || canCreateScenario || canCreateReport) ? (
             <Space wrap>
               {canCreateMitigation ? (
