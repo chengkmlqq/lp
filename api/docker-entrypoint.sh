@@ -51,6 +51,33 @@ for V in 35 66 110 220 330 500 750 800 1000; do
     echo "entrypoint: initialized ${DATA_ROOT}/ATP/${V}/${V}egm/*.exe"
 done
 
+# --- LCC 引擎配置文件（startup/graphics/listsize/templates） ---
+# LCC（Line Constants Calculator）启动必需：缺失时 ATP 报
+# "Attempt to connect disk file startup has failed. Halt in RFUNL1" 且产不出 .pch。
+# 与 tpbig/EGM 同理，镜像带一份（/app/static/wine/ATP/），启动时幂等拷到运行时卷。
+for F in startup graphics graphics.aux graphics.std listsize.big; do
+    SRC_F="${STATIC_ROOT}/ATP/${F}"
+    DST_F="${DATA_ROOT}/ATP/${F}"
+    if [ -f "${SRC_F}" ] && { [ ! -f "${DST_F}" ] || ! cmp -s "${SRC_F}" "${DST_F}"; }; then
+        cp "${SRC_F}" "${DST_F}"
+        echo "entrypoint: initialized ${DST_F}"
+    fi
+done
+for A in halfhigh.aux halfwide.aux higher80.aux higher93.aux quarter.aux sixteen.aux thirty2.aux; do
+    SRC_F="${STATIC_ROOT}/ATP/${A}"
+    DST_F="${DATA_ROOT}/ATP/${A}"
+    if [ -f "${SRC_F}" ] && { [ ! -f "${DST_F}" ] || ! cmp -s "${SRC_F}" "${DST_F}"; }; then
+        cp "${SRC_F}" "${DST_F}"
+        echo "entrypoint: initialized ${DST_F}"
+    fi
+done
+# 参数模板目录（fanji/raoji1 等）：防雷计算 .dat 生成时从模板读取，随镜像分发。
+if [ -d "${STATIC_ROOT}/ATP/templates" ]; then
+    mkdir -p "${DATA_ROOT}/ATP/templates"
+    cp -rn "${STATIC_ROOT}/ATP/templates/." "${DATA_ROOT}/ATP/templates/"
+    echo "entrypoint: initialized templates"
+fi
+
 # --- Wine 初始化 (celery-worker) ---
 # tobix/pywine:3.10 镜像已自带完整的 wineboot --init 配置在 /opt/wineprefix
 # 直接使用，不再重复初始化

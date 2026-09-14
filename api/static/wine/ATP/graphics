@@ -1,0 +1,66 @@
+C  NYMAX  NUMFNT  INDLPT  LABLAX  JCHYAX  KCHYAX    LTIC  LASERJ  LOWERC  KOLBAK
+   -7777     104       0      25      11      10       7      -1       1       0
+C LCHFIL  LCHSUP  LCHTIT  LCHXAX  LCHYAX  KPYPCT   grids    axes  curves  KVIRTU
+      30      73      35      28      28      87       1       8      12       0
+C FNTHED  FNTSUP  FNTTIT  WHTBAK  XVLABL  YVLABL  HVLABL  XHLABL  YHLOFF  HHLABL 
+     0.4     .25     .17     1.0    -0.7     4.0     .20     5.0    -0.5     .20
+C  JXMAX   JYMAX  JXINCH  JYINCH   JXOFF   JYOFF    JTIC  NPGRID   IZGR1   IZGR2
+    1280    1024     105     105     120      90       3       4       2       0
+C HPXOFF  HPYOFF  YAXHPX  YAXHPY
+    1.10     1.0     1.0     0.1
+C KSUPSC  KHEDSC  KCASSC  KLGDSC  KAXESC  KLABSC  KGRDSC
+      14      15      15      15      15      14       3
+C LCOLSC  is a vector of 20 cells (one for each curve) that is read as 20I4:
+  12  10  11  14  13  15   9   2   4   5   6   7   1   8   3  12  10  11  14  13
+C KSUPHP  KHEDHP  KCASHP  KLGDHP  KAXEHP  KLABHP  KGRDHP
+       8       2       3       9       5       6       7
+C LNTYHP is a vector of 20 cells (one for each curve) that is read as 20I4:
+   0   6   5   4   3   2   1   0   6   5   4   3   2   1   0   6   5   4   2   1
+C LCOLHP is a vector of 20 cells (one for each curve) that is read as 20I4:
+   1   2   3   5   6   7   9   1   2   3   5   6   7   9   1   2   3   5   6   7
+C LENGHP is a vector of 20 cells (one for each curve) that is read as 20I4:
+   4   4   4   4   4   4   4   4   4   4   4   4   4   4   4   4   4   4   2   2
+
+C    Preceding parameter set is for CalComp and also SPY plotting of GNU Mingw32
+C    ATP.   Note that one comment card precedes each data card.  Extra comments
+C    such as the ones now being read, can only be placed at the end where they 
+C    will not be read by the Salford  SUBROUTINE BEGPLT.   For meanings,  see 
+C    the Rule Book Section I-E-3.
+
+Additions during late April, 1999:
+
+LASERJ = -1  ==> Dimensions and positioning of the DISLIN graphics window will
+                 be taken from  GRAPHICS.AUX  specification.
+          0  ==> Full-screen window 'CONS'
+          1  ==> Small window of 'XWIN'
+
+12 May 1999,  for DISLIN of GNU Mingw32:
+---------------------------------------
+
+Old LJ2DPI becomes "grids"  ---  width of line used to draw the grids.
+This integer is 1 for the minimum (1 plot point).  Because of rounding,
+any value greater than 1 but less than 5 looks highly irregular.  The
+inner grid remains with value 1, always, regardless of what the user
+defines here (used only for the outer grid).
+
+Old LJ2MOD becomes "axes"  ---  width of line used to draw the axes.
+Since there is only one X and one Y axis,  unevenness seen with  "grids"  
+is less of a problem.  Any positive value seems to work well.
+
+Old LJ2PAP becomes "curves"  ---  width of line used to draw the curves.
+This is great for demonstrations.  Value 10 looks good,  and 20 is
+interesting if only as an illustration of excess.
+
+     LASERJ  indicates the destination of the graphics.  Use
+-1  for the screen.  Alternative values are:
++1  ----   colored PostScript file on black backgro
+ 2  ----   PostScript to disk replaces screen graph
+ 3  ----   HP-GL to disk replaces screen graphics
+ 4  ----   TIFF files on disk replaces screen graphics
+ 5  ----   GKSLIN metafile replaces screen graphics
+ 6  ----   a CGM metafile replaces screen graphics
+ 7  ----   a Kyocera file replaces screen graphics
+ 8  ----   Windows metafile replaces screen graphics
+ 9  ----   Java applet file replaces screen graphic
+10  ----   an image file replaces screen graphics
+
