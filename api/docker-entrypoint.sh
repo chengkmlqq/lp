@@ -35,6 +35,22 @@ if [ -f "${STATIC_ROOT}/ATP/tpbig.exe" ]; then
     fi
 fi
 
+# --- EGM 引擎（各电压的 rjtzl_egm*.exe）：绕击跳闸率计算用 ---
+# 与 tpbig.exe 同理：镜像里带（/app/static/wine/ATP/<v>/<v>egm/），启动时拷到运行时卷。
+for V in 35 66 110 220 330 500 750 800 1000; do
+    SRC_EGM="${STATIC_ROOT}/ATP/${V}/${V}egm"
+    [ -d "${SRC_EGM}" ] || continue
+    mkdir -p "${DATA_ROOT}/ATP/${V}/${V}egm"
+    for F in "${SRC_EGM}"/*.exe; do
+        [ -f "$F" ] || continue
+        BN="${F##*/}"
+        if [ ! -f "${DATA_ROOT}/ATP/${V}/${V}egm/${BN}" ] || ! cmp -s "$F" "${DATA_ROOT}/ATP/${V}/${V}egm/${BN}"; then
+            cp "$F" "${DATA_ROOT}/ATP/${V}/${V}egm/${BN}"
+        fi
+    done
+    echo "entrypoint: initialized ${DATA_ROOT}/ATP/${V}/${V}egm/*.exe"
+done
+
 # --- Wine 初始化 (celery-worker) ---
 # tobix/pywine:3.10 镜像已自带完整的 wineboot --init 配置在 /opt/wineprefix
 # 直接使用，不再重复初始化

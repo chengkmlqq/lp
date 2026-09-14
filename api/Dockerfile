@@ -13,6 +13,10 @@ WORKDIR /app
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
+# 静态引擎文件（tpbig.exe + 各电压 EGM 引擎 rjtzl_egm*.exe）随镜像分发，
+# 容器启动时由 entrypoint 拷到运行时卷（/app/data/wine/ATP/）。
+COPY static/wine /app/static/wine
+
 COPY app ./app
 # 录波 PDF 提取器（extract_fault_report.py）及其依赖清单：镜像内需与 app 同级存在，
 # 否则 /extract-wave 与判别任务会报「录波 PDF 提取器不存在」。
