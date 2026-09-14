@@ -459,6 +459,117 @@ def start_job(
     return FlAnalysisJobStartResponse(job=serialize_job(latest, include_runs=True), queued=True)
 
 
+def cancel_job(db: Session, *, job_id: str, actor: User) -> tuple[FlAnalysisJob, bool]:
+    """取消（终止）排队中 / 运行中的防雷分析任务。
+
+    - 仅 ``pending`` / ``queued`` / ``running`` 可取消；已结束（success/failed/cancelled）→ 409
+    - celery 侧：``running`` → ``revoke(terminate=True, signal="SIGTERM")``（终止 worker 子进程）；
+      ``queued``/``pending`` → ``revoke(terminate=False)``（尚未执行，仅撤销，避免被 worker 取走）
+    - DB 侧：``status='cancelled'`` + ``finished_at`` + ``error_message='用户取消'``
+    - ⚠️ 收尾处理器（``_finish_rule_based_run`` / ``_mark_run_failed`` /
+      ``_mark_job_failed_without_run``）均带「已是 cancelled 则不再覆盖」的保护 ——
+      否则 revoke 与任务自然收尾竞争时会把状态翻回 success/failed
+    - 另派发一个清理任务，杀掉该任务残留的 wine/tpbig/egm 孙进程（SIGTERM 只终止 worker
+      子进程，孙进程可能继续跑完当前一轮，白烧 CPU）
+    - 已算出的部分结果**保留**（不删数据），供追溯
+    """
+    job = get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="防雷分析任务不存在")
+    if job.status not in {"pending", "queued", "running"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"任务当前状态为 {job.status}，已结束无法取消",
+        )
+
+    task_id = job.task_id
+    revoke_mode = "none"
+    if task_id:
+        try:
+            from ..core.celery_app import celery_app
+
+            is_running = job.status == "running"
+            # running 需 terminate（否则任务会继续跑完）；queued/pending 只需撤销标记
+            celery_app.control.revoke(task_id, terminate=is_running, signal="SIGTERM")
+            revoke_mode = "terminate" if is_running else "revoke"
+        except Exception as exc:  # noqa: BLE001 —— 撤销失败不阻断状态落库（用户仍要看到已取消）
+            logger.warning("撤销 celery 任务失败：job=%s task=%s err=%s", job.id, task_id, exc)
+            revoke_mode = "failed"
+
+    now = utcnow()
+    # ⚠️ 顺序很关键（实测教训）：先派发清理任务（它会 SIGKILL 执行中的子进程 → 该连接断开后
+    # 行锁立刻释放），再写状态。若反过来，本接口会在任务仍持锁期间空转重试（实测 17.8s 才返回）。
+    _dispatch_cancel_cleanup(job_id=job.id)
+    # ⚠️ 行锁坑（2026-09-14 实测）：任务运行中时 worker 侧会话会间歇性持有该 job 行锁
+    # （快照计数/进度更新等），此时直接 UPDATE 会被无限期阻塞 —— 实测接口曾挂住 >30s、
+    # 前端表现为「请求无响应」。对策：lock_timeout 2s + 重试；仍失败则由清理任务兜底写状态。
+    status_written = _write_cancelled_status(db, job_id=job.id, actor_id=actor.id, now=now)
+
+    _publish_change(
+        "fl_analysis.job.cancelled",
+        {
+            "action": "job_cancelled",
+            "job_id": job.id,
+            "line_id": job.line_id,
+            "task_id": task_id,
+            "revoke": revoke_mode,
+            "status_written": status_written,
+        },
+    )
+
+    latest = get_job_by_id(db, job.id)
+    return latest or job, status_written
+
+
+def _write_cancelled_status(
+    db: Session, *, job_id: str, actor_id: str | None, now: datetime
+) -> bool:
+    """把任务置为 ``cancelled``，遇行锁时按 ``lock_timeout`` + 重试（返回是否写入成功）。
+
+    不能让接口等待未定义时长：单次尝试最多 2s 拿不到锁就放掉，最多 5 次（≈10s）。
+    失败时返回 False，由 worker 侧清理任务（进程已杀、锁必已释放）补写状态。
+    """
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+
+    last_error: Exception | None = None
+    for attempt in range(6):
+        try:
+            db.execute(text("SET LOCAL lock_timeout = '2s'"))
+            locked_job = get_job_by_id(db, job_id)
+            if not locked_job:
+                db.rollback()
+                return False
+            locked_job.status = "cancelled"
+            locked_job.error_message = "用户取消"
+            locked_job.finished_at = now
+            locked_job.update_date = now
+            locked_job.update_user = actor_id
+            db.commit()
+            return True
+        except OperationalError as exc:  # 行锁超时（lock_timeout）等
+            db.rollback()
+            last_error = exc
+            logger.info("取消写状态遇行锁，重试 %d/6：job=%s", attempt + 1, job_id)
+            time.sleep(1.0)
+        except Exception as exc:  # noqa: BLE001 —— 其它异常也不应让接口 500
+            db.rollback()
+            last_error = exc
+            break
+    logger.warning("取消状态写入失败（交由清理任务兜底）：job=%s err=%s", job_id, last_error)
+    return False
+
+
+def _dispatch_cancel_cleanup(*, job_id: str) -> None:
+    """取消后清理该任务残留的外部引擎子进程（best-effort，失败不影响取消结果）。"""
+    try:
+        from ..tasks.fl_analysis_tasks import cleanup_cancelled_fl_analysis_run
+
+        cleanup_cancelled_fl_analysis_run.delay(job_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("取消清理任务派发失败：job=%s err=%s", job_id, exc)
+
+
 def download_report_document(db: Session, *, job_id: str) -> tuple[str, bytes]:
     job = get_job_by_id(db, job_id)
     if not job:
@@ -1280,8 +1391,13 @@ def _finish_rule_based_run(
     run.finished_at = now
     run.update_date = now
 
-    job.status = "success"
-    job.error_message = None
+    # ⚠️ 取消是终态：用户已取消时不再把状态翻回 success（结果/日志仍保留供追溯）。
+    cancelled = job.status == "cancelled"
+    if cancelled:
+        logger.info("任务已被取消，跳过 success 状态写回：job=%s", job.id)
+    else:
+        job.status = "success"
+        job.error_message = None
     job.result_summary_json = {
         **summary,
         "adapter_status": adapter_status,
@@ -1290,6 +1406,9 @@ def _finish_rule_based_run(
     job.finished_at = now
     job.update_date = now
     db.commit()
+
+    if cancelled:
+        return
 
     _publish_change(
         "fl_analysis.job.success",
@@ -1324,11 +1443,17 @@ def _mark_run_failed(
     run.finished_at = now
     run.update_date = now
 
-    job.status = "failed"
-    job.error_message = error_message
+    # 取消是终态：任务被终止后用户看到的应是「已取消」，而不是随之而来的失败信息。
+    cancelled = job.status == "cancelled"
+    if not cancelled:
+        job.status = "failed"
+        job.error_message = error_message
     job.finished_at = now
     job.update_date = now
     db.commit()
+
+    if cancelled:
+        return
 
     _publish_change(
         "fl_analysis.job.failed",
@@ -1341,11 +1466,17 @@ def _mark_job_failed_without_run(db: Session, *, job_id: str, error_message: str
     if not job:
         return
     now = utcnow()
-    job.status = "failed"
-    job.error_message = error_message
+    # 取消是终态：已取消的任务不再被写成失败。
+    cancelled = job.status == "cancelled"
+    if not cancelled:
+        job.status = "failed"
+        job.error_message = error_message
     job.finished_at = now
     job.update_date = now
     db.commit()
+
+    if cancelled:
+        return
 
     _publish_change(
         "fl_analysis.job.failed",

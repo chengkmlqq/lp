@@ -249,6 +249,34 @@ export function isJobDetailLocked(job: FlAnalysisJobSummary | FlAnalysisJobDetai
   return DETAIL_LOCKED_STATUSES.has(job.status);
 }
 
+/**
+ * 可取消的任务状态（与后端 `cancel_job` 的可取消集合保持一致）。
+ * 仅待处理/排队中/处理中可取消；已结束（success/failed/cancelled）不可取消。
+ */
+export const CANCELLABLE_STATUSES = new Set(["pending", "queued", "running"]);
+
+export function isJobCancellable(job: FlAnalysisJobSummary | FlAnalysisJobDetail | null | undefined): boolean {
+  if (!job) {
+    return false;
+  }
+  return CANCELLABLE_STATUSES.has(job.status);
+}
+
+/** 任务状态中文文案（含 cancelled/blocked），列表与卡片统一口径。 */
+export function formatJobStatus(value: string | null | undefined): string {
+  const status = (value || "").trim();
+  const map: Record<string, string> = {
+    pending: "待处理",
+    queued: "排队中",
+    running: "处理中",
+    blocked: "阻塞",
+    success: "已完成",
+    failed: "失败",
+    cancelled: "已取消",
+  };
+  return map[status] || status || "-";
+}
+
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return "-";

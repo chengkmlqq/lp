@@ -9,6 +9,7 @@ import {
   DeploymentUnitOutlined,
   FileTextOutlined,
   MoreOutlined,
+  StopOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
@@ -18,6 +19,7 @@ import type { FlAnalysisJobSummary } from "@/types/auth";
 import {
   formatDateTime,
   formatJobType,
+  isJobCancellable,
   isJobDetailLocked,
   mitigationMode,
 } from "./types";
@@ -28,6 +30,8 @@ type JobCardListProps = {
   jobs: FlAnalysisJobSummary[];
   loading: boolean;
   onDeleteJob: (job: FlAnalysisJobSummary) => void;
+  /** 取消运行中/排队中的任务（终止执行 + 清理残留进程） */
+  onCancelJob?: (job: FlAnalysisJobSummary) => void;
   canReadLogs?: boolean;
   onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
   /** 点击卡片主体打开任务详情（查看结果） */
@@ -70,7 +74,7 @@ function isJobLocked(job: FlAnalysisJobSummary) {
   return LOCKED_STATUSES.has(job.status);
 }
 
-export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog, onOpenDetail }: JobCardListProps) {
+export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLogs, onOpenLog, onOpenDetail }: JobCardListProps) {
   if (jobs.length === 0) {
     // 无数据可展示时（首载/无结果）：用居中加载指示；其余情况保留现有数据，仅在刷新时叠加遮罩
     if (loading) {
@@ -113,6 +117,17 @@ export function JobCardList({ jobs, loading, onDeleteJob, canReadLogs, onOpenLog
             onClick: (event) => {
               event.stopPropagation();
               onOpenLog?.(job.task_id, "任务执行日志", job.job_name || job.line_name || job.line_code || "防雷任务");
+            },
+          });
+        }
+        if (onCancelJob && isJobCancellable(job)) {
+          actions.push({
+            key: "cancel",
+            tooltip: "取消任务",
+            icon: <StopOutlined />,
+            onClick: (event) => {
+              event.stopPropagation();
+              onCancelJob(job);
             },
           });
         }

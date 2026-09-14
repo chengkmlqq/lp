@@ -356,6 +356,44 @@ export default function AdminFlAnalysisPage() {
     });
   };
 
+  // 取消运行中/排队中的任务：后端 revoke celery 任务 + 状态置「已取消」+ 清理残留 wine/tpbig 进程
+  const cancelJobMutation = useMutation({
+    mutationFn: async (job: FlAnalysisJobSummary) => {
+      const response = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${job.id}/cancel`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const payload = (await response.json()) as { status_written?: boolean };
+      return { job, statusWritten: payload.status_written !== false };
+    },
+    onSuccess: async ({ job, statusWritten }) => {
+      setError("");
+      await invalidateFlAnalysisQueries();
+      const label = job.job_name || job.line_name || job.id;
+      if (statusWritten) {
+        messageApi.success(`已取消任务：${label}`);
+      } else {
+        // 任务正持有该行锁，状态由 worker 侧清理任务兜底写入（数秒内完成）
+        messageApi.warning(`已请求取消任务「${label}」，状态更新中，稍后自动刷新`);
+      }
+    },
+    onError: (candidate) => {
+      setError(candidate instanceof Error ? candidate.message : "任务取消失败");
+    },
+  });
+
+  const handleCancelJob = (job: FlAnalysisJobSummary) => {
+    modalApi.confirm({
+      title: "取消任务",
+      content: `确认取消任务「${job.job_name || job.line_name || job.id}」吗？正在执行的计算会被终止，已计算出的部分结果会保留。`,
+      okText: "确认取消",
+      cancelText: "再想想",
+      onOk: () => cancelJobMutation.mutate(job),
+    });
+  };
+
   // ---- 任务详情动态 Tab（LP-274：点击任务打开详情，可多开）----
   const [detailTabs, setDetailTabs] = useState<{ key: string; job: FlAnalysisJobSummary }[]>([]);
 
@@ -627,7 +665,7 @@ export default function AdminFlAnalysisPage() {
                 ) : viewMode === "card" ? (
                   <>
                     <div className="admin-power-lines-card-scroll">
-                      <JobCardList jobs={jobs} loading={jobsQuery.isFetching} onDeleteJob={handleDeleteJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
+                      <JobCardList jobs={jobs} loading={jobsQuery.isFetching} onDeleteJob={handleDeleteJob} onCancelJob={handleCancelJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
                     </div>
                     <div className="admin-power-lines-pagination">
                       <Pagination
@@ -656,6 +694,7 @@ export default function AdminFlAnalysisPage() {
                       onPaginationChange={(next) => setPagination(next)}
                       scrollY={tableScrollY}
                       onDeleteJob={handleDeleteJob}
+                      onCancelJob={handleCancelJob}
                       canReadLogs={canReadLogs}
                       onOpenLog={openLogViewer}
                       onOpenDetail={openJobDetail}

@@ -8,7 +8,9 @@ import type { FlAnalysisJobSummary } from "@/types/auth";
 
 import {
   formatDateTime,
+  formatJobStatus,
   formatJobType,
+  isJobCancellable,
   isJobDetailLocked,
   mitigationMode,
   statusColor,
@@ -22,6 +24,8 @@ type JobTableProps = {
   onPaginationChange: (next: { current: number; pageSize: number }) => void;
   scrollY?: number;
   onDeleteJob: (job: FlAnalysisJobSummary) => void;
+  /** 取消运行中/排队中的任务（终止执行 + 清理残留进程） */
+  onCancelJob?: (job: FlAnalysisJobSummary) => void;
   canReadLogs?: boolean;
   onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
   /** 打开任务详情（查看结果） */
@@ -42,6 +46,7 @@ export function JobTable({
   onPaginationChange,
   scrollY,
   onDeleteJob,
+  onCancelJob,
   canReadLogs,
   onOpenLog,
   onOpenDetail,
@@ -70,7 +75,7 @@ export function JobTable({
       title: "状态",
       key: "status",
       width: 100,
-      render: (_value, job) => <Tag color={statusColor(job.status)}>{job.status}</Tag>,
+      render: (_value, job) => <Tag color={statusColor(job.status)}>{formatJobStatus(job.status)}</Tag>,
     },
     {
       title: "创建时间",
@@ -112,7 +117,7 @@ export function JobTable({
           {
             title: "操作",
             key: "operation",
-            width: 280,
+            width: 320,
             align: "center" as const,
             render: (_value: unknown, job: FlAnalysisJobSummary) => (
               <Space size="small">
@@ -136,6 +141,15 @@ export function JobTable({
                     查看日志
                   </Button>
                 ) : null}
+                {onCancelJob && isJobCancellable(job) ? (
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => onCancelJob(job)}
+                  >
+                    取消
+                  </Button>
+                ) : null}
                 <Button
                   danger
                   type="link"
@@ -150,7 +164,7 @@ export function JobTable({
           },
         ]
       : []),
-  ], [onDeleteJob, canReadLogs, onOpenLog]);
+  ], [onDeleteJob, onCancelJob, canReadLogs, onOpenLog, onOpenDetail]);
 
   if (jobs.length === 0 && loading) {
     // 无数据可展示时的首载/空结果：居中加载指示；有数据时由下方 Table 的 loading

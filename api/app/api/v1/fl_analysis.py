@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route
 from ...schemas.fl_analysis import (
+    FlAnalysisJobCancelResponse,
     FlAnalysisJobCreateRequest,
     FlAnalysisJobCreateResponse,
     FlAnalysisJobDetail,
@@ -16,6 +17,7 @@ from ...schemas.fl_analysis import (
 )
 from ...schemas.tower_profile import TowerProfileDetail, TowerProfileUpsertRequest
 from ...services.fl_analysis_service import (
+    cancel_job,
     create_job,
     delete_job,
     download_result_csv,
@@ -137,6 +139,21 @@ def start_fl_analysis_job(
     db: Session = Depends(get_db),
 ) -> FlAnalysisJobStartResponse:
     return start_job(db, job_id, actor=current_user.user)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=FlAnalysisJobCancelResponse)
+def cancel_fl_analysis_job(
+    job_id: str,
+    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    db: Session = Depends(get_db),
+) -> FlAnalysisJobCancelResponse:
+    """取消排队中 / 运行中的任务（revoke celery 任务 + 状态置 cancelled + 清理残留引擎进程）。"""
+    job, status_written = cancel_job(db, job_id=job_id, actor=current_user.user)
+    return FlAnalysisJobCancelResponse(
+        job=serialize_job(job, include_runs=True),
+        cancelled=True,
+        status_written=status_written,
+    )
 
 
 @router.delete("/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)

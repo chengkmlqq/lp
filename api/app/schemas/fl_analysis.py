@@ -129,6 +129,14 @@ class FlAnalysisJobStartResponse(BaseModel):
     queued: bool = True
 
 
+class FlAnalysisJobCancelResponse(BaseModel):
+    job: FlAnalysisJobDetail
+    cancelled: bool = True
+    # 状态是否已落库；False 表示任务正持有该行锁，已交由 worker 侧清理任务兜底写入
+    # （前端据此提示「已请求取消，状态更新中」而不是显示旧状态）
+    status_written: bool = True
+
+
 class FlAnalysisTowerResultSummary(BaseModel):
     id: str
     job_id: str

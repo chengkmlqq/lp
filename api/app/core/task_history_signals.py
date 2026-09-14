@@ -247,13 +247,25 @@ def on_task_failure(sender=None, task_id=None, exception=None, **kwargs):  # typ
 
 @signals.task_revoked.connect
 def on_task_revoked(sender=None, request=None, terminated=None, signum=None, expired=None, **kwargs):  # type: ignore[no-untyped-def]
-    """Record task as REVOKED when it is revoked."""
+    """Record task as REVOKED when it is revoked.
+
+    ⚠️ 2026-09-14 修复：revoke(terminate=True) 时传入的是 celery 的 ``Context`` 对象，
+    它**没有** ``task_name`` 属性 → 原实现直接 ``request.task_name`` 抛
+    ``AttributeError: 'Context' object has no attribute 'task_name'``，整个信号处理器中断，
+    导致 REVOKED 状态与日志收尾都被跳过（任务永远停在 STARTED，取消功能实测暴露该问题）。
+    这里改为多来源兜底取任务名。
+    """
     if request is None:
         return
-    task_id = request.id
+    task_id = getattr(request, "id", None)
     if not task_id:
         return
-    if _is_system_task(request.task_name if request else None):
+    task_name = (
+        getattr(request, "task_name", None)
+        or getattr(request, "name", None)
+        or getattr(getattr(request, "task", None), "name", None)
+    )
+    if _is_system_task(task_name):
         # 系统任务：不写 REVOKED 状态、不触发日志采集（LP-281）
         return
 
