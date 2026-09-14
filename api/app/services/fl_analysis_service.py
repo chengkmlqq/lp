@@ -837,7 +837,10 @@ def execute_job(job_id: str) -> None:
                     _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
                     tower_tracker.mark_phase_done()
                     # ── 绕击跳闸率：C# EGM（rjtzl_egm*.exe）；Ic 取中间相绕击耐雷整数部分 ──
-                    _egm_ic = _raoji_values.get("B相") or _raoji_values.get("A相")
+                    _vals = [v for v in _raoji_values.values() if isinstance(v, (int, float))]
+                    # C# ComputeLightningProtection.cs:7891-7912：顶层「绕击耐雷水平」与 EGM 的 Ic
+                    # 都取三相绕击耐雷的最小值（不是 B 相 —— 相序测试上恰好相等）
+                    _egm_ic = min(_vals) if _vals else None
                     if _egm_ic is None:
                         raise RuntimeError(
                             f"{snapshot.tower_no}: 绕击耐雷水平缺失，无法计算 EGM 绕击跳闸率"
@@ -857,6 +860,9 @@ def execute_job(job_id: str) -> None:
                     )
                     _raoji_merged["shielding_trip_rate"] = _egm_rate
                     _raoji_merged["shielding_trip_rate_method"] = "egm"
+                    # 普通计算：顶层绕击耐雷 = 三相最小值（C# 7891-7912）
+                    if _egm_ic is not None:
+                        _raoji_merged["shielding_withstand_ka"] = _egm_ic
                     graded = _raoji_merged
                     # 普通计算：顶层耐雷/跳闸率保留实际值（C# 口径），但风险等级要用
                     # EGM 之后的绕击跳闸率重算。
@@ -996,7 +1002,10 @@ def execute_job(job_id: str) -> None:
                         _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
                         tower_tracker.mark_phase_done()
                         # ── 绕击跳闸率：C# EGM 电气几何模型（rjtzl_egm*.exe，wine 跑）──
-                        # C# rjtzl_AC_GroundAngle2 用「中间相绕击耐雷的整数部分」作 Ic
+                        _vals = [v for v in _raoji_values.values() if isinstance(v, (int, float))]
+                        # C# ComputeLightningProtection.cs:7891-7912：顶层「绕击耐雷水平」与 EGM 的 Ic
+                        # 都取三相绕击耐雷的最小值（不是 B 相 —— 相序测试上恰好相等）
+                        _egm_ic = min(_vals) if _vals else None
                         # （(int)mRaojiCurrent），跑 egm 两轮（地面倾角1 / -地面倾角2）求和，
                         # 鼓型塔再 ÷2。已用 C# 0913 中间文件逐位验证：0.406567 ✓
                         _egm_ic = _raoji_values.get("B相") or _raoji_values.get("A相")
