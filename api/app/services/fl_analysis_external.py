@@ -1413,10 +1413,44 @@ def execute_external_waveform_tower_analysis(
         if d_drive.exists() or d_drive.is_symlink():
             d_drive.unlink()
         d_drive.symlink_to(atp_root)
+    # 双层 ATP：模板 $INCLUDE 写的是 D:\ATP\500\...，而 D: 映射到 /app/data/wine/ATP，
+    # 因此 D:\ATP 实际解析为 /app/data/wine/ATP/ATP —— 该自指链接必须存在。
+    # 缺失后果（2026-09-15 实测 36 环境）：ATP 打不开任何 $INCLUDE → 报
+    # `KILL-code error stop`、退出码仍为 0、但不产出 work.lis/.pl4 →
+    # 闪络判据取不到值 → 恒定按"六相全闪"参与二分 → 耐雷水平退化到二分下界
+    # （表现为 0.161kA 这类荒谬值），且任务仍标记 success。禁止静默：建不出来直接抛错。
+    nested_atp = atp_root / "ATP"
+    if nested_atp.is_symlink() and not nested_atp.exists():
+        nested_atp.unlink()  # 断链修复
+    if nested_atp.exists() and not nested_atp.is_symlink():
+        # 真目录（历史遗留：曾被别的代码 mkdir 出来只含模板 .lib）→
+        # 会让 ATP 读到「别的塔的静态几何」而并不报错，属静默错误，必须拦。
+        leftovers = list(nested_atp.iterdir())
+        if leftovers:
+            raise RuntimeError(
+                f"ATP 双层目录 {nested_atp} 是真实目录（含 {len(leftovers)} 项），"
+                f"应为指向 {atp_root} 的符号链接；否则 D:\\ATP\\... 的 $INCLUDE 会读到"
+                "陈旧模板几何且不报错。请清空该目录后重试。"
+            )
+        nested_atp.rmdir()
+    if not nested_atp.exists():
+        try:
+            nested_atp.symlink_to(atp_root)
+        except OSError as exc:
+            raise RuntimeError(
+                f"ATP 双层目录链接创建失败：{nested_atp} -> {atp_root}（{exc}）；"
+                "缺此链接时 D:\\ATP\\... 的 $INCLUDE 无法解析，ATP 不会产出 work.lis。"
+            ) from exc
+        logger.info("[ATP] 已补建双层 ATP 链接：%s -> %s", nested_atp, atp_root)
+    elif nested_atp.resolve(strict=False) != atp_root.resolve(strict=False):
+        nested_atp.unlink()
+        nested_atp.symlink_to(atp_root)
+        logger.warning("[ATP] 双层 ATP 链接指向错误，已重指向 %s", atp_root)
     # 兼容模板 INCLUDE 路径：D:\\ATP\\500\\ganzi\\fanji\\M1\\*.lib
     # 以及 D:\\ATP\\35\\ganzi\\raoji1\\M123\\*.lib 等任意电压等级/塔型路径
+    # ⚠️ 必须用渲染后的文本（含真实电压/塔型），模板原文里可能是占位符。
     include_dirs: set[str] = set()
-    for line in (atp_text or "").splitlines():
+    for line in (rendered_text or atp_text or "").splitlines():
         if not line.strip().upper().startswith("$INCLUDE"):
             continue
         raw_path = line.split(",", 1)[1].strip() if "," in line else ""
@@ -1540,6 +1574,18 @@ def execute_external_waveform_tower_analysis(
                 logger.info("[ATP] pl4 闪络检测（回退）：%s，闪络相数=%d", snapshot.tower_no, flashover_count)
         except Exception as exc:
             logger.warning("[ATP] pl4 闪络检测失败（%s）：%s", snapshot.tower_no, exc)
+        if "flashover_count" not in parsed_payload:
+            # 引擎"跑完"却拿不到任何闪络判据 = 环境/路径问题（引擎文件缺失、D:\ATP 双层链接缺失、
+            # $INCLUDE 打不开…）。2026-09-15 实测教训：36 环境曾在此静默继续——每轮都判
+            # "闪络"，二分退化到下界，耐雷水平算成 0.161kA 而任务仍标记 success。
+            # 按「不具备计算条件必须抛错」原则：这里直接失败，绝不静默代入默认值。
+            produced = sorted(p.name for p in run_dir.glob("work.*")) or ["（无 work.* 文件）"]
+            raise RuntimeError(
+                f"{snapshot.tower_no} ATP 未产出闪络判据：运行目录 {run_dir} 内既无 work.lis"
+                f"（Close switch 行）也无 work.pl4，现有文件={produced}。常见原因：引擎辅助文件缺失、"
+                "D:\\ATP 双层链接缺失（/app/data/wine/ATP/ATP 应指向 /app/data/wine/ATP）、"
+                "$INCLUDE 的 .lib 打不开。"
+            )
     logger.info("[ATP] 结果解析完成：%s，payload_keys=%s", snapshot.tower_no, list(parsed_payload.keys())[:10])
     merged_result = _merge_external_result(
         baseline_result=baseline_result,
