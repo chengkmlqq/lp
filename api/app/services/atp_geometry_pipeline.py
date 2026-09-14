@@ -16,6 +16,7 @@ import hashlib
 import logging
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -179,7 +180,16 @@ def span_km_for(name: str, base_tower: dict[str, Any]) -> float | None:
     return None
 
 
-def regenerate_line_models(
+_GEOMETRY_LOCK = threading.Lock()
+
+
+def regenerate_line_models(*args: object, **kwargs: object):
+    """带全局线程锁的几何重生成（并行二分时多线程会同时改写同一批 .dat/.lib，必须串行化）。"""
+    with _GEOMETRY_LOCK:
+        return _regenerate_line_models_unlocked(*args, **kwargs)
+
+
+def _regenerate_line_models_unlocked(
     *,
     engine_dir: Path,
     tower_kind: str,

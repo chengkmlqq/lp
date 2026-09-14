@@ -147,11 +147,26 @@ def execute_multi_phase_binary_search_external(
         max_binary_phases = min(max_phases, 3)
     # 顺带记录：phase_count -> 最低电流（C# 每次达标仿真都覆盖，取最后一次即收敛附近）
     incidental: dict[int, float] = {}
-    for level in range(1, max_binary_phases + 1):
+    import concurrent.futures as _cf  # noqa: PLC0415
+
+    parallel_workers = max(1, int(execution_options.get("binary_search_parallel_workers") or 4))
+    # 并行度默认 4（墙钟 ≈ 单档二分耗时）；显式传 1 时退化为顺序模式（保留 carry_low 接续，对齐 C#）
+    _use_parallel = parallel_workers > 1 and max_binary_phases > 1
+    _levels = list(range(1, max_binary_phases + 1))
+
+    def _run_level(level: int) -> ExternalTowerExecutionResult:
         level_options = dict(execution_options)
-        level_options["binary_search_low_ka"] = carry_low
-        level_options["binary_search_high_ka"] = default_high
-        execution = execute_binary_search_external(
+        # 每档独立运行子目录，避免并行时 work.atp/work.lis 互相覆盖
+        level_options["_run_subdir"] = f"level{level}"
+        if _use_parallel:
+            # 并行模式：各档独立完整区间。二分收敛边界不依赖初始 low（只要求 low<结果<high），
+            # 结果与顺序模式一致；carry_low 仅影响迭代次数，并行下无意义。
+            level_options["binary_search_low_ka"] = default_low
+            level_options["binary_search_high_ka"] = default_high
+        else:
+            level_options["binary_search_low_ka"] = carry_low
+            level_options["binary_search_high_ka"] = default_high
+        return execute_binary_search_external(
             resolved_job,
             db=db,
             job=job,
@@ -162,7 +177,14 @@ def execute_multi_phase_binary_search_external(
             target_flashover_phases=level,
             on_step=on_step,
         )
-        level_results.append(execution)
+
+    if _use_parallel:
+        with _cf.ThreadPoolExecutor(max_workers=min(parallel_workers, len(_levels))) as _pool:
+            _executions = list(_pool.map(_run_level, _levels))
+    else:
+        _executions = [_run_level(level) for level in _levels]
+    level_results = list(_executions)
+    for level, execution in zip(_levels, level_results):
         last_execution = execution
         merged = execution.result_json
         search = merged.get("binary_search") or {}
@@ -1309,7 +1331,10 @@ def execute_external_waveform_tower_analysis(
         )
     logger.info("[ATP] 模板渲染完成，输入文件大小=%d 字节", len(rendered_text))
 
-    run_dir = _prepare_run_directory(job=job, snapshot=snapshot, resolved_job=resolved_job)
+    run_dir = _prepare_run_directory(
+        job=job, snapshot=snapshot, resolved_job=resolved_job,
+        subdir=str(execution_options.get("_run_subdir") or ""),
+    )
     input_path = run_dir / resolved_job.entry_file
     input_path.write_text(rendered_text, encoding="gbk", errors="replace")
     logger.info("[ATP] 输入文件已写入：%s", input_path)
@@ -1740,8 +1765,11 @@ def _prepare_run_directory(
     job: FlAnalysisJob,
     snapshot: FlAnalysisTowerSnapshot,
     resolved_job: ResolvedExternalWaveformJob,
+    subdir: str = "",
 ) -> Path:
     base_dir = _resolve_engine_workdir() / "fl-analysis" / job.id / snapshot.id
+    if subdir:
+        base_dir = base_dir / subdir
     base_dir.mkdir(parents=True, exist_ok=True)
     return base_dir
 

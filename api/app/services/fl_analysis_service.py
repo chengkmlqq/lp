@@ -793,7 +793,11 @@ def execute_job(job_id: str) -> None:
                     # 绕击耐雷 35.153 / 绕击跳闸率 1.2824），故此处与 tongtiao 同流程。
                     _raoji_values: dict[str, float | None] = {}
                     _raoji_merged = dict(graded)
-                    for _idx, _raoji_scene in enumerate(("raoji1", "raoji2", "raoji3"), start=1):
+                    import concurrent.futures as _cf  # noqa: PLC0415
+                    _raoji_workers = max(1, int(execution_options.get("binary_search_parallel_workers") or 4))
+                    _use_raoji_par = _raoji_workers > 1
+
+                    def _run_raoji(_idx: int):
                         try:
                             _raoji_job = resolve_external_waveform_job(
                                 db,
@@ -802,25 +806,35 @@ def execute_job(job_id: str) -> None:
                                 adapter_config_json=dict(job.adapter_config_json or {}),
                                 tower_type=snapshot.tower_type or "",
                                 line_voltage_kv=job.line.voltage_kv if job.line else None,
-                                scene_type=_raoji_scene,
+                                scene_type=f"raoji{_idx}",
                             )
                         except Exception as _exc:
                             # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
                             raise RuntimeError(
                                 f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
-                                f"(场景={_raoji_scene}, tower={snapshot.tower_type}, "
+                                f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
                                 f"{job.line.voltage_kv if job.line else '?'}kV)：{_exc}"
                             ) from _exc
-                        _sh = execute_shielding_binary_search_external(
+                        _opts = dict(execution_options)
+                        if _use_raoji_par:
+                            _opts["_run_subdir"] = f"raoji{_idx}"
+                        return execute_shielding_binary_search_external(
                             _raoji_job,
                             db=db,
                             job=job,
                             snapshot=snapshot,
-                            execution_options=execution_options,
+                            execution_options=_opts,
                             baseline_result=baseline_result,
                             payload=payload,
                             on_step=_tower_on_step,
                         )
+
+                    if _use_raoji_par:
+                        with _cf.ThreadPoolExecutor(max_workers=min(_raoji_workers, 3)) as _pool:
+                            _raoji_execs = dict(zip((1, 2, 3), _pool.map(_run_raoji, (1, 2, 3))))
+                    else:
+                        _raoji_execs = {_idx: _run_raoji(_idx) for _idx in (1, 2, 3)}
+                    for _idx, _sh in _raoji_execs.items():
                         _raoji_values[f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
                         for _key in (
                             "shielding_withstand_ka",
@@ -956,8 +970,11 @@ def execute_job(job_id: str) -> None:
                         logger.info("[ATP] 绕击循环触发(tongtiao)：method_raoji=%s, scene=raoji1/2/3", _method_raoji)
                         _raoji_values: dict[str, float | None] = {}
                         _raoji_merged = dict(graded)
-                        for _idx, _raoji_scene in enumerate(("raoji1", "raoji2", "raoji3"), start=1):
-                            _raoji_job = None
+                        import concurrent.futures as _cf  # noqa: PLC0415
+                        _raoji_workers = max(1, int(execution_options.get("binary_search_parallel_workers") or 4))
+                        _use_raoji_par = _raoji_workers > 1
+
+                        def _run_raoji(_idx: int):
                             try:
                                 _raoji_job = resolve_external_waveform_job(
                                     db,
@@ -966,25 +983,35 @@ def execute_job(job_id: str) -> None:
                                     adapter_config_json=dict(job.adapter_config_json or {}),
                                     tower_type=snapshot.tower_type or "",
                                     line_voltage_kv=job.line.voltage_kv if job.line else None,
-                                    scene_type=_raoji_scene,
+                                    scene_type=f"raoji{_idx}",
                                 )
                             except Exception as _exc:
-                                # ⚠️ 对齐 C#：方法选 ATP 时 raoji 资产解不出必须报错（禁静默兜底）
+                                # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
                                 raise RuntimeError(
                                     f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
-                                    f"(场景={_raoji_scene}, tower={snapshot.tower_type}, "
+                                    f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
                                     f"{job.line.voltage_kv if job.line else '?'}kV)：{_exc}"
                                 ) from _exc
-                            _sh = execute_shielding_binary_search_external(
+                            _opts = dict(execution_options)
+                            if _use_raoji_par:
+                                _opts["_run_subdir"] = f"raoji{_idx}"
+                            return execute_shielding_binary_search_external(
                                 _raoji_job,
                                 db=db,
                                 job=job,
                                 snapshot=snapshot,
-                                execution_options=execution_options,
+                                execution_options=_opts,
                                 baseline_result=baseline_result,
                                 payload=payload,
                                 on_step=_tower_on_step,
                             )
+
+                        if _use_raoji_par:
+                            with _cf.ThreadPoolExecutor(max_workers=min(_raoji_workers, 3)) as _pool:
+                                _raoji_execs = dict(zip((1, 2, 3), _pool.map(_run_raoji, (1, 2, 3))))
+                        else:
+                            _raoji_execs = {_idx: _run_raoji(_idx) for _idx in (1, 2, 3)}
+                        for _idx, _sh in _raoji_execs.items():
                             _raoji_values[f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
                             for _key in (
                                 "shielding_withstand_ka",
