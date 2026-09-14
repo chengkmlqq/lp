@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -234,9 +233,16 @@ def _regenerate_line_models_unlocked(
             continue
 
         command = build_command(input_path=dat_path)
-        result = subprocess.run(command, cwd=str(engine_dir), env=env,
-                                capture_output=True, text=True, encoding="utf-8",
-                                errors="replace", timeout=timeout_seconds, check=False)
+        # LCC 几何计算同样是长耗时引擎调用 → 带心跳，避免静默期被误判为卡死。
+        from ..core.subprocess_heartbeat import run_with_heartbeat
+
+        result = run_with_heartbeat(
+            command,
+            cwd=str(engine_dir),
+            env=env,
+            timeout=timeout_seconds,
+            label=f"{name}.dat 线路模型 LCC 重生成",
+        )
         pch_path = engine_dir / f"{name}.pch"
         if not pch_path.exists():
             raise RuntimeError(

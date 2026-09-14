@@ -780,15 +780,14 @@ def _run_runtime_command(
     failure_prefix: str,
 ) -> subprocess.CompletedProcess[str]:
     try:
-        result = subprocess.run(
+        # 长耗时引擎调用（legacy ATP）→ 带心跳日志，静默期前端也能看出仍在计算。
+        from ..core.subprocess_heartbeat import run_with_heartbeat
+
+        result = run_with_heartbeat(
             command,
             cwd=str(working_dir),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             timeout=timeout_seconds,
-            check=False,
+            label=f"legacy ATP 运行（{working_dir.name}）",
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"{failure_prefix}，执行超时（{timeout_seconds}s）") from exc

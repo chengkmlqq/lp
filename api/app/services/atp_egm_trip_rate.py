@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -197,13 +196,15 @@ def _run_egm(*, exe: Path, work_dir: Path, name_file: str, env: dict[str, str], 
     local_exe = work_dir / exe.name
     if not local_exe.exists():
         shutil.copy2(exe, local_exe)
-    proc = subprocess.run(
+    # EGM（MATLAB 编译程序）单次约 113 秒且期间无输出 → 带心跳，避免前端看起来卡死。
+    from ..core.subprocess_heartbeat import run_with_heartbeat
+
+    proc = run_with_heartbeat(
         ["wine", local_exe.name],
         cwd=str(work_dir),
         env=env,
-        capture_output=True,
-        text=True,
         timeout=timeout,
+        label=f"{exe.name} 绕击跳闸率（EGM）",
     )
     result_path = work_dir / "result_main.txt"
     if not result_path.exists():

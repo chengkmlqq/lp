@@ -1447,16 +1447,16 @@ def execute_external_waveform_tower_analysis(
         startup_dst.write_bytes(startup_src.read_bytes())
 
     try:
-        result = subprocess.run(
+        # 长耗时引擎调用（单次数分钟、capture_output 期间无输出）→
+        # 交给 run_with_heartbeat 周期性打心跳日志，避免前端看起来"日志停了/卡死"。
+        from ..core.subprocess_heartbeat import run_with_heartbeat
+
+        result = run_with_heartbeat(
             command,
             cwd=str(run_dir),
             env=env,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             timeout=resolved_job.timeout_seconds,
-            check=False,
+            label=f"杆塔 {snapshot.tower_no}（{run_dir.name}）tpbig 仿真",
         )
     except subprocess.TimeoutExpired as exc:
         logger.error("[ATP] 执行超时：%s，超时时间=%ds", snapshot.tower_no, resolved_job.timeout_seconds)

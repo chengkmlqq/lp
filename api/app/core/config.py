@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     atp_engine_workdir: str = "runs"
     atp_engine_default_timeout_seconds: int = 1800
     atp_engine_max_timeout_seconds: int = 3600
+    # 外部引擎（tpbig / LCC / rjtzl_egm*.exe）单次调用的进度心跳间隔（秒）。
+    # 这些调用单次可达数分钟且 capture_output 期间无输出，心跳日志让前端能看出"仍在计算"。
+    atp_run_heartbeat_seconds: float = 20.0
     atp_legacy_root: str = "./data/wine/ATP"
     atp_tpbig_executable: str = "ATP/tpbig.exe"
     atp_rjtzl_executable: str = "ATP/rjtzl.exe"
