@@ -11,6 +11,102 @@ from ..services.fl_analysis_service import execute_job
 logger = logging.getLogger(__name__)
 
 
+def _kill_process_tree(root_pid: int) -> int:
+    """SIGKILL 以 root_pid 为根的**整棵进程树**（先杀后代、再杀根），返回杀掉的数量。
+
+    为什么需要（2026-09-15 实测）：取消任务时只杀 celery 子进程不够——
+    wine → tpbig（LCC/主仿真）是它的孙进程，子进程被 SIGKILL 后孙进程**会被 init 收养
+    （ppid=1）**，此后按 pid 或父链都找不到它们，于是它们在资产目录里继续跑几十上百分钟、
+    持续写数 GB 的 .tmp（实测 3 个泄漏的 LCC 进程互抢同一资产目录，把 LCC 拖到 1800s 超时）。
+    所以必须在树还完整时递归收集全部后代，再从叶子往根杀。
+    """
+    children: dict[int, list[int]] = {}
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        try:
+            with open(f"/proc/{entry}/stat", "rb") as fh:
+                fields = fh.read().rsplit(b") ", 1)
+            ppid = int(fields[1].split()[1])
+        except (OSError, IndexError, ValueError):
+            continue
+        children.setdefault(ppid, []).append(pid)
+
+    ordered: list[int] = []
+
+    def _walk(pid: int) -> None:
+        for child in children.get(pid, []):
+            _walk(child)
+        ordered.append(pid)
+
+    _walk(root_pid)
+    killed = 0
+    for pid in ordered:
+        try:
+            os.kill(pid, signal.SIGKILL)
+            killed += 1
+        except OSError:
+            continue
+    return killed
+
+
+def _kill_task_tree(job_id: str) -> tuple[bool, int]:
+    """按任务 PID 文件杀**整棵进程树**，返回 (是否杀到根进程, 树内被杀进程数)。
+
+    只杀 cmdline 含 ``celery`` 的进程（防 PID 复用误杀）。
+    """
+    path = _task_pid_path(job_id)
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            pid = int(fh.read().strip())
+    except (OSError, ValueError):
+        return False, 0
+    if pid == os.getpid():
+        return False, 0
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+            cmdline = fh.read().replace(b"\x00", b" ").decode("utf-8", "replace")
+    except OSError:
+        return False, 0
+    if "celery" not in cmdline:
+        return False, 0
+    killed = _kill_process_tree(pid)
+    return killed > 0, killed
+
+
+def _kill_orphan_lcc_processes() -> int:
+    """清扫**孤儿 LCC 进程**（ppid=1 且 cmdline 是 `tpbig.exe both <x>.dat s -r`）。
+
+    这类进程是本任务取消/崩溃后泄漏的产物：它们的 celery 父进程已死、被 init 收养，
+    之后既不在运行目录里也找不到父链，会一直跑下去并持续写数 GB 的 .tmp。
+    健康运行的 LCC 其父进程是存活的 wine 进程（ppid≠1），因此只杀 ppid=1 的是安全的。
+    """
+    killed = 0
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        if pid == os.getpid():
+            continue
+        try:
+            with open(f"/proc/{entry}/stat", "rb") as fh:
+                ppid = int(fh.read().rsplit(b") ", 1)[1].split()[1])
+            if ppid != 1:
+                continue
+            with open(f"/proc/{entry}/cmdline", "rb") as fh:
+                cmdline = fh.read().replace(b"\x00", b" ").decode("utf-8", "replace")
+        except (OSError, IndexError, ValueError):
+            continue
+        if "tpbig.exe" in cmdline and " s -r" in cmdline and "tpbig.exe both" in cmdline:
+            try:
+                _kill_process_tree(pid)
+                killed += 1
+            except OSError:
+                continue
+    return killed
+
+
 def _kill_processes_matching(pattern: str) -> int:
     """按 cmdline 关键字杀进程（返回命中数）。
 
@@ -157,32 +253,40 @@ def _ensure_cancelled_status(job_id: str) -> bool:
 def cleanup_cancelled_fl_analysis_run(self, job_id: str) -> dict[str, str]:
     """取消任务后：清理残留外部引擎进程 + 兜底写「已取消」状态。
 
-    背景：取消时 ``revoke(terminate=True)`` 只终止执行任务的 worker 子进程，
-    其**孙进程**（wine 包装的 tpbig/EGM）可能继续跑完当前一轮 —— 白烧 CPU，
-    还会继续往运行目录写文件。这里按运行目录路径 ``runs/fl-analysis/<job_id>/``
-    精确匹配 cmdline，只杀属于该任务的进程。
+    背景（2026-09-15 实测两处坑）：
+    1. ``revoke(terminate=True)`` 只终止执行任务的 worker 子进程；其**孙进程**
+       （wine 包装的 tpbig/EGM/LCC）会继续跑完当前一轮，白烧 CPU 并继续写文件。
+    2. 更坑的是孙进程**会被 init 收养（ppid=1）**，之后按 pid/父链都找不到 ——
+       实测 3 个泄漏的 LCC 进程互抢同一资产目录，把 LCC 拖到 1800s 超时、并持续
+       写数 GB 的 .tmp 直到把磁盘写满。
+
+    因此清理顺序：① 按 PID 文件杀**整棵进程树**（树完整时递归收集后代，再自叶向根杀）；
+    ② 再按运行目录兜底扫一遍；③ 按引擎资产目录再扫一遍（LCC 跑在资产目录而非运行目录）。
     """
     pattern = f"runs/fl-analysis/{job_id}/"
     killed = 0
+    tree_killed = 0
     task_killed = False
     error = ""
     try:
-        # 1) 先 SIGKILL 执行该任务的 celery 子进程（SIGTERM 对它不即时生效，见 _write_task_pid 注释）
-        task_killed = _kill_task_process(job_id)
+        # 1) 杀整棵进程树（含已 reparent 前的 wine/tpbig 孙进程）
+        task_killed, tree_killed = _kill_task_tree(job_id)
         time.sleep(1)
-        # 2) 再清残留的外部引擎孙进程（wine / tpbig / rjtzl_egm*.exe）
+        # 2) 再清残留的外部引擎进程（运行目录 + 孤儿 LCC）
         killed = _kill_processes_matching(pattern)
+        killed += _kill_orphan_lcc_processes()
     except Exception as exc:  # noqa: BLE001 —— 清理是 best-effort
         error = str(exc)
         logger.warning("取消清理失败：job=%s err=%s", job_id, exc)
     status_fixed = _ensure_cancelled_status(job_id)
     logger.info(
-        "取消清理完成：job=%s 杀任务进程=%s 命中引擎进程数=%d 兜底写状态=%s",
-        job_id, task_killed, killed, status_fixed,
+        "取消清理完成：job=%s 杀任务进程=%s 树内进程=%d 命中引擎进程数=%d 兜底写状态=%s",
+        job_id, task_killed, tree_killed, killed, status_fixed,
     )
     return {
         "job_id": job_id,
         "task_process_killed": str(task_killed),
+        "tree_killed": str(tree_killed),
         "killed": str(killed),
         "status_fallback_written": str(status_fixed),
         "error": error,

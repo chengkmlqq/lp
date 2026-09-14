@@ -90,8 +90,13 @@ def _reinstall_task_log_capture(**kwargs):  # type: ignore[no-untyped-def]
     # so a plain import won't re-execute module-level @signals.connect decorators.
     from . import task_history_signals as _ths  # noqa: F401
 
-    # Force re-registration of signal handlers in this process
-    _ths._register_setup_logging_receiver()
+    # Force re-registration of signal handlers in this process.
+    # ⚠️ 该函数在 task_history_signals 中并不存在（历史重构遗留）——此前这里直接调用会抛
+    # AttributeError，导致 worker 子进程初始化时整段 handler 中断、下面的日志捕获安装被跳过
+    # （2026-09-15 在 worker 启动日志中实测到该报错）。用 getattr 兜底，缺函数不作为致命错误。
+    _register = getattr(_ths, "_register_setup_logging_receiver", None)
+    if callable(_register):
+        _register()
 
     root = _logging.getLogger()
     root_has_capture = any(
