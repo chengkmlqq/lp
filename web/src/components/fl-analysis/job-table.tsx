@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import { Button, Empty, Spin, Table, Tag, Space } from "antd";
+import { Button, Dropdown, Empty, Spin, Table, Tag, Space } from "antd";
+import type { MenuProps } from "antd";
+import { MoreOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
 import type { FlAnalysisJobSummary } from "@/types/auth";
@@ -105,62 +107,61 @@ export function JobTable({
       width: 90,
       align: "right" as const,
     },
-    {
-      title: "错误信息",
-      dataIndex: "error_message",
-      key: "error_message",
-      ellipsis: true,
-      render: (value: string | null) => value || "-",
-    },
     ...(onDeleteJob
       ? [
           {
             title: "操作",
             key: "operation",
-            width: 320,
+            width: 200,
             align: "center" as const,
-            render: (_value: unknown, job: FlAnalysisJobSummary) => (
-              <Space size="small">
-                {onOpenDetail ? (
-                  <Button
-                    type="link"
-                    size="small"
-                    disabled={isJobDetailLocked(job)}
-                    onClick={() => onOpenDetail(job)}
-                  >
-                    查看结果
-                  </Button>
-                ) : null}
-                {canReadLogs && onOpenLog ? (
-                  <Button
-                    type="link"
-                    size="small"
-                    disabled={!job.task_id}
-                    onClick={() => onOpenLog(job.task_id, "任务执行日志", job.job_name || job.line_name || job.line_code || "防雷任务")}
-                  >
-                    查看日志
-                  </Button>
-                ) : null}
-                {onCancelJob && isJobCancellable(job) ? (
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => onCancelJob(job)}
-                  >
-                    取消
-                  </Button>
-                ) : null}
-                <Button
-                  danger
-                  type="link"
-                  size="small"
-                  disabled={isJobLocked(job)}
-                  onClick={() => onDeleteJob(job)}
-                >
-                  删除
-                </Button>
-              </Space>
-            ),
+            render: (_value: unknown, job: FlAnalysisJobSummary) => {
+              const menuItems: MenuProps["items"] = [];
+              if (onCancelJob && isJobCancellable(job)) {
+                menuItems.push({
+                  key: "cancel",
+                  label: "取消",
+                  onClick: () => onCancelJob(job),
+                });
+              }
+              if (onDeleteJob) {
+                menuItems.push({
+                  key: "delete",
+                  label: "删除",
+                  danger: true,
+                  disabled: isJobLocked(job),
+                  onClick: () => onDeleteJob(job),
+                });
+              }
+              return (
+                <Space size={4}>
+                  {onOpenDetail ? (
+                    <Button
+                      type="link"
+                      size="small"
+                      disabled={isJobDetailLocked(job)}
+                      onClick={() => onOpenDetail(job)}
+                    >
+                      详情
+                    </Button>
+                  ) : null}
+                  {canReadLogs && onOpenLog ? (
+                    <Button
+                      type="link"
+                      size="small"
+                      disabled={!job.task_id}
+                      onClick={() => onOpenLog(job.task_id, "任务执行日志", job.job_name || job.line_name || job.line_code || "防雷任务")}
+                    >
+                      日志
+                    </Button>
+                  ) : null}
+                  {menuItems.length > 0 ? (
+                    <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
+                      <Button size="small" icon={<MoreOutlined />} />
+                    </Dropdown>
+                  ) : null}
+                </Space>
+              );
+            },
           },
         ]
       : []),

@@ -50,6 +50,7 @@ const statusTextMap: Record<string, string> = {
   blocked: "阻塞",
   success: "已完成",
   failed: "失败",
+  cancelled: "已取消",
 };
 
 const badgeStatusMap: Record<string, "success" | "processing" | "error" | "warning" | "default"> = {

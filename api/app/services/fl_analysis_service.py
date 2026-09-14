@@ -352,12 +352,21 @@ def create_job(
         external_adapter = str(scenario_config["external_adapter"])
         adapter_config_json = dict(scenario_config["adapter_config_json"])
     else:
-        total_tower_count = int(
-            db.scalar(
-                select(func.count()).select_from(LineTower).where(LineTower.line_id == line.id)
+        # normal/tongtiao/risk：若用户在提交时勾选了杆塔子集，杆塔数按实际勾选数量落库；
+        # 未勾选（空=全量）时按线路全部杆塔计数（口径与 _load_job_towers 的过滤一致，
+        # 保证卡片/列表展示的任务总塔数 = 用户实际选择的塔数）。
+        _selected_ids = [
+            str(_id) for _id in (execution_options.get("selected_tower_ids") or []) if str(_id).strip()
+        ]
+        if _selected_ids:
+            total_tower_count = len(_selected_ids)
+        else:
+            total_tower_count = int(
+                db.scalar(
+                    select(func.count()).select_from(LineTower).where(LineTower.line_id == line.id)
+                )
+                or 0
             )
-            or 0
-        )
     if payload.job_type in {"normal", "tongtiao"}:
         if external_adapter in {"atp", "wine"}:
             # 外部 ATP 引擎二分法默认开启（对齐 C# 桌面版二分扫描求耐雷水平）。
