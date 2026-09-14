@@ -31,19 +31,43 @@ logger = logging.getLogger(__name__)
 _DAT_NAMES = ("long", "short", "dahao", "xiaohao")
 # LCC 运行必需的引擎文件（缺任一 ATP 会停在交互提示、产不出 .pch）
 _ENGINE_FILES = ("startup", "graphics", "graphics.aux", "graphics.std", "listsize.big", "listsize.dat")
-_ENGINE_SRC = Path("/app/data/wine/ATP/atpmingw")
+# ⚠️ 只从 atpmingw 取会在部分环境直接失效：有的部署卷里根本没有 atpmingw 目录
+# （2026-09-15 实测 36 环境：atpmingw 不存在 → graphics 没拷进运行目录 →
+#  ATP 报 `Attempt to connect disk file named "graphics" has failed` → 不产出 .pch，
+#  但退出码仍为 0，表现为"几何重生成失败却看不出原因"）。故改为多源兜底。
+_ENGINE_SOURCES = (
+    Path("/app/data/wine/ATP/atpmingw"),   # C# 发行包原样目录（若存在）
+    Path("/app/data/wine/ATP"),            # 引擎根目录（卷内通常在此）
+    Path("/app/static/wine/ATP"),          # 镜像内自带（随镜像分发）
+)
+# 缺这两个 ATP 一定跑不出 .pch（listsize.dat 可缺，ATP 会自行用最大尺寸）
+_ENGINE_REQUIRED = ("startup", "graphics")
 
 
 def _ensure_engine_files(engine_dir: Path) -> None:
-    """把 ATP 引擎必需文件拷到运行目录（幂等）。"""
+    """把 ATP 引擎必需文件拷到运行目录（幂等，多源兜底）。"""
+    missing: list[str] = []
     for name in _ENGINE_FILES:
-        src = _ENGINE_SRC / name
         dst = engine_dir / name
-        if src.exists() and not dst.exists():
+        if dst.exists():
+            continue
+        for root in _ENGINE_SOURCES:
+            src = root / name
+            if not src.is_file():
+                continue
             try:
                 dst.write_bytes(src.read_bytes())
+                break
             except OSError:  # pragma: no cover
-                logger.warning("[ATP] 引擎文件复制失败：%s", name, exc_info=True)
+                logger.warning("[ATP] 引擎文件复制失败：%s ← %s", name, src, exc_info=True)
+        if not dst.exists() and name in _ENGINE_REQUIRED:
+            missing.append(name)
+    if missing:
+        # 环境不满足计算条件 → 明确报错，禁止让 ATP 卡到超时后再伪装成"几何重生成"
+        raise RuntimeError(
+            f"ATP 引擎必需文件缺失：{missing}（运行目录 {engine_dir}；已查找来源 "
+            f"{[str(p) for p in _ENGINE_SOURCES]}）。缺 graphics/startup 时 ATP 不会产出 .pch。"
+        )
 
 
 def _num(params: dict[str, str], name: str) -> float | None:
