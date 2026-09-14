@@ -1340,11 +1340,16 @@ def execute_external_waveform_tower_analysis(
     logger.info("[ATP] 输入文件已写入：%s", input_path)
 
     # 物化资产 lib/dat 文件并改写 INCLUDE 路径（tpbig 依赖同目录 lib 文件）
-    _materialize_asset_files(
-        db=db,
-        run_dir=run_dir,
-        resolved_job=resolved_job,
-    )
+    # ⚠️ 并行二分：物化与几何重生成写同一批引擎目录文件（.dat/.lib），
+    # 必须与 regenerate_line_models 共用同一把锁串行化，否则读半截文件（2026-09-14 实测）。
+    from .atp_geometry_pipeline import GEOMETRY_LOCK as _geom_lock
+
+    with _geom_lock:
+        _materialize_asset_files(
+            db=db,
+            run_dir=run_dir,
+            resolved_job=resolved_job,
+        )
 
     env = os.environ.copy()
     env.update(resolved_job.environment)
@@ -1355,7 +1360,7 @@ def execute_external_waveform_tower_analysis(
     # 不做的后果：主仿真 work.atp 引用的仍是资产里那份「别的塔」的静态几何
     # → .lib 线路模型几何错误 → 多相/仿真数值系统性偏差（2026-09-13 查明）。
     # 每塔只需一次（几何与雷电流无关，二分期间复用同一份 .lib）。
-    from .atp_geometry_pipeline import regenerate_line_models
+    from .atp_geometry_pipeline import GEOMETRY_LOCK, regenerate_line_models
 
     _segs = [seg for seg in (resolved_job.storage_root_path or "").strip("/").split("/") if seg]
     if _segs and _segs[0] == "atp-assets":
