@@ -107,3 +107,43 @@ def _reinstall_task_log_capture(**kwargs):  # type: ignore[no-untyped-def]
 
 
 worker_process_init.connect(_reinstall_task_log_capture, weak=False)
+
+
+# ---------------------------------------------------------------------------
+# 孤儿进程收割（wine/tpbig 孙进程 reparent 到 worker，不收割会堆积僵尸直至
+# EAGAIN。容器化 wine 经典问题，见 app/core/orphan_reaper.py 模块 docstring。）
+# ---------------------------------------------------------------------------
+from app.core.orphan_reaper import enable_subreaper, start_orphan_reaper
+from celery.signals import worker_ready, worker_process_init as _wpi
+
+_MAIN_ORPHAN_REAPER_STARTED = False
+
+
+def _init_main_process_reaper(**kwargs):  # type: ignore[no-untyped-def]
+    """主进程（prefork 调度者）设为 subreaper 并启动常驻收割线程。
+
+    僵尸的父进程是 celery worker **主进程**（复盘：19033 个僵尸全挂在主进程 pid 下）。
+    subreaper + 守护线程 waitpid(-1, WNOHANG) 周期性收割 reparent 上来的孤儿孙进程，
+    根治 wine 造成的僵尸堆积。只有主进程需要常驻收割线程。
+    """
+    global _MAIN_ORPHAN_REAPER_STARTED
+    if _MAIN_ORPHAN_REAPER_STARTED:
+        return
+    _MAIN_ORPHAN_REAPER_STARTED = True
+    if enable_subreaper():
+        start_orphan_reaper(interval_seconds=10.0)
+
+
+def _init_worker_child_reaper(**kwargs):  # type: ignore[no-untyped-def]
+    """每个 fork 出的 worker 子进程也设为 subreaper。
+
+    worker 子进程里运行任务、spawn wine/tpbig 子进程；把它也设为 subreaper 后，
+    其派生的孙进程在任务运行期间 reparent 到该子进程，任务内通过 waitpid 收割，
+    避免孤儿孙进程逃逸到主进程。子进程生命周期短，无需单独线程，靠 subreaper
+    语义让孙进程在任务结束时随子进程一起回收。
+    """
+    enable_subreaper()
+
+
+worker_ready.connect(_init_main_process_reaper, weak=False)
+_wpi.connect(_init_worker_child_reaper, weak=False)
