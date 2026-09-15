@@ -217,10 +217,22 @@ def import_lightning_distribution_job(
         )
 
         # ---- 4. 统计 ----
+        # 观测年数解析优先级：导入时手动填写的 data_years > 从文件年份列自动推断 > 默认 1 年。
+        # （GB/T 40621-2021：观测期不少于 10 个完整年；源数据如果不带时间无法自动判定。）
+        resolved_years = dist.data_years
+        if resolved_years is None or resolved_years <= 0:
+            inferred = lightning_statistics.infer_observation_years(text)
+            if inferred:
+                resolved_years = inferred
+                _append_log(log_parts, task_id,
+                    f"[{task_id}] 未手动指定观测年数，已从文件年份自动推断为 {inferred:.0f} 年"
+                )
+        resolved_years = float(resolved_years or 1.0)
+
         stats = lightning_statistics.compute_statistics(
             strikes,
             grid_size_km=float(dist.grid_size_km or 1.0),
-            data_years=1.0,
+            data_years=resolved_years,
             # grid_cells 是纯内部计算的网格聚合明细（20 万格可占约 185MB），
             # 无 API/前端消费者，密度图由 render_density_image 从落点独立重聚合，
             # 故统计阶段不构建，避免巨大瞬时内存与序列化开销。
@@ -229,6 +241,19 @@ def import_lightning_distribution_job(
         dist.area_km2 = stats["area_km2"]
         dist.data_years = stats["data_years"]
         dist.overall_ng = stats["overall_ng"]
+
+        # 网格样本量校验（GB/T 40621-2021：单个网格 Ng × A_cell × T_obs >= 80）
+        _cell_area = float(dist.grid_size_km or 1.0) ** 2
+        if lightning_statistics.grid_sufficiency_ok(stats["overall_ng"], _cell_area, resolved_years):
+            _append_log(log_parts, task_id,
+                f"[{task_id}] 网格样本量校验通过（Ng×A×T >= 80）"
+            )
+        else:
+            _append_log(log_parts, task_id,
+                f"[{task_id}] 提示：单网格样本量 Ng×A×T={stats['overall_ng']:.3f}×{_cell_area:.2f}×{resolved_years:.1f} < 80，"
+                f"网格偏小或观测期不足，建议核实数据观测期（国标≥10年）"
+            )
+
         dist.max_abs_current = stats["max_abs_current"]
         dist.avg_abs_current = stats["avg_abs_current"]
         dist.positive_count = stats["positive_count"]
@@ -256,7 +281,7 @@ def import_lightning_distribution_job(
         png = lightning_statistics.render_density_image(
             strikes,
             grid_size_km=float(dist.grid_size_km or 1.0),
-            data_years=float(dist.data_years or 1.0),
+            data_years=dist.data_years or 1.0,
             title=dist.source_file_name,
         )
         if png:

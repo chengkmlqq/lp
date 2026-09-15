@@ -311,6 +311,8 @@ def import_lightning_distribution_file(
     file: UploadFile | None = File(default=None),
     temp_file_id: str | None = Form(default=None),
     event_year: int | None = Form(default=None, ge=1900, le=2100),
+    # 观测期年数（GB/T 40621-2021：≥10 完整年）。留空则由任务从文件年份列自动推断，推断不到退回 1 年。
+    data_years: float | None = Form(default=None, ge=0.1, le=100),
     region_id: str | None = Form(default=None),
     location_tag: str | None = Form(default=None),
     city: str | None = Form(default=None),
@@ -326,6 +328,7 @@ def import_lightning_distribution_file(
         temp_file_id=temp_file_id,
         actor_user_id=current_user.user.id,
         event_year=event_year,
+        data_years=data_years,
         region_id=region_id,
         location_tag=location_tag,
         city=city,
