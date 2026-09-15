@@ -88,6 +88,40 @@ def _circuit_count_for_snapshot(snapshot: FlAnalysisTowerSnapshot) -> int:
 
 
 
+def _optional_float(value: Any) -> float | None:
+    """宽松取浮点；不可解析返回 None（用于区分"有值"与"无值"）。"""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _correct_flashover_phase_order(
+    slots: dict[int, dict[str, Any]], count: int, raw_phases: str
+) -> str:
+    """C# 闪络相序纠正（ComputeLightningProtection.cs:7417-7434，双回 6 相分支）。
+
+    C# 逻辑：把本档（存到第 count 槽）的相序串里，凡是「前一个已填槽」已含的相删掉，
+    再把前一个槽的相序串**前置**，最后截断到 count*2 个字符（每相 2 字符）。
+    这一步是 C# 导出"单相 A1 / 双相 A1A2 / 三相 A1A2B2 …"这种递进相序的来源。
+    """
+    if count <= 1:
+        return raw_phases[: count * 2]
+    prev = ""
+    # C#: for (kk = count-2; kk >= 0; kk--) → 1-based 槽号 count-1 .. 1
+    for idx in range(count - 1, 0, -1):
+        cand = slots.get(idx) or {}
+        if cand.get("phases"):
+            prev = str(cand["phases"])
+            break
+    if not prev:
+        return raw_phases[: count * 2]
+    cur = raw_phases
+    for i in range(0, len(prev) - 1, 2):
+        cur = cur.replace(prev[i : i + 2], "")
+    return (prev + cur)[: count * 2]
+
+
 def execute_multi_phase_binary_search_external(
     resolved_job: ResolvedExternalWaveformJob,
     *,
@@ -127,46 +161,41 @@ def execute_multi_phase_binary_search_external(
     default_high_raw = _coerce_positive_float(execution_options.get("binary_search_high_ka"), default=2000.0)
     default_high: float | None = default_high_raw if (default_high_raw is None or default_high_raw > 0) else 2000.0
 
-    phase_entries: list[dict[str, Any]] = []
-    level_results: list[ExternalTowerExecutionResult] = []
-    carry_low = default_low
-    last_execution: ExternalTowerExecutionResult | None = None
-
     phase_labels = ["单相", "双相", "三相", "四相", "五相", "六相"]
     # C# ThreadCompute5_work_atp：回路数决定独立折半档数
-    #   - 单回路(==1)/四回路(==4)分支：只对 1/2/3 相独立二分（level_lightning<=3），
-    #     4/5/6 相是二分迭代中"实际闪络数>=4"时顺带记录电流
-    #     （mArray_Current_kV[mCount_ShanLuoXiang-1] = showCurrent_kV，6702-6704 行）。
+    #   - 单回路(==1)/四回路(==4)分支：只对 1/2/3 相独立二分（level_lightning<=3）
     #   - 双回路(==2)分支（ComputeLightningProtection.cs:7251-7454）：level_lightning=1..6
-    #     逐档独立折半 + 边界接续（currentLeft=currentRight）+ 跳档。Web 此前 cap=3，
-    #     对双回路是错的（症状：五相恒 None、六相靠撞 585.5 vs 基准 362.582）。
-    # Web 若对 4/5/6 相独立二分而基准是"顺带记录值"，会无对应关系——仅双回路(tower guxing/guxingd)放行 6 档。
     if _circuit_count_for_snapshot(snapshot) == 2:
         max_binary_phases = min(max_phases, 6)
     else:
         max_binary_phases = min(max_phases, 3)
-    # 顺带记录：phase_count -> 最低电流（C# 每次达标仿真都覆盖，取最后一次即收敛附近）
-    incidental: dict[int, float] = {}
-    import concurrent.futures as _cf  # noqa: PLC0415
 
-    parallel_workers = max(1, int(execution_options.get("binary_search_parallel_workers") or 4))
-    # 并行度默认 4（墙钟 ≈ 单档二分耗时）；显式传 1 时退化为顺序模式（保留 carry_low 接续，对齐 C#）
-    _use_parallel = parallel_workers > 1 and max_binary_phases > 1
-    _levels = list(range(1, max_binary_phases + 1))
-
-    def _run_level(level: int) -> ExternalTowerExecutionResult:
+    # ── C# 多相语义（★必须顺序执行：结果依赖二分路径，禁止并行）──────────────
+    # ① 接力：本档二分下界 = 上一档收敛上界（currentLeft=currentRight），上界每次复位到默认上限
+    # ② 存槽：收敛值与相序存到"本次收敛时 lis 实际闪络相数"的槽位（mArray_Current_kV[count-1]，
+    #    7413 行），不是目标档位 → 高档搜索会覆盖低档槽位，低档可能永远为 0（C# 塔61 五相=0）
+    # ③ 跳档：count > level 时，下一档直接从 count+1 开始（7453 行）
+    # ④ 相序纠正：本档相序 = 前一个已填槽的相序作前缀 + 本档新增相（去重后拼接），截断 count*2
+    #    （7417-7434 行，仅双回 6 相分支有）
+    # ⚠️ 实测：lis 的 Close switch 计数在边界附近非单调（同一电流可出现 5 或 6），
+    #    独立起搜/并行会得到与 C# 不同的数字——必须逐档复刻路径。
+    slots: dict[int, dict[str, Any]] = {
+        i: {"value": None, "phases": "", "level": None, "search": None} for i in range(1, 7)
+    }
+    level_executions: list[ExternalTowerExecutionResult] = []
+    last_execution: ExternalTowerExecutionResult | None = None
+    carry_low: float | None = default_low
+    level = 1
+    guard = 0
+    level_trace: list[dict[str, Any]] = []
+    while level <= max_binary_phases and guard < 12:
+        guard += 1
         level_options = dict(execution_options)
-        # 每档独立运行子目录，避免并行时 work.atp/work.lis 互相覆盖
+        # 每档独立运行子目录，避免 work.atp/work.lis 互相覆盖
         level_options["_run_subdir"] = f"level{level}"
-        if _use_parallel:
-            # 并行模式：各档独立完整区间。二分收敛边界不依赖初始 low（只要求 low<结果<high），
-            # 结果与顺序模式一致；carry_low 仅影响迭代次数，并行下无意义。
-            level_options["binary_search_low_ka"] = default_low
-            level_options["binary_search_high_ka"] = default_high
-        else:
-            level_options["binary_search_low_ka"] = carry_low
-            level_options["binary_search_high_ka"] = default_high
-        return execute_binary_search_external(
+        level_options["binary_search_low_ka"] = carry_low
+        level_options["binary_search_high_ka"] = default_high
+        execution = execute_binary_search_external(
             resolved_job,
             db=db,
             job=job,
@@ -177,42 +206,73 @@ def execute_multi_phase_binary_search_external(
             target_flashover_phases=level,
             on_step=on_step,
         )
-
-    if _use_parallel:
-        with _cf.ThreadPoolExecutor(max_workers=min(parallel_workers, len(_levels))) as _pool:
-            _executions = list(_pool.map(_run_level, _levels))
-    else:
-        _executions = [_run_level(level) for level in _levels]
-    level_results = list(_executions)
-    for level, execution in zip(_levels, level_results):
         last_execution = execution
-        merged = execution.result_json
-        search = merged.get("binary_search") or {}
-        converged = bool(search.get("converged"))
-        withstand_raw = search.get("final_withstand_ka")
-        withstand: float | None = (
-            _coerce_positive_float(withstand_raw, default=0.0) if withstand_raw is not None else None
+        level_executions.append(execution)
+        merged_level = execution.result_json if isinstance(execution.result_json, dict) else {}
+        search = merged_level.get("binary_search") or {}
+        # C# mCount_ShanLuoXiang = 最后一次「达标探点」的相数（无达标探点则退回最后探点相数）
+        qualified = _optional_float(search.get("qualified_flashover_count"))
+        count = int(
+            qualified if qualified is not None else (_optional_float(search.get("final_flashover_count")) or 0)
         )
-        final_count = search.get("final_flashover_count")
-        search_history = list(search.get("search_history") or [])
-        # C#：收敛（闪络相数达标）→ Ready=true；未达标档不输出
-        ready = converged and withstand is not None and withstand > 0
+        high_ka = _optional_float(search.get("high_ka"))
+        value = _optional_float(search.get("final_withstand_ka"))
+        probe_phases = str(
+            search.get("flashover_phases_qualified") or search.get("flashover_phases_last") or ""
+        )
+        if count > 0 and value is not None:
+            slot = slots[count]
+            slot["value"] = value
+            slot["level"] = level
+            slot["search"] = search
+            # ④ 相序纠正（仅双回 6 相分支，对齐 C# 7417-7434）
+            raw = probe_phases or str(search.get("flashover_phases") or "")
+            slot["phases"] = (
+                _correct_flashover_phase_order(slots, count, raw)
+                if max_binary_phases == 6
+                else raw[: count * 2]
+            )
+        # ① 接力：下一档下界 = 本档收敛上界（未乘倍率的搜索变量），上界复位
+        if high_ka is not None and carry_low is not None and high_ka > carry_low:
+            carry_low = min(high_ka, default_high) if default_high else high_ka
+        level_trace.append(
+            {
+                "level": level,
+                "loop_low_ka": level_options["binary_search_low_ka"],
+                "count": count,
+                "slot": count if count > 0 else None,
+                "value_ka": value,
+                "next_level": (count if count > level else level) + 1,
+            }
+        )
+        # ③ 跳档
+        if count > level:
+            level = count
+        level += 1
+    # ── 组装各相结果（槽位语义，对齐 C# mArray_Current_kV / mArray_ShanLuoXiang）──
+    # C#：未填槽保持 0（导出列显示 0，如塔61 五相=0）——不再用"最高档前缀"伪造相序。
+    phase_entries: list[dict[str, Any]] = []
+    for lvl in range(1, max_binary_phases + 1):
+        slot = slots[lvl]
+        search = slot.get("search") or {}
+        value = slot.get("value")
         entry: dict[str, Any] = {
-            "phase_count": level,
-            "label": phase_labels[level - 1] if level <= len(phase_labels) else f"{level}相",
-            "counterstrike_withstand_ka": withstand,
-            "converged": converged,
-            "final_flashover_count": final_count,
-            "ready": ready,
-            # 闪络相（如 A1 / A1C1 / A1C1C2）——对齐 C# 各档闪络相列
-            "flashover_phase": str((search or {}).get("flashover_phases") or ""),
-            "search_history": search_history,
+            "phase_count": lvl,
+            "label": phase_labels[lvl - 1] if lvl <= len(phase_labels) else f"{lvl}相",
+            "counterstrike_withstand_ka": value if value is not None else 0.0,
+            "converged": value is not None,
+            "final_flashover_count": lvl if value is not None else None,
+            "ready": value is not None,
+            "flashover_phase": str(slot.get("phases") or ""),
+            "search_history": list(search.get("search_history") or []),
+            "source_level": slot.get("level"),
         }
-        if ready:
+        if value:
             # fjtzlDanXiang 同源公式（对齐 C# mArray_TZL[i] = fjtzlDanXiang((int)current)）
+            entry["trip_rate"] = None
             if normalized is not None:
                 denominator = 6.0 if _is_gentle_slope(normalized) else 4.0
-                withstood_int = float(int(withstand or 0))
+                withstood_int = float(int(value))
                 span = _trip_span_factor(normalized)
                 density = normalized.lightning_density or 0.0
                 a_param = normalized.current_a
@@ -229,68 +289,27 @@ def execute_multi_phase_binary_search_external(
                         / (1.0 + _math.pow(withstood_int / a_param, b_param))
                     )
                     entry["trip_rate"] = round(max(trip_rate, 0.0), 6)
-                else:
-                    entry["trip_rate"] = None
-            else:
-                entry["trip_rate"] = None
-            # C#：下一档从本档收敛值继续抬升（currentLeft=currentRight 推进）
-            # ⚠️ 钳制在 high 之下：若本档收敛值已达二分上限（2000 边界、未真正达标），
-            # 直接抬 low 到 2000 会让下一档 high<=low 报错（实测 P3 修复后 6 相档触发）。
-            if (
-                default_high is not None
-                and _coerce_positive_float(search.get("multiplier"), default=1.0) == 1.0
-                and withstand is not None
-                and withstand > carry_low
-                and withstand < default_high
-            ):
-                carry_low = min(withstand, default_high * 0.999)
+        else:
+            # C# 未填槽 → 导出 0
+            entry["trip_rate"] = 0.0
         phase_entries.append(entry)
-        # C# 顺带记录（mArray_Current_kV[mCount-1]）：本档二分迭代中实际闪络数>=4 的电流
-        for hist in search_history:
-            fc = hist.get("flashover_count")
-            if isinstance(fc, (int, float)) and int(fc) >= 4:
-                ka = hist.get("current_ka")
-                if isinstance(ka, (int, float)) and ka > 0:
-                    incidental[int(fc)] = ka  # 覆盖，取最后一次（收敛附近）
 
     ready_entries = [item for item in phase_entries if item.get("ready")]
-    # C# 4/5/6 相：顺带记录（无独立二分）——从 incidental 补 entries，
-    # 无顺带记录时输出 None（C# 未记录也不输出）。
-    # 仅当未独立折半 4/5/6 相（单回路 cap=3）时才需要补；双回路已独立折半满 6 档。
-    if max_binary_phases < 6:
-        for lvl in range(4, max_phases + 1):
-            ka = incidental.get(lvl)
-            phase_entries.append({
-            "phase_count": lvl,
-            "label": phase_labels[lvl - 1] if lvl <= len(phase_labels) else f"{lvl}相",
-            "counterstrike_withstand_ka": ka,
-            "converged": ka is not None,
-            "final_flashover_count": lvl if ka is not None else None,
-            "ready": ka is not None,
-            "search_history": [],
-        })
-    # C# danXiang_tzl：第一个 ready 档（level=1）作为主输出
-    dominant = ready_entries[0] if ready_entries else None
-    # 主结果 binary_search 保留第一档（单相，C# 主输出列语义），而非最后一档
-    first_search = dict(level_results[0].result_json.get("binary_search") or {}) if level_results else {}
+    # C# danXiang_tzl：第一档（单相槽）作为主输出
+    dominant = next((item for item in phase_entries if item["phase_count"] == 1), None)
+    if dominant is None or not dominant.get("ready"):
+        dominant = ready_entries[0] if ready_entries else None
+    first_search = dict(slots[1].get("search") or {})
     merged = dict(last_execution.result_json) if last_execution is not None else dict(baseline_result)
-    merged["binary_search"] = first_search
+    if first_search:
+        merged["binary_search"] = first_search
     merged["multi_phase_binary_search"] = {
         "phase_entries": phase_entries,
         "ready_count": len(ready_entries),
         "max_phases": max_phases,
+        "level_trace": level_trace,
+        "sequential": True,
     }
-    # 对齐 C#：各档"闪络相"= 最高档闪络相列表的前 N 个（C# 导出即此前缀规律：
-    # 单相 A1 / 双相 A1C1 / 三相 A1C1C2 / … 六相 A1C1C2A2B2B1）。
-    _ref_phases = ""
-    for _it in reversed(phase_entries):
-        if _it.get("flashover_phase"):
-            _ref_phases = str(_it["flashover_phase"])
-            break
-    if _ref_phases:
-        for _it in phase_entries:
-            _n = int(_it.get("phase_count") or 0)
-            _it["flashover_phase"] = _ref_phases[: 2 * _n] if _n else ""
     # 兼容 tongtiao 结果列：multi_phase_results（保留 C# 列语义：单相..N相耐雷+跳闸率）
     merged["multi_phase_results"] = [
         {
@@ -1659,6 +1678,8 @@ def execute_binary_search_external(
     iteration = 0
     final_flashover_count: int | None = None
     final_phases: list[str] = []
+    last_probe_phases: list[str] = []
+    qualified_count: int | None = None
     final_execution: ExternalTowerExecutionResult | None = None
 
     while (high - low) >= tolerance and iteration < max_iterations:
@@ -1683,12 +1704,20 @@ def execute_binary_search_external(
                 "high": high,
             }
         )
+        # 本探点（无论是否达标）的闪络相序：C# 用的是最后一次 Check_Lightning_work_lis 的结果，
+        # 即最后一个探点（不一定是达标点）——多相算法的"按实际闪络数存槽 + 相序纠正"要用它。
+        _probe_phases = execution.result_json.get("flashover_phases") if isinstance(execution.result_json, dict) else None
+        if _probe_phases:
+            last_probe_phases = list(_probe_phases)
         if flashover_count is not None and flashover_count >= target_flashover_phases:
             high = candidate
             # 达标档：记录该电流下的闪络相名（对齐 C# strXiang）
-            _iter_phases = execution.result_json.get("flashover_phases") if isinstance(execution.result_json, dict) else None
-            if _iter_phases:
-                final_phases = list(_iter_phases)
+            if _probe_phases:
+                final_phases = list(_probe_phases)
+            # ⚠️ C# mCount_ShanLuoXiang 只在 valueRet >= level 时更新
+            # （ComputeLightningProtection.cs:11946-11962）→ 最后一次「达标探点」的相数，
+            # 多相算法用它决定存到哪个槽（不是最后探点的相数！）
+            qualified_count = flashover_count
         else:
             low = candidate
         final_flashover_count = flashover_count
@@ -1720,6 +1749,12 @@ def execute_binary_search_external(
         "final_withstand_ka": withstand_ka,
         # 闪络相名（达标档，按闭合顺序取前 target 个）——对齐 C# 单/双/三..相闪络相列
         "flashover_phases": "".join(final_phases[:target_flashover_phases]),
+        # 最后一次「达标探点」的完整相序（不截断）与相数：多相算法存槽用
+        # （C# mArray_TeZheng1stTo6th / mCount_ShanLuoXiang 语义）
+        "flashover_phases_qualified": "".join(final_phases),
+        "qualified_flashover_count": qualified_count,
+        # 最后一个探点（不论达标）的完整相序 —— 仅供诊断
+        "flashover_phases_last": "".join(last_probe_phases),
     }
     merged = dict(final_execution.result_json) if final_execution is not None else dict(baseline_result)
     merged["binary_search"] = binary_search_payload
