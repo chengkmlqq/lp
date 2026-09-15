@@ -42,7 +42,8 @@ def test_golden_110kv_double_circuit() -> None:
 
 def test_unverified_combo_raises_not_silently_falls_back() -> None:
     """未对拍验证的组合必须明确抛错（禁止静默降级/静默出错）。"""
-    for voltage, egm_type in ((800, 1), (1000, 1), (750, 2), (110, 3)):
+    # (110,3) 已于 2026-09-15 逐位验证（57d1a16），从「未验证」清单移除
+    for voltage, egm_type in ((800, 1), (1000, 1), (750, 2), (500, 3)):
         with pytest.raises(egm_native.EgmNotImplemented) as exc:
             egm_native.run_egm(CIC_66_00, IC_66_00, voltage=voltage, egm_type=egm_type)
         assert "LP_EGM_ENGINE" in str(exc.value)
@@ -62,5 +63,6 @@ def test_ic_too_short_raises() -> None:
 def test_supported_table_matches_verified_flag() -> None:
     """supported() 只对 verified 组合为真。"""
     assert egm_native.supported(500, 2) is True
-    assert egm_native.supported(110, 3) is False
+    assert egm_native.supported(110, 3) is True   # 2026-09-15 起 110egm3 已验证（57d1a16）
+    assert egm_native.supported(500, 3) is False
     assert egm_native.supported(1000, 1) is False

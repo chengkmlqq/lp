@@ -1152,10 +1152,9 @@ def execute_job(job_id: str) -> None:
                         _vals = [v for v in _raoji_values.values() if isinstance(v, (int, float))]
                         # C# ComputeLightningProtection.cs:7891-7912：顶层「绕击耐雷水平」与 EGM 的 Ic
                         # 都取三相绕击耐雷的最小值（不是 B 相 —— 相序测试上恰好相等）
-                        _egm_ic = min(_vals) if _vals else None
                         # （(int)mRaojiCurrent），跑 egm 两轮（地面倾角1 / -地面倾角2）求和，
                         # 鼓型塔再 ÷2。已用 C# 0913 中间文件逐位验证：0.406567 ✓
-                        _egm_ic = _raoji_values.get("B相") or _raoji_values.get("A相")
+                        _egm_ic = min(_vals) if _vals else None
                         if _egm_ic is None:
                             raise RuntimeError(
                                 f"{snapshot.tower_no}: 绕击耐雷水平缺失，无法计算 EGM 绕击跳闸率"

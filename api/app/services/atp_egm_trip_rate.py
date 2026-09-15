@@ -34,8 +34,58 @@ from . import egm_native
 
 logger = logging.getLogger(__name__)
 
-# 电路数 → rjEGM_Type（C# rjEGM_Type：1 单回 / 2 双回 / 3 四回）
-_CIRCUITS_TO_EGM_TYPE = {1: 1, 2: 2, 4: 3}
+# ── C# 权威：塔型 → EGM 程序（rjEGM_Type）映射（2026-09-15 按 tzl_model.txt + MyParamClass.cs 实现）
+# 塔型名数组顺序照抄 MyParamClass.cs:121-137 mNames_GanTa；程序/类型/电压支持集照抄
+# LP/LP/bin/Debug/SettingTxtFile/tzl_model.txt（行格式：电压#..#exe名#..#rjEGM_Type#类型）：
+#   shangzi/menxing/ganzi/maotou/jiubei → rjtzl_egm1.exe（type 1，单回 5 圆）
+#   guxing/guxingd                       → rjtzl_egm2.exe（type 2，双回 8 圆）
+#   sihuita                              → rjtzl_egm3.exe（type 3，四回 14 圆）
+#   ky                                   → rjtzl_egm4.exe（type 4，直流跨越）
+#   nz                                   → rjtzl_egmDC.exe（type 5，直流耐张）
+#   zj/zx/zxj                            → rjtzl_egmDC.exe（type 6，直流转角/直线）
+#   zhiliu/vzhiliu                       → rjtzl_egm_zhiliu.exe（type 6，直流）
+_TOWER_NAMES_C_ORDER: tuple[str, ...] = (
+    "maotou", "jiubei", "menxing", "ganzi", "guxing", "guxingd", "shangzi",
+    "sihuita", "zj", "zx", "zxj", "ky", "nz", "zhiliu", "vzhiliu",
+)
+
+# 塔型名 → (rjEGM_Type, exe 名, 期望回路数, 是否直流/特型)
+_TOWER_TO_EGM: dict[str, tuple[int, str, int | None, bool]] = {
+    "maotou": (1, "rjtzl_egm1.exe", 1, False),
+    "jiubei": (1, "rjtzl_egm1.exe", 1, False),
+    "menxing": (1, "rjtzl_egm1.exe", 1, False),
+    "ganzi": (1, "rjtzl_egm1.exe", 1, False),
+    "shangzi": (1, "rjtzl_egm1.exe", 1, False),
+    "guxing": (2, "rjtzl_egm2.exe", 2, False),
+    "guxingd": (2, "rjtzl_egm2.exe", 2, False),
+    "sihuita": (3, "rjtzl_egm3.exe", 4, False),
+    "ky": (4, "rjtzl_egm4.exe", None, True),
+    "nz": (5, "rjtzl_egmDC.exe", None, True),
+    "zj": (6, "rjtzl_egmDC.exe", None, True),
+    "zx": (6, "rjtzl_egmDC.exe", None, True),
+    "zxj": (6, "rjtzl_egmDC.exe", None, True),
+    "zhiliu": (6, "rjtzl_egm_zhiliu.exe", None, True),
+    "vzhiliu": (6, "rjtzl_egm_zhiliu.exe", None, True),
+}
+
+# 塔型 → tzl_model.txt 里配置了 EGM 行的电压集合（C# 只在这些电压下跑该塔型的 EGM）
+_TOWER_EGM_VOLTAGES: dict[str, set[int]] = {
+    "maotou": {35, 66, 110, 220, 330, 500, 750, 1000},
+    "jiubei": {35, 66, 110, 220, 330, 500, 750, 1000},
+    "menxing": {110, 220, 500, 1000},
+    "ganzi": {35, 66, 110, 220, 330, 500, 750, 1000},
+    "shangzi": {35, 66, 110, 220, 330, 500, 750, 1000},
+    "guxing": {35, 66, 110, 220, 330, 500, 750, 1000},
+    "guxingd": {35, 66, 110, 220, 330, 500, 750, 1000},
+    "sihuita": {35, 110, 220, 500},
+    "ky": {500, 800},
+    "nz": {500, 800},
+    "zj": {500, 800},
+    "zx": {500, 800},
+    "zxj": {500, 800},
+    "zhiliu": {500, 800},
+    "vzhiliu": {500, 800},
+}
 
 # rjEGM_Type → 结果分量下标（C# rjtzl_AC_GroundAngle2）
 _INDEX_TURN1 = {1: (2, 3), 2: (2, 4, 6), 3: (2, 3, 4, 8, 9, 10)}
@@ -202,8 +252,74 @@ def build_ic(
     return "\n".join(_fmt(x) for x in rows) + "\n"
 
 
-def egm_type_for_circuits(circuit_count: int) -> int:
-    return _CIRCUITS_TO_EGM_TYPE.get(circuit_count, 2)
+def parse_tower_name(tower_type: str) -> str | None:
+    """按 C# 后缀规则从模型串解析塔型名（MyParamClass.cs:2831-2841）。
+
+    C# 匹配五种后缀模式：`0<名>` / `5<名>` / `66<名>` / `:<名>500` / `:<名>800`，
+    按 mNames_GanTa 顺序逐个试；全部失败返回 None（对应 C# mIndexOfGanTaName=-1）。
+    例：s500guxing → guxing（结尾 "0guxing"）；d500shangzi → shangzi。
+    """
+    s = (tower_type or "").strip()
+    for name in _TOWER_NAMES_C_ORDER:
+        if (s.endswith("0" + name) or s.endswith("5" + name) or s.endswith("66" + name)
+                or s.endswith(":" + name + "500") or s.endswith(":" + name + "800")):
+            return name
+    return None
+
+
+def _parse_tower_name_loose(tower_type: str) -> str | None:
+    """宽松兜底：模型串里出现塔型名子串时取最长命中（guxingd 优先于 guxing）。
+
+    仅当 C# 严格后缀规则解析失败时用（如纯 "guxing"/"guxingd" 这类 Web 塔型编码）；
+    多个等长命中（真歧义）返回 None → 上层抛错，不做猜测。
+    """
+    s = (tower_type or "").lower()
+    hits = [name for name in _TOWER_NAMES_C_ORDER if name in s]
+    if not hits:
+        return None
+    best = max(hits, key=len)
+    if sum(1 for h in hits if len(h) == len(best)) > 1:
+        return None
+    return best
+
+
+def egm_type_for_tower(tower_type: str, circuit_count: int, voltage_kv: float | None = None) -> int:
+    """完全对齐 C#：按塔型选 EGM 程序（rjEGM_Type）+ 一致性校验，不符即抛错。
+
+    校验顺序（任一不过即抛，禁止静默降级 / 禁止按回路数猜测程序）：
+      1. 塔型名解析失败 → ValueError（C# 同样因 mIndexOfGanTaName=-1 拒绝该塔）
+      2. 直流/特型塔型（egm4/egmDC/egm_zhiliu，native 未移植）→ NotImplementedError
+      3. 电压不在该塔型 tzl_model 配置集 → ValueError（C# 该电压下无 EGM 行）
+      4. 几何回路数 ≠ 塔型期望回路数 → ValueError（信息含塔型/期望/实际）
+    """
+    name = parse_tower_name(tower_type)
+    if name is None:
+        name = _parse_tower_name_loose(tower_type)
+    if name is None:
+        raise ValueError(
+            f"无法从塔型「{tower_type or '(空)'}」解析出 C# 塔型名（15 种："
+            + "/".join(_TOWER_NAMES_C_ORDER)
+            + "），无法确定 EGM 程序（禁止按回路数猜测）"
+        )
+    egm_type, exe, expected_circuits, is_dc = _TOWER_TO_EGM[name]
+    if is_dc or egm_type not in (1, 2, 3):
+        raise NotImplementedError(
+            f"塔型 {name}（模型串「{tower_type}」）对应 {exe}（rjEGM_Type={egm_type}，"
+            "直流/特型塔），EGM 原生引擎尚未移植该程序"
+        )
+    if voltage_kv:
+        v = int(voltage_kv)
+        if v not in _TOWER_EGM_VOLTAGES[name]:
+            raise ValueError(
+                f"C# tzl_model 未配置 {v}kV × 塔型 {name} 的 EGM 程序"
+                f"（该塔型仅支持 {sorted(_TOWER_EGM_VOLTAGES[name])}kV），拒绝计算"
+            )
+    if expected_circuits is not None and circuit_count != expected_circuits:
+        raise ValueError(
+            f"塔型 {name}（模型串「{tower_type}」）的 EGM 程序 {exe} 期望 {expected_circuits} 回路，"
+            f"但塔几何实际只有 {circuit_count} 回路 —— 塔型与几何不一致，拒绝静默计算"
+        )
+    return egm_type
 
 
 def _parse_numbers(text: str) -> list[float]:
@@ -289,8 +405,10 @@ def compute_shielding_trip_rate(
     egm_native.EgmNotImplemented（不会静默降级到别的引擎）。
     """
     circuits = _circuit_geometry(base_tower)
-    circuit_count = max(len(circuits), 1)
-    egm_type = egm_type_for_circuits(circuit_count)
+    if not circuits:
+        raise ValueError("缺少回路几何（circuit_geometry_json），无法计算绕击跳闸率")
+    circuit_count = len(circuits)
+    egm_type = egm_type_for_tower(tower_type, circuit_count, voltage_kv=voltage_kv)
     voltage = int(voltage_kv or 0)
     mode = (engine or getattr(get_settings(), "egm_engine_mode", "native") or "native").strip().lower()
     if mode not in {"native", "wine"}:
