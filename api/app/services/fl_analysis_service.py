@@ -1282,12 +1282,14 @@ def execute_job(job_id: str) -> None:
 
             # 每塔实时落库进度计数（前端 invalidate 后能读到 result_tower_count 驱动进度条；
             # 原循环结束才统一写 job.result_tower_count，运行中 DB 恒 0 → 进度条不动）
-            try:
-                job.result_tower_count = result_count
-                run.result_tower_count = result_count
-                db.flush()
-            except Exception:
-                logger.debug("[DB] 塔进度计数落库失败 tower=%s", snapshot.tower_no, exc_info=True)
+            # ⚠️ 2026-09-15 修复：只 db.flush() 不 db.commit() 时，整个任务运行期间事务
+            # 不提交，PG READ COMMITTED 下其他会话（前端轮询/API/psql）读不到任何运行中
+            # 数据 → 进度恒 0%、已算塔结果运行中不可查。改为每塔完成后提交一个小事务：
+            # ① 运行中进度/已算塔结果实时可见；② 中途失败保留已完成塔，不整体回滚。
+            # commit 失败 = 事务级故障，必须让任务失败（不能静默吞掉继续跑坏事务）。
+            job.result_tower_count = result_count
+            run.result_tower_count = result_count
+            db.commit()
 
             # 执行中日志流式推送（每塔完成后把该塔 stdout/stderr 行 XADD 到 Redis Stream，
             # SSE /task-logs/{id}/sse 实时增量读；MinIO 全量文件由 celery 任务兜底最终上传）
