@@ -117,6 +117,9 @@ from app.core.orphan_reaper import enable_subreaper, start_orphan_reaper
 from celery.signals import worker_ready, worker_process_init as _wpi
 
 _MAIN_ORPHAN_REAPER_STARTED = False
+# 每个 worker 子进程（fork 后）都会 `worker_process_init`，用 per-child 标记避免重复起线程。
+# 注意：子进程是从主进程 fork 而来，Python 全局变量会被继承；fork 后初始化线程即可。
+_CHILD_ORPHAN_REAPER_STARTED = False
 
 
 def _init_main_process_reaper(**kwargs):  # type: ignore[no-untyped-def]
@@ -130,19 +133,35 @@ def _init_main_process_reaper(**kwargs):  # type: ignore[no-untyped-def]
     if _MAIN_ORPHAN_REAPER_STARTED:
         return
     _MAIN_ORPHAN_REAPER_STARTED = True
-    if enable_subreaper():
-        start_orphan_reaper(interval_seconds=10.0)
+    # 无条件启动收割线程（即使 subreaper 设置失败也先让 waitpid 尽量收割直接子进程）；
+    # 若承接孤儿孙进程，仍依赖 subreaper 语义，因此单独再尝试一次设置。
+    try:
+        enable_subreaper()
+    except Exception:  # noqa: BLE001 —— subreaper 失败不阻断收割线程
+        pass
+    start_orphan_reaper(interval_seconds=10.0)
 
 
 def _init_worker_child_reaper(**kwargs):  # type: ignore[no-untyped-def]
-    """每个 fork 出的 worker 子进程也设为 subreaper。
+    """每个 fork 出的 worker 子进程设 subreaper + 启动独立收割线程。
 
-    worker 子进程里运行任务、spawn wine/tpbig 子进程；把它也设为 subreaper 后，
-    其派生的孙进程在任务运行期间 reparent 到该子进程，任务内通过 waitpid 收割，
-    避免孤儿孙进程逃逸到主进程。子进程生命周期短，无需单独线程，靠 subreaper
-    语义让孙进程在任务结束时随子进程一起回收。
+    实测（2026-09-16）：僵尸堆积在**执行任务的 worker 子进程**（宿主 1124823，即 fork 后
+    跑 wine 的子进程）下，而非主进程。每次 `subprocess.run(wine ...)` 会启动 wine 的常驻
+    daemon（wineserver / wine64 / services.exe / winedevice...），这些孙进程 reparent 到本
+    子进程（已设 subreaper）后退出变僵尸；若本子进程没有收割线程，就会像主进程一样堆积。
+
+    因此除主进程外，每个 worker 子进程也要单独启一个 daemon 收割线程。
     """
-    enable_subreaper()
+    global _CHILD_ORPHAN_REAPER_STARTED
+    try:
+        enable_subreaper()
+    except Exception:  # noqa: BLE001 —— subreaper 失败不阻断收割线程
+        pass
+    # fork 后线程不复存在，因此这里始终新起一个（而非判断 per-child 标记 —— 每个
+    # 子进程都是新 fork 的，主进程的 _CHILD 标记是 False；只需防单进程内重复）。
+    if not _CHILD_ORPHAN_REAPER_STARTED:
+        _CHILD_ORPHAN_REAPER_STARTED = True
+        start_orphan_reaper(interval_seconds=10.0)
 
 
 worker_ready.connect(_init_main_process_reaper, weak=False)
