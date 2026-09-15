@@ -29,6 +29,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from ..core.config import get_settings
+from . import egm_native
+
 logger = logging.getLogger(__name__)
 
 # 电路数 → rjEGM_Type（C# rjEGM_Type：1 单回 / 2 双回 / 3 四回）
@@ -162,6 +165,17 @@ def egm_type_for_circuits(circuit_count: int) -> int:
     return _CIRCUITS_TO_EGM_TYPE.get(circuit_count, 2)
 
 
+def _parse_numbers(text: str) -> list[float]:
+    """从 build_cic/build_ic 生成的文本里取数值（顺序即文件顺序）。"""
+    out: list[float] = []
+    for token in text.replace("\r", " ").replace("\n", " ").split():
+        try:
+            out.append(float(token))
+        except ValueError:
+            continue
+    return out
+
+
 def _parse_result(text: str) -> list[float]:
     out: list[float] = []
     for token in text.replace("\r", " ").replace("\n", " ").split():
@@ -225,15 +239,21 @@ def compute_shielding_trip_rate(
     raoji_withstand_ka: float,
     env: dict[str, str],
     timeout: int = 600,
+    engine: str | None = None,
 ) -> tuple[float, float]:
-    """按 C# EGM 流程计算绕击跳闸率。返回 (跳闸率, alpha?)。"""
+    """按 C# EGM 流程计算绕击跳闸率。返回 (跳闸率, alpha?)。
+
+    engine：native（默认，原生 numpy 直译）/ wine（跑 rjtzl_egm*.exe）。
+    默认取配置 `LP_EGM_ENGINE_MODE`（默认 native）。native 未覆盖的组合会明确抛
+    egm_native.EgmNotImplemented（不会静默降级到别的引擎）。
+    """
     circuits = _circuit_geometry(base_tower)
     circuit_count = max(len(circuits), 1)
     egm_type = egm_type_for_circuits(circuit_count)
     voltage = int(voltage_kv or 0)
-    exe = atp_root / str(voltage) / f"{voltage}egm" / f"rjtzl_egm{egm_type}.exe"
-    if not exe.exists():
-        raise FileNotFoundError(f"缺少 EGM 程序：{exe}")
+    mode = (engine or getattr(get_settings(), "egm_engine_mode", "native") or "native").strip().lower()
+    if mode not in {"native", "wine"}:
+        raise ValueError(f"未知的 EGM 引擎：{mode}（应为 native / wine）")
 
     cic_text = build_cic(base_tower=base_tower, profile=profile, egm_type=egm_type)
     density = _num(base_tower.get("lightning_density"))
@@ -241,14 +261,9 @@ def compute_shielding_trip_rate(
     slope2 = _num(base_tower.get("slope_2")) or 0.0
 
     total = 0.0
-    with tempfile.TemporaryDirectory(prefix="egm_rj_") as tmp:
-        work_dir = Path(tmp)
-        (work_dir / "param_main_cic.txt").write_text(cic_text, encoding="gbk", errors="replace")
-        (work_dir / "name_egm{}.txt".format(egm_type)).write_text(
-            "param_main_cic.txt\nparam_main_Ic.txt\nresult_main.txt\n", encoding="gbk", errors="replace"
-        )
-        # 两轮输入（倾角1 / -倾角2）相同时复用同一次 EGM 运行结果——
-        # EGM 为 MATLAB 编译程序，单次约 113s，能省一半时间。
+    # 两轮输入（倾角1 / -倾角2）：wine 单次 ~113s，相同倾角复用同一个结果能省一半时间。
+    if mode == "native":
+        cic_vals = _parse_numbers(cic_text)
         _run_cache: dict[float, list[float]] = {}
         for turn, slope in ((1, slope1), (2, -slope2)):
             _key = round(float(slope), 9)
@@ -262,18 +277,47 @@ def compute_shielding_trip_rate(
                 slope_deg=slope,
                 raoji_withstand_ka=raoji_withstand_ka,
             )
-            (work_dir / "param_main_Ic.txt").write_text(ic_text, encoding="gbk", errors="replace")
-            (work_dir / "result_main.txt").unlink(missing_ok=True)
-            values = _run_egm(
-                exe=exe, work_dir=work_dir, name_file=f"name_egm{egm_type}.txt", env=env, timeout=timeout
+            # 直接用页面/快照装配好的 cic/Ic 数值调用原生引擎（与 exe 的文件契约一致）
+            values = egm_native.run_egm(
+                cic_vals, _parse_numbers(ic_text), voltage=voltage, egm_type=egm_type
             )
             _run_cache[_key] = values
             total += _extract(egm_type, values, turn=turn)
+    else:
+        exe = atp_root / str(voltage) / f"{voltage}egm" / f"rjtzl_egm{egm_type}.exe"
+        if not exe.exists():
+            raise FileNotFoundError(f"缺少 EGM 程序：{exe}")
+        with tempfile.TemporaryDirectory(prefix="egm_rj_") as tmp:
+            work_dir = Path(tmp)
+            (work_dir / "param_main_cic.txt").write_text(cic_text, encoding="gbk", errors="replace")
+            (work_dir / "name_egm{}.txt".format(egm_type)).write_text(
+                "param_main_cic.txt\nparam_main_Ic.txt\nresult_main.txt\n", encoding="gbk", errors="replace"
+            )
+            _run_cache = {}
+            for turn, slope in ((1, slope1), (2, -slope2)):
+                _key = round(float(slope), 9)
+                if _key in _run_cache:
+                    total += _extract(egm_type, _run_cache[_key], turn=turn)
+                    continue
+                ic_text = build_ic(
+                    base_tower=base_tower,
+                    profile=profile,
+                    voltage_kv=voltage_kv,
+                    slope_deg=slope,
+                    raoji_withstand_ka=raoji_withstand_ka,
+                )
+                (work_dir / "param_main_Ic.txt").write_text(ic_text, encoding="gbk", errors="replace")
+                (work_dir / "result_main.txt").unlink(missing_ok=True)
+                values = _run_egm(
+                    exe=exe, work_dir=work_dir, name_file=f"name_egm{egm_type}.txt", env=env, timeout=timeout
+                )
+                _run_cache[_key] = values
+                total += _extract(egm_type, values, turn=turn)
 
     divisor = _tower_divisor(tower_type)
     trip_rate = total / divisor if divisor else total
     logger.info(
-        "[EGM] 绕击跳闸率：egm%d 电压=%s 回路数=%d Ng=%s Ic=%s 合计=%.6f ÷%.0f = %.6f",
-        egm_type, voltage, circuit_count, density, raoji_withstand_ka, total, divisor, trip_rate,
+        "[EGM] 绕击跳闸率（%s 引擎）：egm%d 电压=%s 回路数=%d Ng=%s Ic=%s 合计=%.6f ÷%.0f = %.6f",
+        mode, egm_type, voltage, circuit_count, density, raoji_withstand_ka, total, divisor, trip_rate,
     )
     return round(trip_rate, 6), 0.0

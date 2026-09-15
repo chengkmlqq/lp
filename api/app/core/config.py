@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     wine_max_timeout_seconds: int = 1800
 
     atp_engine_mode: Literal["wine", "native"] = "wine"
+    # EGM 绕击跳闸率引擎：native=原生 numpy 直译（rjtzl_egm*.exe 的 C 源码），
+    # wine=沿用 rjtzl_egm*.exe。native 只覆盖已用黄金样本对拍验证的（电压,塔型程序）组合，
+    # 未覆盖组合会明确抛错（不会静默降级）。
+    egm_engine_mode: Literal["native", "wine"] = "native"
     atp_engine_executable: str = "ATP/tpbig.exe"
     atp_storage_root: str = "./data/wine/atp-models"
     atp_engine_workdir: str = "runs"
