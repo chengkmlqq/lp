@@ -54,9 +54,11 @@ def _default_threads() -> int:
 #   Ratiof/Ratior：避雷线圆 / 导线圆的系数（0.167 / 1）
 #   另有 u_type（0=交流）、u_jixing（0）、u_voltage（交流分支不使用）
 # ---------------------------------------------------------------------------
-def _p(n_circle: int, If: float, verified: bool, source: str) -> dict:
+def _p(n_circle: int, If: float, verified: bool, source: str,
+       wire_formula: str = "ieee") -> dict:
     return {"n_circle": n_circle, "If": If, "Im": 350.0, "Ratiof": 0.167,
             "Ratior": 1.0, "u_type": 0.0, "u_jixing": 0.0, "u_voltage": 0.0,
+            "wire_formula": wire_formula,
             "verified": verified, "source": source}
 
 
@@ -76,10 +78,14 @@ EGM_PARAMS: dict[tuple[int, int], dict] = {
     (330, 2): _p(8, 51.0, True, "无源码；用部署 exe 重跑 1 个样本标定 If∈[51,52)"),
     (500, 2): _p(8, 51.0, True, "TZL500egm2-shuang-20220331/main.c"),
     # ---- 四回（egm3，14 圆）----
-    (35, 3): _p(14, 96.89, False, "TZL35egm3-sihui-20250328/main.c（未对拍）"),
-    (110, 3): _p(14, 200.0, False, "TZL110egm3-sihui-20240307/main.c"),
-    (220, 3): _p(14, 200.0, False, "TZL220egm3-sihui-20240307/main.c"),
-    (500, 3): _p(14, 200.0, False, "TZL500egm3(sihui)/main.c"),
+    # 35egm3 实测用的是**旧版导线击距**（r=10·I^0.65），110/220egm3 用 IEEE 式 → 逐 exe 记 formula
+    (35, 3): _p(14, 96.89, True, "C# 无样本；用 Web build_cic 输出喂部署 35egm3.exe 重跑逐位一致"
+                                 "（旧版导线击距）", wire_formula="legacy"),
+    (110, 3): _p(14, 200.0, True, "用 Web build_cic 输出喂部署 110egm3.exe 重跑逐位一致"),
+    (220, 3): _p(14, 200.0, True, "用 Web build_cic 输出喂部署 220egm3.exe 重跑逐位一致"),
+    # 500egm3.exe 属于另一套代码族（EGM_double_x + 非 _dan 版 expose，实测只输出 1 个值）→ 不支持
+    (500, 3): _p(14, 200.0, False, "TZL500egm3(sihui)/main.c（500egm3.exe 是另一代码族，未移植）"),
+    # 330egm3.exe 虽在磁盘上，但 C# tzl_model.txt 的 <sihuita> 段没有 330 → C# 本身不支持，故不进表
     # 注（2026-09-15 实测）：
     #   1) 1000egm1/egm2 属于另一套代码族（EGMd1_x/EGMcircle_d1、get_EGM_expose_arc_section
     #      非 _dan 版），未移植 → 不在表内，用 native 会明确抛错。
@@ -98,8 +104,13 @@ def supported(voltage: int, egm_type: int) -> bool:
 
 
 def _rol_and_r(I_val: float, n_circle: int, u_type: float, u_voltage: float,
-               u_jixing: float) -> tuple[float, np.ndarray]:
-    """C: get_EGM_expose_arc_section_dan 开头的击距圆半径数组（cic_rol3）。"""
+               u_jixing: float, wire_formula: str = "ieee") -> tuple[float, np.ndarray]:
+    """C: get_EGM_expose_arc_section_dan 开头的击距圆半径数组（cic_rol3）。
+
+    wire_formula：导线击距半径的版本差异（**逐 exe 不同，实测确认**）
+      "ieee"  ：1.63·(5.015·I^0.578)^1.125（TZL 对接版 2022-03-31 起：66/110/220/330/500）
+      "legacy"：r = 10·I^0.65（旧版；实测 35egm3 用的就是这个）
+    """
     r = 10.0 * (I_val ** 0.65)
     rol = np.zeros(n_circle, dtype=float)
     if u_type != 1.0:
@@ -107,8 +118,10 @@ def _rol_and_r(I_val: float, n_circle: int, u_type: float, u_voltage: float,
         rol[1] = r
         for i in range(int(n_circle - 2.0)):
             if u_type == 0.0:
-                # TZL 对接版（2022-03-31 起）：导线击距用 IEEE 推荐式（无电压项）
-                rol[i + 2] = 1.63 * ((5.015 * (I_val ** 0.578)) ** 1.125)
+                if wire_formula == "legacy":
+                    rol[i + 2] = r
+                else:
+                    rol[i + 2] = 1.63 * ((5.015 * (I_val ** 0.578)) ** 1.125)
             else:
                 if 3.0 + i != float(n_circle):
                     if u_jixing == 0.0:
@@ -124,7 +137,7 @@ def _rol_and_r(I_val: float, n_circle: int, u_type: float, u_voltage: float,
 
 def segments_for_I(I_val: float, cic: np.ndarray, n_circle: int, u_type: float,
                    u_voltage: float, u_jixing: float, thetaslop: float,
-                   p_chunk: int = 8) -> np.ndarray:
+                   p_chunk: int = 8, wire_formula: str = "ieee") -> np.ndarray:
     """单个雷电流 I_val、179 个入射角下，各圆暴露弧在 x 轴投影的端点。
 
     返回 (179, n_circle, 2) 的 [首端, 末端]（未被扫到为 0）
@@ -132,7 +145,7 @@ def segments_for_I(I_val: float, cic: np.ndarray, n_circle: int, u_type: float,
     """
     xs = cic[:, 0]
     ys = cic[:, 1]
-    r, rol = _rol_and_r(I_val, n_circle, u_type, u_voltage, u_jixing)
+    r, rol = _rol_and_r(I_val, n_circle, u_type, u_voltage, u_jixing, wire_formula)
     ht = float(cic[0, 1])                        # 第一个圆（避雷线）高 → 地面击距系数
     kg = 0.36 + 0.17 * math.log(43.0 - ht) if ht < 40.0 else 0.55
     rg = kg * r                                  # 地面击距
@@ -249,7 +262,8 @@ def egm_double_x(*, cic: np.ndarray, n_circle: int, Im: float, If: float,
                  thetaslop: float, I_a: float, I_b: float,
                  Ic_left: float, Ic_right: float, u_type: float = 0.0,
                  u_voltage: float = 0.0, u_jixing: float = 0.0,
-                 p_chunk: int = 8, threads: int | None = None) -> np.ndarray:
+                 p_chunk: int = 8, threads: int | None = None,
+                 wire_formula: str = "ieee") -> np.ndarray:
     """EGM_double_x 主流程（u_type != 1）。返回 y[n_circle]（次/100km·年）。"""
     n_circle = int(n_circle)
     if u_type == 1.0:
@@ -296,7 +310,7 @@ def egm_double_x(*, cic: np.ndarray, n_circle: int, Im: float, If: float,
             b_I = mtmp + float(I)
             bi = int(b_I)
             seg = segments_for_I(b_I, cic, n_circle, u_type, u_voltage, u_jixing,
-                                 thetaslop, p_chunk=p_chunk)
+                                 thetaslop, p_chunk=p_chunk, wire_formula=wire_formula)
             w = seg[:, :, 1] - seg[:, :, 0]
             row = bi - 1
             if hi_lw[0] <= row < hi_lw[1]:
@@ -363,5 +377,6 @@ def run_egm(cic_vals, ic_vals, *, voltage: int, egm_type: int,
                      Ratiof=item["Ratiof"], Ratior=item["Ratior"], e=e, Ng=Ng,
                      thetaslop=thetaslop, I_a=I_a, I_b=I_b, Ic_left=Ic_l,
                      Ic_right=Ic_r, u_type=item["u_type"], u_voltage=item["u_voltage"],
-                     u_jixing=item["u_jixing"], p_chunk=p_chunk, threads=threads)
+                     u_jixing=item["u_jixing"], p_chunk=p_chunk, threads=threads,
+                     wire_formula=item.get("wire_formula", "ieee"))
     return [float(v) for v in y]
