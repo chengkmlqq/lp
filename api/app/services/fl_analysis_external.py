@@ -1350,6 +1350,21 @@ def execute_external_waveform_tower_analysis(
         )
     logger.info("[ATP] 模板渲染完成，输入文件大小=%d 字节", len(rendered_text))
 
+    # ── 方案 A：任务级私有引擎目录（默认开）──
+    # 支持并发：每个任务/快照的 .lib 物化+重生成到独立 D:\ATP\.runs\{job}\{snap}\...，
+    # work.atp 的 $INCLUDE 改为指向私有目录 → 跨进程/跨任务不共享 .lib，天然并发安全。
+    # 用 ATP_PRIVATE_ENGINE_DIR=0 可退回共享引擎目录（仅诊断回退）。
+    _priv_engine = _private_engine_dir(
+        job=job, snapshot=snapshot, resolved_job=resolved_job,
+    ) if _use_private_engine_dir() else None
+
+    # 改写 $INCLUDE 前缀为私有目录（仅在启用私有时；否则模板原路径/共享引擎目录）
+    if _priv_engine is not None:
+        rendered_text = _rewrite_includes(
+            rendered_text,
+            job=job, snapshot=snapshot, resolved_job=resolved_job,
+        )
+
     run_dir = _prepare_run_directory(
         job=job, snapshot=snapshot, resolved_job=resolved_job,
         subdir=str(execution_options.get("_run_subdir") or ""),
@@ -1368,6 +1383,7 @@ def execute_external_waveform_tower_analysis(
             db=db,
             run_dir=run_dir,
             resolved_job=resolved_job,
+            private_engine_dir=_priv_engine,
         )
 
     env = os.environ.copy()
@@ -1385,7 +1401,11 @@ def execute_external_waveform_tower_analysis(
     if _segs and _segs[0] == "atp-assets":
         _segs = _segs[1:]
     if _segs:
-        _engine_dir = Path("/app/data/wine/ATP").joinpath(*_segs)
+        # 方案 A：私有引擎目录优先（物化/重生成放到任务级私有目录，并发不覆盖共享 .lib）
+        if _priv_engine is not None:
+            _engine_dir = _priv_engine
+        else:
+            _engine_dir = Path("/app/data/wine/ATP").joinpath(*_segs)
         _voltage_kv = (snapshot.base_tower_json or {}).get("line_voltage_kv")
         if _voltage_kv is None and job.line is not None:
             _voltage_kv = job.line.voltage_kv
@@ -1587,7 +1607,10 @@ def execute_external_waveform_tower_analysis(
     # 注意：pl4 阈值法对部分模板判恒值，不能覆盖 lis 的 Close switch 权威结果。
     if "flashover_count" not in parsed_payload:
         try:
-            flashover_count = _read_pl4_flashover_count(run_dir, resolved_job.storage_root_path)
+            flashover_count = _read_pl4_flashover_count(
+                run_dir, resolved_job.storage_root_path,
+                private_engine_dir=_priv_engine,
+            )
             if flashover_count is not None:
                 parsed_payload["flashover_count"] = flashover_count
                 logger.info("[ATP] pl4 闪络检测（回退）：%s，闪络相数=%d", snapshot.tower_no, flashover_count)
@@ -1846,6 +1869,97 @@ def _build_template_context(
     }
 
 
+# 匹配 $INCLUDE 卡里的绝对路径 D:\ATP\<scene相对段>\<file>.lib，捕获 .lib 文件名。
+# ⚠️ 正则以 D:\ATP\ 开头、非逗号路径、到 .lib 前；捕获项=文件名（重建短私有路径用）。
+_INCLUDE_PATH_RE = re.compile(r"D:\\ATP\\[^,]+?\\?([A-Za-z0-9_]+\.lib)")
+
+
+def _use_private_engine_dir() -> bool:
+    """是否启用「任务级私有引擎目录」（方案 A：支持并发，跨进程不覆盖共享 .lib）。
+
+    默认开启：每个任务/快照的 .lib 物化+重生成到独立短目录（D:\\ATP\\.runs\\{snap短}{scene短}\\），
+    work.atp 的 $INCLUDE 改为指向私有目录 → 天然并发安全。
+    用环境变量 ATP_PRIVATE_ENGINE_DIR=0 可临时关闭（退回共享引擎目录，仅用于诊断回退）。
+    """
+    val = os.environ.get("ATP_PRIVATE_ENGINE_DIR", "1").strip().lower()
+    return val not in ("0", "false", "no", "")
+
+
+def _scene_short_code(resolved_job: ResolvedExternalWaveformJob) -> str:
+    """从 storage_root 提取场景短码，用于私有引擎目录短命名。
+
+    storage_root 形如 /atp-assets/500/guxing/fanji/noM，scene 段在倒数第二段。
+    返回短唯一码：fanji→f、raoji1→r1、raoji2→r2、raoji3→r3；未知→x{idx}。
+    ⚠️ ATP $INCLUDE 卡片是 80 列固定宽，私有路径必须足够短（共享式 dahao.lib 起始列
+    39、整行 75 列可运行；加前缀后超过 80 列会 KILL=79、last card in error——
+    2026-09-15 真机实测，完整 job_id+snapshot_id 前缀把行拉到 147 列即崩）。
+    """
+    segs = [seg for seg in (resolved_job.storage_root_path or "").strip("/").split("/") if seg]
+    if segs and segs[0] == "atp-assets":
+        segs = segs[1:]
+    # scene 段 = 电压/塔型/场景/组合 中的第 3 段（电压,塔型,场景,组合）
+    if len(segs) >= 3:
+        scene = segs[2].lower()
+    else:
+        scene = ""
+    mapping = {
+        "fanji": "f", "raoji1": "r1", "raoji2": "r2", "raoji3": "r3",
+        "fanji1": "f", "fanji2": "f2", "fanji3": "f3",
+    }
+    if scene in mapping:
+        return mapping[scene]
+    return "x"  # 未知场景兜底（单任务内唯一即可）
+
+
+def _private_engine_dir(
+    *,
+    job: FlAnalysisJob,
+    snapshot: FlAnalysisTowerSnapshot,
+    resolved_job: ResolvedExternalWaveformJob,
+) -> Path:
+    """计算任务级私有引擎目录：D:\\ATP\\.runs\\{snapshot_id短}{scene短码}\\。
+
+    短命名（见 _scene_short_code）保证 $INCLUDE 卡 ≤80 列（ATP 硬限制）。
+    .lib/.dat/.pch 平铺该目录；不同塔（snapshot 不同）或不同场景（场景短码不同）
+    → 目录不同 → 完全不共享（并发安全）。单任务多塔/多场景天然隔离。
+    """
+    atp_root = Path("/app/data/wine/ATP")
+    short = str(snapshot.id or job.id or "x")[:8]
+    return atp_root / ".runs" / (short + _scene_short_code(resolved_job))
+
+
+def _rewrite_includes(
+    rendered_text: str,
+    *,
+    job: FlAnalysisJob,
+    snapshot: FlAnalysisTowerSnapshot,
+    resolved_job: ResolvedExternalWaveformJob,
+) -> str:
+    """把 work.atp 的 $INCLUDE 绝对路径前缀从共享引擎目录改为任务私有目录。
+
+    模板 INCLUDE 形如：$INCLUDE, D:\\ATP\\500\\guxing\\fanji\\noM\\dahao.lib, LINE1A,...
+    目标：       $INCLUDE, D:\\ATP\\.runs\\{snap短}{scene短}\\dahao.lib, LINE1A,...
+    ⚠️ 短命名（见 _private_engine_dir）：保持 ≤80 列（ATP 卡片硬限制，超列会
+    KILL=79、last card in error —— 2026-09-15 真机实测）。
+    只改第一个 D:\\ATP\\ 前缀；其余（文件名、父节点名、参数）原样保留。
+    """
+    if not (resolved_job.storage_root_path or "").strip():
+        return rendered_text
+    priv_win = "D:\\ATP\\.runs\\" + str(snapshot.id or job.id or "x")[:8] + _scene_short_code(resolved_job) + "\\"
+    out_lines = []
+    for line in rendered_text.splitlines():
+        # $INCLUDE 行：把 D:\ATP\<scene相对段>\##.lib 整段替换为 D:\ATP\.runs\{snap短}{scene短}\##.lib。
+        # 用正则匹配完整路径（D:\ATP\...\.lib），取 .lib 文件名重建短路径（保 ≤80 列）。
+        if line.strip().upper().startswith("$INCLUDE") and ".lib" in line:
+            new_line = _INCLUDE_PATH_RE.sub(
+                lambda m: priv_win + m.group(1), line
+            )
+            out_lines.append(new_line)
+        else:
+            out_lines.append(line)
+    return "\n".join(out_lines)
+
+
 def _prepare_run_directory(
     *,
     job: FlAnalysisJob,
@@ -1865,6 +1979,7 @@ def _materialize_asset_files(
     db: Session,
     run_dir: Path,
     resolved_job: ResolvedExternalWaveformJob,
+    private_engine_dir: Path | None = None,
 ) -> None:
     """把资产目录的全部文件从存储物化到 Wine D 盘引擎目录。
 
@@ -1872,6 +1987,9 @@ def _materialize_asset_files(
     （经 Wine D: 盘映射到 /app/data/wine/ATP）。因此资产文件必须落在
     /app/data/wine/ATP/<storage_root相对路径>，而非运行目录。
     渲染后的 work.atp 已写入 run_dir，这里把它复制到引擎目录覆盖模板占位符版。
+
+    private_engine_dir 非空时（方案 A 启用）物化到任务级私有目录（D:\\ATP\\.runs\\{job}\\{snap}\\...），
+    不同任务不共享 .lib → 支持并发不覆盖。
     """
     from .atp_asset_service import _resolve_mount, _build_driver_or_400
 
@@ -1886,13 +2004,16 @@ def _materialize_asset_files(
         logger.warning("[ATP] 资产文件物化失败：无法枚举 %s", storage_root, exc_info=True)
         return
 
-    # D 盘引擎目录：/app/data/wine/ATP + storage_root 相对段
+    # D 盘引擎目录：/app/data/wine/ATP + storage_root 相对段（默认共享）或私有目录（方案 A）
     atp_root = Path("/app/data/wine/ATP")
-    rel_segments = [seg for seg in storage_root.strip("/").split("/") if seg]
-    # storage_root 形如 /atp-assets/500/ganzi/fanji/M1 → 取 atp-assets 之后的段
-    if rel_segments and rel_segments[0] == "atp-assets":
-        rel_segments = rel_segments[1:]
-    engine_dir = atp_root.joinpath(*rel_segments) if rel_segments else atp_root
+    if private_engine_dir is not None:
+        engine_dir = private_engine_dir
+    else:
+        rel_segments = [seg for seg in storage_root.strip("/").split("/") if seg]
+        # storage_root 形如 /atp-assets/500/ganzi/fanji/M1 → 取 atp-assets 之后的段
+        if rel_segments and rel_segments[0] == "atp-assets":
+            rel_segments = rel_segments[1:]
+        engine_dir = atp_root.joinpath(*rel_segments) if rel_segments else atp_root
     engine_dir.mkdir(parents=True, exist_ok=True)
 
     for item in tree.files:
@@ -2138,7 +2259,11 @@ def _read_lis_flashover_detail(run_dir: Path) -> tuple[int, list[str]] | None:
     return count, phases
 
 
-def _read_pl4_flashover_count(run_dir: Path, storage_root: str | None = None) -> int | None:
+def _read_pl4_flashover_count(
+    run_dir: Path,
+    storage_root: str | None = None,
+    private_engine_dir: Path | None = None,
+) -> int | None:
     """从 work.pl4（ATP 二进制波形）解析闪络相数，复刻 C# pl4Class。
 
     头部布局（getNs）：偏移 19 起 7 个 uint32 LE：
@@ -2148,9 +2273,12 @@ def _read_pl4_flashover_count(run_dir: Path, storage_root: str | None = None) ->
     每个通道遍历所有采样点，采样值（float32 LE）> 阈值 10.0 即该相闪络。
     返回闪络相数（0-3）；文件缺失/格式异常返回 None。
     """
-    # tpbig 把 pl4 写到 INCLUDE 所在目录（引擎目录）而非运行目录：
-    # /app/data/wine/ATP/<电压>/<塔型>/<场景>/<组合>/work.pl4
+    # tpbig 把 pl4 写到 INCLUDE 所在目录（引擎目录/私有目录）而非运行目录：
+    #  共享： /app/data/wine/ATP/<电压>/<塔型>/<场景>/<组合>/work.pl4
+    #  私有(方案A)：/app/data/wine/ATP/.runs/{job}/{snap}/<电压>/<塔型>/<场景>/<组合>/work.pl4
     candidates = [run_dir / "work.pl4"]
+    if private_engine_dir is not None:
+        candidates.append(private_engine_dir / "work.pl4")
     if storage_root:
         rel_segments = [seg for seg in storage_root.strip("/").split("/") if seg]
         if rel_segments and rel_segments[0] == "atp-assets":
