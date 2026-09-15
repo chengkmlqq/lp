@@ -234,3 +234,69 @@ def test_render_density_image_backward_compatible_without_data_years() -> None:
     png = lightning_statistics.render_density_image(strikes, grid_size_km=1.0)
     assert isinstance(png, bytes)
     assert len(png) > 100
+
+
+# ------------------------- GB/T 40621-2021 分级 / 观测年数 / 网格样本量 -------------------------
+
+def test_density_grade_thresholds() -> None:
+    """GB/T 40621-2021 第 4 章：Ng 五等级八级别阈值映射。"""
+    grade = lightning_statistics.density_grade
+    # 边界取值：低含高不含（Ng < max 属于该级）
+    assert grade(0.0) == "A"
+    assert grade(0.79) == "A"
+    assert grade(0.8) == "B1"
+    assert grade(1.9) == "B1"
+    assert grade(2.0) == "B2"
+    assert grade(2.79) == "B2"
+    assert grade(2.8) == "C1"
+    assert grade(4.9) == "C1"
+    assert grade(5.0) == "C2"
+    assert grade(7.9) == "C2"
+    assert grade(8.0) == "D1"
+    assert grade(10.9) == "D1"
+    assert grade(11.0) == "D2"
+    assert grade(15.4) == "D2"
+    # E 级：>=15.5（英文版误写为 Ng<15.5，按其上下文应为 >=15.5）
+    assert grade(15.5) == "E"
+    assert grade(30.0) == "E"
+
+
+def test_density_grade_invalid() -> None:
+    grade = lightning_statistics.density_grade
+    assert grade(None) is None
+    assert grade(-1) is None
+    assert grade("abc") is None
+
+
+def test_grade_rgb_matches_standard() -> None:
+    """图例 RGB 与 GB/T 40621-2021 表 1 一致。"""
+    expect = {
+        "A": (204, 204, 204), "B1": (60, 130, 255), "B2": (0, 255, 255),
+        "C1": (255, 255, 0), "C2": (255, 170, 0), "D1": (255, 0, 255),
+        "D2": (170, 0, 0), "E": (100, 0, 0),
+    }
+    for g, rgb in expect.items():
+        assert lightning_statistics.grade_rgb(g) == rgb
+
+
+def test_infer_observation_years_from_timestamp_lines() -> None:
+    """带时间戳/年份列的文件可正确推断观测期年数。"""
+    text = "\n".join([
+        "2015-05-01 12:00:00 30.5 120.2 12.3",
+        "2018-08-15 03:22:11 30.6 120.3 -8.0",
+        "2020-11-30 19:45:00 30.4 120.1 5.0",
+    ])
+    assert lightning_statistics.infer_observation_years(text) == 6.0  # 2020-2015+1
+
+
+def test_infer_observation_years_no_year_returns_none() -> None:
+    assert lightning_statistics.infer_observation_years("30.5 120.2 12.3\n30.6 120.3 -8.0") is None
+
+
+def test_grid_sufficiency_ok() -> None:
+    ok = lightning_statistics.grid_sufficiency_ok
+    # Ng×A×T >= 80 达标
+    assert ok(1.0, 100.0, 1.0) is True   # 100 >= 80
+    assert ok(1.0, 1.0, 80.0) is True    # 80 == 80
+    assert ok(0.5, 1.0, 10.0) is False   # 5 < 80
+    assert ok(None, 1.0, 10.0) is False

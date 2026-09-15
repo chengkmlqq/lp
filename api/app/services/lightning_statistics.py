@@ -310,6 +310,102 @@ def _build_grid_cells(
 
 
 # ---------------------------------------------------------------------------
+# 地闪密度等级划分（GB/T 40621-2021 第 4 章）
+#
+# Ng 从低到高划分为 5 个等级、8 个级别，量纲：次/(km²·a)。
+# 每个级别有标准 RGB 颜色，用于密度图分级渲染（标准第 5 章表 1）。
+# 注意：标准英文翻译版中 Grade E 写为 "Ng < 15.5"，按其上下文应为 Ng >= 15.5。
+# ---------------------------------------------------------------------------
+DENSITY_GRADES: list[dict[str, Any]] = [
+    {"grade": "E", "color": (100, 0, 0), "min": 15.5, "max": float("inf")},
+    {"grade": "D2", "color": (170, 0, 0), "min": 11.0, "max": 15.5},
+    {"grade": "D1", "color": (255, 0, 255), "min": 8.0, "max": 11.0},
+    {"grade": "C2", "color": (255, 170, 0), "min": 5.0, "max": 8.0},
+    {"grade": "C1", "color": (255, 255, 0), "min": 2.8, "max": 5.0},
+    {"grade": "B2", "color": (0, 255, 255), "min": 2.0, "max": 2.8},
+    {"grade": "B1", "color": (60, 130, 255), "min": 0.8, "max": 2.0},
+    {"grade": "A", "color": (204, 204, 204), "min": 0.0, "max": 0.8},
+]
+
+# 映射关系：等级名 -> (规则, RGB)。按区间排序（E 最大），用于二分或线性扫描。
+_DENSITY_GRADES_ASC = list(reversed(DENSITY_GRADES))  # A -> B1 -> ... -> E
+
+
+def density_grade(ng: float) -> str | None:
+    """按 GB/T 40621-2021 第 4 章把地闪密度 Ng 映射到级别（A/B1/B2/C1/C2/D1/D2/E）。
+
+    非法或缺失 ng 返回 None。
+    """
+    if ng is None:
+        return None
+    try:
+        value = float(ng)
+    except (TypeError, ValueError):
+        return None
+    if value < 0:
+        return None
+    for item in _DENSITY_GRADES_ASC:
+        if value < item["max"]:
+            return item["grade"]
+    # 达到或超过最大档（>=15.5）
+    return "E"
+
+
+def grade_rgb(grade: str | None) -> tuple[int, int, int]:
+    """返回 grade 对应的 RGB 元组；未知/空等级返回灰色（对应 A 级）。"""
+    for item in DENSITY_GRADES:
+        if item["grade"] == grade:
+            return item["color"]
+    return DENSITY_GRADES[-1]["color"]  # A 级灰色
+
+
+def grade_color_01(grade: str | None) -> float:
+    """归一化到 0~1 的灰度（用于 LP Voronoi 渲染的临时通道，保留原 YlOrRd 语义）。"""
+    rgb = grade_rgb(grade)
+    return (rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114) / 255.0
+
+
+# ---------------------------------------------------------------------------
+# 观测年数自动推断（GB/T 40621-2021 第 6.5 节：观测期不少于 10 个完整年）
+#
+# 地闪原始文件如果带年份/时间戳列（如 "2019-05-03 12:33:45 30.5 120.2 1234"，
+# 或多列中含 4 位年份），据此推断观测期年数 = max_year - min_year + 1。
+# 源文件无任何年份信息时返回 None（调用方回退到手动输入或默认 1 年）。
+# ---------------------------------------------------------------------------
+_YEAR_PATTERN = re.compile(r"\b(19[0-9]{2}|20[0-9]{2})\b")
+
+
+def infer_observation_years(text: str) -> float | None:
+    """扫描文本中合法 4 位年份（1900~2099），返回观测期年数 = 最大年份 − 最小年份 + 1。
+
+    无年份或不满足最小观测期条件返回 None。
+    """
+    years: set[int] = set()
+    for line in text.splitlines():
+        for match in _YEAR_PATTERN.finditer(line):
+            year = int(match.group(1))
+            if 1900 <= year <= 2099:
+                years.add(year)
+    if not years:
+        return None
+    _span = max(years) - min(years) + 1
+    return float(max(_span, 1))
+
+
+def grid_sufficiency_ok(ng: float, cell_area_km2: float, years: float) -> bool:
+    """GB/T 40621-2021 5.1.x：单个网格应满足 Ng × A_cell × T_obs >= 80。
+
+    返回是否达到最小样本量要求（避免网格过小导致统计不稳定）。
+    """
+    if ng is None or cell_area_km2 is None or years is None:
+        return False
+    try:
+        return float(ng) * float(cell_area_km2) * max(float(years), 1e-6) >= 80.0
+    except (TypeError, ValueError):
+        return False
+
+
+# ---------------------------------------------------------------------------
 # 密度图渲染
 # ---------------------------------------------------------------------------
 def build_density_matrix(
@@ -438,7 +534,6 @@ def render_density_image(
         matplotlib.use("Agg")
         _configure_chinese_font()
         import matplotlib.pyplot as plt
-        from matplotlib.colors import LogNorm
     except ImportError:
         return b""
 
@@ -469,6 +564,17 @@ def render_density_image(
     # 换算为地闪密度 Ng（次/(km²·年)），替代原始落雷次数
     grid_area_km2 = grid_size_km * grid_size_km
     ng_matrix = matrix / (grid_area_km2 * years)
+
+    # 按 GB/T 40621-2021 第 4 章分级渲染：每格用标准 8 级配色（不再用连续 YlOrRd LogNorm）。
+    # 用 ListedColormap + BoundaryNorm 表达 8 个离散级别
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    # 边界点：A起0，B1起0.8，B2起2.0，C1起2.8，C2起5.0，D1起8.0，D2起11.0，E起15.5，上界严格高于整体最大值
+    _top_bound = max(float(ng_matrix.max()) + 1e-6, 15.5 + 1e-6)
+    bounds = [0.0, 0.8, 2.0, 2.8, 5.0, 8.0, 11.0, 15.5, _top_bound]
+    colors = [_rgb01(g["color"]) for g in _DENSITY_GRADES_ASC]  # A..E 顺序与 bounds 对齐
+    grade_cmap = ListedColormap(colors)
+    grade_norm = BoundaryNorm(bounds, grade_cmap.N)
 
     # 构建经纬度刻度标签
     xs = [key[0] for key in cell_counts]
@@ -503,9 +609,9 @@ def render_density_image(
         ng_matrix,
         origin="lower",
         aspect="auto",
-        cmap="YlOrRd",
+        cmap=grade_cmap,
+        norm=grade_norm,
         interpolation="nearest",
-        norm=LogNorm(vmin=1, vmax=ng_matrix.max()),
     )
     ax.set_xlabel("经度 (°E)")
     ax.set_ylabel("纬度 (°N)")
@@ -515,18 +621,26 @@ def render_density_image(
     ax.set_yticks(lat_ticks)
     ax.set_yticklabels(lat_labels, fontsize=8)
 
-    cbar = fig.colorbar(image, ax=ax)
-    cbar.set_label("地闪密度 Ng (次/(km²·年))")
+    # 图例：8 个国标级别（离散色块），替代连续 colorbar
+    from matplotlib.patches import Patch
+
+    legend_items = []
+    for item in _DENSITY_GRADES_ASC:
+        legend_items.append(
+            Patch(facecolor=_rgb01(item["color"]), edgecolor="black", linewidth=0.4,
+                  label=_grade_label(item["grade"]))
+        )
+    _ = ax.legend(handles=legend_items, loc="upper right", fontsize=7, framealpha=0.9, title="地闪密度等级")
 
     # 图内统计摘要信息
     total_strikes = len(strikes)
     area_km2 = grid_area_km2 * max(width_cells, 1) * max(height_cells, 1)
-    overall_ng = ng_matrix.sum() * 0  # avoid recomputation
     overall_ng = total_strikes / (area_km2 * years) if area_km2 > 0 and years > 0 else 0.0
+    overall_grade = density_grade(overall_ng) or "-"
     stats_text = (
         f"总落雷数: {total_strikes}\n"
         f"数据年数: {years:.1f}年\n"
-        f"整体Ng: {overall_ng:.4f} 次/(km²·年)"
+        f"整体Ng: {overall_ng:.4f} 次/(km²·年)  等级:{overall_grade}"
     )
     ax.text(
         0.02, 0.98, stats_text,
@@ -541,6 +655,21 @@ def render_density_image(
     fig.savefig(buf, format="png", dpi=150)
     plt.close(fig)
     return buf.getvalue()
+
+
+def _rgb01(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
+    """把 0~255 RGB 元组转成 0~1 浮点元组（matplotlib 用）。"""
+    return (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
+
+
+def _grade_label(grade: str) -> str:
+    """返回图例标签文本，如 'A (<0.8)'、'E (≥15.5)'。"""
+    for item in DENSITY_GRADES:
+        if item["grade"] == grade:
+            low = "" if item["min"] == 0.0 else f"{item['min']:g}"
+            high = "∞" if item["max"] == float("inf") else f"{item['max']:g}"
+            return f"{grade} ({low}~{high})"
+    return grade
 
 
 # ---------------------------------------------------------------------------

@@ -79,6 +79,7 @@ import { CHINESE_CITIES, type CityOption } from "@/data/chinese-cities";
 
 type ImportFormValues = {
   event_year: number;
+  data_years?: number;
   region_id: string;
   city: string;
   notes: string;
@@ -86,6 +87,7 @@ type ImportFormValues = {
 
 const INITIAL_IMPORT_VALUES: ImportFormValues = {
   event_year: new Date().getFullYear(),
+  data_years: undefined,
   region_id: "",
   city: "",
   notes: "",
@@ -398,6 +400,7 @@ export default function AdminLightningDistributionPage() {
       formData.append("event_year", String(values.event_year));
       formData.append("region_id", values.region_id.trim());
       formData.append("city", values.city.trim());
+      if (values.data_years) formData.append("data_years", String(values.data_years));
       if (values.notes?.trim()) formData.append("notes", values.notes.trim());
 
       const response = await fetchWithAuth("/api/v1/lightning-currents/import-distribution", {
@@ -1276,6 +1279,13 @@ function ImportModal({
           </Form.Item>
           <Form.Item name="event_year" label="数据年份">
             <InputNumber style={{ width: "100%" }} min={1900} max={2100} />
+          </Form.Item>
+          <Form.Item
+            name="data_years"
+            label="观测年数(年)"
+            tooltip="该数据覆盖的统计年数（国标要求≥10年）。留空则从文件中的年份列自动推断，文件无年份时按 1 年计。"
+          >
+            <InputNumber style={{ width: "100%" }} min={0.1} max={100} step={1} placeholder="留空自动推断" />
           </Form.Item>
           <Form.Item name="notes" label="数据说明">
             <Input placeholder="可填写数据来源、采集说明等" />
