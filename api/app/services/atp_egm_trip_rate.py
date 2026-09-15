@@ -68,6 +68,12 @@ def _insulator_offset_m(profile: dict[str, Any]) -> float:
     return 0.0
 
 
+def _insulator_length_m(profile: dict[str, Any]) -> float:
+    """绝缘子串长（米）。四回塔 C# 无条件减（不分直线/耐张，见 ComputeLightningProtection.cs case 3）。"""
+    length_mm = _num(profile.get("insulator_length_m"))
+    return (length_mm or 0.0) / 1000.0
+
+
 def _circuit_geometry(base_tower: dict[str, Any]) -> list[dict[str, Any]]:
     """取有效回路的几何（按 I/II/III/IV 顺序）。"""
     raw = base_tower.get("circuit_geometry_json") or {}
@@ -99,7 +105,16 @@ def _lightning_wire(profile: dict[str, Any]) -> dict[str, float | None]:
 
 
 def build_cic(*, base_tower: dict[str, Any], profile: dict[str, Any], egm_type: int) -> str:
-    """组装 param_main_cic.txt（几何注入文件）。"""
+    """组装 param_main_cic.txt（几何注入文件）。
+
+    对齐 C# `ComputeLightningProtection.cs:3054-3140`（switch rjEGM_Type）：
+      case 1（单回 egm1）：10 个值 = 5 个圆的 (x, y)
+      case 2（双回 egm2）：16 个值 = 8 个圆；相中距按「上/中/下」成对（左负右正）；
+                           相高按 直线→减绝缘子串长、耐张/其它→不减
+      case 3（四回 egm3）：28 个值 = 14 个圆；相中距按**回路**分组（每回 上/中/下，
+                           回路 I/III 取负、II/IV 取正）；相高**一律减绝缘子串长**（不分直线耐张）
+    文件格式：前 n_circle 个值是各圆 x，后 n_circle 个值是各圆 y（exe 按 2×n_circle 读）。
+    """
     circuits = _circuit_geometry(base_tower)
     if not circuits:
         raise ValueError("缺少回路几何（circuit_geometry_json），无法计算绕击跳闸率")
@@ -109,30 +124,56 @@ def build_cic(*, base_tower: dict[str, Any], profile: dict[str, Any], egm_type: 
         raise ValueError(f"缺少避雷线几何 {missing}，无法计算绕击跳闸率")
 
     off = _insulator_offset_m(profile)
-    phase = circuits[0]
-    up_h = float(_num(phase["height"]["upper"]) or 0.0) - off
-    mid_h = float(_num(phase["height"]["middle"]) or 0.0) - off
-    low_h = float(_num(phase["height"]["lower"]) or 0.0) - off
-    up_x = float(_num(phase["spacing"]["upper"]) or 0.0)
-    mid_x = float(_num(phase["spacing"]["middle"]) or 0.0)
-    low_x = float(_num(phase["spacing"]["lower"]) or 0.0)
     sh_h = float(lw["height"] or 0.0)
 
     if egm_type == 1:
         # 单回 egm1（10 参数）：左/右避雷中距, 左相中距, 中相中距, 右相中距,
         #                        避雷线高×2, 左相高, 中相高, 右相高
+        phase = circuits[0]
+        up_h = float(_num(phase["height"]["upper"]) or 0.0) - off
+        mid_h = float(_num(phase["height"]["middle"]) or 0.0) - off
+        low_h = float(_num(phase["height"]["lower"]) or 0.0) - off
+        up_x = float(_num(phase["spacing"]["upper"]) or 0.0)
+        mid_x = float(_num(phase["spacing"]["middle"]) or 0.0)
+        low_x = float(_num(phase["spacing"]["lower"]) or 0.0)
         rows = [
             -abs(lw["left"] or 0.0), abs(lw["right"] or 0.0),
             -up_x, mid_x, low_x,
             sh_h, sh_h, up_h, mid_h, low_h,
         ]
-    else:
+    elif egm_type == 2:
         # 双回/四回 egm2/egm3（每回 16 参数）：避雷线左右, 上/中/下相左右, 高度成对
+        phase = circuits[0]
+        up_h = float(_num(phase["height"]["upper"]) or 0.0) - off
+        mid_h = float(_num(phase["height"]["middle"]) or 0.0) - off
+        low_h = float(_num(phase["height"]["lower"]) or 0.0) - off
+        up_x = float(_num(phase["spacing"]["upper"]) or 0.0)
+        mid_x = float(_num(phase["spacing"]["middle"]) or 0.0)
+        low_x = float(_num(phase["spacing"]["lower"]) or 0.0)
         rows = [
             -abs(lw["left"] or 0.0), abs(lw["right"] or 0.0),
             -up_x, up_x, -mid_x, mid_x, -low_x, low_x,
             sh_h, sh_h, up_h, up_h, mid_h, mid_h, low_h, low_h,
         ]
+    elif egm_type == 3:
+        # 四回 egm3（28 参数 = 14 圆）：2 避雷线 + 4 回×(上/中/下)
+        if len(circuits) < 4:
+            raise ValueError(
+                f"四回塔（egm3）需要 4 个回路的几何，实际只解析到 {len(circuits)} 个"
+                "（circuit_geometry_json 的 I/II/III/IV 需齐全）"
+            )
+        off4 = _insulator_length_m(profile)      # 四回：无条件减绝缘子串长
+        xs: list[float] = [-abs(lw["left"] or 0.0), abs(lw["right"] or 0.0)]
+        heights: list[float] = [sh_h, sh_h]
+        for idx, circuit in enumerate(circuits[:4]):
+            sign = -1.0 if idx % 2 == 0 else 1.0     # 回路 I/III 取负、II/IV 取正
+            for key in ("upper", "middle", "lower"):
+                xs.append(sign * abs(float(_num(circuit["spacing"][key]) or 0.0)))
+            for key in ("upper", "middle", "lower"):
+                heights.append(float(_num(circuit["height"][key]) or 0.0) - off4)
+        rows = xs + heights
+    else:
+        raise ValueError(f"不支持的 egm_type={egm_type}（只实现 1/2/3；egm4/egm5/直流未移植）")
     return "\n".join(_fmt(v) for v in rows) + "\n"
 
 
