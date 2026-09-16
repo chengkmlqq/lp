@@ -1349,6 +1349,8 @@ function ImportModal({
                     <Typography.Text type="success">
                       <CheckCircleOutlined /> 上传完成，可以确认导入
                     </Typography.Text>
+                  ) : uploadError ? (
+                    <Typography.Text type="danger">格式校验未通过，请更换文件</Typography.Text>
                   ) : (
                     <Typography.Text type="warning">上传中…</Typography.Text>
                   )}
