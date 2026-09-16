@@ -9,7 +9,6 @@ import {
   Button,
   Card,
   Col,
-  Drawer,
   Empty,
   Form,
   Input,
@@ -28,9 +27,10 @@ import {
 import { FileTextOutlined, SearchOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
+import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
-import { readApiError, API_BASE_URL } from "@/lib/api";
+import { readApiError } from "@/lib/api";
 import { getTaskDisplayName } from "@/lib/celery-task-display";
 import {
   formatTaskMonitorDuration,
@@ -134,23 +134,18 @@ export default function AdminTaskMonitorPage() {
   const pageCardRef = useRef<HTMLDivElement | null>(null);
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
-  const [logModalVisible, setLogModalVisible] = useState(false);
-  const [logModalContent, setLogModalContent] = useState("");
-  const [logModalTaskId, setLogModalTaskId] = useState("");
-  const [logModalLoading, setLogModalLoading] = useState(false);
-  const [logModalStreaming, setLogModalStreaming] = useState(false);
-  const [logModalStatus, setLogModalStatus] = useState("");
-  const logEventSourceRef = useRef<EventSource | null>(null);
-  const logModalContentRef = useRef<HTMLPreElement | null>(null);
-  // 断线补偿游标：记录最近一条 SSE 事件的 id；重连时作为 lastEventId 查询参数传回服务端
-  const logLastEventIdRef = useRef("");
-  // 重连指数退避（秒）：1 / 2 / 4 / 8 / 16 → 最多 30
-  const logRetryDelayRef = useRef(1);
-  // 弹窗可见性：关闭后遗留的重连定时器不得重新拉起弹窗
-  const logModalVisibleRef = useRef(false);
-  // handleViewLog / reconnectLogEventSource 相互引用，经 ref 打破循环
-  const handleViewLogRef = useRef<((taskId: string, cancelledRef?: { current: boolean }) => Promise<void>) | null>(null);
-  const reconnectLogEventSourceRef = useRef<((cancelledRef: { current: boolean }, taskId: string) => void) | null>(null);
+  const [logTaskId, setLogTaskId] = useState<string | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
+
+  const handleViewLog = useCallback((taskId: string) => {
+    setLogTaskId(taskId);
+    setLogOpen(true);
+  }, []);
+
+  const handleCloseLogModal = useCallback(() => {
+    setLogOpen(false);
+    setLogTaskId(null);
+  }, []);
 
   const resetTaskListPagination = useCallback(() => {
     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -158,176 +153,6 @@ export default function AdminTaskMonitorPage() {
     setAllLoadedTasks([]);
     setIsLoadingMore(false);
   }, []);
-
-  const closeLogEventSource = useCallback(() => {
-    const es = logEventSourceRef.current;
-    if (es) {
-      es.close();
-      logEventSourceRef.current = null;
-    }
-  }, []);
-
-  /**
-   * 断线重连：关闭旧连接（终止 EventSource 自动"复用旧 URL + 旧 ticket"导致的 401 循环），
-   * 指数退避后重新签发 ticket 并重建连接；lastEventId 游标随查询参数传回，断线日志不丢。
-   */
-  const reconnectLogEventSource = useCallback((cancelledRef: { current: boolean }, taskId: string) => {
-    if (cancelledRef.current) return;
-    closeLogEventSource();
-    setLogModalStreaming(false);
-    const delay = logRetryDelayRef.current;
-    logRetryDelayRef.current = Math.min(30, delay * 2);
-    setLogModalStatus("重连中");
-    window.setTimeout(() => {
-      if (cancelledRef.current || !logModalVisibleRef.current) return;
-      void handleViewLogRef.current?.(taskId, cancelledRef);
-    }, delay * 1000);
-  }, [closeLogEventSource]);
-  useEffect(() => {
-    reconnectLogEventSourceRef.current = reconnectLogEventSource;
-  }, [reconnectLogEventSource]);
-
-  const handleViewLog = useCallback(async (taskId: string, cancelledRef?: { current: boolean }) => {
-      const cancelled = cancelledRef ?? { current: false };
-      setLogModalTaskId(taskId);
-      setLogModalVisible(true);
-      logModalVisibleRef.current = true;
-      if (!cancelledRef) {
-        // 首次打开时重置重连状态
-        setLogModalLoading(true);
-        setLogModalContent("");
-        setLogModalStatus("");
-        logLastEventIdRef.current = "";
-        logRetryDelayRef.current = 1;
-      }
-      setLogModalStreaming(false);
-      closeLogEventSource();
-
-      // 先尝试 REST API 拉取全量日志（快速返回已有日志）
-      try {
-        const logResp = await fetchWithAuth(`/api/v1/admin/task-logs/${encodeURIComponent(taskId)}`);
-        if (logResp.ok) {
-          const logData = (await logResp.json()) as { log_content?: string };
-          if (logData.log_content) {
-            setLogModalContent(logData.log_content);
-            setLogModalLoading(false);
-            if (cancelled.current) return;
-          }
-        }
-      } catch {
-        // REST 失败继续走 SSE
-      }
-
-      try {
-        // 1. 先签发一次性 ticket（复用 /api/v1/ws/ticket）
-        const ticketRes = await fetchWithAuth("/api/v1/ws/ticket", { method: "POST" });
-        if (!ticketRes.ok) {
-          const errorText = await readApiError(ticketRes);
-          throw new Error(errorText || "获取日志凭证失败");
-        }
-        const ticketPayload = (await ticketRes.json()) as { ticket: string };
-        if (!ticketPayload.ticket) {
-          throw new Error("获取日志凭证失败");
-        }
-
-        // 2. 建立 SSE 连接（EventSource 无法自定义 Authorization header，走 ticket 查询参数）
-        const params = new URLSearchParams({ ticket: ticketPayload.ticket });
-        // 断线重连：重建连接后浏览器不会自动带 Last-Event-ID header，须显式传查询参数，
-        // 后端 sse 端点同时兼容 header 与 lastEventId 查询参数两种来源
-        if (logLastEventIdRef.current) {
-          params.set("lastEventId", logLastEventIdRef.current);
-        }
-        const es = new EventSource(
-          `${API_BASE_URL}/api/v1/admin/task-logs/${encodeURIComponent(taskId)}/sse?${params.toString()}`,
-        );
-        logEventSourceRef.current = es;
-
-        es.onopen = () => {
-          if (cancelled.current) return;
-          logRetryDelayRef.current = 1;
-          setLogModalLoading(false);
-          setLogModalStreaming(true);
-          setLogModalStatus("");
-        };
-
-        es.onmessage = (e) => {
-          if (cancelled.current) return;
-          if (e.lastEventId) {
-            logLastEventIdRef.current = e.lastEventId;
-          }
-          try {
-            const data = JSON.parse(e.data) as { line?: string; lines?: string };
-            const linesText = data.lines;
-            const singleLine = data.line;
-            if (linesText) {
-              setLogModalContent(linesText);
-            } else if (singleLine) {
-              setLogModalContent((prev) => (prev ? `${prev}\n${singleLine}` : singleLine));
-            }
-          } catch {
-            // 忽略无法解析的 SSE 数据
-          }
-        };
-
-        es.addEventListener("done", () => {
-          if (cancelled.current) return;
-          es.close();
-          logEventSourceRef.current = null;
-          setLogModalStreaming(false);
-          setLogModalStatus("任务已完成");
-        });
-
-        es.addEventListener("error", (e) => {
-          if (cancelled.current) return;
-          // error 事件也可能由 `event: error` 自定义事件触发（服务端推送的明确错误）
-          const eventSourceError = e as MessageEvent<string>;
-          try {
-            const data = JSON.parse(eventSourceError.data ?? "") as { message?: string };
-            if (data.message) {
-              setLogModalContent(data.message);
-              setLogModalStreaming(false);
-              return;
-            }
-          } catch {
-            // 普通连接错误：关闭旧连接，重新取票并重建连接（ticket 已过期 / 连接中断）
-          }
-          reconnectLogEventSourceRef.current?.(cancelled, taskId);
-        });
-    } catch (error) {
-      if (cancelled.current) return;
-      const errorMessage = error instanceof Error ? error.message : "获取日志失败";
-      setLogModalContent(`错误：${errorMessage}`);
-      setLogModalLoading(false);
-      reconnectLogEventSourceRef.current?.(cancelled, taskId);
-    }
-  }, [fetchWithAuth, closeLogEventSource]);
-  useEffect(() => {
-    handleViewLogRef.current = handleViewLog;
-  }, [handleViewLog]);
-
-  const handleCloseLogModal = () => {
-    logModalVisibleRef.current = false;
-    closeLogEventSource();
-    setLogModalVisible(false);
-    setLogModalTaskId("");
-    setLogModalContent("");
-    setLogModalStatus("");
-    setLogModalStreaming(false);
-  };
-
-  // 组件卸载时断开 SSE
-  useEffect(() => () => closeLogEventSource(), [closeLogEventSource]);
-
-  // 日志追加时自动滚底（仅流式场景）
-  useEffect(() => {
-    if (!logModalStreaming || logModalStatus) {
-      return;
-    }
-    const el = logModalContentRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [logModalContent, logModalStreaming, logModalStatus]);
 
   const overviewQuery = useQuery({
     queryKey: ["task-monitor-overview", paginationCurrent, paginationPageSize, taskKeyword, searchVersion],
@@ -960,77 +785,12 @@ export default function AdminTaskMonitorPage() {
         ]}
       />
 
-      <Drawer
-        title={`任务执行日志 - ${logModalTaskId}`}
-        width={800}
-        open={logModalVisible}
+      <TaskLogViewerDrawer
+        taskId={logTaskId}
+        title={`任务执行日志 - ${logTaskId ?? ""}`}
+        open={logOpen}
         onClose={handleCloseLogModal}
-        destroyOnHidden
-      >
-        {logModalLoading ? (
-          <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <Spin />
-          </div>
-        ) : (
-          <div
-            style={{ display: "flex", flexDirection: "column", height: "100%" }}
-          >
-            <Space
-              style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}
-              align="center"
-            >
-              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {logModalStreaming && !logModalStatus && (
-                  <>
-                    <Spin size="small" />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      任务运行中，实时接收日志...
-                    </Text>
-                  </>
-                )}
-                {logModalStatus && (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {logModalStatus}
-                  </Text>
-                )}
-              </span>
-              {logModalContent && (
-                <Button
-                  type="link"
-                  size="small"
-                  onClick={() => navigator.clipboard?.writeText(logModalContent)}
-                >
-                  复制
-                </Button>
-              )}
-            </Space>
-            <pre
-              ref={logModalContentRef}
-              style={{
-                flex: 1,
-                minHeight: 0,
-                overflow: "auto",
-                padding: "16px",
-                backgroundColor: "#0f172a",
-                color: "#e2e8f0",
-                borderRadius: "4px",
-                fontSize: "12px",
-                lineHeight: "1.5",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              }}
-            >
-              {logModalContent || (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={logModalStatus ? logModalStatus : "等待日志..."}
-                />
-              )}
-            </pre>
-          </div>
-        )}
-      </Drawer>
+      />
     </div>
   );
 }
