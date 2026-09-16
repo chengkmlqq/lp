@@ -12,6 +12,14 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata
+      # 统一会话时区为 Asia/Shanghai：DB 直查(psql)与日志/前端时间一致，
+      # 避免 timestamptz 显示成 UTC(+00) 而日志是 CST(+08) 造成误判
+      # （2026-09-16 生产排查曾因 DB 显示 UTC、日志显示 CST 误判任务卡死）。
+      TZ: Asia/Shanghai
+    command:
+      - postgres
+      - -c
+      - timezone=Asia/Shanghai
     ports:
       - "127.0.0.1:${POSTGRES_PORT}:5432"
     volumes:
