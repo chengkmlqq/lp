@@ -58,6 +58,7 @@ from ..schemas.lightning import (
     LightningDensityBackfillTaskSummary,
     LightningDensityBackfillHistoryResponse,
 )
+from .audit_service import compose_audit_detail, write_audit_log
 from .line_preparation_service import record_line_preparation_source, summarize_line_preparation
 from .line_service import serialize_line
 from .push_service import publish_topic
@@ -320,6 +321,18 @@ def import_lightning_amplitude_from_file(
         update_user=actor_user_id,
     )
     db.add(amp)
+    db.commit()
+
+    write_audit_log(
+        db,
+        action="lightning.amplitude.import",
+        actor_user_id=actor_user_id,
+        detail=compose_audit_detail(
+            f"amplitude_id={amp.id}",
+            f"source_file={source_file_name}",
+            f"event_id={normalized_event_id or '(自动生成)'}",
+        ),
+    )
     db.commit()
 
     from ..core.celery_app import celery_app as _celery_app
@@ -1767,6 +1780,20 @@ def import_lightning_distribution_from_file(
         update_date=_now,
     )
     db.add(dist)
+    db.commit()
+
+    write_audit_log(
+        db,
+        action="lightning.distribution.import",
+        actor_user_id=actor_user_id,
+        detail=compose_audit_detail(
+            f"distribution_id={dist.id}",
+            f"source_file={source_file_name}",
+            f"event_year={event_year or '-'}",
+            f"data_years={data_years or '-'}",
+            f"line_id={line_id or '-'}",
+        ),
+    )
     db.commit()
 
     from ..core.celery_app import celery_app as _celery_app

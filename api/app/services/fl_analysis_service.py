@@ -23,6 +23,7 @@ from ..models.base import utcnow
 from ..models.fl_analysis import FlAnalysisJob, FlAnalysisRun, FlAnalysisTowerResult, FlAnalysisTowerSnapshot
 from ..models.line import Line
 from ..models.line_tower import LineTower
+from .audit_service import compose_audit_detail, write_audit_log
 from ..models.tower_analysis import TowerAnalysis
 from ..models.tower_circuit import TowerCircuit
 from ..models.tower_lightning_result import TowerLightningResult
@@ -243,6 +244,17 @@ def delete_job(db: Session, *, job_id: str, actor: User) -> None:
     db.execute(delete(FlAnalysisTowerSnapshot).where(FlAnalysisTowerSnapshot.job_id == job.id))
     db.execute(delete(FlAnalysisRun).where(FlAnalysisRun.job_id == job.id))
     db.delete(job)
+    write_audit_log(
+        db,
+        action="fl_analysis.job.delete",
+        actor_user_id=actor.id,
+        detail=compose_audit_detail(
+            f"job_id={job.id}",
+            f"job_name={job.job_name or '-'}",
+            f"line_id={job.line_id or '-'}",
+            f"job_type={job.job_type or '-'}",
+        ),
+    )
     db.commit()
 
     _publish_change(
@@ -421,6 +433,20 @@ def create_job(
     if not saved:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="创建防雷分析任务失败")
 
+    write_audit_log(
+        db,
+        action="fl_analysis.job.create",
+        actor_user_id=actor.id,
+        detail=compose_audit_detail(
+            f"job_id={saved.id}",
+            f"job_name={saved.job_name or '-'}",
+            f"line_id={saved.line_id or '-'}",
+            f"job_type={saved.job_type or '-'}",
+            f"total_towers={saved.total_tower_count}",
+        ),
+    )
+    db.commit()
+
     _publish_change(
         "fl_analysis.job.created",
         {"action": "job_created", "job_id": saved.id, "line_id": saved.line_id},
@@ -460,6 +486,18 @@ def start_job(
     latest = get_job_by_id(db, job.id)
     if not latest:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="任务派发后查询失败")
+
+    write_audit_log(
+        db,
+        action="fl_analysis.job.start",
+        actor_user_id=actor.id,
+        detail=compose_audit_detail(
+            f"job_id={latest.id}",
+            f"job_name={latest.job_name or '-'}",
+            f"task_id={latest.task_id or '-'}",
+        ),
+    )
+    db.commit()
 
     _publish_change(
         "fl_analysis.job.queued",
@@ -513,6 +551,20 @@ def cancel_job(db: Session, *, job_id: str, actor: User) -> tuple[FlAnalysisJob,
     # （快照计数/进度更新等），此时直接 UPDATE 会被无限期阻塞 —— 实测接口曾挂住 >30s、
     # 前端表现为「请求无响应」。对策：lock_timeout 2s + 重试；仍失败则由清理任务兜底写状态。
     status_written = _write_cancelled_status(db, job_id=job.id, actor_id=actor.id, now=now)
+
+    write_audit_log(
+        db,
+        action="fl_analysis.job.cancel",
+        actor_user_id=actor.id,
+        detail=compose_audit_detail(
+            f"job_id={job.id}",
+            f"job_name={job.job_name or '-'}",
+            f"task_id={task_id or '-'}",
+            f"revoke={revoke_mode}",
+            f"status_written={status_written}",
+        ),
+    )
+    db.commit()
 
     _publish_change(
         "fl_analysis.job.cancelled",

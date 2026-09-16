@@ -49,6 +49,16 @@ const ACTION_LABEL_MAP: Record<string, string> = {
   "file.download": "下载文件",
   "file.download_zip": "下载目录压缩包",
   "file.delete": "删除文件",
+  "fl_analysis.job.create": "创建防雷任务",
+  "fl_analysis.job.start": "启动防雷任务",
+  "fl_analysis.job.cancel": "取消防雷任务",
+  "fl_analysis.job.delete": "删除防雷任务",
+  "lightning.amplitude.import": "导入雷电流幅值",
+  "lightning.amplitude.delete": "删除雷电流幅值",
+  "lightning.distribution.import": "导入地闪密度",
+  "lightning.distribution.delete": "删除地闪密度",
+  "scheduled_task.run": "定时任务执行",
+  "scheduled_task.run_failed": "定时任务执行失败",
 };
 
 function getActionLabel(action: string): string {

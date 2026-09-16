@@ -247,16 +247,7 @@ def refresh_user_session(
         )
 
     session.revoked_at = now
-    write_audit_log(
-        db,
-        action="auth.refresh",
-        actor_user_id=session.user_id,
-        detail=compose_audit_detail(
-            f"user_id={session.user_id}",
-            "session_rotated=true",
-        ),
-        output=json.dumps({"user_id": session.user_id, "session_rotated": True}),
-    )
+    # 令牌刷新不写审计日志（避免噪音），仅旋转会话
     db.commit()
 
     return issue_auth_result_for_user(
@@ -336,17 +327,19 @@ def issue_auth_result_for_user(
     )
 
     user.last_login_at = utcnow()
-    write_audit_log(
-        db,
-        action=action,
-        actor_user_id=user.id,
-        detail=compose_audit_detail(
-            f"user_id={user.id}",
-            f"username={user.username}",
-            "access_token_issued=true",
-        ),
-        output=json.dumps({"user_id": user.id, "username": user.username, "access_token_issued": True}),
-    )
+    # 仅登录成功写审计日志；令牌刷新（auth.refresh_issued）不记录，避免日志噪音
+    if action == "auth.login":
+        write_audit_log(
+            db,
+            action=action,
+            actor_user_id=user.id,
+            detail=compose_audit_detail(
+                f"user_id={user.id}",
+                f"username={user.username}",
+                "access_token_issued=true",
+            ),
+            output=json.dumps({"user_id": user.id, "username": user.username, "access_token_issued": True}),
+        )
     db.commit()
 
     user = get_user_by_id_with_rbac(db, user_id)

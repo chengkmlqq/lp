@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
 from ...core.file_upload import save_temp_upload, validate_upload
+from ...services.audit_service import write_audit_log
 from ...schemas.lightning import (
     LightningAmplitudeBackfillLine,
     LightningAmplitudeBackfillLineListResponse,
@@ -206,12 +207,19 @@ def retry_lightning_amplitude_endpoint(
 @router.delete("/amplitudes/{amplitude_id}")
 def delete_lightning_amplitude_endpoint(
     amplitude_id: str,
-    _: CurrentUser = Depends(require_permission("lightning.manage")),
+    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
     db: Session = Depends(get_db),
 ) -> dict[str, bool]:
     deleted = delete_lightning_amplitude(db, amplitude_id)
     if not deleted.get("success"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流幅值记录不存在")
+    write_audit_log(
+        db,
+        action="lightning.amplitude.delete",
+        actor_user_id=current_user.user.id,
+        detail=f"amplitude_id={amplitude_id}",
+    )
+    db.commit()
     return deleted
 
 
@@ -390,12 +398,19 @@ def retry_lightning_distribution_endpoint(
 @router.delete("/distributions/{distribution_id}")
 def delete_lightning_distribution_endpoint(
     distribution_id: str,
-    _: CurrentUser = Depends(require_permission("lightning.manage")),
+    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
     db: Session = Depends(get_db),
 ) -> dict[str, bool]:
     deleted = delete_lightning_distribution(db, distribution_id)
     if not deleted.get("success"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
+    write_audit_log(
+        db,
+        action="lightning.distribution.delete",
+        actor_user_id=current_user.user.id,
+        detail=f"distribution_id={distribution_id}",
+    )
+    db.commit()
     return deleted
 
 
