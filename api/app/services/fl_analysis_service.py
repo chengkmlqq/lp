@@ -681,12 +681,10 @@ def export_fl_analysis_results_to_csv(job: FlAnalysisJob, rows: list[FlAnalysisT
 
 
 def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -> None:
-            print(f"[DIAG] 进入 _execute_single_tower: snapshot_id={snapshot_id} idx={idx}", flush=True)
             # 本塔使用独立 session（由 execute_job 每塔创建并传入），隔离并发事务。
             # 传入的是 snapshot.id 标量，job/run/snapshot/tower 全部用本塔 session 按 ID 反查，
             # 避免跨 session 操作 execute_job 主 session 的对象（其会 expire/detached）。
             snapshot = db.get(FlAnalysisTowerSnapshot, snapshot_id)
-            print(f"[DIAG] snapshot 反查后: {snapshot_id if snapshot is not None else 'None'}", flush=True)
             if snapshot is None:
                 raise RuntimeError(f"杆塔(snapshot_id={snapshot_id})在独立session不可见")
             job = get_job_by_id(db, snapshot.job_id)
@@ -1484,21 +1482,15 @@ def execute_job(job_id: str) -> None:
                 logger.exception("[ATP] 杆塔%s 计算失败（单塔独立，任务继续）", snapshot_id)
                 return {"ok": False, "idx": idx, "tower_no": snapshot_id, "error": str(exc)}
 
-        # [DIAG] 提交前观察 snapshots 长度
-        logger.info("[DIAG] execute_job 塔提交: len(snapshots)=%d, ids=%s, tpw=%d",
-                    len(snapshots), [getattr(s, 'id', '?' ) for s in snapshots], tower_parallel_workers)
         if tower_parallel_workers > 1 and len(snapshots) > 1:
             import concurrent.futures as _cfg
             with _cfg.ThreadPoolExecutor(max_workers=tower_parallel_workers) as _pool:
                 _futs = [_pool.submit(_run_tower_worker, s.id, i, len(snapshots), spawn)
                          for i, s in enumerate(snapshots, start=1)]
-                logger.info("[DIAG] 已提交 %d 个 tower worker", len(_futs))
                 _outcomes = [f.result() for f in _cfg.as_completed(_futs)]
-                logger.info("[DIAG] 归并 outcomeseq done, outcomes=%d", len(_outcomes))
         else:
             _outcomes = [_run_tower_worker(s.id, i, len(snapshots), spawn)
                          for i, s in enumerate(snapshots, start=1)]
-            logger.info("[DIAG] 串行分支 outcomes=%d", len(_outcomes))
         # 按塔序归并（保证 tower 顺序/日志/摘要一致）
         _outcomes.sort(key=lambda o: o.get("idx", 0))
         result_count = 0
