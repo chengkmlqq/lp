@@ -311,6 +311,7 @@ export function TaskLogViewerDrawer({
       <div
         ref={contentRef}
         onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
+        className="task-log-viewer-scroll"
         style={{
           flex: 1,
           minHeight: 0,

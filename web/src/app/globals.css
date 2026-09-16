@@ -549,6 +549,33 @@ body {
   scrollbar-gutter: stable;
 }
 
+/* 任务日志查看器（task-log-viewer.tsx）：深色背景容器内滚动条要清晰可见。
+   全局 scrollbar-thumb 是 20% 透明度的浅紫细条，在 #0f172a 深色日志背景上几乎隐形；
+   这里用高对比亮色覆盖，WebKit + Firefox 都处理。 */
+.task-log-viewer-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
+}
+.task-log-viewer-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.task-log-viewer-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
+.task-log-viewer-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.task-log-viewer-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.85);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
 .admin-menus-table-anchor .ant-table-body {
   min-height: var(--admin-menus-table-body-min-height, 180px);
 }
