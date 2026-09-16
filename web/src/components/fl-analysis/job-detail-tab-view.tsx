@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Drawer, message } from "antd";
+import { Button, Drawer, message, Spin } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { TowerDetailView } from "@/components/fl-analysis/detail-modal";
@@ -190,6 +190,16 @@ export function JobDetailTabView({
   const openTowerDetail = useCallback((row: FlAnalysisTowerResultSummary) => {
     setTowerDetailRow(row);
   }, []);
+  // 进入详情页统一 loading：任务详情 + 分级结果任一在加载，只显示一个居中 Spin，
+  // 避免 JobDetailPanel 和 ResultTable 各自返回裸 <Spin /> 在左上角堆两个图标。
+  if (jobDetailQuery.isLoading || towerResultsQuery.isLoading) {
+    return (
+      <div className="flex min-h-[280px] w-full flex-1 items-center justify-center">
+        <Spin size="large" />
+      </div>
+    );
+  }
+
   return (
     <>
       {contextHolder}

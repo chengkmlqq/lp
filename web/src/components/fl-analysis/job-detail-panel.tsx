@@ -90,7 +90,11 @@ export function JobDetailPanel({
   const { labelMap } = useFlDimensionOptions();
 
   if (loading) {
-    return <Spin />;
+    return (
+      <div className="flex w-full items-center justify-center py-8">
+        <Spin />
+      </div>
+    );
   }
 
   if (error) {

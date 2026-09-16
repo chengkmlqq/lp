@@ -198,7 +198,11 @@ export function ResultTable({
   }, [onOpenDetail, selectedJob?.job_type, selectedWaveformJobType]);
 
   if (loading) {
-    return <Spin />;
+    return (
+      <div className="flex w-full items-center justify-center py-8">
+        <Spin />
+      </div>
+    );
   }
 
   if (error) {
