@@ -267,10 +267,16 @@ def import_lightning_distribution_job(
             "stage": "rendering",
             "progress": 75,
         })
+        _max_cur = stats["max_abs_current"]
+        _avg_cur = stats["avg_abs_current"]
+        _max_text = f"{_max_cur:.2f}" if _max_cur is not None else "-"
+        _avg_text = f"{_avg_cur:.2f}" if _avg_cur is not None else "-"
         _append_log(log_parts, task_id,
             f"[{task_id}] 统计完成：面积 {stats['area_km2']:.3f}km²，统计年限 {stats['data_years']}，"
-            f"整体地闪密度 Ng={stats['overall_ng']:.4f}，最大电流 {stats['max_abs_current']:.2f}kA，"
-            f"平均电流 {stats['avg_abs_current']:.2f}kA，正极性 {stats['positive_count']} 条 / "
+            f"整体地闪密度 Ng={stats['overall_ng']:.4f}，"
+            f"最大电流 {_max_text}kA，"
+            f"平均电流 {_avg_text}kA，"
+            f"正极性 {stats['positive_count']} 条 / "
             f"负极性 {stats['negative_count']} 条 / 未知 {stats['unknown_count']} 条"
         )
 
