@@ -437,6 +437,27 @@ export default function AdminLightningDistributionPage() {
       setUploadProgress(0);
       setUploadError("");
 
+      // 上传后立即做首行格式快速校验：地闪密度文件每行应为「纬度 经度 电流」
+      let formatInvalid = false;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const head = String(reader.result ?? "").slice(0, 2000);
+        const firstLine = head.split(/\r?\n/).find((ln) => ln.trim());
+        if (firstLine) {
+          const tokens = firstLine.trim().split(/[\s,，]+/).filter(Boolean);
+          const numbers = tokens.map(Number).filter((n) => Number.isFinite(n));
+          if (tokens.length < 3 || numbers.length < 3) {
+            formatInvalid = true;
+            setUploadError(
+              `文件格式疑似有误：首行为「${firstLine.trim().slice(0, 80)}」。` +
+                "地闪密度文件每行应为「纬度 经度 电流」3 个数值（空格分隔，如「22.54 114.05 -15.3」）。",
+            );
+            return;
+          }
+        }
+      };
+      reader.readAsText(file);
+
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${getApiBaseUrl()}/api/v1/lightning-currents/upload-temp`);
       xhr.withCredentials = true;
@@ -454,6 +475,11 @@ export default function AdminLightningDistributionPage() {
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           setUploadProgress(100);
+          // 前端格式校验失败则不接受该临时文件（禁止提交导入）
+          if (formatInvalid) {
+            setTempFileId(null);
+            return;
+          }
           try {
             const payload = JSON.parse(xhr.responseText) as LightningTempUploadResponse;
             setTempFileId(payload.temp_file_id);

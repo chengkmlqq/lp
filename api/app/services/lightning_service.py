@@ -210,6 +210,38 @@ def _resolve_import_content(
     return content, source_file_name
 
 
+def _validate_amplitude_content(content: bytes, source_file_name: str) -> None:
+    """导入前格式预校验：雷电流幅值源文件应为纯数值文本（每行一个或多个数字）。
+
+    全坏或有效比例过低（<10%）直接 400 拒绝，避免无效文件入库后后台任务空跑。
+    幅值文件期望格式：每行 1 个电流值（如 -15.3），或「时间 电流」两列（如 0.0001 -15.3）。
+    """
+    text = _decode_text_bytes(content)
+    total_lines = len([ln for ln in text.splitlines() if ln.strip()])
+    if total_lines == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"文件「{source_file_name}」为空，无有效数据行",
+        )
+
+    parsed = _parse_current_series(text)
+    valid = len(parsed.currents_ka)
+    if valid == 0 or (valid / total_lines) < 0.1:
+        sample_line = next(
+            (ln.strip() for ln in text.splitlines() if ln.strip()),
+            "",
+        )[:120]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"文件「{source_file_name}」格式不符合要求："
+                f"共 {total_lines} 行数据，仅解析出 {valid} 个有效采样点"
+                f"（期望每行 1 个电流值，如「-15.3」；或「时间 电流」两列，如「0.0001 -15.3」）。"
+                f"示例行：{sample_line!r}。请检查文件后重新上传。"
+            ),
+        )
+
+
 def import_lightning_amplitude_from_file(
     db: Session,
     *,
@@ -239,6 +271,8 @@ def import_lightning_amplitude_from_file(
     源文件只存 MinIO，不再写容器临时盘；采样明细不落库。
     """
     content, source_file_name = _resolve_import_content(file=file, temp_file_id=temp_file_id, actor_user_id=actor_user_id)
+    # 格式预校验：坏文件（全坏 / 有效比例 <10%）直接 400 拒绝，不进 MinIO 不派发任务
+    _validate_amplitude_content(content, source_file_name)
 
     from ..services.minio_storage import build_amplitude_source_key, put_object
     from uuid import uuid4 as _uuid4
@@ -1652,6 +1686,41 @@ def get_distribution_linked_line_count(db: Session, distribution_id: str) -> int
     return len(_collect_linked_lines(towers))
 
 
+def _validate_distribution_content(content: bytes, source_file_name: str) -> None:
+    """导入前格式预校验：地闪密度源文件应为「纬度 经度 电流」空格分隔的文本。
+
+    全坏或有效比例过低（<10%）直接 400 拒绝，避免无效文件入库后后台任务
+    空跑（曾出现 128 万行全坏文件导入后统计阶段 0 条落雷的案例）。
+    """
+    from ..services.lightning_statistics import parse_distribution_content
+
+    text = _decode_text_bytes(content)
+    total_lines = len([ln for ln in text.splitlines() if ln.strip()])
+    if total_lines == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"文件「{source_file_name}」为空，无有效数据行",
+        )
+
+    warnings: list[str] = []
+    strikes = parse_distribution_content(text, warnings=warnings)
+    valid = len(strikes)
+    if valid == 0 or (valid / total_lines) < 0.1:
+        sample_line = next(
+            (ln.strip() for ln in text.splitlines() if ln.strip()),
+            "",
+        )[:120]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"文件「{source_file_name}」格式不符合要求："
+                f"共 {total_lines} 行数据，仅解析出 {valid} 条有效落雷"
+                f"（期望每行格式：纬度 经度 电流，空格分隔，如「22.54 114.05 -15.3」）。"
+                f"示例行：{sample_line!r}。请检查文件后重新上传。"
+            ),
+        )
+
+
 def import_lightning_distribution_from_file(
     db: Session,
     *,
@@ -1668,6 +1737,8 @@ def import_lightning_distribution_from_file(
 ) -> LightningDistributionImportResponse:
     """上传文件或引用临时文件 → 立即 put_object 到 MinIO → 建 LightningDistribution(pending) → 派发 Celery。"""
     content, source_file_name = _resolve_import_content(file=file, temp_file_id=temp_file_id, actor_user_id=actor_user_id)
+    # 格式预校验：坏文件（全坏 / 有效比例 <10%）直接 400 拒绝，不进 MinIO 不派发任务
+    _validate_distribution_content(content, source_file_name)
 
     from ..services.minio_storage import build_source_key, put_object
     from uuid import uuid4 as _uuid4
