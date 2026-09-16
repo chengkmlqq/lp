@@ -680,20 +680,19 @@ def export_fl_analysis_results_to_csv(job: FlAnalysisJob, rows: list[FlAnalysisT
     return filename, output.getvalue().encode("utf-8-sig")
 
 
-def _execute_single_tower(db: Session, snapshot, idx, total, *, spawn) -> None:
+def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -> None:
             # 本塔使用独立 session（由 execute_job 每塔创建并传入），隔离并发事务。
-            # job/run/tower 均用本塔 session 按 ID 独立反查，避免跨 session 操作 execute_job 主 session 的对象。
+            # 传入的是 snapshot.id 标量，job/run/snapshot/tower 全部用本塔 session 按 ID 反查，
+            # 避免跨 session 操作 execute_job 主 session 的对象（其会 expire/detached）。
+            snapshot = db.get(FlAnalysisTowerSnapshot, snapshot_id)
+            if snapshot is None:
+                raise RuntimeError(f"杆塔(snapshot_id={snapshot_id})在独立session不可见")
             job = get_job_by_id(db, snapshot.job_id)
             if job is None:
                 raise RuntimeError(f"杆塔 {snapshot.tower_no}: 任务(job_id={snapshot.job_id})不存在")
             run = db.get(FlAnalysisRun, snapshot.run_id)
             if run is None:
                 raise RuntimeError(f"杆塔 {snapshot.tower_no}: 运行记录(run_id={snapshot.run_id})不存在")
-            # 独立 session：snapshot 也须用本塔 session 重新反查（传入的是 execute_job 主 session 的对象，
-            # 跨 session 访问其属性会 DetachedInstanceError）
-            snapshot = db.get(FlAnalysisTowerSnapshot, snapshot.id)
-            if snapshot is None:
-                raise RuntimeError(f"杆塔 {snapshot.tower_no}: 快照(snapshot_id)在独立session不可见")
             execution_options = spawn["execution_options"]
             has_external = spawn["has_external"]
             has_legacy = spawn["has_legacy"]
@@ -1452,25 +1451,25 @@ def execute_job(job_id: str) -> None:
             "logger": logger,
         }
 
-        def _run_tower_worker(snapshot, idx, total, worker_spawn):
+        def _run_tower_worker(snapshot_id, idx, total, worker_spawn):
             # 单塔失败独立（语义B）：异常不外抛，返回 ok=False，其余塔不受影响
             try:
                 with closing(SessionLocal()) as tower_db:
-                    return _execute_single_tower(tower_db, snapshot, idx, total, spawn=worker_spawn)
+                    return _execute_single_tower(tower_db, snapshot_id, idx, total, spawn=worker_spawn)
             except Exception as exc:
-                logger.exception("[ATP] 杆塔 %s 计算失败（单塔独立，任务继续）", snapshot.tower_no)
-                return {"ok": False, "idx": idx, "tower_no": snapshot.tower_no, "error": str(exc)}
+                logger.exception("[ATP] 杆塔%s 计算失败（单塔独立，任务继续）", snapshot_id)
+                return {"ok": False, "idx": idx, "tower_no": snapshot_id, "error": str(exc)}
 
         # 塔级并行（Step2）：tower_parallel_workers>1 且多塔时开线程池；=1 或单塔退化为串行（天然回滚开关）
         tower_parallel_workers = max(1, int(execution_options.get("tower_parallel_workers") or 2))
         if tower_parallel_workers > 1 and len(snapshots) > 1:
             import concurrent.futures as _cfg
             with _cfg.ThreadPoolExecutor(max_workers=tower_parallel_workers) as _pool:
-                _futs = [_pool.submit(_run_tower_worker, s, i, len(snapshots), spawn)
+                _futs = [_pool.submit(_run_tower_worker, s.id, i, len(snapshots), spawn)
                          for i, s in enumerate(snapshots, start=1)]
                 _outcomes = [f.result() for f in _cfg.as_completed(_futs)]
         else:
-            _outcomes = [_run_tower_worker(s, i, len(snapshots), spawn)
+            _outcomes = [_run_tower_worker(s.id, i, len(snapshots), spawn)
                          for i, s in enumerate(snapshots, start=1)]
         # 按塔序归并（保证 tower 顺序/日志/摘要一致）
         _outcomes.sort(key=lambda o: o.get("idx", 0))
