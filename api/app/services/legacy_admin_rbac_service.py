@@ -1257,6 +1257,39 @@ def _replace_role_menus_internal(db: Session, role_id: str, menu_ids: list[str],
                     "menu_id": menu_id,
                 },
             )
+        # 菜单 → 接口权限联动：绑定菜单时自动授予该菜单 permission_code 对应的权限，
+        # 避免「菜单可见但接口 403」（菜单权限与接口权限割裂的问题）。
+        # 只做并集（保留角色已手工授予的权限），解绑菜单不回收手工授权。
+        if menu_ids:
+            try:
+                menu_perms = db.execute(
+                    text(
+                        """
+                        SELECT DISTINCT m.permission_code
+                        FROM menus m
+                        WHERE m.id::text IN :menu_ids
+                          AND m.permission_code IS NOT NULL
+                          AND m.permission_code <> ''
+                        """
+                    ).bindparams(bindparam("menu_ids", expanding=True)),
+                    {"menu_ids": [str(mid) for mid in menu_ids]},
+                ).scalars().all()
+                for perm_code in menu_perms:
+                    db.execute(
+                        text(
+                            """
+                            INSERT INTO role_permissions (role_id, permission_id)
+                            SELECT CAST(:role_id AS INTEGER), p.id
+                            FROM permissions p
+                            WHERE p.code = :perm_code
+                            ON CONFLICT DO NOTHING
+                            """
+                        ),
+                        {"role_id": role_id, "perm_code": perm_code},
+                    )
+            except SQLAlchemyError:
+                db.rollback()
+                raise
 
 
 def _legacy_user_role_relation_exists(db: Session) -> bool:
