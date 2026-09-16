@@ -265,10 +265,18 @@ function buildComputationSteps(
     binarySearchSteps("反击二分", binarySearch, "counterstrike");
   }
 
-  // 同跳各相（multi_phase_results）
-  const multiPhase = Array.isArray(resultObject.multi_phase_results)
+  // 同跳各相二分：完整 search_history 在 multi_phase_binary_search.phase_entries
+  // （每个 entry 含 phase_count/label/counterstrike_withstand_ka/trip_rate/converged/
+  //   search_history），multi_phase_results 仅有摘要、无 search_history（旧数据源，
+  //   保留作 fallback 兼容历史记录）。
+  const bsEntries =
+    Array.isArray((resultObject.multi_phase_binary_search as Record<string, unknown> | undefined)?.phase_entries)
+      ? ((resultObject.multi_phase_binary_search as Record<string, unknown>).phase_entries as Record<string, unknown>[])
+      : null;
+  const multiPhaseFallback = Array.isArray(resultObject.multi_phase_results)
     ? (resultObject.multi_phase_results as Record<string, unknown>[])
     : [];
+  const multiPhase = bsEntries ?? multiPhaseFallback;
   if (multiPhase.length > 0 && waveformType === "tongtiao") {
     multiPhase.forEach((phase, index) => {
       const label = typeof phase.label === "string" ? phase.label : `第${index + 1}相`;
