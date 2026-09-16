@@ -22,8 +22,12 @@ elif database_url.startswith("postgresql"):
 
 engine = create_engine(
     database_url,
-    # 容器内 api→db 网络稳定，关 pre_ping 避免每请求 SELECT 1 往返（实测省 ~0.1s/请求）
-    pool_pre_ping=False,
+    # 开启 pre_ping：长耗时任务（ATP 引擎单塔可达数分钟）跨越 pool_recycle=300s 时，
+    # 连接可能已被服务端/网络层丢弃；无 pre_ping 时取到的是死连接，复用会偶发
+    # `server closed the connection unexpectedly`，导致整任务被误标 failed（celery 层
+    # 其实已 succeeded，2026-09-16 并发4 时分片1 实测）。pre_ping 每次取连先 SELECT 1
+    # 探测，死连接自动重连，避免该偶发失败。代价 ~0.1s/请求，对长任务可接受。
+    pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
     pool_recycle=300,
