@@ -207,14 +207,6 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                     杆塔：{job.total_tower_count} / 结果：{job.result_tower_count}
                   </Typography.Text>
                 </div>
-                {job.status === "running" && job.current_step_text ? (
-                  <div className="flex items-center gap-2">
-                    <ThunderboltOutlined className="text-xs text-amber-500" />
-                    <Typography.Text type="secondary" className="text-xs truncate" title={job.current_step_text}>
-                      {job.current_step_text}
-                    </Typography.Text>
-                  </div>
-                ) : null}
               </div>
 
               {/* 操作区：默认展示 2 个直接按钮，多了才收进 ⋯ 三点下拉 */}
@@ -222,30 +214,33 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                 <div className="min-w-0 flex items-center gap-2">
                   {job.status === "running" ? (
                     <>
-                      {/* 实时进度：已完成塔数 + 当前塔内部比例(fractional_progress) / 总塔数
-                          （WS 事件 invalidate 刷新驱动）。fractional 是 0~1，代表当前塔完成比例，
-                          使单根塔计算时进度条也细分到内部子步骤。 */}
-                      <Progress
-                        percent={
-                          job.total_tower_count > 0
-                            ? Math.min(
-                                100,
-                                Math.round(
-                                  ((job.result_tower_count + (job.fractional_progress || 0)) /
-                                    job.total_tower_count) *
-                                    100,
-                                ),
-                              )
-                            : 0
-                        }
-                        size="small"
-                        className="flex-1 max-w-40"
-                      />
-                      <Typography.Text type="secondary" className="text-xs whitespace-nowrap">
-                        {job.result_tower_count + (job.fractional_progress || 0) > 0
-                          ? `${(job.result_tower_count + (job.fractional_progress || 0)).toFixed(1)}/${job.total_tower_count}`
-                          : `0/${job.total_tower_count}`}
-                      </Typography.Text>
+                      {/* 实时进度条：整体进度（已完成塔数 + 当前塔内部比例 fractional），
+                          百分比在进度条右侧（Progress format）；鼠标悬浮进度条通过
+                          Tooltip 展示当前正在执行的步骤（如「杆塔 75 计算完成」）。
+                          已完成塔数用整数 result_tower_count，进行中塔的 fractional 只参与
+                          进度条百分比，避免 22+0.95 进位成「23/23」误显示为已完成。 */}
+                      <Tooltip
+                        title={job.current_step_text || "正在计算"}
+                        placement="top"
+                      >
+                        <Progress
+                          percent={
+                            job.total_tower_count > 0
+                              ? Math.min(
+                                  99,
+                                  Math.round(
+                                    ((job.result_tower_count + (job.fractional_progress || 0)) /
+                                      job.total_tower_count) *
+                                      100,
+                                  ),
+                                )
+                              : 0
+                          }
+                          size="small"
+                          className="flex-1 max-w-48"
+                          format={(percent) => `${percent}%`}
+                        />
+                      </Tooltip>
                     </>
                   ) : null}
                 </div>
