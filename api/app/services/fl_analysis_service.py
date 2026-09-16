@@ -617,6 +617,10 @@ def export_fl_analysis_results_to_csv(job: FlAnalysisJob, rows: list[FlAnalysisT
 
     for item in rows:
         context = _build_result_export_context(item)
+        context["job"] = {
+            "id": job.id,
+            "name": job.job_name,
+        }
         writer.writerow([_format_export_cell(getter(context)) for _header, getter in columns])
 
     filename = f"fl_analysis_{job.job_type}_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
@@ -1736,11 +1740,54 @@ def _build_result_export_context(item: FlAnalysisTowerResult) -> dict[str, Any]:
     selected_case = _safe_dict(result.get("selected_case"))
     actions = [entry for entry in result.get("mitigation_actions") or [] if isinstance(entry, dict)]
     reason_details = [entry for entry in result.get("reason_details") or [] if isinstance(entry, dict)]
+    # 对齐 C# TGanTa 明细：tower_profile（几何/配置）与回路几何（I-IV 回中距/高度）
+    tower = snapshot.tower if snapshot is not None else None
+    tprofile_obj = tower.profile if tower is not None else None
+    tprofile = {}
+    if tprofile_obj is not None:
+        tprofile = {
+            "phase_sequence_1": getattr(tprofile_obj, "phase_sequence_1", None),
+            "phase_sequence_2": getattr(tprofile_obj, "phase_sequence_2", None),
+            "phase_sequence_3": getattr(tprofile_obj, "phase_sequence_3", None),
+            "phase_sequence_4": getattr(tprofile_obj, "phase_sequence_4", None),
+            "arrester_a": getattr(tprofile_obj, "arrester_a", None),
+            "arrester_b": getattr(tprofile_obj, "arrester_b", None),
+            "arrester_c": getattr(tprofile_obj, "arrester_c", None),
+            "protection_angle_left_deg": getattr(tprofile_obj, "protection_angle_left_deg", None),
+            "protection_angle_right_deg": getattr(tprofile_obj, "protection_angle_right_deg", None),
+            "shield_wire_height_m": getattr(tprofile_obj, "shield_wire_height_m", None),
+            "insulator_length_m": getattr(tprofile_obj, "insulator_length_m", None),
+            "call_height_m": getattr(tprofile_obj, "call_height_m", None),
+            "angle_deg": getattr(tprofile_obj, "angle_deg", None),
+            "current_a": getattr(tprofile_obj, "current_a", None),
+            "current_b": getattr(tprofile_obj, "current_b", None),
+            "structure_kind": getattr(tprofile_obj, "structure_kind", None),
+            "stroke_mode": getattr(tprofile_obj, "stroke_mode", None),
+            "current_type": getattr(tprofile_obj, "current_type", None),
+            "current_head_time_us": getattr(tprofile_obj, "current_head_time_us", None),
+            "current_tail_time_us": getattr(tprofile_obj, "current_tail_time_us", None),
+            "extra_profile_json": _safe_dict(getattr(tprofile_obj, "extra_profile_json", None)),
+        }
+    # 回路几何：按 circuit_no 1..4 取中距/高度（对齐 C# I-IV 回上中下相）
+    circuits: list[dict[str, Any]] = []
+    if tower is not None and tower.circuits is not None:
+        for circ in sorted(tower.circuits, key=lambda c: getattr(c, "circuit_no", 0) or 0):
+            circuits.append({
+                "spacing_upper_m": getattr(circ, "spacing_upper_m", None),
+                "spacing_middle_m": getattr(circ, "spacing_middle_m", None),
+                "spacing_lower_m": getattr(circ, "spacing_lower_m", None),
+                "height_upper_m": getattr(circ, "height_upper_m", None),
+                "height_middle_m": getattr(circ, "height_middle_m", None),
+                "height_lower_m": getattr(circ, "height_lower_m", None),
+            })
     return {
         "item": item,
         "snapshot": snapshot,
+        "tower": tower,
         "base": base,
         "profile": profile,
+        "tprofile": tprofile,
+        "circuits": circuits,
         "result": result,
         "inputs": inputs,
         "workflow": workflow,
@@ -1756,14 +1803,217 @@ def _build_result_export_context(item: FlAnalysisTowerResult) -> dict[str, Any]:
 
 
 def _result_export_columns(job_type: str) -> list[tuple[str, Callable[[dict[str, Any]], Any]]]:
-    columns = _common_result_export_columns()
-    if job_type == "mitigation":
-        return columns + _mitigation_result_export_columns()
-    if job_type == "normal":
-        return columns + _normal_result_export_columns() + _risk_result_export_columns()
-    if job_type == "tongtiao":
-        return columns + _normal_result_export_columns() + _tongtiao_result_export_columns() + _risk_result_export_columns()
-    return columns + _risk_result_export_columns()
+    # 对齐 C# 桌面版 TGanTa 导出明细（TaskData/TGanTaData.MyHead_ToString 列序）。
+    # 所有 job_type 统一输出塔级全量明细（C# 不分类型）；mitigation 用 C# 的「措施推荐」列。
+    return _csharp_aligned_export_columns()
+
+
+def _csharp_aligned_export_columns() -> list[tuple[str, Callable[[dict[str, Any]], Any]]]:
+    """C# 桌面版 TGanTaData.MyHead_ToString() 列头逐列对齐（2026-09-16）。
+
+    列名/顺序完全照抄 lp-knowledge LP/TGanTaData.cs:403-500；数据从 Web 侧
+    snapshot/base_tower_json/tower.profile/tower.circuits/result_json 映射。
+    数据源缺失的列输出空值（保持列数/列序与 C# 一致）。
+    """
+    def num(*keys: str):
+        def getter(ctx: dict[str, Any]) -> Any:
+            for key in keys:
+                # 支持 ctx['base'].get(k) / ctx['result'].get(k) 等嵌套取数
+                section, _, field = key.partition(".")
+                section_obj = ctx.get(section)
+                if not isinstance(section_obj, dict):
+                    continue
+                val = section_obj.get(field)
+                if val is not None:
+                    return val
+            return None
+        return getter
+
+    def text(*keys: str):
+        def getter(ctx: dict[str, Any]) -> Any:
+            for key in keys:
+                section, _, field = key.partition(".")
+                section_obj = ctx.get(section)
+                if not isinstance(section_obj, dict):
+                    continue
+                val = section_obj.get(field)
+                if isinstance(val, str) and val.strip():
+                    return val
+                if val is not None:
+                    return val
+            return None
+        return getter
+
+    # 回路几何（I-IV 回上中下相中距/高度），按 circuit_no 顺序取
+    def circ_num(circ_idx: int, field: str):
+        def getter(ctx: dict[str, Any]) -> Any:
+            circuits = ctx.get("circuits") or []
+            if circ_idx < len(circuits):
+                return circuits[circ_idx].get(field)
+            return None
+        return getter
+
+    # tprofile 取数（tower_profile 字段）
+    def prof(key: str):
+        return lambda ctx: (ctx.get("tprofile") or {}).get(key)
+
+    # 多相结果展开（phase_count 1-6 → 耐雷水平/闪络相/跳闸率）
+    def multiphase(phase_count: int, field: str):
+        def getter(ctx: dict[str, Any]) -> Any:
+            entries = ((ctx.get("result") or {}).get("multi_phase_binary_search") or {}).get("phase_entries") or []
+            for entry in entries:
+                if isinstance(entry, dict) and entry.get("phase_count") == phase_count:
+                    return entry.get(field)
+            return None
+        return getter
+
+    # A/B/C 相绕击耐雷（shielding_phase_withstand_ka dict）
+    def shielding_phase(phase: str):
+        def getter(ctx: dict[str, Any]) -> Any:
+            spw = (ctx.get("result") or {}).get("shielding_phase_withstand_ka")
+            if isinstance(spw, dict):
+                return spw.get(phase)
+            return None
+        return getter
+
+    # 避雷中距（extra_profile_json.lightning_wire.left/right_mid_distance_m）
+    def wire_mid(side: str):
+        def getter(ctx: dict[str, Any]) -> Any:
+            extra = (ctx.get("tprofile") or {}).get("extra_profile_json") or {}
+            lw = extra.get("lightning_wire") or {}
+            return lw.get(side)
+        return getter
+
+    # 接地电阻/密度等 base 优先、inputs 兜底
+    def pick(*pairs: tuple[str, str]):
+        def getter(ctx: dict[str, Any]) -> Any:
+            for section, field in pairs:
+                section_obj = ctx.get(section)
+                if isinstance(section_obj, dict):
+                    val = section_obj.get(field)
+                    if val is not None:
+                        return val
+            return None
+        return getter
+
+    # ── 列定义（顺序与 C# MyHead_ToString 完全一致）──
+    cols: list[tuple[str, Callable[[dict[str, Any]], Any]]] = [
+        # 任务/线路标识 1-12
+        ("任务编号", lambda ctx: (ctx.get("job") or {}).get("name") or (ctx.get("job") or {}).get("id")),
+        ("任务塔号", num("snapshot.tower_no") if False else lambda ctx: getattr(ctx.get("snapshot"), "tower_no", None) if ctx.get("snapshot") else None),
+        ("线路编号", text("base.line_id")),
+        ("序号", num("base.seq_no")),
+        ("线路名称", text("base.line_name")),
+        ("电压等级", num("base.line_voltage_kv")),
+        ("塔号", num("base.tower_no")),
+        ("参数分级编码", lambda ctx: None),  # Web 无此数据
+        ("杆塔模型", num("base.tower_model")),
+        ("塔形", num("base.tower_type")),
+        ("经度", num("base.longitude")),
+        ("纬度", num("base.latitude")),
+        # 相序 13-16
+        ("I回相序", prof("phase_sequence_1")),
+        ("II回相序", prof("phase_sequence_2")),
+        ("III回相序", prof("phase_sequence_3")),
+        ("IV回相序", prof("phase_sequence_4")),
+        # 避雷器 17-19
+        ("A相是否安装避雷器", prof("arrester_a")),
+        ("B相是否安装避雷器", prof("arrester_b")),
+        ("C相是否安装避雷器", prof("arrester_c")),
+        # 20
+        ("接地电阻", pick(("base", "ground_resistance_ohm"), ("inputs", "ground_resistance_ohm"))),
+        # 21-23
+        ("左避雷中距m", wire_mid("left_mid_distance_m")),
+        ("右避雷中距m", wire_mid("right_mid_distance_m")),
+        ("避雷线高度m", prof("shield_wire_height_m")),
+        # 24-25
+        ("绝缘子串长度mm", prof("insulator_length_m")),
+        ("杆塔呼高m", prof("call_height_m")),
+        # I 回 26-31
+        ("I回上相中距m", circ_num(0, "spacing_upper_m")),
+        ("I回中相中距m", circ_num(0, "spacing_middle_m")),
+        ("I回下相中距m", circ_num(0, "spacing_lower_m")),
+        ("I回上相高度m", circ_num(0, "height_upper_m")),
+        ("I回中相高度m", circ_num(0, "height_middle_m")),
+        ("I回下相高度m", circ_num(0, "height_lower_m")),
+        # II 回 32-37
+        ("II回上相中距m", circ_num(1, "spacing_upper_m")),
+        ("II回中相中距m", circ_num(1, "spacing_middle_m")),
+        ("II回下相中距m", circ_num(1, "spacing_lower_m")),
+        ("II回上相高度m", circ_num(1, "height_upper_m")),
+        ("II回中相高度m", circ_num(1, "height_middle_m")),
+        ("II回下相高度m", circ_num(1, "height_lower_m")),
+        # III 回 38-43
+        ("III回上相中距m", circ_num(2, "spacing_upper_m")),
+        ("III回中相中距m", circ_num(2, "spacing_middle_m")),
+        ("III回下相中距m", circ_num(2, "spacing_lower_m")),
+        ("III回上相高度m", circ_num(2, "height_upper_m")),
+        ("III回中相高度m", circ_num(2, "height_middle_m")),
+        ("III回下相高度m", circ_num(2, "height_lower_m")),
+        # IV 回 44-49
+        ("IV回上相中距m", circ_num(3, "spacing_upper_m")),
+        ("IV回中相中距m", circ_num(3, "spacing_middle_m")),
+        ("IV回下相中距m", circ_num(3, "spacing_lower_m")),
+        ("IV回上相高度m", circ_num(3, "height_upper_m")),
+        ("IV回中相高度m", circ_num(3, "height_middle_m")),
+        ("IV回下相高度m", circ_num(3, "height_lower_m")),
+        # 50-52
+        ("小号侧档距", num("base.span_small_m")),
+        ("大号侧档距", num("base.span_large_m")),
+        ("电角度", prof("angle_deg")),
+        # 53-54
+        ("雷电流幅值a", pick(("inputs", "current_a"), ("base", "current_a"))),
+        ("雷电流幅值b", pick(("inputs", "current_b"), ("base", "current_b"))),
+        # 55-56
+        ("地面倾角1", num("base.slope_1")),
+        ("地面倾角2", num("base.slope_2")),
+        # 57-59
+        ("海拔m", num("base.altitude_m")),
+        ("地形", text("base.terrain")),
+        ("地闪密度", num("base.lightning_density")),
+        # 60-64
+        ("直线或耐张杆塔", prof("structure_kind")),
+        ("雷电流波形种类", prof("current_type")),
+        ("波头时间/μs", prof("current_head_time_us")),
+        ("波尾时间/μs", prof("current_tail_time_us")),
+        ("绕击反击", prof("stroke_mode")),
+        # 65-68
+        ("反击耐雷水平kA", num("result.counterstrike_withstand_ka")),
+        ("反击跳闸率(次/100km.a)", num("result.counterstrike_trip_rate")),
+        ("绕击耐雷水平kA", num("result.shielding_withstand_ka")),
+        ("绕击跳闸率(次/100km.a)", num("result.shielding_trip_rate")),
+        # 69
+        ("雷击风险等级", text("result.risk_level")),
+        # 70-72
+        ("A相绕击耐雷水平kA", shielding_phase("A")),
+        ("B相绕击耐雷水平kA", shielding_phase("B")),
+        ("C相绕击耐雷水平kA", shielding_phase("C")),
+        # 73-90：单~六相 × (耐雷水平/闪络相/跳闸率)
+        ("单相反击耐雷水平kA", multiphase(1, "counterstrike_withstand_ka")),
+        ("单相闪络相", multiphase(1, "flashover_phase")),
+        ("单相反击跳闸率(次/100km.a)", multiphase(1, "trip_rate")),
+        ("双相反击耐雷水平kA", multiphase(2, "counterstrike_withstand_ka")),
+        ("双相闪络相", multiphase(2, "flashover_phase")),
+        ("双相反击跳闸率(次/100km.a)", multiphase(2, "trip_rate")),
+        ("三相反击耐雷水平kA", multiphase(3, "counterstrike_withstand_ka")),
+        ("三相闪络相", multiphase(3, "flashover_phase")),
+        ("三相反击跳闸率(次/100km.a)", multiphase(3, "trip_rate")),
+        ("四相反击耐雷水平kA", multiphase(4, "counterstrike_withstand_ka")),
+        ("四相闪络相", multiphase(4, "flashover_phase")),
+        ("四相反击跳闸率(次/100km.a)", multiphase(4, "trip_rate")),
+        ("五相反击耐雷水平kA", multiphase(5, "counterstrike_withstand_ka")),
+        ("五相闪络相", multiphase(5, "flashover_phase")),
+        ("五相反击跳闸率(次/100km.a)", multiphase(5, "trip_rate")),
+        ("六相反击耐雷水平kA", multiphase(6, "counterstrike_withstand_ka")),
+        ("六相闪络相", multiphase(6, "flashover_phase")),
+        ("六相反击跳闸率(次/100km.a)", multiphase(6, "trip_rate")),
+        # 91-94
+        ("原因分析", text("result.cause_analysis")),
+        ("措施推荐", text("result.mitigation_recommendation")),
+        ("保护角", prof("protection_angle_left_deg")),
+        ("普通计算结果", text("result.summary_text")),
+    ]
+    return cols
 
 
 def _common_result_export_columns() -> list[tuple[str, Callable[[dict[str, Any]], Any]]]:
