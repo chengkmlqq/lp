@@ -175,9 +175,22 @@ export default function AdminFlAnalysisPage() {
     });
   }, [queryClient]);
 
-  useTopicSubscription("admin.fl-analysis", useCallback(() => {
-    void invalidateFlAnalysisQueries();
-  }, [invalidateFlAnalysisQueries]));
+  // 方案B（2026-09-16）：按事件名过滤，避免列表被高频 tower_step 事件反复刷新。
+  // fl_analysis.tower_step（塔内二分迭代细节，单塔 ~100+ 次/任务）只在任务并发时
+  // 密集推送，列表页无需为它整表重取；仅任务状态（job.*）与塔完成（tower_done）
+  // 影响列表展示（状态/进度条/结果），才 invalidate 触发重取。
+  useTopicSubscription(
+    "admin.fl-analysis",
+    useCallback(
+      (event) => {
+        const name = typeof event?.name === "string" ? event.name : "";
+        if (name.startsWith("fl_analysis.job.") || name === "fl_analysis.tower_done") {
+          void invalidateFlAnalysisQueries();
+        }
+      },
+      [invalidateFlAnalysisQueries],
+    ),
+  );
 
   const jobListError = jobsQuery.error instanceof Error ? jobsQuery.error.message : "";
   useToastFeedback({
