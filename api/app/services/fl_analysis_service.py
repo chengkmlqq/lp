@@ -681,10 +681,12 @@ def export_fl_analysis_results_to_csv(job: FlAnalysisJob, rows: list[FlAnalysisT
 
 
 def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -> None:
+            print(f"[DIAG] 进入 _execute_single_tower: snapshot_id={snapshot_id} idx={idx}", flush=True)
             # 本塔使用独立 session（由 execute_job 每塔创建并传入），隔离并发事务。
             # 传入的是 snapshot.id 标量，job/run/snapshot/tower 全部用本塔 session 按 ID 反查，
             # 避免跨 session 操作 execute_job 主 session 的对象（其会 expire/detached）。
             snapshot = db.get(FlAnalysisTowerSnapshot, snapshot_id)
+            print(f"[DIAG] snapshot 反查后: {snapshot_id if snapshot is not None else 'None'}", flush=True)
             if snapshot is None:
                 raise RuntimeError(f"杆塔(snapshot_id={snapshot_id})在独立session不可见")
             job = get_job_by_id(db, snapshot.job_id)
@@ -696,6 +698,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
             execution_options = spawn["execution_options"]
             has_external = spawn["has_external"]
             has_legacy = spawn["has_legacy"]
+            progress_update_job = spawn["progress_update_job"]
             source_result_map = spawn["source_result_map"]
             waveform_job_type = spawn["waveform_job_type"]
             towers = spawn["towers"]
@@ -705,6 +708,10 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
             job_type = job.job_type if job else None
             local_stdout: list[str] = []
             local_stderr: list[str] = []
+            # 多塔并行：塔 worker 不得写共享 fl_analysis_run 行（run.engine_command/working_dir 是共享字段，
+            # 并发 UPDATE 同一行 → 行锁竞争）。改由 execute_job 主线程归并写。这里只收集首个非空值。
+            local_engine_cmds: list[str] = []
+            local_working_dirs: list[str] = []
             # 重建 resolve 闭包（原 execute_job 内定义）
             def _resolve_legacy_job_for_tower(snapshot):
                 # 独立 session：每塔用本塔 session 重新解析，不复用 execute_job 主 session 的缓存/默认对象
@@ -744,6 +751,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
             _report_tower_fractional(
                 db=db, job=job, run=run, tracker=tower_tracker,
                 fraction=0.0, step_label=f"开始计算杆塔 {snapshot.tower_no}",
+                update_job=progress_update_job,
             )
             def _tower_on_step(done: int, total: int, label: str | None = None) -> None:
                 # 从标签解析目标相数（"二分搜索 第 N 相"）；tongtiao 多相循环内各相独立二分，
@@ -761,6 +769,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                 _report_tower_fractional(
                     db=db, job=job, run=run, tracker=tower_tracker,
                     fraction=frac, step_label=label or tower_tracker.phase_label,
+                    update_job=progress_update_job,
                 )
 
             logger.info(
@@ -923,8 +932,10 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                             graded["risk_index_s"] = _ri
                     except Exception as _exc:  # noqa: BLE001
                         logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
-                    run.engine_command = run.engine_command or execution.engine_command
-                    run.working_dir = run.working_dir or execution.working_dir
+                    if execution.engine_command:
+                        local_engine_cmds.append(execution.engine_command)
+                    if execution.working_dir:
+                        local_working_dirs.append(execution.working_dir)
                     if execution.stdout_text:
                         local_stdout.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
                     if execution.stderr_text:
@@ -941,8 +952,10 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                         baseline_result=baseline_result,
                     )
                     graded = execution.result_json
-                    run.engine_command = run.engine_command or execution.engine_command
-                    run.working_dir = run.working_dir or execution.working_dir
+                    if execution.engine_command:
+                        local_engine_cmds.append(execution.engine_command)
+                    if execution.working_dir:
+                        local_working_dirs.append(execution.working_dir)
                     if execution.stdout_text:
                         local_stdout.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
                     if execution.stderr_text:
@@ -1100,8 +1113,10 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                                 graded["risk_index_s"] = _ri
                         except Exception as _exc:  # noqa: BLE001
                             logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
-                    run.engine_command = run.engine_command or execution.engine_command
-                    run.working_dir = run.working_dir or execution.working_dir
+                    if execution.engine_command:
+                        local_engine_cmds.append(execution.engine_command)
+                    if execution.working_dir:
+                        local_working_dirs.append(execution.working_dir)
                     if execution.stdout_text:
                         local_stdout.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
                     if execution.stderr_text:
@@ -1118,8 +1133,10 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                         baseline_result=baseline_result,
                     )
                     graded = execution.result_json
-                    run.engine_command = run.engine_command or execution.engine_command
-                    run.working_dir = run.working_dir or execution.working_dir
+                    if execution.engine_command:
+                        local_engine_cmds.append(execution.engine_command)
+                    if execution.working_dir:
+                        local_working_dirs.append(execution.working_dir)
                     if execution.stdout_text:
                         local_stdout.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
                     if execution.stderr_text:
@@ -1149,6 +1166,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                 _report_tower_fractional(
                     db=db, job=job, run=run, tracker=tower_tracker,
                     fraction=1.0, step_label=f"杆塔 {snapshot.tower_no} 计算完成",
+                    update_job=progress_update_job,
                 )
             except Exception:
                 logger.debug("[ATP] 塔完成进度上报失败 tower=%s", snapshot.tower_no, exc_info=True)
@@ -1227,8 +1245,8 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                 "graded": graded,
                 "stdout": "\n".join(local_stdout),
                 "stderr": "\n".join(local_stderr),
-                "engine_command": run.engine_command,
-                "working_dir": run.working_dir,
+                "engine_command": (local_engine_cmds[0] if local_engine_cmds else None),
+                "working_dir": (local_working_dirs[0] if local_working_dirs else None),
             }
 
 
@@ -1439,10 +1457,16 @@ def execute_job(job_id: str) -> None:
             max_phases=3,
         )
 
+        # 塔级并行（Step2）：tower_parallel_workers>1 且多塔时开线程池；=1 或单塔退化为串行（天然回滚开关）
+        tower_parallel_workers = max(1, int(execution_options.get("tower_parallel_workers") or 2))
+        # 并行时塔 worker 不写共享 fl_analysis_job 进度行（避免行锁）；串行时保留单塔实时进度
+        progress_update_job = not (tower_parallel_workers > 1 and len(snapshots) > 1)
+
         spawn = {
             "execution_options": execution_options,
             "has_external": external_job is not None or legacy_external_job is not None,
             "has_legacy": legacy_external_job is not None,
+            "progress_update_job": progress_update_job,
             "source_result_map": source_result_map,
             "waveform_job_type": waveform_job_type,
             "towers": towers,
@@ -1460,17 +1484,21 @@ def execute_job(job_id: str) -> None:
                 logger.exception("[ATP] 杆塔%s 计算失败（单塔独立，任务继续）", snapshot_id)
                 return {"ok": False, "idx": idx, "tower_no": snapshot_id, "error": str(exc)}
 
-        # 塔级并行（Step2）：tower_parallel_workers>1 且多塔时开线程池；=1 或单塔退化为串行（天然回滚开关）
-        tower_parallel_workers = max(1, int(execution_options.get("tower_parallel_workers") or 2))
+        # [DIAG] 提交前观察 snapshots 长度
+        logger.info("[DIAG] execute_job 塔提交: len(snapshots)=%d, ids=%s, tpw=%d",
+                    len(snapshots), [getattr(s, 'id', '?' ) for s in snapshots], tower_parallel_workers)
         if tower_parallel_workers > 1 and len(snapshots) > 1:
             import concurrent.futures as _cfg
             with _cfg.ThreadPoolExecutor(max_workers=tower_parallel_workers) as _pool:
                 _futs = [_pool.submit(_run_tower_worker, s.id, i, len(snapshots), spawn)
                          for i, s in enumerate(snapshots, start=1)]
+                logger.info("[DIAG] 已提交 %d 个 tower worker", len(_futs))
                 _outcomes = [f.result() for f in _cfg.as_completed(_futs)]
+                logger.info("[DIAG] 归并 outcomeseq done, outcomes=%d", len(_outcomes))
         else:
             _outcomes = [_run_tower_worker(s.id, i, len(snapshots), spawn)
                          for i, s in enumerate(snapshots, start=1)]
+            logger.info("[DIAG] 串行分支 outcomes=%d", len(_outcomes))
         # 按塔序归并（保证 tower 顺序/日志/摘要一致）
         _outcomes.sort(key=lambda o: o.get("idx", 0))
         result_count = 0
@@ -3370,19 +3398,25 @@ def _report_tower_fractional(
     tracker: _TowerProgressTracker,
     fraction: float,
     step_label: str,
+    update_job: bool = True,
 ) -> None:
     """把当前塔内进度（fractional_progress + 步骤文字）实时写库并推 WS 事件。
 
     供 execute_job 在每个塔内子步骤（基准/二分迭代/绕击/回填）后调用，前端 invalidate
     刷新后读到最新值，进度条据此细分到单塔内部。
     写入失败仅告警，不阻断任务主体逻辑。
+
+    update_job=False：多塔并行时塔 worker 不得写共享 fl_analysis_job 行（否则多塔并发
+    UPDATE 同一行 → Postgres 行级锁竞争 → 死锁卡死）。此时只推 WS、不设 job 字段、不 flush。
+    进度行的最终值由 execute_job 主线程按塔序归并写入。
     """
-    job.fractional_progress = round(fraction, 4)
-    job.current_step_text = step_label
-    try:
-        db.flush()
-    except Exception:
-        logger.debug("[DB] 塔内进度落库失败 job=%s", job.id, exc_info=True)
+    if update_job:
+        job.fractional_progress = round(fraction, 4)
+        job.current_step_text = step_label
+        try:
+            db.flush()
+        except Exception:
+            logger.debug("[DB] 塔内进度落库失败 job=%s", job.id, exc_info=True)
     try:
         _publish_change(
             "fl_analysis.tower_step",
