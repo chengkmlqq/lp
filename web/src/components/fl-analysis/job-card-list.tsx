@@ -229,7 +229,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                         percent={
                           job.total_tower_count > 0
                             ? Math.min(
-                                100,
+                                99,
                                 Math.round(
                                   ((job.result_tower_count + (job.fractional_progress || 0)) /
                                     job.total_tower_count) *
@@ -242,8 +242,10 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                         className="flex-1 max-w-40"
                       />
                       <Typography.Text type="secondary" className="text-xs whitespace-nowrap">
-                        {job.result_tower_count + (job.fractional_progress || 0) > 0
-                          ? `${(job.result_tower_count + (job.fractional_progress || 0)).toFixed(1)}/${job.total_tower_count}`
+                        {/* 已完成塔数用整数 result_tower_count，当前塔内部进度(fractional 0~1)单独显示，
+                            避免 22+0.95 进位成 "23/23" 让运行中的任务看起来"已完成" */}
+                        {job.total_tower_count > 0
+                          ? `${job.result_tower_count}/${job.total_tower_count}${job.fractional_progress ? `（当前塔 ${Math.round(job.fractional_progress * 100)}%）` : ""}`
                           : `0/${job.total_tower_count}`}
                       </Typography.Text>
                     </>
