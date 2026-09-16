@@ -689,11 +689,14 @@ def _execute_single_tower(db: Session, snapshot, idx, total, *, spawn) -> None:
             run = db.get(FlAnalysisRun, snapshot.run_id)
             if run is None:
                 raise RuntimeError(f"杆塔 {snapshot.tower_no}: 运行记录(run_id={snapshot.run_id})不存在")
+            # 独立 session：snapshot 也须用本塔 session 重新反查（传入的是 execute_job 主 session 的对象，
+            # 跨 session 访问其属性会 DetachedInstanceError）
+            snapshot = db.get(FlAnalysisTowerSnapshot, snapshot.id)
+            if snapshot is None:
+                raise RuntimeError(f"杆塔 {snapshot.tower_no}: 快照(snapshot_id)在独立session不可见")
             execution_options = spawn["execution_options"]
-            external_job = spawn["external_job"]
-            legacy_external_job = spawn["legacy_external_job"]
-            external_job_cache = spawn["external_job_cache"]
-            legacy_job_cache = spawn["legacy_job_cache"]
+            has_external = spawn["has_external"]
+            has_legacy = spawn["has_legacy"]
             source_result_map = spawn["source_result_map"]
             waveform_job_type = spawn["waveform_job_type"]
             towers = spawn["towers"]
@@ -705,31 +708,24 @@ def _execute_single_tower(db: Session, snapshot, idx, total, *, spawn) -> None:
             local_stderr: list[str] = []
             # 重建 resolve 闭包（原 execute_job 内定义）
             def _resolve_legacy_job_for_tower(snapshot):
-                if legacy_external_job is None:
-                    return None
+                # 独立 session：每塔用本塔 session 重新解析，不复用 execute_job 主 session 的缓存/默认对象
+                # （否则 ResolvedLegacyAtpJob 内的 ORM 关联在跨 session 访问时 DetachedInstanceError）
                 tower_type = snapshot.tower_type or ""
-                cache_key = _normalize_tower_shape_code(tower_type) or "<default>"
-                if cache_key in legacy_job_cache:
-                    return legacy_job_cache[cache_key]
                 try:
-                    resolved = resolve_legacy_atp_job(
+                    return resolve_legacy_atp_job(
                         adapter_config_json=job.adapter_config_json or {},
                         execution_options=execution_options,
                         tower_type=tower_type,
                     )
                 except Exception as exc:
-                    logger.warning("[ATP] 按塔型解析模板失败（tower=%s type=%s）：%s，回退默认模板", snapshot.tower_no, tower_type, exc)
-                    resolved = legacy_external_job
-                legacy_job_cache[cache_key] = resolved
-                return resolved
+                    # 对齐「不具备条件抛错」：legacy 模板解析失败不回退主 session 的默认对象（跨 session 不可用）
+                    raise RuntimeError(
+                        f"legacy ATP 模板解析失败（tower={snapshot.tower_no} type={tower_type}）：{exc}"
+                    ) from exc
             def _resolve_external_job_for_tower(snapshot):
-                if external_job is None:
-                    return None
+                # 独立 session：每塔用本塔 session 重新解析资产，asset 归属本塔 session，避免 DetachedInstanceError
                 tower_type = snapshot.tower_type or ""
-                cache_key = _normalize_tower_shape_code(tower_type) or "<default>"
-                if cache_key in external_job_cache:
-                    return external_job_cache[cache_key]
-                resolved = resolve_external_waveform_job(
+                return resolve_external_waveform_job(
                     db,
                     external_adapter=job.external_adapter if job.external_adapter in {"atp", "wine"} else "atp",
                     adapter_config_json=job.adapter_config_json or {},
@@ -737,8 +733,6 @@ def _execute_single_tower(db: Session, snapshot, idx, total, *, spawn) -> None:
                     line_voltage_kv=job.line.voltage_kv if job.line else None,
                     scene_type=_auto_scene_type_for_options(execution_options),
                 )
-                external_job_cache[cache_key] = resolved
-                return resolved
             payload = {
                 "base_tower_json": snapshot.base_tower_json or {},
                 "profile_json": snapshot.profile_json or {},
@@ -790,7 +784,7 @@ def _execute_single_tower(db: Session, snapshot, idx, total, *, spawn) -> None:
                 baseline_result = grade_normal_snapshot_payload(payload, execution_options=execution_options)
                 # 基准计算阶段完成，进入二分阶段
                 tower_tracker.mark_phase_done()
-                if external_job is not None:
+                if has_external:
                     resolved_job = _resolve_external_job_for_tower(snapshot)
                     if resolved_job is None:
                         raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
@@ -936,7 +930,7 @@ def _execute_single_tower(db: Session, snapshot, idx, total, *, spawn) -> None:
                         local_stdout.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
                     if execution.stderr_text:
                         local_stderr.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
-                elif legacy_external_job is not None:
+                elif has_legacy:
                     resolved_job = _resolve_legacy_job_for_tower(snapshot)
                     if resolved_job is None:
                         raise RuntimeError(f"legacy ATP 模板解析失败：{snapshot.tower_no}")
@@ -958,7 +952,7 @@ def _execute_single_tower(db: Session, snapshot, idx, total, *, spawn) -> None:
                     graded = baseline_result
             elif waveform_job_type == "tongtiao":
                 baseline_result = grade_tongtiao_snapshot_payload(payload, execution_options=execution_options)
-                if external_job is not None:
+                if has_external:
                     resolved_job = _resolve_external_job_for_tower(snapshot)
                     if resolved_job is None:
                         raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
@@ -1113,7 +1107,7 @@ def _execute_single_tower(db: Session, snapshot, idx, total, *, spawn) -> None:
                         local_stdout.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
                     if execution.stderr_text:
                         local_stderr.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
-                elif legacy_external_job is not None:
+                elif has_legacy:
                     resolved_job = _resolve_legacy_job_for_tower(snapshot)
                     if resolved_job is None:
                         raise RuntimeError(f"legacy ATP 模板解析失败：{snapshot.tower_no}")
@@ -1329,6 +1323,9 @@ def execute_job(job_id: str) -> None:
             snapshot_count += 1
 
         db.flush()
+        # 独立 session：snapshot 必须先提交，塔的 tower_db 才能用外键引用 snapshot_id（否则
+        # fl_analysis_tower_result_snapshot_id_fkey 违反 PendingRollbackError）
+        db.commit()
 
         result_count = 0
         summary = _new_result_summary()
@@ -1445,10 +1442,8 @@ def execute_job(job_id: str) -> None:
 
         spawn = {
             "execution_options": execution_options,
-            "external_job": external_job,
-            "legacy_external_job": legacy_external_job,
-            "external_job_cache": external_job_cache,
-            "legacy_job_cache": legacy_job_cache,
+            "has_external": external_job is not None or legacy_external_job is not None,
+            "has_legacy": legacy_external_job is not None,
             "source_result_map": source_result_map,
             "waveform_job_type": waveform_job_type,
             "towers": towers,
