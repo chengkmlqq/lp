@@ -75,6 +75,19 @@ function isJobLocked(job: FlAnalysisJobSummary) {
   return LOCKED_STATUSES.has(job.status);
 }
 
+/** 整体进度百分比（0~99）：已完成塔数 + 当前塔内部比例 fractional，上限 99（运行中不显示 100%）。 */
+function runningPercent(job: FlAnalysisJobSummary): number {
+  if (!job.total_tower_count || job.total_tower_count <= 0) {
+    return 0;
+  }
+  return Math.min(
+    99,
+    Math.round(
+      ((job.result_tower_count + (job.fractional_progress || 0)) / job.total_tower_count) * 100,
+    ),
+  );
+}
+
 export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLogs, onOpenLog, onOpenDetail }: JobCardListProps) {
   if (jobs.length === 0) {
     // 无数据可展示时（首载/无结果）：用居中加载指示；其余情况保留现有数据，仅在刷新时叠加遮罩
@@ -214,33 +227,25 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                 <div className="min-w-0 flex items-center gap-2">
                   {job.status === "running" ? (
                     <>
-                      {/* 实时进度条：整体进度（已完成塔数 + 当前塔内部比例 fractional），
-                          百分比在进度条右侧（Progress format）；鼠标悬浮进度条通过
-                          Tooltip 展示当前正在执行的步骤（如「杆塔 75 计算完成」）。
-                          已完成塔数用整数 result_tower_count，进行中塔的 fractional 只参与
-                          进度条百分比，避免 22+0.95 进位成「23/23」误显示为已完成。 */}
+                      {/* 实时进度条：整体进度（已完成塔数 + 当前塔内部比例 fractional）。
+                          进度条本体 showInfo=false 占满剩余宽度（flex-1），百分比独立在右侧，
+                          避免 antd Progress format 内嵌文本与 flex 布局挤压导致进度条不可见；
+                          鼠标悬浮进度条通过 Tooltip 展示当前步骤（如「杆塔 75 计算完成」）。
+                          进行中塔的 fractional 只参与百分比，避免 22+0.95 进位成「23/23」。 */}
                       <Tooltip
                         title={job.current_step_text || "正在计算"}
                         placement="top"
                       >
                         <Progress
-                          percent={
-                            job.total_tower_count > 0
-                              ? Math.min(
-                                  99,
-                                  Math.round(
-                                    ((job.result_tower_count + (job.fractional_progress || 0)) /
-                                      job.total_tower_count) *
-                                      100,
-                                  ),
-                                )
-                              : 0
-                          }
+                          percent={runningPercent(job)}
                           size="small"
-                          className="flex-1 max-w-48"
-                          format={(percent) => `${percent}%`}
+                          showInfo={false}
+                          className="flex-1"
                         />
                       </Tooltip>
+                      <Typography.Text type="secondary" className="text-xs whitespace-nowrap shrink-0">
+                        {`${runningPercent(job)}%`}
+                      </Typography.Text>
                     </>
                   ) : null}
                 </div>
