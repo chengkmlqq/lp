@@ -241,6 +241,8 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                           size="small"
                           showInfo={false}
                           className="flex-1"
+                          strokeColor="#6366f1"
+                          trailColor="#e5e7eb"
                         />
                       </Tooltip>
                       <Typography.Text type="secondary" className="text-xs whitespace-nowrap shrink-0">
