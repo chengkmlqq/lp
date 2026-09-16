@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import time
+from contextlib import closing
 from pathlib import Path
 from collections.abc import Callable
 from datetime import datetime
@@ -679,6 +680,565 @@ def export_fl_analysis_results_to_csv(job: FlAnalysisJob, rows: list[FlAnalysisT
     return filename, output.getvalue().encode("utf-8-sig")
 
 
+def _execute_single_tower(db: Session, snapshot, idx, total, *, spawn) -> None:
+            # 本塔使用独立 session（由 execute_job 每塔创建并传入），隔离并发事务。
+            # job/run/tower 均用本塔 session 按 ID 独立反查，避免跨 session 操作 execute_job 主 session 的对象。
+            job = get_job_by_id(db, snapshot.job_id)
+            if job is None:
+                raise RuntimeError(f"杆塔 {snapshot.tower_no}: 任务(job_id={snapshot.job_id})不存在")
+            run = db.get(FlAnalysisRun, snapshot.run_id)
+            if run is None:
+                raise RuntimeError(f"杆塔 {snapshot.tower_no}: 运行记录(run_id={snapshot.run_id})不存在")
+            execution_options = spawn["execution_options"]
+            external_job = spawn["external_job"]
+            legacy_external_job = spawn["legacy_external_job"]
+            external_job_cache = spawn["external_job_cache"]
+            legacy_job_cache = spawn["legacy_job_cache"]
+            source_result_map = spawn["source_result_map"]
+            waveform_job_type = spawn["waveform_job_type"]
+            towers = spawn["towers"]
+            snapshots = spawn["snapshots"]
+            _tower_phase_plan = spawn["_tower_phase_plan"]
+            logger = spawn["logger"]
+            job_type = job.job_type if job else None
+            local_stdout: list[str] = []
+            local_stderr: list[str] = []
+            # 重建 resolve 闭包（原 execute_job 内定义）
+            def _resolve_legacy_job_for_tower(snapshot):
+                if legacy_external_job is None:
+                    return None
+                tower_type = snapshot.tower_type or ""
+                cache_key = _normalize_tower_shape_code(tower_type) or "<default>"
+                if cache_key in legacy_job_cache:
+                    return legacy_job_cache[cache_key]
+                try:
+                    resolved = resolve_legacy_atp_job(
+                        adapter_config_json=job.adapter_config_json or {},
+                        execution_options=execution_options,
+                        tower_type=tower_type,
+                    )
+                except Exception as exc:
+                    logger.warning("[ATP] 按塔型解析模板失败（tower=%s type=%s）：%s，回退默认模板", snapshot.tower_no, tower_type, exc)
+                    resolved = legacy_external_job
+                legacy_job_cache[cache_key] = resolved
+                return resolved
+            def _resolve_external_job_for_tower(snapshot):
+                if external_job is None:
+                    return None
+                tower_type = snapshot.tower_type or ""
+                cache_key = _normalize_tower_shape_code(tower_type) or "<default>"
+                if cache_key in external_job_cache:
+                    return external_job_cache[cache_key]
+                resolved = resolve_external_waveform_job(
+                    db,
+                    external_adapter=job.external_adapter if job.external_adapter in {"atp", "wine"} else "atp",
+                    adapter_config_json=job.adapter_config_json or {},
+                    tower_type=tower_type,
+                    line_voltage_kv=job.line.voltage_kv if job.line else None,
+                    scene_type=_auto_scene_type_for_options(execution_options),
+                )
+                external_job_cache[cache_key] = resolved
+                return resolved
+            payload = {
+                "base_tower_json": snapshot.base_tower_json or {},
+                "profile_json": snapshot.profile_json or {},
+            }
+            # 每根塔独立追踪内部子步骤进度
+            tower_tracker = _TowerProgressTracker(_tower_phase_plan)
+            # 记录上一次二分的目标相数，用于在 tongtiao 多相循环内检测阶段切换
+            _tower_last_phase_done = [False]
+            _tower_last_target = [0]
+            _report_tower_fractional(
+                db=db, job=job, run=run, tracker=tower_tracker,
+                fraction=0.0, step_label=f"开始计算杆塔 {snapshot.tower_no}",
+            )
+            def _tower_on_step(done: int, total: int, label: str | None = None) -> None:
+                # 从标签解析目标相数（"二分搜索 第 N 相"）；tongtiao 多相循环内各相独立二分，
+                # 相数变化代表上一相阶段结束，推进 tracker 到下一阶段。
+                import re as _re
+                target_phase: int | None = None
+                if label:
+                    _m = _re.search(r"第\s*(\d+)\s*相", label)
+                    if _m:
+                        target_phase = int(_m.group(1))
+                if target_phase is not None and _tower_last_target[0] and target_phase != _tower_last_target[0]:
+                    tower_tracker.mark_phase_done()
+                _tower_last_target[0] = target_phase or 0
+                frac = tower_tracker.report_phase_step(done, total, label)
+                _report_tower_fractional(
+                    db=db, job=job, run=run, tracker=tower_tracker,
+                    fraction=frac, step_label=label or tower_tracker.phase_label,
+                )
+
+            logger.info(
+                "[ATP] 开始处理杆塔 %s（第 %d/%d 根）",
+                snapshot.tower_no,
+                idx,
+                len(snapshots),
+            )
+            if job.job_type == "scenario":
+                payload["profile_json"] = _apply_scenario_profile_json_overrides(snapshot.profile_json or {})
+            source_result = source_result_map.get(snapshot.tower_id)
+            if source_result:
+                payload["source_result_json"] = source_result
+            if job.job_type == "mitigation":
+                graded = grade_mitigation_snapshot_payload(
+                    payload,
+                    non_construction=bool(execution_options.get("non_construction")),
+                )
+            elif waveform_job_type == "normal":
+                baseline_result = grade_normal_snapshot_payload(payload, execution_options=execution_options)
+                # 基准计算阶段完成，进入二分阶段
+                tower_tracker.mark_phase_done()
+                if external_job is not None:
+                    resolved_job = _resolve_external_job_for_tower(snapshot)
+                    if resolved_job is None:
+                        raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
+                    # 二分法默认开启（对齐 C# 桌面版 ThreadCompute5 二分雷电流扫描求耐雷水平）；
+                    # 仅当显式传 binary_search=false 时回退单次仿真
+                    if execution_options.get("binary_search", True):
+                        execution = execute_binary_search_external(
+                            resolved_job,
+                            db=db,
+                            job=job,
+                            snapshot=snapshot,
+                            execution_options=execution_options,
+                            baseline_result=baseline_result,
+                            payload=payload,
+                            on_step=_tower_on_step,
+                        )
+                    else:
+                        execution = execute_external_waveform_tower_analysis(
+                            resolved_job,
+                            db=db,
+                            job=job,
+                            snapshot=snapshot,
+                            execution_options=execution_options,
+                            baseline_result=baseline_result,
+                        )
+                    graded = execution.result_json
+                    # 单相反击二分阶段完成
+                    tower_tracker.mark_phase_done()
+                    # ── 绕击（raoji1/raoji2/raoji3 = A/B/C 相）—— 普通计算同样要做 ──
+                    # C# 普通计算输出含绕击耐雷水平 + 绕击跳闸率（如 500源上 1号塔
+                    # 绕击耐雷 35.153 / 绕击跳闸率 1.2824），故此处与 tongtiao 同流程。
+                    _raoji_values: dict[str, float | None] = {}
+                    _raoji_merged = dict(graded)
+                    import concurrent.futures as _cf  # noqa: PLC0415
+                    _raoji_workers = max(1, int(execution_options.get("binary_search_parallel_workers") or 4))
+                    _use_raoji_par = _raoji_workers > 1
+
+                    def _run_raoji(_idx: int):
+                        try:
+                            _raoji_job = resolve_external_waveform_job(
+                                db,
+                                external_adapter=job.external_adapter
+                                if job.external_adapter in {"atp", "wine"} else "atp",
+                                adapter_config_json=dict(job.adapter_config_json or {}),
+                                tower_type=snapshot.tower_type or "",
+                                line_voltage_kv=job.line.voltage_kv if job.line else None,
+                                scene_type=f"raoji{_idx}",
+                            )
+                        except Exception as _exc:
+                            # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
+                            raise RuntimeError(
+                                f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
+                                f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
+                                f"{job.line.voltage_kv if job.line else '?'}kV)：{_exc}"
+                            ) from _exc
+                        _opts = dict(execution_options)
+                        if _use_raoji_par:
+                            _opts["_run_subdir"] = f"raoji{_idx}"
+                        return execute_shielding_binary_search_external(
+                            _raoji_job,
+                            db=db,
+                            job=job,
+                            snapshot=snapshot,
+                            execution_options=_opts,
+                            baseline_result=baseline_result,
+                            payload=payload,
+                            on_step=_tower_on_step,
+                        )
+
+                    if _use_raoji_par:
+                        with _cf.ThreadPoolExecutor(max_workers=min(_raoji_workers, 3)) as _pool:
+                            _raoji_execs = dict(zip((1, 2, 3), _pool.map(_run_raoji, (1, 2, 3))))
+                    else:
+                        _raoji_execs = {_idx: _run_raoji(_idx) for _idx in (1, 2, 3)}
+                    for _idx, _sh in _raoji_execs.items():
+                        _raoji_values[f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
+                        for _key in (
+                            "shielding_withstand_ka",
+                            "shielding_trip_rate",
+                            "shielding_alpha_deg",
+                            "shielding_binary_search",
+                            "shielding_raoji_index",
+                        ):
+                            if _key in _sh.result_json:
+                                _raoji_merged[_key] = _sh.result_json[_key]
+                        _raoji_merged.setdefault("shielding_raoji_by_phase", {})[
+                            f"{['A', 'B', 'C'][_idx - 1]}相"
+                        ] = _sh.result_json.get("shielding_withstand_ka")
+                    _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
+                    tower_tracker.mark_phase_done()
+                    # ── 绕击跳闸率：C# EGM（rjtzl_egm*.exe）；Ic 取中间相绕击耐雷整数部分 ──
+                    _vals = [v for v in _raoji_values.values() if isinstance(v, (int, float))]
+                    # C# ComputeLightningProtection.cs:7891-7912：顶层「绕击耐雷水平」与 EGM 的 Ic
+                    # 都取三相绕击耐雷的最小值（不是 B 相 —— 相序测试上恰好相等）
+                    _egm_ic = min(_vals) if _vals else None
+                    if _egm_ic is None:
+                        raise RuntimeError(
+                            f"{snapshot.tower_no}: 绕击耐雷水平缺失，无法计算 EGM 绕击跳闸率"
+                        )
+                    from .atp_egm_trip_rate import compute_shielding_trip_rate  # noqa: PLC0415
+
+                    _egm_env = os.environ.copy()
+                    _egm_env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
+                    _egm_rate, _egm_alpha = compute_shielding_trip_rate(
+                        atp_root=Path("/app/data/wine/ATP"),
+                        voltage_kv=job.line.voltage_kv if job.line else None,
+                        base_tower=snapshot.base_tower_json or {},
+                        profile=snapshot.profile_json or {},
+                        tower_type=snapshot.tower_type or "",
+                        raoji_withstand_ka=float(_egm_ic),
+                        env=_egm_env,
+                    )
+                    _raoji_merged["shielding_trip_rate"] = _egm_rate
+                    _raoji_merged["shielding_trip_rate_method"] = "egm"
+                    # 普通计算：顶层绕击耐雷 = 三相最小值（C# 7891-7912）
+                    if _egm_ic is not None:
+                        _raoji_merged["shielding_withstand_ka"] = _egm_ic
+                    graded = _raoji_merged
+                    # 普通计算：顶层耐雷/跳闸率保留实际值（C# 口径），但风险等级要用
+                    # EGM 之后的绕击跳闸率重算。
+                    try:
+                        from .fl_analysis_rules import (  # noqa: PLC0415
+                            _calculate_risk_grade,
+                            _normalize_lightning_inputs,
+                            _risk_level_from_grade,
+                        )
+
+                        _norm = _normalize_lightning_inputs(payload)
+                        _ri, _th, _rg = _calculate_risk_grade(
+                            _norm,
+                            graded.get("counterstrike_trip_rate"),
+                            _egm_rate,
+                        )
+                        if _rg is not None:
+                            graded["risk_grade"] = _rg
+                            graded["risk_level"] = _risk_level_from_grade(_rg) or graded.get("risk_level")
+                            graded["risk_index_s"] = _ri
+                    except Exception as _exc:  # noqa: BLE001
+                        logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
+                    run.engine_command = run.engine_command or execution.engine_command
+                    run.working_dir = run.working_dir or execution.working_dir
+                    if execution.stdout_text:
+                        local_stdout.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
+                    if execution.stderr_text:
+                        local_stderr.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
+                elif legacy_external_job is not None:
+                    resolved_job = _resolve_legacy_job_for_tower(snapshot)
+                    if resolved_job is None:
+                        raise RuntimeError(f"legacy ATP 模板解析失败：{snapshot.tower_no}")
+                    execution = execute_legacy_atp_tower_analysis(
+                        resolved_job,
+                        job=job,
+                        snapshot=snapshot,
+                        execution_options=execution_options,
+                        baseline_result=baseline_result,
+                    )
+                    graded = execution.result_json
+                    run.engine_command = run.engine_command or execution.engine_command
+                    run.working_dir = run.working_dir or execution.working_dir
+                    if execution.stdout_text:
+                        local_stdout.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
+                    if execution.stderr_text:
+                        local_stderr.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
+                else:
+                    graded = baseline_result
+            elif waveform_job_type == "tongtiao":
+                baseline_result = grade_tongtiao_snapshot_payload(payload, execution_options=execution_options)
+                if external_job is not None:
+                    resolved_job = _resolve_external_job_for_tower(snapshot)
+                    if resolved_job is None:
+                        raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
+                    # 二分法默认开启（对齐 C# 桌面版 ThreadCompute5 二分雷电流扫描求耐雷水平）；
+                    # 仅当显式传 binary_search=false 时回退单次仿真。
+                    # LP-570 同跳：C# 双回 ThreadCompute5_work_atp 循环 level_lightning=1..6 逐档
+                    # 二分出单/双/三..六相反击耐雷 + fjtzlDanXiang 每档跳闸率（fjType=1 配置）。
+                    if execution_options.get("binary_search", True):
+                        execution = execute_multi_phase_binary_search_external(
+                            resolved_job,
+                            db=db,
+                            job=job,
+                            snapshot=snapshot,
+                            execution_options=execution_options,
+                            baseline_result=baseline_result,
+                            payload=payload,
+                            on_step=_tower_on_step,
+                        )
+                    else:
+                        execution = execute_external_waveform_tower_analysis(
+                            resolved_job,
+                            db=db,
+                            job=job,
+                            snapshot=snapshot,
+                            execution_options=execution_options,
+                            baseline_result=baseline_result,
+                        )
+                    graded = execution.result_json
+                    # 多相二分阶段完成，进入下一阶段（绕击二分或结果回填）
+                    tower_tracker.mark_phase_done()
+                    # ── 绕击（raoji1/raoji2/raoji3 = A/B/C 相）──────────────
+                    # C# ThreadCompute5_work_atp：start compute raoji1/raoji2/raoji3
+                    # （Alert.txt 实测），即 A/B/C 三相各用独立 raoji 模板二分绕击耐雷水平。
+                    # 对齐 C#：raoji 资产解不出 → 明确报错，绝不静默用公式兜底。
+                    _method_raoji = str(
+                        (job.execution_options_json or {}).get("raoji_naleishuiping_method") or ""
+                        or (execution_options or {}).get("raoji_naleishuiping_method") or ""
+                    ).strip().lower()
+                    if _method_raoji == "atp" or (job.adapter_config_json or {}).get("shielding_asset_id"):
+                        logger.info("[ATP] 绕击循环触发(tongtiao)：method_raoji=%s, scene=raoji1/2/3", _method_raoji)
+                        _raoji_values: dict[str, float | None] = {}
+                        _raoji_merged = dict(graded)
+                        import concurrent.futures as _cf  # noqa: PLC0415
+                        _raoji_workers = max(1, int(execution_options.get("binary_search_parallel_workers") or 4))
+                        _use_raoji_par = _raoji_workers > 1
+
+                        def _run_raoji(_idx: int):
+                            try:
+                                _raoji_job = resolve_external_waveform_job(
+                                    db,
+                                    external_adapter=job.external_adapter
+                                    if job.external_adapter in {"atp", "wine"} else "atp",
+                                    adapter_config_json=dict(job.adapter_config_json or {}),
+                                    tower_type=snapshot.tower_type or "",
+                                    line_voltage_kv=job.line.voltage_kv if job.line else None,
+                                    scene_type=f"raoji{_idx}",
+                                )
+                            except Exception as _exc:
+                                # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
+                                raise RuntimeError(
+                                    f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
+                                    f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
+                                    f"{job.line.voltage_kv if job.line else '?'}kV)：{_exc}"
+                                ) from _exc
+                            _opts = dict(execution_options)
+                            if _use_raoji_par:
+                                _opts["_run_subdir"] = f"raoji{_idx}"
+                            return execute_shielding_binary_search_external(
+                                _raoji_job,
+                                db=db,
+                                job=job,
+                                snapshot=snapshot,
+                                execution_options=_opts,
+                                baseline_result=baseline_result,
+                                payload=payload,
+                                on_step=_tower_on_step,
+                            )
+
+                        if _use_raoji_par:
+                            with _cf.ThreadPoolExecutor(max_workers=min(_raoji_workers, 3)) as _pool:
+                                _raoji_execs = dict(zip((1, 2, 3), _pool.map(_run_raoji, (1, 2, 3))))
+                        else:
+                            _raoji_execs = {_idx: _run_raoji(_idx) for _idx in (1, 2, 3)}
+                        for _idx, _sh in _raoji_execs.items():
+                            _raoji_values[f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
+                            for _key in (
+                                "shielding_withstand_ka",
+                                "shielding_trip_rate",
+                                "shielding_alpha_deg",
+                                "shielding_binary_search",
+                                "shielding_raoji_index",
+                            ):
+                                if _key in _sh.result_json:
+                                    _raoji_merged[_key] = _sh.result_json[_key]
+                            _raoji_merged.setdefault("shielding_raoji_by_phase", {})[
+                                f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
+                            if _sh.stdout_text:
+                                local_stdout.append(f"[{snapshot.tower_no}][绕击{['A', 'B', 'C'][_idx - 1]}相] {_sh.stdout_text}")
+                        _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
+                        tower_tracker.mark_phase_done()
+                        # ── 绕击跳闸率：C# EGM 电气几何模型（rjtzl_egm*.exe，wine 跑）──
+                        _vals = [v for v in _raoji_values.values() if isinstance(v, (int, float))]
+                        # C# ComputeLightningProtection.cs:7891-7912：顶层「绕击耐雷水平」与 EGM 的 Ic
+                        # 都取三相绕击耐雷的最小值（不是 B 相 —— 相序测试上恰好相等）
+                        # （(int)mRaojiCurrent），跑 egm 两轮（地面倾角1 / -地面倾角2）求和，
+                        # 鼓型塔再 ÷2。已用 C# 0913 中间文件逐位验证：0.406567 ✓
+                        _egm_ic = min(_vals) if _vals else None
+                        if _egm_ic is None:
+                            raise RuntimeError(
+                                f"{snapshot.tower_no}: 绕击耐雷水平缺失，无法计算 EGM 绕击跳闸率"
+                            )
+                        from .atp_egm_trip_rate import compute_shielding_trip_rate  # noqa: PLC0415
+
+                        _egm_env = os.environ.copy()
+                        _egm_env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
+                        _egm_rate, _egm_alpha = compute_shielding_trip_rate(
+                            atp_root=Path("/app/data/wine/ATP"),
+                            voltage_kv=job.line.voltage_kv if job.line else None,
+                            base_tower=snapshot.base_tower_json or {},
+                            profile=snapshot.profile_json or {},
+                            tower_type=snapshot.tower_type or "",
+                            raoji_withstand_ka=float(_egm_ic),
+                            env=_egm_env,
+                        )
+                        _raoji_merged["shielding_trip_rate"] = _egm_rate
+                        _raoji_merged["shielding_trip_rate_method"] = "egm"
+                        graded = _raoji_merged
+                        # ── 顶层口径对齐 C# 交流同跳，并用 EGM 跳闸率重算风险等级 ──
+                        # （C# 引擎对 IDout24/26 只注册不赋值 → 顶层耐雷/反击跳闸率输出 0；
+                        #   风险等级 C# 用 EGM 后的绕击跳闸率算，故此处需在 EGM 之后重算）
+                        graded["counterstrike_withstand_ka"] = 0.0
+                        graded["counterstrike_trip_rate"] = 0.0
+                        graded["shielding_withstand_ka"] = 0.0
+                        try:
+                            from .fl_analysis_rules import (  # noqa: PLC0415
+                                _calculate_risk_grade,
+                                _normalize_lightning_inputs,
+                                _risk_level_from_grade,
+                            )
+
+                            _norm = _normalize_lightning_inputs(payload)
+                            _ri, _th, _rg = _calculate_risk_grade(_norm, 0.0, _egm_rate)
+                            if _rg is not None:
+                                graded["risk_grade"] = _rg
+                                graded["risk_level"] = _risk_level_from_grade(_rg) or graded.get("risk_level")
+                                graded["risk_index_s"] = _ri
+                        except Exception as _exc:  # noqa: BLE001
+                            logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
+                    run.engine_command = run.engine_command or execution.engine_command
+                    run.working_dir = run.working_dir or execution.working_dir
+                    if execution.stdout_text:
+                        local_stdout.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
+                    if execution.stderr_text:
+                        local_stderr.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
+                elif legacy_external_job is not None:
+                    resolved_job = _resolve_legacy_job_for_tower(snapshot)
+                    if resolved_job is None:
+                        raise RuntimeError(f"legacy ATP 模板解析失败：{snapshot.tower_no}")
+                    execution = execute_legacy_atp_tower_analysis(
+                        resolved_job,
+                        job=job,
+                        snapshot=snapshot,
+                        execution_options=execution_options,
+                        baseline_result=baseline_result,
+                    )
+                    graded = execution.result_json
+                    run.engine_command = run.engine_command or execution.engine_command
+                    run.working_dir = run.working_dir or execution.working_dir
+                    if execution.stdout_text:
+                        local_stdout.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
+                    if execution.stderr_text:
+                        local_stderr.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
+                else:
+                    graded = baseline_result
+            else:
+                graded = grade_snapshot_payload(payload)
+            db.add(
+                FlAnalysisTowerResult(
+                    job_id=job.id,
+                    run_id=run.id,
+                    snapshot_id=snapshot.id,
+                    status="success",
+                    risk_level=graded["risk_level"],
+                    summary_text=graded["summary_text"],
+                    result_json=graded,
+                    create_date=utcnow(),
+                    update_date=utcnow(),
+                )
+            )
+            # (result_count 由 execute_job 主线程归并)
+            # (summary 由 execute_job 主线程归并)
+            # 本塔所有阶段完成：推进到末尾并回填最终进度（1.0 代表本塔完成）
+            try:
+                tower_tracker.mark_phase_done()
+                _report_tower_fractional(
+                    db=db, job=job, run=run, tracker=tower_tracker,
+                    fraction=1.0, step_label=f"杆塔 {snapshot.tower_no} 计算完成",
+                )
+            except Exception:
+                logger.debug("[ATP] 塔完成进度上报失败 tower=%s", snapshot.tower_no, exc_info=True)
+
+            tower = db.get(LineTower, snapshot.tower_id)
+            if tower is not None and job.job_type not in {"mitigation", "scenario"}:
+                tower.risk_level = graded["risk_level"]
+                tower.update_date = utcnow()
+                tower.update_user = job.update_user or job.create_user
+                _upsert_tower_lightning_result_from_graded(
+                    db,
+                    tower=tower,
+                    graded=graded,
+                    actor_user_id=job.update_user or job.create_user,
+                )
+
+            # 每塔完成推进度事件（LP-xxx：任务执行中逐塔实时进度，前端进度条刷新）
+            try:
+                _publish_change(
+                    "fl_analysis.tower_done",
+                    {
+                        "action": "tower_done",
+                        "job_id": job.id,
+                        "run_id": run.id,
+                        "tower_id": snapshot.tower_id,
+                        "tower_no": snapshot.tower_no,
+                        "seq_no": snapshot.seq_no,
+                        "processed": idx,
+                        "total": len(snapshots),
+                        "risk_level": graded.get("risk_level"),
+                    },
+                )
+            except Exception:
+                logger.debug("[WS] 塔进度事件推送失败 tower=%s", snapshot.tower_no, exc_info=True)
+
+            # 每塔实时落库进度计数（前端 invalidate 后能读到 result_tower_count 驱动进度条；
+            # 原循环结束才统一写 job.result_tower_count，运行中 DB 恒 0 → 进度条不动）
+            # ⚠️ 2026-09-15 修复：只 db.flush() 不 db.commit() 时，整个任务运行期间事务
+            # 不提交，PG READ COMMITTED 下其他会话（前端轮询/API/psql）读不到任何运行中
+            # 数据 → 进度恒 0%、已算塔结果运行中不可查。改为每塔完成后提交一个小事务：
+            # ① 运行中进度/已算塔结果实时可见；② 中途失败保留已完成塔，不整体回滚。
+            # commit 失败 = 事务级故障，必须让任务失败（不能静默吞掉继续跑坏事务）。
+            # （result_tower_count 的最终值由 execute_job 收尾统一写，避免并行时多塔争写 DB 同行）
+            db.commit()
+
+            # 执行中日志流式推送（每塔完成后把该塔 stdout/stderr 行 XADD 到 Redis Stream，
+            # SSE /task-logs/{id}/sse 实时增量读；MinIO 全量文件由 celery 任务兜底最终上传）
+            try:
+                _exec = locals().get("execution")
+                _exec_out = getattr(_exec, "stdout_text", None) if _exec is not None else None
+                _exec_err = getattr(_exec, "stderr_text", None) if _exec is not None else None
+                if job.task_id and (_exec_out or _exec_err):
+                    from ..services.task_log_service import append_task_log_lines  # noqa: PLC0415
+
+                    _log_lines = []
+                    if _exec_out:
+                        _log_lines.extend(
+                            f"[{snapshot.tower_no}][stdout] {line}"
+                            for line in _exec_out.splitlines()
+                            if line.strip()
+                        )
+                    if _exec_err:
+                        _log_lines.extend(
+                            f"[{snapshot.tower_no}][stderr] {line}"
+                            for line in _exec_err.splitlines()
+                            if line.strip()
+                        )
+                    if _log_lines:
+                        append_task_log_lines(job.task_id, _log_lines)
+            except Exception:
+                logger.debug("[WS] 塔日志流推送失败 tower=%s", snapshot.tower_no, exc_info=True)
+            return {
+                "ok": True,
+                "idx": idx,
+                "tower_no": snapshot.tower_no,
+                "graded": graded,
+                "stdout": "\n".join(local_stdout),
+                "stderr": "\n".join(local_stderr),
+                "engine_command": run.engine_command,
+                "working_dir": run.working_dir,
+            }
+
+
 def execute_job(job_id: str) -> None:
     db = SessionLocal()
     started_perf = time.perf_counter()
@@ -883,496 +1443,58 @@ def execute_job(job_id: str) -> None:
             max_phases=3,
         )
 
-        for idx, snapshot in enumerate(snapshots, start=1):
-            payload = {
-                "base_tower_json": snapshot.base_tower_json or {},
-                "profile_json": snapshot.profile_json or {},
-            }
-            # 每根塔独立追踪内部子步骤进度
-            tower_tracker = _TowerProgressTracker(_tower_phase_plan)
-            # 记录上一次二分的目标相数，用于在 tongtiao 多相循环内检测阶段切换
-            _tower_last_phase_done = [False]
-            _tower_last_target = [0]
-            _report_tower_fractional(
-                db=db, job=job, run=run, tracker=tower_tracker,
-                fraction=0.0, step_label=f"开始计算杆塔 {snapshot.tower_no}",
-            )
-            def _tower_on_step(done: int, total: int, label: str | None = None) -> None:
-                # 从标签解析目标相数（"二分搜索 第 N 相"）；tongtiao 多相循环内各相独立二分，
-                # 相数变化代表上一相阶段结束，推进 tracker 到下一阶段。
-                import re as _re
-                target_phase: int | None = None
-                if label:
-                    _m = _re.search(r"第\s*(\d+)\s*相", label)
-                    if _m:
-                        target_phase = int(_m.group(1))
-                if target_phase is not None and _tower_last_target[0] and target_phase != _tower_last_target[0]:
-                    tower_tracker.mark_phase_done()
-                _tower_last_target[0] = target_phase or 0
-                frac = tower_tracker.report_phase_step(done, total, label)
-                _report_tower_fractional(
-                    db=db, job=job, run=run, tracker=tower_tracker,
-                    fraction=frac, step_label=label or tower_tracker.phase_label,
-                )
+        spawn = {
+            "execution_options": execution_options,
+            "external_job": external_job,
+            "legacy_external_job": legacy_external_job,
+            "external_job_cache": external_job_cache,
+            "legacy_job_cache": legacy_job_cache,
+            "source_result_map": source_result_map,
+            "waveform_job_type": waveform_job_type,
+            "towers": towers,
+            "snapshots": snapshots,
+            "_tower_phase_plan": _tower_phase_plan,
+            "logger": logger,
+        }
 
-            logger.info(
-                "[ATP] 开始处理杆塔 %s（第 %d/%d 根）",
-                snapshot.tower_no,
-                idx,
-                len(snapshots),
-            )
-            if job.job_type == "scenario":
-                payload["profile_json"] = _apply_scenario_profile_json_overrides(snapshot.profile_json or {})
-            source_result = source_result_map.get(snapshot.tower_id)
-            if source_result:
-                payload["source_result_json"] = source_result
-            if job.job_type == "mitigation":
-                graded = grade_mitigation_snapshot_payload(
-                    payload,
-                    non_construction=bool(execution_options.get("non_construction")),
-                )
-            elif waveform_job_type == "normal":
-                baseline_result = grade_normal_snapshot_payload(payload, execution_options=execution_options)
-                # 基准计算阶段完成，进入二分阶段
-                tower_tracker.mark_phase_done()
-                if external_job is not None:
-                    resolved_job = _resolve_external_job_for_tower(snapshot)
-                    if resolved_job is None:
-                        raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
-                    # 二分法默认开启（对齐 C# 桌面版 ThreadCompute5 二分雷电流扫描求耐雷水平）；
-                    # 仅当显式传 binary_search=false 时回退单次仿真
-                    if execution_options.get("binary_search", True):
-                        execution = execute_binary_search_external(
-                            resolved_job,
-                            db=db,
-                            job=job,
-                            snapshot=snapshot,
-                            execution_options=execution_options,
-                            baseline_result=baseline_result,
-                            payload=payload,
-                            on_step=_tower_on_step,
-                        )
-                    else:
-                        execution = execute_external_waveform_tower_analysis(
-                            resolved_job,
-                            db=db,
-                            job=job,
-                            snapshot=snapshot,
-                            execution_options=execution_options,
-                            baseline_result=baseline_result,
-                        )
-                    graded = execution.result_json
-                    # 单相反击二分阶段完成
-                    tower_tracker.mark_phase_done()
-                    # ── 绕击（raoji1/raoji2/raoji3 = A/B/C 相）—— 普通计算同样要做 ──
-                    # C# 普通计算输出含绕击耐雷水平 + 绕击跳闸率（如 500源上 1号塔
-                    # 绕击耐雷 35.153 / 绕击跳闸率 1.2824），故此处与 tongtiao 同流程。
-                    _raoji_values: dict[str, float | None] = {}
-                    _raoji_merged = dict(graded)
-                    import concurrent.futures as _cf  # noqa: PLC0415
-                    _raoji_workers = max(1, int(execution_options.get("binary_search_parallel_workers") or 4))
-                    _use_raoji_par = _raoji_workers > 1
+        def _run_tower_worker(snapshot, idx, total, worker_spawn):
+            # 单塔失败独立（语义B）：异常不外抛，返回 ok=False，其余塔不受影响
+            try:
+                with closing(SessionLocal()) as tower_db:
+                    return _execute_single_tower(tower_db, snapshot, idx, total, spawn=worker_spawn)
+            except Exception as exc:
+                logger.exception("[ATP] 杆塔 %s 计算失败（单塔独立，任务继续）", snapshot.tower_no)
+                return {"ok": False, "idx": idx, "tower_no": snapshot.tower_no, "error": str(exc)}
 
-                    def _run_raoji(_idx: int):
-                        try:
-                            _raoji_job = resolve_external_waveform_job(
-                                db,
-                                external_adapter=job.external_adapter
-                                if job.external_adapter in {"atp", "wine"} else "atp",
-                                adapter_config_json=dict(job.adapter_config_json or {}),
-                                tower_type=snapshot.tower_type or "",
-                                line_voltage_kv=job.line.voltage_kv if job.line else None,
-                                scene_type=f"raoji{_idx}",
-                            )
-                        except Exception as _exc:
-                            # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
-                            raise RuntimeError(
-                                f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
-                                f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
-                                f"{job.line.voltage_kv if job.line else '?'}kV)：{_exc}"
-                            ) from _exc
-                        _opts = dict(execution_options)
-                        if _use_raoji_par:
-                            _opts["_run_subdir"] = f"raoji{_idx}"
-                        return execute_shielding_binary_search_external(
-                            _raoji_job,
-                            db=db,
-                            job=job,
-                            snapshot=snapshot,
-                            execution_options=_opts,
-                            baseline_result=baseline_result,
-                            payload=payload,
-                            on_step=_tower_on_step,
-                        )
-
-                    if _use_raoji_par:
-                        with _cf.ThreadPoolExecutor(max_workers=min(_raoji_workers, 3)) as _pool:
-                            _raoji_execs = dict(zip((1, 2, 3), _pool.map(_run_raoji, (1, 2, 3))))
-                    else:
-                        _raoji_execs = {_idx: _run_raoji(_idx) for _idx in (1, 2, 3)}
-                    for _idx, _sh in _raoji_execs.items():
-                        _raoji_values[f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
-                        for _key in (
-                            "shielding_withstand_ka",
-                            "shielding_trip_rate",
-                            "shielding_alpha_deg",
-                            "shielding_binary_search",
-                            "shielding_raoji_index",
-                        ):
-                            if _key in _sh.result_json:
-                                _raoji_merged[_key] = _sh.result_json[_key]
-                        _raoji_merged.setdefault("shielding_raoji_by_phase", {})[
-                            f"{['A', 'B', 'C'][_idx - 1]}相"
-                        ] = _sh.result_json.get("shielding_withstand_ka")
-                    _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
-                    tower_tracker.mark_phase_done()
-                    # ── 绕击跳闸率：C# EGM（rjtzl_egm*.exe）；Ic 取中间相绕击耐雷整数部分 ──
-                    _vals = [v for v in _raoji_values.values() if isinstance(v, (int, float))]
-                    # C# ComputeLightningProtection.cs:7891-7912：顶层「绕击耐雷水平」与 EGM 的 Ic
-                    # 都取三相绕击耐雷的最小值（不是 B 相 —— 相序测试上恰好相等）
-                    _egm_ic = min(_vals) if _vals else None
-                    if _egm_ic is None:
-                        raise RuntimeError(
-                            f"{snapshot.tower_no}: 绕击耐雷水平缺失，无法计算 EGM 绕击跳闸率"
-                        )
-                    from .atp_egm_trip_rate import compute_shielding_trip_rate  # noqa: PLC0415
-
-                    _egm_env = os.environ.copy()
-                    _egm_env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
-                    _egm_rate, _egm_alpha = compute_shielding_trip_rate(
-                        atp_root=Path("/app/data/wine/ATP"),
-                        voltage_kv=job.line.voltage_kv if job.line else None,
-                        base_tower=snapshot.base_tower_json or {},
-                        profile=snapshot.profile_json or {},
-                        tower_type=snapshot.tower_type or "",
-                        raoji_withstand_ka=float(_egm_ic),
-                        env=_egm_env,
-                    )
-                    _raoji_merged["shielding_trip_rate"] = _egm_rate
-                    _raoji_merged["shielding_trip_rate_method"] = "egm"
-                    # 普通计算：顶层绕击耐雷 = 三相最小值（C# 7891-7912）
-                    if _egm_ic is not None:
-                        _raoji_merged["shielding_withstand_ka"] = _egm_ic
-                    graded = _raoji_merged
-                    # 普通计算：顶层耐雷/跳闸率保留实际值（C# 口径），但风险等级要用
-                    # EGM 之后的绕击跳闸率重算。
-                    try:
-                        from .fl_analysis_rules import (  # noqa: PLC0415
-                            _calculate_risk_grade,
-                            _normalize_lightning_inputs,
-                            _risk_level_from_grade,
-                        )
-
-                        _norm = _normalize_lightning_inputs(payload)
-                        _ri, _th, _rg = _calculate_risk_grade(
-                            _norm,
-                            graded.get("counterstrike_trip_rate"),
-                            _egm_rate,
-                        )
-                        if _rg is not None:
-                            graded["risk_grade"] = _rg
-                            graded["risk_level"] = _risk_level_from_grade(_rg) or graded.get("risk_level")
-                            graded["risk_index_s"] = _ri
-                    except Exception as _exc:  # noqa: BLE001
-                        logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
-                    run.engine_command = run.engine_command or execution.engine_command
-                    run.working_dir = run.working_dir or execution.working_dir
-                    if execution.stdout_text:
-                        stdout_chunks.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
-                    if execution.stderr_text:
-                        stderr_chunks.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
-                elif legacy_external_job is not None:
-                    resolved_job = _resolve_legacy_job_for_tower(snapshot)
-                    if resolved_job is None:
-                        raise RuntimeError(f"legacy ATP 模板解析失败：{snapshot.tower_no}")
-                    execution = execute_legacy_atp_tower_analysis(
-                        resolved_job,
-                        job=job,
-                        snapshot=snapshot,
-                        execution_options=execution_options,
-                        baseline_result=baseline_result,
-                    )
-                    graded = execution.result_json
-                    run.engine_command = run.engine_command or execution.engine_command
-                    run.working_dir = run.working_dir or execution.working_dir
-                    if execution.stdout_text:
-                        stdout_chunks.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
-                    if execution.stderr_text:
-                        stderr_chunks.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
-                else:
-                    graded = baseline_result
-            elif waveform_job_type == "tongtiao":
-                baseline_result = grade_tongtiao_snapshot_payload(payload, execution_options=execution_options)
-                if external_job is not None:
-                    resolved_job = _resolve_external_job_for_tower(snapshot)
-                    if resolved_job is None:
-                        raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
-                    # 二分法默认开启（对齐 C# 桌面版 ThreadCompute5 二分雷电流扫描求耐雷水平）；
-                    # 仅当显式传 binary_search=false 时回退单次仿真。
-                    # LP-570 同跳：C# 双回 ThreadCompute5_work_atp 循环 level_lightning=1..6 逐档
-                    # 二分出单/双/三..六相反击耐雷 + fjtzlDanXiang 每档跳闸率（fjType=1 配置）。
-                    if execution_options.get("binary_search", True):
-                        execution = execute_multi_phase_binary_search_external(
-                            resolved_job,
-                            db=db,
-                            job=job,
-                            snapshot=snapshot,
-                            execution_options=execution_options,
-                            baseline_result=baseline_result,
-                            payload=payload,
-                            on_step=_tower_on_step,
-                        )
-                    else:
-                        execution = execute_external_waveform_tower_analysis(
-                            resolved_job,
-                            db=db,
-                            job=job,
-                            snapshot=snapshot,
-                            execution_options=execution_options,
-                            baseline_result=baseline_result,
-                        )
-                    graded = execution.result_json
-                    # 多相二分阶段完成，进入下一阶段（绕击二分或结果回填）
-                    tower_tracker.mark_phase_done()
-                    # ── 绕击（raoji1/raoji2/raoji3 = A/B/C 相）──────────────
-                    # C# ThreadCompute5_work_atp：start compute raoji1/raoji2/raoji3
-                    # （Alert.txt 实测），即 A/B/C 三相各用独立 raoji 模板二分绕击耐雷水平。
-                    # 对齐 C#：raoji 资产解不出 → 明确报错，绝不静默用公式兜底。
-                    _method_raoji = str(
-                        (job.execution_options_json or {}).get("raoji_naleishuiping_method") or ""
-                        or (execution_options or {}).get("raoji_naleishuiping_method") or ""
-                    ).strip().lower()
-                    if _method_raoji == "atp" or (job.adapter_config_json or {}).get("shielding_asset_id"):
-                        logger.info("[ATP] 绕击循环触发(tongtiao)：method_raoji=%s, scene=raoji1/2/3", _method_raoji)
-                        _raoji_values: dict[str, float | None] = {}
-                        _raoji_merged = dict(graded)
-                        import concurrent.futures as _cf  # noqa: PLC0415
-                        _raoji_workers = max(1, int(execution_options.get("binary_search_parallel_workers") or 4))
-                        _use_raoji_par = _raoji_workers > 1
-
-                        def _run_raoji(_idx: int):
-                            try:
-                                _raoji_job = resolve_external_waveform_job(
-                                    db,
-                                    external_adapter=job.external_adapter
-                                    if job.external_adapter in {"atp", "wine"} else "atp",
-                                    adapter_config_json=dict(job.adapter_config_json or {}),
-                                    tower_type=snapshot.tower_type or "",
-                                    line_voltage_kv=job.line.voltage_kv if job.line else None,
-                                    scene_type=f"raoji{_idx}",
-                                )
-                            except Exception as _exc:
-                                # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
-                                raise RuntimeError(
-                                    f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
-                                    f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
-                                    f"{job.line.voltage_kv if job.line else '?'}kV)：{_exc}"
-                                ) from _exc
-                            _opts = dict(execution_options)
-                            if _use_raoji_par:
-                                _opts["_run_subdir"] = f"raoji{_idx}"
-                            return execute_shielding_binary_search_external(
-                                _raoji_job,
-                                db=db,
-                                job=job,
-                                snapshot=snapshot,
-                                execution_options=_opts,
-                                baseline_result=baseline_result,
-                                payload=payload,
-                                on_step=_tower_on_step,
-                            )
-
-                        if _use_raoji_par:
-                            with _cf.ThreadPoolExecutor(max_workers=min(_raoji_workers, 3)) as _pool:
-                                _raoji_execs = dict(zip((1, 2, 3), _pool.map(_run_raoji, (1, 2, 3))))
-                        else:
-                            _raoji_execs = {_idx: _run_raoji(_idx) for _idx in (1, 2, 3)}
-                        for _idx, _sh in _raoji_execs.items():
-                            _raoji_values[f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
-                            for _key in (
-                                "shielding_withstand_ka",
-                                "shielding_trip_rate",
-                                "shielding_alpha_deg",
-                                "shielding_binary_search",
-                                "shielding_raoji_index",
-                            ):
-                                if _key in _sh.result_json:
-                                    _raoji_merged[_key] = _sh.result_json[_key]
-                            _raoji_merged.setdefault("shielding_raoji_by_phase", {})[
-                                f"{['A', 'B', 'C'][_idx - 1]}相"] = _sh.result_json.get("shielding_withstand_ka")
-                            if _sh.stdout_text:
-                                stdout_chunks.append(f"[{snapshot.tower_no}][绕击{['A', 'B', 'C'][_idx - 1]}相] {_sh.stdout_text}")
-                        _raoji_merged["shielding_phase_withstand_ka"] = _raoji_values
-                        tower_tracker.mark_phase_done()
-                        # ── 绕击跳闸率：C# EGM 电气几何模型（rjtzl_egm*.exe，wine 跑）──
-                        _vals = [v for v in _raoji_values.values() if isinstance(v, (int, float))]
-                        # C# ComputeLightningProtection.cs:7891-7912：顶层「绕击耐雷水平」与 EGM 的 Ic
-                        # 都取三相绕击耐雷的最小值（不是 B 相 —— 相序测试上恰好相等）
-                        # （(int)mRaojiCurrent），跑 egm 两轮（地面倾角1 / -地面倾角2）求和，
-                        # 鼓型塔再 ÷2。已用 C# 0913 中间文件逐位验证：0.406567 ✓
-                        _egm_ic = min(_vals) if _vals else None
-                        if _egm_ic is None:
-                            raise RuntimeError(
-                                f"{snapshot.tower_no}: 绕击耐雷水平缺失，无法计算 EGM 绕击跳闸率"
-                            )
-                        from .atp_egm_trip_rate import compute_shielding_trip_rate  # noqa: PLC0415
-
-                        _egm_env = os.environ.copy()
-                        _egm_env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
-                        _egm_rate, _egm_alpha = compute_shielding_trip_rate(
-                            atp_root=Path("/app/data/wine/ATP"),
-                            voltage_kv=job.line.voltage_kv if job.line else None,
-                            base_tower=snapshot.base_tower_json or {},
-                            profile=snapshot.profile_json or {},
-                            tower_type=snapshot.tower_type or "",
-                            raoji_withstand_ka=float(_egm_ic),
-                            env=_egm_env,
-                        )
-                        _raoji_merged["shielding_trip_rate"] = _egm_rate
-                        _raoji_merged["shielding_trip_rate_method"] = "egm"
-                        graded = _raoji_merged
-                        # ── 顶层口径对齐 C# 交流同跳，并用 EGM 跳闸率重算风险等级 ──
-                        # （C# 引擎对 IDout24/26 只注册不赋值 → 顶层耐雷/反击跳闸率输出 0；
-                        #   风险等级 C# 用 EGM 后的绕击跳闸率算，故此处需在 EGM 之后重算）
-                        graded["counterstrike_withstand_ka"] = 0.0
-                        graded["counterstrike_trip_rate"] = 0.0
-                        graded["shielding_withstand_ka"] = 0.0
-                        try:
-                            from .fl_analysis_rules import (  # noqa: PLC0415
-                                _calculate_risk_grade,
-                                _normalize_lightning_inputs,
-                                _risk_level_from_grade,
-                            )
-
-                            _norm = _normalize_lightning_inputs(payload)
-                            _ri, _th, _rg = _calculate_risk_grade(_norm, 0.0, _egm_rate)
-                            if _rg is not None:
-                                graded["risk_grade"] = _rg
-                                graded["risk_level"] = _risk_level_from_grade(_rg) or graded.get("risk_level")
-                                graded["risk_index_s"] = _ri
-                        except Exception as _exc:  # noqa: BLE001
-                            logger.warning("[EGM] 风险等级重算失败（保留原值）：%s", _exc)
-                    run.engine_command = run.engine_command or execution.engine_command
-                    run.working_dir = run.working_dir or execution.working_dir
-                    if execution.stdout_text:
-                        stdout_chunks.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
-                    if execution.stderr_text:
-                        stderr_chunks.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
-                elif legacy_external_job is not None:
-                    resolved_job = _resolve_legacy_job_for_tower(snapshot)
-                    if resolved_job is None:
-                        raise RuntimeError(f"legacy ATP 模板解析失败：{snapshot.tower_no}")
-                    execution = execute_legacy_atp_tower_analysis(
-                        resolved_job,
-                        job=job,
-                        snapshot=snapshot,
-                        execution_options=execution_options,
-                        baseline_result=baseline_result,
-                    )
-                    graded = execution.result_json
-                    run.engine_command = run.engine_command or execution.engine_command
-                    run.working_dir = run.working_dir or execution.working_dir
-                    if execution.stdout_text:
-                        stdout_chunks.append(f"[{snapshot.tower_no}] {execution.stdout_text}")
-                    if execution.stderr_text:
-                        stderr_chunks.append(f"[{snapshot.tower_no}] {execution.stderr_text}")
-                else:
-                    graded = baseline_result
+        # 塔级并行（Step2）：tower_parallel_workers>1 且多塔时开线程池；=1 或单塔退化为串行（天然回滚开关）
+        tower_parallel_workers = max(1, int(execution_options.get("tower_parallel_workers") or 2))
+        if tower_parallel_workers > 1 and len(snapshots) > 1:
+            import concurrent.futures as _cfg
+            with _cfg.ThreadPoolExecutor(max_workers=tower_parallel_workers) as _pool:
+                _futs = [_pool.submit(_run_tower_worker, s, i, len(snapshots), spawn)
+                         for i, s in enumerate(snapshots, start=1)]
+                _outcomes = [f.result() for f in _cfg.as_completed(_futs)]
+        else:
+            _outcomes = [_run_tower_worker(s, i, len(snapshots), spawn)
+                         for i, s in enumerate(snapshots, start=1)]
+        # 按塔序归并（保证 tower 顺序/日志/摘要一致）
+        _outcomes.sort(key=lambda o: o.get("idx", 0))
+        result_count = 0
+        for _out in _outcomes:
+            if _out.get("ok"):
+                result_count += 1
+                _accumulate_result_summary(summary, _out["graded"])
+                _out_so = _out.get("stdout") or ""
+                _out_se = _out.get("stderr") or ""
+                if _out_so:
+                    stdout_chunks.append(_out_so)
+                if _out_se:
+                    stderr_chunks.append(_out_se)
+                run.engine_command = run.engine_command or _out.get("engine_command")
+                run.working_dir = run.working_dir or _out.get("working_dir")
             else:
-                graded = grade_snapshot_payload(payload)
-            db.add(
-                FlAnalysisTowerResult(
-                    job_id=job.id,
-                    run_id=run.id,
-                    snapshot_id=snapshot.id,
-                    status="success",
-                    risk_level=graded["risk_level"],
-                    summary_text=graded["summary_text"],
-                    result_json=graded,
-                    create_date=utcnow(),
-                    update_date=utcnow(),
-                )
-            )
-            result_count += 1
-            _accumulate_result_summary(summary, graded)
-            # 本塔所有阶段完成：推进到末尾并回填最终进度（1.0 代表本塔完成）
-            try:
-                tower_tracker.mark_phase_done()
-                _report_tower_fractional(
-                    db=db, job=job, run=run, tracker=tower_tracker,
-                    fraction=1.0, step_label=f"杆塔 {snapshot.tower_no} 计算完成",
-                )
-            except Exception:
-                logger.debug("[ATP] 塔完成进度上报失败 tower=%s", snapshot.tower_no, exc_info=True)
-
-            tower = tower_map.get(snapshot.tower_id)
-            if tower is not None and job.job_type not in {"mitigation", "scenario"}:
-                tower.risk_level = graded["risk_level"]
-                tower.update_date = utcnow()
-                tower.update_user = job.update_user or job.create_user
-                _upsert_tower_lightning_result_from_graded(
-                    db,
-                    tower=tower,
-                    graded=graded,
-                    actor_user_id=job.update_user or job.create_user,
-                )
-
-            # 每塔完成推进度事件（LP-xxx：任务执行中逐塔实时进度，前端进度条刷新）
-            try:
-                _publish_change(
-                    "fl_analysis.tower_done",
-                    {
-                        "action": "tower_done",
-                        "job_id": job.id,
-                        "run_id": run.id,
-                        "tower_id": snapshot.tower_id,
-                        "tower_no": snapshot.tower_no,
-                        "seq_no": snapshot.seq_no,
-                        "processed": idx,
-                        "total": len(snapshots),
-                        "risk_level": graded.get("risk_level"),
-                    },
-                )
-            except Exception:
-                logger.debug("[WS] 塔进度事件推送失败 tower=%s", snapshot.tower_no, exc_info=True)
-
-            # 每塔实时落库进度计数（前端 invalidate 后能读到 result_tower_count 驱动进度条；
-            # 原循环结束才统一写 job.result_tower_count，运行中 DB 恒 0 → 进度条不动）
-            # ⚠️ 2026-09-15 修复：只 db.flush() 不 db.commit() 时，整个任务运行期间事务
-            # 不提交，PG READ COMMITTED 下其他会话（前端轮询/API/psql）读不到任何运行中
-            # 数据 → 进度恒 0%、已算塔结果运行中不可查。改为每塔完成后提交一个小事务：
-            # ① 运行中进度/已算塔结果实时可见；② 中途失败保留已完成塔，不整体回滚。
-            # commit 失败 = 事务级故障，必须让任务失败（不能静默吞掉继续跑坏事务）。
-            job.result_tower_count = result_count
-            run.result_tower_count = result_count
-            db.commit()
-
-            # 执行中日志流式推送（每塔完成后把该塔 stdout/stderr 行 XADD 到 Redis Stream，
-            # SSE /task-logs/{id}/sse 实时增量读；MinIO 全量文件由 celery 任务兜底最终上传）
-            try:
-                _exec = locals().get("execution")
-                _exec_out = getattr(_exec, "stdout_text", None) if _exec is not None else None
-                _exec_err = getattr(_exec, "stderr_text", None) if _exec is not None else None
-                if job.task_id and (_exec_out or _exec_err):
-                    from ..services.task_log_service import append_task_log_lines  # noqa: PLC0415
-
-                    _log_lines = []
-                    if _exec_out:
-                        _log_lines.extend(
-                            f"[{snapshot.tower_no}][stdout] {line}"
-                            for line in _exec_out.splitlines()
-                            if line.strip()
-                        )
-                    if _exec_err:
-                        _log_lines.extend(
-                            f"[{snapshot.tower_no}][stderr] {line}"
-                            for line in _exec_err.splitlines()
-                            if line.strip()
-                        )
-                    if _log_lines:
-                        append_task_log_lines(job.task_id, _log_lines)
-            except Exception:
-                logger.debug("[WS] 塔日志流推送失败 tower=%s", snapshot.tower_no, exc_info=True)
+                logger.error("[ATP] 杆塔 %s 计算失败（单塔独立，任务继续）：%s",
+                             _out.get("tower_no"), _out.get("error"))
 
         run.snapshot_tower_count = snapshot_count
         run.result_tower_count = result_count
@@ -1919,12 +2041,12 @@ def _csharp_aligned_export_columns() -> list[tuple[str, Callable[[dict[str, Any]
             return None
         return getter
 
-    # A/B/C 相绕击耐雷（shielding_phase_withstand_ka dict）
+    # A/B/C 相绕击耐雷（shielding_phase_withstand_ka dict，键为 "A相"/"B相"/"C相"）
     def shielding_phase(phase: str):
         def getter(ctx: dict[str, Any]) -> Any:
             spw = (ctx.get("result") or {}).get("shielding_phase_withstand_ka")
             if isinstance(spw, dict):
-                return spw.get(phase)
+                return spw.get(phase) or spw.get(f"{phase}相")
             return None
         return getter
 
@@ -2062,7 +2184,7 @@ def _csharp_aligned_export_columns() -> list[tuple[str, Callable[[dict[str, Any]
         # 91-94
         ("原因分析", text("result.cause_analysis")),
         ("措施推荐", text("result.mitigation_recommendation")),
-        ("保护角", prof("protection_angle_left_deg")),
+        ("保护角", num("result.shielding_alpha_deg")),
         ("普通计算结果", text("result.summary_text")),
     ]
     return cols
