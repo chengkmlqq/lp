@@ -437,23 +437,32 @@ export default function AdminLightningDistributionPage() {
       setUploadProgress(0);
       setUploadError("");
 
-      // 上传后立即做首行格式快速校验：地闪密度文件每行应为「纬度 经度 电流」
+      // 上传后立即做格式快速校验：地闪密度文件每行应为「纬度 经度 电流」。
+      // 检查前 20 行统计有效比例（<50% 才提示），避免首行是表头/注释的正常文件被误拦。
       let formatInvalid = false;
       const reader = new FileReader();
       reader.onload = () => {
         const head = String(reader.result ?? "").slice(0, 2000);
-        const firstLine = head.split(/\r?\n/).find((ln) => ln.trim());
-        if (firstLine) {
-          const tokens = firstLine.trim().split(/[\s,，]+/).filter(Boolean);
+        const lines = head.split(/\r?\n/).map((ln) => ln.trim()).filter(Boolean).slice(0, 20);
+        if (lines.length === 0) {
+          return;
+        }
+        const valid = lines.filter((ln) => {
+          const tokens = ln.split(/[\s,，]+/).filter(Boolean);
           const numbers = tokens.map(Number).filter((n) => Number.isFinite(n));
-          if (tokens.length < 3 || numbers.length < 3) {
-            formatInvalid = true;
-            setUploadError(
-              `文件格式疑似有误：首行为「${firstLine.trim().slice(0, 80)}」。` +
-                "地闪密度文件每行应为「纬度 经度 电流」3 个数值（空格分隔，如「22.54 114.05 -15.3」）。",
-            );
-            return;
-          }
+          return tokens.length >= 3 && numbers.length >= 3;
+        }).length;
+        if (valid / lines.length < 0.5) {
+          formatInvalid = true;
+          const badSample = lines.find((ln) => {
+            const tokens = ln.split(/[\s,，]+/).filter(Boolean);
+            const numbers = tokens.map(Number).filter((n) => Number.isFinite(n));
+            return tokens.length < 3 || numbers.length < 3;
+          }) ?? lines[0];
+          setUploadError(
+            `文件格式疑似有误：前 ${lines.length} 行仅 ${valid} 行可解析（如「${badSample.slice(0, 80)}」）。` +
+              "地闪密度文件每行应为「纬度 经度 电流」3 个数值（空格分隔，如「22.54 114.05 -15.3」）。",
+          );
         }
       };
       reader.readAsText(file);
