@@ -163,7 +163,7 @@ services:
       #   保护它的 GEOMETRY_LOCK 是线程级锁，跨 celery 进程无效（--concurrency>1 是 fork 进程池）
       #   → 同塔型的两个任务并发会把几何算串且任务仍报 success（2026-09-15 实测）。
       #   详见 lp-project-ops/references/atp-concurrent-jobs-shared-engine-dir.md
-      - --concurrency=${WINE_WORKER_CONCURRENCY:-4}
+      - --concurrency=${WINE_WORKER_CONCURRENCY:-6}
     depends_on:
       - api
       - redis
