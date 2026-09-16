@@ -40,9 +40,18 @@ export function TaskLogViewerDrawer({
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState("");
-  const [content, setContent] = useState("");
+  // 方案A+C（2026-09-16）：日志从「单个大字符串」改为「行数组 + 虚拟滚动窗口」。
+  // - lines：全量日志行（复制时用完整内容；渲染只画可视窗口，避免几万行 DOM）
+  // - pendingLinesRef + flushTimerRef：SSE 增量先入缓冲，定时批量 flush（追加节流，
+  //   避免每行 setState 全量重渲染）
+  const [lines, setLines] = useState<string[]>([]);
+  const pendingLinesRef = useRef<string[]>([]);
+  const flushTimerRef = useRef<number | null>(null);
+  // 虚拟滚动窗口（固定行高，日志行不换行 → 精确）
+  const [scrollTop, setScrollTop] = useState(0);
+  const LOG_ROW_HEIGHT = 18;
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
-  const contentRef = useRef<HTMLPreElement | null>(null);
   // 断线补偿游标：记录最近一条 SSE 事件的 id；重连时作为 Last-Event-ID 传给服务端续读
   const lastEventIdRef = useRef("");
   // 重连指数退避（秒）：1 / 2 / 4 / 8 / 16 → 最多 30
@@ -79,7 +88,7 @@ export function TaskLogViewerDrawer({
           } catch (error) {
             if (cancelledRef.current) return;
             const errorMessage = error instanceof Error ? error.message : "获取日志失败";
-            setContent(`错误：${errorMessage}`);
+            setLines([`错误：${errorMessage}`]);
             setLoading(false);
             reconnectRef.current?.(cancelledRef, taskId);
           }
@@ -138,9 +147,26 @@ export function TaskLogViewerDrawer({
           const linesText = data.lines;
           const singleLine = data.line;
           if (linesText) {
-            setContent(linesText);
+            // 全量（重连续读/初始）：拆行直接覆盖，清掉挂起的增量缓冲
+            pendingLinesRef.current = [];
+            if (flushTimerRef.current !== null) {
+              window.clearTimeout(flushTimerRef.current);
+              flushTimerRef.current = null;
+            }
+            setLines(linesText.split("\n"));
           } else if (singleLine) {
-            setContent((prev) => (prev ? `${prev}\n${singleLine}` : singleLine));
+            // 增量：先入缓冲，定时批量 flush（追加节流，避免每行 setState 全量重渲染）
+            pendingLinesRef.current.push(singleLine);
+            if (flushTimerRef.current === null) {
+              flushTimerRef.current = window.setTimeout(() => {
+                flushTimerRef.current = null;
+                const batch = pendingLinesRef.current;
+                pendingLinesRef.current = [];
+                if (batch.length > 0) {
+                  setLines((prev) => (prev.length === 0 ? batch : [...prev, ...batch]));
+                }
+              }, 100);
+            }
           }
         } catch {
           // 忽略无法解析的 SSE 数据
@@ -162,7 +188,7 @@ export function TaskLogViewerDrawer({
         try {
           const data = JSON.parse(eventSourceError.data ?? "") as { message?: string };
           if (data.message) {
-            setContent(data.message);
+            setLines([data.message]);
             setStreaming(false);
             return;
           }
@@ -194,19 +220,19 @@ export function TaskLogViewerDrawer({
         setLoading(false);
         setStreaming(false);
         setStatus("no-log");
-        setContent("");
+        setLines([]);
         return;
       }
       setLoading(true);
       setStreaming(false);
       setStatus("");
-      setContent("");
+      setLines([]);
       try {
         await connect(cancelledRef, taskId);
       } catch (error) {
         if (cancelledRef.current) return;
         const errorMessage = error instanceof Error ? error.message : "获取日志失败";
-        setContent(`错误：${errorMessage}`);
+        setLines([`错误：${errorMessage}`]);
         setLoading(false);
       }
     })();
@@ -219,7 +245,7 @@ export function TaskLogViewerDrawer({
 
   const handleClose = () => {
     closeEventSource();
-    setContent("");
+    setLines([]);
     setStatus("");
     setStreaming(false);
     onClose();
@@ -234,7 +260,7 @@ export function TaskLogViewerDrawer({
     if (el) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [content, streaming, status]);
+  }, [lines, streaming, status]);
 
   const statusTone = status === "done"
     ? "success"
@@ -272,18 +298,19 @@ export function TaskLogViewerDrawer({
           )}
           {status && <Tag color={statusTone}>{statusLabel}</Tag>}
         </span>
-        {content && (
+        {lines.length > 0 && (
           <Button
             type="link"
             size="small"
-            onClick={() => navigator.clipboard?.writeText(content)}
+            onClick={() => navigator.clipboard?.writeText(lines.join("\n"))}
           >
             复制
           </Button>
         )}
       </Space>
-      <pre
+      <div
         ref={contentRef}
+        onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
         style={{
           flex: 1,
           minHeight: 0,
@@ -293,19 +320,55 @@ export function TaskLogViewerDrawer({
           color: "#e2e8f0",
           borderRadius: "4px",
           fontSize: "12px",
-          lineHeight: "1.5",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
+          lineHeight: "18px",
+          whiteSpace: "pre",
+          wordBreak: "normal",
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
         }}
       >
-        {content || (
+        {lines.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={status === "no-log" ? "暂无日志" : "等待日志..."}
           />
+        ) : (
+          (() => {
+            // 方案A：虚拟滚动——只渲染可视窗口行（固定行高，白屏不换行）
+            // 容器高度实时读取（flex 撑开，Drawer/Modal 下不固定），滚动时更新
+            const viewportH = contentRef.current?.clientHeight ?? 480;
+            const total = lines.length;
+            const overscan = 30;
+            const start = Math.max(0, Math.floor(scrollTop / LOG_ROW_HEIGHT) - overscan);
+            const end = Math.min(
+              total,
+              Math.ceil((scrollTop + viewportH) / LOG_ROW_HEIGHT) + overscan,
+            );
+            const visible = lines.slice(start, end);
+            return (
+              <div style={{ height: total * LOG_ROW_HEIGHT, position: "relative" }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    transform: `translateY(${start * LOG_ROW_HEIGHT}px)`,
+                  }}
+                >
+                  {visible.map((line, i) => (
+                    <div
+                      key={start + i}
+                      style={{ height: LOG_ROW_HEIGHT, lineHeight: `${LOG_ROW_HEIGHT}px`, whiteSpace: "pre" }}
+                    >
+                      {line || "\u00A0"}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()
         )}
-      </pre>
+      </div>
     </div>
   );
 
