@@ -356,7 +356,16 @@ def build_values(section: str, **ctx) -> dict[str, float]:
 _BRANCH_HEAD = re.compile(r"^-\d+(IN___[A-Z]+)(OUT__[A-Z]+)")
 
 
-def pch_to_lib(pch_text: str) -> str:
+def pch_to_lib(pch_text: str, template_header: str | None = None) -> str:
+    """把 LCC 输出的 .pch 数据卡转换为 ATP 的 .lib 线路模型库文件。
+
+    ⚠️ 2026-09-17 修复（220 鼓型塔 ganzi/jiubei/maotou 全失败 KILL=79 的根因）：
+    旧实现按「分支数 n」动态算 KBEG=(3,n+1)/KEND=(n,n+6)、KARD=分支行号，
+    与 ATP 模板 .lib 的固定格式（KBEG 3-9 / KEND 8-14，节点名 6 字符，KARD=卡片列边界）
+    不匹配 → ATP 解析 $INCLUDE 时节点名长度 mismatch → KILL=79、无 work.lis。
+    修复：优先使用模板 .lib 的头部（KARD/KARG/KBEG/KEND/KTEX/BRANCH，来自资产模板，
+    与 work.atp 的 $INCLUDE 配套）；无模板时 fallback 到固定 6 字符格式。
+    """
     lines = pch_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     di = next((i for i, x in enumerate(lines) if x.startswith("-1IN___")), None)
     if di is None:
@@ -367,26 +376,32 @@ def pch_to_lib(pch_text: str) -> str:
     heads = [(i, x) for i, x in enumerate(data) if _BRANCH_HEAD.match(x)]
     if not heads:
         raise ValueError("pch 中找不到分支头")
-    ptrs = [i + 2 for i, _ in heads]          # 行号(1-based)+1
     nodes = [m.groups() for m in (_BRANCH_HEAD.match(x) for _, x in heads) if m]
     n = len(nodes)
-    kard = "".join("%3d" % p for p in ptrs)
-    kard = "".join("%3d" % v for p in ptrs for v in (p, p))
-    karg = "".join("%3d" % v for i in range(1, n + 1) for v in (i, i + n))
-    kbeg = "".join("%3d" % v for _ in range(n) for v in (3, n + 1))
-    kend = "".join("%3d" % v for _ in range(n) for v in (n, n + 6))
-    ktex = "".join("%3d" % v for _ in range(n) for v in (1, 1))
+    if template_header:
+        header = template_header
+    else:
+        # fallback：固定 6 字符节点名格式（对齐 C#/模板：KBEG 3-9、KEND 8-14）。
+        # KARD 列边界无法从 .pch 推导（ATP 内部按卡类型定义），fallback 用模板常见值 29。
+        kard = "".join("%3d" % v for _ in range(n) for v in (29, 29))
+        karg = "".join("%3d" % v for i in range(1, n + 1) for v in (i, i + n))
+        kbeg = "".join("%3d" % v for _ in range(n) for v in (3, 9))
+        kend = "".join("%3d" % v for _ in range(n) for v in (8, 14))
+        ktex = "".join("%3d" % v for _ in range(n) for v in (1, 1))
+        header = (
+            "KARD" + kard + "\n"
+            + "KARG" + karg + "\n"
+            + "KBEG" + kbeg + "\n"
+            + "KEND" + kend + "\n"
+            + "KTEX" + ktex + "\n"
+            + "/BRANCH\n"
+        )
     ins = [a for a, _ in nodes]
     outs = [b for _, b in nodes]
     body = "\n".join(data)
     arg = "ARG, " + ", ".join(ins + outs) + ","
     return (
-        "KARD" + kard + "\n"
-        + "KARG" + karg + "\n"
-        + "KBEG" + kbeg + "\n"
-        + "KEND" + kend + "\n"
-        + "KTEX" + ktex + "\n"
-        + "/BRANCH\n"
+        header
         + body + "\n"
         + "$EOF\n"
         + arg + "\n"

@@ -290,7 +290,23 @@ def _regenerate_line_models_unlocked(
                 f"{name}.dat 的 LCC 未刷新 {name}.pch（仍是旧文件，几何可能未更新）；"
                 f"退出码={result.returncode}，输出尾部：{(result.stdout or result.stderr or '')[-400:]}"
             )
-        lib_text = pch_to_lib(pch_path.read_bytes().decode("gbk", errors="replace"))
+        # ⚠️ pch_to_lib 必须复用模板 .lib 的头部（KARD/KARG/KBEG/KEND/KTEX）：
+        # ATP 的 .lib 头部是「卡片列边界」格式（KBEG 3-9/KEND 8-14，6 字符节点名），
+        # 与 work.atp 的 $INCLUDE 配套。engine_dir 里现有 .lib 是物化来的模板版（regenerate 前），
+        # 直接读它的头部，只替换数据区 —— 避免按分支数动态生成错误格式（220 鼓型塔 KILL=79 根因）。
+        template_header: str | None = None
+        existing_lib = engine_dir / f"{name}.lib"
+        if existing_lib.exists():
+            try:
+                _head_lines = existing_lib.read_bytes().decode("gbk", errors="replace").splitlines()
+                if _head_lines and _head_lines[0].startswith("KARD"):
+                    template_header = "\n".join(_head_lines[:6]) + "\n"  # KARD..KTEX + /BRANCH
+            except Exception:
+                template_header = None
+        lib_text = pch_to_lib(
+            pch_path.read_bytes().decode("gbk", errors="replace"),
+            template_header=template_header,
+        )
         (engine_dir / f"{name}.lib").write_bytes(lib_text.encode("gbk", errors="replace"))
         gen_cache.write_bytes(lib_text.encode("gbk", errors="replace"))
         marker.write_text(geo_key, encoding="utf-8")
