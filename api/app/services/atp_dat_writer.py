@@ -356,15 +356,22 @@ def build_values(section: str, **ctx) -> dict[str, float]:
 _BRANCH_HEAD = re.compile(r"^-\d+(IN___[A-Z]+)(OUT__[A-Z]+)")
 
 
-def pch_to_lib(pch_text: str, template_header: str | None = None) -> str:
+def pch_to_lib(pch_text: str) -> str:
     """把 LCC 输出的 .pch 数据卡转换为 ATP 的 .lib 线路模型库文件。
 
-    ⚠️ 2026-09-17 修复（220 鼓型塔 ganzi/jiubei/maotou 全失败 KILL=79 的根因）：
-    旧实现按「分支数 n」动态算 KBEG=(3,n+1)/KEND=(n,n+6)、KARD=分支行号，
-    与 ATP 模板 .lib 的固定格式（KBEG 3-9 / KEND 8-14，节点名 6 字符，KARD=卡片列边界）
-    不匹配 → ATP 解析 $INCLUDE 时节点名长度 mismatch → KILL=79、无 work.lis。
-    修复：优先使用模板 .lib 的头部（KARD/KARG/KBEG/KEND/KTEX/BRANCH，来自资产模板，
-    与 work.atp 的 $INCLUDE 配套）；无模板时 fallback 到固定 6 字符格式。
+    ⚠️ 2026-09-17 两次修复（220 鼓型塔 ganzi/jiubei/maotou 全失败 KILL=79 的根因）：
+    旧实现 KBEG=(3,n+1)/KEND=(n,n+6) 与 ATP 模板 .lib 的固定格式
+    （KBEG 3-9 / KEND 8-14，节点名 6 字符）不匹配 → ATP 解析 $INCLUDE 节点名
+    length mismatch → KILL=79、无 work.lis。guxing 恰未触发（缓存/格式碰巧匹配）。
+
+    KARD 规则（C# 样本推导，2026-09-17）：KARD 卡边界 = 各分支头在数据区的
+    （0-based）行号 + 2 —— 不能用模板头部（模板 KARD 是别的几何的行号，硬套
+    会导致 ATP `fmt: read unexpected character` rc=3）。
+
+    正确格式（对齐 C# 样本，逐字节验证）：
+      KARD: 分支头行号+2（与本次 .pch 数据配套）
+      KBEG: 每分支 (3, 9)   ← 节点名起列
+      KEND: 每分支 (8, 14)  ← 节点名止列（6 字符）
     """
     lines = pch_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     di = next((i for i, x in enumerate(lines) if x.startswith("-1IN___")), None)
@@ -378,30 +385,23 @@ def pch_to_lib(pch_text: str, template_header: str | None = None) -> str:
         raise ValueError("pch 中找不到分支头")
     nodes = [m.groups() for m in (_BRANCH_HEAD.match(x) for _, x in heads) if m]
     n = len(nodes)
-    if template_header:
-        header = template_header
-    else:
-        # fallback：固定 6 字符节点名格式（对齐 C#/模板：KBEG 3-9、KEND 8-14）。
-        # KARD 列边界无法从 .pch 推导（ATP 内部按卡类型定义），fallback 用模板常见值 29。
-        kard = "".join("%3d" % v for _ in range(n) for v in (29, 29))
-        karg = "".join("%3d" % v for i in range(1, n + 1) for v in (i, i + n))
-        kbeg = "".join("%3d" % v for _ in range(n) for v in (3, 9))
-        kend = "".join("%3d" % v for _ in range(n) for v in (8, 14))
-        ktex = "".join("%3d" % v for _ in range(n) for v in (1, 1))
-        header = (
-            "KARD" + kard + "\n"
-            + "KARG" + karg + "\n"
-            + "KBEG" + kbeg + "\n"
-            + "KEND" + kend + "\n"
-            + "KTEX" + ktex + "\n"
-            + "/BRANCH\n"
-        )
+    # KARD = 各分支头行号 + 2（对齐 C#：KARD 值 = 0-based 分支头行号 + 2）
+    kard = "".join("%3d" % v for i, _ in heads for v in (i + 2, i + 2))
+    karg = "".join("%3d" % v for i in range(1, n + 1) for v in (i, i + n))
+    kbeg = "".join("%3d" % v for _ in range(n) for v in (3, 9))
+    kend = "".join("%3d" % v for _ in range(n) for v in (8, 14))
+    ktex = "".join("%3d" % v for _ in range(n) for v in (1, 1))
     ins = [a for a, _ in nodes]
     outs = [b for _, b in nodes]
     body = "\n".join(data)
     arg = "ARG, " + ", ".join(ins + outs) + ","
     return (
-        header
+        "KARD" + kard + "\n"
+        + "KARG" + karg + "\n"
+        + "KBEG" + kbeg + "\n"
+        + "KEND" + kend + "\n"
+        + "KTEX" + ktex + "\n"
+        + "/BRANCH\n"
         + body + "\n"
         + "$EOF\n"
         + arg + "\n"
