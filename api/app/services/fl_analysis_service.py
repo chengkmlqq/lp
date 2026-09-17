@@ -178,8 +178,40 @@ def serialize_run(item: FlAnalysisRun) -> FlAnalysisRunSummary:
     )
 
 
-def serialize_job(item: FlAnalysisJob, *, include_runs: bool = False) -> FlAnalysisJobDetail | FlAnalysisJobSummary:
+def job_live_counts(db: Session, job_ids: list[str]) -> dict[str, dict[str, int]]:
+    """从表实时统计任务的快照数/结果数（运行期间 job.result_tower_count 收尾才写，恒 0）。
+
+    多塔并行（0d0f1a4）后塔 worker 不写共享 job 行，result_tower_count 由 execute_job
+    收尾统一写 → 运行中列表/详情显示 0。这里改为查询时按
+    fl_analysis_tower_snapshot / fl_analysis_tower_result 表实时 count。
+    """
+    counts: dict[str, dict[str, int]] = {}
+    if not job_ids:
+        return counts
+    counts = {jid: {"snapshotted": 0, "result": 0} for jid in job_ids}
+    for jid, c in db.execute(
+        select(FlAnalysisTowerSnapshot.job_id, func.count())
+        .where(FlAnalysisTowerSnapshot.job_id.in_(job_ids))
+        .group_by(FlAnalysisTowerSnapshot.job_id)
+    ).all():
+        counts[jid]["snapshotted"] = int(c)
+    for jid, c in db.execute(
+        select(FlAnalysisTowerResult.job_id, func.count())
+        .where(FlAnalysisTowerResult.job_id.in_(job_ids))
+        .group_by(FlAnalysisTowerResult.job_id)
+    ).all():
+        counts[jid]["result"] = int(c)
+    return counts
+
+
+def serialize_job(
+    item: FlAnalysisJob,
+    *,
+    include_runs: bool = False,
+    live_counts: dict[str, dict[str, int]] | None = None,
+) -> FlAnalysisJobDetail | FlAnalysisJobSummary:
     line = item.line
+    _live = (live_counts or {}).get(item.id) if live_counts else None
     payload: dict[str, Any] = {
         "id": item.id,
         "line_id": item.line_id,
@@ -192,8 +224,8 @@ def serialize_job(item: FlAnalysisJob, *, include_runs: bool = False) -> FlAnaly
         "task_id": item.task_id,
         "latest_run_id": item.latest_run_id,
         "total_tower_count": item.total_tower_count,
-        "snapshotted_tower_count": item.snapshotted_tower_count,
-        "result_tower_count": item.result_tower_count,
+        "snapshotted_tower_count": _live["snapshotted"] if _live else item.snapshotted_tower_count,
+        "result_tower_count": _live["result"] if _live else item.result_tower_count,
         "fractional_progress": item.fractional_progress,
         "current_step_text": item.current_step_text,
         "external_adapter": item.external_adapter,
@@ -312,7 +344,10 @@ def list_jobs(
         .limit(limit)
         .offset(offset)
     ).scalars().all()
-    return FlAnalysisJobListResponse(items=[serialize_job(item) for item in items], total=total)
+    live_counts = job_live_counts(db, [item.id for item in items])
+    return FlAnalysisJobListResponse(
+        items=[serialize_job(item, live_counts=live_counts) for item in items], total=total
+    )
 
 
 def list_tower_results(db: Session, *, job_id: str, run_id: str | None = None) -> FlAnalysisTowerResultListResponse:

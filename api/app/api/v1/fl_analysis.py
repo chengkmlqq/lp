@@ -23,6 +23,7 @@ from ...services.fl_analysis_service import (
     download_result_csv,
     download_report_document,
     get_job_by_id,
+    job_live_counts,
     list_jobs,
     list_tower_results,
     serialize_job,
@@ -84,7 +85,7 @@ def get_fl_analysis_job_detail(
     item = get_job_by_id(db, job_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="防雷分析任务不存在")
-    return serialize_job(item, include_runs=True)
+    return serialize_job(item, include_runs=True, live_counts=job_live_counts(db, [job_id]))
 
 
 @router.get("/jobs/{job_id}/results", response_model=FlAnalysisTowerResultListResponse)
