@@ -1430,9 +1430,14 @@ def execute_external_waveform_tower_analysis(
             timeout_seconds=resolved_job.timeout_seconds,
         )
 
+    # ⚠️ 传相对文件名（cwd 已是 run_dir）——2026-09-15 LCC 同款坑，2026-09-17 主仿真补齐：
+    # ATP 的 Fortran 代码会把命令行传入的文件名整串小写化后在（大小写敏感的）Linux/Wine 上打开。
+    # 绝对路径含大写段时（/app/data/wine/ATP/...、atp-models 目录名若含大写）会被小写成
+    # …/atp/… 而打不开 → ATP 报 `File ... cannot be opened / Halt in SYSDEP`（rc=3）。
+    # 36 实测：220 鼓型塔任务主仿真绝对路径必失败，同目录相对名 work.atp 秒成功（RC=0）。
     command = _build_command(
         adapter=resolved_job.adapter,
-        input_path=input_path,
+        input_path=input_path if resolved_job.adapter not in ("atp", "wine") else input_path.name,
         extra_args=resolved_job.extra_args,
     )
     logger.info("[ATP] 执行命令：%s，工作目录：%s", " ".join(command), run_dir)
