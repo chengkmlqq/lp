@@ -25,6 +25,7 @@ import type { ColumnsType } from "antd/es/table";
 import { DeleteOutlined, EditOutlined, ExperimentOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, readApiError } from "@/lib/api";
 
 type TreeNodeData = {
@@ -83,6 +84,8 @@ const { Text, Title } = Typography;
 
 export default function AtpParamTemplatesPage() {
   const { message } = App.useApp();
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission("atp.manage");
   const [keyword, setKeyword] = useState("");
   const [tree, setTree] = useState<TreeResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -434,18 +437,20 @@ export default function AtpParamTemplatesPage() {
                   </Space>
                 }
                 extra={
-                  <Space>
-                    <Button icon={<ExperimentOutlined />} onClick={() => { setEditingForChild(false); openEditor(); }}>
-                      编辑
-                    </Button>
-                    <Button icon={<PlusOutlined />} onClick={() => { setEditingForChild(true); void deriveChild(); }}>
-                      新建细分
-                    </Button>
-                    <Button onClick={() => void disableTemplate()}>{detail.enabled ? "停用" : "启用"}</Button>
-                    <Button danger icon={<DeleteOutlined />} onClick={() => void removeTemplate()}>
-                      删除
-                    </Button>
-                  </Space>
+                  canManage ? (
+                    <Space>
+                      <Button icon={<ExperimentOutlined />} onClick={() => { setEditingForChild(false); openEditor(); }}>
+                        编辑
+                      </Button>
+                      <Button icon={<PlusOutlined />} onClick={() => { setEditingForChild(true); void deriveChild(); }}>
+                        新建细分
+                      </Button>
+                      <Button onClick={() => void disableTemplate()}>{detail.enabled ? "停用" : "启用"}</Button>
+                      <Button danger icon={<DeleteOutlined />} onClick={() => void removeTemplate()}>
+                        删除
+                      </Button>
+                    </Space>
+                  ) : null
                 }
               >
                 <Table

@@ -224,8 +224,11 @@ function readMutationError(error: unknown, fallback: string): string {
 
 export default function ElevationRecordsPage() {
   const { message: messageApi } = App.useApp();
-  const { fetchWithAuth, getAccessToken } = useAuth();
+  const { fetchWithAuth, getAccessToken, hasPermission } = useAuth();
   const queryClient = useQueryClient();
+
+  const canRead = hasPermission("elevation.read") || hasPermission("elevation.manage");
+  const canManage = hasPermission("elevation.manage");
 
   const [uploadForm] = Form.useForm();
   const [applyForm] = Form.useForm<ApplyFormValues>();
@@ -733,7 +736,7 @@ export default function ElevationRecordsPage() {
         const editing = editMutation.isPending && editingId === row.id;
         const rowBusy = analyzing || deleting || editing;
 
-        return (
+        return canManage ? (
           <Space wrap>
             <Button
               size="small"
@@ -791,6 +794,8 @@ export default function ElevationRecordsPage() {
               </Tooltip>
             </Dropdown>
           </Space>
+        ) : (
+          <span style={{ color: "rgba(0,0,0,0.25)" }}>—</span>
         );
       },
     },
@@ -937,9 +942,11 @@ export default function ElevationRecordsPage() {
         onEdit={handleTabsEdit}
         className="admin_elevation_tabs"
         tabBarExtraContent={
-          <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
-            导入
-          </Button>
+          canManage ? (
+            <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
+              导入
+            </Button>
+          ) : null
         }
         items={[
           {
