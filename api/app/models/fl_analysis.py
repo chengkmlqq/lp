@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.database import Base
@@ -167,6 +167,9 @@ class FlAnalysisTowerResult(Base):
         Index("idx_fl_analysis_tower_result_snapshot", "snapshot_id"),
         Index("idx_fl_analysis_tower_result_status", "status"),
         Index("idx_fl_analysis_tower_result_risk", "risk_level"),
+        # ⚠️ 结果幂等（2026-09-18）：同一 run 内同一塔（snapshot）只允许一条结果。
+        # 防止 Redis visibility_timeout 重投导致 execute_job 双执行时结果翻倍。
+        UniqueConstraint("run_id", "snapshot_id", name="uq_fl_analysis_tower_result_run_snapshot"),
     )
 
     id: Mapped[str] = mapped_column(

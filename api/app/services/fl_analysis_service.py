@@ -1178,19 +1178,28 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                     graded = baseline_result
             else:
                 graded = grade_snapshot_payload(payload)
-            db.add(
-                FlAnalysisTowerResult(
-                    job_id=job.id,
-                    run_id=run.id,
-                    snapshot_id=snapshot.id,
-                    status="success",
-                    risk_level=graded["risk_level"],
-                    summary_text=graded["summary_text"],
-                    result_json=graded,
-                    create_date=utcnow(),
-                    update_date=utcnow(),
+            # ⚠️ 结果写入幂等（2026-09-18 修复）：同一 run 的同一塔（snapshot）结果只写一次，
+            # 避免 execute_job 被 Redis 重投双执行时同塔结果翻倍。
+            existing_result = db.execute(
+                select(FlAnalysisTowerResult.id).where(
+                    FlAnalysisTowerResult.run_id == run.id,
+                    FlAnalysisTowerResult.snapshot_id == snapshot.id,
                 )
-            )
+            ).scalar_one_or_none()
+            if existing_result is None:
+                db.add(
+                    FlAnalysisTowerResult(
+                        job_id=job.id,
+                        run_id=run.id,
+                        snapshot_id=snapshot.id,
+                        status="success",
+                        risk_level=graded["risk_level"],
+                        summary_text=graded["summary_text"],
+                        result_json=graded,
+                        create_date=utcnow(),
+                        update_date=utcnow(),
+                    )
+                )
             # (result_count 由 execute_job 主线程归并)
             # (summary 由 execute_job 主线程归并)
             # 本塔所有阶段完成：推进到末尾并回填最终进度（1.0 代表本塔完成）
@@ -1290,6 +1299,22 @@ def execute_job(job_id: str) -> None:
     try:
         job = get_job_by_id(db, job_id)
         if not job:
+            return
+
+        # ⚠️ 幂等防重（2026-09-18 修复）：execute_job 可能被 Redis visibility_timeout
+        # 超时重投重复触发（同 task 双执行）。若 job 已有未结束的 active run（running/queued），
+        # 说明已有 worker 正在执行本任务，直接返回忽略重投，避免结果表翻倍。
+        active_run = db.execute(
+            select(FlAnalysisRun).where(
+                FlAnalysisRun.job_id == job.id,
+                FlAnalysisRun.status.in_(["running", "queued"]),
+            )
+        ).scalars().first()
+        if active_run is not None:
+            logger.warning(
+                "[fl-analysis] 任务 %s 已有 active run %s（status=%s），忽略 Redis 重投/重复派发",
+                job.id, active_run.id, active_run.status,
+            )
             return
 
         now = utcnow()

@@ -49,10 +49,11 @@ celery_app.conf.update(
             "schedule": 3600.0,  # 每小时清理一次（覆盖 24h 保留期的孤儿临时文件）
         },
     },
-    # Redis broker 默认 visibility_timeout=3600s，重任务（如雷电分布导入约 106 分钟）
-    # 超过 1 小时会被 Redis 重新投递，导致同一任务被两个 worker 并行执行。
-    # 调大到 21600s（6 小时）覆盖最长任务耗时，避免超时重投造成双副本并行。
-    broker_transport_options={"visibility_timeout": 21600},
+    # Redis broker 默认 visibility_timeout=3600s，重任务（如雷电分布导入约 106 分钟）超 1 小时
+    # 会被 Redis 重新投递，导致同一任务被两个 worker 并行执行。
+    # ⚠️ 2026-09-18：实测防雷任务单任务可跑 10 小时以上（159 塔约 10.2h），6h（21600s）仍会被
+    # 超时重投 → 同 task 双执行 → 结果表翻倍。调大到 86400s（24h）覆盖最长任务耗时。
+    broker_transport_options={"visibility_timeout": 86400},
     enable_utc=True,
     result_serializer="json",
     # 心跳间隔显式设为 15s，替代 Celery event 模式约 2s 的默认值，降低每个 worker 对
