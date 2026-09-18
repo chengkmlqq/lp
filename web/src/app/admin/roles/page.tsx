@@ -49,12 +49,14 @@ type RoleFormValues = {
   code: string;
   name: string;
   menu_ids: string[];
+  permission_codes: string[];
 };
 
 const EMPTY_FORM: RoleFormValues = {
   code: "",
   name: "",
   menu_ids: [],
+  permission_codes: [],
 };
 
 const ROLE_TABLE_MIN_SCROLL_Y = 180;
@@ -130,6 +132,23 @@ export default function AdminRolesPage() {
     }, [canRead, queryClient, user]),
   );
 
+  // 权限码清单(供角色「权限码」多选下拉)
+  const permissionsQuery = useQuery({
+    queryKey: ["admin.permissions"],
+    queryFn: async () => {
+      const response = await fetchWithAuth("/api/v1/admin/permissions");
+      if (!response.ok) throw new Error(await readApiError(response));
+      const data = (await response.json()) as { items?: { id: number; code: string; name: string }[] };
+      return data.items ?? [];
+    },
+    enabled: !!user && canRead,
+    staleTime: 5 * 60 * 1000,
+  });
+  const permissionOptions = useMemo(
+    () => (permissionsQuery.data ?? []).map((item) => ({ label: item.code, value: item.code })),
+    [permissionsQuery.data],
+  );
+
   useTopicSubscription(
     "admin.menus",
     useCallback(() => {
@@ -172,7 +191,7 @@ export default function AdminRolesPage() {
   const updateRoleMutation = useMutation({
     mutationFn: async ({ roleId, payload }: {
       roleId: string;
-      payload: { name: string; menu_ids: string[] };
+      payload: { name: string; menu_ids: string[]; permission_codes: string[] };
     }) => {
       const response = await fetchWithAuth(`/api/v1/admin/roles/${roleId}`, {
         method: "PATCH",
@@ -359,6 +378,7 @@ export default function AdminRolesPage() {
       code: role.code,
       name: role.name,
       menu_ids: role.menu_ids,
+      permission_codes: role.permission_codes ?? [],
     });
     setDialogOpen(true);
   }, [form]);
@@ -373,6 +393,7 @@ export default function AdminRolesPage() {
         code: values.code.trim(),
         name: values.name.trim(),
         menu_ids: values.menu_ids ?? [],
+        permission_codes: values.permission_codes ?? [],
       };
       const formatError = validateRoleCodeFormat(payload.code);
       if (formatError) {
@@ -386,6 +407,7 @@ export default function AdminRolesPage() {
           payload: {
             name: payload.name,
             menu_ids: payload.menu_ids,
+            permission_codes: payload.permission_codes,
           },
         });
       } else {
@@ -1042,6 +1064,24 @@ export default function AdminRolesPage() {
                     treeData={menuTreeOptions}
                     placeholder="请选择可见菜单"
                     maxTagCount={3}
+                    maxTagPlaceholder={(omitted) => `+${omitted.length} 项`}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24}>
+                <Form.Item
+                  label="权限码"
+                  name="permission_codes"
+                  extra="控制按钮级操作（如 elevation.manage 控制导入/编辑/删除）。勾选后保存即写入角色权限。"
+                >
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    showSearch
+                    options={permissionOptions}
+                    placeholder="请选择权限码"
+                    optionFilterProp="label"
+                    maxTagCount={4}
                     maxTagPlaceholder={(omitted) => `+${omitted.length} 项`}
                   />
                 </Form.Item>

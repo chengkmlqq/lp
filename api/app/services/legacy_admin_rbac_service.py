@@ -255,6 +255,9 @@ def create_role(db: Session, payload: RoleCreateRequest, *, actor_user_id: str |
             )
 
         _replace_role_menus_internal(db, role_id, menu_ids, role_source=role_source)
+        _replace_role_permissions_internal(
+            db, role_id, list(payload.permission_codes or []), role_source=role_source
+        )
         write_audit_log(
             db,
             action="role.create",
@@ -354,6 +357,15 @@ def update_role(db: Session, role_id: str, payload: RoleUpdateRequest, *, actor_
                 changed_fields.append("menu_ids")
             _replace_role_menus_internal(db, resolved_role_id, menu_ids, role_source=role_source)
             menus_changed = True
+
+        if payload.permission_codes is not None:
+            new_codes = sorted(set(c.strip() for c in payload.permission_codes if c and c.strip()))
+            current_codes = set(current_role.permission_codes)
+            if new_codes != sorted(current_codes):
+                changed_fields.append("permission_codes")
+            _replace_role_permissions_internal(
+                db, resolved_role_id, new_codes, role_source=role_source
+            )
 
         if changed_fields:
             write_audit_log(
@@ -1298,6 +1310,59 @@ def _legacy_user_role_relation_exists(db: Session) -> bool:
     except SQLAlchemyError:
         db.rollback()
         return False
+
+
+def _replace_role_permissions_internal(
+    db: Session, role_id: str, permission_codes: list[str], *, role_source: str = "legacy"
+) -> None:
+    """替换角色的直接权限码(role_permissions)。
+
+    只写角色手工授予的 manage 等码(菜单绑定自动授予的 read 码不在此管理,解绑也不回收)。
+    现代(roles)表:先按 id/code 解析出整数 role_id，清空 role_permissions 后按权限码重新写入，
+    未知码静默跳过。传的是 code 字符串时也能正确落到对应角色。
+    """
+    if role_source == "legacy":
+        return  # legacy 表不按此方式管理权限码
+    resolved_id = role_id.strip()
+    if not resolved_id.isdigit():
+        try:
+            row = db.execute(
+                text("SELECT id::text AS rid FROM roles WHERE code = :code LIMIT 1"),
+                {"code": resolved_id},
+            ).mappings().first()
+            if row:
+                resolved_id = str(row["rid"])
+            else:
+                return  # 角色不存在,跳过
+        except SQLAlchemyError:
+            db.rollback()
+            raise
+    try:
+        db.execute(
+            text("DELETE FROM role_permissions WHERE role_id::text = :role_id"),
+            {"role_id": resolved_id},
+        )
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+    normalized = sorted(set(c.strip() for c in permission_codes if c and c.strip()))
+    if not normalized:
+        return
+    try:
+        stmt = text(
+            """
+            INSERT INTO role_permissions (role_id, permission_id)
+            SELECT CAST(:role_id AS INTEGER), p.id
+            FROM permissions p
+            WHERE p.code = :code
+            ON CONFLICT DO NOTHING
+            """
+        )
+        for code in normalized:
+            db.execute(stmt, {"role_id": resolved_id, "code": code})
+    except SQLAlchemyError:
+        db.rollback()
+        raise
 
 
 def _get_role_user_ids(db: Session, role_id: str) -> list[str]:
