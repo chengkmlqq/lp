@@ -502,9 +502,53 @@ def delete_role(db: Session, role_id: str, *, actor_user_id: str | None) -> bool
     return True
 
 
+# 权限码 → 中文名映射(供角色"权限码"配置界面展示)
+PERMISSION_MODULE_NAMES: dict[str, str] = {
+    "line": "线路",
+    "tower": "杆塔",
+    "tower_model": "杆塔模型",
+    "atp": "ATP模型",
+    "atp_param": "ATP参数",
+    "elevation": "高程数据",
+    "lightning": "雷电数据",
+    "file": "文件",
+    "user": "用户",
+    "role": "角色",
+    "menu": "菜单",
+    "system_param": "系统参数",
+    "celery": "任务监控",
+    "wine": "Wine执行器",
+    "ai_chat": "AI助手",
+    "admin": "系统",
+}
+PERMISSION_ACTION_NAMES: dict[str, str] = {
+    "read": "查看",
+    "manage": "管理",
+    "run": "运行",
+    "write": "写入",
+}
+
+
 def list_permissions(_: Session) -> list[dict[str, str | int]]:
     codes = sorted(set(DEFAULT_ADMIN_PERMISSION_CODES))
-    return [{"id": idx + 1, "code": code, "name": code} for idx, code in enumerate(codes)]
+    out = []
+    for idx, code in enumerate(codes):
+        module, dot, action = code.partition(".")
+        module_name = PERMISSION_MODULE_NAMES.get(module, module)
+        action_name = PERMISSION_ACTION_NAMES.get(action, action)
+        label = f"{module_name}·{action_name}" if action else module_name
+        out.append(
+            {
+                "id": idx + 1,
+                "code": code,
+                "name": code,
+                "label": label,
+                "group": module_name,
+                "module": module,
+                "action": action or "",
+            }
+        )
+    return out
 
 
 def list_menus(db: Session, keyword: str | None = None, status: str | None = None) -> MenuListResponse:

@@ -138,16 +138,12 @@ export default function AdminRolesPage() {
     queryFn: async () => {
       const response = await fetchWithAuth("/api/v1/admin/permissions");
       if (!response.ok) throw new Error(await readApiError(response));
-      const data = (await response.json()) as { items?: { id: number; code: string; name: string }[] };
+      const data = (await response.json()) as { items?: { id: number; code: string; name: string; label: string; module: string }[] };
       return data.items ?? [];
     },
     enabled: !!user && canRead,
     staleTime: 5 * 60 * 1000,
   });
-  const permissionOptions = useMemo(
-    () => (permissionsQuery.data ?? []).map((item) => ({ label: item.code, value: item.code })),
-    [permissionsQuery.data],
-  );
 
   useTopicSubscription(
     "admin.menus",
@@ -248,13 +244,21 @@ export default function AdminRolesPage() {
   });
 
   const menuTreeOptions = useMemo(() => {
-    // Build lookup map
+    // 权限码按模块前缀分组:perm:list -> [perm item...](供叶子菜单挂子节点)
+    const permsByModule = new Map<string, { code: string; label: string }[]>();
+    for (const item of permissionsQuery.data ?? []) {
+      const mod = item.module || "";
+      const arr = permsByModule.get(mod) ?? [];
+      arr.push({ code: item.code, label: item.label || item.code });
+      permsByModule.set(mod, arr);
+    }
+    // 叶子菜单 -> 其 permission_code 模块前缀对应的权限码(菜单页面权限 + 该模块操作按钮)
+    // 叶子菜单 value=menu:<id>, 权限码 value=perm:<code>, 提交/回显时分拆。
     const menuMap = new Map<string, MenuItem>();
     for (const menu of menus) {
       menuMap.set(menu.id, menu);
     }
 
-    // Group children by parent_id
     const childrenByParent = new Map<string | null, MenuItem[]>();
     for (const menu of menus) {
       const parentKey = menu.parent_id ?? "__root__";
@@ -263,12 +267,10 @@ export default function AdminRolesPage() {
       childrenByParent.set(parentKey, group);
     }
 
-    // Sort each group by sort_order
     for (const group of childrenByParent.values()) {
       group.sort((a, b) => a.sort_order - b.sort_order);
     }
 
-    // Build tree recursively
     function buildNodes(parentKey: string | null): DataNode[] {
       const key = parentKey === null ? "__root__" : parentKey;
       const children = childrenByParent.get(key) ?? [];
@@ -276,18 +278,33 @@ export default function AdminRolesPage() {
         const isDir = menu.type === "directory";
         const label = isDir ? `📁 ${menu.name}` : menu.name;
         const subChildren = buildNodes(menu.id);
+        let permNodes: DataNode[] | undefined;
+        // 叶子菜单(非目录)且带 permission_code -> 在树下挂该模块权限码 checkbox
+        if (!isDir && subChildren.length === 0 && menu.permission_code) {
+          const mod = menu.permission_code.split(".")[0];
+          const perms = permsByModule.get(mod);
+          if (perms && perms.length > 0) {
+            permNodes = perms.map((p) => ({
+              title: p.label,
+              value: `perm:${p.code}`,
+              key: `perm:${p.code}`,
+              selectable: true,
+            }));
+          }
+        }
+        const merged = [...subChildren, ...(permNodes ?? [])];
         return {
           title: label,
-          value: menu.id,
+          value: `menu:${menu.id}`,
           key: menu.id,
           selectable: true,
-          children: subChildren.length > 0 ? subChildren : undefined,
+          children: merged.length > 0 ? merged : undefined,
         };
       });
     }
 
     return buildNodes(null);
-  }, [menus]);
+  }, [menus, permissionsQuery.data]);
 
   const menuNameById = useMemo(() => {
     return new Map(menus.map((menu) => [menu.id, menu.name]));
@@ -374,10 +391,12 @@ export default function AdminRolesPage() {
     setSuccess("");
     setRoleCodeValidationError("");
     setEditingRole(role);
+    const menuVals = (role.menu_ids ?? []).map((mid) => `menu:${mid}`);
+    const permVals = (role.permission_codes ?? []).map((pc) => `perm:${pc}`);
     form.setFieldsValue({
       code: role.code,
       name: role.name,
-      menu_ids: role.menu_ids,
+      menu_ids: [...new Set([...menuVals, ...permVals])],
       permission_codes: role.permission_codes ?? [],
     });
     setDialogOpen(true);
@@ -389,11 +408,18 @@ export default function AdminRolesPage() {
 
     try {
       const values = await form.validateFields();
+      const checkedValues: string[] = values.menu_ids ?? [];
+      const menuIds = checkedValues
+        .filter((v) => v.startsWith("menu:"))
+        .map((v) => v.slice("menu:".length));
+      const permCodes = checkedValues
+        .filter((v) => v.startsWith("perm:"))
+        .map((v) => v.slice("perm:".length));
       const payload: RoleFormValues = {
         code: values.code.trim(),
         name: values.name.trim(),
-        menu_ids: values.menu_ids ?? [],
-        permission_codes: values.permission_codes ?? [],
+        menu_ids: menuIds,
+        permission_codes: [...new Set(permCodes)],
       };
       const formatError = validateRoleCodeFormat(payload.code);
       if (formatError) {
@@ -1055,32 +1081,18 @@ export default function AdminRolesPage() {
                 </Form.Item>
               </Col>
               <Col xs={24}>
-                <Form.Item label="可见菜单" name="menu_ids">
+                <Form.Item
+                  label="菜单与操作权限"
+                  name="menu_ids"
+                  extra="勾选菜单即授予页面查看权限；展开菜单可勾选查看/管理/运行等操作权限（按钮级）。"
+                >
                   <TreeSelect
                     allowClear
                     showSearch
                     treeCheckable
                     showCheckedStrategy="SHOW_PARENT"
                     treeData={menuTreeOptions}
-                    placeholder="请选择可见菜单"
-                    maxTagCount={3}
-                    maxTagPlaceholder={(omitted) => `+${omitted.length} 项`}
-                  />
-                </Form.Item>
-              </Col>
-              <Col xs={24}>
-                <Form.Item
-                  label="权限码"
-                  name="permission_codes"
-                  extra="控制按钮级操作（如 elevation.manage 控制导入/编辑/删除）。勾选后保存即写入角色权限。"
-                >
-                  <Select
-                    mode="multiple"
-                    allowClear
-                    showSearch
-                    options={permissionOptions}
-                    placeholder="请选择权限码"
-                    optionFilterProp="label"
+                    placeholder="请选择菜单与操作权限"
                     maxTagCount={4}
                     maxTagPlaceholder={(omitted) => `+${omitted.length} 项`}
                   />
