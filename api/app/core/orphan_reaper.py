@@ -76,7 +76,9 @@ def reap_orphans(max_batch: int = 512) -> int:
             break  # 无已退出子进程
         reaped += 1
     if reaped:
-        _logger.info("orphan_reaper: 收割了 %d 个孤儿/僵尸子进程", reaped)
+        # DEBUG 级：属内部维护噪音，不应出现在用户可见的任务日志里
+        # （任务日志捕获级别默认 INFO，DEBUG 不入任务日志；需排查时调高捕获级别即可看到）
+        _logger.debug("orphan_reaper: 收割了 %d 个孤儿/僵尸子进程", reaped)
     return reaped
 
 
