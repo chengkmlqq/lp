@@ -431,7 +431,6 @@ def delete_menu(db: Session, menu_id: int) -> bool:
         "admin.files",
         "admin.elevation",
         "admin.syslog",
-        "admin.wine_runner",
     }:
         return False
     child_exists = db.scalar(select(Menu.id).where(Menu.parent_id == menu_id))

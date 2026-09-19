@@ -43,7 +43,6 @@ MENU_ROUTE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/api/v1/tower-models", "/admin/tower-models"),
     ("/api/v1/admin/files", "/admin/files"),
     ("/api/v1/elevation", "/admin/elevation"),
-    ("/api/v1/wine", "/admin/wine-runner"),
     ("/api/v1/fault-matlab", "/admin/matlab-engine"),
 )
 

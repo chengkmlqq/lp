@@ -36,8 +36,6 @@ DEFAULT_ADMIN_PERMISSION_CODES: set[str] = {
     "atp.run",
     "celery.read",
     "celery.manage",
-    "wine.read",
-    "wine.manage",
 }
 
 ADMIN_ROLE_IDS = {
@@ -100,7 +98,6 @@ MENU_CODE_PERMISSION_MAP: dict[str, set[str]] = {
     "admin.fault_recurrence": {"line.read", "line.manage", "tower.read", "tower.manage"},
     "admin.lightning_currents": {"lightning.read", "lightning.manage"},
     "admin.lightning_distribution": {"lightning.read", "lightning.manage"},
-    "admin.wine_runner": {"wine.read", "wine.manage"},
 }
 
 SYNTHETIC_LEGACY_MENU_ROWS: list[dict[str, Any]] = [
@@ -190,17 +187,6 @@ SYNTHETIC_LEGACY_MENU_ROWS: list[dict[str, Any]] = [
         "url": "/admin/fault-recurrence",
         "menu_icon": "Experiment",
         "seq": 50,
-        "state": "ENABLED",
-    },
-    {
-        "menu_id": "admin.wine_runner",
-        "menu_name": "admin.wine_runner",
-        "menu_label": "Wine执行器",
-        "menu_type": "MENU",
-        "parent_id": None,
-        "url": "/admin/wine-runner",
-        "menu_icon": "Terminal",
-        "seq": 65,
         "state": "ENABLED",
     },
 ]

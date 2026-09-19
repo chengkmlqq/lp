@@ -103,7 +103,6 @@ PROTECTED_MENU_CODES = {
     "admin.knowledge_point_mgr",
     "admin.job_mgr",
     "admin.syslog",
-    "admin.wine_runner",
     # quiz legacy defaults
     "sys_mgr",
     "menu_mgr",
@@ -517,7 +516,6 @@ PERMISSION_MODULE_NAMES: dict[str, str] = {
     "menu": "菜单",
     "system_param": "系统参数",
     "celery": "任务监控",
-    "wine": "Wine执行器",
     "ai_chat": "AI助手",
     "admin": "系统",
 }

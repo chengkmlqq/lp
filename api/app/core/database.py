@@ -894,7 +894,6 @@ def init_db() -> None:
         tower_model,
         tower_profile,
         user,
-        wine,
         worker_registry,
     )  # noqa: F401
     _ensure_user_pk_column_compatibility()

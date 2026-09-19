@@ -111,8 +111,6 @@ DEFAULT_PERMISSIONS: dict[str, str] = {
     "atp.run": "Run ATP simulations",
     "celery.read": "Read Celery workers, queues, and task statuses",
     "celery.manage": "Manage Celery worker control operations",
-    "wine.read": "Read Wine executor status",
-    "wine.manage": "Run Windows executables through Wine",
 }
 
 DEFAULT_ROLES: dict[str, dict[str, object]] = {
@@ -146,8 +144,6 @@ DEFAULT_ROLES: dict[str, dict[str, object]] = {
             "atp.run",
             "celery.read",
             "celery.manage",
-            "wine.read",
-            "wine.manage",
             "ai_chat.read",
         ],
     },
@@ -516,19 +512,6 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "permission_code": "file.read",
     },
     {
-        "code": "admin.wine_runner",
-        "name": "Wine执行器",
-        "path": "/admin/wine-runner",
-        "icon": "Terminal",
-        "parent_code": "admin.debug",
-        "type": "menu",
-        "sort_order": 20,
-        "status": "enabled",
-        "visible": True,
-        "cacheable": False,
-        "permission_code": "wine.read",
-    },
-    {
         "code": "admin.matlab_engine",
         "name": "MATLAB引擎管理",
         "path": "/admin/matlab-engine",
@@ -585,7 +568,6 @@ ROLE_MENU_BINDINGS: dict[str, list[str]] = {
         "admin.scheduled_tasks",
         "admin.debug",
         "admin.files",
-        "admin.wine_runner",
         "admin.matlab_engine",
     ],
     "user": [],
