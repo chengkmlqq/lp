@@ -432,6 +432,81 @@ def _ensure_atp_asset_column_compatibility() -> None:
             )
 
 
+def _ensure_atp_asset_run_column_compatibility() -> None:
+    """
+    Keep `atp_asset_run` columns aligned with the current ORM mapping.
+
+    ⚠️ 2026-09-19 生产实测：`stderr_text` / `timed_out` 由模型与执行侧写入，
+    但迁移 019 未执行到生产库 → SELECT 报 UndefinedColumn（ATP 运行记录接口 500）。
+    迁移写了却漏执行是反复出现的故障类，故在此加启动自愈（与 atp_asset 等同款约定）。
+    """
+    if not database_url.startswith("postgresql"):
+        return
+
+    schema = settings.resolved_db_schema
+    with engine.begin() as connection:
+        db_inspector = inspect(connection)
+        if not db_inspector.has_table("atp_asset_run", schema=schema):
+            return
+
+        column_names = {
+            column["name"]
+            for column in db_inspector.get_columns("atp_asset_run", schema=schema)
+        }
+
+        if "stderr_text" not in column_names:
+            connection.execute(
+                text("ALTER TABLE atp_asset_run ADD COLUMN IF NOT EXISTS stderr_text TEXT"),
+            )
+            logger.warning(
+                "Detected missing atp_asset_run.stderr_text; added nullable engine stderr column.",
+            )
+
+        if "timed_out" not in column_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE atp_asset_run "
+                    "ADD COLUMN IF NOT EXISTS timed_out BOOLEAN NOT NULL DEFAULT false"
+                ),
+            )
+            logger.warning(
+                "Detected missing atp_asset_run.timed_out; added boolean timeout flag column.",
+            )
+
+
+def _ensure_atp_param_template_column_compatibility() -> None:
+    """
+    Keep `atp_param_template` columns aligned with the current ORM mapping.
+
+    `defaults_json`（测试默认参数集，迁移 020）同样需要启动自愈，避免漏执行迁移
+    导致参数模板接口 500。
+    """
+    if not database_url.startswith("postgresql"):
+        return
+
+    schema = settings.resolved_db_schema
+    with engine.begin() as connection:
+        db_inspector = inspect(connection)
+        if not db_inspector.has_table("atp_param_template", schema=schema):
+            return
+
+        column_names = {
+            column["name"]
+            for column in db_inspector.get_columns("atp_param_template", schema=schema)
+        }
+
+        if "defaults_json" not in column_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE atp_param_template "
+                    "ADD COLUMN IF NOT EXISTS defaults_json JSONB NOT NULL DEFAULT '{}'::jsonb"
+                ),
+            )
+            logger.warning(
+                "Detected missing atp_param_template.defaults_json; added JSONB defaults column.",
+            )
+
+
 def _ensure_tower_model_column_compatibility() -> None:
     """
     Keep `tower_model` columns aligned with the current ORM mapping.
@@ -904,6 +979,8 @@ def init_db() -> None:
     _ensure_elevation_dataset_column_compatibility()
     _ensure_atp_simulation_run_column_compatibility()
     _ensure_atp_asset_column_compatibility()
+    _ensure_atp_asset_run_column_compatibility()
+    _ensure_atp_param_template_column_compatibility()
     _ensure_tower_model_column_compatibility()
     _ensure_tower_profile_column_compatibility()
     _ensure_dimension_item_type_id_column_compatibility()
