@@ -853,23 +853,25 @@ class _TestContext:
         }
         params = self.ensure_params()
         env = self._engine_env()
-        with GEOMETRY_LOCK:
-            processed = regenerate_line_models(
-                engine_dir=self.engine_dir,
-                tower_kind=str(self.payload.tower_kind or self.asset.tower_type or ""),
-                voltage_kv=self.payload.voltage_kv,
-                params=params,
-                profile=dict(self.payload.profile or {}),
-                base_tower=dict(self.payload.base_tower or {}),
-                build_command=lambda *, input_path: self._build_command(
-                    # regenerate_line_models 传进来的已是相对名（Path("long.dat")），
-                    # 这里原样透传：ATP 会把绝对路径整串小写化 → 打不开（rc=3）。
-                    input_path=input_path,
-                    relative=False,
-                ),
-                env=env,
-                timeout_seconds=int(self.payload.timeout_seconds or 600),
-            )
+        # ⚠️ 这里不要再套 GEOMETRY_LOCK：regenerate_line_models 内部已经加锁，
+        # 而 GEOMETRY_LOCK 是 threading.Lock（不可重入）→ 同线程二次获取会永久死锁
+        # （2026-09-19 实测：geometry 段挂起、celery 子进程卡在 futex_wait）。
+        processed = regenerate_line_models(
+            engine_dir=self.engine_dir,
+            tower_kind=str(self.payload.tower_kind or self.asset.tower_type or ""),
+            voltage_kv=self.payload.voltage_kv,
+            params=params,
+            profile=dict(self.payload.profile or {}),
+            base_tower=dict(self.payload.base_tower or {}),
+            build_command=lambda *, input_path: self._build_command(
+                # regenerate_line_models 传进来的已是相对名（Path("long.dat")），
+                # 这里原样透传：ATP 会把绝对路径整串小写化 → 打不开（rc=3）。
+                input_path=input_path,
+                relative=False,
+            ),
+            env=env,
+            timeout_seconds=int(self.payload.timeout_seconds or 600),
+        )
         log_lines.append(f"几何重生成处理文件：{processed}")
 
         artifacts: dict[str, Any] = {}
