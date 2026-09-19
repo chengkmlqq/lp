@@ -87,10 +87,11 @@ def _build_zip(entries: dict[str, bytes]) -> bytes:
     return buffer.getvalue()
 
 
-def _create_asset(session: Session, *, code: str = "ATP-TEST-001") -> AtpAsset:
+def _create_asset(session: Session, *, code: str = "ATP-TEST-001", tower_type: str = "d220maotou",
+                  voltage_level: str = "220") -> AtpAsset:
     asset = atp_asset_service.create_asset(
         session,
-        AtpAssetCreateRequest(code=code, name="测试资产", voltage_level="220", tower_type="d220maotou"),
+        AtpAssetCreateRequest(code=code, name="测试资产", voltage_level=voltage_level, tower_type=tower_type),
         actor_user_id="tester",
     )
     assert asset is not None
@@ -384,5 +385,100 @@ def test_compare_payload_is_csharp_comparable(tmp_path) -> None:
         assert compare["stages"]["materialize"]["status"] == "ok"
         # 单次 ATP 的固定雷电流必须进报告（对拍口径）
         assert compare["case"]["execution_options"]["binary_search_current_ka"] == payload.current_ka
+    finally:
+        session.close()
+
+
+# ───────────────────────── 6. 无杆塔测试（模板驱动）─────────────────────────
+
+
+def _ctx_without_tower(tmp_path, session, *, tower_type: str, voltage: str, code_suffix: str = "",
+                       **payload_kwargs):
+    """构造一个「无杆塔」测试上下文（资产维度 + 模板默认值）。"""
+    from app.services.fl_analysis_external import ResolvedExternalWaveformJob
+
+    code = f"ATP-NOTOWER-{tower_type}{code_suffix}"
+    asset = _create_asset(session, code=code, tower_type=tower_type, voltage_level=voltage)
+    resolved = ResolvedExternalWaveformJob(
+        adapter="atp",
+        asset=asset,
+        entry_file="work.atp",
+        result_file=None,
+        storage_mount_code="main",
+        storage_root_path=f"/atp-assets/{code}",
+        atp_text="$PARAMETER\nRER001=PLACEHOLDER\n",
+        timeout_seconds=60,
+        extra_args=[],
+        environment={},
+        contract={},
+        parameter_bindings={},
+    )
+    payload = AtpAssetTestRunRequest(
+        tower_kind=tower_type,
+        voltage_kv=int(voltage),
+        current_ka=31.0,
+        **payload_kwargs,
+    )
+    return _TestContext(
+        db=session,
+        run_id="run-notower-0001",
+        asset=asset,
+        payload=payload,
+        resolved_job=resolved,
+        run_dir=tmp_path / "run",
+        engine_dir=tmp_path / "engine",
+        shim=atp_asset_test_service._test_shim("run-notower-0001"),
+    )
+
+
+def test_template_params_source_needs_no_tower(tmp_path) -> None:
+    """无杆塔测试：只给资产维度（塔型/电压），参数由参数模板默认值算出。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        ctx = _ctx_without_tower(tmp_path, session, tower_type="maotou", voltage="220")
+
+        assert ctx.params_source == "template"
+        params = ctx.ensure_params()
+
+        assert len(params) > 10
+        assert params["RER001"] == "10."       # 接地电阻（模板默认值 ground_r=10.0）
+        assert params["REIGAN____"] == "31."   # 固定雷电流 31kA
+        assert params["RELENS____"] == "5.95"  # 绝缘子串长（默认 insul_m=5.945m）
+        diag = ctx.param_diagnostics
+        assert diag["chain"], "应记录命中的模板链"
+        assert diag["defaults_applied"], "应记录用到的默认上下文变量"
+        assert diag["unresolved"] == {}
+    finally:
+        session.close()
+
+
+def test_incomplete_template_defaults_refuse_to_run(tmp_path) -> None:
+    """模板默认值不完整时必须显式报错（禁止静默算无意义结果）；显式放行才继续。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        # sihuita（四回路）暂未提供 c1_*..c4_* 默认值
+        ctx = _ctx_without_tower(tmp_path, session, tower_type="sihuita", voltage="500")
+
+        with pytest.raises(RuntimeError) as excinfo:
+            ctx.ensure_params()
+        message = str(excinfo.value)
+        assert "默认值不完整" in message and "allow_incomplete_defaults" in message
+
+        # 显式放行 → 允许用不完整参数跑（结果可能无物理意义）
+        allowed = _ctx_without_tower(
+            tmp_path,
+            session,
+            tower_type="sihuita",
+            voltage="500",
+            code_suffix="-ALLOW",
+            allow_incomplete_defaults=True,
+        )
+        params = allowed.ensure_params()
+        assert params
+        assert allowed.param_diagnostics["unresolved"], "放行也要保留未解析诊断"
     finally:
         session.close()

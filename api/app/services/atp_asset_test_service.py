@@ -480,6 +480,77 @@ class _TestContext:
         self.entry_path: Path = run_dir / resolved_job.entry_file
         self.execution_options: dict[str, Any] = self._build_execution_options()
         self._lis_flashover: dict[str, Any] = {}
+        # 参数来源：template（无杆塔，用参数模板默认值）/ tower（用传入的杆塔数据）
+        self.params_source: str = (
+            "tower" if (payload.base_tower or payload.profile or payload.params_source == "tower") else "template"
+        )
+        self._params: dict[str, str] | None = None
+        self.param_diagnostics: dict[str, Any] = {}
+
+    # ---- 参数（无杆塔测试的核心）----
+
+    def _voltage_kv(self) -> Any:
+        if self.payload.voltage_kv is not None:
+            return self.payload.voltage_kv
+        raw = (self.asset.voltage_level or "").strip()
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def compute_params(self) -> dict[str, str]:
+        """算出 work.atp 的 ``$PARAMETER`` 参数集。
+
+        - ``tower``：走生产函数 ``compute_csharp_atp_params``（内含 config_db 配置路径）
+        - ``template``：**无杆塔** —— 资产维度（塔型/电压）+ 参数模板默认值
+          （``allow_defaults=True``）。模板不可用或缺默认值时**显式报错**，
+          绝不静默回落成 "1." 占位（那样 ATP 照样跑完，但结果毫无物理意义）。
+        """
+        from .atp_param_config import compute_params_detailed_from_runtime, mode as mapping_mode
+        from .fl_analysis_external import compute_csharp_atp_params
+
+        if self.params_source == "tower":
+            return compute_csharp_atp_params(
+                base_tower=dict(self.payload.base_tower or {}),
+                profile=dict(self.payload.profile or {}),
+                execution_options=self.execution_options,
+            )
+
+        kind = str(self.payload.tower_kind or self.asset.tower_type or "").strip()
+        detailed = compute_params_detailed_from_runtime(
+            base_tower={"tower_type": kind, "line_voltage_kv": self._voltage_kv()},
+            profile={},
+            execution_options={**self.execution_options, "tower_kind": kind},
+            allow_defaults=True,
+        )
+        if detailed is None:
+            raise RuntimeError(
+                f"参数模板不可用（ATP_MAPPING_MODE={mapping_mode()}：DB 无模板行且 JSON 映射缺失）。"
+                "无杆塔测试必须由参数模板提供默认值；禁止静默回落到需要杆塔上下文的代码路径。"
+            )
+        self.param_diagnostics = {
+            "chain": list(detailed.chain),
+            "tower_kind": detailed.tower_kind,
+            "defaults_applied": list(detailed.defaults_applied),
+            "defaults_used": dict(detailed.defaults_used),
+            "unresolved": {slot: list(names) for slot, names in detailed.unresolved.items()},
+        }
+        if detailed.unresolved and not self.payload.allow_incomplete_defaults:
+            preview = "；".join(
+                f"{slot} ← 缺 {'/'.join(names)}"
+                for slot, names in list(detailed.unresolved.items())[:6]
+            )
+            raise RuntimeError(
+                f"参数模板默认值不完整（{len(detailed.unresolved)} 个槽位取不到值）：{preview}。"
+                "请补该塔型/电压的模板默认值；确要用不完整参数跑，请显式传 "
+                "allow_incomplete_defaults=true（结果可能无物理意义）。"
+            )
+        return detailed.as_dict()
+
+    def ensure_params(self) -> dict[str, str]:
+        if self._params is None:
+            self._params = self.compute_params()
+        return self._params
 
     # ---- 参数与渲染 ----
 
@@ -526,22 +597,36 @@ class _TestContext:
 
     def render(self) -> str:
         from .fl_analysis_external import (
+            PLACEHOLDER_PATTERN,
             _looks_like_csharp_equality_template,
             render_atp_template,
             render_csharp_equality_template,
         )
 
+        template_text = self.resolved_job.atp_text
+        is_csharp_style = _looks_like_csharp_equality_template(template_text)
+        if self.params_source == "template" and not is_csharp_style and PLACEHOLDER_PATTERN.search(template_text):
+            # 占位符风格（{base_tower.xxx}）模板的参数来自杆塔上下文 → 无杆塔测试不适用。
+            # 明确报错而不是渲染出空值（禁止静默）。
+            raise RuntimeError(
+                "该 work.atp 是占位符风格（{...}）模板，其参数来自杆塔上下文；"
+                "无杆塔测试目前只支持 C# 等号风格（$PARAMETER 区 NAME=值）模板。"
+                "如需测这类模型，请传 base_tower/profile（params_source=tower）。"
+            )
+
         text = render_atp_template(
-            self.resolved_job.atp_text,
+            template_text,
             context=self._template_context(),
             parameter_bindings=self.resolved_job.parameter_bindings,
         )
-        if _looks_like_csharp_equality_template(text):
+        if is_csharp_style:
             text = render_csharp_equality_template(
                 text,
                 base_tower=dict(self.payload.base_tower or {}),
                 profile=dict(self.payload.profile or {}),
                 execution_options=self.execution_options,
+                # 无杆塔测试：直接用参数模板默认值算出的参数集，不再从空杆塔上下文计算
+                params_override=self.ensure_params() if self.params_source == "template" else None,
             )
         return text
 
@@ -704,20 +789,26 @@ class _TestContext:
         verdicts.append(_verdict("engine_files", engine_ok, engine_detail))
         verdicts.extend(self._prepare_wine_env())
 
-        if self.payload.base_tower:
+        if self.params_source == "tower":
             verdicts.append(
                 _verdict(
-                    "base_tower_provided",
+                    "params_source",
                     True,
-                    f"{len(self.payload.base_tower)} 个字段（几何/仿真参数来源）",
+                    f"tower（传入杆塔数据：base_tower {len(self.payload.base_tower or {})} 字段 / "
+                    f"profile {len(self.payload.profile or {})} 字段）",
                 )
             )
         else:
+            # 无杆塔：参数由「资产维度 + 参数模板默认值」算出；缺默认值会在这里抛错（禁止静默）
+            params = self.ensure_params()
+            diag = self.param_diagnostics
             verdicts.append(
                 _verdict(
-                    "base_tower_provided",
-                    False,
-                    "未提供 base_tower：几何参数将取模板默认值，结果不可与 C# 对比",
+                    "params_source",
+                    True,
+                    f"template（无杆塔）：模板链 {' → '.join(diag.get('chain') or []) or '-'}；"
+                    f"用默认值的上下文变量 {len(diag.get('defaults_applied') or [])} 个；"
+                    f"解析出 {len(params)} 个参数",
                 )
             )
 
@@ -752,7 +843,6 @@ class _TestContext:
 
     def stage_geometry(self) -> dict[str, Any]:
         from .atp_geometry_pipeline import GEOMETRY_LOCK, regenerate_line_models
-        from .fl_analysis_external import compute_csharp_atp_params
 
         verdicts: list[dict[str, Any]] = []
         log_lines: list[str] = []
@@ -761,11 +851,7 @@ class _TestContext:
         before = {
             name: _sha256_file(self.engine_dir / f"{name}.lib") for name in dat_names
         }
-        params = compute_csharp_atp_params(
-            base_tower=dict(self.payload.base_tower or {}),
-            profile=dict(self.payload.profile or {}),
-            execution_options=self.execution_options,
-        )
+        params = self.ensure_params()
         env = self._engine_env()
         with GEOMETRY_LOCK:
             processed = regenerate_line_models(
@@ -998,6 +1084,8 @@ class _TestContext:
                 "engine_dir": str(self.engine_dir),
             },
             "stages": stage_results,
+            "params_source": self.params_source,
+            "params_diagnostics": self.param_diagnostics,
             "atp_params": atp_params,
             "lib_hashes": lib_hashes,
             "simulate": dict(self._lis_flashover or {}),

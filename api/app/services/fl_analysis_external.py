@@ -939,14 +939,22 @@ def render_csharp_equality_template(
     base_tower: dict[str, Any],
     profile: dict[str, Any],
     execution_options: dict[str, Any],
+    params_override: dict[str, str] | None = None,
 ) -> str:
     """渲染 C# 桌面版等号格式模板（$PARAMETER 区 NAME=占位符）。
 
     将 `REHG______=REHGI` 替换为 `REHG______=31.1`（带小数点），与 C# DLL
     Update_work_atp3 的行为一致。返回渲染后的完整文本。
+
+    ``params_override``：直接使用给定参数（「无杆塔测试」用参数模板默认值算出的结果），
+    不再从 base_tower/profile 计算 —— 避免缺上下文时静默退化成 "1." 占位。
     """
-    params = compute_csharp_atp_params(
-        base_tower=base_tower, profile=profile, execution_options=execution_options
+    params = (
+        dict(params_override)
+        if params_override is not None
+        else compute_csharp_atp_params(
+            base_tower=base_tower, profile=profile, execution_options=execution_options
+        )
     )
     lines = template.splitlines(keepends=True)
     rendered: list[str] = []

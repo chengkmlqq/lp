@@ -155,6 +155,7 @@ class AtpEngineStatusResponse(BaseModel):
 
 
 AtpAssetTestStage = Literal["materialize", "geometry", "simulate", "all"]
+AtpAssetTestParamsSource = Literal["template", "tower"]
 
 
 class AtpAssetTestRunRequest(BaseModel):
@@ -183,3 +184,7 @@ class AtpAssetTestRunRequest(BaseModel):
     current_ka: float | None = Field(default=31.0, gt=0)
     timeout_seconds: int | None = Field(default=600, ge=1)
     dry_run: bool = False
+    # 参数来源：template = 无杆塔（资产维度 + 参数模板默认值，默认）；tower = 用传入的杆塔数据
+    params_source: AtpAssetTestParamsSource = "template"
+    # 模板默认值不完整时是否仍继续（默认 False → 显式报错，禁止静默算无意义结果）
+    allow_incomplete_defaults: bool = False
