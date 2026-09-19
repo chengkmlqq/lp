@@ -1,0 +1,1067 @@
+"""ATP 资产「单模型测试」服务。
+
+一次测试 = **分段执行 + 一份两边格式相同的对拍产物包**（``compare.json``）。
+
+设计要点（对应需求：① 改完模型能在 Web 端直接测 ② 结果能直接跟 C# 端对比）：
+
+1. **分段**：``materialize``（物化 + 引擎文件）→ ``geometry``（DAT→LIB）→
+   ``simulate``（单次 ATP）。每段独立判定、可单独跑；判据看**产物**
+   （文件哈希 / .lib 参数数值 / LIS 报错行），**不看退出码** —— ATP 退出码不可信
+   （见 ``atp_geometry_pipeline._ensure_engine_files`` 注释：缺 graphics/startup 时
+   不产出 .pch 但退出码仍为 0）。
+
+2. **独立运行目录**（需求 ① 的关键）：
+   - 运行目录 ``<engine_workdir>/atp-asset-test/<run_id>``
+   - 引擎目录 ``D:\\ATP\\.runs\\t<run_id[:7]><场景短码>``（复用 ``_private_engine_dir``
+     的短命名，保证 ``$INCLUDE`` 卡 ≤80 列）
+   目录全新 ⇒ 没有 ``.geo_key_*`` / ``.gen_lib_*`` 几何指纹缓存 ⇒ **强制真重算**；
+   同时不污染生产目录、并发不互相覆盖。
+
+3. **复用生产函数**（不另写一套，否则测试绿 ≠ 生产能跑）：
+   ``resolve_external_waveform_job`` / ``render_atp_template`` /
+   ``_materialize_asset_files`` / ``_rewrite_includes`` / ``_private_engine_dir`` /
+   ``compute_csharp_atp_params`` / ``regenerate_line_models`` / ``_build_command`` /
+   ``_read_lis_flashover_detail``。测试模式只是「少跑几步 + 多存证据」。
+
+4. **产出 compare.json**（schema ``lp.atp.compare/1``），字段与 C# harness 侧一致，
+   可直接 diff。三层证据：文件 sha256（是否逐字节一致）+ .lib 参数级数值 + 业务数值。
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+import re
+import shutil
+import subprocess
+import time
+import zipfile
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Iterable
+from uuid import uuid4
+
+from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..core.config import get_settings
+from ..models.atp_asset import AtpAsset, AtpAssetRun
+from ..models.base import utcnow
+from ..schemas.atp_asset import AtpAssetRunDetail, AtpAssetTestRunRequest
+
+logger = logging.getLogger(__name__)
+
+COMPARE_SCHEMA = "lp.atp.compare/1"
+TEST_RUN_SUBDIR = "atp-asset-test"
+STAGE_ORDER: tuple[str, ...] = ("materialize", "geometry", "simulate")
+# 产物包要收集的文件（存在才收）
+_ARTIFACT_SUFFIXES: tuple[str, ...] = (".dat", ".pch", ".lib", ".lis", ".pl4", ".atp", ".log")
+# .lib 参数级对比：KARD 之后的 "NAME=VALUE" 赋值行
+_LIB_ASSIGN_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]{1,15})\s*=\s*([-+0-9.eE]+)\s*$")
+
+
+def _sha256_file(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _artifact_entry(path: Path) -> dict[str, Any]:
+    return {
+        "path": path.name,
+        "bytes": path.stat().st_size,
+        "sha256": _sha256_file(path),
+    }
+
+
+def _parse_lib_assignments(path: Path) -> dict[str, float]:
+    """抽取 .lib 里的 ``NAME=VALUE`` 赋值（参数级数值对比用，比整文件哈希更鲁棒）。
+
+    整文件 sha256 会因路径/文件名字符串差异产生假阳性，故以参数级数值为主判据。
+    """
+    if not path.is_file():
+        return {}
+    values: dict[str, float] = {}
+    try:
+        text = path.read_text(encoding="latin-1", errors="replace")
+    except OSError:
+        return {}
+    for line in text.splitlines():
+        match = _LIB_ASSIGN_RE.match(line)
+        if not match:
+            continue
+        name, raw = match.group(1), match.group(2)
+        try:
+            values[name] = float(raw)
+        except ValueError:
+            continue
+    return values
+
+
+def _lis_has_halt(path: Path) -> list[str]:
+    """返回 LIS 里的致命行（``Halt in`` / ``KILL-code`` / ``error stop``）。"""
+    if not path.is_file():
+        return []
+    hits: list[str] = []
+    text = path.read_text(encoding="latin-1", errors="replace")
+    for line in text.splitlines():
+        upper = line.upper()
+        if "HALT IN" in upper or "KILL-CODE" in upper or "ERROR STOP" in upper:
+            hits.append(line.strip()[:200])
+    return hits
+
+
+def _normalize_stages(requested: Iterable[str] | None) -> list[str]:
+    """把请求的段归一化，并补齐依赖（simulate 依赖 geometry 依赖 materialize）。"""
+    items = [str(item).strip().lower() for item in (requested or []) if str(item).strip()]
+    if not items or "all" in items:
+        return list(STAGE_ORDER)
+    unknown = [item for item in items if item not in STAGE_ORDER]
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的测试阶段：{unknown}（可选 {list(STAGE_ORDER)} 或 all）",
+        )
+    last = max(STAGE_ORDER.index(item) for item in items)
+    return list(STAGE_ORDER[: last + 1])
+
+
+def _test_shim(run_id: str) -> SimpleNamespace:
+    """给生产函数用的轻量 shim（它们只用 ``.id``）。
+
+    8 字符（``t`` + run_id 前 7 位）与生产 ``snapshot.id[:8]`` 等长，
+    保证 ``D:\\ATP\\.runs\\`` 之后的路径长度与生产一致（$INCLUDE 卡 ≤80 列）。
+    """
+    return SimpleNamespace(id=f"t{run_id[:7]}")
+
+
+def _test_run_dir(run_id: str) -> Path:
+    from .atp_asset_service import _resolve_engine_workdir
+
+    path = _resolve_engine_workdir() / TEST_RUN_SUBDIR / run_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _test_engine_dir(*, run_id: str, resolved_job: Any) -> Path:
+    from .fl_analysis_external import _private_engine_dir
+
+    shim = _test_shim(run_id)
+    engine_dir = _private_engine_dir(job=shim, snapshot=shim, resolved_job=resolved_job)
+    engine_dir.mkdir(parents=True, exist_ok=True)
+    return engine_dir
+
+
+def _verdict(name: str, ok: bool, detail: str = "") -> dict[str, Any]:
+    return {"name": name, "ok": bool(ok), "detail": detail}
+
+
+def _stage_result(
+    stage: str,
+    *,
+    verdicts: list[dict[str, Any]],
+    artifacts: dict[str, Any] | None = None,
+    metrics: dict[str, Any] | None = None,
+    log: str = "",
+) -> dict[str, Any]:
+    return {
+        "stage": stage,
+        "status": "ok" if all(item["ok"] for item in verdicts) else "failed",
+        "verdicts": verdicts,
+        "artifacts": artifacts or {},
+        "metrics": metrics or {},
+        "log": log,
+    }
+
+
+def _skipped_stage(stage: str, reason: str) -> dict[str, Any]:
+    return {
+        "stage": stage,
+        "status": "skipped",
+        "verdicts": [],
+        "artifacts": {},
+        "metrics": {},
+        "log": reason,
+    }
+
+
+# ─────────────────────────────── 请求入口 ───────────────────────────────
+
+
+def create_test_run(
+    db: Session,
+    *,
+    asset_id: str,
+    payload: AtpAssetTestRunRequest,
+    actor_user_id: str | None,
+) -> AtpAssetRunDetail:
+    from .atp_asset_service import get_asset_by_id, get_run_by_id, serialize_run_detail
+
+    asset = get_asset_by_id(db, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ATP 资产不存在")
+    stages = _normalize_stages(payload.stages)
+
+    settings = get_settings()
+    run = AtpAssetRun(
+        asset_id=asset.id,
+        status="pending",
+        engine_mode=str(getattr(settings, "atp_engine_mode", "wine") or "wine"),
+        runner_kind="atp",
+        timeout_seconds=int(payload.timeout_seconds or 600),
+        result_summary_json={
+            "schema": COMPARE_SCHEMA,
+            "kind": "atp_asset_test",
+            "requested_stages": stages,
+            "stages": {},
+        },
+        create_user=actor_user_id,
+        update_user=actor_user_id,
+    )
+    db.add(run)
+    db.flush()
+    db.commit()
+
+    payload_data = payload.model_dump(mode="json")
+    try:
+        task = _dispatch_test_run_task(
+            run_id=run.id, payload_data=payload_data, actor_user_id=actor_user_id
+        )
+    except Exception as exc:  # pragma: no cover - 依赖 broker 可用性
+        _mark_run_failed(
+            db, run=run, actor_user_id=actor_user_id, reason=f"Celery dispatch failed: {exc}"
+        )
+        saved = get_run_by_id(db, run.id)
+        if saved is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="测试运行记录保存失败"
+            ) from exc
+        return serialize_run_detail(saved)
+
+    run.task_id = str(getattr(task, "id", "") or "") or None
+    run.update_user = actor_user_id
+    run.update_date = utcnow()
+    db.commit()
+    saved = get_run_by_id(db, run.id)
+    if saved is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="测试运行记录保存失败"
+        )
+    return serialize_run_detail(saved)
+
+
+def _dispatch_test_run_task(*, run_id: str, payload_data: dict[str, Any], actor_user_id: str | None):
+    from ..tasks.atp_asset_tasks import execute_atp_asset_test_run_job
+
+    return execute_atp_asset_test_run_job.delay(run_id, payload_data, actor_user_id)
+
+
+def _mark_run_failed(
+    db: Session, *, run: AtpAssetRun, actor_user_id: str | None, reason: str
+) -> None:
+    run.status = "failed"
+    run.error_message = reason
+    run.finished_at = utcnow()
+    run.update_user = actor_user_id
+    run.update_date = utcnow()
+    db.commit()
+
+
+# ─────────────────────────────── Worker 执行 ───────────────────────────────
+
+
+def execute_test_run_job(
+    *, run_id: str, payload_data: dict[str, Any], actor_user_id: str | None
+) -> None:
+    from ..core.database import SessionLocal
+    from .atp_asset_service import get_run_by_id, serialize_run_detail
+    from .fl_analysis_external import resolve_external_waveform_job
+
+    db = SessionLocal()
+    try:
+        run = get_run_by_id(db, run_id)
+        if run is None or run.status in {"success", "failed"}:
+            return
+        payload = AtpAssetTestRunRequest.model_validate(payload_data)
+        stages = _normalize_stages(payload.stages)
+
+        run.status = "running"
+        run.started_at = utcnow()
+        run.finished_at = None
+        run.error_message = None
+        run.duration_ms = None
+        run.update_user = actor_user_id
+        run.update_date = utcnow()
+        db.commit()
+
+        started_perf = time.perf_counter()
+        try:
+            resolved_job = resolve_external_waveform_job(
+                db,
+                external_adapter="atp",
+                adapter_config_json={"asset_id": run.asset_id},
+                tower_type=payload.tower_kind,
+                line_voltage_kv=payload.voltage_kv,
+                scene_type=payload.scene,
+            )
+        except Exception as exc:
+            _mark_run_failed(
+                db, run=run, actor_user_id=actor_user_id, reason=f"ATP 资产解析失败：{exc}"
+            )
+            return
+
+        run.storage_mount_code = resolved_job.storage_mount_code
+        run.storage_root_path = resolved_job.storage_root_path
+        db.commit()
+
+        run_dir = _test_run_dir(run.id)
+        engine_dir = _test_engine_dir(run_id=run.id, resolved_job=resolved_job)
+        run.working_dir = str(run_dir)
+        run.materialized_root_path = str(engine_dir)
+        db.commit()
+
+        ctx = _TestContext(
+            db=db,
+            run_id=run.id,
+            asset=run.asset,
+            payload=payload,
+            resolved_job=resolved_job,
+            run_dir=run_dir,
+            engine_dir=engine_dir,
+            shim=_test_shim(run.id),
+        )
+
+        stage_results: dict[str, Any] = {}
+        stdout_parts: list[str] = []
+        stderr_parts: list[str] = []
+        failed_stage: str | None = None
+
+        if payload.dry_run:
+            planned = ctx.planned_commands()
+            run.engine_command = "\n".join(" ".join(item) for item in planned)
+            run.status = "success"
+            run.exit_code = 0
+            run.stdout_text = json.dumps(
+                {
+                    "dry_run": True,
+                    "commands": [{"command": item} for item in planned],
+                    "run_dir": str(run_dir),
+                    "engine_dir": str(engine_dir),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            run.stderr_text = ""
+            run.duration_ms = 0
+            run.finished_at = utcnow()
+            run.result_summary_json = {
+                "schema": COMPARE_SCHEMA,
+                "kind": "atp_asset_test",
+                "dry_run": True,
+                "requested_stages": stages,
+                "stages": {},
+            }
+            run.update_user = actor_user_id
+            run.update_date = utcnow()
+            db.commit()
+            return
+
+        try:
+            for stage in stages:
+                if failed_stage is not None:
+                    stage_results[stage] = _skipped_stage(stage, f"前置阶段 {failed_stage} 失败")
+                    continue
+                if stage == "materialize":
+                    result = ctx.stage_materialize()
+                elif stage == "geometry":
+                    result = ctx.stage_geometry()
+                else:
+                    result = ctx.stage_simulate()
+                stage_results[stage] = result
+                stdout_parts.append(f"[{stage}]\n{result.get('log') or ''}")
+                if result.get("log"):
+                    logger.info("[ATP测试] %s：%s", stage, result["log"].splitlines()[-1:])
+                if result["status"] == "failed":
+                    failed_stage = stage
+        except Exception as exc:  # pragma: no cover - 兜底，避免 celery 任务静默
+            logger.exception("[ATP测试] 执行异常 run=%s", run.id)
+            stderr_parts.append(str(exc))
+            run.error_message = str(exc)
+            failed_stage = failed_stage or "exception"
+
+        compare_payload = ctx.build_compare_payload(stage_results)
+        compare_path = run_dir / "compare.json"
+        compare_path.write_text(
+            json.dumps(compare_payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        artifact_zip = _write_artifact_zip(run_dir=run_dir, engine_dir=engine_dir)
+
+        run.engine_command = "\n".join(" ".join(item) for item in ctx.command_log)
+        run.exit_code = ctx.last_exit_code
+        run.stdout_text = "\n\n".join(part for part in stdout_parts if part).strip() or None
+        run.stderr_text = "\n\n".join(part for part in stderr_parts if part).strip() or None
+        run.duration_ms = max(int((time.perf_counter() - started_perf) * 1000), 0)
+        run.finished_at = utcnow()
+        run.status = "failed" if failed_stage else "success"
+        if failed_stage and not run.error_message:
+            run.error_message = f"测试阶段失败：{failed_stage}"
+        run.output_manifest_json = {
+            "artifact_zip": str(artifact_zip) if artifact_zip else None,
+            "compare_json": str(compare_path),
+            "run_dir": str(run_dir),
+            "engine_dir": str(engine_dir),
+            "files": compare_payload.get("artifacts_index") or [],
+        }
+        run.result_summary_json = {
+            "schema": COMPARE_SCHEMA,
+            "kind": "atp_asset_test",
+            "requested_stages": stages,
+            "failed_stage": failed_stage,
+            "stages": stage_results,
+            "compare": compare_payload,
+        }
+        run.update_user = actor_user_id
+        run.update_date = utcnow()
+        db.commit()
+        logger.info(
+            "[ATP测试] run=%s 完成：status=%s failed_stage=%s 用时=%sms",
+            run.id,
+            run.status,
+            failed_stage,
+            run.duration_ms,
+        )
+    finally:
+        db.close()
+
+
+# ─────────────────────────────── 上下文与阶段实现 ───────────────────────────────
+
+
+class _TestContext:
+    """一次测试运行的全部上下文（阶段之间共享解析结果与产物索引）。"""
+
+    def __init__(
+        self,
+        *,
+        db: Session,
+        run_id: str,
+        asset: AtpAsset,
+        payload: AtpAssetTestRunRequest,
+        resolved_job: Any,
+        run_dir: Path,
+        engine_dir: Path,
+        shim: SimpleNamespace,
+    ) -> None:
+        self.db = db
+        self.run_id = run_id
+        self.asset = asset
+        self.payload = payload
+        self.resolved_job = resolved_job
+        self.run_dir = run_dir
+        self.engine_dir = engine_dir
+        self.shim = shim
+        self.command_log: list[list[str]] = []
+        self.last_exit_code: int | None = None
+        self.rendered_text: str = ""
+        self.entry_path: Path = run_dir / resolved_job.entry_file
+        self.execution_options: dict[str, Any] = self._build_execution_options()
+        self._lib_params: dict[str, dict[str, float]] = {}
+        self._lis_flashover: dict[str, Any] = {}
+
+    # ---- 参数与渲染 ----
+
+    def _build_execution_options(self) -> dict[str, Any]:
+        from .fl_analysis_external import _with_binary_search_current
+
+        options: dict[str, Any] = dict(self.payload.execution_options or {})
+        if self.payload.tower_kind:
+            options.setdefault("tower_kind", self.payload.tower_kind)
+        if self.payload.voltage_kv is not None:
+            options.setdefault("line_voltage_kv", self.payload.voltage_kv)
+        if self.payload.scene:
+            options.setdefault("scene_type", self.payload.scene)
+        # 固定雷电流：让「单次 ATP」有可比口径（C# 侧同值）
+        if self.payload.current_ka is not None:
+            options = _with_binary_search_current(options, current_ka=float(self.payload.current_ka))
+        return options
+
+    def _template_context(self) -> dict[str, Any]:
+        return {
+            "job": {
+                "id": self.run_id,
+                "job_name": f"ATP测试-{self.asset.code}",
+                "job_type": "atp_asset_test",
+                "external_adapter": "atp",
+            },
+            "snapshot": {
+                "id": self.shim.id,
+                "seq_no": 1,
+                "tower_no": str(self.payload.tower_no or self.asset.tower_type or self.asset.code),
+                "tower_model": self.asset.tower_type,
+                "tower_type": self.payload.tower_kind or self.asset.tower_type,
+                "longitude": None,
+                "latitude": None,
+                "altitude_m": None,
+                "terrain": None,
+            },
+            "base_tower": dict(self.payload.base_tower or {}),
+            "profile": dict(self.payload.profile or {}),
+            "execution_options": self.execution_options,
+            "workflow": {},
+            "baseline_result": {},
+        }
+
+    def render(self) -> str:
+        from .fl_analysis_external import (
+            _looks_like_csharp_equality_template,
+            render_atp_template,
+            render_csharp_equality_template,
+        )
+
+        text = render_atp_template(
+            self.resolved_job.atp_text,
+            context=self._template_context(),
+            parameter_bindings=self.resolved_job.parameter_bindings,
+        )
+        if _looks_like_csharp_equality_template(text):
+            text = render_csharp_equality_template(
+                text,
+                base_tower=dict(self.payload.base_tower or {}),
+                profile=dict(self.payload.profile or {}),
+                execution_options=self.execution_options,
+            )
+        return text
+
+    def rewrite_includes(self, text: str) -> str:
+        from .fl_analysis_external import _rewrite_includes
+
+        return _rewrite_includes(
+            text, job=self.shim, snapshot=self.shim, resolved_job=self.resolved_job
+        )
+
+    # ---- 命令构造 ----
+
+    def _build_command(self, *, input_path: Path, relative: bool) -> list[str]:
+        from .fl_analysis_external import _build_command
+
+        target = input_path.name if relative else input_path
+        return _build_command(
+            adapter=self.resolved_job.adapter,
+            input_path=target,
+            extra_args=list(self.resolved_job.extra_args or []),
+        )
+
+    def planned_commands(self) -> list[list[str]]:
+        entry = Path(self.resolved_job.entry_file)
+        commands = [
+            self._build_command(input_path=Path(f"{name}.dat"), relative=True)
+            for name in ("long", "short", "dahao", "xiaohao")
+        ]
+        commands.append(self._build_command(input_path=entry, relative=True))
+        return commands
+
+    def _engine_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        env.update(self.resolved_job.environment or {})
+        env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
+        return env
+
+    def _prepare_wine_env(self) -> list[dict[str, Any]]:
+        """Wine 运行环境准备（复刻生产 fl_analysis_external 的必需步骤）。
+
+        缺 D: 映射或双层 ATP 自指链接时，ATP 打不开任何 $INCLUDE →
+        `KILL-code error stop`、退出码仍为 0、不产出 work.lis（静默错误）。
+        因此这里与生产一致：建不出来直接抛错，不降级。
+        """
+        verdicts: list[dict[str, Any]] = []
+        atp_root = Path("/app/data/wine/ATP")
+        if not atp_root.exists():
+            # 非容器环境（如 Windows 本机跑单测）：跳过，标记为未执行
+            verdicts.append(
+                _verdict("wine_engine_root", True, f"{atp_root} 不存在，跳过 Wine 环境准备")
+            )
+            return verdicts
+
+        wine_prefix = os.environ.get("WINEPREFIX") or str(Path(os.path.expanduser("~")) / ".wine")
+        dosdevices = Path(wine_prefix) / "dosdevices"
+        dosdevices.mkdir(parents=True, exist_ok=True)
+        Path("/tmp").mkdir(parents=True, exist_ok=True)
+
+        d_drive = dosdevices / "d:"
+        if not d_drive.exists() or not d_drive.is_symlink():
+            if d_drive.exists() or d_drive.is_symlink():
+                d_drive.unlink()
+            d_drive.symlink_to(atp_root)
+        verdicts.append(_verdict("wine_d_drive", True, str(d_drive)))
+
+        nested_atp = atp_root / "ATP"
+        if nested_atp.is_symlink() and not nested_atp.exists():
+            nested_atp.unlink()
+        if nested_atp.exists() and not nested_atp.is_symlink():
+            leftovers = list(nested_atp.iterdir())
+            if leftovers:
+                raise RuntimeError(
+                    f"ATP 双层目录 {nested_atp} 是真实目录（含 {len(leftovers)} 项），"
+                    f"应为指向 {atp_root} 的符号链接；否则 D:\\ATP\\... 的 $INCLUDE 会读到"
+                    "陈旧模板几何且不报错。请清空该目录后重试。"
+                )
+            nested_atp.rmdir()
+        if not nested_atp.exists():
+            nested_atp.symlink_to(atp_root)
+        verdicts.append(_verdict("wine_nested_atp", True, str(nested_atp)))
+
+        startup_src = atp_root / "startup"
+        startup_dst = self.run_dir / "startup"
+        if startup_src.exists() and not startup_dst.exists():
+            startup_dst.write_bytes(startup_src.read_bytes())
+        verdicts.append(
+            _verdict(
+                "run_dir_startup",
+                startup_dst.exists(),
+                f"{startup_dst}（ATP 启动必需，缺失报 Halt in RFUNL1）",
+            )
+        )
+        return verdicts
+
+    def _engine_fingerprints(self) -> dict[str, Any]:
+        from .atp_geometry_pipeline import _ENGINE_FILES, _ENGINE_SOURCES
+
+        out: dict[str, Any] = {}
+        for name in _ENGINE_FILES:
+            path = self.engine_dir / name
+            if path.is_file():
+                out[name] = _sha256_file(path)
+                continue
+            for root in _ENGINE_SOURCES:
+                candidate = Path(root) / name
+                if candidate.is_file():
+                    out[name] = _sha256_file(candidate)
+                    break
+        return out
+
+    # ---- 阶段 1：物化 + 引擎文件 ----
+
+    def stage_materialize(self) -> dict[str, Any]:
+        from .atp_geometry_pipeline import GEOMETRY_LOCK, _ensure_engine_files
+        from .fl_analysis_external import _materialize_asset_files
+
+        verdicts: list[dict[str, Any]] = []
+        log_lines: list[str] = []
+
+        self.rendered_text = self.rewrite_includes(self.render())
+        self.entry_path.write_text(self.rendered_text, encoding="gbk", errors="replace")
+        log_lines.append(f"已渲染 {self.entry_path.name}（{len(self.rendered_text)} 字节）")
+
+        include_lines = [
+            line.strip()
+            for line in self.rendered_text.splitlines()
+            if line.strip().upper().startswith("$INCLUDE")
+        ]
+        priv_win = f"D:\\ATP\\.runs\\{self.shim.id}"
+        bad_includes = [line for line in include_lines if priv_win not in line]
+        verdicts.append(
+            _verdict(
+                "include_rewritten",
+                bool(include_lines) and not bad_includes,
+                f"{len(include_lines)} 条 $INCLUDE，未重写 {len(bad_includes)} 条"
+                + (f"：{bad_includes[:2]}" if bad_includes else ""),
+            )
+        )
+        verdicts.append(
+            _verdict(
+                "entry_file_written",
+                self.entry_path.is_file() and self.entry_path.stat().st_size > 0,
+                str(self.entry_path),
+            )
+        )
+
+        with GEOMETRY_LOCK:
+            _materialize_asset_files(
+                db=self.db,
+                run_dir=self.run_dir,
+                resolved_job=self.resolved_job,
+                private_engine_dir=self.engine_dir,
+            )
+            try:
+                _ensure_engine_files(self.engine_dir)
+                engine_ok, engine_detail = True, str(self.engine_dir)
+            except RuntimeError as exc:
+                engine_ok, engine_detail = False, str(exc)
+
+        verdicts.append(_verdict("engine_files", engine_ok, engine_detail))
+        verdicts.extend(self._prepare_wine_env())
+
+        if self.payload.base_tower:
+            verdicts.append(
+                _verdict(
+                    "base_tower_provided",
+                    True,
+                    f"{len(self.payload.base_tower)} 个字段（几何/仿真参数来源）",
+                )
+            )
+        else:
+            verdicts.append(
+                _verdict(
+                    "base_tower_provided",
+                    False,
+                    "未提供 base_tower：几何参数将取模板默认值，结果不可与 C# 对比",
+                )
+            )
+
+        artifacts = {
+            name: _artifact_entry(self.run_dir / name)
+            for name in (self.entry_path.name,)
+            if (self.run_dir / name).is_file()
+        }
+        artifacts.update(
+            {
+                name: _artifact_entry(self.engine_dir / name)
+                for name in ("startup", "graphics")
+                if (self.engine_dir / name).is_file()
+            }
+        )
+        metrics = {
+            "entry_bytes": self.entry_path.stat().st_size if self.entry_path.is_file() else 0,
+            "include_count": len(include_lines),
+            "run_dir": str(self.run_dir),
+            "engine_dir": str(self.engine_dir),
+            "engine_fingerprints": self._engine_fingerprints(),
+        }
+        return _stage_result(
+            "materialize",
+            verdicts=verdicts,
+            artifacts=artifacts,
+            metrics=metrics,
+            log="\n".join(log_lines),
+        )
+
+    # ---- 阶段 2：DAT → LIB（几何 + LCC）----
+
+    def stage_geometry(self) -> dict[str, Any]:
+        from .atp_geometry_pipeline import GEOMETRY_LOCK, regenerate_line_models
+        from .fl_analysis_external import compute_csharp_atp_params
+
+        verdicts: list[dict[str, Any]] = []
+        log_lines: list[str] = []
+        dat_names = ("long", "short", "dahao", "xiaohao")
+
+        before = {
+            name: _sha256_file(self.engine_dir / f"{name}.lib") for name in dat_names
+        }
+        before_params = {
+            name: _parse_lib_assignments(self.engine_dir / f"{name}.lib") for name in dat_names
+        }
+        params = compute_csharp_atp_params(
+            base_tower=dict(self.payload.base_tower or {}),
+            profile=dict(self.payload.profile or {}),
+            execution_options=self.execution_options,
+        )
+        env = self._engine_env()
+        with GEOMETRY_LOCK:
+            processed = regenerate_line_models(
+                engine_dir=self.engine_dir,
+                tower_kind=str(self.payload.tower_kind or self.asset.tower_type or ""),
+                voltage_kv=self.payload.voltage_kv,
+                params=params,
+                profile=dict(self.payload.profile or {}),
+                base_tower=dict(self.payload.base_tower or {}),
+                build_command=lambda *, input_path: self._build_command(
+                    # regenerate_line_models 传进来的已是相对名（Path("long.dat")），
+                    # 这里原样透传：ATP 会把绝对路径整串小写化 → 打不开（rc=3）。
+                    input_path=input_path,
+                    relative=False,
+                ),
+                env=env,
+                timeout_seconds=int(self.payload.timeout_seconds or 600),
+            )
+        log_lines.append(f"几何重生成处理文件：{processed}")
+
+        artifacts: dict[str, Any] = {}
+        recomputed_any = False
+        for name in dat_names:
+            for suffix in ("dat", "pch", "lib", "lis"):
+                path = self.engine_dir / f"{name}.{suffix}"
+                if path.is_file():
+                    artifacts[f"{name}.{suffix}"] = _artifact_entry(path)
+            after_lib = _sha256_file(self.engine_dir / f"{name}.lib")
+            changed = before[name] != after_lib
+            recomputed_any = recomputed_any or changed
+            self._lib_params[name] = _parse_lib_assignments(self.engine_dir / f"{name}.lib")
+            verdicts.append(
+                _verdict(
+                    f"{name}_lib_present",
+                    after_lib is not None,
+                    f"{self.engine_dir / f'{name}.lib'}",
+                )
+            )
+            verdicts.append(
+                _verdict(
+                    f"{name}_lib_recomputed",
+                    changed,
+                    "本次重算（哈希变化）" if changed else "哈希未变 —— 可能是几何未变（正常）或缓存命中（需排查）",
+                )
+            )
+            halt = _lis_has_halt(self.engine_dir / f"{name}.lis")
+            if (self.engine_dir / f"{name}.lis").is_file():
+                verdicts.append(
+                    _verdict(f"{name}_lcc_no_halt", not halt, "; ".join(halt) or "无 Halt/错误行")
+                )
+
+        verdicts.append(
+            _verdict(
+                "geometry_actually_recomputed",
+                recomputed_any,
+                "至少一个 .lib 发生变化" if recomputed_any else "四个 .lib 哈希全未变：几何未生效或指纹缓存命中",
+            )
+        )
+        metrics = {
+            "params_count": len(params),
+            "params_sha256": _sha256_text(
+                json.dumps(params, ensure_ascii=False, sort_keys=True)
+            ),
+            "processed": list(processed or []),
+        }
+        return _stage_result(
+            "geometry",
+            verdicts=verdicts,
+            artifacts=artifacts,
+            metrics=metrics,
+            log="\n".join(log_lines),
+        )
+
+    # ---- 阶段 3：单次 ATP 主仿真 ----
+
+    def stage_simulate(self) -> dict[str, Any]:
+        from ..core.subprocess_heartbeat import run_with_heartbeat
+        from .fl_analysis_external import _read_lis_flashover_detail
+
+        verdicts: list[dict[str, Any]] = []
+        log_lines: list[str] = []
+        env = self._engine_env()
+
+        if not self.entry_path.is_file():
+            self.rendered_text = self.rewrite_includes(self.render())
+            self.entry_path.write_text(self.rendered_text, encoding="gbk", errors="replace")
+            log_lines.append(f"补渲染 {self.entry_path.name}")
+
+        # ⚠️ 传相对文件名（cwd=run_dir）：ATP 会把命令行路径整串小写化，
+        # 绝对路径含大写段时打不开 → Halt in SYSDEP（rc=3）。与生产一致。
+        command = self._build_command(input_path=self.entry_path, relative=True)
+        self.command_log.append(command)
+        log_lines.append(f"执行命令：{' '.join(command)}（cwd={self.run_dir}）")
+
+        try:
+            result = run_with_heartbeat(
+                command,
+                cwd=str(self.run_dir),
+                env=env,
+                timeout=int(self.payload.timeout_seconds or 600),
+                label=f"ATP 模型测试 {self.asset.code} 单次仿真",
+            )
+            self.last_exit_code = int(result.returncode)
+            if result.stdout:
+                log_lines.append(result.stdout[-2000:])
+            if result.stderr:
+                log_lines.append(result.stderr[-2000:])
+        except subprocess.TimeoutExpired:
+            self.last_exit_code = None
+            verdicts.append(
+                _verdict("simulate_finished", False, f"超时（{self.payload.timeout_seconds}s）")
+            )
+            return _stage_result(
+                "simulate", verdicts=verdicts, metrics={}, log="\n".join(log_lines)
+            )
+        except OSError as exc:
+            self.last_exit_code = None
+            verdicts.append(_verdict("simulate_finished", False, f"OSError: {exc}"))
+            return _stage_result(
+                "simulate", verdicts=verdicts, metrics={}, log="\n".join(log_lines)
+            )
+
+        verdicts.append(
+            _verdict(
+                "simulate_finished",
+                True,
+                f"退出码 {self.last_exit_code}（注意：ATP 退出码不可信，以下按产物判定）",
+            )
+        )
+
+        lis_path = self.run_dir / "work.lis"
+        pl4_path = self.run_dir / "work.pl4"
+        halt = _lis_has_halt(lis_path)
+        verdicts.append(
+            _verdict(
+                "work_lis_no_halt",
+                lis_path.is_file() and not halt,
+                "; ".join(halt) or (str(lis_path) if lis_path.is_file() else "work.lis 未产出"),
+            )
+        )
+        verdicts.append(
+            _verdict(
+                "work_pl4_nonempty",
+                pl4_path.is_file() and pl4_path.stat().st_size > 0,
+                f"{pl4_path.stat().st_size if pl4_path.is_file() else 0} 字节",
+            )
+        )
+
+        phases: list[str] = []
+        flashover: int | None = None
+        try:
+            detail = _read_lis_flashover_detail(self.run_dir)
+            if detail is not None:
+                flashover, phases = detail
+        except Exception as exc:  # pragma: no cover - 解析异常不影响其它判据
+            logger.warning("[ATP测试] work.lis 闪络解析失败：%s", exc)
+        self._lis_flashover = {
+            "flashover_count": flashover,
+            "flashover_phases": phases,
+            "current_ka": self.payload.current_ka,
+        }
+        verdicts.append(
+            _verdict(
+                "flashover_parsed",
+                flashover is not None,
+                f"闪络相数={flashover}，相={','.join(phases) or '-'}"
+                if flashover is not None
+                else "work.lis 无 Close switch 信息（闪络判据取不到值）",
+            )
+        )
+
+        artifacts = {
+            name: _artifact_entry(self.run_dir / name)
+            for name in ("work.lis", "work.pl4", self.entry_path.name)
+            if (self.run_dir / name).is_file()
+        }
+        metrics = {
+            "exit_code": self.last_exit_code,
+            "current_ka": self.payload.current_ka,
+            "flashover_count": flashover,
+            "flashover_phases": phases,
+            "lis_bytes": lis_path.stat().st_size if lis_path.is_file() else 0,
+            "pl4_bytes": pl4_path.stat().st_size if pl4_path.is_file() else 0,
+        }
+        return _stage_result(
+            "simulate", verdicts=verdicts, artifacts=artifacts, metrics=metrics, log="\n".join(log_lines)
+        )
+
+    # ---- 对拍产物 ----
+
+    def build_compare_payload(self, stage_results: dict[str, Any]) -> dict[str, Any]:
+        lib_params: dict[str, Any] = {}
+        for name, values in self._lib_params.items():
+            if values:
+                lib_params[f"{name}.lib"] = values
+        artifacts_index: list[dict[str, Any]] = []
+        for stage in stage_results.values():
+            artifacts_index.extend((stage.get("artifacts") or {}).values())
+        return {
+            "schema": COMPARE_SCHEMA,
+            "side": "web",
+            "kind": "atp_asset_test",
+            "run_id": self.run_id,
+            "case": {
+                "asset_code": self.asset.code,
+                "asset_name": self.asset.name,
+                "tower_type": self.payload.tower_kind or self.asset.tower_type,
+                "voltage_kv": self.payload.voltage_kv,
+                "scene": self.payload.scene,
+                "entry_file": self.resolved_job.entry_file,
+                "storage_root_path": self.resolved_job.storage_root_path,
+                # 与 C# harness 原样对照的输入串（同一份输入 → 可比）
+                "params_raw": self.payload.params_raw,
+                "base_tower": dict(self.payload.base_tower or {}),
+                "profile": dict(self.payload.profile or {}),
+                "execution_options": {
+                    key: value
+                    for key, value in self.execution_options.items()
+                    if key != "_run_subdir"
+                },
+            },
+            "env": {
+                "solver_host": "wine",
+                "engine_mode": self.resolved_job.adapter,
+                "engine_fingerprints": self._engine_fingerprints(),
+                "run_dir": str(self.run_dir),
+                "engine_dir": str(self.engine_dir),
+            },
+            "stages": stage_results,
+            "lib_params": lib_params,
+            "simulate": dict(self._lis_flashover or {}),
+            "artifacts_index": artifacts_index,
+        }
+
+
+def _write_artifact_zip(*, run_dir: Path, engine_dir: Path) -> Path | None:
+    """把运行目录 + 引擎目录的相关产物打成 zip（供下载/离线对比）。"""
+    target = run_dir / "artifacts.zip"
+    members: list[tuple[Path, str]] = []
+    for path in sorted(run_dir.iterdir()):
+        if path.is_file() and path.name != target.name:
+            members.append((path, path.name))
+    for path in sorted(engine_dir.iterdir()):
+        if path.is_file() and path.suffix.lower() in _ARTIFACT_SUFFIXES:
+            members.append((path, f"engine/{path.name}"))
+    if not members:
+        return None
+    try:
+        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+            for path, arcname in members:
+                archive.write(path, arcname)
+    except OSError as exc:  # pragma: no cover - 磁盘满等
+        logger.warning("[ATP测试] 产物打包失败：%s", exc)
+        return None
+    return target
+
+
+def read_artifact_zip(db: Session, *, run_id: str) -> tuple[Path, str]:
+    """给下载接口用：返回 (zip 路径, 文件名)。"""
+    from .atp_asset_service import get_run_by_id
+
+    run = get_run_by_id(db, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="测试运行记录不存在")
+    manifest = run.output_manifest_json or {}
+    raw = manifest.get("artifact_zip")
+    path = Path(str(raw)) if raw else None
+    if path is None or not path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="该运行没有产物包（可能仍在执行或已清理）"
+        )
+    return path, f"atp-test-{run.id}.zip"
+
+
+def read_compare_json(db: Session, *, run_id: str) -> dict[str, Any]:
+    """给对比接口用：返回 compare.json（与 C# harness 同 schema）。"""
+    from .atp_asset_service import get_run_by_id
+
+    run = get_run_by_id(db, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="测试运行记录不存在")
+    summary = run.result_summary_json or {}
+    compare = summary.get("compare")
+    if not compare:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="该运行还没有对比产物（可能仍在执行）"
+        )
+    return compare
+
+
+def cleanup_test_run_dir(run_id: str, *, keep: bool = False) -> None:
+    """清理测试运行目录（默认保留；磁盘吃紧时可调用）。"""
+    if keep:
+        return
+    run_dir = _test_run_dir(run_id)
+    if run_dir.is_dir():
+        shutil.rmtree(run_dir, ignore_errors=True)

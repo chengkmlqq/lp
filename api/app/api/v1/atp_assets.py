@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
@@ -13,6 +16,7 @@ from ...schemas.atp_asset import (
     AtpAssetRunDetail,
     AtpAssetRunListResponse,
     AtpAssetRunRequest,
+    AtpAssetTestRunRequest,
     AtpAssetUpdateRequest,
     AtpEngineStatusResponse,
 )
@@ -28,6 +32,11 @@ from ...services.atp_asset_service import (
     serialize_asset,
     upload_asset_files,
     update_asset,
+)
+from ...services.atp_asset_test_service import (
+    create_test_run,
+    read_artifact_zip,
+    read_compare_json,
 )
 
 router = APIRouter(prefix="/atp", tags=["atp-assets"], dependencies=[Depends(require_enabled_menu_route)])
@@ -165,3 +174,46 @@ def get_atp_run_detail(
     db: Session = Depends(get_db),
 ) -> AtpAssetRunDetail:
     return get_run_detail(db, run_id=run_id)
+
+
+# ─────────────────────── 单模型测试（分段 + 对拍产物） ───────────────────────
+# 设计见 services/atp_asset_test_service.py 模块注释：
+# materialize（物化+引擎文件）→ geometry（DAT→LIB）→ simulate（单次 ATP），
+# 判据看产物（哈希/数值/LIS 报错）而非退出码，产出 compare.json 供与 C# 端 diff。
+
+
+@router.post("/assets/{asset_id}/test-runs", response_model=AtpAssetRunDetail)
+def create_atp_asset_test_run_endpoint(
+    asset_id: str,
+    payload: AtpAssetTestRunRequest,
+    current_user: CurrentUser = Depends(require_any_permission("atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetRunDetail:
+    """发起一次 ATP 模型单模型测试（异步，返回 run 记录供轮询）。"""
+    return create_test_run(
+        db,
+        asset_id=asset_id,
+        payload=payload,
+        actor_user_id=current_user.user.id,
+    )
+
+
+@router.get("/test-runs/{run_id}/compare")
+def get_atp_asset_test_compare(
+    run_id: str,
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """取对拍产物 compare.json（schema ``lp.atp.compare/1``，与 C# harness 同格式）。"""
+    return read_compare_json(db, run_id=run_id)
+
+
+@router.get("/test-runs/{run_id}/artifacts")
+def download_atp_asset_test_artifacts(
+    run_id: str,
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """下载测试产物包（改写后的 dat/pch/lib/lis/pl4 + manifest + compare.json）。"""
+    path, filename = read_artifact_zip(db, run_id=run_id)
+    return FileResponse(path, filename=filename, media_type="application/zip")

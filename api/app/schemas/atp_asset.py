@@ -152,3 +152,34 @@ class AtpEngineStatusResponse(BaseModel):
     max_timeout_seconds: int
     checks: dict[str, dict[str, Any]] = Field(default_factory=dict)
     error: str | None = None
+
+
+AtpAssetTestStage = Literal["materialize", "geometry", "simulate", "all"]
+
+
+class AtpAssetTestRunRequest(BaseModel):
+    """ATP 资产「单模型测试」请求。
+
+    分段：``materialize``（物化 + 引擎文件）→ ``geometry``（DAT→LIB）→
+    ``simulate``（单次 ATP）。请求子集时依赖段会自动补齐
+    （simulate ⇒ geometry ⇒ materialize），产物记录里会区分「请求的段」。
+
+    对拍口径（必须显式给，禁止各自默认）：
+    ``current_ka`` 固定雷电流、``base_tower``/``profile`` 参数来源、
+    ``params_raw`` 与 C# harness 原样对照的输入串。
+    """
+
+    stages: list[AtpAssetTestStage] = Field(
+        default_factory=lambda: ["materialize", "geometry", "simulate"]
+    )
+    tower_kind: str | None = None
+    tower_no: str | None = None
+    voltage_kv: int | None = None
+    scene: str | None = None
+    base_tower: dict[str, Any] = Field(default_factory=dict)
+    profile: dict[str, Any] = Field(default_factory=dict)
+    execution_options: dict[str, Any] = Field(default_factory=dict)
+    params_raw: str | None = None
+    current_ka: float | None = Field(default=31.0, gt=0)
+    timeout_seconds: int | None = Field(default=600, ge=1)
+    dry_run: bool = False
