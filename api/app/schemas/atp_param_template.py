@@ -39,12 +39,15 @@ class TemplateSummary(BaseModel):
     specificity: int = 0
     defined_slots: int = 0
     slot_names: list[str] = Field(default_factory=list)
+    defined_defaults: int = 0
     updated_at: datetime | None = None
     updated_by: str | None = None
 
 
 class TemplateDetail(TemplateSummary):
     slots: dict[str, Any] = Field(default_factory=dict)
+    # 「无杆塔测试」用的默认上下文变量（{变量名: 默认值}）
+    defaults: dict[str, Any] = Field(default_factory=dict)
 
 
 class TemplateListResponse(BaseModel):
@@ -67,6 +70,8 @@ class TemplateUpsertRequest(BaseModel):
     fallback_to: str | None = Field(default=None, max_length=64)
     fallback_enabled: bool = True
     slots: dict[str, Any] = Field(default_factory=dict)
+    # 「无杆塔测试」用的默认上下文变量；不传则保持原值（更新时）
+    defaults: dict[str, Any] | None = None
 
 
 class TreeNode(BaseModel):

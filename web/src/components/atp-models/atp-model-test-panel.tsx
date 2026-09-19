@@ -11,6 +11,7 @@ import {
   Empty,
   Input,
   InputNumber,
+  Radio,
   Space,
   Switch,
   Table,
@@ -66,6 +67,16 @@ type TestResultSummary = {
   requested_stages?: string[];
   failed_stage?: string | null;
   stages?: Record<string, AtpAssetTestStageResult>;
+  compare?: {
+    params_source?: string;
+    params_diagnostics?: {
+      chain?: string[];
+      tower_kind?: string;
+      defaults_applied?: string[];
+      defaults_used?: Record<string, string>;
+      unresolved?: Record<string, string[]>;
+    };
+  };
 };
 
 function readTestSummary(run: AtpAssetRunDetail | undefined): TestResultSummary {
@@ -113,6 +124,9 @@ export function AtpModelTestPanel({ asset }: { asset: AtpAssetSummary }) {
   const [stages, setStages] = useState<AtpAssetTestStage[]>(ALL_STAGES);
   const [currentKa, setCurrentKa] = useState<number>(31);
   const [dryRun, setDryRun] = useState(false);
+  // 参数来源：template = 无杆塔（资产维度 + 参数模板默认值，默认）；tower = 手工给杆塔数据
+  const [paramsSource, setParamsSource] = useState<"template" | "tower">("template");
+  const [allowIncomplete, setAllowIncomplete] = useState(false);
   const [towerKind, setTowerKind] = useState(asset.tower_type ?? "");
   const [scene, setScene] = useState(asset.scene_type ?? "");
   const [baseTowerText, setBaseTowerText] = useState("{}");
@@ -179,10 +193,16 @@ export function AtpModelTestPanel({ asset }: { asset: AtpAssetSummary }) {
       message.warning("请至少选择一段");
       return;
     }
-    const baseTower = parseJsonObject(baseTowerText, "base_tower");
-    if (baseTower === null) return;
-    const profile = parseJsonObject(profileText, "profile");
-    if (profile === null) return;
+    let baseTower: Record<string, unknown> = {};
+    let profile: Record<string, unknown> = {};
+    if (paramsSource === "tower") {
+      const parsedBase = parseJsonObject(baseTowerText, "base_tower");
+      if (parsedBase === null) return;
+      const parsedProfile = parseJsonObject(profileText, "profile");
+      if (parsedProfile === null) return;
+      baseTower = parsedBase;
+      profile = parsedProfile;
+    }
 
     setSubmitting(true);
     try {
@@ -195,6 +215,8 @@ export function AtpModelTestPanel({ asset }: { asset: AtpAssetSummary }) {
           scene: scene.trim() || null,
           base_tower: baseTower,
           profile,
+          params_source: paramsSource,
+          allow_incomplete_defaults: allowIncomplete,
           params_raw: paramsRaw.trim() || null,
           current_ka: currentKa,
           dry_run: dryRun,
@@ -301,12 +323,39 @@ export function AtpModelTestPanel({ asset }: { asset: AtpAssetSummary }) {
             </Space>
           </Space>
 
+          <Space size={16} wrap>
+            <Space size={8}>
+              <Typography.Text>参数来源</Typography.Text>
+              <Radio.Group
+                value={paramsSource}
+                onChange={(event) => setParamsSource(event.target.value as "template" | "tower")}
+                options={[
+                  { value: "template", label: "参数模板默认值（无需杆塔）" },
+                  { value: "tower", label: "手工杆塔数据" },
+                ]}
+                optionType="button"
+              />
+            </Space>
+            {paramsSource === "template" ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                按资产自带的塔型/电压匹配参数模板，用模板默认值算参数（对齐 C#：引擎只吃一串参数）
+              </Typography.Text>
+            ) : (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                用下面手工填的杆塔几何/参数（与生产同源）
+              </Typography.Text>
+            )}
+          </Space>
+
           <Collapse
             size="small"
             items={[
               {
                 key: "params",
-                label: "参数（不填则用模板默认值，结果不可与 C# 对比）",
+                label:
+                  paramsSource === "template"
+                    ? "高级：塔型/场景、C# 参数串、默认值不完整时放行"
+                    : "高级：杆塔数据（base_tower / profile）",
                 children: (
                   <Space direction="vertical" size={8} style={{ width: "100%" }}>
                     <Space wrap size={8}>
@@ -325,18 +374,30 @@ export function AtpModelTestPanel({ asset }: { asset: AtpAssetSummary }) {
                         style={{ width: 220 }}
                       />
                     </Space>
-                    <Input.TextArea
-                      rows={4}
-                      value={baseTowerText}
-                      onChange={(event) => setBaseTowerText(event.target.value)}
-                      placeholder='base_tower（JSON 对象），如 {"line_voltage_kv":220,"ground_resistance":7}'
-                    />
-                    <Input.TextArea
-                      rows={3}
-                      value={profileText}
-                      onChange={(event) => setProfileText(event.target.value)}
-                      placeholder='profile（JSON 对象），如 {"insulator_length_mm":2491.5}'
-                    />
+                    {paramsSource === "tower" ? (
+                      <>
+                        <Input.TextArea
+                          rows={4}
+                          value={baseTowerText}
+                          onChange={(event) => setBaseTowerText(event.target.value)}
+                          placeholder='base_tower（JSON 对象），如 {"line_voltage_kv":220,"ground_resistance":7}'
+                        />
+                        <Input.TextArea
+                          rows={3}
+                          value={profileText}
+                          onChange={(event) => setProfileText(event.target.value)}
+                          placeholder='profile（JSON 对象），如 {"insulator_length_mm":2491.5}'
+                        />
+                      </>
+                    ) : (
+                      <Space size={8}>
+                        <Typography.Text>模板默认值不完整时仍继续</Typography.Text>
+                        <Switch checked={allowIncomplete} onChange={setAllowIncomplete} />
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          默认关闭：缺默认值会直接报错并列出缺哪些变量（避免算出无意义结果）
+                        </Typography.Text>
+                      </Space>
+                    )}
                     <Input
                       value={paramsRaw}
                       onChange={(event) => setParamsRaw(event.target.value)}
@@ -377,6 +438,22 @@ export function AtpModelTestPanel({ asset }: { asset: AtpAssetSummary }) {
             <Typography.Text type="secondary">run {activeRun.id.slice(0, 8)}</Typography.Text>
             {summary.dry_run ? <Tag color="orange">试跑</Tag> : null}
           </Space>
+          {summary.compare?.params_source ? (
+            <div style={{ marginTop: 6 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                参数来源：
+                {summary.compare.params_source === "template"
+                  ? `参数模板默认值（链：${(summary.compare.params_diagnostics?.chain ?? []).join(" → ") || "-"}）`
+                  : "手工杆塔数据"}
+                {(summary.compare.params_diagnostics?.defaults_applied ?? []).length > 0
+                  ? `；用默认值的变量 ${(summary.compare.params_diagnostics?.defaults_applied ?? []).length} 个：${(summary.compare.params_diagnostics?.defaults_applied ?? []).slice(0, 8).join(", ")}`
+                  : ""}
+                {Object.keys(summary.compare.params_diagnostics?.unresolved ?? {}).length > 0
+                  ? `；⚠️ 未解析槽位 ${Object.keys(summary.compare.params_diagnostics?.unresolved ?? {}).length} 个`
+                  : ""}
+              </Typography.Text>
+            </div>
+          ) : null}
           {activeRun.error_message ? (
             <Alert
               style={{ marginTop: 8 }}

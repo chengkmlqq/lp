@@ -545,10 +545,18 @@ def meta_options(db: Session) -> dict[str, Any]:
         {str(row[0]) for row in db.execute(select(AtpParamGlobal.slot)).fetchall()}
         | {str(key) for row in db.execute(select(AtpParamTemplate.slots_json)).fetchall() if isinstance(row[0], dict) for key in (row[0] or {})}
     )
+    # 「测试默认参数集」可填的上下文变量名（表达式可引用的源变量 + 维度键 + 已有槽位名）
+    variable_names = sorted(
+        set(SOURCE_VARS)
+        | set(DIMENSION_KEYS)
+        | {"voltage_level", "circuit_count"}
+        | set(slot_names)
+    )
     return {
         "tower_types": [{"value": key, "label": label} for key, label in sorted(seen.items())],
         "voltages": voltages,
         "scene_types": [{"value": str(row[0]), "label": str(row[0])} for row in scene_rows],
         "arrester_configs": [{"value": str(row[0]), "label": str(row[0])} for row in arrester_rows],
         "slot_names": slot_names,
+        "variable_names": variable_names,
     }

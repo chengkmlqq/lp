@@ -62,10 +62,14 @@ type TemplateDetail = {
   fallback_enabled: boolean;
   specificity: number;
   defined_slots: number;
+  defined_defaults?: number;
   slots: Record<string, { expr?: string; value?: string; fmt?: number; enabled?: boolean; when?: string; else?: string }>;
+  defaults?: Record<string, string | number>;
   updated_at: string | null;
   updated_by: string | null;
 };
+
+type DefaultRow = { key: string; name: string; value: string };
 
 type ResolvedSlot = { slot: string; value: string; source: string; inherited: boolean };
 type PreviewResponse = { chain: string[]; tower_kind: string | null; slots: ResolvedSlot[]; diff: ResolvedSlot[] };
@@ -76,6 +80,7 @@ type MetaResponse = {
   scene_types: { value: string; label: string }[];
   arrester_configs: { value: string; label: string }[];
   slot_names: string[];
+  variable_names?: string[];
 };
 
 type SlotRow = { key: string; slot: string; expr: string; fmt: number; enabled: boolean; value?: string; when?: string };
@@ -97,6 +102,7 @@ export default function AtpParamTemplatesPage() {
   const [editing, setEditing] = useState(false);
   const [editingForChild, setEditingForChild] = useState(false);
   const [slotRows, setSlotRows] = useState<SlotRow[]>([]);
+  const [defaultRows, setDefaultRows] = useState<DefaultRow[]>([]);
   const [form] = Form.useForm();
 
   const loadTree = useCallback(async () => {
@@ -273,6 +279,13 @@ export default function AtpParamTemplatesPage() {
           when: spec.when ?? "",
         })),
       );
+      setDefaultRows(
+        Object.entries(detail.defaults ?? {}).map(([name, value]) => ({
+          key: name,
+          name,
+          value: String(value),
+        })),
+      );
     }
     if (inherited) {
       form.setFieldsValue({ fallback_enabled: true, priority: 100 });
@@ -292,7 +305,15 @@ export default function AtpParamTemplatesPage() {
         if (row.when) spec.when = row.when;
         slots[row.slot] = spec;
       });
-      const payload = { ...values, slots };
+      const defaults: Record<string, number | string> = {};
+      defaultRows.forEach((row) => {
+        const name = row.name.trim();
+        const raw = row.value.trim();
+        if (!name || !raw) return;
+        const numeric = Number(raw);
+        defaults[name] = Number.isFinite(numeric) && /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(raw) ? numeric : raw;
+      });
+      const payload = { ...values, slots, defaults };
       const url = detail && !editingForChild ? `/api/v1/atp/param-templates/${detail.id}` : "/api/v1/atp/param-templates";
       const method = detail && !editingForChild ? "PUT" : "POST";
       const response = await fetchWithAuth(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -470,7 +491,8 @@ export default function AtpParamTemplatesPage() {
                   }))}
                 />
                 <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
-                  本层定义 {detail.defined_slots} 个槽位；更新于 {detail.updated_at ? new Date(detail.updated_at).toLocaleString() : "-"}
+                  本层定义 {detail.defined_slots} 个槽位 · {detail.defined_defaults ?? 0} 个测试默认值；更新于{" "}
+                  {detail.updated_at ? new Date(detail.updated_at).toLocaleString() : "-"}
                   {detail.updated_by ? ` · ${detail.updated_by}` : ""}
                 </Text>
               </Card>
@@ -700,6 +722,89 @@ export default function AtpParamTemplatesPage() {
                 <Text type="secondary">仅需填写与上层不同的槽位</Text>
               </Tooltip>
             </Space>
+          )}
+        />
+
+        <Alert
+          type="info"
+          showIcon
+          style={{ margin: "14px 0 10px" }}
+          message="测试默认参数集（无杆塔测试用）"
+          description={
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              这些是「上下文变量」的默认值：ATP 模型测试时可以不给杆塔数据，直接用它们算出全套
+              $PARAMETER 参数（对齐 C# —— 引擎只吃一串参数，不需要杆塔）。
+              <br />
+              只补上下文里没有的值（有真实杆塔数据时以真实值优先）；未提供默认值的变量会让对应槽位报「未解析」，
+              测试会拒绝执行，而不是静默算成 1. 这种无物理意义的占位值。
+            </Text>
+          }
+        />
+        <Table
+          size="small"
+          rowKey="key"
+          pagination={false}
+          dataSource={defaultRows}
+          columns={[
+            {
+              title: "变量名",
+              dataIndex: "name",
+              width: 190,
+              render: (value: string, row: DefaultRow) => (
+                <Select
+                  showSearch
+                  style={{ width: 180 }}
+                  value={value || undefined}
+                  placeholder="如 h_u / shield_h"
+                  options={(meta?.variable_names ?? []).map((item) => ({ value: item, label: item }))}
+                  onChange={(next) => setDefaultRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, name: next, key: next } : item)))}
+                  dropdownRender={(menu) => (
+                    <>
+                      {menu}
+                      <Input
+                        size="small"
+                        style={{ marginTop: 6 }}
+                        placeholder="不在列表里？直接输入变量名"
+                        onPressEnter={(event) => {
+                          const typed = (event.target as HTMLInputElement).value.trim();
+                          if (!typed) return;
+                          setDefaultRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, name: typed, key: typed } : item)));
+                        }}
+                      />
+                    </>
+                  )}
+                />
+              ),
+            },
+            {
+              title: "默认值",
+              dataIndex: "value",
+              render: (value: string, row: DefaultRow) => (
+                <Input
+                  value={value}
+                  placeholder="如 65.5"
+                  onChange={(event) => setDefaultRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, value: event.target.value } : item)))}
+                />
+              ),
+            },
+            {
+              title: "",
+              width: 60,
+              render: (_: unknown, row: DefaultRow) => (
+                <Button type="link" danger size="small" onClick={() => setDefaultRows((rows) => rows.filter((item) => item.key !== row.key))}>
+                  删除
+                </Button>
+              ),
+            },
+          ]}
+          footer={() => (
+            <Button
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={() => setDefaultRows((rows) => [...rows, { key: `new-${rows.length}-${Date.now()}`, name: "", value: "" }])}
+            >
+              添加默认值
+            </Button>
           )}
         />
       </Modal>
