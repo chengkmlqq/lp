@@ -486,6 +486,80 @@ class _TestContext:
         )
         self._params: dict[str, str] | None = None
         self.param_diagnostics: dict[str, Any] = {}
+        # 无杆塔模式：用模板 context 默认值显式合成的几何（None = 未合成/不需要）
+        self.synthetic_geometry: dict[str, Any] | None = None
+        self._geom_defaults: dict[str, Any] | None = None
+        self._effective_geometry_cache: tuple[dict[str, Any], dict[str, Any]] | None = None
+
+    # ---- 无杆塔模式的几何补全（方案B：显式合成，禁止静默 fallback）----
+
+    def _template_defaults(self) -> dict[str, Any]:
+        """参数模板的 context 默认值（_common.json 顶层 defaults，DB 行可覆盖）。"""
+        if self._geom_defaults is None:
+            from .atp_param_config import get_rules
+
+            rules = get_rules()
+            self._geom_defaults = dict(getattr(rules, "defaults", None) or {}) if rules is not None else {}
+        return self._geom_defaults
+
+    def _synth_number(self, *names: str) -> float | None:
+        defaults = self._template_defaults()
+        for name in names:
+            raw = defaults.get(name)
+            if raw is None:
+                continue
+            try:
+                return abs(float(raw))
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def effective_geometry(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        """返回本次测试**实际使用**的 profile / base_tower。
+
+        ``params_source == "template"``（无杆塔）时，``build_dat_values`` 需要的
+        「避雷线左/右中距」在模板体系里没有承载槽位（各塔型 RELE09/RELE10 语义还不同），
+        因此用模板 context 默认值（``lw_l_eff``/``lw_r_eff``）**显式合成**，并把合成内容
+        记进 ``self.synthetic_geometry`` 供对拍产物标注。
+
+        生产路径（tower 模式）原样返回，不做任何补全 —— 缺数据仍然显式报错。
+        """
+        if self._effective_geometry_cache is not None:
+            return self._effective_geometry_cache
+        profile = dict(self.payload.profile or {})
+        base_tower = dict(self.payload.base_tower or {})
+        if self.params_source != "template":
+            self._effective_geometry_cache = (profile, base_tower)
+            return self._effective_geometry_cache
+
+        synth: dict[str, Any] = {}
+        lw = profile.get("lightning_wire")
+        if not (
+            isinstance(lw, dict)
+            and lw.get("left_mid_distance_m") is not None
+            and lw.get("right_mid_distance_m") is not None
+        ):
+            left = self._synth_number("lw_l_eff", "lw_l")
+            right = self._synth_number("lw_r_eff", "lw_r")
+            if left is None or right is None:
+                raise RuntimeError(
+                    "无杆塔模式需要避雷线左/右中距，但参数模板未提供默认值"
+                    "（defaults.lw_l_eff / lw_r_eff）。请补模板默认值，或在请求里显式传 "
+                    "profile.lightning_wire.{left,right}_mid_distance_m。"
+                )
+            profile["lightning_wire"] = {
+                "left_mid_distance_m": left,
+                "right_mid_distance_m": right,
+            }
+            synth["lightning_wire"] = dict(profile["lightning_wire"])
+
+        if synth:
+            self.synthetic_geometry = {
+                **synth,
+                "source": "参数模板 context 默认值（无杆塔模式显式合成）",
+            }
+        self._effective_geometry_cache = (profile, base_tower)
+        return self._effective_geometry_cache
 
     # ---- 参数（无杆塔测试的核心）----
 
@@ -853,6 +927,9 @@ class _TestContext:
         }
         params = self.ensure_params()
         env = self._engine_env()
+        profile, base_tower = self.effective_geometry()
+        if self.synthetic_geometry:
+            log_lines.append(f"无杆塔几何合成：{json.dumps(self.synthetic_geometry, ensure_ascii=False)}")
         # ⚠️ 这里不要再套 GEOMETRY_LOCK：regenerate_line_models 内部已经加锁，
         # 而 GEOMETRY_LOCK 是 threading.Lock（不可重入）→ 同线程二次获取会永久死锁
         # （2026-09-19 实测：geometry 段挂起、celery 子进程卡在 futex_wait）。
@@ -861,8 +938,8 @@ class _TestContext:
             tower_kind=str(self.payload.tower_kind or self.asset.tower_type or ""),
             voltage_kv=self.payload.voltage_kv,
             params=params,
-            profile=dict(self.payload.profile or {}),
-            base_tower=dict(self.payload.base_tower or {}),
+            profile=profile,
+            base_tower=base_tower,
             build_command=lambda *, input_path: self._build_command(
                 # regenerate_line_models 传进来的已是相对名（Path("long.dat")），
                 # 这里原样透传：ATP 会把绝对路径整串小写化 → 打不开（rc=3）。
@@ -911,6 +988,19 @@ class _TestContext:
                 "至少一个 .lib 发生变化" if recomputed_any else "四个 .lib 哈希全未变：几何未生效或指纹缓存命中",
             )
         )
+        if self.params_source == "template":
+            verdicts.append(
+                _verdict(
+                    "geometry_source",
+                    True,
+                    (
+                        "无杆塔：避雷线中距由参数模板默认值显式合成 → "
+                        f"{json.dumps(self.synthetic_geometry.get('lightning_wire'), ensure_ascii=False)}"
+                        if self.synthetic_geometry
+                        else "无杆塔：请求已显式提供避雷线中距（未合成）"
+                    ),
+                )
+            )
         metrics = {
             "params_count": len(params),
             "params_sha256": _sha256_text(
@@ -1088,6 +1178,8 @@ class _TestContext:
             "stages": stage_results,
             "params_source": self.params_source,
             "params_diagnostics": self.param_diagnostics,
+            # 无杆塔模式下用模板默认值显式合成的几何（None = 未合成）；对拍时须注意
+            "synthetic_geometry": self.synthetic_geometry,
             "atp_params": atp_params,
             "lib_hashes": lib_hashes,
             "simulate": dict(self._lis_flashover or {}),
