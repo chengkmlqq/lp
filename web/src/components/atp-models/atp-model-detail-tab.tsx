@@ -5,6 +5,7 @@ import { Alert, Descriptions, Empty, Spin, Table, Typography } from "antd";
 import { useMemo } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { AtpModelTestPanel } from "@/components/atp-models/atp-model-test-panel";
 import { readApiError } from "@/lib/api";
 import type { AtpAssetSummary, AtpAssetFileListResponse } from "@/types/auth";
 
@@ -119,6 +120,8 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
           />
         </div>
       ) : null}
+
+      {asset ? <AtpModelTestPanel asset={asset} /> : null}
 
       <div>
         <Typography.Title level={5}>文件列表 ({files.length})</Typography.Title>
