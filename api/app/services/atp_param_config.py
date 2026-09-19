@@ -20,6 +20,7 @@ from typing import Any, Mapping
 from app.services.atp_param_resolver import (
     MAPPINGS_DIR,
     MappingRules,
+    ResolvedParams,
     build_context,
     globals_from_rows,
     load_mappings,
@@ -124,3 +125,22 @@ def compute_params_from_runtime(
     context = build_context(base_tower=base_tower, profile=profile, execution_options=execution_options)
     resolved = resolve_params(context, rules)
     return resolved.as_dict() or None
+
+
+def compute_params_detailed_from_runtime(
+    *,
+    base_tower: Mapping[str, Any] | None,
+    profile: Mapping[str, Any] | None,
+    execution_options: Mapping[str, Any] | None = None,
+    allow_defaults: bool = False,
+) -> ResolvedParams | None:
+    """同 compute_params_from_runtime，但返回带诊断的结果（defaults_used / unresolved / chain）。
+
+    供「无杆塔测试」判断参数来源：哪些槽位用了模板默认值、哪些因缺上下文退化成 "1." 占位。
+    allow_defaults=True 时用规则链上的 defaults 补全缺失上下文（生产路径不传）。
+    """
+    rules = get_rules()
+    if rules is None:
+        return None
+    context = build_context(base_tower=base_tower, profile=profile, execution_options=execution_options)
+    return resolve_params(context, rules, allow_defaults=allow_defaults)

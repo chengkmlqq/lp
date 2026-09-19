@@ -51,6 +51,26 @@ def _allowed_vars(db: Session, slots: dict[str, Any] | None = None) -> set[str]:
     return names
 
 
+def _normalize_defaults(value: Any) -> dict[str, Any]:
+    """校验并归一化「测试默认上下文变量」（``{变量名: 默认值}``）。
+
+    仅用于「无杆塔测试」：解析时补全上下文里为 None 的键（allow_defaults=True）。
+    """
+    if value in (None, ""):
+        return {}
+    if not isinstance(value, dict):
+        raise TemplateError("defaults 需要是对象（{变量名: 默认值}）")
+    out: dict[str, Any] = {}
+    for key, item in value.items():
+        name = str(key).strip()
+        if not _SLOT_NAME_RE.match(name):
+            raise TemplateError(f"defaults 变量名非法：{key}")
+        if isinstance(item, bool) or not isinstance(item, (int, float, str)):
+            raise TemplateError(f"defaults[{name}] 需要是数值或字符串，实际：{item!r}")
+        out[name] = item
+    return out
+
+
 def validate_slots(db: Session, slots: dict[str, Any]) -> None:
     allowed = _allowed_vars(db, slots)
     for slot, spec in (slots or {}).items():
@@ -70,6 +90,11 @@ def validate_slots(db: Session, slots: dict[str, Any]) -> None:
         fmt = spec.get("fmt", 2)
         if not isinstance(fmt, int) or not 0 <= fmt <= 10:
             raise TemplateError(f"{slot} 的 fmt 非法：{fmt}")
+        if "default" in spec:
+            # 表达式取不到值（无杆塔上下文）时的兜底字面值 —— 「无杆塔测试」用
+            default = spec["default"]
+            if isinstance(default, bool) or not isinstance(default, (int, float, str)):
+                raise TemplateError(f"{slot} 的 default 非法：{default!r}")
 
 
 # --------------------------------------------------------------------------------------
@@ -96,11 +121,13 @@ def serialize_template(row: AtpParamTemplate, *, with_slots: bool = False) -> di
         "specificity": sum(1 for key in DIMENSION_KEYS if getattr(row, key, None) not in (None, "")),
         "defined_slots": len(slots),
         "slot_names": sorted(slots.keys()),
+        "defined_defaults": len(row.defaults_json or {}),
         "updated_at": row.updated_at,
         "updated_by": row.updated_by,
     }
     if with_slots:
         payload["slots"] = slots
+        payload["defaults"] = row.defaults_json or {}
     return payload
 
 
@@ -141,6 +168,7 @@ def get_template(db: Session, template_id: str) -> AtpParamTemplate:
 def create_template(db: Session, payload: dict[str, Any], *, operator: str | None = None) -> dict[str, Any]:
     slots = payload.get("slots") or {}
     validate_slots(db, slots)
+    defaults = _normalize_defaults(payload.get("defaults"))
     now = datetime.now(timezone.utc)
     row = AtpParamTemplate(
         id=payload.get("id") or str(uuid.uuid4()),
@@ -158,6 +186,7 @@ def create_template(db: Session, payload: dict[str, Any], *, operator: str | Non
         fallback_to=payload.get("fallback_to"),
         fallback_enabled=bool(payload.get("fallback_enabled", True)),
         slots_json=slots,
+        defaults_json=defaults,
         created_at=now,
         updated_at=now,
         updated_by=operator,
@@ -191,6 +220,8 @@ def update_template(db: Session, template_id: str, payload: dict[str, Any], *, o
     row.fallback_to = payload.get("fallback_to", row.fallback_to)
     row.fallback_enabled = bool(payload.get("fallback_enabled", row.fallback_enabled))
     row.slots_json = slots
+    if "defaults" in payload:
+        row.defaults_json = _normalize_defaults(payload.get("defaults"))
     row.updated_at = datetime.now(timezone.utc)
     row.updated_by = operator
     db.commit()

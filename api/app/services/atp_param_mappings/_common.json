@@ -84,5 +84,26 @@
       "when": "wave_type == 3",
       "else": "0."
     }
+  },
+  "defaults_source": "仓库样例几何（atp_param_template_service._synthetic_case）；仅「无杆塔测试」使用",
+  "defaults": {
+    "shield_h": 73.5,
+    "insul_m": 5.945,
+    "tower_h": 42.0,
+    "h_u": 65.5,
+    "h_m": 53.0,
+    "h_l": 42.0,
+    "sp_u": 12.0,
+    "sp_m": 12.0,
+    "sp_l": 12.0,
+    "lw_l": 12.4,
+    "lw_r": 12.4,
+    "lw_l_eff": 12.4,
+    "lw_r_eff": 12.4,
+    "ground_r": 10.0,
+    "current_ka": 31.0,
+    "head_ms": 2.6,
+    "tail_ms": 50.0,
+    "wave_type": 1
   }
 }

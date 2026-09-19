@@ -22,6 +22,7 @@ from typing import Any, Iterable, Mapping
 
 from app.services.atp_param_dsl import (
     DslError,
+    collect_names,
     evaluate,
     format_value,
     parse_expression,
@@ -68,6 +69,9 @@ class Rule:
     enabled: bool = True
     fallback_to: str | None = None
     fallback_enabled: bool = True
+    # 「无杆塔测试」用的默认上下文变量（如 {"h_u": 65.5, "shield_h": 73.5}）：
+    # 仅在 allow_defaults=True 时生效（生产路径不受影响），只补上下文里为 None 的键。
+    defaults: dict[str, Any] = field(default_factory=dict)
 
     @property
     def specificity(self) -> int:
@@ -88,6 +92,8 @@ class MappingRules:
     marker_order: list[str] = field(default_factory=list)
     default_marker: str = "ganzi"
     voltage_rules: list[Rule] = field(default_factory=list)  # 带非 tower_type 维度的细分规则
+    # 全局默认上下文变量（_common.json 顶层 defaults）—— 仅 allow_defaults=True 时生效
+    defaults: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -96,6 +102,10 @@ class ResolvedParams:
     sources: dict[str, str] = field(default_factory=dict)         # 槽位 -> 来源（规则名/继承）
     chain: list[str] = field(default_factory=list)                # 命中链（粗→细）
     tower_kind: str = "ganzi"
+    # ↓ 诊断（默认值/缺失上下文）—— 供「无杆塔测试」与排障使用，不改变 values 语义
+    defaults_used: dict[str, str] = field(default_factory=dict)   # 槽位 -> 命中的默认值
+    unresolved: dict[str, list[str]] = field(default_factory=dict)  # 槽位 -> 取不到值的源变量名
+    defaults_applied: list[str] = field(default_factory=list)     # 用了模板默认值的上下文变量
 
     def as_dict(self) -> dict[str, str]:
         return dict(self.values)
@@ -117,6 +127,12 @@ def _validate_slots(rule_name: str, slots: Mapping[str, Any]) -> None:
         fmt = spec.get("fmt", 2)
         if not isinstance(fmt, int) or not 0 <= fmt <= 10:
             raise MappingConfigError(f"{rule_name}.{slot} 的 fmt 非法：{fmt}")
+        if "default" in spec:
+            # default：表达式取不到值（源变量缺失/为 None）时的兜底字面值。
+            # 用于「无杆塔上下文」的测试场景；不写 default 时保持与 C# 一致的 "1." 占位。
+            default = spec["default"]
+            if isinstance(default, bool) or not isinstance(default, (int, float, str)):
+                raise MappingConfigError(f"{rule_name}.{slot} 的 default 非法：{default!r}")
 
 
 def load_mappings(mappings_dir: Path | None = None) -> MappingRules:
@@ -134,6 +150,7 @@ def load_mappings(mappings_dir: Path | None = None) -> MappingRules:
         exact_canonical=list(common.get("exact_canonical") or []),
         marker_order=list(common.get("marker_order") or []),
         default_marker=str(common.get("default_marker") or "ganzi"),
+        defaults=dict(common.get("defaults") or {}),
     )
     _validate_slots("_common.globals", rules.globals)
 
@@ -151,6 +168,7 @@ def load_mappings(mappings_dir: Path | None = None) -> MappingRules:
             enabled=bool(raw.get("enabled", True)),
             fallback_to=raw.get("fallback_to"),
             fallback_enabled=bool(raw.get("fallback_enabled", True)),
+            defaults=dict(raw.get("defaults") or {}),
         )
         _validate_slots(rule.name, rule.slots)
         if rule.dimensions.get("tower_type") and not any(
@@ -194,11 +212,15 @@ def load_mappings_from_rows(rows: Iterable[Mapping[str, Any]], *, common: Mappin
         exact_canonical=list(common_cfg.get("exact_canonical") or []),
         marker_order=list(common_cfg.get("marker_order") or []),
         default_marker=str(common_cfg.get("default_marker") or "ganzi"),
+        defaults=dict(common_cfg.get("defaults") or {}),
     )
     for row in rows:
         slots = row.get("slots_json")
         if isinstance(slots, str):
             slots = json.loads(slots)
+        defaults = row.get("defaults_json")
+        if isinstance(defaults, str):
+            defaults = json.loads(defaults)
         dims = {k: row.get(k) for k in DIMENSION_KEYS if row.get(k) not in (None, "")}
         rule = Rule(
             name=str(row.get("name") or row.get("tower_type") or "unnamed"),
@@ -209,6 +231,7 @@ def load_mappings_from_rows(rows: Iterable[Mapping[str, Any]], *, common: Mappin
             enabled=bool(row.get("enabled", True)),
             fallback_to=row.get("fallback_to"),
             fallback_enabled=bool(row.get("fallback_enabled", True)),
+            defaults=dict(defaults or {}),
         )
         _validate_slots(rule.name, rule.slots)
         marker = str(row.get("marker") or row.get("tower_type") or rule.name)
@@ -283,13 +306,35 @@ def _matching_voltage_rules(rules: MappingRules, context: Mapping[str, Any], can
 # 解析
 # --------------------------------------------------------------------------------------
 
+def _collect_defaults(
+    rules: MappingRules,
+    base_rule: Rule | None,
+    ctx: Mapping[str, Any],
+    effective_kind: str,
+) -> dict[str, Any]:
+    """收集规则链上的默认上下文变量（全局 → 塔型 → 细分，粗→细覆盖）。"""
+    out: dict[str, Any] = dict(rules.defaults or {})
+    if base_rule is not None and base_rule.defaults:
+        out.update(base_rule.defaults)
+    for rule in _matching_voltage_rules(rules, ctx, effective_kind):
+        if rule.defaults:
+            out.update(rule.defaults)
+    return out
+
+
 def resolve_params(
     context: Mapping[str, Any],
     rules: MappingRules,
     *,
     allow_fallback: bool = True,
+    allow_defaults: bool = False,
 ) -> ResolvedParams:
-    """按覆盖链解析出全部槽位值（格式化）+ 来源。"""
+    """按覆盖链解析出全部槽位值（格式化）+ 来源。
+
+    allow_defaults=True 时（**仅「无杆塔测试」使用**）：
+    把规则链上的 ``defaults``（全局 → 塔型 → 细分）合并进上下文，**只补为 None 的键**，
+    并记入 ``defaults_applied``。生产路径保持 False —— 行为与改动前逐字节一致。
+    """
     canonical = normalize_tower_kind(context.get("tower_type"), rules)
     ctx = dict(context)
     ctx["tower_type"] = canonical
@@ -299,6 +344,14 @@ def resolve_params(
 
     variables: dict[str, Any] = dict(ctx)
     raw_values: dict[str, Any] = {}
+
+    if allow_defaults:
+        defaults = _collect_defaults(rules, base_rule, ctx, effective_kind)
+        for key, value in defaults.items():
+            if variables.get(key) is None:
+                variables[key] = value
+                result.defaults_applied.append(key)
+        result.defaults_applied.sort()
 
     def apply_slots(rule: Rule | None, source_label: str, *, replace: bool) -> None:
         if replace:
@@ -324,7 +377,27 @@ def resolve_params(
                 result.sources[slot] = source_label
                 raw_values.pop(slot, None)
                 continue
-            raw = evaluate(str(spec["expr"]), {**variables, **raw_values})
+            expression = str(spec["expr"])
+            scope = {**variables, **raw_values}
+            raw = evaluate(expression, scope)
+            if raw is None:
+                # 取不到值：优先用 default；无 default 时保持 C# 一致的 "1." 占位（生产行为不变），
+                # 但把「缺哪些源变量」记进诊断，供测试层拒绝静默计算。
+                missing = sorted(
+                    name for name in collect_names(expression) if scope.get(name) is None
+                )
+                if "default" in spec:
+                    fallback = spec["default"]
+                    result.values[slot] = str(fallback)
+                    result.defaults_used[slot] = str(fallback)
+                    result.sources[slot] = f"{source_label}（默认值）"
+                    raw_values[slot] = _to_number_or_none(fallback)
+                    continue
+                result.values[slot] = format_value(None, int(spec.get("fmt", 2)))
+                result.unresolved[slot] = missing
+                result.sources[slot] = f"{source_label}（缺 {'/'.join(missing) or '上下文'}→{result.values[slot]}）"
+                raw_values[slot] = None
+                continue
             raw_values[slot] = raw
             result.values[slot] = format_value(raw, int(spec.get("fmt", 2)))
             result.sources[slot] = source_label
@@ -346,6 +419,18 @@ def resolve_params(
 
 def _truthy(value: Any) -> bool:
     return bool(value)
+
+
+def _to_number_or_none(value: Any) -> Any:
+    """默认值转数值（供下游槽位引用）；转不了就原样返回（字符串默认值）。"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return value
 
 
 # --------------------------------------------------------------------------------------
@@ -505,9 +590,33 @@ def compute_params_from_config(
     allow_fallback: bool = True,
 ) -> dict[str, str]:
     """配置路径的等价入口（供 golden 对照与后续切换使用）。"""
+    return compute_params_detailed(
+        base_tower=base_tower,
+        profile=profile,
+        execution_options=execution_options,
+        rules=rules,
+        allow_fallback=allow_fallback,
+    ).as_dict()
+
+
+def compute_params_detailed(
+    *,
+    base_tower: Mapping[str, Any] | None,
+    profile: Mapping[str, Any] | None,
+    execution_options: Mapping[str, Any] | None = None,
+    rules: MappingRules | None = None,
+    allow_fallback: bool = True,
+    allow_defaults: bool = False,
+) -> ResolvedParams:
+    """同 compute_params_from_config，但返回带诊断（defaults_used / unresolved / chain）的结果。
+
+    allow_defaults=True（**仅「无杆塔测试」**）：用规则链上的 defaults 补全缺失上下文。
+    """
     active = rules or load_mappings()
     context = build_context(base_tower=base_tower, profile=profile, execution_options=execution_options)
-    return resolve_params(context, active, allow_fallback=allow_fallback).as_dict()
+    return resolve_params(
+        context, active, allow_fallback=allow_fallback, allow_defaults=allow_defaults
+    )
 
 
 __all__ = [
@@ -520,6 +629,7 @@ __all__ = [
     "build_context",
     "globals_from_rows",
     "compute_params_from_config",
+    "compute_params_detailed",
     "load_mappings",
     "load_mappings_from_rows",
     "normalize_tower_kind",
