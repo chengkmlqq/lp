@@ -1213,6 +1213,46 @@ export type AtpAssetFileUploadResponse = {
   success: boolean;
 };
 
+// ── ATP 模型单模型测试（分段执行 + compare.json 对拍产物）──
+
+export type AtpAssetTestStage = "materialize" | "geometry" | "simulate";
+
+export type AtpAssetTestVerdict = {
+  name: string;
+  ok: boolean;
+  detail: string;
+};
+
+export type AtpAssetTestArtifact = {
+  path: string;
+  bytes: number;
+  sha256: string | null;
+};
+
+export type AtpAssetTestStageResult = {
+  stage: string;
+  status: "ok" | "failed" | "skipped";
+  verdicts: AtpAssetTestVerdict[];
+  artifacts: Record<string, AtpAssetTestArtifact>;
+  metrics: Record<string, unknown>;
+  log: string;
+};
+
+export type AtpAssetTestRunRequest = {
+  stages: AtpAssetTestStage[];
+  tower_kind?: string | null;
+  tower_no?: string | null;
+  voltage_kv?: number | null;
+  scene?: string | null;
+  base_tower?: Record<string, unknown>;
+  profile?: Record<string, unknown>;
+  execution_options?: Record<string, unknown>;
+  params_raw?: string | null;
+  current_ka?: number | null;
+  timeout_seconds?: number | null;
+  dry_run?: boolean;
+};
+
 export type AtpAssetRunSummary = {
   id: string;
   asset_id: string;

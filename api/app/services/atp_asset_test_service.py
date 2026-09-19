@@ -59,8 +59,8 @@ TEST_RUN_SUBDIR = "atp-asset-test"
 STAGE_ORDER: tuple[str, ...] = ("materialize", "geometry", "simulate")
 # 产物包要收集的文件（存在才收）
 _ARTIFACT_SUFFIXES: tuple[str, ...] = (".dat", ".pch", ".lib", ".lis", ".pl4", ".atp", ".log")
-# .lib 参数级对比：KARD 之后的 "NAME=VALUE" 赋值行
-_LIB_ASSIGN_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]{1,15})\s*=\s*([-+0-9.eE]+)\s*$")
+# work.atp 的 $PARAMETER 段：``NAME=VALUE`` 赋值行（参数级对比用）
+_NAMED_VALUE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]{1,15})\s*=\s*([-+0-9.eE]+)\s*$")
 
 
 def _sha256_file(path: Path) -> str | None:
@@ -85,9 +85,11 @@ def _artifact_entry(path: Path) -> dict[str, Any]:
     }
 
 
-def _parse_lib_assignments(path: Path) -> dict[str, float]:
-    """抽取 .lib 里的 ``NAME=VALUE`` 赋值（参数级数值对比用，比整文件哈希更鲁棒）。
+def _parse_named_values(path: Path) -> dict[str, float]:
+    """抽取 ``NAME=VALUE`` 赋值行（参数级数值对比用，比整文件哈希更鲁棒）。
 
+    ⚠️ 指向的是 **work.atp 的 $PARAMETER 段**（如 ``RER001=14.``、``REHG______=40.17``），
+    不是 .lib —— 实测 .lib 是 ``KARD/KARG/KBEG/KEND`` 头 + 位置制数值列，没有 NAME=VALUE。
     整文件 sha256 会因路径/文件名字符串差异产生假阳性，故以参数级数值为主判据。
     """
     if not path.is_file():
@@ -98,7 +100,7 @@ def _parse_lib_assignments(path: Path) -> dict[str, float]:
     except OSError:
         return {}
     for line in text.splitlines():
-        match = _LIB_ASSIGN_RE.match(line)
+        match = _NAMED_VALUE_RE.match(line)
         if not match:
             continue
         name, raw = match.group(1), match.group(2)
@@ -477,7 +479,6 @@ class _TestContext:
         self.rendered_text: str = ""
         self.entry_path: Path = run_dir / resolved_job.entry_file
         self.execution_options: dict[str, Any] = self._build_execution_options()
-        self._lib_params: dict[str, dict[str, float]] = {}
         self._lis_flashover: dict[str, Any] = {}
 
     # ---- 参数与渲染 ----
@@ -760,9 +761,6 @@ class _TestContext:
         before = {
             name: _sha256_file(self.engine_dir / f"{name}.lib") for name in dat_names
         }
-        before_params = {
-            name: _parse_lib_assignments(self.engine_dir / f"{name}.lib") for name in dat_names
-        }
         params = compute_csharp_atp_params(
             base_tower=dict(self.payload.base_tower or {}),
             profile=dict(self.payload.profile or {}),
@@ -798,7 +796,6 @@ class _TestContext:
             after_lib = _sha256_file(self.engine_dir / f"{name}.lib")
             changed = before[name] != after_lib
             recomputed_any = recomputed_any or changed
-            self._lib_params[name] = _parse_lib_assignments(self.engine_dir / f"{name}.lib")
             verdicts.append(
                 _verdict(
                     f"{name}_lib_present",
@@ -959,10 +956,14 @@ class _TestContext:
     # ---- 对拍产物 ----
 
     def build_compare_payload(self, stage_results: dict[str, Any]) -> dict[str, Any]:
-        lib_params: dict[str, Any] = {}
-        for name, values in self._lib_params.items():
-            if values:
-                lib_params[f"{name}.lib"] = values
+        # 参数级对比（**主判据**）：Web 端渲染出的 work.atp $PARAMETER 段（NAME=VALUE）
+        atp_params = _parse_named_values(self.entry_path)
+        # 严格对比（附加）：四段 .lib 的 sha256（逐字节一致才算几何完全一致）
+        lib_hashes: dict[str, Any] = {}
+        for name in ("long", "short", "dahao", "xiaohao"):
+            digest = _sha256_file(self.engine_dir / f"{name}.lib")
+            if digest:
+                lib_hashes[f"{name}.lib"] = digest
         artifacts_index: list[dict[str, Any]] = []
         for stage in stage_results.values():
             artifacts_index.extend((stage.get("artifacts") or {}).values())
@@ -997,7 +998,8 @@ class _TestContext:
                 "engine_dir": str(self.engine_dir),
             },
             "stages": stage_results,
-            "lib_params": lib_params,
+            "atp_params": atp_params,
+            "lib_hashes": lib_hashes,
             "simulate": dict(self._lis_flashover or {}),
             "artifacts_index": artifacts_index,
         }

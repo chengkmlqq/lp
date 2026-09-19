@@ -33,7 +33,7 @@ from app.services.atp_asset_test_service import (
     _TestContext,
     _lis_has_halt,
     _normalize_stages,
-    _parse_lib_assignments,
+    _parse_named_values,
 )
 
 
@@ -136,21 +136,30 @@ def test_normalize_stages_rejects_unknown() -> None:
 # ───────────────────────── 2. 判据解析层 ─────────────────────────
 
 
-def test_parse_lib_assignments_extracts_numeric_values(tmp_path: Path) -> None:
-    lib = tmp_path / "long.lib"
-    lib.write_text(
-        "KARD      4\n"
-        "RER001=  14.\n"
-        "RELENS____=   2.49\n"
-        "NAME ONLY\n"
-        "FREQ= 50.0\n",
+def test_parse_named_values_extracts_work_atp_parameters(tmp_path: Path) -> None:
+    """work.atp 的 $PARAMETER 段是参数级对拍的主判据（.lib 是位置制数值列，无 NAME=VALUE）。"""
+    work_atp = tmp_path / "work.atp"
+    work_atp.write_text(
+        "BEGIN NEW DATA CASE\n"
+        "$PARAMETER\n"
+        "RER001=14.\n"
+        "RELENS____=2.49\n"
+        "REIGAN____=871.46\n"
+        "REIAMP____=-871455.4\n"
+        "REBB1_____=0.00005\n"
+        "11HG      REHG______                                                          1.\n"
+        "$ENDPARAMETER\n",
         encoding="latin-1",
     )
-    values = _parse_lib_assignments(lib)
+    values = _parse_named_values(work_atp)
     assert values["RER001"] == pytest.approx(14.0)
     assert values["RELENS____"] == pytest.approx(2.49)
-    assert values["FREQ"] == pytest.approx(50.0)
-    assert "NAME" not in values
+    assert values["REIGAN____"] == pytest.approx(871.46)
+    assert values["REIAMP____"] == pytest.approx(-871455.4)
+    assert values["REBB1_____"] == pytest.approx(0.00005)
+    # 位置制卡（11HG ...）不是赋值行，不计入
+    assert len(values) == 5
+    assert _parse_named_values(tmp_path / "missing.atp") == {}
 
 
 def test_lis_has_halt_detects_fatal_lines(tmp_path: Path) -> None:
@@ -357,6 +366,11 @@ def test_compare_payload_is_csharp_comparable(tmp_path) -> None:
                 "materialize", verdicts=[atp_asset_test_service._verdict("ok", True)]
             )
         }
+        # 参数级对拍主判据来自渲染后的 work.atp（$PARAMETER 段）
+        (tmp_path / "run").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "run" / "work.atp").write_text(
+            "$PARAMETER\nRER001=14.\nREIGAN____=871.46\n", encoding="latin-1"
+        )
         compare = ctx.build_compare_payload(stage_results)
 
         assert compare["schema"] == COMPARE_SCHEMA

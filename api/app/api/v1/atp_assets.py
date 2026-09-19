@@ -198,6 +198,18 @@ def create_atp_asset_test_run_endpoint(
     )
 
 
+@router.get("/assets/{asset_id}/test-runs", response_model=AtpAssetRunListResponse)
+def list_atp_asset_test_runs_endpoint(
+    asset_id: str,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetRunListResponse:
+    """该资产的运行记录（测试运行与生产运行共用 atp_asset_run 表，按时间倒序）。"""
+    return list_runs(db, asset_id=asset_id, limit=limit, offset=offset)
+
+
 @router.get("/test-runs/{run_id}/compare")
 def get_atp_asset_test_compare(
     run_id: str,
