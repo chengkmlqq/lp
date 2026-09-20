@@ -277,7 +277,15 @@ def _sihuita(ctx: dict) -> dict[str, float]:
     """
     circ = ctx.get("circuits") or []
     out: dict[str, float] = {}
-    for circ_no, sign, src in (("I", -1, 0), ("II", 1, 0), ("III", -1, 1), ("IV", 1, 1)):
+    # ⚠️ 2026-09-20 修复（对拍 C# 时实测 KILL=84 定位）：原实现 src 写成 (0,0,1,1)，
+    # 即 I/II 回都取 circ[0]、III/IV 回都取 circ[1] —— 而上下文 `circuits` 是
+    # [_circuit_entry(_cg, k) for k in ("I","II","III","IV")] 的**四组**，
+    # 于是 12 根导体只剩两组坐标 → 回路 III/IV 与 I/II **几何重合** →
+    # ATP 在 LINE CONSTANTS 阶段报
+    #   `KILL = 84. Two conductors ... have identical (x,y) geometrical positioning`
+    # → 不产出 .pch → sihuita（四回塔）**永远跑不起来**（与引擎 List 容量无关）。
+    # 修正为「每回路取自己的那组」：I←0 / II←1 / III←2 / IV←3。
+    for circ_no, sign, src in (("I", -1, 0), ("II", 1, 1), ("III", -1, 2), ("IV", 1, 3)):
         if len(circ) <= src:
             raise RuntimeError(f"四回型缺少第 {src + 1} 组导线几何，无法改写 .dat")
         c = circ[src]
