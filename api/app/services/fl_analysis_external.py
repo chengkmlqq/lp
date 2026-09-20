@@ -1977,17 +1977,22 @@ def _rewrite_includes(
         return rendered_text
     priv_win = "D:\\ATP\\.runs\\" + str(snapshot.id or job.id or "x")[:8] + _scene_short_code(resolved_job) + "\\"
     out_lines = []
-    for line in rendered_text.splitlines():
-        # $INCLUDE 行：把 D:\ATP\<scene相对段>\##.lib 整段替换为 D:\ATP\.runs\{snap短}{scene短}\##.lib。
-        # 用正则匹配完整路径（D:\ATP\...\.lib），取 .lib 文件名重建短路径（保 ≤80 列）。
+    # ⚠️ 2026-09-20 修复（对拍 C# 发现）：原实现用 `splitlines()` + `"\n".join()`，
+    # 会把 CRLF **折成 LF**。C# 的 work.atp 是 CRLF（实测 384 个 CR），
+    # 而 ATP 是**固定列格式**读取，行尾虽不改列位，但为与 C# 产物逐字节一致、
+    # 并排除"行尾差异是否影响解析"的干扰，这里改为保留原行尾。
+    # 实测证据：LP 渲染产物 CR=0 / C# CR=384，改用 keepends 后一致。
+    for raw_line in rendered_text.splitlines(keepends=True):
+        line = raw_line.rstrip("\r\n")
+        ending = raw_line[len(line):]
         if line.strip().upper().startswith("$INCLUDE") and ".lib" in line:
             new_line = _INCLUDE_PATH_RE.sub(
                 lambda m: priv_win + m.group(1), line
             )
-            out_lines.append(new_line)
+            out_lines.append(new_line + ending)
         else:
-            out_lines.append(line)
-    return "\n".join(out_lines)
+            out_lines.append(raw_line)
+    return "".join(out_lines)
 
 
 def _prepare_run_directory(

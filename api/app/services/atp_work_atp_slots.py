@@ -48,6 +48,11 @@ _VOLTAGE_PROFILE = {
 _VOLTAGE_PROFILE_HIGH = (9.5, 12.0, 1.28)   # ≥500kV 及直流
 
 _K0_SLOT = ("11K0", 10, 10, 2)              # 名称、偏移、宽、F2
+# ⚠️ 2026-09-20 修复：偏移原写成 34（错 2 列）。实测 C# 产物：
+#   14XXSS2A …第3字段「-90.」落在第 36..39 列、14XXSS2B「-120.」落在第 35..39 列
+#   ⇒ 字段 = 偏移 32、宽 8、右对齐。ATP 是**固定列格式**，错 2 列会被读成别的值，
+#     实测导致 220/ganzi 的闪络相由 C1(SWU3) 翻成 B1(SWU2)。
+_ANGLE_OFFSET, _ANGLE_WIDTH = 32, 8
 _ANGLE_SLOTS = ("14XXSS2A", "14XXSS1A", "14XXSS2B", "14XXSS1B", "14XXSS2C", "14XXSS1C")
 
 _DOUBLE_CIRCUIT = {"guxing", "guxingd", "sihuita", "sihuitano", "guxingno"}
@@ -205,8 +210,7 @@ def rewrite_electric_angle(text: str, angle_deg: float | None) -> tuple[str, boo
     for i, line in enumerate(lines):
         for slot, value in values.items():
             if line.startswith(slot):
-                # 电角度位于第 3 个字段：偏移 34、宽 8、F1（与 C# work_atp_model 规格一致）
-                lines[i] = _write_slot(line, 34, 8, 1, value)
+                lines[i] = _write_slot(line, _ANGLE_OFFSET, _ANGLE_WIDTH, 1, value)
                 changed = True
                 break
     return ("\n".join(lines), True) if changed else (text, False)
