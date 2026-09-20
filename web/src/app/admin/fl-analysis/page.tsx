@@ -136,6 +136,10 @@ export default function AdminFlAnalysisPage() {
     },
     // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询时列表闪空
     placeholderData: (previousData) => previousData,
+    // 运行中的任务每 10s 自动轮询一次（进度条/完成数实时更新）；
+    // 没有 running 任务时无需轮询，靠手动查询/操作 invalidate 即可。
+    refetchInterval: (query) =>
+      (query.state.data?.items ?? []).some((job) => job.status === "running") ? 10_000 : false,
   });
 
   const jobs = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data?.items]);

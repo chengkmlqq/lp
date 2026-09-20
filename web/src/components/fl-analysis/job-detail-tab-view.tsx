@@ -66,6 +66,9 @@ export function JobDetailTabView({
       }
       return (await response.json()) as FlAnalysisJobDetail;
     },
+    // 运行中的任务每 10s 轮询：详情页“结果杆塔数”与进度实时更新
+    refetchInterval: (query) =>
+      (query.state.data?.status ?? job.status) === "running" ? 10_000 : false,
   });
 
   const towerResultsQuery = useQuery({
@@ -78,6 +81,9 @@ export function JobDetailTabView({
       }
       return (await response.json()) as FlAnalysisTowerResultListResponse;
     },
+    // 运行中任务每 10s 轮询：杆塔明细随计算完成实时增长
+    refetchInterval: (query) =>
+      (query.state.data?.items.length ?? 0) > 0 && job.status === "running" ? 10_000 : false,
   });
 
   const selectedJobDetail = jobDetailQuery.data ?? null;
