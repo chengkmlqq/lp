@@ -17,6 +17,7 @@
 
 import re
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 _SPEC_PATH = Path(__file__).with_name("atp_dat_model") / "long_short_dat_model.txt"
@@ -136,13 +137,17 @@ def _span_block(lines: list[str]) -> list[int]:
 
 
 def _fmt(value: float, digits: int, width: int) -> str:
-    v = float(value)
-    if abs(v) < 1e-12:
-        # C# 对零值输出 "0.0"（实测 maotou .dat 中相中距），不参与去尾零
-        return ("0.0" if digits == 1 else f"{v:.{digits}f}").rjust(width)
-    txt = f"{v:.{digits}f}"
+    # ⚠️ 2026-09-20 修复（对拍 C# 发现）：
+    # ① 零值不特判 —— C# 对 0 输出 "0."（实测 220 四个塔型 long.dat 的
+    #    「中相中距(0值)」槽 = `      0.`），旧实现对零输出 "0.0" → 整行错位。
+    # ② 舍入必须走**十进制**四舍五入(round-half-up)，不能直接用二进制浮点格式化：
+    #    实测 jiubei 避雷线中距 9.85 → C# 写 "9.9"，而 f"{9.85:.1f}" 得 "9.8"
+    #    （9.85 的 float64 实为 9.8499999…）→ 一个字符差异。
+    #    改为 Decimal(str(v)) + ROUND_HALF_UP，与 C# ToString("F1") 语义一致。
+    txt = str(Decimal(str(float(value))).quantize(Decimal(1).scaleb(-digits),
+                                                  rounding=ROUND_HALF_UP))
     if "." in txt:
-        txt = txt.rstrip("0")      # C# 去尾零：12.0 → "12."
+        txt = txt.rstrip("0")      # C# 去尾零：12.0 → "12."；0.0 → "0."
     return txt.rjust(width)
 
 

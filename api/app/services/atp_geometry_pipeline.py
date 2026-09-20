@@ -152,24 +152,33 @@ def build_dat_values(*, section: str, params: dict[str, str],
     # 杆塔回路几何（I/II/III/IV 回的上/中/下相中距与相高）——单回塔型与四回型都要用
     _cg = (base_tower or {}).get("circuit_geometry_json") or {}
 
-    # 相中距：鼓型等模板由 RELE09/06/03 承载；单回塔型（猫头/酒杯/干字/门型/上子型）
-    # 模板没有 RELE09 → 回退到杆塔几何（circuit_geometry_json 的上/中/下相中距）。
-    def _spacing(rele: str, key: str) -> float:
-        v = _num(params, rele)
-        if v is not None:
-            return v
+    # 相中距：⚠️ 2026-09-20 修复（与 C# 对拍发现，见中转站消息 #0008）
+    # C# 权威口径（ComputeLightningProtection.cs:3843-4483 的 MySetValue）：
+    #   .dat 的相中距取**杆塔几何的「上/中/下相中距」**（mParamSet.m上/中/下相中距sh_m[回路]），
+    #   与 RELE 槽位无关。此前本函数**优先**取 RELE09/06/03 —— 该假设只对鼓型（双回）成立
+    #   （鼓型模板 RELE09/06/03 = |sp_u|/|sp_m|/|sp_l|）；对单回塔型（干字/酒杯/猫头/上字）
+    #   RELE09/RELE03 是避雷线中距等其它量 → .dat 几何整体错位。
+    #   实测证据：ganzi long.dat 第 1 行 C#=-6.1(=sp_u) vs LP=-4.6(=RELE09)；
+    #             第 3 行 C#=+6.5(=sp_l) vs LP=+6.1(=RELE03)。
+    # 现改为：**杆塔几何优先，RELE 仅作兜底**（无杆塔几何时保持旧行为，不静默降级为 0）。
+    def _spacing(key: str, rele: str) -> float:
         geo = (base_tower or {}).get("circuit_geometry_json") or {}
         first = geo.get("I") or (next(iter(geo.values())) if geo else None)
         val = ((first or {}).get("phase_spacing_m") or {}).get(key)
-        if val is None:
-            raise RuntimeError(f"缺少 {rele} 且杆塔几何无 phase_spacing_m.{key}，无法改写 .dat 几何")
-        return abs(float(val))
+        if val is not None:
+            return abs(float(val))
+        v = _num(params, rele)
+        if v is not None:
+            return v
+        raise RuntimeError(
+            f"缺少杆塔几何 phase_spacing_m.{key} 且模板无 {rele}，无法改写 .dat 几何"
+        )
 
     return build_values(
         section,
-        sp_upper=_spacing("RELE09", "upper"),
-        sp_middle=_spacing("RELE06", "middle"),
-        sp_lower=_spacing("RELE03", "lower"),
+        sp_upper=_spacing("upper", "RELE09"),
+        sp_middle=_spacing("middle", "RELE06"),
+        sp_lower=_spacing("lower", "RELE03"),
         lw_left=abs(float(lw_left)),
         lw_right=abs(float(lw_right)),
         rehc1=need("REHC1"),

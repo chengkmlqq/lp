@@ -553,6 +553,40 @@ class _TestContext:
             }
             synth["lightning_wire"] = dict(profile["lightning_wire"])
 
+        # 相中距 / 相高：⚠️ 2026-09-20 补（配合 atp_geometry_pipeline._spacing 的对拍修复）
+        # C# 口径下 .dat 的相中距取**杆塔几何**（circuit_geometry_json[*].phase_spacing_m），
+        # 无杆塔模式下该几何为空 → 必须用模板默认值显式合成；否则 _spacing 会回退到
+        # RELE 槽位，而单回塔型的 RELE09/03 并非相中距 → .dat 几何错位。
+        cg = base_tower.get("circuit_geometry_json")
+        cg_ok = (
+            isinstance(cg, dict)
+            and isinstance((cg.get("I") or {}).get("phase_spacing_m"), dict)
+            and (cg["I"]["phase_spacing_m"] or {}).get("upper") is not None
+        )
+        if not cg_ok:
+            sp_u = self._synth_number("sp_u")
+            sp_m = self._synth_number("sp_m")
+            sp_l = self._synth_number("sp_l")
+            if sp_u is None or sp_m is None or sp_l is None:
+                raise RuntimeError(
+                    "无杆塔模式需要相中距，但参数模板未提供默认值"
+                    "（defaults.sp_u / sp_m / sp_l）。请补模板默认值，或在请求里显式传 "
+                    "base_tower.circuit_geometry_json。"
+                )
+            entry: dict[str, Any] = {
+                "phase_spacing_m": {"upper": sp_u, "middle": sp_m, "lower": sp_l},
+            }
+            h_u = self._synth_number("h_u")
+            h_m = self._synth_number("h_m")
+            h_l = self._synth_number("h_l")
+            if h_u is not None and h_m is not None and h_l is not None:
+                entry["phase_height_m"] = {"upper": h_u, "middle": h_m, "lower": h_l}
+            base_tower["circuit_geometry_json"] = {
+                k: {kk: (dict(vv) if isinstance(vv, dict) else vv) for kk, vv in entry.items()}
+                for k in ("I", "II", "III", "IV")
+            }
+            synth["circuit_geometry_json"] = entry
+
         if synth:
             self.synthetic_geometry = {
                 **synth,
