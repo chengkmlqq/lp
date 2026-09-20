@@ -43,7 +43,7 @@
       "fmt": 2
     },
     "RELE10": {
-      "expr": "clamp(abs(shield_h - h_u), 1.5)",
+      "expr": "abs(shield_h - h_u)",
       "fmt": 2
     },
     "RELE11": {

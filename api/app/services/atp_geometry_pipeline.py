@@ -105,6 +105,14 @@ def _insulator_m(profile: dict) -> float:
         return 0.0
 
 
+def _opt_float(value: Any) -> float | None:
+    """宽松转 float；无法转换返回 None。"""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _circuit_entry(cg, key) -> dict:
     node = (cg or {}).get(key)
     if not isinstance(node, dict):
@@ -150,7 +158,11 @@ def build_dat_values(*, section: str, params: dict[str, str],
         raise RuntimeError("缺少避雷线左/右中距，无法改写 .dat 几何")
 
     # 杆塔回路几何（I/II/III/IV 回的上/中/下相中距与相高）——单回塔型与四回型都要用
-    _cg = (base_tower or {}).get("circuit_geometry_json") or {}
+    # ⚠️ 2026-09-20 修复：先按「回路相序」把台账 A/B/C 三列重排为物理上/中/下
+    # （C# 权威 MyParamClass.cs:1595-1716；见 atp_phase_sequence 模块）。
+    from .atp_phase_sequence import permute_circuit_geometry
+
+    _cg = permute_circuit_geometry((base_tower or {}).get("circuit_geometry_json") or {}, profile)
 
     # 相中距：⚠️ 2026-09-20 修复（与 C# 对拍发现，见中转站消息 #0008）
     # C# 权威口径（ComputeLightningProtection.cs:3843-4483 的 MySetValue）：
@@ -162,8 +174,7 @@ def build_dat_values(*, section: str, params: dict[str, str],
     #             第 3 行 C#=+6.5(=sp_l) vs LP=+6.1(=RELE03)。
     # 现改为：**杆塔几何优先，RELE 仅作兜底**（无杆塔几何时保持旧行为，不静默降级为 0）。
     def _spacing(key: str, rele: str) -> float:
-        geo = (base_tower or {}).get("circuit_geometry_json") or {}
-        first = geo.get("I") or (next(iter(geo.values())) if geo else None)
+        first = _cg.get("I") or (next(iter(_cg.values())) if _cg else None)
         val = ((first or {}).get("phase_spacing_m") or {}).get(key)
         if val is not None:
             return abs(float(val))
@@ -176,6 +187,10 @@ def build_dat_values(*, section: str, params: dict[str, str],
 
     return build_values(
         section,
+        # ⚠️ 2026-09-20：shangzi 分支的「避雷线平均高度」用**原始避雷线高度**（C#
+        # ComputeLightningProtection.cs:4105 `averageHeightBLX = m避雷线高度_m; -1.2`），
+        # 不是 work.atp 的 REHG（REHG 已含电压分级修正）。传入原始值供 _shangzi 使用。
+        shield_h=_opt_float(profile.get("shield_wire_height_m")),
         sp_upper=_spacing("upper", "RELE09"),
         sp_middle=_spacing("middle", "RELE06"),
         sp_lower=_spacing("lower", "RELE03"),

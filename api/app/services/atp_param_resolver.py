@@ -509,6 +509,11 @@ def build_context(
     tower_h = _f(cg.get("tower_height_m")) or _f(prof.get("call_height_m"))
 
     geometry = _obj(prof.get("geometry_layers_json"))
+    # ⚠️ 2026-09-20 修复：按「回路相序」把台账 A/B/C 三列重排为物理上/中/下
+    # （与 fl_analysis_external.compute_csharp_atp_params 同一口径，见 atp_phase_sequence）
+    from .atp_phase_sequence import permute_circuit_geometry
+
+    geometry = permute_circuit_geometry(geometry, prof)
     layer_i = _obj(geometry.get("I"))
     ph = _obj(layer_i.get("phase_height_m"))
     spacing = _obj(layer_i.get("phase_spacing_m"))

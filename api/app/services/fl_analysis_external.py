@@ -516,6 +516,13 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
     tower_h = f(cg.get("tower_height_m")) or f(profile.get("call_height_m"))
 
     geometry = profile.get("geometry_layers_json") or {}
+    # ⚠️ 2026-09-20 修复：按「回路相序」把台账的 A/B/C 三列重排为物理上/中/下。
+    # C# 权威（MyParamClass.cs:1595-1716）：台账「上/中/下相中距(高度)」列 = A/B/C 相值，
+    # 物理上/中/下由相序串决定。此前 LP 直接按位置取 → guxing（相序 BCA）整体错位
+    # （A1 14/28 不一致的**全部**原因）。详见 atp_phase_sequence 模块。
+    from .atp_phase_sequence import permute_circuit_geometry
+
+    geometry = permute_circuit_geometry(geometry, profile)
     layer_i = geometry.get("I") or {}
     ph = layer_i.get("phase_height_m") or {}
     spacing = layer_i.get("phase_spacing_m") or {}

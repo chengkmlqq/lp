@@ -232,21 +232,34 @@ def _si_ping_mian(ctx: dict) -> dict[str, float]:
 
 
 def _shangzi(ctx: dict) -> dict[str, float]:
-    """上子型（单避雷线）—— C# ComputeLightningProtection.cs:4079-4113。
+    """上子型（单避雷线）—— C# ComputeLightningProtection.cs:4043-4115。
 
     相高取「平均高度」= 相高 − 绝缘子 − 1.5；避雷线中距为 0；
     避雷线高度 = |避雷线高 − 1.2|（C# averageHeightBLX = Math.Abs(h - 1.2)）。
+
+    ⚠️ 2026-09-20（对拍 C# 实测）：C# 上子型分支把**中距写进了交换过的槽位** ——
+    实测 220/shangzi long.dat 导体 1 = `+5.2`（正）、导体 2 = `-7.`（负），
+    而 spec 的槽位是 1=左相中距(负值)、2=中相中距(正值)，即 C# 实际写入为
+      导体1 ← +|物理中相中距|（5.2）、导体2 ← -|物理上相中距|（7.0）；
+    **高度列不交换**（导体1 = 左相平均高度、导体2 = 中相平均高度）。
+    为与 C# 逐字节一致，此处按实测复刻（非笔误，两处证据：C# 源码 4043-4115 +
+    本机 .dat 字节）。
     """
     ins = float(ctx.get("insulator") or 0.0)
+    # ⚠️ 2026-09-20：C# 上子型分支用**原始避雷线高度** − 1.2
+    # （ComputeLightningProtection.cs:4105），不是 work.atp 的 REHG（已含电压分级修正）。
+    shield_h = ctx.get("shield_h")
+    if shield_h is None:
+        shield_h = ctx.get("rehg") or 0.0
     return {
-        "左相中距(负值)": -abs(ctx["sp_upper"]),
+        "左相中距(负值)": abs(ctx["sp_middle"]),          # C# 实测写入的是「中相」值（正）
         "左相平均高度": abs(abs(ctx["h_upper"] or 0.0) - ins) - 1.5,
-        "中相中距(正值)": abs(ctx["sp_middle"]),
+        "中相中距(正值)": -abs(ctx["sp_upper"]),          # C# 实测写入的是「上相」值（负）
         "中相平均高度": abs(abs(ctx["h_middle"] or 0.0) - ins) - 1.5,
         "右相中距(正值)": abs(ctx["sp_lower"]),
         "右相平均高度": abs(abs(ctx["h_lower"] or 0.0) - ins) - 1.5,
         "避雷线中距(正值)": 0.0,
-        "避雷线平均高度": abs(ctx["rehg"] - 1.2),
+        "避雷线平均高度": abs(shield_h - 1.2),
     }
 
 
