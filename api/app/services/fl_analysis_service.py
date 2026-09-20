@@ -359,8 +359,11 @@ def list_tower_results(db: Session, *, job_id: str, run_id: str | None = None) -
         total_stmt = total_stmt.where(FlAnalysisTowerResult.run_id == run_id)
 
     total = int(db.scalar(total_stmt) or 0)
+    # 按杆塔序号（seq_no）正序展示：详情页杆塔列表应对应线路塔序 1..N，
+    # 而非按风险等级/创建时间排序（此前 risk_level.desc + create_date.asc 会打乱塔序）。
     items = db.execute(
-        stmt.order_by(FlAnalysisTowerResult.risk_level.desc(), FlAnalysisTowerResult.create_date.asc())
+        stmt.join(FlAnalysisTowerSnapshot, FlAnalysisTowerSnapshot.id == FlAnalysisTowerResult.snapshot_id)
+        .order_by(FlAnalysisTowerSnapshot.seq_no.asc())
         .options(selectinload(FlAnalysisTowerResult.snapshot))
     ).scalars().all()
     return FlAnalysisTowerResultListResponse(items=[serialize_tower_result(item) for item in items], total=total)
