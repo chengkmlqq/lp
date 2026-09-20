@@ -1190,7 +1190,17 @@ def _resolve_asset_worktree(
         read_result = driver.read_file(entry_path)
     except (HTTPException, StorageDriverError) as exc:
         raise RuntimeError(f"ATP 资产缺少可执行模板: {asset.code}（{entry_file}）") from exc
-    atp_text = read_result.content.decode("utf-8", errors="replace")
+    # ⚠️ 2026-09-20 修复（对拍 C# 的 work.atp 发现）：work.atp 模板是 **GBK**
+    # （C# 侧 ATP 产物一律 GBK），旧实现用 `utf-8 + errors="replace"` 解码 →
+    # 模板里的中文注释全部变成 "?"，渲染后又按 GBK 写回，于是 "?" 被原样带进产物
+    # → work.atp / work.lis 与 C# 逐字节不一致（实测第 3/5/44/46/55 行等）。
+    # 改为「UTF-8 严格优先，失败回退 GBK」：纯 ASCII 与 UTF-8 资产不受影响，
+    # GBK 资产（含中文注释）不再被破坏。
+    _raw = read_result.content
+    try:
+        atp_text = _raw.decode("utf-8")
+    except UnicodeDecodeError:
+        atp_text = _raw.decode("gbk", errors="replace")
     if not atp_text.strip():
         raise RuntimeError(f"ATP 资产缺少可执行模板: {asset.code}（{entry_file}）")
 

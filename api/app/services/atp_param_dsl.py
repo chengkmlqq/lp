@@ -256,11 +256,18 @@ def format_value(value: Any, digits: int = 2) -> str:
     except (TypeError, ValueError):
         digits = 2
     try:
-        from decimal import ROUND_HALF_UP, Decimal  # noqa: PLC0415
+        from decimal import ROUND_HALF_EVEN, Decimal  # noqa: PLC0415
 
-        # repr → 最短往返字符串，避免把二进制噪声带进舍入；quantize 后按 C# 的 F2 语义输出
+        # ⚠️ 2026-09-20 修复（对拍 C# 的 work.atp/work.lis 发现 HIAMP 差 0.1）：
+        # C# `ToString("F")` 的语义 = 对 **最短往返十进制串** 做 **round-half-to-EVEN**
+        # （.NET Core 的 F 格式走 shortest-digits 后再银行家舍入），而不是 half-away-from-zero：
+        #   HIAMP = -10211.85 → 最短串 "-10211.85" → 前一位 8 为偶 → **-10211.8**（C# 实测）
+        #   REHC  = 51.555    → 最短串 "51.555"    → 前一位 5 为奇 → **51.56**（C# 实测）
+        # 旧实现用 ROUND_HALF_UP → HIAMP 错成 -10211.9（进而把 work.lis 的临界闪络相翻转）。
+        # 注：`.dat` 的 `_fmt`（atp_dat_writer）是**另一条路径**，实测为 half-away-from-zero
+        #     （9.85 → 9.9），两者不可混用。
         dec = Decimal(repr(float(value))).quantize(
-            Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP
+            Decimal(1).scaleb(-digits), rounding=ROUND_HALF_EVEN
         )
         text = f"{dec:.{digits}f}"
     except (TypeError, ValueError, ArithmeticError):
