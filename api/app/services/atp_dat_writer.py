@@ -237,24 +237,24 @@ def _shangzi(ctx: dict) -> dict[str, float]:
     相高取「平均高度」= 相高 − 绝缘子 − 1.5；避雷线中距为 0；
     避雷线高度 = |避雷线高 − 1.2|（C# averageHeightBLX = Math.Abs(h - 1.2)）。
 
-    ⚠️ 2026-09-20（对拍 C# 实测）：C# 上子型分支把**中距写进了交换过的槽位** ——
-    实测 220/shangzi long.dat 导体 1 = `+5.2`（正）、导体 2 = `-7.`（负），
-    而 spec 的槽位是 1=左相中距(负值)、2=中相中距(正值)，即 C# 实际写入为
-      导体1 ← +|物理中相中距|（5.2）、导体2 ← -|物理上相中距|（7.0）；
-    **高度列不交换**（导体1 = 左相平均高度、导体2 = 中相平均高度）。
-    为与 C# 逐字节一致，此处按实测复刻（非笔误，两处证据：C# 源码 4043-4115 +
-    本机 .dat 字节）。
+    ⚠️ 2026-09-20（对拍 C# 后按 win-csharp #0014 的更正）：C# 模板
+    `SettingTxtFile/long_short_dat_model.txt` 的 `<shangzi>` 段**原文**是
+      row1 @34 = 中相中距(正值)、row2 @34 = 左相中距(负值)
+    而 **LP 自己的规格文件写反了**（曾为 row1=左相(负)/row2=中相(正)）。
+    已修正 LP 规格文件去对齐 C# 模板（而非在此处做交换），本函数随之改回**自然映射**：
+      row1（中相中距(正值)）← +|物理中相中距|
+      row2（左相中距(负值)）← -|物理上相中距|
+    高度槽位标签两边一致（row1=左相平均高度、row2=中相平均高度），故高度**不交换**。
+    字节结果与修正前完全一致（20/20 不变）。
     """
     ins = float(ctx.get("insulator") or 0.0)
-    # ⚠️ 2026-09-20：C# 上子型分支用**原始避雷线高度** − 1.2
-    # （ComputeLightningProtection.cs:4105），不是 work.atp 的 REHG（已含电压分级修正）。
     shield_h = ctx.get("shield_h")
     if shield_h is None:
         shield_h = ctx.get("rehg") or 0.0
     return {
-        "左相中距(负值)": abs(ctx["sp_middle"]),          # C# 实测写入的是「中相」值（正）
+        "中相中距(正值)": abs(ctx["sp_middle"]),
         "左相平均高度": abs(abs(ctx["h_upper"] or 0.0) - ins) - 1.5,
-        "中相中距(正值)": -abs(ctx["sp_upper"]),          # C# 实测写入的是「上相」值（负）
+        "左相中距(负值)": -abs(ctx["sp_upper"]),
         "中相平均高度": abs(abs(ctx["h_middle"] or 0.0) - ins) - 1.5,
         "右相中距(正值)": abs(ctx["sp_lower"]),
         "右相平均高度": abs(abs(ctx["h_lower"] or 0.0) - ins) - 1.5,
