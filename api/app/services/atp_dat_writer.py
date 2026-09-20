@@ -285,6 +285,14 @@ def _sihuita(ctx: dict) -> dict[str, float]:
     #   `KILL = 84. Two conductors ... have identical (x,y) geometrical positioning`
     # → 不产出 .pch → sihuita（四回塔）**永远跑不起来**（与引擎 List 容量无关）。
     # 修正为「每回路取自己的那组」：I←0 / II←1 / III←2 / IV←3。
+    #
+    # ⚠️ 2026-09-20 第二处修复：相高写**原始相高**，不是「平均高度」。
+    # 实测对照 C# 侧 sihuita 产物（incoming/win-verify-0042/ev0042/long.dat）：
+    #   C#  导体1-3 = -4.8/46.4, -6.1/39.5, -5.2/33.3   （46.4 = 台账原始相高 46.43）
+    #   旧 LP        = -4.8/36.8, -6.1/29.9, -5.2/23.7   （36.8 = 46.43 − 绝缘子5 − K4.667）
+    # 相高被压低 ~9.7 m 后，回路 III/IV 落到 15.9/11.6/7.8 → LCC 只产出 10 条支路
+    # （应为 14）→ work.atp 的 $INCLUDE 要 28 个节点而 .lib 提供不了 → `KILL = 12`。
+    # 规格里的槽位标签写的是「平均高度」，但**权威值是原始相高**（标签有误导性）。
     for circ_no, sign, src in (("I", -1, 0), ("II", 1, 1), ("III", -1, 2), ("IV", 1, 3)):
         if len(circ) <= src:
             raise RuntimeError(f"四回型缺少第 {src + 1} 组导线几何，无法改写 .dat")
@@ -294,7 +302,10 @@ def _sihuita(ctx: dict) -> dict[str, float]:
                 sign * abs(float(c["spacing"].get(key) or 0.0))
             )
             if circ_no in ("I", "III"):
-                out[f"{circ_no}回线路{label}平均高度"] = _avg_h(c["height"].get(key), ctx)
+                # ⚠️ 2026-09-20：写**原始相高**（不是 _avg_h）。实测对照 C# 侧 sihuita
+                # 产物 long.dat：导体1-3 = -4.8/46.4, -6.1/39.5, -5.2/33.3，
+                # 46.4 即台账原始相高；旧实现写 46.43−绝缘子5−K4.667=36.8（错）。
+                out[f"{circ_no}回线路{label}平均高度"] = abs(float(c["height"].get(key) or 0.0))
     out["左避雷线中距(负值)"] = -abs(ctx["lw_left"])
     out["避雷线平均高度"] = ctx["rehg"]
     out["右避雷线中距(正值)"] = abs(ctx["lw_right"])
@@ -379,7 +390,45 @@ def build_values(section: str, **ctx) -> dict[str, float]:
     )
 
 
-_BRANCH_HEAD = re.compile(r"^-\d+(IN___[A-Z]+)(OUT__[A-Z]+)")
+# ⚠️ 2026-09-20 修复（sihuita 四回塔 .lib 支路数 14→9 的根因）：
+# 旧正则要求行首 '-'+数字，但 .pch 里分支号 ≥10 的行写作 '10IN___JOUT__J'（无 '-'），
+# 于是 14 根导体只认出 9 条支路 → KARG 只给 9 对节点（18 个），$INCLUDE 要的 28 个节点缺 10 个
+# → ATP simulate 阶段 KILL=12「bus name ... unrecognizable ("X0516A")」。
+# C# BuildLib_FromPch() 的判据是「行首 '-'」或「第 3 字符起 'IN___'」的**并集** ⇒ 放宽为可选 '-'。
+# 安全性（实测 42 个资产 .pch）：非 sihuita 塔型（110/220/500 的 guxing/ganzi/jiubei）dash 数 == 并集数
+# （5 或 8），本改动对它们是 no-op；仅 sihuita（14 导体）dash=9 / 并集=14，正是要修的场景。
+_BRANCH_HEAD = re.compile(r"^-?\d+(IN___[A-Z]+)(OUT__[A-Z]+)")
+
+
+def _pack_header(card: str, values: list[int]) -> str:
+    """按 C# BuildLib_FromPch() 的版式把 KARD/KARG/KBEG/KEND/KTEX 头卡分页写出。
+
+    ⚠️ 2026-09-20 修复（sihuita 四回塔 simulate 报 `lately reading sequential formatted
+    internal IO`、rc=3 的根因）：phase_N=14 时每张头卡有 28 个 3 宽字段 = 88 列，
+    超过 ATP 卡片的 80 列上限 → ATP 格式化读失败直接退出（.pl4 不产出）。
+    C# 侧对 phase_N ≥ 14 做了硬编码分页（ComputeLightningProtection.cs:12037-12093）：
+      首行 = 卡名 + 至多 25 个 3 宽字段（= 79 列）
+      续行 = 7 宽首字段 + 3 宽后续字段（= 13 列 / 3 值）
+    实测（本容器 wine + tpbig.exe）：
+      · 88 列头卡 → rc=3「lately reading sequential formatted internal IO」
+      · 改成本版式后 → rc=0，推进到 KILL=1「Storage exceeded for EMTP List Number 8」（引擎容量，与 C# 同层）
+    字段数 ≤ 25 时不产生续行，输出与旧实现逐字节相同（不影响 5/8 支路的其它塔型）。
+    """
+    out: list[str] = []
+    rest = list(values)
+    first = True
+    while rest:
+        if first:
+            head, cap = card, 25          # 4 + 25*3 = 79 列
+            first = False
+        else:
+            head, cap = "", 24            # 7 + 24*3 = 79 列
+        chunk, rest = rest[:cap], rest[cap:]
+        if head:
+            out.append(head + "".join("%3d" % v for v in chunk))
+        else:
+            out.append("%7d" % chunk[0] + "".join("%3d" % v for v in chunk[1:]))
+    return "\n".join(out)
 
 
 def pch_to_lib(pch_text: str) -> str:
@@ -412,21 +461,21 @@ def pch_to_lib(pch_text: str) -> str:
     nodes = [m.groups() for m in (_BRANCH_HEAD.match(x) for _, x in heads) if m]
     n = len(nodes)
     # KARD = 各分支头行号 + 2（对齐 C#：KARD 值 = 0-based 分支头行号 + 2）
-    kard = "".join("%3d" % v for i, _ in heads for v in (i + 2, i + 2))
-    karg = "".join("%3d" % v for i in range(1, n + 1) for v in (i, i + n))
-    kbeg = "".join("%3d" % v for _ in range(n) for v in (3, 9))
-    kend = "".join("%3d" % v for _ in range(n) for v in (8, 14))
-    ktex = "".join("%3d" % v for _ in range(n) for v in (1, 1))
+    kard = [v for i, _ in heads for v in (i + 2, i + 2)]
+    karg = [v for i in range(1, n + 1) for v in (i, i + n)]
+    kbeg = [v for _ in range(n) for v in (3, 9)]
+    kend = [v for _ in range(n) for v in (8, 14)]
+    ktex = [v for _ in range(n) for v in (1, 1)]
     ins = [a for a, _ in nodes]
     outs = [b for _, b in nodes]
     body = "\n".join(data)
     arg = "ARG, " + ", ".join(ins + outs) + ","
     return (
-        "KARD" + kard + "\n"
-        + "KARG" + karg + "\n"
-        + "KBEG" + kbeg + "\n"
-        + "KEND" + kend + "\n"
-        + "KTEX" + ktex + "\n"
+        _pack_header("KARD", kard) + "\n"
+        + _pack_header("KARG", karg) + "\n"
+        + _pack_header("KBEG", kbeg) + "\n"
+        + _pack_header("KEND", kend) + "\n"
+        + _pack_header("KTEX", ktex) + "\n"
         + "/BRANCH\n"
         + body + "\n"
         + "$EOF\n"
