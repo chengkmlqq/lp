@@ -845,6 +845,65 @@ class _TestContext:
                     break
         return out
 
+    def apply_runtime_slots(self, text: str) -> tuple[str, list[str]]:
+        """补 C# 在调 tpbig **之前**刷进 work.atp 的运行期槽位（对齐 C#）。
+
+        C# `ThreadCompute5_work_atp()` → `Update_work_atp1(work.atp, mSet_WorkAtp_Feature, 0)`
+        （ComputeLightningProtection.cs:6128）会在跑 ATP 前把运行期算出的值写回 work.atp；
+        未跑过的资产保持模板原值（如 `11K0=.25`、`14XXSS=-120/-240`）
+        ⇒ 「文件里的值不能当权威，公式才是权威」。详见 `atp_work_atp_slots`。
+
+        目前补两个（对拍 C# 发现 LP 缺失）：
+          · `11K0`  ← 耦合系数 k0（几何耦合系数，逐塔型不同）
+          · `14XXSS*` ← 电角度 = 输入电角度 − 90（A/B/C = 该值 / −120 / −240）
+        """
+        from .atp_work_atp_slots import (
+            coupling_k0,
+            rewrite_coupling_k0,
+            rewrite_electric_angle,
+        )
+
+        log: list[str] = []
+        base = dict(self.payload.base_tower or {})
+        prof = dict(self.payload.profile or {})
+        layers = dict(prof.get("geometry_layers_json") or {})
+        cg = dict(base.get("circuit_geometry_json") or {})
+        layer = cg.get("I") or layers.get("I") or {}
+        lw = cg.get("lightning_wire") or layers.get("lightning_wire") or {}
+        kind = str(self.payload.tower_kind or base.get("tower_kind") or "").strip().lower()
+        voltage = self.payload.voltage_kv or base.get("line_voltage_kv") or 0
+        insul_mm = prof.get("insulator_length_m")
+        insul_m = (float(insul_mm) / 1000.0) if insul_mm is not None else None
+
+        k0 = coupling_k0(
+            tower_kind=kind,
+            voltage_kv=float(voltage),
+            shield_wire_height_m=prof.get("shield_wire_height_m"),
+            left_mid_distance_m=lw.get("left_mid_distance_m"),
+            right_mid_distance_m=lw.get("right_mid_distance_m"),
+            insulator_length_m=insul_m,
+            phase_geometry=layer,
+            is_dc=kind in ("zhiliu", "vzhiliu"),
+            phase_sequence=[str(prof[f"phase_sequence_{i}"]) for i in range(1, 5)
+                            if prof.get(f"phase_sequence_{i}")],
+        )
+        text, k_ok = rewrite_coupling_k0(text, k0)
+        log.append(
+            f"耦合系数 11K0 = {k0 if k0 is None else round(k0, 6)}"
+            + ("（已写入）" if k_ok else "（未找到 11K0 槽位，未写入）")
+        )
+
+        angle = prof.get("angle_deg")
+        if angle is None:
+            angle = base.get("angle_deg")
+        angle_val = float(angle) if angle is not None else 0.0
+        text, a_ok = rewrite_electric_angle(text, angle_val)
+        log.append(
+            f"电角度 14XXSS = {angle_val - 90.0:.1f}/{angle_val - 210.0:.1f}/{angle_val - 330.0:.1f}"
+            + ("（已写入）" if a_ok else "（未找到 14XXSS 槽位，未写入）")
+        )
+        return text, log
+
     # ---- 阶段 1：物化 + 引擎文件 ----
 
     def stage_materialize(self) -> dict[str, Any]:
@@ -855,6 +914,8 @@ class _TestContext:
         log_lines: list[str] = []
 
         self.rendered_text = self.rewrite_includes(self.render())
+        self.rendered_text, slot_log = self.apply_runtime_slots(self.rendered_text)
+        log_lines.extend(slot_log)
         self.entry_path.write_text(self.rendered_text, encoding="gbk", errors="replace")
         log_lines.append(f"已渲染 {self.entry_path.name}（{len(self.rendered_text)} 字节）")
 
