@@ -1176,6 +1176,7 @@ export type AtpAssetSummary = {
   run_count: number;
   last_run_status: AtpAssetRunStatus | null;
   last_run_date: string | null;
+  progress?: number;
   create_date: string;
   create_user: string | null;
   update_date: string;

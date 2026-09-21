@@ -1353,7 +1353,7 @@ export default function AdminDimensionsPage() {
   );
 }
 
-function typeName(typeId: string | null, types: DimensionTypeTreeItem[]): string {
+function typeName(typeId: string | null, types: DimensionTypeTreeItem[] | undefined | null): string {
   if (!typeId) return "-";
   const t = findType(types, typeId);
   return t ? t.name || t.code : "-";

@@ -592,16 +592,23 @@ export default function AdminLightningCurrentsPage() {
       if (!canManage) {
         throw new Error("缺少 lightning.manage 权限");
       }
-      const tasks = lineIds.map((lineId) =>
+      type BackfillResult =
+        | { lineId: string; success: true; payload: { backfill_task_id: string } }
+        | { lineId: string; success: false; message: string };
+      const tasks: Promise<BackfillResult>[] = lineIds.map((lineId) =>
         fetchWithAuth("/api/v1/lightning-currents/prepare-current", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ line_id: lineId }),
-        }).then((response) => {
+        }).then((response): Promise<BackfillResult> => {
           if (!response.ok) {
             return readApiError(response).then((message) => ({ lineId, success: false, message }));
           }
-          return response.json().then((payload) => ({ lineId, success: true, payload }));
+          return response.json().then((payload) => ({
+            lineId,
+            success: true,
+            payload: payload as { backfill_task_id: string },
+          }));
         }),
       );
       const results = await Promise.all(tasks);
@@ -659,15 +666,15 @@ export default function AdminLightningCurrentsPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "更新失败"));
+      setError(new ApiError(candidate instanceof Error ? (candidate.message ?? "更新失败") : "更新失败"));
     },
   });
 
   const openEditModal = useCallback((record: LightningAmplitudeRecord) => {
     setEditRecord(record);
     editForm.setFieldsValue({
-      event_id: record.event_id,
-      event_time: record.event_time ? dayjs(record.event_time) : null,
+      event_id: record.event_id ?? undefined,
+      event_time: record.event_time ? dayjs(record.event_time) : undefined,
       sample_interval_us: record.sample_interval_us ?? 1,
       city: record.city || "",
       location_tag: record.location_tag || "",
