@@ -237,10 +237,25 @@ export function statusColor(value: string | null | undefined): string {
 }
 
 /**
- * 任务是否「处理中/未处理完成」（pending/queued/running）。
- * 此类状态的结果尚未得出，禁用详情入口，避免用户在结果未就绪时打开详情。
+ * 任务整体进度百分比（0~99）：已完成塔数 + 当前塔内部比例 fractional，上限 99
+ * （运行中不显示 100%）。卡片视图与列表视图共用的同一条进度口径。
  */
-export const DETAIL_LOCKED_STATUSES = new Set(["pending", "queued", "running"]);
+export function runningProgressPercent(job: FlAnalysisJobSummary | FlAnalysisJobDetail | null | undefined): number {
+  if (!job?.total_tower_count || job.total_tower_count <= 0) {
+    return 0;
+  }
+  return Math.min(
+    99,
+    Math.round(((job.result_tower_count + (job.fractional_progress || 0)) / job.total_tower_count) * 100),
+  );
+}
+
+/**
+ * 任务是否禁止打开详情：pending/queued 时一根杆塔都还没跑完，打开只会看到空页，
+ * 因此禁用详情入口。running 状态不锁定——杆塔逐根完成、结果逐条落库，
+ * 允许用户在计算过程中打开详情查看已跑完杆塔的部分结果。
+ */
+export const DETAIL_LOCKED_STATUSES = new Set(["pending", "queued"]);
 
 export function isJobDetailLocked(job: FlAnalysisJobSummary | FlAnalysisJobDetail | null): boolean {
   if (!job) {

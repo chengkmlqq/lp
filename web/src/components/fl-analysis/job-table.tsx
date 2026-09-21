@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Button, Dropdown, Empty, Spin, Table, Tag, Space } from "antd";
+import { Button, Dropdown, Empty, Progress, Spin, Table, Tag, Space } from "antd";
 import type { MenuProps } from "antd";
 import { MoreOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
@@ -15,6 +15,7 @@ import {
   isJobCancellable,
   isJobDetailLocked,
   mitigationMode,
+  runningProgressPercent,
   statusColor,
 } from "./types";
 
@@ -106,6 +107,19 @@ export function JobTable({
       key: "result_tower_count",
       width: 90,
       align: "right" as const,
+    },
+    {
+      // 实时进度：参考故障分析卡片，Progress 默认自带百分比文本（showInfo 开）。
+      // 运行中展示进度条 + 百分比；非运行状态无实时进度语义，显示占位符。
+      title: "进度",
+      key: "progress",
+      width: 140,
+      render: (_value, job) =>
+        job.status === "running" ? (
+          <Progress percent={runningProgressPercent(job)} size="small" />
+        ) : (
+          "-"
+        ),
     },
     ...(onDeleteJob
       ? [

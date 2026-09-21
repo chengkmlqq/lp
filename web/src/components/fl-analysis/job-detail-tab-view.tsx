@@ -81,9 +81,12 @@ export function JobDetailTabView({
       }
       return (await response.json()) as FlAnalysisTowerResultListResponse;
     },
-    // 运行中任务每 10s 轮询：杆塔明细随计算完成实时增长
+    // 任务运行期间每 10s 轮询：杆塔逐根算完即入库，结果表随轮询增长；
+    // 是否运行以 jobDetailQuery 的实时状态为准（而非打开 Tab 时的快照），
+    // 任务结束后自动停止轮询。不依赖当前 items.length>0：运行初期尚无任何
+    // 杆塔完成时也要持续轮询，否则算完第一根塔后表格不会自动刷新出现。
     refetchInterval: (query) =>
-      (query.state.data?.items.length ?? 0) > 0 && job.status === "running" ? 10_000 : false,
+      (jobDetailQuery.data?.status ?? job.status) === "running" ? 10_000 : false,
   });
 
   const selectedJobDetail = jobDetailQuery.data ?? null;
@@ -113,9 +116,13 @@ export function JobDetailTabView({
     (item) => item.line_id === job.line_id && item.status === "success" && ["normal", "tongtiao"].includes(item.job_type),
   );
 
-  const canCreateMitigation = liveJob.job_type === "risk";
-  const canCreateScenario = liveJob.job_type === "mitigation";
-  const canCreateReport = liveJob.job_type === "risk" || liveJob.job_type === "mitigation";
+  // 派生任务（措施推荐/加装避雷器复算/报告）基于已完成的源任务结果生成，
+  // 仅当任务成功后可用；running 期间详情允许进入查看部分结果，但不能基于
+  // 未算完的数据派生新任务。
+  const canCreateMitigation = liveJob.status === "success" && liveJob.job_type === "risk";
+  const canCreateScenario = liveJob.status === "success" && liveJob.job_type === "mitigation";
+  const canCreateReport = liveJob.status === "success"
+    && (liveJob.job_type === "risk" || liveJob.job_type === "mitigation");
   const canDownloadResults = liveJob.job_type !== "report"
     && liveJob.status === "success"
     && towerRows.length > 0;
