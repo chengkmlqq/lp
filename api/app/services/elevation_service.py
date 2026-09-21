@@ -1570,3 +1570,67 @@ def execute_file_record_analysis_job(*, record_id: str, actor_user_id: str | Non
         raise
     finally:
         db.close()
+
+
+def preview_backfill_coverage(
+    db: Session,
+    *,
+    record_id: str,
+    line_ids: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """逐塔预检：返回每个候选线路对当前高程文件的可回填覆盖统计。
+
+    背景：DEM 可能在局部区域（如某条经度带/纬度带/角区）为 NoData，线路上
+    特定塔位采样会「未命中」。选线路时单看外包矩形/有效范围会漏判——这里
+    直接对每条线路的每座杆塔真实采样一次（复用回填同款采样器），统计
+    可命中塔数，供前端禁用「无可回填杆塔」的线路并展示「N/M 座可回填」。
+    """
+    record = get_file_record_by_id(db, record_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="高程文件记录不存在")
+    if record.status != "active":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="高程文件记录未启用")
+
+    line_stmt = select(Line)
+    if line_ids:
+        line_stmt = line_stmt.where(Line.id.in_(line_ids))
+    lines = [line for line in db.execute(line_stmt).scalars().all() if line]
+
+    results: list[dict[str, Any]] = []
+    if not lines:
+        return results
+
+    with _open_raster_dataset(db, record) as opened:
+        src = opened.dataset
+        band_nodata = src.nodatavals[0] if src.nodatavals else None
+        sampler = _build_raster_sampler(
+            rasterio=opened.rasterio,
+            src=src,
+            src_crs=src.crs,
+            band_nodata=band_nodata,
+        )
+        for line in lines:
+            towers = db.execute(
+                select(LineTower)
+                .where(LineTower.line_id == line.id)
+                .order_by(LineTower.seq_no.asc(), LineTower.id.asc())
+            ).scalars().all()
+            matchable = 0
+            for tower in towers:
+                if tower.longitude is None or tower.latitude is None:
+                    continue
+                try:
+                    alt = sampler(float(tower.longitude), float(tower.latitude))
+                except Exception:
+                    alt = None
+                if alt is not None:
+                    matchable += 1
+            results.append({
+                "line_id": line.id,
+                "line_code": line.code,
+                "line_name": line.name,
+                "voltage_kv": line.voltage_kv,
+                "total_tower_count": len(towers),
+                "matchable_tower_count": matchable,
+            })
+    return results

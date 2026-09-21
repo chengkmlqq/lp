@@ -109,6 +109,22 @@ type LineListResponse = {
   items?: LineSummary[];
 };
 
+// 回填覆盖预检（逐塔采样统计可回填杆塔数）
+type BackfillCoverageLine = {
+  line_id: string;
+  line_code: string | null;
+  line_name: string | null;
+  voltage_kv: number | null;
+  total_tower_count: number;
+  matchable_tower_count: number;
+};
+
+type BackfillCoverageResponse = {
+  file_record_id: string;
+  items: BackfillCoverageLine[];
+  total: number;
+};
+
 type ElevationFileRecordTaskResponse = {
   record: ElevationFileRecordSummary;
   task_id: string | null;
@@ -272,35 +288,28 @@ export default function ElevationRecordsPage() {
     },
   });
 
-  // Fetch lines for apply dialog（对齐地闪密度页面：bbox_mode=mark 标记线路是否在高程文件覆盖范围内）
-  const applyBboxParam = useMemo(() => {
-    if (!selectedRecord) return null;
-    const { bbox_min_lon, bbox_max_lon, bbox_min_lat, bbox_max_lat } = selectedRecord;
-    if (
-      typeof bbox_min_lon !== "number" ||
-      typeof bbox_max_lon !== "number" ||
-      typeof bbox_min_lat !== "number" ||
-      typeof bbox_max_lat !== "number"
-    ) {
-      return null;
-    }
-    return `${bbox_min_lat},${bbox_min_lon},${bbox_max_lat},${bbox_max_lon}`;
-  }, [selectedRecord]);
-
-  const { data: linesData } = useQuery({
-    queryKey: ["lines", applyBboxParam, selectedRecord?.id],
+  // 回填覆盖预检：选中高程文件+打开回填弹窗时，逐塔采样统计每条候选线路的可回填杆塔数。
+  // DEM 可能在局部区域无数据（NoData），单看外包矩形/有效范围会漏判（线路能选到但回填全未命中）。
+  // 这里直接对每条线路的每座塔真实采样，matchable_tower_count=0 的线路不可回填（禁用并标注）。
+  const { data: coverageData, isLoading: coverageLoading } = useQuery<BackfillCoverageResponse>({
+    queryKey: ["elevation-backfill-coverage", selectedRecord?.id],
+    enabled: !!selectedRecord?.id && applyModalOpen,
     queryFn: async () => {
-      const params = new URLSearchParams();
-      params.set("limit", "1000");
-      if (applyBboxParam) {
-        // bbox_mode=mark：返回全部线路并标记每条是否与高程文件覆盖范围重叠（不隐藏）
-        params.set("bbox", applyBboxParam);
-        params.set("bbox_mode", "mark");
-      }
-      const response = await fetchWithAuth(`/api/v1/lines?${params.toString()}`);
-      return readJsonResponse<LineListResponse>(response);
+      const response = await fetchWithAuth(
+        `/api/v1/elevation/records/${selectedRecord!.id}/lines-preview`,
+      );
+      return readJsonResponse<BackfillCoverageResponse>(response);
     },
   });
+
+  // coverage 结果按 line_id 映射，供弹窗 Select 判断可用性
+  const coverageMap = useMemo(() => {
+    const map = new Map<string, BackfillCoverageLine>();
+    for (const item of coverageData?.items ?? []) {
+      map.set(item.line_id, item);
+    }
+    return map;
+  }, [coverageData]);
 
   const records = useMemo(() => recordsData?.items ?? [], [recordsData?.items]);
 
@@ -1214,24 +1223,31 @@ export default function ElevationRecordsPage() {
           <Form.Item label="选择线路" name="line_ids" rules={[{ required: true, message: "请至少选择一条线路" }]}>
             <Select
               mode="multiple"
-              placeholder="请选择线路（可多选，范围外线路已置灰）"
+              placeholder={coverageLoading ? "正在预检线路可回填杆塔…" : "请选择线路（无可回填杆塔的线路已置灰）"}
               showSearch
               optionFilterProp="label"
+              loading={coverageLoading}
+              disabled={coverageLoading}
               maxTagCount="responsive"
-              options={(linesData?.items ?? []).map((line) => {
-                const inRange = applyBboxParam ? (line.bbox_overlap !== false) : true;
-                const label = `${line.code ?? "-"} - ${line.name ?? "-"}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`;
+              options={(coverageData?.items ?? []).map((cov) => {
+                const matchable = cov.matchable_tower_count ?? 0;
+                const noMatch = cov.total_tower_count > 0 && matchable === 0;
+                const label = `${cov.line_code ?? "-"} - ${cov.line_name ?? "-"}${cov.voltage_kv ? ` (${cov.voltage_kv}kV)` : ""}`;
                 return {
                   label: (
                     <Space size={6} style={{ width: "100%", justifyContent: "space-between" }}>
                       <span>{label}</span>
-                      {applyBboxParam && !inRange && (
-                        <Tag color="warning" style={{ marginInlineEnd: 0 }}>不在数据范围内</Tag>
+                      {noMatch ? (
+                        <Tag color="warning" style={{ marginInlineEnd: 0 }}>无可回填杆塔</Tag>
+                      ) : (
+                        <span style={{ color: "#8c8c8c", fontSize: 12, whiteSpace: "nowrap" }}>
+                          {matchable}/{cov.total_tower_count} 座可回填
+                        </span>
                       )}
                     </Space>
                   ),
-                  value: line.id,
-                  disabled: applyBboxParam ? !inRange : false,
+                  value: cov.line_id,
+                  disabled: noMatch,
                 };
               })}
             />

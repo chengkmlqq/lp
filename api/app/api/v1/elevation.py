@@ -17,6 +17,7 @@ from ...schemas.elevation import (
     ElevationApplyJobListResponse,
     ElevationApplyJobSummary,
     ElevationApplyJobTowerListResponse,
+    ElevationBackfillCoverageResponse,
     ElevationDatasetListResponse,
     ElevationLinkedLineListResponse,
     ElevationTerrainLayerResponse,
@@ -43,6 +44,7 @@ from ...services.elevation_service import (
     get_file_record_terrain_layer,
     get_file_record_terrain_task_status,
     get_file_record_terrain_tile,
+    preview_backfill_coverage,
 )
 from ...services.elevation_file_record_service import (
     create_file_record_from_upload,
@@ -207,6 +209,29 @@ def get_elevation_file_record_linked_lines(
 ) -> ElevationLinkedLineListResponse:
     """查询高程文件回填过的关联线路列表（含最近一次回填状态/杆塔统计）。"""
     return get_linked_lines_for_file_record(db, record_id=record_id)
+
+
+@router.get("/records/{record_id}/lines-preview", response_model=ElevationBackfillCoverageResponse)
+def get_elevation_file_record_backfill_coverage(
+    record_id: str,
+    line_ids: str | None = Query(default=None, description="逗号分隔的线路 ID，缺省返回全部线路"),
+    _: CurrentUser = Depends(require_any_permission("elevation.read", "elevation.manage")),
+    db: Session = Depends(get_db),
+) -> ElevationBackfillCoverageResponse:
+    """逐塔预检：返回每条候选线路对当前高程文件的可回填覆盖统计。
+
+    对每条线路的每座杆塔真实采样一次，统计可命中塔数（matchable_tower_count）。
+    使命中 0 座的线路（DEM 在该区域为 NoData）在回填选线路时禁用并标注。
+    """
+    ids = None
+    if line_ids:
+        ids = [s.strip() for s in line_ids.split(",") if s.strip()]
+    items = preview_backfill_coverage(db, record_id=record_id, line_ids=ids)
+    return ElevationBackfillCoverageResponse(
+        file_record_id=record_id,
+        items=items,
+        total=len(items),
+    )
 
 
 @router.get("/records/{record_id}/jobs", response_model=ElevationApplyJobListResponse)

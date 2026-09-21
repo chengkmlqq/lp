@@ -327,3 +327,20 @@ class ElevationDatasetSummary(BaseModel):
 class ElevationDatasetListResponse(BaseModel):
     items: list[ElevationDatasetSummary]
     total: int
+
+
+class ElevationBackfillCoverageLine(BaseModel):
+    """一条候选线路对当前高程文件的可回填覆盖统计（逐塔预检）。"""
+
+    line_id: str
+    line_code: str | None = None
+    line_name: str | None = None
+    voltage_kv: int | None = None
+    total_tower_count: int = 0
+    matchable_tower_count: int = 0
+
+
+class ElevationBackfillCoverageResponse(BaseModel):
+    file_record_id: str
+    items: list[ElevationBackfillCoverageLine]
+    total: int
