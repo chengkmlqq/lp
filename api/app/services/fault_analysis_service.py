@@ -103,7 +103,6 @@ def serialize_detail(item: FaultAnalysis) -> FaultAnalysisDetail:
         optical_device_location=item.optical_device_location,
         result_json=result_json,
         upload_files=item.upload_files or {},
-        task_id=item.task_id,
         create_date=item.create_date,
         create_user=item.create_user,
         update_date=item.update_date,
