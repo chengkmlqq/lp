@@ -616,13 +616,8 @@ export default function AdminFaultAnalysisPage() {
         width: 180,
         fixed: "right",
         render: (_: unknown, row) => {
-          // 对齐雷电流幅值统计页：详情直接按钮，日志/删除收进 ⋯ 三点下拉（分析日志不设权限/task_id 门控，始终可点）
+          // 详情/日志平铺为按钮直接展示；删除收进 ⋯ 三点下拉（日志不设权限/task_id 门控，始终可点）
           const moreMenuItems: MenuProps["items"] = [
-            {
-              key: "analysis-log",
-              label: "分析日志",
-              onClick: () => openLogViewer(row.task_id, "分析日志", row.title ?? `FA-${row.id.slice(0, 8)}`),
-            },
             ...(canManage
               ? [
                   {
@@ -638,6 +633,14 @@ export default function AdminFaultAnalysisPage() {
             <Space wrap>
               <Button size="small" onClick={() => openDetail(row)}>
                 详情
+              </Button>
+              <Button
+                size="small"
+                onClick={() =>
+                  openLogViewer(row.task_id, "日志", row.title ?? `FA-${row.id.slice(0, 8)}`)
+                }
+              >
+                日志
               </Button>
               {moreMenuItems.length > 0 ? (
                 <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>

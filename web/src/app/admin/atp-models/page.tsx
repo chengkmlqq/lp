@@ -22,7 +22,7 @@ import {
   Upload,
   type MenuProps,
 } from "antd";
-import { CheckCircleOutlined, DeleteOutlined, EditOutlined, ExperimentOutlined, EyeOutlined, InboxOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, ExperimentOutlined, InboxOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
@@ -710,9 +710,33 @@ export default function AtpModelsPage() {
           const deleteLoading = deleteMutation.isPending;
           const rowBusy = deleteLoading;
 
+          // 详情/编辑平铺为按钮（无图标）；删除收进 ⋯ 三点下拉（参考故障分析列表页）
+          const moreMenuItems: MenuProps["items"] = [
+            ...(canManage
+              ? [
+                  {
+                    key: "delete",
+                    label: "删除",
+                    danger: true,
+                    disabled: rowBusy,
+                    onClick: () => {
+                      Modal.confirm({
+                        title: "删除模型",
+                        content: "这会同时删除其文件与运行记录。",
+                        okText: "删除",
+                        cancelText: "取消",
+                        okButtonProps: { danger: true, loading: deleteLoading },
+                        onOk: () => deleteMutation.mutate(item.id),
+                      });
+                    },
+                  },
+                ]
+              : []),
+          ];
+
           return (
             <Space size={4}>
-              <Button size="small" icon={<EyeOutlined />} onClick={() => openDetailById(item.id)}>
+              <Button size="small" onClick={() => openDetailById(item.id)}>
                 详情
               </Button>
               <Button
@@ -723,23 +747,14 @@ export default function AtpModelsPage() {
               >
                 测试
               </Button>
-              <Button size="small" icon={<EditOutlined />} disabled={!canManage} onClick={() => openEditModal(item)}>
+              <Button size="small" disabled={!canManage} onClick={() => openEditModal(item)}>
                 编辑
               </Button>
-              <Button danger size="small" icon={<DeleteOutlined />} loading={deleteLoading} disabled={!canManage || rowBusy}
-                onClick={() => {
-                  Modal.confirm({
-                    title: "删除模型",
-                    content: "这会同时删除其文件与运行记录。",
-                    okText: "删除",
-                    cancelText: "取消",
-                    okButtonProps: { danger: true, loading: deleteLoading },
-                    onOk: () => deleteMutation.mutate(item.id),
-                  });
-                }}
-              >
-                删除
-              </Button>
+              {moreMenuItems.length > 0 ? (
+                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                  <Button size="small" icon={<MoreOutlined />} />
+                </Dropdown>
+              ) : null}
             </Space>
           );
         },

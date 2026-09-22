@@ -206,8 +206,8 @@ test("LP-319: 故障分析页支持卡片/列表双视图与表格操作列", ()
   assert.ok(PAGE.includes("FAULT_STATUS_META"), "状态枚举应收敛为页面级常量");
   assert.ok(PAGE.includes("MoreOutlined"), "操作列应使用 ⋯ 三点下拉（对齐雷电流幅值页）");
   assert.ok(
-    PAGE.includes('key: "analysis-log"') && PAGE.includes('label: "分析日志"'),
-    "日志入口应收进 ⋯ 下拉菜单",
+    PAGE.includes("openLogViewer(row.task_id") && !PAGE.includes('label: "分析日志"'),
+    "日志入口应平铺为按钮直接展示（不再以『分析日志』名义收进 ⋯ 下拉）",
   );
   assert.ok(
     PAGE.includes('key: "delete"') && PAGE.includes("danger: true"),

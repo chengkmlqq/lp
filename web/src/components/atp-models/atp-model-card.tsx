@@ -120,6 +120,20 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
               }}
             />
           </Tooltip>
+          <Tooltip title="详情">
+            <Button
+              type="text"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleView();
+              }}
+            />
+          </Tooltip>
+              }}
+            />
+          </Tooltip>
           <Tooltip title="编辑">
             <Button
               type="text"

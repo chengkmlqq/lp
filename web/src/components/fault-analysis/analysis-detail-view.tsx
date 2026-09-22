@@ -1197,9 +1197,6 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
               { label: "产物", value: "artifacts" },
             ]}
           />
-          {activeView === "report" ? (
-            <Text type="secondary" className="text-sm">报告按章节排版，左侧目录可快速跳转</Text>
-          ) : null}
         </div>
         {activeView === "report" && (
           <ReportView
