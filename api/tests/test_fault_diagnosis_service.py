@@ -453,3 +453,24 @@ def test_list_analysis_summary_includes_reclosure_status(db_session: Session):
     item = result.items[0]
     assert item.reclosure_status == "success"
     assert item.id == "fa-sample"
+
+
+def test_list_and_detail_serialization_include_task_id(db_session: Session):
+    """列表/详情序列化必须携带判别任务 task_id。
+
+    此前 serialize_summary / serialize_detail 漏传该字段（schema 默认 None），
+    前端 openLogViewer 拿到 null 后提示「该记录暂无分析日志」。
+    """
+    _sample_user(db_session)
+    item = _sample_analysis(db_session)
+    item.task_id = "celery-task-001"
+    db_session.commit()
+
+    result = fault_analysis_service.list_analyses(db_session, keyword="龙和线")
+    assert result.total == 1
+    assert result.items[0].task_id == "celery-task-001"
+
+    detail = fault_analysis_service.get_analysis_by_id(db_session, "fa-sample")
+    assert detail is not None
+    serialized = fault_analysis_service.serialize_detail(detail)
+    assert serialized.task_id == "celery-task-001"
