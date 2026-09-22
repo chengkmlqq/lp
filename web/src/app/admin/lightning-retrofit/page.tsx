@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -45,6 +46,7 @@ type RetrofitTaskItem = FlAnalysisJobSummary & {
 };
 
 export default function AdminLightningRetrofitPage() {
+  const router = useRouter();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const [messageApi, contextHolder] = message.useMessage();
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
@@ -314,6 +316,7 @@ export default function AdminLightningRetrofitPage() {
                       size="small"
                       hoverable
                       className="admin-fl-analysis-job-card"
+                      onClick={() => router.push(`/admin/lightning-retrofit/high-risk-reason?jobId=${job.id}`)}
                     >
                       <div className="flex flex-col">
                         <div className="admin-fl-analysis-job-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">

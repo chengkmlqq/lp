@@ -118,6 +118,8 @@ export default function AdminScheduledTasksPage() {
   const [success, setSuccess] = useState("");
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
   const [runningId, setRunningId] = useState<number | null>(null);
+  // 前端分页（列表接口一次性全量返回，由 Table 本地翻页）
+  const [tablePagination, setTablePagination] = useState({ current: 1, pageSize: 20 });
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const canRead = hasPermission("celery.read") || hasPermission("celery.manage");
@@ -536,12 +538,20 @@ export default function AdminScheduledTasksPage() {
                     columns={columns}
                     scroll={{ x: 1480, y: tableScrollY }}
                     pagination={{
-                      pageSize: 20,
+                      current: tablePagination.current,
+                      pageSize: tablePagination.pageSize,
                       showSizeChanger: true,
                       pageSizeOptions: [10, 20, 50, 100],
                       showTotal: (total) => `共 ${total} 条`,
                       hideOnSinglePage: false,
                       style: { marginBottom: 0 },
+                      onChange: (nextPage, nextPageSize) => {
+                        setTablePagination((previous) =>
+                          nextPageSize !== previous.pageSize
+                            ? { current: 1, pageSize: nextPageSize }
+                            : { current: nextPage, pageSize: nextPageSize },
+                        );
+                      },
                     }}
                     locale={{
                       emptyText: <Empty description="暂无定时任务。" image={Empty.PRESENTED_IMAGE_SIMPLE} />,

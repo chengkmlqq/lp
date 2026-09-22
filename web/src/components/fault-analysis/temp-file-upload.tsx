@@ -231,14 +231,14 @@ function PreviewPanel({
 
   if (kind === "optical_data") {
     return (
-      <div className="mt-1 rounded bg-gray-50 px-2 py-1 text-xs text-gray-600">
+      <div className="mt-1 rounded bg-[var(--gray-2)] px-2 py-1 text-xs text-[var(--ant-color-text-secondary)]">
         {renderSummary()}
       </div>
     );
   }
 
   return (
-    <div className="mt-1 rounded bg-gray-50 px-2 py-1 text-xs text-gray-600">
+    <div className="mt-1 rounded bg-[var(--gray-2)] px-2 py-1 text-xs text-[var(--ant-color-text-secondary)]">
       <button
         type="button"
         className="flex w-full cursor-pointer items-center justify-between text-left"
@@ -531,7 +531,7 @@ export function TempFileUpload({
           {value.map((item) => (
             <div
               key={item.uid}
-              className="w-full rounded border border-gray-200 bg-white px-2 py-1"
+              className="w-full rounded border border-[var(--gray-6)] bg-[var(--ant-color-bg-container)] px-2 py-1"
             >
               <Space size={8} className="w-full">
                 <Typography.Text ellipsis style={{ maxWidth: 170 }}>
@@ -557,7 +557,7 @@ export function TempFileUpload({
               {item.status === "done" && previewKind && (
                 <div className="mt-1">
                   {item.previewing && !item.preview ? (
-                    <div className="flex items-center gap-2 rounded bg-gray-50 px-2 py-1 text-xs text-gray-500">
+                    <div className="flex items-center gap-2 rounded bg-[var(--gray-2)] px-2 py-1 text-xs text-[var(--ant-color-text-secondary)]">
                       <Spin size="small" /> 正在解析文件内容...
                     </div>
                   ) : item.preview ? (
@@ -566,7 +566,7 @@ export function TempFileUpload({
                 </div>
               )}
               {item.pdfExtracting && (
-                <div className="mt-1 flex items-center gap-2 rounded bg-blue-50 px-2 py-1 text-xs text-blue-600">
+                <div className="mt-1 flex items-center gap-2 rounded bg-[var(--ant-color-primary-bg)] px-2 py-1 text-xs text-[var(--ant-color-primary)]">
                   <Spin size="small" /> 正在识别并回填故障字段...
                 </div>
               )}

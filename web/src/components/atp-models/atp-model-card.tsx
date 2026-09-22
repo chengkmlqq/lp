@@ -131,9 +131,6 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
               }}
             />
           </Tooltip>
-              }}
-            />
-          </Tooltip>
           <Tooltip title="编辑">
             <Button
               type="text"

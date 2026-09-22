@@ -9,6 +9,7 @@ import {
   Modal,
   Space,
   Spin,
+  Tooltip,
   Typography,
 } from "antd";
 import {
@@ -384,6 +385,7 @@ export default function AiChatPage() {
             icon={<PlusOutlined />}
             onClick={() => createConvMutation.mutate("新对话")}
             loading={createConvMutation.isPending}
+            aria-label="新建对话"
           />
         </div>
 
@@ -448,6 +450,7 @@ export default function AiChatPage() {
                       {conv.message_count || 0} 条消息
                     </div>
                   </div>
+                  <Tooltip title="删除对话">
                   <Button
                     danger
                     size="small"
@@ -466,6 +469,7 @@ export default function AiChatPage() {
                       });
                     }}
                   />
+                </Tooltip>
                 </div>
               )}
             />

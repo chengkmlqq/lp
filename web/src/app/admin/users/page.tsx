@@ -1253,6 +1253,27 @@ export default function AdminUsersPage() {
                       onPressEnter={handleSearch}
                     />
                   </Form.Item>
+
+                  <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Select<"active" | "disabled">
+                      value={statusFilter}
+                      allowClear
+                      placeholder="全部"
+                      options={[
+                        { value: "active", label: "已启用" },
+                        { value: "disabled", label: "已禁用" },
+                      ]}
+                      labelRender={(props) => statusTag(props.value)}
+                      optionRender={(option) => statusTag(option.value)}
+                      onChange={(value) => {
+                        setStatusFilter(value);
+                        setPagination((prev) => ({ ...prev, current: 1 }));
+                        setCardViewPage(1);
+                        setAllLoadedUsers([]);
+                      }}
+                    />
+                  </Form.Item>
+
                   <Form.Item style={{ marginBottom: 0 }}>
                     <Button
                       htmlType="button"

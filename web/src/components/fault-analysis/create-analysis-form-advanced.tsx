@@ -516,8 +516,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
         <div className="space-y-4 px-1">
 
           {/* 录波数据上传（置于第二步顶部）：上传 PDF 自动识别并直接回填下方故障信息字段 */}
-          <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-            <FileTextOutlined className="text-4xl text-blue-600" />
+          <div className="border border-[var(--gray-6)] rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-[var(--gray-2)] min-h-[160px]">
+            <FileTextOutlined className="text-4xl text-[var(--ant-color-primary)]" />
             <div className="text-center">
               <div className="font-semibold text-sm mb-1">录波数据</div>
               <div className="text-xs text-gray-500 mb-3">支持 .txt/.json/.csv/.pdf/.xlsx，上传后自动识别并回填下方故障信息</div>
@@ -546,12 +546,12 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               />
             </Form.Item>
             {extractState && extractState.response.extracted && (
-              <div className="mt-1 w-full rounded bg-blue-50 px-2 py-1 text-xs text-gray-700">
+              <div className="mt-1 w-full rounded bg-[var(--ant-color-primary-bg)] px-2 py-1 text-xs text-[var(--ant-color-text)]">
                 <div className="flex items-center justify-between">
                   <span>
                     识别到 {13 - extractState.response.missing.length}/13 个字段
                     {extractState.response.missing.length > 0 && (
-                      <span className="ml-1 text-yellow-600">（缺失 {extractState.response.missing.length} 个）</span>
+                      <span className="ml-1 text-[var(--orange-9)]">（缺失 {extractState.response.missing.length} 个）</span>
                     )}
                   </span>
                   <Button size="small" icon={<DownloadOutlined />} onClick={() => handleDownloadExtracted(extractState.response)}>
@@ -780,8 +780,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
         <div className="admin-fault-analysis-form-section">
         <div className="px-1 space-y-4">
           <div className="grid grid-cols-1 gap-4">
-            <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <TableOutlined className="text-4xl text-blue-600" />
+            <div className="border border-[var(--gray-6)] rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-[var(--gray-2)] min-h-[160px]">
+              <TableOutlined className="text-4xl text-[var(--ant-color-primary)]" />
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">雷电定位数据</div>
                 <div className="text-xs text-gray-500 mb-3">支持 .xls/.xlsx/.csv 格式</div>
@@ -801,8 +801,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               </Form.Item>
             </div>
 
-            <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <LineChartOutlined className="text-4xl text-blue-600" />
+            <div className="border border-[var(--gray-6)] rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-[var(--gray-2)] min-h-[160px]">
+              <LineChartOutlined className="text-4xl text-[var(--ant-color-primary)]" />
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">分布式行波数据</div>
                 <div className="text-xs text-gray-500 mb-3">支持 .csv/.dat/.txt/.json 格式，可多选（A/B/C 三相）</div>
@@ -823,8 +823,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               </Form.Item>
             </div>
 
-            <div className="border border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-gray-50 min-h-[160px]">
-              <CameraOutlined className="text-4xl text-blue-600" />
+            <div className="border border-[var(--gray-6)] rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-[var(--gray-2)] min-h-[160px]">
+              <CameraOutlined className="text-4xl text-[var(--ant-color-primary)]" />
               <div className="text-center">
                 <div className="font-semibold text-sm mb-1">光学监控数据</div>
                 <div className="text-xs text-gray-500 mb-3">支持图片或视频格式</div>

@@ -231,8 +231,8 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                           percent={runningProgressPercent(job)}
                           size="small"
                           className="flex-1 max-w-40"
-                          strokeColor="#6366f1"
-                          trailColor="#e5e7eb"
+                          strokeColor="var(--accent-9)"
+                          trailColor="var(--ant-color-border-secondary)"
                         />
                       </Tooltip>
                     </>

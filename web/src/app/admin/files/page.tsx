@@ -894,11 +894,16 @@ export default function AdminFilesPage() {
               rowKey={(item) => `${item.path}-${item.id}`}
               columns={columns}
               dataSource={items}
-              pagination={false}
+              pagination={{
+                pageSize: 20,
+                showSizeChanger: true,
+                pageSizeOptions: [10, 20, 50, 100],
+                showTotal: (total) => `共 ${total} 项`,
+                hideOnSinglePage: true,
+              }}
               loading={filesQuery.isLoading || filesQuery.isFetching}
               size="middle"
               scroll={{ x: 1100, y: tableScrollY }}
-              className="[&_.ant-table]:rounded-lg [&_.ant-table-thead>tr>th]:bg-[var(--fquiz-theme-table-header-bg)] [&_.ant-table-thead>tr>th]:font-semibold [&_.ant-table-tbody>tr:hover>td]:bg-[var(--accent-a2)]"
               locale={{
                 emptyText: (
                   <Empty
@@ -908,6 +913,7 @@ export default function AdminFilesPage() {
                   />
                 ),
               }}
+              className="[&_.ant-table]:rounded-lg [&_.ant-table-thead>tr>th]:bg-[var(--fquiz-theme-table-header-bg)] [&_.ant-table-thead>tr>th]:font-semibold [&_.ant-table-tbody>tr:hover>td]:bg-[var(--accent-a2)]"
             />
           </div>
         </div>

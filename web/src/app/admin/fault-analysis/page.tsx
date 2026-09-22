@@ -80,9 +80,9 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function getConfidenceColor(confidence: number): string {
-  if (confidence >= 90) return "#22C55E";
-  if (confidence >= 70) return "#F97316";
-  return "#EF4444";
+  if (confidence >= 90) return "var(--green-9)";
+  if (confidence >= 70) return "var(--orange-9)";
+  return "var(--red-11)";
 }
 
 /** Map backend FaultAnalysisSummary to the frontend FaultAnalysis type used by card components. */

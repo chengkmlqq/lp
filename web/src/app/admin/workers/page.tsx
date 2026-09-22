@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import dayjs from "dayjs";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ComponentType, RefAttributes } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -12,6 +12,7 @@ import {
   Empty,
   Form,
   Input,
+  Pagination,
   Select,
   Space,
   Spin,
@@ -144,6 +145,13 @@ export default function AdminWorkersPage() {
   const [pendingWorkerKeyword, setPendingWorkerKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<"online" | "offline" | undefined>(undefined);
   const [selectedWorker, setSelectedWorker] = useState<string | null>(null);
+  // 卡片视图分页（每页 WORKERS_CARD_LIMIT 条）
+  const [workerPage, setWorkerPage] = useState(1);
+
+  // 筛选条件变化时回到第 1 页，避免停留在越界页
+  useEffect(() => {
+    setWorkerPage(1);
+  }, [statusFilter, workerKeyword]);
 
   const overviewQuery = useQuery({
     queryKey: ["worker-monitor-overview"],
@@ -317,24 +325,31 @@ export default function AdminWorkersPage() {
     void overviewQuery.refetch();
   }, [pendingWorkerKeyword, overviewQuery]);
 
-  const filteredWorkers = useMemo(() => {
+  const allFilteredWorkers = useMemo(() => {
     const rows = overviewQuery.data?.workers || [];
-    return rows
-      .filter((item) => {
-        const online = (item.status || "").toUpperCase() === "ONLINE";
-        if (statusFilter === "online" && !online) {
-          return false;
-        }
-        if (statusFilter === "offline" && online) {
-          return false;
-        }
-        if (!containsText(item.worker, workerKeyword.trim())) {
-          return false;
-        }
-        return true;
-      })
-      .slice(0, WORKERS_CARD_LIMIT);
+    return rows.filter((item) => {
+      const online = (item.status || "").toUpperCase() === "ONLINE";
+      if (statusFilter === "online" && !online) {
+        return false;
+      }
+      if (statusFilter === "offline" && online) {
+        return false;
+      }
+      if (!containsText(item.worker, workerKeyword.trim())) {
+        return false;
+      }
+      return true;
+    });
   }, [overviewQuery.data?.workers, statusFilter, workerKeyword]);
+
+  const filteredWorkers = useMemo(
+    () =>
+      allFilteredWorkers.slice(
+        (workerPage - 1) * WORKERS_CARD_LIMIT,
+        workerPage * WORKERS_CARD_LIMIT,
+      ),
+    [allFilteredWorkers, workerPage],
+  );
 
   const overviewErrorMessage = overviewQuery.error instanceof Error
     ? formatTaskMonitorErrorMessage(overviewQuery.error.message, "Worker监控数据加载失败，请稍后重试。")
@@ -494,11 +509,11 @@ export default function AdminWorkersPage() {
                 </div>
 
                 <div className="admin-workers-card-view">
-                  {overviewQuery.isLoading && filteredWorkers.length === 0 ? (
+                  {overviewQuery.isLoading && allFilteredWorkers.length === 0 ? (
                     <div className="admin-workers-card-view-state">
                       <Spin />
                     </div>
-                  ) : filteredWorkers.length === 0 ? (
+                  ) : allFilteredWorkers.length === 0 ? (
                     <div className="admin-workers-card-view-state">
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -517,10 +532,21 @@ export default function AdminWorkersPage() {
                     </div>
                   )}
                 </div>
-                <div className="admin-workers-card-summary">
+                <div className="admin-workers-card-summary flex items-center justify-between">
                   <Text type="secondary">
-                    共 {overview?.summary.total ?? 0} 个 Worker · {overview?.summary.online ?? 0} 在线
+                    共 {allFilteredWorkers.length} 个 Worker（筛选后）· {overview?.summary.total ?? 0} 总 · {overview?.summary.online ?? 0} 在线
                   </Text>
+                  {allFilteredWorkers.length > WORKERS_CARD_LIMIT ? (
+                    <Pagination
+                      size="small"
+                      current={workerPage}
+                      pageSize={WORKERS_CARD_LIMIT}
+                      total={allFilteredWorkers.length}
+                      showSizeChanger={false}
+                      showTotal={(total) => `${Math.min(workerPage * WORKERS_CARD_LIMIT, total)}/${total}`}
+                      onChange={setWorkerPage}
+                    />
+                  ) : null}
                 </div>
               </div>
             ),

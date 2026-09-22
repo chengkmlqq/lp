@@ -282,6 +282,11 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
     return counts;
   }, [stageResults]);
 
+  const compareParamsSource = summary.compare?.params_source;
+  const compareDiagnostics = summary.compare?.params_diagnostics;
+  const defaultsApplied = compareDiagnostics?.defaults_applied ?? [];
+  const unresolvedKeys = Object.keys(compareDiagnostics?.unresolved ?? {});
+
   return (
     <Drawer
       title={
@@ -434,18 +439,18 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                 <Typography.Text type="secondary">run {activeRun.id.slice(0, 8)}</Typography.Text>
                 {summary.dry_run ? <Tag color="orange">试跑</Tag> : null}
               </Space>
-              {summary.compare?.params_source ? (
+              {compareParamsSource ? (
                 <div style={{ marginTop: 6 }}>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     参数来源：
-                    {summary.compare.params_source === "template"
-                      ? `参数模板默认值（链：${(summary.compare.params_diagnostics?.chain ?? []).join(" → ") || "-"}）`
+                    {compareParamsSource === "template"
+                      ? `参数模板默认值（链：${(compareDiagnostics?.chain ?? []).join(" → ") || "-"}）`
                       : "手工杆塔数据"}
-                    {(summary.compare.params_diagnostics?.defaults_applied ?? []).length > 0
-                      ? `；用默认值的变量 ${(summary.compare.params_diagnostics?.defaults_applied ?? []).length} 个：${(summary.compare.params_diagnostics?.defaults_applied ?? []).slice(0, 8).join(", ")}`
+                    {defaultsApplied.length > 0
+                      ? `；用默认值的变量 ${defaultsApplied.length} 个：${defaultsApplied.slice(0, 8).join(", ")}`
                       : ""}
-                    {Object.keys(summary.compare.params_diagnostics?.unresolved ?? {}).length > 0
-                      ? `；⚠️ 未解析槽位 ${Object.keys(summary.compare.params_diagnostics?.unresolved ?? {}).length} 个`
+                    {unresolvedKeys.length > 0
+                      ? `；⚠️ 未解析槽位 ${unresolvedKeys.length} 个`
                       : ""}
                   </Typography.Text>
                 </div>
@@ -574,7 +579,7 @@ function StageCard({
       size="small"
       title={
         <Space size={8}>
-          <ExperimentOutlined style={{ color: meta.tagColor === "gold" ? "#D4A017" : undefined }} />
+          <ExperimentOutlined style={{ color: meta.tagColor === "gold" ? "var(--orange-9)" : undefined }} />
           <Typography.Text strong>{meta.label}</Typography.Text>
           {result ? (
             result.status === "ok" ? (

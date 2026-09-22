@@ -1067,17 +1067,17 @@ export default function AtpModelsPage() {
                   marginTop: 8,
                   maxHeight: '200px',
                   overflowY: 'auto',
-                  border: '1px solid #d9d9d9',
+                  border: '1px solid var(--ant-color-border)',
                   borderRadius: '4px',
                   padding: '8px',
-                  backgroundColor: '#fafafa'
+                  backgroundColor: 'var(--ant-color-bg-container)'
                 }}>
                   {fileList.map((file, index) => (
                     <div key={index} style={{
                       padding: '4px 0',
                       fontSize: '13px',
-                      color: '#595959',
-                      borderBottom: index < fileList.length - 1 ? '1px solid #f0f0f0' : 'none',
+                      color: 'var(--ant-color-text-secondary)',
+                      borderBottom: index < fileList.length - 1 ? '1px solid var(--ant-color-border-secondary)' : 'none',
                       wordBreak: 'break-all'
                     }}>
                       {getUploadRelativePath(file)}

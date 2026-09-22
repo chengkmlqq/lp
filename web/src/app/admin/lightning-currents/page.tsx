@@ -1419,7 +1419,7 @@ export default function AdminLightningCurrentsPage() {
               </Upload.Dragger>
             </Form.Item>
           </div>
-          <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+          <div style={{ textAlign: "right", borderTop: "1px solid var(--ant-color-border-secondary)", paddingTop: 16 }}>
             <Button
               type="primary"
               disabled={!tempFileId}

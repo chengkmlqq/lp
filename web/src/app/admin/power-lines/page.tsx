@@ -563,7 +563,7 @@ export default function AdminPowerLinesPage() {
                       </div>
                     </div>
                     {linesQuery.isFetching ? (
-                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60">
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color-mix(in_srgb,var(--ant-color-bg-layout)_60%,transparent)]">
                         <Spin />
                       </div>
                     ) : null}

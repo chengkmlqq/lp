@@ -185,7 +185,7 @@ function DistributionImagePane({
         }
         fallback={IMAGE_LOAD_ERROR_FALLBACK}
         preview={false}
-        style={{ maxWidth: "100%", border: "1px solid #f0f0f0", borderRadius: 6 }}
+        style={{ maxWidth: "100%", border: "1px solid var(--ant-color-border-secondary)", borderRadius: 6 }}
       />
     );
   }
@@ -1383,7 +1383,7 @@ function ImportModal({
             </Upload.Dragger>
           </Form.Item>
         </div>
-        <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+        <div style={{ textAlign: "right", borderTop: "1px solid var(--ant-color-border-secondary)", paddingTop: 16 }}>
           <Button
             type="primary"
             disabled={!tempFileId}
@@ -2221,7 +2221,7 @@ function DrawLpBody({
           />
         </Form.Item>
       </Form>
-      <div style={{ textAlign: "right", borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+      <div style={{ textAlign: "right", borderTop: "1px solid var(--ant-color-border-secondary)", paddingTop: 16 }}>
         <Button type="primary" loading={drawMutation.isPending} onClick={() => drawMutation.mutate()}>
           提交回填
         </Button>

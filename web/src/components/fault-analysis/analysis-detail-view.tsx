@@ -319,7 +319,7 @@ function buildComputationSteps(): ComputationStepDef[] {
               return (
                 <ul className="mb-0 pl-4" style={{ listStyle: "disc" }}>
                   {(evidence as string[]).map((item, index) => (
-                    <li key={index} className="text-sm text-gray-700">{String(item)}</li>
+                    <li key={index} className="text-sm text-[var(--ant-color-text)]">{String(item)}</li>
                   ))}
                 </ul>
               );
@@ -366,7 +366,7 @@ function buildComputationSteps(): ComputationStepDef[] {
               return (
                 <ul className="mb-0 pl-4" style={{ listStyle: "disc" }}>
                   {(evidence as string[]).map((item, index) => (
-                    <li key={index} className="text-sm text-gray-700">{String(item)}</li>
+                    <li key={index} className="text-sm text-[var(--ant-color-text)]">{String(item)}</li>
                   ))}
                 </ul>
               );
@@ -398,7 +398,7 @@ function buildComputationSteps(): ComputationStepDef[] {
             const sources = rjValue(rj, "fault_location.sources");
             if (Array.isArray(sources) && sources.length > 0) {
               return (sources as Record<string, unknown>[]).map((source, index) => (
-                <span key={index} className="mr-2 text-sm text-gray-700">
+                <span key={index} className="mr-2 text-sm text-[var(--ant-color-text)]">
                   {String(source.label ?? "-")}: {String(source.tower ?? "-")}
                 </span>
               ));
@@ -414,7 +414,7 @@ function buildComputationSteps(): ComputationStepDef[] {
               return (
                 <ul className="mb-0 pl-4" style={{ listStyle: "disc" }}>
                   {(evidence as string[]).map((item, index) => (
-                    <li key={index} className="text-sm text-gray-700">{String(item)}</li>
+                    <li key={index} className="text-sm text-[var(--ant-color-text)]">{String(item)}</li>
                   ))}
                 </ul>
               );
@@ -539,7 +539,7 @@ function buildComputationSteps(): ComputationStepDef[] {
               return (
                 <ul className="mb-0 pl-4" style={{ listStyle: "disc" }}>
                   {(reasons as string[]).map((item, index) => (
-                    <li key={index} className="text-sm text-gray-700">{String(item)}</li>
+                    <li key={index} className="text-sm text-[var(--ant-color-text)]">{String(item)}</li>
                   ))}
                 </ul>
               );
@@ -557,13 +557,13 @@ const FAULT_ANALYSIS_KEY_PREFIX = "fault-analysis/";
 function artifactIcon(key: string): React.ReactNode {
   const name = key.toLowerCase();
   if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".bmp")) {
-    return <PictureOutlined style={{ color: "#1677ff" }} />;
+    return <PictureOutlined style={{ color: "var(--ant-color-primary)" }} />;
   }
   if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) {
-    return <FileExcelOutlined style={{ color: "#389e0d" }} />;
+    return <FileExcelOutlined style={{ color: "var(--green-9)" }} />;
   }
   if (name.endsWith(".txt") || name.endsWith(".json") || name.endsWith(".log")) {
-    return <FileTextOutlined style={{ color: "#8c8c8c" }} />;
+    return <FileTextOutlined style={{ color: "var(--gray-10)" }} />;
   }
   return <FileTextOutlined />;
 }

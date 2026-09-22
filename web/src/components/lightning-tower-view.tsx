@@ -226,10 +226,10 @@ function TagLightning({
   color: "blue" | "default";
   children: ReactNode;
 }) {
-  /* 轻量 Tag 渲染，避免额外模块依赖导致的类型/运行差异 */
+  /* 轻量 Tag 渲染，避免额外模块依赖导致的类型/运行差异；色值跟随主题 token，亮/暗主题自适应 */
   const palette: Record<string, { background: string; color: string; border: string }> = {
-    blue: { background: "#e6f4ff", color: "#0958d9", border: "#91caff" },
-    default: { background: "#fafafa", color: "#00000073", border: "#d9d9d9" },
+    blue: { background: "var(--ant-color-primary-bg)", color: "var(--accent-11)", border: "var(--accent-6)" },
+    default: { background: "var(--gray-2)", color: "var(--gray-10)", border: "var(--gray-6)" },
   };
   const style = palette[color];
   return (
