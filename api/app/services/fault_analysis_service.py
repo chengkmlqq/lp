@@ -98,6 +98,7 @@ def serialize_detail(item: FaultAnalysis) -> FaultAnalysisDetail:
         lightning_latitude=item.lightning_latitude,
         wave_distance_km=item.wave_distance_km,
         traveling_wave_distance_km=item.traveling_wave_distance_km,
+        task_id=item.task_id,
         optical_position=item.optical_position,
         optical_device_location=item.optical_device_location,
         result_json=result_json,

@@ -155,9 +155,9 @@ function PreviewPanel({
       return <span>媒体文件（{kindText}{fmt ? ` · .${fmt}` : ""}），无需结构校验</span>;
     }
     if (kind === "traveling_wave") {
-      const count = result.extra?.sampleCount ?? result.extra?.rowCount ?? 0;
+      const count = Number(result.extra?.sampleCount ?? result.extra?.rowCount ?? 0) || 0;
       const phases = result.fields.phaseCount;
-      return <span>采样点 {count}，识别相 {phases ?? "-"}</span>;
+      return <span>采样点 {count}，识别相 {String(phases ?? "-")}</span>;
     }
     if (kind === "ledger_data") {
       const matched = Object.values(result.fields).filter(Boolean).length;
@@ -176,7 +176,7 @@ function PreviewPanel({
       return null;
     }
     if (kind === "traveling_wave") {
-      const count = result.extra?.sampleCount ?? result.extra?.rowCount ?? 0;
+      const count = Number(result.extra?.sampleCount ?? result.extra?.rowCount ?? 0) || 0;
       const phases = result.fields;
       return (
         <div className="space-y-1">
@@ -320,22 +320,32 @@ export function TempFileUpload({
           missing?: string[];
           ocr_used?: boolean;
           raw_text_preview?: string;
+          detail?: string;
+          error?: string;
         };
         patchValue((items) =>
           items.map((it) =>
             it.uid === uid
-              ? {
+              ? ({
                   ...it,
                   pdfExtracting: false,
-                  pdfExtractError: response.ok ? null : data?.detail ?? "提取失败",
-                  pdfExtractResponse: response.ok ? data : null,
-                }
+                  pdfExtractError: response.ok ? null : data?.detail ?? data?.error ?? "提取失败",
+                  pdfExtractResponse: response.ok
+                    ? {
+                        ok: Boolean(data.ok),
+                        extracted: data.extracted ?? {},
+                        missing: Array.isArray(data.missing) ? data.missing : [],
+                        ocr_used: Boolean(data.ocr_used),
+                        raw_text_preview: data.raw_text_preview,
+                      }
+                    : null,
+                } satisfies FaultAnalysisTempFile)
               : it,
           ),
         );
         if (response.ok) {
           onPdfExtracted?.(
-            { uid, name: file.name, status: "done", temp_file_id: "" },
+            { uid, name: file.name, status: "done", percent: 100, temp_file_id: "" },
             {
               ok: Boolean(data.ok),
               extracted: data.extracted ?? {},
@@ -349,12 +359,12 @@ export function TempFileUpload({
         patchValue((items) =>
           items.map((it) =>
             it.uid === uid
-              ? {
+              ? ({
                   ...it,
                   pdfExtracting: false,
                   pdfExtractError: error instanceof Error ? error.message : "提取失败",
                   pdfExtractResponse: null,
-                }
+                } satisfies FaultAnalysisTempFile)
               : it,
           ),
         );

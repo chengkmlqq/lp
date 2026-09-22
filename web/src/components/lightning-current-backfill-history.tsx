@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import type { Dayjs } from "dayjs";
+import type { ColumnsType } from "antd/es/table";
 import { useQuery } from "@tanstack/react-query";
 import {
   Button,
@@ -87,7 +89,7 @@ export function LightningCurrentBackfillHistoryTable({
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const [lineId, setLineId] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(BACKFILL_HISTORY_MIN_SCROLL_Y);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -515,9 +517,9 @@ export function LightningCurrentBackfillHistoryTable({
             if (isAmplitudeMode && "line_id" in row) {
               return row.line_id;
             }
-            return row.id;
+            return (row as LightningCurrentBackfillTaskSummary).id;
           }}
-          columns={isAmplitudeMode ? amplitudeColumns : taskColumns}
+          columns={isAmplitudeMode ? (amplitudeColumns as ColumnsType<LightningCurrentBackfillTaskSummary | LightningAmplitudeBackfillLine>) : (taskColumns as ColumnsType<LightningCurrentBackfillTaskSummary | LightningAmplitudeBackfillLine>)}
           dataSource={tableDataSource}
           loading={tableLoading}
           tableLayout="fixed"

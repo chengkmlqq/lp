@@ -33,8 +33,8 @@ export interface FaultAnalysisTempFile {
     missing: string[];
     ocr_used: boolean;
     raw_text_preview?: string;
-  };
-  pdfExtractError?: string;
+  } | null;
+  pdfExtractError?: string | null;
 }
 /** 故障分析详情动态选项卡项（LP-275：多开详情 Tab 支持） */
 export interface DetailTabItem {

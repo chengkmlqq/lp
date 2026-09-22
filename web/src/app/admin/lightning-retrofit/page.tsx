@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
@@ -56,7 +56,7 @@ export default function AdminLightningRetrofitPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
-  const tableScrollAnchorRef = useState<HTMLDivElement | null>(null)[0];
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage") || hasPermission("tower.manage");

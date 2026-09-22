@@ -4,7 +4,7 @@ export interface ValidationResult {
   ok: boolean;
   errors: string[];
   warnings: string[];
-  fields: Record<string, boolean>;
+  fields: Record<string, boolean | number>;
   extra?: Record<string, unknown>;
 }
 
@@ -167,7 +167,7 @@ async function validateWaveDataFile(file: File): Promise<ValidationResult> {
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
   const errors: string[] = [];
   const warnings: string[] = [];
-  let fields: Record<string, boolean> = {};
+  let fields: Record<string, boolean | number> = {};
   let extra: Record<string, unknown> = {};
 
   if (ext === "pdf") {
@@ -249,7 +249,7 @@ async function validateLightningDataFile(file: File): Promise<ValidationResult> 
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
   const errors: string[] = [];
   const warnings: string[] = [];
-  let fields: Record<string, boolean> = {};
+  let fields: Record<string, boolean | number> = {};
   let extra: Record<string, unknown> = {};
 
   if (ext === "xlsx" || ext === "xls") {
@@ -331,7 +331,7 @@ async function validateTravelingWaveFile(file: File): Promise<ValidationResult> 
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
   const errors: string[] = [];
   const warnings: string[] = [];
-  let fields: Record<string, boolean> = {};
+  let fields: Record<string, boolean | number> = {};
   let extra: Record<string, unknown> = {};
 
   if (ext === "json") {
