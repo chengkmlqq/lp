@@ -22,13 +22,14 @@ import {
   Upload,
   type MenuProps,
 } from "antd";
-import { CheckCircleOutlined, DeleteOutlined, EditOutlined, EyeOutlined, InboxOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, DeleteOutlined, EditOutlined, ExperimentOutlined, EyeOutlined, InboxOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
 import { AtpModelDetailTab } from "@/components/atp-models/atp-model-detail-tab";
+import { AtpModelTestDrawer } from "@/components/atp-models/atp-model-test-drawer";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
@@ -137,6 +138,8 @@ export default function AtpModelsPage() {
   const [uploadError, setUploadError] = useState("");
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
+  // 模型测试抽屉：从操作列打开，以当前模型为上下文
+  const [testAsset, setTestAsset] = useState<AtpAssetSummary | null>(null);
   const [detailTabs, setDetailTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>("list");
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -146,6 +149,7 @@ export default function AtpModelsPage() {
 
   const canRead = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
   const canManage = hasPermission("atp.manage");
+  const canTest = hasPermission("atp.run") || hasPermission("atp.manage");
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
 
   const trimmedKeyword = searchKeyword.trim();
@@ -661,6 +665,10 @@ export default function AtpModelsPage() {
     }
   }, [assetItems, openDetail]);
 
+  const openTestDrawer = useCallback((asset: AtpAssetSummary) => {
+    setTestAsset(asset);
+  }, []);
+
   const columns = useMemo<ColumnsType<AtpAssetSummary>>(
     () => [
       {
@@ -697,7 +705,7 @@ export default function AtpModelsPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-        width: 160,
+        width: 240,
         render: (_, item) => {
           const deleteLoading = deleteMutation.isPending;
           const rowBusy = deleteLoading;
@@ -706,6 +714,14 @@ export default function AtpModelsPage() {
             <Space size={4}>
               <Button size="small" icon={<EyeOutlined />} onClick={() => openDetailById(item.id)}>
                 详情
+              </Button>
+              <Button
+                size="small"
+                icon={<ExperimentOutlined />}
+                disabled={!canTest}
+                onClick={() => openTestDrawer(item)}
+              >
+                测试
               </Button>
               <Button size="small" icon={<EditOutlined />} disabled={!canManage} onClick={() => openEditModal(item)}>
                 编辑
@@ -729,7 +745,7 @@ export default function AtpModelsPage() {
         },
       },
     ],
-    [canManage, deleteMutation, formatDimensionValue, openDetailById, openEditModal],
+    [canManage, canTest, deleteMutation, formatDimensionValue, openDetailById, openEditModal, openTestDrawer],
   );
 
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
@@ -887,10 +903,12 @@ export default function AtpModelsPage() {
                             <AtpModelCardList
                               assets={assetItems}
                               canManage={canManage}
+                              canTest={canTest}
                               deleteLoading={deleteMutation.isPending}
                               onView={(asset) => openDetail(asset)}
                               onEdit={(asset) => openEditModal(asset)}
                               onDelete={(id) => deleteMutation.mutate(id)}
+                              onTest={(asset) => openTestDrawer(asset)}
                               dimensionLabelMap={dimensionLabelMap}
                             />
                           </Spin>
@@ -1125,6 +1143,12 @@ export default function AtpModelsPage() {
           </div>
         </Form>
       </Modal>
+
+      <AtpModelTestDrawer
+        asset={testAsset}
+        open={Boolean(testAsset)}
+        onClose={() => setTestAsset(null)}
+      />
     </div>
   );
 }

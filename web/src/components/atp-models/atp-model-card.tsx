@@ -6,6 +6,7 @@ import {
   ClockCircleOutlined,
   DeleteOutlined,
   EditOutlined,
+  ExperimentOutlined,
   EyeOutlined,
   MoreOutlined,
   ThunderboltOutlined,
@@ -19,10 +20,12 @@ const { Text } = Typography;
 interface AtpModelCardProps {
   asset: AtpAssetSummary;
   canManage: boolean;
+  canTest: boolean;
   deleteLoading: boolean;
   onView: (asset: AtpAssetSummary) => void;
   onEdit: (asset: AtpAssetSummary) => void;
   onDelete: (id: string) => void;
+  onTest: (asset: AtpAssetSummary) => void;
   dimensionLabelMap?: {
     voltage_level?: Map<string, string>;
     tower_type?: Map<string, string>;
@@ -39,7 +42,7 @@ function formatDimension(
   return map?.get(value) ?? value;
 }
 
-export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, onDelete, dimensionLabelMap }: AtpModelCardProps) {
+export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, dimensionLabelMap }: AtpModelCardProps) {
   const rowBusy = deleteLoading;
 
   const handleView = useCallback(() => {
@@ -49,6 +52,10 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, 
   const handleEdit = useCallback(() => {
     onEdit(asset);
   }, [onEdit, asset]);
+
+  const handleTest = useCallback(() => {
+    onTest(asset);
+  }, [onTest, asset]);
 
   const handleDelete = useCallback(() => {
     Modal.confirm({
@@ -101,6 +108,18 @@ export function AtpModelCard({ asset, canManage, deleteLoading, onView, onEdit, 
           <div />
         )}
         <Space size="small" className="shrink-0">
+          <Tooltip title={canTest ? "模型测试" : "缺少测试权限（需要 atp.run / atp.manage）"}>
+            <Button
+              type="text"
+              size="small"
+              icon={<ExperimentOutlined />}
+              disabled={!canTest}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleTest();
+              }}
+            />
+          </Tooltip>
           <Tooltip title="编辑">
             <Button
               type="text"
