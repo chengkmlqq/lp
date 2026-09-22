@@ -576,6 +576,45 @@ body {
   background-clip: padding-box;
 }
 
+/* 任务日志底部「运行中」加载动效：三点跳动指示器（仿 AI 聊天工具输出末尾动效）。
+   由 task-log-viewer.tsx 在 SSE 流式接收期间渲染于日志内容末尾；
+   顶部状态 Tag 与复制按钮已随样式优化移除。 */
+.task-log-streaming-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0 6px;
+  font-size: 12px;
+  line-height: 1;
+  color: rgba(148, 163, 184, 0.95);
+  white-space: normal;
+}
+.task-log-streaming-indicator .task-log-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.95);
+  animation: task-log-dot-bounce 1.4s ease-in-out infinite;
+}
+.task-log-streaming-indicator .task-log-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.task-log-streaming-indicator .task-log-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes task-log-dot-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
 .admin-menus-table-anchor .ant-table-body {
   min-height: var(--admin-menus-table-body-min-height, 180px);
 }

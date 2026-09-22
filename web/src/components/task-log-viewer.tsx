@@ -1,13 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Drawer, Empty, Modal, Space, Spin, Tag, Typography } from "antd";
+import { Drawer, Empty, Modal, Spin } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { readApiError, API_BASE_URL } from "@/lib/api";
 import type { WsTicketResponse } from "@/types/ws";
-
-const { Text } = Typography;
 
 /**
  * 通用任务日志查看抽屉。
@@ -20,8 +18,11 @@ const { Text } = Typography;
  *  5. error 事件：连接错误（如 ticket 过期 401、网络中断）→ 关闭旧连接，
  *     重新签发 ticket 并以 lastEventId 查询参数携带 Last-Event-ID 游标重建连接，
  *     指数退避重试（修复 LP-295：旧 ticket 30s 过期后自动重连持续 401 的循环）
- *  6. 自动滚动到底部（用户上滚时暂停），可复制
- *  7. 状态 Tag：连接中 / 实时接收中 / 重连中 / 已结束 / 无日志 / 连接中断
+ *  6. 自动滚动到底部（用户上滚时暂停）
+ *  7. 状态仅驱动内部逻辑不展示；任务运行中在日志末尾渲染「三点跳动」加载动效
+ *
+ * 备注：日志内容底部为深色终端容器，运行中指示器（task-log-streaming-indicator）
+ *      样式见 globals.css，仿 AI 聊天工具输出末尾的加载动效。
  */
 export function TaskLogViewerDrawer({
   taskId,
@@ -41,7 +42,7 @@ export function TaskLogViewerDrawer({
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState("");
   // 方案A+C（2026-09-16）：日志从「单个大字符串」改为「行数组 + 虚拟滚动窗口」。
-  // - lines：全量日志行（复制时用完整内容；渲染只画可视窗口，避免几万行 DOM）
+  // - lines：全量日志行（渲染只画可视窗口，避免几万行 DOM）
   // - pendingLinesRef + flushTimerRef：SSE 增量先入缓冲，定时批量 flush（追加节流，
   //   避免每行 setState 全量重渲染）
   const [lines, setLines] = useState<string[]>([]);
@@ -262,52 +263,12 @@ export function TaskLogViewerDrawer({
     }
   }, [lines, streaming, status]);
 
-  const statusTone = status === "done"
-    ? "success"
-    : status === "reconnecting"
-      ? "warning"
-      : streaming
-        ? "processing"
-        : "default";
-  const statusLabel = status === "done"
-    ? "已结束"
-    : status === "reconnecting"
-      ? "重连中"
-      : streaming
-        ? "实时接收中"
-        : status === "no-log"
-          ? "无日志"
-          : "";
-
   const contentNode = loading ? (
     <div style={{ textAlign: "center", padding: "40px 0" }}>
       <Spin />
     </div>
   ) : (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Space
-        style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}
-        align="center"
-      >
-        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {streaming && !status && <Spin size="small" />}
-          {streaming && !status && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              任务运行中，实时接收日志...
-            </Text>
-          )}
-          {status && <Tag color={statusTone}>{statusLabel}</Tag>}
-        </span>
-        {lines.length > 0 && (
-          <Button
-            type="link"
-            size="small"
-            onClick={() => navigator.clipboard?.writeText(lines.join("\n"))}
-          >
-            复制
-          </Button>
-        )}
-      </Space>
       <div
         ref={contentRef}
         onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
@@ -368,6 +329,14 @@ export function TaskLogViewerDrawer({
               </div>
             );
           })()
+        )}
+        {streaming && !status && (
+          <div className="task-log-streaming-indicator" role="status" aria-label="任务运行中">
+            <span className="task-log-dot" />
+            <span className="task-log-dot" />
+            <span className="task-log-dot" />
+            任务运行中
+          </div>
         )}
       </div>
     </div>

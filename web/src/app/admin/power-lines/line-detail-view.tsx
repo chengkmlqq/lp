@@ -502,7 +502,6 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
   });
 
   const towerColumns: ColumnsType<LineTowerSummary> = [
-    { title: "序号", dataIndex: "seq_no", width: 80 },
     {
       title: "塔号",
       dataIndex: "tower_no",
