@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import mimetypes
+import re
+from pathlib import Path
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -49,6 +55,7 @@ from ...services.elevation_service import (
 from ...services.elevation_file_record_service import (
     create_file_record_from_upload,
     delete_file_record,
+    download_file_record_source,
     get_file_record_by_id,
     list_elevation_datasets,
     list_file_records,
@@ -142,6 +149,26 @@ def get_elevation_file_record_detail(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文件记录不存在")
     return serialize_file_record(item)
+
+
+@router.get("/records/{record_id}/download")
+def download_elevation_file_record_source(
+    record_id: str,
+    _: CurrentUser = Depends(require_any_permission("elevation.read", "elevation.manage")),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """下载高程记录对应的原始上传文件（tif/tiff/zip 等，保持原始格式）。"""
+    filename, content, mime_type = download_file_record_source(db, record_id)
+    ascii_name = re.sub(r'[\x00-\x1f\x7f"\\]', "_", Path(filename).name).strip() or f"elevation_{record_id}"
+    encoded = quote(filename)
+    media_type = mime_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return StreamingResponse(
+        iter([content]),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}",
+        },
+    )
 
 
 @router.patch("/records/{record_id}", response_model=ElevationFileRecordSummary)

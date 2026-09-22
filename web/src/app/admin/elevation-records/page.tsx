@@ -49,7 +49,7 @@ import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { ElevationBackfillHistoryTable } from "@/components/elevation-backfill-history";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { getApiBaseUrl, readApiError } from "@/lib/api";
+import { downloadFileWithAuth, getApiBaseUrl, readApiError } from "@/lib/api";
 import type { ElevationDatasetTerrainStatus } from "@/types/auth";
 
 type ElevationFileRecordSummary = {
@@ -467,6 +467,18 @@ export default function ElevationRecordsPage() {
     },
   });
 
+  // 下载原始高程文件（保持上传时的原始格式，单文件逐个下载）
+  const handleDownloadSource = useCallback(async (record: ElevationFileRecordSummary) => {
+    try {
+      await downloadFileWithAuth(
+        `/api/v1/elevation/records/${record.id}/download`,
+        record.file_name || "elevation.tif",
+      );
+    } catch (error) {
+      messageApi.error(readMutationError(error, "下载失败"));
+    }
+  }, [messageApi]);
+
   // 编辑文件记录（来源/分辨率/备注）mutation
   const editMutation = useMutation({
     mutationFn: async (args: { id: string; values: EditFormValues }) => {
@@ -747,6 +759,16 @@ export default function ElevationRecordsPage() {
 
         return canManage ? (
           <Space wrap>
+            <Button
+              size="small"
+              disabled={rowBusy}
+              onClick={() => {
+                void handleDownloadSource(row);
+              }}
+            >
+              下载
+            </Button>
+
             <Button
               size="small"
               disabled={rowBusy}

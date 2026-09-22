@@ -46,6 +46,7 @@ from .elevation_service import (
     join_virtual_path,
 )
 from .file_service import _build_driver_or_400
+from .storage_driver import StorageDriverError, StorageInvalidPathError, StoragePathNotFoundError
 
 
 def serialize_file_record(
@@ -619,6 +620,32 @@ def delete_file_record(db: Session, record_id: str) -> bool:
         {"action": "file_record_deleted", "file_record_id": record_id},
     )
     return True
+
+
+def download_file_record_source(db: Session, record_id: str) -> tuple[str, bytes, str | None]:
+    """读取高程记录对应的原始上传文件，返回 (文件名, 内容字节, MIME)。
+
+    下载的是上传时的原文件（tif/tiff/zip 等），保持原始格式，不做转换。
+    """
+    item = get_file_record_by_id(db, record_id)
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="高程文件记录不存在")
+
+    mount = _require_mount(db, item.mount_code)
+    driver = _build_driver_or_400(mount)
+    try:
+        read_result = driver.read_file(item.file_path)
+    except StoragePathNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"高程数据文件不存在: {item.file_path}",
+        ) from exc
+    except StorageInvalidPathError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except StorageDriverError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    return item.file_name, read_result.content, read_result.mime_type
 
 
 def queue_file_record_analysis(

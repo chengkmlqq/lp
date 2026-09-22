@@ -34,6 +34,7 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   EnvironmentOutlined,
   EyeOutlined,
@@ -66,7 +67,7 @@ import { Card } from "@/components/ui-antd";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
+import { ApiError, downloadFileWithAuth, getApiBaseUrl, readApiError } from "@/lib/api";
 import type {
   LightningAmplitudeBackfillLine,
   LightningAmplitudeBackfillLineListResponse,
@@ -773,6 +774,17 @@ export default function AdminLightningCurrentsPage() {
     setBackfillLinesOpen(true);
   };
 
+  const handleDownloadSource = useCallback(async (record: LightningAmplitudeRecord) => {
+    try {
+      await downloadFileWithAuth(
+        `/api/v1/lightning-currents/amplitudes/${record.id}/source`,
+        record.source_file_name || "lightning_amplitude.csv",
+      );
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "下载源文件失败");
+    }
+  }, [messageApi]);
+
   // 回填线路选择：复用现有线路列表接口
   const linesQuery = useQuery<LineListResponse>({
     queryKey: ["lines"],
@@ -904,6 +916,15 @@ export default function AdminLightningCurrentsPage() {
                       : []),
                     ...(canRead
                       ? [
+                          {
+                            key: "download-source",
+                            label: "下载源文件",
+                            icon: <DownloadOutlined />,
+                            onClick: (info) => {
+                              info.domEvent?.stopPropagation();
+                              void handleDownloadSource(record);
+                            },
+                          },
                           {
                             key: "backfill-history",
                             label: "回填记录",
@@ -1070,6 +1091,14 @@ export default function AdminLightningCurrentsPage() {
             ...(canRead
               ? [
                   {
+                    key: "download-source",
+                    label: "下载源文件",
+                    icon: <DownloadOutlined />,
+                    onClick: () => {
+                      void handleDownloadSource(row);
+                    },
+                  },
+                  {
                     key: "backfill-history",
                     label: "回填记录",
                     onClick: () => openBackfillHistory(row),
@@ -1133,7 +1162,7 @@ export default function AdminLightningCurrentsPage() {
         },
       },
     ],
-    [canManage, canRead, deleteMutation, backfillMutation, editMutation, openEditModal, openDetail, openBackfillLines, openBackfillHistory, canReadLogs, openLogViewer],
+    [canManage, canRead, handleDownloadSource, deleteMutation, backfillMutation, editMutation, openEditModal, openDetail, openBackfillLines, openBackfillHistory, canReadLogs, openLogViewer, modalApi],
   );
 
   if (initializing) {

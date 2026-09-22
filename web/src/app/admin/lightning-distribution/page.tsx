@@ -57,7 +57,7 @@ import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
-import { getApiBaseUrl, readApiError } from "@/lib/api";
+import { downloadFileWithAuth, getApiBaseUrl, readApiError } from "@/lib/api";
 import type {
   LightningDistributionImportResponse,
   LightningDistributionRecord,
@@ -617,6 +617,17 @@ export default function AdminLightningDistributionPage() {
     setActiveTabKey(key);
   }, [fetchWithAuth, canReadLogs, openLogViewer]);
 
+  const handleDownloadSource = useCallback(async (record: LightningDistributionRecord) => {
+    try {
+      await downloadFileWithAuth(
+        `/api/v1/lightning-currents/distributions/${record.id}/source`,
+        record.source_file_name || "lightning_distribution.csv",
+      );
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "下载源文件失败");
+    }
+  }, [messageApi]);
+
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
       return;
@@ -827,6 +838,18 @@ export default function AdminLightningDistributionPage() {
               label: "回填记录",
               onClick: () => openLinkedLinesModal(row),
             },
+            ...(canRead
+              ? [
+                  {
+                    key: "download-source",
+                    label: "下载源文件",
+                    icon: <DownloadOutlined />,
+                    onClick: () => {
+                      void handleDownloadSource(row);
+                    },
+                  },
+                ]
+              : []),
             ...(canReadLogs && row.task_id
               ? [
                   {
@@ -880,7 +903,7 @@ export default function AdminLightningDistributionPage() {
         },
       },
     ],
-    [canManage, deleteMutation, openDetail, openLinkedLinesModal, openLogViewer, openLpDrawModal, canReadLogs],
+    [canManage, canRead, handleDownloadSource, deleteMutation, openDetail, openLinkedLinesModal, openLogViewer, openLpDrawModal, canReadLogs, modalApi],
   );
 
   const renderRecordCard = (record: LightningDistributionRecord) => {
@@ -973,6 +996,15 @@ export default function AdminLightningDistributionPage() {
               )}
               {(() => {
                 const extraActions: MenuProps["items"] = [
+                  {
+                    key: "download-source",
+                    label: "下载源文件",
+                    icon: <DownloadOutlined />,
+                    onClick: (info) => {
+                      info.domEvent?.stopPropagation();
+                      void handleDownloadSource(record);
+                    },
+                  },
                   {
                     key: "backfill-history",
                     label: "回填记录",

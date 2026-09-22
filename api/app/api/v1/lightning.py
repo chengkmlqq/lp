@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -10,6 +13,7 @@ from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
 from ...core.file_upload import save_temp_upload, validate_upload
 from ...services.audit_service import write_audit_log
+from ...services.minio_storage import MinioObjectNotFoundError, MinioStorageError, get_object
 from ...schemas.lightning import (
     LightningAmplitudeBackfillLine,
     LightningAmplitudeBackfillLineListResponse,
@@ -46,11 +50,13 @@ from ...services.lightning_service import (
     delete_lightning_distribution,
     get_backfill_lines_for_amplitude,
     get_backfill_task_detail_for_amplitude_line,
+    get_lightning_amplitude_by_id,
     get_lightning_amplitude_detail,
     get_lightning_amplitude_status,
     get_lightning_current_backfill_task_detail,
     get_lightning_current_backfill_task_towers,
     list_lightning_current_backfill_tasks,
+    get_lightning_distribution_by_id,
     get_lightning_distribution_detail,
     get_lightning_distribution_image_content,
     get_lightning_distribution_lp_image_content,
@@ -588,3 +594,75 @@ def get_lightning_current_backfill_task_towers_endpoint(
     db: Session = Depends(get_db),
 ) -> LightningCurrentBackfillTaskDetail:
     return get_lightning_current_backfill_task_towers(db, task_id, page=page, page_size=page_size)
+
+
+# ---------------------------------------------------------------------------
+# 原始源文件下载（下载上传时的原文件，保持原始格式）
+# ---------------------------------------------------------------------------
+def _ascii_safe_download_filename(filename: str, fallback: str) -> str:
+    """把下载文件名过滤为可在 Content-Disposition 中直接使用的 ASCII 安全形式。"""
+    safe = re.sub(r'[\x00-\x1f\x7f"\\]', "_", Path(filename or fallback).name).strip() or fallback
+    return safe
+
+
+def _stream_source_file_download(content: bytes, filename: str, fallback: str) -> StreamingResponse:
+    """包装原始文件下载响应：附件下载 + 中文文件名经 RFC 5987 filename* 传递。"""
+    ascii_name = _ascii_safe_download_filename(filename, fallback)
+    encoded = quote(filename or fallback)
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}",
+        },
+    )
+
+
+@router.get("/distributions/{distribution_id}/source")
+def download_lightning_distribution_source(
+    distribution_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """下载地闪密度导入的原始源文件（保持上传时的原始格式）。"""
+    dist = get_lightning_distribution_by_id(db, distribution_id)
+    if not dist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="地闪分布记录不存在")
+    if not dist.source_object_key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="该记录没有可下载的源文件")
+    try:
+        content = get_object(dist.source_object_key)
+    except MinioObjectNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="源文件不存在（可能已被清理）") from None
+    except MinioStorageError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return _stream_source_file_download(
+        content,
+        dist.source_file_name,
+        f"lightning_distribution_{distribution_id}",
+    )
+
+
+@router.get("/amplitudes/{amplitude_id}/source")
+def download_lightning_amplitude_source(
+    amplitude_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """下载雷电流幅值导入的原始源文件（保持上传时的原始格式）。"""
+    amp = get_lightning_amplitude_by_id(db, amplitude_id)
+    if not amp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流幅值记录不存在")
+    if not amp.source_object_key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="该记录没有可下载的源文件")
+    try:
+        content = get_object(amp.source_object_key)
+    except MinioObjectNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="源文件不存在（可能已被清理）") from None
+    except MinioStorageError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return _stream_source_file_download(
+        content,
+        amp.source_file_name,
+        f"lightning_amplitude_{amplitude_id}",
+    )

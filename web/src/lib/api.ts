@@ -229,3 +229,33 @@ export async function uploadFileWithAuth(
   formData.append("file", file);
   return fetchWithAuth(path, { method: "POST", body: formData });
 }
+
+/**
+ * 携带鉴权下载文件：拉取 blob 后触发浏览器保存。
+ * 文件名优先从响应 Content-Disposition 的 filename*（UTF-8）解析，
+ * 解析不到时回退到 fallbackName。
+ */
+export async function downloadFileWithAuth(
+  path: string,
+  fallbackName: string,
+): Promise<void> {
+  const response = await fetchWithAuth(path);
+  if (!response.ok) {
+    throw new Error(await readApiError(response));
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const utf8Match = disposition.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
+  const plainMatch = disposition.match(/filename="([^"]+)"/i);
+  const rawName = (utf8Match?.[1] ?? plainMatch?.[1] ?? "").trim().replace(/"/g, "");
+  const fileName = rawName ? decodeURIComponent(rawName) : fallbackName;
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
