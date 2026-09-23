@@ -43,6 +43,7 @@ import {
   QuestionCircleOutlined,
   SearchOutlined,
   SendOutlined,
+  SwapOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -820,6 +821,14 @@ export default function AdminLightningCurrentsPage() {
               <ClockCircleOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">采样时间：{formatDateTime(record.event_time) || "-"}</Typography.Text>
             </div>
+            <div className="flex items-center gap-2">
+              <ThunderboltOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">峰值(kA)：{formatNumber(record.peak_abs_current_ka, 2)}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <SwapOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">极性：{formatPolarity(record.polarity)}</Typography.Text>
+            </div>
           </div>
 
           <div className="admin-lightning-events-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
@@ -1300,7 +1309,7 @@ export default function AdminLightningCurrentsPage() {
         destroyOnHidden
       >
         <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="flex flex-col gap-3">
             <Form.Item name="city" label="采样城市">
               <Select
                 showSearch
@@ -1527,7 +1536,7 @@ export default function AdminLightningCurrentsPage() {
         destroyOnHidden
       >
         <Form<ImportFormValues> form={editForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="flex flex-col gap-3">
             <Form.Item name="city" label="采样城市">
               <Select
                 showSearch
