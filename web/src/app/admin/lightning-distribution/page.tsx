@@ -854,8 +854,8 @@ export default function AdminLightningDistributionPage() {
               ? [
                   {
                     key: "import-log",
-                    label: "导入日志",
-                    onClick: () => openLogViewer(row.task_id, "导入日志", row.source_file_name),
+                    label: "日志",
+                    onClick: () => openLogViewer(row.task_id, "日志", row.source_file_name),
                   },
                 ]
               : []),
@@ -1018,11 +1018,11 @@ export default function AdminLightningDistributionPage() {
                     ? [
                         {
                           key: "import-log",
-                          label: "导入日志",
+                          label: "日志",
                           icon: <FileTextOutlined />,
                           onClick: (info) => {
                             info.domEvent?.stopPropagation();
-                            openLogViewer(record.task_id, "导入日志", record.source_file_name);
+                            openLogViewer(record.task_id, "日志", record.source_file_name);
                           },
                         },
                       ]
