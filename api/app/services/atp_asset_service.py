@@ -29,6 +29,7 @@ from ..models.dimension_item import DimensionItem
 from ..schemas.atp_asset import (
     AtpAssetCreateRequest,
     AtpAssetDetail,
+    AtpAssetFileContentResponse,
     AtpAssetFileEntry,
     AtpAssetFileListResponse,
     AtpAssetFileUploadResponse,
@@ -978,6 +979,84 @@ def list_asset_files(db: Session, *, asset_id: str) -> AtpAssetFileListResponse:
         storage_root_path=storage_root_path,
         items=merged_items,
         total=len(merged_items),
+    )
+
+
+def read_asset_file_content(
+    db: Session,
+    *,
+    asset_id: str,
+    relative_path: str,
+    max_bytes: int = 2 * 1024 * 1024,
+) -> AtpAssetFileContentResponse:
+    """读取资产目录下文本文件内容(供详情页「dat 文件详情查看」等用途)。
+
+    - 仅允许读取资产存储目录内的相对路径(防越权)。
+    - 二进制(不可解码为 UTF-8)返回 content_type="binary",不返回内容。
+    - 超大文本截断到 max_bytes 并返回前 N 行预览。
+    """
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    storage_mount_code, storage_root_path = _resolve_asset_file_location(db, asset)
+    mount = _resolve_mount(db, storage_mount_code)
+    driver = _build_driver_or_400(mount)
+
+    # 防越权:拼接后必须仍在存储根目录内
+    normalized_root = normalize_virtual_path(storage_root_path).rstrip("/")
+    target = join_virtual_path(normalized_root, relative_path)
+    if not target.startswith(f"{normalized_root}/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
+
+    try:
+        result = driver.read_file(target)
+    except StoragePathNotFoundError:
+        return AtpAssetFileContentResponse(
+            asset_id=asset_id,
+            relative_path=relative_path,
+            name=relative_path.split("/")[-1],
+            size=0,
+            content_type="not-found",
+        )
+    except StorageDriverError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    raw = result.content
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return AtpAssetFileContentResponse(
+            asset_id=asset_id,
+            relative_path=relative_path,
+            name=result.name,
+            size=len(raw),
+            mime_type=result.mime_type,
+            content_type="binary",
+        )
+
+    lines = text.splitlines()
+    preview = [line for line in lines[:300] if len(line) <= 2000]
+    if len(raw) <= max_bytes:
+        return AtpAssetFileContentResponse(
+            asset_id=asset_id,
+            relative_path=relative_path,
+            name=result.name,
+            size=len(raw),
+            mime_type=result.mime_type,
+            content_type="text",
+            content=text,
+            preview_lines=preview,
+        )
+    # 超大:只给预览,不给全文
+    return AtpAssetFileContentResponse(
+        asset_id=asset_id,
+        relative_path=relative_path,
+        name=result.name,
+        size=len(raw),
+        mime_type=result.mime_type,
+        content_type="text",
+        content="",
+        preview_lines=preview,
     )
 
 

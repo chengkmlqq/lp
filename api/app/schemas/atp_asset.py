@@ -88,6 +88,17 @@ class AtpAssetFileListResponse(BaseModel):
     total: int
 
 
+class AtpAssetFileContentResponse(BaseModel):
+    asset_id: str
+    relative_path: str
+    name: str
+    size: int
+    mime_type: str | None = None
+    content_type: str  # "text" | "binary" | "not-found"
+    content: str = ""  # text 时为内容(UTF-8);binary 时为空
+    preview_lines: list[str] = []  # text 前 N 行,供前端快速渲染
+
+
 class AtpAssetFileUploadResponse(BaseModel):
     asset_id: str
     storage_mount_code: str

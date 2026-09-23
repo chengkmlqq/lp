@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Descriptions, Empty, Spin, Table, Typography } from "antd";
-import { useMemo } from "react";
+import { Alert, Button, Descriptions, Empty, Modal, Spin, Table, Typography } from "antd";
+import { useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import type { AtpAssetSummary, AtpAssetFileListResponse } from "@/types/auth";
+import { AtpDatDetailView } from "./atp-dat-detail-view";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -29,6 +30,7 @@ interface AtpModelDetailTabProps {
 
 export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
+  const [datDetail, setDatDetail] = useState<{ path: string; name: string } | null>(null);
 
   const canRead = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
 
@@ -66,13 +68,15 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
   const files = filesQuery.data?.items ?? [];
 
   const fileRows = useMemo(
-    () => (filesQuery.data?.items ?? []).map((file) => ({
-      key: file.relative_path,
-      name: file.name,
-      size: file.is_dir ? "-" : file.size,
-      modified: file.is_dir ? "-" : file.modified_at,
-      is_dir: file.is_dir,
-    })),
+    () =>
+      (filesQuery.data?.items ?? []).map((file) => ({
+        key: file.relative_path,
+        path: file.relative_path,
+        name: file.name,
+        size: file.is_dir ? "-" : file.size,
+        modified: file.is_dir ? "-" : file.modified_at,
+        is_dir: file.is_dir,
+      })),
     [filesQuery.data?.items],
   );
 
@@ -137,10 +141,41 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
               { title: "文件名", dataIndex: "name", key: "name" },
               { title: "文件大小", dataIndex: "size", key: "size", width: 120, render: (v: number | "-") => formatSize(v) },
               { title: "更新时间", dataIndex: "modified", key: "modified", width: 180, render: (v: string | "-") => (v === "-" ? "-" : formatDateTime(v)) },
+              {
+                title: "操作",
+                key: "operation",
+                width: 110,
+                render: (_value, row: { path: string; name: string; is_dir: boolean }) =>
+                  !row.is_dir && row.path.toLowerCase().endsWith(".dat") ? (
+                    <Button
+                      type="link"
+                      size="small"
+                      style={{ padding: 0 }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setDatDetail({ path: row.path, name: row.name });
+                      }}
+                    >
+                      查看详情
+                    </Button>
+                  ) : (
+                    <span style={{ color: "#bbb", fontSize: 12 }}>-</span>
+                  ),
+              },
             ]}
           />
         )}
       </div>
+
+      <Modal
+        open={Boolean(datDetail)}
+        title={`DAT 文件详情：${datDetail?.name ?? ""}`}
+        width={900}
+        footer={null}
+        onCancel={() => setDatDetail(null)}
+      >
+        {datDetail ? <AtpDatDetailView assetId={assetId} relativePath={datDetail.path} /> : null}
+      </Modal>
     </div>
   );
 }

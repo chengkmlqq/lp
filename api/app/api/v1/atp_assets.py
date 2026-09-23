@@ -11,6 +11,7 @@ from ...core.dependencies import CurrentUser, require_any_permission, require_en
 from ...schemas.atp_asset import (
     AtpAssetCreateRequest,
     AtpAssetDetail,
+    AtpAssetFileContentResponse,
     AtpAssetFileListResponse,
     AtpAssetListResponse,
     AtpAssetRunDetail,
@@ -29,6 +30,7 @@ from ...services.atp_asset_service import (
     list_asset_files,
     list_assets,
     list_runs,
+    read_asset_file_content,
     serialize_asset,
     upload_asset_files,
     update_asset,
@@ -118,6 +120,17 @@ def list_atp_asset_files_endpoint(
 ) -> AtpAssetFileListResponse:
     """列出资产目录下的模型文件（前端详情页「文件」tab 数据源）。"""
     return list_asset_files(db, asset_id=asset_id)
+
+
+@router.get("/assets/{asset_id}/files/content", response_model=AtpAssetFileContentResponse)
+def read_atp_asset_file_content_endpoint(
+    asset_id: str,
+    path: str = Query(..., description="相对存储根目录的文件路径，如 templates/fanji/short.dat"),
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetFileContentResponse:
+    """读取资产目录下文本文件内容（dat 文件详情查看、lib 结果查看等）。"""
+    return read_asset_file_content(db, asset_id=asset_id, relative_path=path)
 
 
 @router.get("/assets/{asset_id}", response_model=AtpAssetDetail)
