@@ -1,10 +1,15 @@
 "use client";
 
+// ATP 参数模板管理页。
+// 布局严格参照「菜单管理」页:左侧模板树(可搜索/可拖拽调宽) + 右侧模板节点表格;
+// 原「选中节点详情 + 试算预览」改为表格操作列的「详情 / 试算」按钮,点击用抽屉打开。
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   App,
   Button,
   Card,
+  Drawer,
   Empty,
   Form,
   Input,
@@ -22,11 +27,18 @@ import {
 } from "antd";
 import type { DataNode } from "antd/es/tree";
 import type { ColumnsType } from "antd/es/table";
-import { DeleteOutlined, EditOutlined, ExperimentOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  DeleteOutlined,
+  ExperimentOutlined,
+  EyeOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
-import { fetchWithAuth, readApiError } from "@/lib/api";
+import { readApiError } from "@/lib/api";
 
 type TreeNodeData = {
   key: string;
@@ -70,7 +82,6 @@ type TemplateDetail = {
 };
 
 type DefaultRow = { key: string; name: string; value: string };
-
 type ResolvedSlot = { slot: string; value: string; source: string; inherited: boolean };
 type PreviewResponse = { chain: string[]; tower_kind: string | null; slots: ResolvedSlot[]; diff: ResolvedSlot[] };
 
@@ -87,9 +98,29 @@ type SlotRow = { key: string; slot: string; expr: string; fmt: number; enabled: 
 
 const { Text, Title } = Typography;
 
+/** 树节点平铺成「模板行」(含祖先链,用于树点击过滤)。 */
+type TemplateRow = {
+  key: string;
+  node: TreeNodeData;
+  ancestors: string[]; // 祖先 key 链(不含自身)
+  pathLabel: string; // 祖先名 / 自身名
+};
+
+function flattenRules(node: TreeNodeData, ancestors: string[], path: string[]): TemplateRow[] {
+  const rows: TemplateRow[] = [];
+  const nextPath = [...path, node.label];
+  if (node.node_type === "rule" || node.has_template) {
+    rows.push({ key: node.key, node, ancestors, pathLabel: nextPath.join(" / ") });
+  }
+  for (const child of node.children ?? []) {
+    rows.push(...flattenRules(child, [...ancestors, node.key], nextPath));
+  }
+  return rows;
+}
+
 export default function AtpParamTemplatesPage() {
   const { message } = App.useApp();
-  const { hasPermission } = useAuth();
+  const { fetchWithAuth, hasPermission } = useAuth();
   const canManage = hasPermission("atp.manage");
   const [keyword, setKeyword] = useState("");
   const [tree, setTree] = useState<TreeResponse | null>(null);
@@ -104,6 +135,15 @@ export default function AtpParamTemplatesPage() {
   const [slotRows, setSlotRows] = useState<SlotRow[]>([]);
   const [defaultRows, setDefaultRows] = useState<DefaultRow[]>([]);
   const [form] = Form.useForm();
+
+  // 抽屉状态
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  // 左侧树宽度(参照菜单页:可拖拽调宽)
+  const [leftPanelWidth, setLeftPanelWidth] = useState(300);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isResizing = useRef(false);
 
   const loadTree = useCallback(async () => {
     setLoading(true);
@@ -123,27 +163,24 @@ export default function AtpParamTemplatesPage() {
     try {
       const response = await fetchWithAuth("/api/v1/atp/param-templates/meta");
       if (!response.ok) return;
-      setMeta(await response.json());
+      setMeta((await response.json()) as MetaResponse);
     } catch {
-      /* 维度选项加载失败不阻塞主流程 */
+      // meta 加载失败不阻塞页面
     }
   }, []);
 
   useEffect(() => {
     void loadTree();
-  }, [loadTree]);
-
-  useEffect(() => {
     void loadMeta();
-  }, [loadMeta]);
+  }, [loadTree, loadMeta]);
 
   const nodeMap = useMemo(() => {
     const map = new Map<string, TreeNodeData>();
     const walk = (node: TreeNodeData) => {
       map.set(node.key, node);
-      node.children.forEach(walk);
+      node.children?.forEach(walk);
     };
-    if (tree) walk(tree.root);
+    if (tree?.root) walk(tree.root);
     return map;
   }, [tree]);
 
@@ -154,15 +191,7 @@ export default function AtpParamTemplatesPage() {
       try {
         const response = await fetchWithAuth(`/api/v1/atp/param-templates/${ruleId}`);
         if (!response.ok) throw new Error(await readApiError(response));
-        const data: TemplateDetail = await response.json();
-        setDetail(data);
-        setPreviewCtx({
-          tower_type: data.tower_type ?? undefined,
-          voltage_level: data.voltage_level ?? undefined,
-          circuit_count: data.circuit_count ?? undefined,
-          scene_type: data.scene_type ?? undefined,
-          arrester_config: data.arrester_config ?? undefined,
-        });
+        setDetail((await response.json()) as TemplateDetail);
       } catch (error) {
         message.error(error instanceof Error ? error.message : "加载模板失败");
       }
@@ -175,27 +204,48 @@ export default function AtpParamTemplatesPage() {
       const response = await fetchWithAuth("/api/v1/atp/param-templates/resolve-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...previewCtx, voltage_level: previewCtx.voltage_level, rule_id: detail?.id ?? null }),
+        body: JSON.stringify({ ...previewCtx, rule_id: detail?.id }),
       });
       if (!response.ok) throw new Error(await readApiError(response));
-      setPreview(await response.json());
+      setPreview((await response.json()) as PreviewResponse);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "试算失败");
     }
   }, [previewCtx, detail?.id, message]);
 
-  useEffect(() => {
-    if (detail) void runPreview();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detail?.id]);
-
   const onSelect = (keys: React.Key[]) => {
     const key = String(keys[0] ?? "");
     setSelectedKey(key);
-    setPreview(null);
     const node = nodeMap.get(key);
-    if (node?.rule_id) void loadDetail(node.rule_id);
-    else setDetail(null);
+    if (node?.rule_id) {
+      void loadDetail(node.rule_id);
+    } else {
+      setDetail(null);
+      setPreview(null);
+    }
+  };
+
+  // 打开详情抽屉:先加载模板数据再开
+  const openDetailDrawer = async (row: TemplateRow) => {
+    if (!row.node.rule_id) {
+      message.info(row.node.has_template ? "该节点是继承节点,没有独立模板" : "该层为分组节点");
+      return;
+    }
+    setSelectedKey(row.key);
+    await loadDetail(row.node.rule_id);
+    setDetailOpen(true);
+  };
+
+  // 打开试算抽屉:沿用当前选中模板上下文
+  const openPreviewDrawer = async (row: TemplateRow) => {
+    if (!row.node.rule_id) {
+      message.info("该节点没有独立模板,请选择一个有模板的节点试算");
+      return;
+    }
+    setSelectedKey(row.key);
+    await loadDetail(row.node.rule_id);
+    setPreview(null);
+    setPreviewOpen(true);
   };
 
   const disableTemplate = async () => {
@@ -204,12 +254,12 @@ export default function AtpParamTemplatesPage() {
       const response = await fetchWithAuth(`/api/v1/atp/param-templates/${detail.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: detail.name, enabled: !detail.enabled, slots: detail.slots }),
+        body: JSON.stringify({ ...detail, enabled: !detail.enabled }),
       });
       if (!response.ok) throw new Error(await readApiError(response));
-      message.success(detail.enabled ? "已停用（回落继承/代码兜底）" : "已启用");
+      message.success(detail.enabled ? "已停用" : "已启用");
       await loadTree();
-      await loadDetail(detail.id);
+      if (detail.id) void loadDetail(detail.id);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "操作失败");
     }
@@ -217,16 +267,26 @@ export default function AtpParamTemplatesPage() {
 
   const removeTemplate = async () => {
     if (!detail) return;
-    try {
-      const response = await fetchWithAuth(`/api/v1/atp/param-templates/${detail.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error(await readApiError(response));
-      message.success("规则已删除");
-      setDetail(null);
-      setSelectedKey("");
-      await loadTree();
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : "删除失败");
-    }
+    Modal.confirm({
+      title: `确认删除模板「${detail.name}」？`,
+      content: "删除后该节点将回退到上层继承,不可恢复。",
+      okText: "删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          const response = await fetchWithAuth(`/api/v1/atp/param-templates/${detail.id}`, { method: "DELETE" });
+          if (!response.ok) throw new Error(await readApiError(response));
+          message.success("已删除");
+          setDetail(null);
+          setDetailOpen(false);
+          setPreview(null);
+          await loadTree();
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : "删除失败");
+        }
+      },
+    });
   };
 
   const deriveChild = async () => {
@@ -355,6 +415,14 @@ export default function AtpParamTemplatesPage() {
     return tree ? [convert(tree.root)] : [];
   }, [tree]);
 
+  // 表格数据:树节点平铺(rule/has_template 节点)
+  const templateRows = useMemo(() => (tree?.root ? flattenRules(tree.root, [], []) : []), [tree]);
+  const filteredRows = useMemo(() => {
+    if (!selectedKey) return templateRows;
+    // 树点击:只显示选中节点及其子节点的模板
+    return templateRows.filter((row) => row.ancestors.includes(selectedKey) || row.key === selectedKey);
+  }, [templateRows, selectedKey]);
+
   const slotColumns: ColumnsType<SlotRow> = [
     { title: "槽位", dataIndex: "slot", width: 130, render: (v) => <Text code>{v}</Text> },
     { title: "表达式 / 值", dataIndex: "expr", render: (v, row) => (row.value ? <Text type="secondary">字面量 {row.value}</Text> : <Text>{v}</Text>) },
@@ -386,195 +454,371 @@ export default function AtpParamTemplatesPage() {
     },
   ];
 
-  return (
-    <div className="atp-param-page">
-      <div className="atp-param-header">
-        <Space direction="vertical" size={2}>
-          <Title level={4} style={{ margin: 0 }}>
-            ATP 参数模板
-          </Title>
-          <Text type="secondary">
-            从左到右逐层细化：全局参数 → 电压等级 → 杆塔类型 → 回路数量 / 场景 / 避雷器组合；下层只覆盖它定义的槽位，其余继承上层。
-          </Text>
+  const tableColumns: ColumnsType<TemplateRow> = [
+    {
+      title: "模板名称",
+      dataIndex: ["node", "label"],
+      render: (_v, row) => (
+        <Space size={6}>
+          <span>{row.node.label}</span>
+          {row.node.status === "inherit" ? <Tag>继承</Tag> : <Tag color="blue">本级</Tag>}
         </Space>
-        <Space>
-          <Input
-            allowClear
-            placeholder="搜索塔型 / 电压 / 场景 / 避雷器"
-            prefix={<SearchOutlined />}
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            style={{ width: 260 }}
-          />
-          <Button icon={<ReloadOutlined />} onClick={() => void loadTree()}>
-            刷新
+      ),
+    },
+    {
+      title: "覆盖路径",
+      dataIndex: "pathLabel",
+      width: 260,
+      render: (v: string) => <Text type="secondary" style={{ fontSize: 12 }}>{v}</Text>,
+    },
+    {
+      title: "槽位",
+      key: "slots",
+      width: 100,
+      render: (_v, row) =>
+        row.node.has_template ? (
+          <span>
+            {row.node.defined_slots}/{row.node.effective_slots}
+          </span>
+        ) : (
+          <Text type="secondary">继承</Text>
+        ),
+    },
+    {
+      title: "状态",
+      key: "status",
+      width: 100,
+      render: (_v, row) => {
+        if (!row.node.has_template) return <Tag>继承</Tag>;
+        // 模板启用状态以 detail 为准;表格里统一显示「本级/继承」+ 槽位
+        return row.node.status === "own" ? <Tag color="blue">本级</Tag> : <Tag color="orange">继承</Tag>;
+      },
+    },
+    {
+      title: "操作",
+      key: "actions",
+      fixed: "right",
+      width: 240,
+      render: (_v, row) => (
+        <Space wrap size={4}>
+          <Button size="small" icon={<EyeOutlined />} disabled={!row.node.rule_id} onClick={() => void openDetailDrawer(row)}>
+            详情
           </Button>
-        </Space>
-      </div>
-
-      <div className="atp-param-body">
-        <Card className="atp-param-tree-card" size="small" title="模板树（覆盖关系）">
-          <Spin spinning={loading}>
-            {treeData.length ? (
-              <Tree showLine defaultExpandAll selectedKeys={selectedKey ? [selectedKey] : []} onSelect={onSelect} treeData={treeData} />
-            ) : (
-              <Empty description="暂无参数模板" />
-            )}
-          </Spin>
-        </Card>
-
-        <div className="atp-param-detail">
-          {!selectedKey && (
-            <Card size="small">
-              <Empty description="从左侧选择一个节点查看参数" />
-            </Card>
-          )}
-          {selectedKey && !selectedNode?.rule_id && (
-            <Card size="small" title={selectedNode?.label}>
-              <Alert
-                type="info"
-                showIcon
-                message="该层没有独立模板"
-                description={
-                  selectedNode?.inherited_from
-                    ? `参数继承自「${selectedNode.inherited_from}」。可在此新建细分模板，只填写需要覆盖的槽位。`
-                    : "该层为分组节点，参数由子节点继承。"
-                }
-              />
-            </Card>
-          )}
-          {detail && (
+          <Button size="small" icon={<ExperimentOutlined />} disabled={!row.node.rule_id} onClick={() => void openPreviewDrawer(row)}>
+            试算
+          </Button>
+          {canManage ? (
             <>
-              <Card
+              <Button
                 size="small"
-                title={
-                  <Space>
-                    <span>{detail.name}</span>
-                    <Tag color={detail.enabled ? "blue" : "default"}>{detail.enabled ? "启用" : "停用"}</Tag>
-                    <Tag>特异性 {detail.specificity}</Tag>
-                    <Tag>优先级 {detail.priority}</Tag>
-                    <Tag>{detail.mode === "replace" ? "整块替换" : "逐槽位合并"}</Tag>
-                    {detail.fallback_to ? <Tag color="orange">wine 回退 → {detail.fallback_to}</Tag> : null}
-                  </Space>
-                }
-                extra={
-                  canManage ? (
-                    <Space>
-                      <Button icon={<ExperimentOutlined />} onClick={() => { setEditingForChild(false); openEditor(); }}>
-                        编辑
-                      </Button>
-                      <Button icon={<PlusOutlined />} onClick={() => { setEditingForChild(true); void deriveChild(); }}>
-                        新建细分
-                      </Button>
-                      <Button onClick={() => void disableTemplate()}>{detail.enabled ? "停用" : "启用"}</Button>
-                      <Button danger icon={<DeleteOutlined />} onClick={() => void removeTemplate()}>
-                        删除
-                      </Button>
-                    </Space>
-                  ) : null
-                }
+                disabled={!row.node.rule_id}
+                onClick={() => {
+                  setSelectedKey(row.key);
+                  if (row.node.rule_id) void loadDetail(row.node.rule_id).then(() => openEditor());
+                }}
               >
-                <Table
+                编辑
+              </Button>
+              {row.node.rule_id ? (
+                <Button
                   size="small"
-                  rowKey="slot"
-                  pagination={false}
-                  scroll={{ y: 260 }}
-                  columns={slotColumns}
-                  dataSource={Object.entries(detail.slots ?? {}).map(([slot, spec]) => ({
-                    key: slot,
-                    slot,
-                    expr: spec.expr ?? "",
-                    fmt: spec.fmt ?? 2,
-                    enabled: spec.enabled !== false,
-                    value: spec.value ?? undefined,
-                    when: spec.when ?? undefined,
-                  }))}
-                />
-                <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
-                  本层定义 {detail.defined_slots} 个槽位 · {detail.defined_defaults ?? 0} 个测试默认值；更新于{" "}
-                  {detail.updated_at ? new Date(detail.updated_at).toLocaleString() : "-"}
-                  {detail.updated_by ? ` · ${detail.updated_by}` : ""}
-                </Text>
-              </Card>
-
-              <Card
+                  icon={<PlusOutlined />}
+                  onClick={() => {
+                    setSelectedKey(row.key);
+                    const ruleId = row.node.rule_id;
+                    if (ruleId) void loadDetail(ruleId).then(() => void deriveChild());
+                  }}
+                >
+                  细分
+                </Button>
+              ) : null}
+              <Button
                 size="small"
-                title={
-                  <Space>
-                    <ThunderboltOutlined />
-                    试算预览
-                  </Space>
-                }
-                extra={
-                  <Button type="primary" ghost onClick={() => void runPreview()}>
-                    试算
-                  </Button>
-                }
+                danger
+                disabled={!row.node.rule_id}
+                onClick={() => {
+                  setSelectedKey(row.key);
+                  if (row.node.rule_id) void loadDetail(row.node.rule_id).then(() => void removeTemplate());
+                }}
               >
-                <Space wrap style={{ marginBottom: 12 }}>
-                  <Select
-                    style={{ width: 190 }}
-                    placeholder="杆塔类型"
-                    allowClear
-                    value={previewCtx.tower_type}
-                    options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
-                    onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, tower_type: value }))}
-                  />
-                  <Select
-                    style={{ width: 130 }}
-                    placeholder="电压等级"
-                    allowClear
-                    value={previewCtx.voltage_level}
-                    options={(meta?.voltages ?? []).map((item) => ({ value: item, label: `${item}kV` }))}
-                    onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, voltage_level: value }))}
-                  />
-                  <Select
-                    style={{ width: 130 }}
-                    placeholder="回路数量"
-                    allowClear
-                    value={previewCtx.circuit_count}
-                    options={[1, 2, 4].map((item) => ({ value: item, label: `${item} 回` }))}
-                    onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, circuit_count: value }))}
-                  />
-                  <Select
-                    style={{ width: 150 }}
-                    placeholder="场景"
-                    allowClear
-                    value={previewCtx.scene_type}
-                    options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
-                    onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, scene_type: value }))}
-                  />
-                  <Select
-                    style={{ width: 170 }}
-                    placeholder="避雷器组合"
-                    allowClear
-                    value={previewCtx.arrester_config}
-                    options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: item.label }))}
-                    onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, arrester_config: value }))}
-                  />
-                </Space>
-                {preview ? (
-                  <>
-                    <div style={{ marginBottom: 10 }}>
-                      <Text type="secondary">命中链（粗 → 细）：</Text>{" "}
-                      {preview.chain.map((item, index) => (
-                        <Tag key={item} color={index === preview.chain.length - 1 ? "blue" : "default"}>
-                          {item}
-                        </Tag>
-                      ))}
-                      {preview.diff.length ? <Tag color="red">本层定义/覆盖 {preview.diff.length} 个槽位</Tag> : null}
-                    </div>
-                    <Table size="small" rowKey="slot" pagination={false} scroll={{ y: 240 }} columns={previewColumns} dataSource={preview.slots} />
-                  </>
-                ) : (
-                  <Text type="secondary">选择上下文后点击「试算」，会显示命中链、每个槽位的最终值与来源、以及被本层覆盖的槽位。</Text>
-                )}
-              </Card>
+                删除
+              </Button>
             </>
-          )}
+          ) : null}
+        </Space>
+      ),
+    },
+  ];
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setLeftPanelWidth(Math.max(180, Math.min(600, e.clientX - rect.left)));
+    };
+    const handleMouseUp = () => {
+      if (isResizing.current) {
+        isResizing.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  return (
+    <div className="admin_menus_list_pane">
+      <div ref={containerRef} className="admin-menus-page-body">
+        {/* 左侧:模板树(参照菜单管理页) */}
+        <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
+          <Card
+            className="admin-menus-tree-card"
+            style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
+            styles={{ body: { flex: 1, padding: 0 } }}
+          >
+            <div className="admin-menus-sider-search">
+              <Input
+                className="admin-menus-search-input"
+                placeholder="搜索模板..."
+                prefix={<SearchOutlined />}
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                onPressEnter={() => void loadTree()}
+                allowClear
+              />
+            </div>
+            <div className="admin-menus-sider-menu">
+              <Spin spinning={loading}>
+                {treeData.length ? (
+                  <Tree
+                    showLine
+                    defaultExpandAll
+                    selectedKeys={selectedKey ? [selectedKey] : []}
+                    onSelect={onSelect}
+                    treeData={treeData}
+                  />
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无参数模板" />
+                )}
+              </Spin>
+            </div>
+          </Card>
+        </div>
+        <div className="admin-menus-resize-handle" onMouseDown={handleResizeStart}>
+          <div className="admin-menus-resize-handle-line" />
+        </div>
+
+        {/* 右侧:模板节点表格 */}
+        <div className="admin-menus-main">
+          <div className="admin-filter-bar">
+            <Form layout="inline">
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Button icon={<ReloadOutlined />} onClick={() => void loadTree()}>
+                  刷新
+                </Button>
+              </Form.Item>
+              {selectedKey ? (
+                <Form.Item style={{ marginBottom: 0 }}>
+                  <Button onClick={() => setSelectedKey("")}>清除筛选</Button>
+                </Form.Item>
+              ) : null}
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  共 {filteredRows.length} 个模板节点{selectedKey ? `(筛选自 ${templateRows.length})` : ""}
+                </Text>
+              </Form.Item>
+            </Form>
+          </div>
+          <div
+            className="admin-menus-table-anchor"
+            style={{ "--admin-menus-table-body-min-height": "320px" } as React.CSSProperties}
+          >
+            <Table<TemplateRow>
+              rowKey="key"
+              size="small"
+              dataSource={filteredRows}
+              loading={loading}
+              columns={tableColumns}
+              tableLayout="fixed"
+              scroll={{ x: 900 }}
+              pagination={{
+                pageSize: 20,
+                showSizeChanger: true,
+                pageSizeOptions: [10, 20, 50, 100],
+                showTotal: () => `共 ${filteredRows.length} 条`,
+                hideOnSinglePage: false,
+                style: { marginBottom: 0 },
+              }}
+              locale={{
+                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的模板节点。" />,
+              }}
+            />
+          </div>
         </div>
       </div>
 
+      {/* ── 详情抽屉 ── */}
+      <Drawer
+        open={detailOpen}
+        title={detail ? `模板详情：${detail.name}` : "模板详情"}
+        width={680}
+        onClose={() => setDetailOpen(false)}
+        destroyOnClose
+        extra={
+          detail && canManage ? (
+            <Space>
+              <Button icon={<PlusOutlined />} onClick={() => { setEditingForChild(true); void deriveChild(); }}>
+                新建细分
+              </Button>
+              <Button onClick={() => void disableTemplate()}>{detail.enabled ? "停用" : "启用"}</Button>
+              <Button danger icon={<DeleteOutlined />} onClick={() => void removeTemplate()}>
+                删除
+              </Button>
+            </Space>
+          ) : null
+        }
+      >
+        {!detail ? (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <Spin />
+          </div>
+        ) : (
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            <Alert
+              type="info"
+              showIcon
+              message={`${detail.name}${detail.enabled ? "" : "（已停用）"} · 特异性 ${detail.specificity} · 优先级 ${detail.priority} · ${
+                detail.mode === "replace" ? "整块替换" : "逐槽位合并"
+              }${detail.fallback_to ? ` · wine 回退 → ${detail.fallback_to}` : ""}`}
+            />
+            <Card size="small" title={`槽位定义（${detail.defined_slots} 个）`}>
+              <Table
+                size="small"
+                rowKey="slot"
+                pagination={false}
+                scroll={{ y: 300 }}
+                columns={slotColumns}
+                dataSource={Object.entries(detail.slots ?? {}).map(([slot, spec]) => ({
+                  key: slot,
+                  slot,
+                  expr: spec.expr ?? "",
+                  fmt: spec.fmt ?? 2,
+                  enabled: spec.enabled !== false,
+                  value: spec.value ?? undefined,
+                  when: spec.when ?? undefined,
+                }))}
+              />
+              <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
+                {detail.defined_defaults ?? 0} 个测试默认值；更新于 {detail.updated_at ? new Date(detail.updated_at).toLocaleString() : "-"}
+                {detail.updated_by ? ` · ${detail.updated_by}` : ""}
+              </Text>
+            </Card>
+            {detail.defaults && Object.keys(detail.defaults).length > 0 ? (
+              <Card size="small" title="测试默认值">
+                <Table
+                  size="small"
+                  rowKey="name"
+                  pagination={false}
+                  dataSource={Object.entries(detail.defaults).map(([name, value]) => ({ key: name, name, value: String(value) }))}
+                  columns={[
+                    { title: "变量名", dataIndex: "name", width: 200 },
+                    { title: "默认值", dataIndex: "value" },
+                  ]}
+                />
+              </Card>
+            ) : null}
+          </Space>
+        )}
+      </Drawer>
+
+      {/* ── 试算抽屉 ── */}
+      <Drawer
+        open={previewOpen}
+        title={detail ? `试算预览：${detail.name}` : "试算预览"}
+        width={720}
+        onClose={() => setPreviewOpen(false)}
+        destroyOnClose
+        extra={
+          <Button type="primary" ghost onClick={() => void runPreview()}>
+            试算
+          </Button>
+        }
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Space wrap>
+            <Select
+              style={{ width: 190 }}
+              placeholder="杆塔类型"
+              allowClear
+              value={previewCtx.tower_type}
+              options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
+              onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, tower_type: value }))}
+            />
+            <Select
+              style={{ width: 130 }}
+              placeholder="电压等级"
+              allowClear
+              value={previewCtx.voltage_level}
+              options={(meta?.voltages ?? []).map((item) => ({ value: item, label: `${item}kV` }))}
+              onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, voltage_level: value }))}
+            />
+            <Select
+              style={{ width: 130 }}
+              placeholder="回路数量"
+              allowClear
+              value={previewCtx.circuit_count}
+              options={[1, 2, 4].map((item) => ({ value: item, label: `${item} 回` }))}
+              onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, circuit_count: value }))}
+            />
+            <Select
+              style={{ width: 150 }}
+              placeholder="场景"
+              allowClear
+              value={previewCtx.scene_type}
+              options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
+              onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, scene_type: value }))}
+            />
+            <Select
+              style={{ width: 170 }}
+              placeholder="避雷器组合"
+              allowClear
+              value={previewCtx.arrester_config}
+              options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: item.label }))}
+              onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, arrester_config: value }))}
+            />
+          </Space>
+          {preview ? (
+            <>
+              <div>
+                <Text type="secondary">命中链（粗 → 细）：</Text>{" "}
+                {preview.chain.map((item, index) => (
+                  <Tag key={item} color={index === preview.chain.length - 1 ? "blue" : "default"}>
+                    {item}
+                  </Tag>
+                ))}
+                {preview.diff.length ? <Tag color="red">本层定义/覆盖 {preview.diff.length} 个槽位</Tag> : null}
+              </div>
+              <Table size="small" rowKey="slot" pagination={false} scroll={{ y: 300 }} columns={previewColumns} dataSource={preview.slots} />
+            </>
+          ) : (
+            <Text type="secondary">选择上下文后点击「试算」，会显示命中链、每个槽位的最终值与来源、以及被本层覆盖的槽位。</Text>
+          )}
+        </Space>
+      </Drawer>
+
+      {/* ── 编辑 / 新建细分弹窗(保留原逻辑) ── */}
       <Modal
         open={editing}
         title={editingForChild || !detail ? "新建细分模板" : `编辑：${detail.name}`}
@@ -732,11 +976,9 @@ export default function AtpParamTemplatesPage() {
           message="测试默认参数集（无杆塔测试用）"
           description={
             <Text type="secondary" style={{ fontSize: 12 }}>
-              这些是「上下文变量」的默认值：ATP 模型测试时可以不给杆塔数据，直接用它们算出全套
-              $PARAMETER 参数（对齐 C# —— 引擎只吃一串参数，不需要杆塔）。
+              这些是「上下文变量」的默认值：ATP 模型测试时可以不给杆塔数据，直接用它们算出全套 $PARAMETER 参数（对齐 C# —— 引擎只吃一串参数，不需要杆塔）。
               <br />
-              只补上下文里没有的值（有真实杆塔数据时以真实值优先）；未提供默认值的变量会让对应槽位报「未解析」，
-              测试会拒绝执行，而不是静默算成 1. 这种无物理意义的占位值。
+              只补上下文里没有的值（有真实杆塔数据时以真实值优先）；未提供默认值的变量会让对应槽位报「未解析」，测试会拒绝执行，而不是静默算成 1. 这种无物理意义的占位值。
             </Text>
           }
         />
