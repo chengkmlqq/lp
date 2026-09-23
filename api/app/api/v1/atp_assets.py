@@ -37,8 +37,10 @@ from ...services.atp_asset_service import (
 )
 from ...services.atp_asset_test_service import (
     create_test_run,
+    parse_test_run_waveform,
     read_artifact_zip,
     read_compare_json,
+    read_test_run_file_content,
 )
 
 router = APIRouter(prefix="/atp", tags=["atp-assets"], dependencies=[Depends(require_enabled_menu_route)])
@@ -242,3 +244,24 @@ def download_atp_asset_test_artifacts(
     """下载测试产物包（改写后的 dat/pch/lib/lis/pl4 + manifest + compare.json）。"""
     path, filename = read_artifact_zip(db, run_id=run_id)
     return FileResponse(path, filename=filename, media_type="application/zip")
+
+
+@router.get("/test-runs/{run_id}/files/content")
+def read_atp_asset_test_file_content_endpoint(
+    run_id: str,
+    path: str = Query(..., description="产物相对路径，如 long.lib / work.lis"),
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """读取测试运行产物文本内容（lib/dat/lis/pch/log 详情查看）。"""
+    return read_test_run_file_content(db, run_id=run_id, path=path)
+
+
+@router.get("/test-runs/{run_id}/waveform")
+def get_atp_asset_test_waveform(
+    run_id: str,
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """解析 work.pl4 返回波形数据（通道名/时间序列/各通道采样），前端画波形图。"""
+    return parse_test_run_waveform(db, run_id=run_id)

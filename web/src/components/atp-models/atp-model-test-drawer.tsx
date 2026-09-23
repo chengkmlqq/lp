@@ -11,8 +11,10 @@ import {
   Empty,
   Input,
   InputNumber,
+  Modal,
   Radio,
   Space,
+  Spin,
   Switch,
   Table,
   Tag,
@@ -24,6 +26,7 @@ import {
   CopyOutlined,
   DownloadOutlined,
   ExperimentOutlined,
+  EyeOutlined,
   RocketOutlined,
 } from "@ant-design/icons";
 
@@ -38,6 +41,8 @@ import type {
   AtpAssetTestStage,
   AtpAssetTestStageResult,
 } from "@/types/auth";
+import { AtpTestArtifactView } from "./atp-test-artifact-view";
+import { WaveformChart, type WaveformData } from "./atp-waveform-chart";
 
 /**
  * ATP 模型「模型测试」抽屉。
@@ -501,6 +506,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                 running={running}
                 submitting={submittingStage === meta.stage}
                 failedCount={failedCountByStage[meta.stage] ?? 0}
+                runId={activeRun?.id ?? null}
                 onRun={() => void handleSubmit([meta.stage], meta.stage)}
               />
             ))}
@@ -563,6 +569,7 @@ function StageCard({
   running,
   submitting,
   failedCount,
+  runId,
   onRun,
 }: {
   meta: (typeof STAGE_META)[number];
@@ -571,6 +578,7 @@ function StageCard({
   running: boolean;
   submitting: boolean;
   failedCount: number;
+  runId: string | null;
   onRun: () => void;
 }) {
   const hasResult = Boolean(result);
@@ -621,7 +629,7 @@ function StageCard({
             该段在本次运行中未执行（未勾选且非依赖段）。
           </Typography.Text>
         ) : null}
-        {hasResult ? <StageDetail result={result} /> : null}
+        {hasResult ? <StageDetail result={result} runId={runId} /> : null}
         {!result && !running ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该段尚未运行，点击「测试该段」发起" />
         ) : null}
@@ -630,7 +638,9 @@ function StageCard({
   );
 }
 
-function StageDetail({ result }: { result: AtpAssetTestStageResult }) {
+function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId: string | null }) {
+  const [viewPath, setViewPath] = useState<string | null>(null);
+  const [viewWave, setViewWave] = useState(false);
   const artifactRows = Object.values(result.artifacts ?? {}).map((item) => ({
     key: item.path,
     path: item.path,
@@ -640,6 +650,17 @@ function StageDetail({ result }: { result: AtpAssetTestStageResult }) {
   const metricRows = Object.entries(result.metrics ?? {})
     .filter(([, value]) => value === null || typeof value !== "object")
     .map(([key, value]) => ({ key, value: String(value) }));
+
+  const flashoverRows = useMemo(() => {
+    const m = result.metrics ?? {};
+    const flashoverCount = m.flashover_count;
+    const flashoverPhases = m.flashover_phases;
+    if (flashoverCount === undefined) return null;
+    return [
+      { key: "flashover_count", label: "闪络相数", value: String(flashoverCount) },
+      { key: "flashover_phases", label: "闪络相位", value: Array.isArray(flashoverPhases) ? flashoverPhases.join(", ") : String(flashoverPhases ?? "-") },
+    ];
+  }, [result.metrics]);
 
   return (
     <Space direction="vertical" size={8} style={{ width: "100%" }}>
@@ -665,6 +686,22 @@ function StageDetail({ result }: { result: AtpAssetTestStageResult }) {
           { title: "说明", dataIndex: "detail", render: (value: string) => value || "-" },
         ]}
       />
+      {flashoverRows ? (
+        <Table
+          rowKey="key"
+          size="small"
+          pagination={false}
+          dataSource={flashoverRows}
+          columns={[
+            { title: "指标", dataIndex: "label", width: 140 },
+            {
+              title: "值",
+              dataIndex: "value",
+              render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+            },
+          ]}
+        />
+      ) : null}
       {metricRows.length > 0 ? (
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           {metricRows.map((item) => `${item.key}=${item.value}`).join("  ·  ")}
@@ -692,6 +729,55 @@ function StageDetail({ result }: { result: AtpAssetTestStageResult }) {
                   </Typography.Text>
                 ),
               },
+              {
+                title: "查看",
+                key: "view",
+                width: 90,
+                render: (_value, row: { path: string }) => {
+                  const lower = row.path.toLowerCase();
+                  if (lower.endsWith(".pl4") || lower.endsWith(".plt")) {
+                    return (
+                      <Button
+                        type="link"
+                        size="small"
+                        style={{ padding: 0 }}
+                        icon={<EyeOutlined />}
+                        disabled={!runId}
+                        onClick={() => {
+                          setViewWave(true);
+                          setViewPath(row.path);
+                        }}
+                      >
+                        波形
+                      </Button>
+                    );
+                  }
+                  if (
+                    lower.endsWith(".lib") ||
+                    lower.endsWith(".dat") ||
+                    lower.endsWith(".lis") ||
+                    lower.endsWith(".log") ||
+                    lower.endsWith(".pch")
+                  ) {
+                    return (
+                      <Button
+                        type="link"
+                        size="small"
+                        style={{ padding: 0 }}
+                        icon={<EyeOutlined />}
+                        disabled={!runId}
+                        onClick={() => {
+                          setViewPath(row.path);
+                          setViewWave(false);
+                        }}
+                      >
+                        查看
+                      </Button>
+                    );
+                  }
+                  return <span style={{ color: "#bbb", fontSize: 12 }}>-</span>;
+                },
+              },
             ]}
           />
         </>
@@ -699,8 +785,59 @@ function StageDetail({ result }: { result: AtpAssetTestStageResult }) {
       {result.log ? (
         <Input.TextArea value={result.log} readOnly autoSize={{ minRows: 2, maxRows: 6 }} />
       ) : null}
+      {runId && viewPath ? (
+        <Modal
+          open
+          title={viewWave ? `波形：${viewPath}` : `产物：${viewPath}`}
+          width={viewWave ? 920 : 860}
+          footer={null}
+          onCancel={() => {
+            setViewPath(null);
+            setViewWave(false);
+          }}
+        >
+          {viewWave ? (
+            <WaveformModalContent runId={runId} path={viewPath} />
+          ) : (
+            <AtpTestArtifactView runId={runId} path={viewPath} />
+          )}
+        </Modal>
+      ) : null}
     </Space>
   );
+}
+
+function WaveformModalContent({ runId, path }: { runId: string; path: string }) {
+  const { user, fetchWithAuth } = useAuth();
+  const waveformQuery = useQuery({
+    queryKey: ["/api/v1/atp/test-runs", runId, "waveform"],
+    enabled: Boolean(user && runId),
+    queryFn: async () => {
+      const response = await fetchWithAuth(`/api/v1/atp/test-runs/${runId}/waveform`);
+      if (!response.ok) throw new Error(await readApiError(response));
+      return (await response.json()) as WaveformData;
+    },
+  });
+
+  if (waveformQuery.isLoading) {
+    return (
+      <div style={{ textAlign: "center", padding: "40px 0" }}>
+        <Spin />
+      </div>
+    );
+  }
+  if (waveformQuery.isError) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="波形解析失败"
+        description={waveformQuery.error instanceof Error ? waveformQuery.error.message : ""}
+      />
+    );
+  }
+  if (!waveformQuery.data) return null;
+  return <WaveformChart data={waveformQuery.data} />;
 }
 
 export default AtpModelTestDrawer;

@@ -35,6 +35,7 @@ import logging
 import os
 import re
 import shutil
+import struct
 import subprocess
 import time
 import zipfile
@@ -1344,3 +1345,168 @@ def cleanup_test_run_dir(run_id: str, *, keep: bool = False) -> None:
     run_dir = _test_run_dir(run_id)
     if run_dir.is_dir():
         shutil.rmtree(run_dir, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# 产物查看:文件内容读取 + pl4 波形解析(供测试抽屉「查看产物」用)
+# ---------------------------------------------------------------------------
+
+_MAX_ARTIFACT_TEXT_BYTES = 2 * 1024 * 1024
+_PL4_HEAD_BYTES = 19 + 28  # 日期(19) + 7 个 uint32
+
+
+def _candidate_artifact_paths(db: Session, run_id: str, rel: str) -> list[Path]:
+    """候选产物路径:运行目录(work.*) + 引擎目录(.runs/*)。"""
+    from .atp_asset_service import get_run_by_id
+
+    run = get_run_by_id(db, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="测试运行记录不存在")
+    candidates: list[Path] = []
+    if run.working_dir:
+        candidates.append(Path(run.working_dir) / rel)
+    if run.materialized_root_path:
+        candidates.append(Path(run.materialized_root_path) / rel)
+    return [c for c in candidates if c.is_file()]
+
+
+def read_test_run_file_content(
+    db: Session, *, run_id: str, path: str
+) -> dict[str, Any]:
+    """读取测试运行产物文本内容(.lib/.dat/.lis/.pch/.log 等)。
+
+    返回: ``{content_type: text|binary|not-found, content, preview_lines, size}``
+    """
+    rel = str(path or "").strip().lstrip("/")
+    if not rel or ".." in rel.split("/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
+    candidates = _candidate_artifact_paths(db, run_id, rel)
+    if not candidates:
+        return {"content_type": "not-found", "content": "", "preview_lines": [], "size": 0}
+    raw = candidates[0].read_bytes()
+    try:
+        # LIS/LOG 是文本但可能夹带个别非 UTF-8 字节(引擎输出),用 replace 兜底
+        text = raw.decode("utf-8", errors="replace")
+    except Exception:
+        return {
+            "content_type": "binary",
+            "content": "",
+            "preview_lines": [],
+            "size": len(raw),
+        }
+    lines = text.splitlines()
+    preview = [line for line in lines[:500] if len(line) <= 2000]
+    if len(raw) <= _MAX_ARTIFACT_TEXT_BYTES:
+        return {
+            "content_type": "text",
+            "content": text,
+            "preview_lines": preview,
+            "size": len(raw),
+        }
+    return {
+        "content_type": "text",
+        "content": "",
+        "preview_lines": preview,
+        "size": len(raw),
+    }
+
+
+def parse_test_run_waveform(
+    db: Session, *, run_id: str, max_points: int = 2000
+) -> dict[str, Any]:
+    """解析 work.pl4(ATP 二进制波形)为前端可画图的结构化数据。
+
+    头部布局(与 ``fl_analysis_external._read_pl4_flashover_count`` 同一约定):
+      偏移 19 起 7 个 uint32 LE: N_node, N_vol*2, N_all*2, N_tacs, N_zero,
+      N_begin, N_end
+    通道名区: 偏移 155 起每 18B 一个通道名(15B 名 + 3B 单位)。
+    数据区: N_begin 起每步 (N_all+1)*4 字节, 第 1 个 float32 是时间,
+      随后 N_all 个通道 float32。
+    """
+    from .atp_asset_service import get_run_by_id
+
+    run = get_run_by_id(db, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="测试运行记录不存在")
+    pl4_path = None
+    for base in (run.working_dir, run.materialized_root_path):
+        if base:
+            cand = Path(base) / "work.pl4"
+            if cand.is_file() and cand.stat().st_size > _PL4_HEAD_BYTES:
+                pl4_path = cand
+                break
+    if pl4_path is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="该运行没有 work.pl4(波形未生成,可能 ATP 未跑出结果)",
+        )
+    data = pl4_path.read_bytes()
+
+    def u32(offset: int) -> int:
+        return int.from_bytes(data[offset : offset + 4], "little", signed=False)
+
+    N_node = u32(19)
+    N_all = u32(19 + 8) // 2
+    N_begin = u32(19 + 20)
+    N_end = u32(19 + 24)
+    if N_node > 500 or N_all < 1 or N_all > 200:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"work.pl4 头部异常(N_node={N_node}, N_all={N_all})",
+        )
+    step_bytes = (N_all + 1) * 4
+    if step_bytes <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="work.pl4 步长异常")
+    N_N = (N_end - N_begin) // step_bytes
+    if N_N <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="work.pl4 无数据点")
+
+    # 通道名: 偏移 155 起每 18B(前 6 块 108B 是 ATP 固定诊断文本)
+    names: list[str] = []
+    units: list[str] = []
+    name_off = 155
+    for i in range(N_all):
+        off = name_off + i * 18
+        if off + 18 > len(data):
+            break
+        blk = data[off : off + 18]
+        name = blk[:15].split(b"\x00")[0].decode("ascii", errors="replace").strip()
+        unit = blk[15:18].split(b"\x00")[0].decode("ascii", errors="replace").strip()
+        names.append(name or f"CH{i + 1}")
+        units.append(unit)
+    while len(names) < N_all:
+        names.append(f"CH{len(names) + 1}")
+        units.append("")
+
+    # 时间列 + 各通道采样(降采样到 max_points)
+    total = N_N
+    if total > max_points:
+        stride = total // max_points
+    else:
+        stride = 1
+    picked = list(range(0, total, stride))
+    if picked[-1] != total - 1:
+        picked.append(total - 1)
+
+    time_vals: list[float] = []
+    ch_vals: list[list[float]] = [[] for _ in range(N_all)]
+    for idx in picked:
+        base = N_begin - 1 + idx * step_bytes
+        if base + step_bytes > len(data):
+            break
+        time_vals.append(struct.unpack("<f", data[base : base + 4])[0])
+        for c in range(N_all):
+            off = base + 4 + c * 4
+            ch_vals[c].append(struct.unpack("<f", data[off : off + 4])[0])
+
+    return {
+        "run_id": run_id,
+        "channels": [
+            {"name": names[i], "unit": units[i]} for i in range(N_all)
+        ],
+        "time": time_vals,
+        "values": ch_vals,
+        "sample_count": total,
+        "downsampled_count": len(time_vals),
+        "file_size": len(data),
+    }
