@@ -44,14 +44,14 @@ test("LP-355: upper section shows icon + strong truncate title with status tag a
 
 test("LP-355: middle section renders the LP-322 fields as icon + text rows", () => {
   assert.match(cardBlock, /flex flex-col gap-2 px-4 py-3/, "信息区应有 px-4 py-3 独立内边距");
-  assert.match(cardBlock, /城市：/, "中部应保留城市信息");
-  assert.match(cardBlock, /安装位置：/, "中部应保留安装位置信息");
-  assert.match(cardBlock, /传感器型号：/, "中部应保留传感器型号信息");
+  assert.match(cardBlock, /采样城市：/, "中部应保留采样城市信息");
+  assert.ok(!/安装位置：/.test(cardBlock), "中部不应再展示安装位置信息");
+  assert.ok(!/传感器型号：/.test(cardBlock), "中部不应再展示传感器型号信息");
   assert.match(cardBlock, /采样点数：/, "中部应保留采样点数信息");
   assert.match(cardBlock, /采样时间：/, "中部应保留采样时间信息");
-  assert.match(cardBlock, /<EnvironmentOutlined /, "城市应带图标");
-  assert.match(cardBlock, /<HomeOutlined /, "安装位置应带图标");
-  assert.match(cardBlock, /<AppstoreOutlined /, "传感器型号应带图标");
+  assert.match(cardBlock, /<EnvironmentOutlined /, "采样城市应带图标");
+  assert.ok(!/<HomeOutlined /.test(cardBlock), "不应再出现安装位置图标");
+  assert.ok(!/<AppstoreOutlined /.test(cardBlock), "不应再出现传感器型号图标");
   assert.match(cardBlock, /<NumberOutlined /, "采样点数应带图标");
   assert.match(cardBlock, /<ClockCircleOutlined /, "采样时间应带图标");
   assert.match(cardBlock, /type="secondary" className="text-xs/, "信息行应使用次要色 text-xs 文本");

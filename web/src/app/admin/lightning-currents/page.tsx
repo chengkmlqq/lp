@@ -20,7 +20,6 @@ import {
   Segmented,
   Select,
   Space,
-  Switch,
   Table,
   Tabs,
   Tag,
@@ -30,7 +29,6 @@ import {
   type MenuProps,
 } from "antd";
 import {
-  AppstoreOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
@@ -39,7 +37,6 @@ import {
   EyeOutlined,
   FileTextOutlined,
   HistoryOutlined,
-  HomeOutlined,
   InboxOutlined,
   MoreOutlined,
   NumberOutlined,
@@ -93,39 +90,17 @@ type DetailTabItem = {
 const LIST_TAB_KEY = "list";
 
 type ImportFormValues = {
-  event_id: string;
   sample_interval_us: number | null;
   city: string;
-  sensor_model: string;
-  install_position: string;
-  notes: string;
   location_tag: string;
   event_time: dayjs.Dayjs | null;
-  longitude: number | null;
-  latitude: number | null;
-  altitude_m: number | null;
-  weather_level: string;
-  pressure_hpa: number | null;
-  humidity_percent: number | null;
-  is_synthetic: boolean;
 };
 
 const INITIAL_IMPORT_VALUES: ImportFormValues = {
-  event_id: "",
   sample_interval_us: 1,
   city: "",
-  sensor_model: "",
-  install_position: "",
-  notes: "",
   location_tag: "",
   event_time: null,
-  longitude: null,
-  latitude: null,
-  altitude_m: null,
-  weather_level: "",
-  pressure_hpa: null,
-  humidity_percent: null,
-  is_synthetic: false,
 };
 
 const STATUS_META: Record<string, { color: "default" | "processing" | "success" | "error" | "warning"; label: string }> = {
@@ -421,9 +396,6 @@ export default function AdminLightningCurrentsPage() {
         formData.append("sample_interval_us", String(values.sample_interval_us));
       }
       if (values.city?.trim()) formData.append("city", values.city.trim());
-      if (values.sensor_model?.trim()) formData.append("sensor_model", values.sensor_model.trim());
-      if (values.install_position?.trim()) formData.append("install_position", values.install_position.trim());
-      if (values.notes?.trim()) formData.append("notes", values.notes.trim());
       if (values.location_tag?.trim()) formData.append("location_tag", values.location_tag.trim());
       if (values.event_time) {
         const dt = values.event_time.format("YYYY-MM-DDTHH:mm:ss");
@@ -639,7 +611,7 @@ export default function AdminLightningCurrentsPage() {
   });
 
   const editMutation = useMutation({
-    mutationFn: async (values: LightningAmplitudeUpdateRequest) => {
+    mutationFn: async (values: Partial<LightningAmplitudeUpdateRequest>) => {
       if (!canManage) {
         throw new Error("缺少 lightning.manage 权限");
       }
@@ -673,21 +645,10 @@ export default function AdminLightningCurrentsPage() {
   const openEditModal = useCallback((record: LightningAmplitudeRecord) => {
     setEditRecord(record);
     editForm.setFieldsValue({
-      event_id: record.event_id ?? undefined,
       event_time: record.event_time ? dayjs(record.event_time) : undefined,
       sample_interval_us: record.sample_interval_us ?? 1,
       city: record.city || "",
       location_tag: record.location_tag || "",
-      sensor_model: record.sensor_model || "",
-      install_position: record.install_position || "",
-      notes: record.notes || "",
-      longitude: record.longitude,
-      latitude: record.latitude,
-      altitude_m: record.altitude_m,
-      weather_level: record.weather_level || "",
-      pressure_hpa: record.pressure_hpa,
-      humidity_percent: record.humidity_percent,
-      is_synthetic: record.is_synthetic,
     });
     setEditModalOpen(true);
   }, [editForm]);
@@ -849,11 +810,7 @@ export default function AdminLightningCurrentsPage() {
           <div className="flex flex-col gap-2 px-4 py-3">
             <div className="flex items-center gap-2">
               <EnvironmentOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">城市：{record.city || "-"}</Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
-              <AppstoreOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">传感器型号：{record.sensor_model || "-"}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">采样城市：{record.city || "-"}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <NumberOutlined className="text-xs text-gray-500" />
@@ -997,7 +954,7 @@ export default function AdminLightningCurrentsPage() {
         render: (value: string) => value || "-",
       },
       {
-        title: "城市",
+        title: "采样城市",
         dataIndex: "city",
         width: 110,
         ellipsis: { showTitle: true },
@@ -1344,7 +1301,7 @@ export default function AdminLightningCurrentsPage() {
       >
         <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
           <div className="grid gap-3 md:grid-cols-2">
-            <Form.Item name="city" label="城市">
+            <Form.Item name="city" label="采样城市">
               <Select
                 showSearch
                 placeholder="请搜索选择城市"
@@ -1368,12 +1325,6 @@ export default function AdminLightningCurrentsPage() {
             <Form.Item name="location_tag" label="采样地点">
               <Input placeholder="例如 XX变电站、XX区域" />
             </Form.Item>
-            <Form.Item name="install_position" label="安装位置">
-              <Input placeholder="例如 楼顶避雷针" />
-            </Form.Item>
-            <Form.Item name="sensor_model" label="传感器型号">
-              <Input placeholder="例如 LCS-1000" />
-            </Form.Item>
             <Form.Item name="sample_interval_us" label="采样间隔(us)">
               <InputNumber style={{ width: "100%" }} min={0.000001} precision={6} />
             </Form.Item>
@@ -1381,9 +1332,6 @@ export default function AdminLightningCurrentsPage() {
               <DatePicker className="w-full" showTime placeholder="选择日期时间" />
             </Form.Item>
           </div>
-          <Form.Item name="notes" label="备注">
-            <Input.TextArea rows={2} placeholder="可填写天气背景、场景备注等" />
-          </Form.Item>
           <div style={{ marginBottom: 16 }}>
             <Form.Item label="数据文件" required>
               <Upload.Dragger
@@ -1560,22 +1508,12 @@ export default function AdminLightningCurrentsPage() {
         onOk={async () => {
           try {
             const values = await editForm.validateFields();
-            const payload: LightningAmplitudeUpdateRequest = {
-              event_id: values.event_id || null,
+            // 仅提交编辑表单保留字段；后端对未传字段（None）保持原值
+            const payload: Partial<LightningAmplitudeUpdateRequest> = {
               event_time: values.event_time ? values.event_time.format("YYYY-MM-DDTHH:mm:ss") : null,
               sample_interval_us: values.sample_interval_us ?? null,
               city: values.city || null,
               location_tag: values.location_tag || null,
-              sensor_model: values.sensor_model || null,
-              install_position: values.install_position || null,
-              notes: values.notes || null,
-              longitude: values.longitude ?? null,
-              latitude: values.latitude ?? null,
-              altitude_m: values.altitude_m ?? null,
-              weather_level: values.weather_level || null,
-              pressure_hpa: values.pressure_hpa ?? null,
-              humidity_percent: values.humidity_percent ?? null,
-              is_synthetic: values.is_synthetic,
             };
             editMutation.mutate(payload);
           } catch {
@@ -1590,7 +1528,7 @@ export default function AdminLightningCurrentsPage() {
       >
         <Form<ImportFormValues> form={editForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
           <div className="grid gap-3 md:grid-cols-2">
-            <Form.Item name="city" label="城市">
+            <Form.Item name="city" label="采样城市">
               <Select
                 showSearch
                 placeholder="请搜索选择城市"
@@ -1614,46 +1552,13 @@ export default function AdminLightningCurrentsPage() {
             <Form.Item name="location_tag" label="采样地点">
               <Input placeholder="例如 XX变电站、XX区域" />
             </Form.Item>
-            <Form.Item name="install_position" label="安装位置">
-              <Input placeholder="例如 楼顶避雷针" />
-            </Form.Item>
-            <Form.Item name="sensor_model" label="传感器型号">
-              <Input placeholder="例如 LCS-1000" />
-            </Form.Item>
             <Form.Item name="sample_interval_us" label="采样间隔(us)">
               <InputNumber style={{ width: "100%" }} min={0.000001} precision={6} />
             </Form.Item>
             <Form.Item name="event_time" label="采样时间">
               <DatePicker className="w-full" showTime placeholder="选择日期时间" />
             </Form.Item>
-            <Form.Item name="event_id" label="事件编号">
-              <Input placeholder="自定义事件编号" />
-            </Form.Item>
-            <Form.Item name="weather_level" label="天气等级">
-              <Input placeholder="例如 雷暴、大雨" />
-            </Form.Item>
-            <Form.Item name="longitude" label="经度">
-              <InputNumber style={{ width: "100%" }} placeholder="例如 120.123" />
-            </Form.Item>
-            <Form.Item name="latitude" label="纬度">
-              <InputNumber style={{ width: "100%" }} placeholder="例如 30.456" />
-            </Form.Item>
-            <Form.Item name="altitude_m" label="海拔(m)">
-              <InputNumber style={{ width: "100%" }} placeholder="例如 50" />
-            </Form.Item>
-            <Form.Item name="pressure_hpa" label="气压(hPa)">
-              <InputNumber style={{ width: "100%" }} placeholder="例如 1013.25" />
-            </Form.Item>
-            <Form.Item name="humidity_percent" label="湿度(%)">
-              <InputNumber style={{ width: "100%" }} min={0} max={100} placeholder="0-100" />
-            </Form.Item>
-            <Form.Item name="is_synthetic" label="是否合成数据" valuePropName="checked">
-              <Switch />
-            </Form.Item>
           </div>
-          <Form.Item name="notes" label="备注">
-            <Input.TextArea rows={2} placeholder="可填写天气背景、场景备注等" />
-          </Form.Item>
         </Form>
       </Modal>
 
@@ -1718,14 +1623,11 @@ function AmplitudeDetailView({
       <div>
         <Typography.Title level={5}>基本信息</Typography.Title>
         <Descriptions bordered size="small" column={2} className="admin-lightning-currents-meta-table">
-          <Descriptions.Item label="城市">{formatNullable(record.city)}</Descriptions.Item>
+          <Descriptions.Item label="采样城市">{formatNullable(record.city)}</Descriptions.Item>
           <Descriptions.Item label="采样地点">{formatNullable(record.location_tag)}</Descriptions.Item>
-          <Descriptions.Item label="传感器">{formatNullable(record.sensor_model)}</Descriptions.Item>
-          <Descriptions.Item label="安装位置">{formatNullable(record.install_position)}</Descriptions.Item>
           <Descriptions.Item label="采样时间">{formatNullable(record.event_time)}</Descriptions.Item>
           <Descriptions.Item label="采样点数">{record.sample_count}</Descriptions.Item>
           <Descriptions.Item label="采样间隔(us)">{formatNumber(record.sample_interval_us, 6)}</Descriptions.Item>
-          <Descriptions.Item label="备注">{formatNullable(record.notes)}</Descriptions.Item>
         </Descriptions>
       </div>
 
