@@ -42,6 +42,7 @@ import type {
   AtpAssetTestStageResult,
 } from "@/types/auth";
 import { AtpTestArtifactView } from "./atp-test-artifact-view";
+import { AtpParamTraceDrawer } from "./atp-param-trace-drawer";
 import { WaveformChart, type WaveformData } from "./atp-waveform-chart";
 
 /**
@@ -166,6 +167,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   // 当前正在提交的段：null=无；"all"=全部执行；否则为单段
   const [submittingStage, setSubmittingStage] = useState<AtpAssetTestStage | "all" | null>(null);
+  const [paramsDrawerOpen, setParamsDrawerOpen] = useState(false);
 
   // 抽屉每次重新打开时清空当前运行态，避免残留上一次的结果
   useEffect(() => {
@@ -490,6 +492,14 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                   >
                     复制对比 JSON
                   </Button>
+                  <Button
+                    size="small"
+                    icon={<ExperimentOutlined />}
+                    disabled={running}
+                    onClick={() => setParamsDrawerOpen(true)}
+                  >
+                    参数溯源
+                  </Button>
                 </Space>
               ) : null}
             </Card>
@@ -556,6 +566,13 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
           type="info"
           showIcon
           message="当前账号缺少测试权限（需要 atp.run 或 atp.manage），无法发起测试。"
+        />
+      ) : null}
+      {activeRunId ? (
+        <AtpParamTraceDrawer
+          runId={activeRunId}
+          open={paramsDrawerOpen}
+          onClose={() => setParamsDrawerOpen(false)}
         />
       ) : null}
     </Drawer>

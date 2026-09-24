@@ -643,6 +643,11 @@ class _TestContext:
             "defaults_applied": list(detailed.defaults_applied),
             "defaults_used": dict(detailed.defaults_used),
             "unresolved": {slot: list(names) for slot, names in detailed.unresolved.items()},
+            # 参数溯源(2026-09-23 新增)：槽位 → 来源标签 / 最终格式化值。
+            # sources 由解析器的 apply_slots 填写：规则名 / 继承 / 默认值 / 本级关闭 / 缺变量等，
+            # 前端「参数溯源」抽屉据此展示每个参数到底来自模板、系统默认还是用户输入。
+            "sources": dict(detailed.sources),
+            "resolved": dict(detailed.values),
         }
         if detailed.unresolved and not self.payload.allow_incomplete_defaults:
             preview = "；".join(
