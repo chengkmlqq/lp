@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .tower_topology import infer_line_kind as infer_topology_line_kind
 from .tower_topology import infer_structure_count as infer_topology_structure_count
@@ -255,7 +255,24 @@ def grade_snapshot_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def grade_mitigation_snapshot_payload(payload: Mapping[str, Any], *, non_construction: bool = False) -> dict[str, Any]:
+def grade_mitigation_snapshot_payload(
+    payload: Mapping[str, Any],
+    *,
+    non_construction: bool = False,
+    recompute_fn: Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """措施推荐（对齐 C# MyCanShu_2 / MyCanShu_3 状态机）。
+
+    与 C# 桌面版一致：对每座风险>2 的杆塔，按状态机「逐档调参」：
+      普通版：加长绝缘子串 → 降接地电阻 → 实在调不动才判装避雷器
+      非检线版：多一步「调保护角 + 重算避雷线间距」，全试完才判装避雷器
+
+    recompute_fn：注入的「每轮改造后重算」函数，对齐 C# 状态机每轮调
+    AllCall_CS(101)（ATP/计算引擎）重算跳闸率与风险等级：
+      - 传 None：用规程法 grade_snapshot_payload 重算（离线/无资产场景降级）
+      - 传 ATP 版：web 端有 wine 引擎，task 层注入 execute_external_*，
+        对齐 C# 的 ATP 引擎重算（禁止静默规程法兜底）
+    """
     base = dict(payload.get("base_tower_json") or {})
     profile = dict(payload.get("profile_json") or {})
     source_result = _coerce_risk_result_snapshot(payload.get("source_result_json"))
@@ -269,6 +286,7 @@ def grade_mitigation_snapshot_payload(payload: Mapping[str, Any], *, non_constru
         profile=profile,
         current=current,
         non_construction=non_construction,
+        recompute_fn=recompute_fn,
     )
     actions = machine["actions"]
     reached_arrester = machine["reached_arrester"]
@@ -2143,6 +2161,7 @@ def _csharp_mitigation_machine(
     profile: Mapping[str, Any],
     current: Mapping[str, Any],
     non_construction: bool,
+    recompute_fn: Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """对齐 C# 的「措施推荐」状态机（MyCanShu_2 普通版 / MyCanShu_3 非检线版）。
 
@@ -2257,9 +2276,14 @@ def _csharp_mitigation_machine(
             ground_ohm=new_ground_ohm,
             protection_angle_deg=new_protection_angle if non_construction else None,
         )
-        recomputed = grade_snapshot_payload(
-            {"base_tower_json": simulated_base, "profile_json": simulated_profile}
-        )
+        if recompute_fn is not None:
+            # task 层注入的 ATP(wine) 重算：对齐 C# 的 AllCall_CS(101) 引擎重算
+            recomputed = recompute_fn(simulated_base, simulated_profile)
+        else:
+            # 离线/单塔调试场景：规程法重算（task 层必须注入 ATP，见 service 调用处）
+            recomputed = grade_snapshot_payload(
+                {"base_tower_json": simulated_base, "profile_json": simulated_profile}
+            )
         # 改造后风险已降到 ≤2（不再高风险）→ 停止迭代（C# 语义：该塔不再进下一轮调参）
         recomputed_grade = _as_int(recomputed.get("risk_grade"))
         if recomputed_grade is not None and recomputed_grade <= 2:

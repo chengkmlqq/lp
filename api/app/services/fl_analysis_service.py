@@ -11,7 +11,7 @@ from contextlib import closing
 from pathlib import Path
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, Mapping
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, or_, select
@@ -820,10 +820,47 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
             if source_result:
                 payload["source_result_json"] = source_result
             if job.job_type == "mitigation":
-                graded = grade_mitigation_snapshot_payload(
-                    payload,
-                    non_construction=bool(execution_options.get("non_construction")),
-                )
+                if has_external:
+                    # 对齐 C#：改造状态机每轮用 ATP 引擎（AllCall_CS 101）重算跳闸率/风险，
+                    # 不能静默退化为规程法。注入「改后参数 → ATP 单次仿真」重算函数。
+                    resolved_job = _resolve_external_job_for_tower(snapshot)
+                    if resolved_job is None:
+                        raise RuntimeError(f"外部 ATP/Wine 模板解析失败：{snapshot.tower_no}")
+
+                    def _atp_recompute(
+                        sim_base: Mapping[str, Any],
+                        sim_profile: Mapping[str, Any],
+                        _rj: ResolvedExternalWaveformJob = resolved_job,
+                        _snap: FlAnalysisTowerSnapshot = snapshot,
+                        _opts: dict[str, Any] = dict(execution_options),
+                    ) -> dict[str, Any]:
+                        # 用改造后参数构造 payload 走 ATP 单次仿真（对齐 C# AllCall_CS(101)）
+                        _payload = {
+                            "base_tower_json": dict(sim_base),
+                            "profile_json": dict(sim_profile),
+                        }
+                        _baseline = grade_normal_snapshot_payload(_payload, execution_options=_opts)
+                        _exec = execute_external_waveform_tower_analysis(
+                            _rj,
+                            db=db,
+                            job=job,
+                            snapshot=_snap,
+                            execution_options=_opts,
+                            baseline_result=_baseline,
+                        )
+                        return _exec.result_json or {}
+
+                    graded = grade_mitigation_snapshot_payload(
+                        payload,
+                        non_construction=bool(execution_options.get("non_construction")),
+                        recompute_fn=_atp_recompute,
+                    )
+                else:
+                    # 无外部资产(placeholder/legacy 未装)：仍走规程法重算（离线兜底）
+                    graded = grade_mitigation_snapshot_payload(
+                        payload,
+                        non_construction=bool(execution_options.get("non_construction")),
+                    )
             elif waveform_job_type == "normal":
                 baseline_result = grade_normal_snapshot_payload(payload, execution_options=execution_options)
                 # 基准计算阶段完成，进入二分阶段
