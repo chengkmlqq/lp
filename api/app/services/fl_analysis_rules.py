@@ -260,28 +260,29 @@ def grade_mitigation_snapshot_payload(payload: Mapping[str, Any], *, non_constru
     profile = dict(payload.get("profile_json") or {})
     source_result = _coerce_risk_result_snapshot(payload.get("source_result_json"))
     current = source_result or grade_snapshot_payload(payload)
-    current_score = int(current["score"])
-    current_risk_level = str(current["risk_level"])
-    actions = _build_mitigation_actions(
+    current_score = int(current.get("score") or 0)
+    current_risk_level = str(current.get("risk_level") or "low")
+
+    # ── 状态机运行（单塔，对齐 C# MyCanShu_2 / MyCanShu_3）──────────────────
+    machine = _csharp_mitigation_machine(
         base=base,
         profile=profile,
         current=current,
         non_construction=non_construction,
     )
+    actions = machine["actions"]
+    reached_arrester = machine["reached_arrester"]
 
-    simulated_base = dict(base)
-    simulated_profile = dict(profile)
-    _apply_mitigation_actions(base=simulated_base, profile=simulated_profile, actions=actions)
     expected = grade_snapshot_payload(
         {
-            "base_tower_json": simulated_base,
-            "profile_json": simulated_profile,
+            "base_tower_json": machine["simulated_base"],
+            "profile_json": machine["simulated_profile"],
         }
     )
 
     if current_risk_level == "low" and not actions:
         recommendation_result = "达标低风险"
-    elif any(action["code"] == "arrester_install" for action in actions):
+    elif reached_arrester or any(action["code"] == "arrester_install" for action in actions):
         recommendation_result = "需要安装避雷器"
     else:
         recommendation_result = "不需要安装避雷器"
@@ -1921,63 +1922,390 @@ def _build_reason_details(base: Mapping[str, Any], profile: Mapping[str, Any]) -
     return result
 
 
-def _build_mitigation_actions(
+
+# --------------------------------------------------------------------------------------
+# LP-571：对齐 C# 防雷改造「措施推荐」状态机（lp-knowledge/LP/MyFunction.cs）
+#
+# C# 侧是「逐档调参 → 每轮调 ATP 引擎重算 → 不达标继续 → 全试完才装避雷器」的迭代闭环：
+#   MyCanShu_2_TuiJianCuoShi          —— 普通线路（mTypeCode_Task == 3）
+#   MyCanShu_3_TuiJianCuoShi_FeiJianXian —— 非检线（mTypeCode_Task == 302，多一步「调保护角」）
+# 本模块把这两套状态机移植到 web 端，取代原「一次性规则生成措施」的简化实现。
+# --------------------------------------------------------------------------------------
+
+# C# 110/500kV 用固定毫米增量（其余电压用标准值倍数），见 MyCanShu_2 case 0/1/2/3。
+_CSHARP_FIXED_INSULATOR_STEP_MM: dict[int, float] = {
+    1: 97.33333333333333,   # 110/500kV 第一档加长量
+    2: 194.66666666666666,  # 第二档
+    3: 292.0,               # 第三档（1.3 倍位）
+}
+
+# C# 状态常量（MyCanShu_2 / MyCanShu_3）
+_CSHARP_STATE_INIT = 0
+_CSHARP_STATE_S1 = 1
+_CSHARP_STATE_S2 = 2
+_CSHARP_STATE_S201 = 201
+_CSHARP_STATE_S3 = 3
+_CSHARP_STATE_S4 = 4      # 普通版：到此判定「需要安装避雷器」
+_CSHARP_STATE_S5 = 5
+# 非检线版额外状态（MyCanShu_3 case 4/5/6/7）
+_CSHARP_STATE_S6 = 6
+_CSHARP_STATE_S7 = 7
+_CSHARP_STATE_S8 = 8      # 非检线版：到此判定「需要安装避雷器」
+
+# 非检线版把「调到避雷线间距」的中间态存这里（C# mState_TuiJian 5/6/7）
+_CSHARP_FEIJIANXIAN_TERMINAL = _CSHARP_STATE_S8
+
+
+def _csharp_voltage_kv(base: Mapping[str, Any], profile: Mapping[str, Any]) -> int:
+    """对齐 C# MyCanShu_2/3 里从塔型串推断电压等级（num3）的写法。"""
+    return _infer_voltage_kv(base, profile)
+
+
+def _csharp_new_insulator_length(
+    *,
+    voltage_kv: int,
+    old_mm: float,
+    standard_mm: float,
+    step: int,
+) -> float:
+    """对齐 C# 加长绝缘子串：110/500kV 用固定增量，其余用 1.1/1.2/1.3 倍标准值。
+
+    C# 原文（case 0）：
+        110/500 → Math.Round(mOld_JYZCD + 97.33, 2)
+        其它    → Math.Round(1.1 * mSTD_JYZ_mm + 0.005, 2)
+    case 1 → 1.2 倍（+194.67）；case 2/3 → 1.3 倍（+292）。
+    """
+    if voltage_kv in (110, 500):
+        increment = _CSHARP_FIXED_INSULATOR_STEP_MM.get(step, 97.33333333333333)
+        return round(old_mm + increment, 2)
+    factor = {1: 1.1, 2: 1.2, 3: 1.3}.get(step, 1.1)
+    return round(factor * standard_mm + 0.005, 2)
+
+
+def _csharp_target_protection_angle(base: Mapping[str, Any], profile: Mapping[str, Any]) -> float:
+    """对齐 C# MyCanShu_3 按塔型给保护角目标值（-10 / -18）。
+
+    jiubei/maotou → -10°；ganzi/guxing/shangzi/zhiliu/dc/nz/ky → -18°；其它 → -10°。
+    （-5° 分支在 C# case 4 的 mFJ_BaoHuJiao <= 3 时单独走，见调用处。）
+    """
+    marker = "|".join(
+        [
+            str(base.get("tower_model") or ""),
+            str(base.get("tower_type") or ""),
+            str(base.get("tower_code") or ""),
+            str(profile.get("structure_kind") or ""),
+        ]
+    ).lower()
+    if any(token in marker for token in ("jiubei", "maotou")):
+        return -10.0
+    if any(token in marker for token in ("ganzi", "guxing", "shangzi", "zhiliu", "dc", "nz", "ky")):
+        return -18.0
+    return -10.0
+
+
+def _csharp_recompute_shield_distance(
+    *,
+    base: Mapping[str, Any],
+    profile: Mapping[str, Any],
+    protection_angle_deg: float,
+) -> float | None:
+    """对齐 C# MyCanShu_3 case 4/5/6：按新保护角重算避雷线中距 mBLZJ。
+
+    C# 公式（以 guxing 为例，取上/中/下三相最大值）：
+        num6 = m1ZJ_Xxx - (mBLXGD - m1GD_Xxx + num7) * tan(angle)
+        num7 = 耐张 ? mJYZCD/1000 : 0
+        mBLZJ_L = mBLZJ_R = max(...)
+    web 端几何字段：避雷线高 shield_wire_height_m、各相挂点高 1GD_*、水平位置 1ZJ_*。
+    """
+    base_geometry = base.get("circuit_geometry_json") or {}
+    lightning_wire = dict(base_geometry.get("lightning_wire") or {})
+    shield_height = _as_float(profile.get("shield_wire_height_m")) or _as_float(lightning_wire.get("height_m"))
+    if shield_height is None:
+        return None
+
+    # 耐张塔补串长（num7）：C# 仅耐张加 mJYZCD/1000
+    structure_kind = str(profile.get("structure_kind") or base.get("tower_type") or "")
+    insulator_mm = _normalize_insulator_length_mm(
+        _as_float(profile.get("insulator_length_m"))
+        or _as_float((profile.get("geometry_layers_json") or {}).get("insulator_length_mm"))
+    )
+    num7 = 0.0
+    if "耐张" in structure_kind and insulator_mm is not None:
+        num7 = insulator_mm / 1000.0
+
+    best: float | None = None
+    for circuit_key in ("I", "II", "III", "IV"):
+        circuit = base_geometry.get(circuit_key) or {}
+        positions = circuit.get("phase_position_m") or {}
+        heights = circuit.get("phase_height_m") or {}
+        for phase_key in ("upper", "middle", "lower"):
+            horizontal = _as_float(positions.get(phase_key))
+            height = _as_float(heights.get(phase_key))
+            if horizontal is None or height is None:
+                continue
+            value = horizontal - (shield_height - height + num7) * math.tan(math.radians(protection_angle_deg))
+            if best is None or value > best:
+                best = value
+    if best is None:
+        # 无逐相几何时退化为「塔顶相高」单值（web 数据常见形态）
+        top_phase_height = _max_phase_height(base, profile)
+        if top_phase_height is None:
+            return None
+        best = 0.0 - (shield_height - top_phase_height + num7) * math.tan(math.radians(protection_angle_deg))
+    return round(best, 3)
+
+
+def _csharp_read_current_params(
+    *,
+    base: Mapping[str, Any],
+    profile: Mapping[str, Any],
+    voltage_kv: int,
+    structure_count: int,
+) -> tuple[float, float, float, float, float]:
+    """读取塔当前绝缘子串长/接地电阻/保护角，并给标准值（C# mSTD_JYZ_mm/mSTD_height_m）。"""
+    std_jyz_mm, std_height_m = _standard_values_for_line(base, profile, voltage_kv, structure_count)
+
+    current_insulator_mm = _normalize_insulator_length_mm(
+        _as_float(profile.get("insulator_length_m"))
+        or _as_float((profile.get("geometry_layers_json") or {}).get("insulator_length_mm"))
+        or _as_float((base.get("circuit_geometry_json") or {}).get("insulator_length_mm"))
+    )
+    if current_insulator_mm is None:
+        current_insulator_mm = std_jyz_mm
+    current_ground_ohm = _as_float(base.get("ground_resistance_ohm"))
+    if current_ground_ohm is None:
+        current_ground_ohm = 20.0
+    current_protection_angle = _as_float(_compute_protection_angle_deg(base, profile))
+    if current_protection_angle is None:
+        current_protection_angle = 5.0
+    return current_insulator_mm, current_ground_ohm, current_protection_angle, std_jyz_mm, std_height_m
+
+
+def _csharp_grade(
+    *,
+    insulator_mm: float,
+    ground_ohm: float,
+    protection_angle_deg: float,
+    std_jyz_mm: float,
+    std_height_m: float,
+) -> dict[str, int | None]:
+    """对齐 C# MyCanShu_1_HuaFenDangJi 的 5 档分级（web 端仅用到 绝缘子/接地/保护角）。"""
+    return {
+        "insulator_grade": _grade_insulator_length(insulator_mm, std_jyz_mm),
+        "ground_grade": _grade_ground_resistance(ground_ohm),
+        "protection_grade": _grade_protection_angle(protection_angle_deg),
+    }
+
+
+def _csharp_apply_params(
+    *,
+    base: Mapping[str, Any],
+    profile: Mapping[str, Any],
+    insulator_mm: float,
+    ground_ohm: float,
+    protection_angle_deg: float | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """把状态机算出的新参数应用回 base/profile（供重算 expected 用）。"""
+    simulated_base = dict(base)
+    simulated_profile = dict(profile)
+
+    # 绝缘子串长：写回 geometry_layers.insulator_length_mm（C# mJYZCD 语义为 mm）
+    geometry_layers = dict(simulated_profile.get("geometry_layers_json") or {})
+    geometry_layers["insulator_length_mm"] = round(insulator_mm, 2)
+    simulated_profile["geometry_layers_json"] = geometry_layers
+    if _as_float(simulated_profile.get("insulator_length_m")) is not None:
+        simulated_profile["insulator_length_m"] = round(insulator_mm / 1000.0, 4)
+
+    # 接地电阻
+    simulated_base["ground_resistance_ohm"] = round(ground_ohm, 2)
+
+    # 保护角 → 重算避雷线水平位置（对齐 C# case 4/5/6 调 mBLZJ）
+    if protection_angle_deg is not None:
+        distance = _csharp_recompute_shield_distance(
+            base=simulated_base,
+            profile=simulated_profile,
+            protection_angle_deg=protection_angle_deg,
+        )
+        if distance is not None:
+            base_geometry = dict(simulated_base.get("circuit_geometry_json") or {})
+            lightning_wire = dict(base_geometry.get("lightning_wire") or {})
+            lightning_wire["left_mid_distance_m"] = distance
+            lightning_wire["right_mid_distance_m"] = distance
+            base_geometry["lightning_wire"] = lightning_wire
+            simulated_base["circuit_geometry_json"] = base_geometry
+
+    return simulated_base, simulated_profile
+
+
+def _csharp_mitigation_machine(
     *,
     base: Mapping[str, Any],
     profile: Mapping[str, Any],
     current: Mapping[str, Any],
     non_construction: bool,
-) -> list[dict[str, Any]]:
-    detail_map = {item["code"]: item for item in current.get("reason_details", []) if isinstance(item, Mapping)}
-    actions: list[dict[str, Any]] = []
-    voltage_kv = _infer_voltage_kv(base, profile)
+) -> dict[str, Any]:
+    """对齐 C# 的「措施推荐」状态机（MyCanShu_2 普通版 / MyCanShu_3 非检线版）。
+
+    每次调用对单塔走完整状态机：逐轮 分级 → 状态机推进一步（改参数）→
+    用改了参数后的新塔数据重算（grade_snapshot_payload，对应 C# 每轮调
+    AllCall_CS(101) 重算跳闸率）→ 直到状态到终态或不再有参数改动。
+
+    与 C# 的差异仅一处：C# 每轮重算走 ATP 引擎（AllCall_CS），web 端用
+    规程法（grade_snapshot_payload）做重算验证——这是受 web 端无 ATP
+    内嵌引擎限制的环境差异，状态机参数推进逻辑逐行对齐 C#。
+    """
+    voltage_kv = _csharp_voltage_kv(base, profile)
     structure_count = _infer_structure_count(base, profile)
-    insulator_standard_mm, _ = _standard_values_for_line(base, profile, voltage_kv, structure_count)
-    current_score = int(current.get("score") or 0)
+    current_insulator_mm, current_ground_ohm, current_protection_angle, std_jyz_mm, std_height_m = (
+        _csharp_read_current_params(
+            base=base,
+            profile=profile,
+            voltage_kv=voltage_kv,
+            structure_count=structure_count,
+        )
+    )
 
-    insulator_detail = detail_map.get("insulator_length")
-    if insulator_detail and _as_int(insulator_detail.get("grade")) and _as_int(insulator_detail.get("grade")) <= 3:
-        factor = 1.3 if current_score >= 80 else 1.2 if current_score >= 45 else 1.1
-        target_mm = round(insulator_standard_mm * factor, 2)
-        current_value = _normalize_insulator_length_mm(_as_float(insulator_detail.get("value")))
-        if current_value is not None and current_value < target_mm:
-            actions.append(
-                {
-                    "code": "insulator_upgrade",
-                    "label": "提高绝缘子串长度",
-                    "summary": f"将绝缘子串长度提高至约 {target_mm} mm",
-                    "current_value": current_value,
-                    "target_value": target_mm,
-                    "unit": "mm",
-                }
+    # 绕击/反击跳闸率比（C# num4 = mRJ_TZL / mFJ_TZL）
+    fj_tzl = _as_float(current.get("counterstrike_trip_rate"))
+    rj_tzl = _as_float(current.get("shielding_trip_rate"))
+    if fj_tzl is not None and fj_tzl != 0.0 and rj_tzl is not None:
+        num4 = rj_tzl / fj_tzl
+    else:
+        num4 = -1.0
+
+    state = _CSHARP_STATE_INIT
+    turns = 0
+    reached_arrester = False
+    new_insulator_mm = current_insulator_mm
+    new_ground_ohm = current_ground_ohm
+    new_protection_angle = current_protection_angle
+    # 非检线 Step1 记忆（C# mNew_JYZCD_Step1 / mNew_JDDZ_Step1）
+    step1_insulator: float | None = None
+    step1_ground: float | None = None
+
+    max_turns = _CSHARP_STATE_S8 + 2
+
+    while turns < max_turns:
+        turns += 1
+        grades = _csharp_grade(
+            insulator_mm=new_insulator_mm,
+            ground_ohm=new_ground_ohm,
+            protection_angle_deg=new_protection_angle,
+            std_jyz_mm=std_jyz_mm,
+            std_height_m=std_height_m,
+        )
+        grade_jyz = grades["insulator_grade"]
+        grade_jddz = grades["ground_grade"]
+        grade_bjh = grades["protection_grade"]
+
+        if non_construction:
+            result = _csharp_step_feijianxian(
+                state=state,
+                grade_jyz=grade_jyz,
+                grade_jddz=grade_jddz,
+                grade_bjh=grade_bjh,
+                num4=num4,
+                voltage_kv=voltage_kv,
+                std_jyz_mm=std_jyz_mm,
+                old_insulator_mm=current_insulator_mm,
+                old_ground_ohm=current_ground_ohm,
+                old_protection_angle=current_protection_angle,
+                step1_insulator=step1_insulator,
+                step1_ground=step1_ground,
+                base=base,
+                profile=profile,
             )
-
-    ground_detail = detail_map.get("ground_resistance")
-    ground_value = _as_float(base.get("ground_resistance_ohm"))
-    if ground_detail and _as_int(ground_detail.get("grade")) and _as_int(ground_detail.get("grade")) <= 4 and ground_value is not None:
-        if ground_value > 20:
-            target_ground = 3.0
-        elif ground_value > 15:
-            target_ground = 5.0
-        elif ground_value > 10:
-            target_ground = 10.0
         else:
-            target_ground = 5.0
-        if ground_value > target_ground:
-            actions.append(
-                {
-                    "code": "grounding_upgrade",
-                    "label": "降低接地电阻",
-                    "summary": f"将接地电阻优化至 {target_ground} Ω 以内",
-                    "current_value": ground_value,
-                    "target_value": target_ground,
-                    "unit": "ohm",
-                }
+            result = _csharp_step_normal(
+                state=state,
+                grade_jyz=grade_jyz,
+                grade_jddz=grade_jddz,
+                num4=num4,
+                voltage_kv=voltage_kv,
+                std_jyz_mm=std_jyz_mm,
+                old_insulator_mm=current_insulator_mm,
+                old_ground_ohm=current_ground_ohm,
             )
+        changed = result["changed"]
+        state = result["next_state"]
+        if result.get("new_insulator_mm") is not None:
+            new_insulator_mm = result["new_insulator_mm"]
+        if result.get("new_ground_ohm") is not None:
+            new_ground_ohm = result["new_ground_ohm"]
+        if result.get("new_protection_angle") is not None:
+            new_protection_angle = result["new_protection_angle"]
+        if result.get("step1_insulator") is not None:
+            step1_insulator = result["step1_insulator"]
+        if result.get("step1_ground") is not None:
+            step1_ground = result["step1_ground"]
 
-    missing_arrester_phases = _missing_arrester_phases(profile)
-    if missing_arrester_phases or current_score >= 80:
-        phases = missing_arrester_phases or ["A", "B", "C"]
+        # C# 终止条件：状态到终态（普通 s4→s5 / 非检线 s7→s8）。
+        # ⚠️ 非检线版 state 5/6/7 是「调保护角」的中间态，只有 s8 才是终态；
+        #    普通版只有 s5 是终态。两者共用数值 5，必须按版本区分。
+        terminal_state = _CSHARP_FEIJIANXIAN_TERMINAL if non_construction else _CSHARP_STATE_S5
+        if state == terminal_state:
+            reached_arrester = True
+            break
+        if changed == 0:
+            break
+
+        # ── 用新参数重算（对齐 C# 每轮 AllCall_CS(101) 重算跳闸率/风险）──────
+        simulated_base, simulated_profile = _csharp_apply_params(
+            base=base,
+            profile=profile,
+            insulator_mm=new_insulator_mm,
+            ground_ohm=new_ground_ohm,
+            protection_angle_deg=new_protection_angle if non_construction else None,
+        )
+        recomputed = grade_snapshot_payload(
+            {"base_tower_json": simulated_base, "profile_json": simulated_profile}
+        )
+        # 改造后风险已降到 ≤2（不再高风险）→ 停止迭代（C# 语义：该塔不再进下一轮调参）
+        recomputed_grade = _as_int(recomputed.get("risk_grade"))
+        if recomputed_grade is not None and recomputed_grade <= 2:
+            break
+        fj_tzl = _as_float(recomputed.get("counterstrike_trip_rate")) or fj_tzl
+        rj_tzl = _as_float(recomputed.get("shielding_trip_rate")) or rj_tzl
+        if fj_tzl is not None and fj_tzl != 0.0 and rj_tzl is not None:
+            num4 = rj_tzl / fj_tzl
+
+    # ── 汇总动作清单（与 C# 报告改造措施一致）────────────────────────────
+    actions: list[dict[str, Any]] = []
+    if new_insulator_mm > current_insulator_mm + 1e-9:
+        actions.append(
+            {
+                "code": "insulator_upgrade",
+                "label": "提高绝缘子串长度",
+                "summary": f"将绝缘子串长度提高至约 {round(new_insulator_mm, 2)} mm",
+                "current_value": round(current_insulator_mm, 2),
+                "target_value": round(new_insulator_mm, 2),
+                "unit": "mm",
+            }
+        )
+    if new_ground_ohm < current_ground_ohm - 1e-9:
+        actions.append(
+            {
+                "code": "grounding_upgrade",
+                "label": "降低接地电阻",
+                "summary": f"将接地电阻优化至 {round(new_ground_ohm, 2)} Ω 以内",
+                "current_value": round(current_ground_ohm, 2),
+                "target_value": round(new_ground_ohm, 2),
+                "unit": "ohm",
+            }
+        )
+    if non_construction and abs(new_protection_angle - current_protection_angle) > 1e-9:
+        actions.append(
+            {
+                "code": "shielding_geometry",
+                "label": "优化保护角",
+                "summary": f"按非建线口径将保护角调整至约 {round(new_protection_angle, 2)}°",
+                "current_value": round(current_protection_angle, 2),
+                "target_value": round(new_protection_angle, 2),
+                "unit": "deg",
+            }
+        )
+    if reached_arrester:
+        phases = _missing_arrester_phases(profile) or ["A", "B", "C"]
         actions.append(
             {
                 "code": "arrester_install",
@@ -1987,84 +2315,287 @@ def _build_mitigation_actions(
             }
         )
 
-    protection_detail = detail_map.get("protection_angle")
-    if non_construction and protection_detail and _as_int(protection_detail.get("grade")) and _as_int(protection_detail.get("grade")) <= 3:
-        target_angle = _target_protection_angle_deg(base, profile)
-        actions.append(
-            {
-                "code": "shielding_geometry",
-                "label": "优化保护角",
-                "summary": f"按非建线口径将保护角收紧至约 {target_angle}°",
-                "target_value": target_angle,
-                "unit": "deg",
-            }
-        )
+    simulated_base, simulated_profile = _csharp_apply_params(
+        base=base,
+        profile=profile,
+        insulator_mm=new_insulator_mm,
+        ground_ohm=new_ground_ohm,
+        protection_angle_deg=new_protection_angle if non_construction else None,
+    )
 
-    slope_detail = detail_map.get("terrain_slope")
-    if slope_detail and _as_int(slope_detail.get("grade")) and _as_int(slope_detail.get("grade")) <= 2:
-        actions.append(
-            {
-                "code": "terrain_grounding_review",
-                "label": "复核地形暴露与接地",
-                "summary": "重点复核边坡暴露、接地引下线和冲击通道布置",
-            }
-        )
-
-    span_large = _as_float(base.get("span_large_m"))
-    if span_large is not None and span_large >= 500:
-        actions.append(
-            {
-                "code": "long_span_review",
-                "label": "复核大跨距绝缘配合",
-                "summary": "大跨距杆塔建议同步复核绝缘配合与屏蔽校核",
-            }
-        )
-
-    return actions
+    return {
+        "actions": actions,
+        "simulated_base": simulated_base,
+        "simulated_profile": simulated_profile,
+        "reached_arrester": reached_arrester,
+        "expected_grade": None,
+        "final_state": state,
+        "turns": turns,
+        "new_insulator_mm": round(new_insulator_mm, 2),
+        "new_ground_ohm": round(new_ground_ohm, 2),
+        "new_protection_angle_deg": round(new_protection_angle, 2),
+    }
 
 
-def _apply_mitigation_actions(*, base: dict[str, Any], profile: dict[str, Any], actions: list[dict[str, Any]]) -> None:
-    geometry_layers = dict(profile.get("geometry_layers_json") or {})
-    lightning_wire = dict((base.get("circuit_geometry_json") or {}).get("lightning_wire") or {})
-    for action in actions:
-        code = action.get("code")
-        if code == "insulator_upgrade":
-            target_mm = _as_float(action.get("target_value"))
-            if target_mm is None:
-                continue
-            current_profile_value = _as_float(profile.get("insulator_length_m"))
-            if current_profile_value is not None and current_profile_value <= 20:
-                profile["insulator_length_m"] = round(target_mm / 1000.0, 4)
-            else:
-                profile["insulator_length_m"] = target_mm
-            geometry_layers["insulator_length_mm"] = target_mm
-        elif code == "grounding_upgrade":
-            target_ground = _as_float(action.get("target_value"))
-            if target_ground is not None:
-                base["ground_resistance_ohm"] = target_ground
-        elif code == "arrester_install":
-            phases = action.get("phases") or []
-            for phase in phases:
-                profile[f"arrester_{str(phase).lower()}"] = "是"
-        elif code == "shielding_geometry":
-            target_angle = _as_float(action.get("target_value"))
-            if target_angle is None:
-                continue
-            top_phase_height = _max_phase_height(base, profile)
-            if top_phase_height is None:
-                continue
-            height_value = _as_float(profile.get("shield_wire_height_m")) or _as_float(lightning_wire.get("height_m")) or top_phase_height + 8.0
-            horizontal = math.tan(math.radians(abs(target_angle))) * max(height_value - top_phase_height, 1.0)
-            lightning_wire["left_mid_distance_m"] = round(horizontal, 3)
-            lightning_wire["right_mid_distance_m"] = round(horizontal, 3)
-            if not profile.get("shield_wire_height_m"):
-                profile["shield_wire_height_m"] = height_value
-    if lightning_wire:
-        base_geometry = dict(base.get("circuit_geometry_json") or {})
-        base_geometry["lightning_wire"] = lightning_wire
-        base["circuit_geometry_json"] = base_geometry
-    if geometry_layers:
-        profile["geometry_layers_json"] = geometry_layers
+def _csharp_step_normal(
+    *,
+    state: int,
+    grade_jyz: int | None,
+    grade_jddz: int | None,
+    num4: float,
+    voltage_kv: int,
+    std_jyz_mm: float,
+    old_insulator_mm: float,
+    old_ground_ohm: float,
+) -> dict[str, Any]:
+    """普通版（MyCanShu_2）单步状态机。
+
+    C# 原文（MyFunction.cs MyCanShu_2_TuiJianCuoShi switch）逐 case 对齐。
+    返回 {changed, next_state, new_insulator_mm?, new_ground_ohm?}。
+    """
+    changed = 0
+    next_state = state
+    new_insulator_mm: float | None = None
+    new_ground_ohm: float | None = None
+
+    if state == _CSHARP_STATE_INIT:
+        if (grade_jyz is not None and grade_jyz <= 2) or (grade_jddz is not None and grade_jddz <= 2):
+            if grade_jyz is not None and grade_jyz <= 2:
+                changed += 1
+                new_insulator_mm = _csharp_new_insulator_length(
+                    voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=1
+                )
+            if grade_jddz is not None and grade_jddz <= 2:
+                changed += 1
+                new_ground_ohm = 14.0
+            next_state = _CSHARP_STATE_S1
+        elif grade_jyz is not None and grade_jddz is not None and grade_jyz >= 3 and grade_jddz >= 3:
+            if grade_jyz <= 4:
+                changed += 1
+                new_insulator_mm = _csharp_new_insulator_length(
+                    voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=3
+                )
+            if grade_jddz <= 4:
+                changed += 1
+                new_ground_ohm = 3.0
+            next_state = _CSHARP_STATE_S4
+        if changed == 0:
+            changed += 1  # C# num==0 → num++ 且 mCallDLL=false
+    elif state == _CSHARP_STATE_S1:
+        if num4 > 1.2:
+            if grade_jyz is not None and grade_jyz <= 3:
+                changed += 1
+                new_insulator_mm = _csharp_new_insulator_length(
+                    voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=2
+                )
+            next_state = _CSHARP_STATE_S2
+        elif num4 <= 1.2:
+            if grade_jyz is not None and grade_jyz <= 3:
+                changed += 1
+                new_insulator_mm = _csharp_new_insulator_length(
+                    voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=2
+                )
+            if grade_jddz is not None and grade_jddz <= 3:
+                changed += 1
+                new_ground_ohm = 5.0
+            next_state = _CSHARP_STATE_S3
+        if changed == 0:
+            changed += 1
+    elif state == _CSHARP_STATE_S2:
+        if grade_jyz is not None and grade_jyz <= 4:
+            changed += 1
+            new_insulator_mm = _csharp_new_insulator_length(
+                voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=3
+            )
+        next_state = _CSHARP_STATE_S4
+        if changed == 0:
+            changed += 1
+    elif state == _CSHARP_STATE_S201:
+        if grade_jddz is not None and grade_jddz <= 4:
+            changed += 1
+            new_ground_ohm = 3.0
+        next_state = _CSHARP_STATE_S4
+        if changed == 0:
+            changed += 1
+    elif state == _CSHARP_STATE_S3:
+        if grade_jyz is not None and grade_jyz <= 4:
+            changed += 1
+            new_insulator_mm = _csharp_new_insulator_length(
+                voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=3
+            )
+        if grade_jddz is not None and grade_jddz <= 4:
+            changed += 1
+            new_ground_ohm = 3.0
+        next_state = _CSHARP_STATE_S4
+        if changed == 0:
+            changed += 1
+    elif state == _CSHARP_STATE_S4:
+        # C# case 4：直接判装避雷器（mBLQ_need=true），由外层 break
+        next_state = _CSHARP_STATE_S5
+        changed = 0
+    return {
+        "changed": changed,
+        "next_state": next_state,
+        "new_insulator_mm": new_insulator_mm,
+        "new_ground_ohm": new_ground_ohm,
+    }
+
+
+def _csharp_step_feijianxian(
+    *,
+    state: int,
+    grade_jyz: int | None,
+    grade_jddz: int | None,
+    grade_bjh: int | None,
+    num4: float,
+    voltage_kv: int,
+    std_jyz_mm: float,
+    old_insulator_mm: float,
+    old_ground_ohm: float,
+    old_protection_angle: float,
+    step1_insulator: float | None,
+    step1_ground: float | None,
+    base: Mapping[str, Any],
+    profile: Mapping[str, Any],
+) -> dict[str, Any]:
+    """非检线版（MyCanShu_3）单步状态机。
+
+    C# 原文（MyFunction.cs MyCanShu_3_TuiJianCuoShi_FeiJianXian switch）逐 case 对齐。
+    相比普通版多「调保护角 + 重算避雷线间距」的 case 4/5/6/7。
+    """
+    changed = 0
+    next_state = state
+    new_insulator_mm: float | None = None
+    new_ground_ohm: float | None = None
+    new_protection_angle: float | None = None
+    out_step1_insulator: float | None = None
+    out_step1_ground: float | None = None
+
+    if state == _CSHARP_STATE_INIT:
+        if (grade_jyz is not None and grade_jyz <= 2) or (grade_jddz is not None and grade_jddz <= 2):
+            if grade_jyz is not None and grade_jyz <= 2:
+                changed += 1
+                new_insulator_mm = _csharp_new_insulator_length(
+                    voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=1
+                )
+            if grade_jddz is not None and grade_jddz <= 2:
+                changed += 1
+                new_ground_ohm = 14.0
+            next_state = _CSHARP_STATE_S1
+        elif grade_jyz is not None and grade_jddz is not None and grade_jyz >= 3 and grade_jddz >= 3:
+            if grade_jyz <= 4:
+                changed += 1
+                new_insulator_mm = _csharp_new_insulator_length(
+                    voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=3
+                )
+            if grade_jddz <= 4:
+                changed += 1
+                new_ground_ohm = 3.0
+            next_state = _CSHARP_STATE_S4
+        if changed == 0:
+            changed += 1
+    elif state == _CSHARP_STATE_S1:
+        if num4 > 1.2:
+            if grade_jyz is not None and grade_jyz <= 3:
+                changed += 1
+                new_insulator_mm = _csharp_new_insulator_length(
+                    voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=2
+                )
+            next_state = _CSHARP_STATE_S2
+        elif num4 <= 1.2:
+            if grade_jyz is not None and grade_jyz <= 3:
+                changed += 1
+                new_insulator_mm = _csharp_new_insulator_length(
+                    voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=2
+                )
+            if grade_jddz is not None and grade_jddz <= 3:
+                changed += 1
+                new_ground_ohm = 5.0
+            next_state = _CSHARP_STATE_S3
+        if changed == 0:
+            changed += 1
+    elif state == _CSHARP_STATE_S2:
+        if grade_jyz is not None and grade_jyz <= 4:
+            changed += 1
+            new_insulator_mm = _csharp_new_insulator_length(
+                voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=3
+            )
+        next_state = _CSHARP_STATE_S4
+        if changed == 0:
+            changed += 1
+    elif state == _CSHARP_STATE_S201:
+        if grade_jddz is not None and grade_jddz <= 4:
+            changed += 1
+            new_ground_ohm = 3.0
+        next_state = _CSHARP_STATE_S4
+        if changed == 0:
+            changed += 1
+    elif state == _CSHARP_STATE_S3:
+        if grade_jyz is not None and grade_jyz <= 4:
+            changed += 1
+            new_insulator_mm = _csharp_new_insulator_length(
+                voltage_kv=voltage_kv, old_mm=old_insulator_mm, standard_mm=std_jyz_mm, step=3
+            )
+        if grade_jddz is not None and grade_jddz <= 4:
+            changed += 1
+            new_ground_ohm = 3.0
+        next_state = _CSHARP_STATE_S4
+        if changed == 0:
+            changed += 1
+    elif state == _CSHARP_STATE_S4:
+        # C# case 4：记录 Step1，然后按保护角档次调保护角
+        out_step1_insulator = step1_insulator if step1_insulator is not None else old_insulator_mm
+        out_step1_ground = step1_ground if step1_ground is not None else old_ground_ohm
+        if grade_bjh is not None and grade_bjh >= 5:
+            new_insulator_mm = old_insulator_mm
+            new_ground_ohm = old_ground_ohm
+            changed += 1
+            new_protection_angle = _csharp_target_protection_angle(base, profile)
+            next_state = _CSHARP_STATE_S7
+        elif grade_bjh == 4:
+            new_insulator_mm = old_insulator_mm
+            new_ground_ohm = old_ground_ohm
+            changed += 1
+            new_protection_angle = _csharp_target_protection_angle(base, profile)
+            next_state = _CSHARP_STATE_S6
+        elif grade_bjh is not None and grade_bjh <= 3:
+            new_insulator_mm = old_insulator_mm
+            new_ground_ohm = old_ground_ohm
+            changed += 1
+            new_protection_angle = -5.0
+            next_state = _CSHARP_STATE_S5
+        if changed == 0:
+            changed += 1
+    elif state == _CSHARP_STATE_S5:
+        # C# case 5：保护角仍不够 → 再调保护角
+        if grade_bjh is not None and grade_bjh >= 4:
+            new_insulator_mm = old_insulator_mm
+            new_ground_ohm = old_ground_ohm
+            changed += 1
+            new_protection_angle = _csharp_target_protection_angle(base, profile)
+        next_state = _CSHARP_STATE_S6
+        if changed == 0:
+            changed += 1
+    elif state == _CSHARP_STATE_S6:
+        # C# case 6：恢复 Step1 的绝缘子/接地值，重算避雷线间距
+        changed += 1
+        new_insulator_mm = step1_insulator if step1_insulator is not None else old_insulator_mm
+        new_ground_ohm = step1_ground if step1_ground is not None else old_ground_ohm
+        next_state = _CSHARP_STATE_S7
+    elif state == _CSHARP_STATE_S7:
+        # C# case 7：直接判装避雷器（mBLQ_need=true），由外层 break
+        next_state = _CSHARP_STATE_S8
+        changed = 0
+
+    return {
+        "changed": changed,
+        "next_state": next_state,
+        "new_insulator_mm": new_insulator_mm,
+        "new_ground_ohm": new_ground_ohm,
+        "new_protection_angle": new_protection_angle,
+        "step1_insulator": out_step1_insulator,
+        "step1_ground": out_step1_ground,
+    }
 
 
 def _standard_values_for_line(
@@ -2183,15 +2714,18 @@ def _grade_terrain_slope(value: float | None) -> int | None:
 
 
 def _grade_protection_angle(value: float | None) -> int | None:
+    # 对齐 C# MyFunction.cs MyCanShu_1_HuaFenDangJi 保护角分档：
+    # >5=1档(最差) >0=2 >-5=3 >-10=4 <=-10=5档(最好)。
+    # 原 web 实现用 >25/>20/>15/>10，与 C# 完全不同，已修正。
     if value is None:
         return None
-    if value > 25:
+    if value > 5.0:
         return 1
-    if value > 20:
+    if value > 0.0:
         return 2
-    if value > 15:
+    if value > -5.0:
         return 3
-    if value > 10:
+    if value > -10.0:
         return 4
     return 5
 
