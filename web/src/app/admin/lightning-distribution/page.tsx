@@ -231,13 +231,8 @@ export default function AdminLightningDistributionPage() {
   const [tempFileId, setTempFileId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
-  const [lpDrawRow, setLpDrawRow] = useState<LightningDistributionRecord | null>(null);
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
-
-  const openLpDrawModal = useCallback((record: LightningDistributionRecord) => {
-    setLpDrawRow(record);
-  }, []);
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -608,6 +603,7 @@ export default function AdminLightningDistributionPage() {
               record={record}
               fetchWithAuth={fetchWithAuth}
               canReadLogs={canReadLogs}
+              canManage={canManage}
               onOpenLog={openLogViewer}
             />
           ),
@@ -615,7 +611,7 @@ export default function AdminLightningDistributionPage() {
       ];
     });
     setActiveTabKey(key);
-  }, [fetchWithAuth, canReadLogs, openLogViewer]);
+  }, [canManage, fetchWithAuth, canReadLogs, openLogViewer]);
 
   const handleDownloadSource = useCallback(async (record: LightningDistributionRecord) => {
     try {
@@ -887,7 +883,7 @@ export default function AdminLightningDistributionPage() {
                 详情
               </Button>
               {canManage && (
-                <Button size="small" onClick={() => openLpDrawModal(row)}>
+                <Button size="small" onClick={() => openLinkedLinesModal(row)}>
                   回填
                 </Button>
               )}
@@ -903,7 +899,7 @@ export default function AdminLightningDistributionPage() {
         },
       },
     ],
-    [canManage, canRead, handleDownloadSource, deleteMutation, openDetail, openLinkedLinesModal, openLogViewer, openLpDrawModal, canReadLogs, modalApi],
+    [canManage, canRead, handleDownloadSource, deleteMutation, openDetail, openLinkedLinesModal, openLogViewer, canReadLogs, modalApi],
   );
 
   const renderRecordCard = (record: LightningDistributionRecord) => {
@@ -989,7 +985,7 @@ export default function AdminLightningDistributionPage() {
                     icon={<SendOutlined />}
                     onClick={(event) => {
                       event.stopPropagation();
-                      openLpDrawModal(record);
+                      openLinkedLinesModal(record);
                     }}
                   />
                 </Tooltip>
@@ -1253,22 +1249,6 @@ export default function AdminLightningDistributionPage() {
         onConfirm={handleImportConfirm}
       />
 
-      {canManage && (
-        <DrawLpModal
-          open={!!lpDrawRow}
-          data={lpDrawRow}
-          onClose={() => setLpDrawRow(null)}
-          fetchWithAuth={fetchWithAuth}
-          onSubmitted={(taskId, fileName) => {
-            if (canReadLogs && taskId) {
-              setLogModalTaskId(taskId);
-              setLogModalTitle(`绘图日志 - ${fileName}`);
-              setLogModalOpen(true);
-            }
-          }}
-        />
-      )}
-
       <TaskLogViewerDrawer
         taskId={logModalTaskId}
         title={logModalTitle}
@@ -1505,19 +1485,25 @@ function BackfillRecordsView({
   record,
   fetchWithAuth,
   canReadLogs,
+  canManage,
   onOpenLog,
 }: {
   record: LightningDistributionRecord;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
   canReadLogs: boolean;
+  canManage: boolean;
   onOpenLog: (taskId: string | null | undefined, label: string, fileName: string) => void;
 }) {
+  const { message: messageApi } = App.useApp();
+  const queryClient = useQueryClient();
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const { current: page, pageSize } = pagination;
   const [towerDrawer, setTowerDrawer] = useState<LightningDensityBackfillTaskSummary | null>(null);
   const [ngImageDrawer, setNgImageDrawer] = useState<LightningDensityBackfillTaskSummary | null>(null);
+  // 线路回填：回填动作放在本视图（回填记录详情）内发起，外层列表/卡片只负责跳转到这里
+  const [backfillModalOpen, setBackfillModalOpen] = useState(false);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState<number>(240);
 
@@ -1604,6 +1590,23 @@ function BackfillRecordsView({
     setPagination((prev) => ({ ...prev, current: 1 }));
   };
 
+  // 回填提交成功：关闭弹窗、回到第 1 页并刷新列表 —— 新任务立刻以进度条形式出现，
+  // 由 linkedLinesQuery 的 5s 轮询持续推进到终态。
+  const handleBackfillSubmitted = useCallback(() => {
+    setBackfillModalOpen(false);
+    setPagination((previous) => ({ ...previous, current: 1 }));
+    messageApi.success("地闪密度回填任务已提交，进度见下方列表");
+    void queryClient.invalidateQueries({
+      predicate: (query) => {
+        const first = query.queryKey[0];
+        return (
+          typeof first === "string" &&
+          first.includes(`/distributions/${record.id}/backfill-history`)
+        );
+      },
+    });
+  }, [messageApi, queryClient, record.id]);
+
   const linkedColumns = useMemo<ColumnsType<LightningDensityBackfillTaskSummary>>(
     () => [
       {
@@ -1615,19 +1618,40 @@ function BackfillRecordsView({
       {
         title: "回填状态",
         dataIndex: "status",
-        width: 110,
+        width: 160,
         render: (value: string, row: LightningDensityBackfillTaskSummary) => {
           const meta = STATUS_META[value] ?? { color: "default" as const, label: value || "-" };
+          const percent = Math.max(0, Math.min(100, Math.round(row.progress ?? 0)));
+          const isActive = value === "processing" || value === "pending";
+          const progressStatus: "normal" | "active" | "success" | "exception" =
+            value === "failed"
+              ? "exception"
+              : isActive
+                ? "active"
+                : value === "completed"
+                  ? "success"
+                  : "normal";
           const tip =
             value === "failed"
               ? row.error_message || "回填失败"
-              : value === "processing" || value === "pending"
-                ? `进度 ${row.progress ?? 0}%`
+              : isActive
+                ? `进度 ${percent}%`
                 : undefined;
+          // 进度条直接落在表格行内：排队/处理中为动效，完成后绿色满格，失败红色
           return (
-            <Tooltip title={tip}>
-              <Tag color={meta.color}>{meta.label}</Tag>
-            </Tooltip>
+            <Space direction="vertical" size={2} style={{ width: "100%" }}>
+              <Tooltip title={tip}>
+                <Tag color={meta.color} style={{ marginInlineEnd: 0 }}>
+                  {meta.label}
+                </Tag>
+              </Tooltip>
+              <Progress
+                percent={value === "completed" ? 100 : percent}
+                status={progressStatus}
+                size="small"
+                showInfo={false}
+              />
+            </Space>
           );
         },
       },
@@ -1733,9 +1757,16 @@ function BackfillRecordsView({
             />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
-            <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
-              查询
-            </Button>
+            <Space size={4}>
+              <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
+                查询
+              </Button>
+              {canManage && (
+                <Button htmlType="button" onClick={() => setBackfillModalOpen(true)}>
+                  回填
+                </Button>
+              )}
+            </Space>
           </Form.Item>
         </Form>
       </div>
@@ -1781,6 +1812,15 @@ function BackfillRecordsView({
         line={ngImageDrawer}
         fetchWithAuth={fetchWithAuth}
         onClose={() => setNgImageDrawer(null)}
+      />
+
+      {/* 线路回填：在本视图内选线路 → 确认回填 → 新任务以进度条形式进入上方表格 */}
+      <DrawLpModal
+        open={backfillModalOpen}
+        data={record}
+        fetchWithAuth={fetchWithAuth}
+        onClose={() => setBackfillModalOpen(false)}
+        onSubmitted={handleBackfillSubmitted}
       />
     </div>
   );
