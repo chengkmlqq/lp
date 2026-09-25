@@ -2137,33 +2137,57 @@ def list_lightning_density_backfill_history(
 
     items: list[LightningDensityBackfillTaskSummary] = []
     for task in rows:
-        line_row = lines.get(task.line_id)
-        items.append(
-            LightningDensityBackfillTaskSummary(
-                id=task.id,
-                line_id=task.line_id,
-                line_name=line_row.name if line_row else None,
-                line_code=line_row.code if line_row else None,
-                distribution_id=task.distribution_id,
-                prepared_at=task.prepared_at.isoformat() if task.prepared_at else None,
-                prepared_by_user_id=task.prepared_by_user_id,
-                radius_km=task.radius_km,
-                data_years=task.data_years,
-                updated_tower_count=task.updated_tower_count,
-                missing_geo_count=task.missing_geo_count,
-                avg_density=task.avg_density,
-                min_density=task.min_density,
-                max_density=task.max_density,
-                strike_count=task.strike_count,
-                warnings=list(task.warnings or []),
-                status=task.status or "completed",
-                progress=task.progress or 0,
-                task_id=task.task_id,
-                error_message=task.error_message,
-                has_circle_image=bool(task.circle_image_object_key),
-            )
-        )
+        items.append(_serialize_density_backfill_task(task, lines.get(task.line_id)))
     return LightningDensityBackfillHistoryResponse(distribution_id=distribution_id, items=items, total=total)
+
+
+def _serialize_density_backfill_task(
+    task,
+    line_row,
+) -> LightningDensityBackfillTaskSummary:
+    """地闪密度回填任务 → 响应模型（列表与单任务查询共用，保证口径一致）。"""
+    return LightningDensityBackfillTaskSummary(
+        id=task.id,
+        line_id=task.line_id,
+        line_name=line_row.name if line_row else None,
+        line_code=line_row.code if line_row else None,
+        distribution_id=task.distribution_id,
+        prepared_at=task.prepared_at.isoformat() if task.prepared_at else None,
+        prepared_by_user_id=task.prepared_by_user_id,
+        radius_km=task.radius_km,
+        data_years=task.data_years,
+        updated_tower_count=task.updated_tower_count,
+        missing_geo_count=task.missing_geo_count,
+        avg_density=task.avg_density,
+        min_density=task.min_density,
+        max_density=task.max_density,
+        strike_count=task.strike_count,
+        warnings=list(task.warnings or []),
+        status=task.status or "completed",
+        progress=task.progress or 0,
+        task_id=task.task_id,
+        error_message=task.error_message,
+        has_circle_image=bool(task.circle_image_object_key),
+    )
+
+
+def get_lightning_density_backfill_task(
+    db: Session,
+    task_id: str,
+) -> LightningDensityBackfillTaskSummary:
+    """单条地闪密度回填任务。
+
+    供前端**按任务**轮询进度：只更新该记录那一行的进度条，
+    不触发整张列表重新请求（避免页面整体刷新感）。
+    """
+    from ..models.lightning_density_backfill import LightningDensityBackfillTask as _LDBT
+    from ..models.line import Line as _Line
+
+    task = db.execute(select(_LDBT).where(_LDBT.id == task_id)).scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="回填任务不存在")
+    line_row = db.execute(select(_Line).where(_Line.id == task.line_id)).scalar_one_or_none()
+    return _serialize_density_backfill_task(task, line_row)
 
 
 def retry_lightning_distribution(

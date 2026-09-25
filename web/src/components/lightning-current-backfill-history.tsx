@@ -26,6 +26,7 @@ import {
 
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { useBackfillTaskProgressSync, type BackfillTaskPatch } from "@/hooks/use-backfill-task-progress";
 import { readApiError } from "@/lib/api";
 import type {
   LineListResponse,
@@ -94,6 +95,82 @@ function renderBackfillProgressCell(
       </Space>
     </Tooltip>
   );
+}
+
+/** 电流回填单任务响应（`{task: {...}, towers: [...]}`）→ 进度补丁。 */
+function parseCurrentBackfillTask(
+  payload: Record<string, unknown>,
+): { status: string; progress: number; errorMessage: string | null } {
+  const task = (payload.task ?? payload) as Record<string, unknown>;
+  const progress = Number(task.progress);
+  return {
+    status: String(task.status ?? "pending"),
+    progress: Number.isFinite(progress) ? progress : 0,
+    errorMessage: (task.error_message as string | null) ?? null,
+  };
+}
+
+/** 把进度补丁合并进「幅值模式」的一行；收尾字段一并就地写入，故完成后无需再刷列表。 */
+function mergeAmplitudeBackfillRow(
+  row: LightningAmplitudeBackfillLine,
+  patch: BackfillTaskPatch,
+): LightningAmplitudeBackfillLine {
+  const task = (patch.raw.task ?? patch.raw) as Record<string, unknown>;
+  const next: LightningAmplitudeBackfillLine = {
+    ...row,
+    status: patch.status,
+    progress: patch.progress,
+    error_message: patch.errorMessage,
+    current_a: (task.current_a as number | null) ?? row.current_a,
+    current_b: (task.current_b as number | null) ?? row.current_b,
+    peak_max: (task.peak_max as number | null) ?? row.peak_max,
+    peak_min: (task.peak_min as number | null) ?? row.peak_min,
+    sampled_event_count:
+      (task.sampled_event_count as number | undefined) ?? row.sampled_event_count,
+  };
+  const unchanged =
+    next.status === row.status &&
+    next.progress === row.progress &&
+    next.error_message === row.error_message &&
+    next.current_a === row.current_a &&
+    next.current_b === row.current_b &&
+    next.peak_max === row.peak_max &&
+    next.peak_min === row.peak_min &&
+    next.sampled_event_count === row.sampled_event_count;
+  return unchanged ? row : next;
+}
+
+/** 同上，「全部回填记录」模式的一行。 */
+function mergeCurrentBackfillTaskRow(
+  row: LightningCurrentBackfillTaskSummary,
+  patch: BackfillTaskPatch,
+): LightningCurrentBackfillTaskSummary {
+  const task = (patch.raw.task ?? patch.raw) as Record<string, unknown>;
+  const next: LightningCurrentBackfillTaskSummary = {
+    ...row,
+    status: patch.status,
+    progress: patch.progress,
+    error_message: patch.errorMessage,
+    current_a: (task.current_a as number | null) ?? row.current_a,
+    current_b: (task.current_b as number | null) ?? row.current_b,
+    peak_max: (task.peak_max as number | null) ?? row.peak_max,
+    peak_min: (task.peak_min as number | null) ?? row.peak_min,
+    updated_tower_count:
+      (task.updated_tower_count as number | undefined) ?? row.updated_tower_count,
+    sampled_event_count:
+      (task.sampled_event_count as number | undefined) ?? row.sampled_event_count,
+  };
+  const unchanged =
+    next.status === row.status &&
+    next.progress === row.progress &&
+    next.error_message === row.error_message &&
+    next.current_a === row.current_a &&
+    next.current_b === row.current_b &&
+    next.peak_max === row.peak_max &&
+    next.peak_min === row.peak_min &&
+    next.updated_tower_count === row.updated_tower_count &&
+    next.sampled_event_count === row.sampled_event_count;
+  return unchanged ? row : next;
 }
 
 function formatDateTime(iso: string | null | undefined): string {
@@ -265,14 +342,8 @@ export function LightningCurrentBackfillHistoryTable({
   const amplitudeLinesQuery = useQuery<LightningAmplitudeBackfillLineListResponse>({
     queryKey: ["lightning-currents", amplitudeId, "backfill-lines", keyword, pagination.current, pagination.pageSize],
     enabled: !!user && canRead && isAmplitudeMode,
-    // 有行进中的回填任务时按 5s 轮询，让每行进度条自己往前走；全部结束即停。
-    refetchInterval: (query) => {
-      const items = query.state.data?.items ?? [];
-      const hasActive = items.some(
-        (row) => row.status === "pending" || row.status === "processing",
-      );
-      return hasActive ? 5000 : false;
-    },
+    // 不用 refetchInterval 轮询整表：进度由 useBackfillTaskProgressSync 按任务就地更新，
+    // 只动对应那一行，页面/表格不会有整体刷新感。
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("offset", String((pagination.current - 1) * pagination.pageSize));
@@ -360,6 +431,32 @@ export function LightningCurrentBackfillHistoryTable({
     onError: (candidate) => {
       messageApi.error(candidate instanceof Error ? candidate.message : "回填失败");
     },
+  });
+
+  // ---- 进度「按记录就地更新」：只轮询进行中的任务，合并进对应行，不重新请求列表 ----
+  useBackfillTaskProgressSync<LightningAmplitudeBackfillLine>({
+    items: isAmplitudeMode ? amplitudeLinesQuery.data?.items ?? [] : [],
+    enabled: !!user && canRead && isAmplitudeMode,
+    fetchWithAuth,
+    getTaskId: (row) => row.task_id,
+    getStatus: (row) => row.status,
+    taskPath: (taskId) => `/api/v1/lightning-currents/backfill-tasks/${taskId}`,
+    parseTask: parseCurrentBackfillTask,
+    matchQueryKey: (key) => key[0] === "lightning-currents" && key[2] === "backfill-lines",
+    mergeItem: mergeAmplitudeBackfillRow,
+  });
+
+  useBackfillTaskProgressSync<LightningCurrentBackfillTaskSummary>({
+    items: isAmplitudeMode ? [] : listQuery.data?.items ?? [],
+    enabled: !!user && canRead && !isAmplitudeMode,
+    fetchWithAuth,
+    getTaskId: (row) => row.id,
+    getStatus: (row) => row.status,
+    taskPath: (taskId) => `/api/v1/lightning-currents/backfill-tasks/${taskId}`,
+    parseTask: parseCurrentBackfillTask,
+    matchQueryKey: (key) =>
+      typeof key[0] === "string" && (key[0] as string).includes("/backfill-tasks?"),
+    mergeItem: mergeCurrentBackfillTaskRow,
   });
 
   const openBackfillModal = useCallback(() => {
@@ -592,7 +689,8 @@ export function LightningCurrentBackfillHistoryTable({
     ? amplitudeLinesQuery.data?.items ?? []
     : listQuery.data?.items ?? [];
   const tableTotal = isAmplitudeMode ? amplitudeLinesQuery.data?.total ?? 0 : listQuery.data?.total ?? 0;
-  const tableLoading = isAmplitudeMode ? amplitudeLinesQuery.isFetching : listQuery.isFetching;
+  // 用 isLoading（仅首次加载）而非 isFetching：后台按任务更新进度不进入 loading，避免表格闪烁
+  const tableLoading = isAmplitudeMode ? amplitudeLinesQuery.isLoading : listQuery.isLoading;
 
   return (
     <div className="admin-lightning-backfill-pane">

@@ -43,6 +43,7 @@ from ...schemas.lightning import (
     LightningLinkedLinesResponse,
     LightningDensityBackfillTowersResponse,
     LightningDensityBackfillHistoryResponse,
+    LightningDensityBackfillTaskSummary,
     LightningTempUploadResponse,
 )
 from ...services.lightning_service import (
@@ -62,6 +63,7 @@ from ...services.lightning_service import (
     get_lightning_distribution_lp_image_content,
     get_lightning_distribution_circle_image_content,
     get_lightning_density_backfill_circle_image_content,
+    get_lightning_density_backfill_task,
     get_lightning_distribution_status,
     get_linked_lines_for_distribution,
     get_lightning_density_backfill_towers,
@@ -520,6 +522,19 @@ def get_lightning_distribution_circle_image_endpoint(
     if content is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="沿线圆密度图不存在")
     return StreamingResponse(iter([content]), media_type=media_type or "image/png")
+
+
+@router.get(
+    "/density-backfill-tasks/{backfill_task_id}",
+    response_model=LightningDensityBackfillTaskSummary,
+)
+def get_lightning_density_backfill_task_endpoint(
+    backfill_task_id: str,
+    _: CurrentUser = Depends(require_any_permission("lightning.read", "lightning.manage")),
+    db: Session = Depends(get_db),
+) -> LightningDensityBackfillTaskSummary:
+    """单条地闪密度回填任务（前端按任务轮询进度，只更新那一行，不整表刷新）。"""
+    return get_lightning_density_backfill_task(db, backfill_task_id)
 
 
 @router.get("/density-backfill-tasks/{backfill_task_id}/circle-image")

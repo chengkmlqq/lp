@@ -55,6 +55,7 @@ const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLD
 
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
+import { useBackfillTaskProgressSync, type BackfillTaskPatch } from "@/hooks/use-backfill-task-progress";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { downloadFileWithAuth, getApiBaseUrl, readApiError } from "@/lib/api";
@@ -99,6 +100,50 @@ const STATUS_META: Record<string, { color: "default" | "processing" | "success" 
   completed: { color: "success", label: "已完成" },
   failed: { color: "error", label: "失败" },
 };
+
+/** 地闪密度回填单任务响应（扁平摘要）→ 进度补丁。 */
+function parseDensityBackfillTask(
+  payload: Record<string, unknown>,
+): { status: string; progress: number; errorMessage: string | null } {
+  const progress = Number(payload.progress);
+  return {
+    status: String(payload.status ?? "completed"),
+    progress: Number.isFinite(progress) ? progress : 0,
+    errorMessage: (payload.error_message as string | null) ?? null,
+  };
+}
+
+/** 把进度补丁合并进地闪密度回填记录的一行；收尾字段一并就地写入，完成后无需再刷列表。 */
+function mergeDensityBackfillRow(
+  row: LightningDensityBackfillTaskSummary,
+  patch: BackfillTaskPatch,
+): LightningDensityBackfillTaskSummary {
+  const raw = patch.raw;
+  const next: LightningDensityBackfillTaskSummary = {
+    ...row,
+    status: patch.status,
+    progress: patch.progress,
+    error_message: patch.errorMessage,
+    updated_tower_count:
+      (raw.updated_tower_count as number | undefined) ?? row.updated_tower_count,
+    strike_count: (raw.strike_count as number | undefined) ?? row.strike_count,
+    avg_density: (raw.avg_density as number | null) ?? row.avg_density,
+    min_density: (raw.min_density as number | null) ?? row.min_density,
+    max_density: (raw.max_density as number | null) ?? row.max_density,
+    has_circle_image: (raw.has_circle_image as boolean | undefined) ?? row.has_circle_image,
+  };
+  const unchanged =
+    next.status === row.status &&
+    next.progress === row.progress &&
+    next.error_message === row.error_message &&
+    next.updated_tower_count === row.updated_tower_count &&
+    next.strike_count === row.strike_count &&
+    next.avg_density === row.avg_density &&
+    next.min_density === row.min_density &&
+    next.max_density === row.max_density &&
+    next.has_circle_image === row.has_circle_image;
+  return unchanged ? row : next;
+}
 
 const LIGHTNING_TABLE_MIN_SCROLL_Y = 180;
 const LIGHTNING_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
@@ -1562,14 +1607,8 @@ function BackfillRecordsView({
 
   const linkedLinesQuery = useQuery({
     queryKey: [linkedLinesPath],
-    // 存在 pending/processing 回填任务时按 ~5s 轮询，WS 断开也能推进到最终态
-    refetchInterval: (query) => {
-      const items = (query.state.data as LightningDensityBackfillHistoryResponse | undefined)?.items ?? [];
-      const hasActive = items.some(
-        (row) => row.status === "pending" || row.status === "processing",
-      );
-      return hasActive ? 5000 : false;
-    },
+    // 不用 refetchInterval 轮询整表：进度由 useBackfillTaskProgressSync 按任务就地更新，
+    // 只动对应那一行；列表仅在提交回填后刷新一次以带上新记录。
     queryFn: async () => {
       const response = await fetchWithAuth(linkedLinesPath);
       if (!response.ok) {
@@ -1577,6 +1616,20 @@ function BackfillRecordsView({
       }
       return (await response.json()) as LightningDensityBackfillHistoryResponse;
     },
+  });
+
+  // ---- 进度「按记录就地更新」：只轮询进行中的任务，合并进对应行，不重新请求列表 ----
+  useBackfillTaskProgressSync<LightningDensityBackfillTaskSummary>({
+    items: linkedLinesQuery.data?.items ?? [],
+    enabled: true,
+    fetchWithAuth,
+    getTaskId: (row) => row.id,
+    getStatus: (row) => row.status,
+    taskPath: (taskId) => `/api/v1/lightning-currents/density-backfill-tasks/${taskId}`,
+    parseTask: parseDensityBackfillTask,
+    matchQueryKey: (key) =>
+      typeof key[0] === "string" && (key[0] as string).includes("/backfill-history"),
+    mergeItem: mergeDensityBackfillRow,
   });
 
   const linkedLines = useMemo(
@@ -1775,7 +1828,7 @@ function BackfillRecordsView({
         size="small"
         columns={linkedColumns}
         dataSource={linkedLines}
-        loading={linkedLinesQuery.isFetching}
+        loading={linkedLinesQuery.isLoading}
         tableLayout="fixed"
         scroll={{ x: 800, y: tableScrollY }}
         style={{ height: "100%" }}
