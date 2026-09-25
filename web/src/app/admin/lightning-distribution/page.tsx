@@ -2204,23 +2204,35 @@ function DrawLpBody({
     },
   });
 
-  const lineOptions = useMemo(() =>
-    (linesQuery.data?.items ?? []).map((l: LineSummary) => {
-      const inRange = bboxParam ? (l.bbox_overlap !== false) : true;
-      const label = `${l.code} - ${l.name}${l.voltage_kv ? ` (${l.voltage_kv}kV)` : ""}`;
-      return {
-        label: (
-          <Space size={6} style={{ width: "100%", justifyContent: "space-between" }}>
-            <span>{label}</span>
-            {bboxParam && !inRange && (
-              <Tag color="warning" style={{ marginInlineEnd: 0 }}>不在数据范围内</Tag>
-            )}
-          </Space>
-        ),
-        value: l.id,
-        disabled: bboxParam ? !inRange : false,
-      };
-    }),
+  const lineOptions = useMemo(
+    () =>
+      (linesQuery.data?.items ?? []).map((l: LineSummary) => {
+        const label = `${l.code} - ${l.name}${l.voltage_kv ? ` (${l.voltage_kv}kV)` : ""}`;
+        const noTower = (l.tower_count ?? 0) === 0;
+        const outOfRange = !!bboxParam && l.bbox_overlap === false;
+        // 两种「选了也回填不了」的线路，直接在下拉里给出原因并禁用，避免选完才报错：
+        //   ① 线路没有杆塔 → 后端 400「当前线路没有可回填的杆塔数据」
+        //   ② 杆塔不在本次落雷数据范围内 → 无落雷可采样
+        const reason = noTower ? "无杆塔数据" : outOfRange ? "杆塔不在落雷数据范围内" : null;
+        return {
+          label: (
+            <Space size={6} style={{ width: "100%", justifyContent: "space-between" }}>
+              <span>{label}</span>
+              {reason ? (
+                <Tag color="warning" style={{ marginInlineEnd: 0 }}>
+                  {reason}
+                </Tag>
+              ) : (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {l.tower_count} 塔
+                </Typography.Text>
+              )}
+            </Space>
+          ),
+          value: l.id,
+          disabled: reason !== null,
+        };
+      }),
     [linesQuery.data, bboxParam],
   );
 
