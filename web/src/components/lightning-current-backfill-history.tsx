@@ -27,6 +27,7 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useBackfillTaskProgressSync, type BackfillTaskPatch } from "@/hooks/use-backfill-task-progress";
+import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { readApiError } from "@/lib/api";
 import type {
   LineListResponse,
@@ -226,6 +227,10 @@ export function LightningCurrentBackfillHistoryTable({
   const [tableScrollY, setTableScrollY] = useState(BACKFILL_HISTORY_MIN_SCROLL_Y);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  // 任务执行日志弹窗（复用通用 TaskLogViewerDrawer，SSE 实时流）
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [logTaskId, setLogTaskId] = useState<string | null>(null);
+  const [logTitle, setLogTitle] = useState("任务执行日志");
   // 幅值模式：筛选关键词
   const [keyword, setKeyword] = useState("");
   // 线路回填：本页内发起（外层列表只负责跳到本页）。
@@ -236,7 +241,18 @@ export function LightningCurrentBackfillHistoryTable({
 
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
   const canManage = hasPermission("lightning.manage");
+  // 日志查看走 celery 权限（task-logs 接口），与任务监控页口径一致
+  const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
   const isAmplitudeMode = !!amplitudeId;
+
+  const openLogViewer = useCallback((taskId: string | null | undefined, label: string) => {
+    if (!taskId || !canReadLogs) {
+      return;
+    }
+    setLogTaskId(taskId);
+    setLogTitle(`回填任务日志 - ${label}`);
+    setLogModalOpen(true);
+  }, [canReadLogs]);
 
   const updateTableScrollHeight = useCallback(() => {
     if (typeof window === "undefined") {
@@ -537,26 +553,35 @@ export function LightningCurrentBackfillHistoryTable({
       {
         title: "操作",
         key: "actions",
-        width: 110,
+        width: 170,
         fixed: "right",
         render: (_: unknown, row) => (
-          <Button
-            size="small"
-            disabled={!row.task_id}
-            onClick={() => {
-              if (!row.task_id) {
-                return;
-              }
-              setDetailTaskId(row.task_id);
-              setDetailOpen(true);
-            }}
-          >
-            查看详情
-          </Button>
+          <Space size={4}>
+            <Button
+              size="small"
+              disabled={!row.task_id}
+              onClick={() => {
+                if (!row.task_id) {
+                  return;
+                }
+                setDetailTaskId(row.task_id);
+                setDetailOpen(true);
+              }}
+            >
+              查看详情
+            </Button>
+            <Button
+              size="small"
+              disabled={!row.task_id || !canReadLogs}
+              onClick={() => openLogViewer(row.task_id, row.line_name || row.line_code || "未知线路")}
+            >
+              日志
+            </Button>
+          </Space>
         ),
       },
     ],
-    [],
+    [canReadLogs, openLogViewer],
   );
 
   const taskColumns = useMemo<ColumnsType<LightningCurrentBackfillTaskSummary>>(
@@ -609,16 +634,25 @@ export function LightningCurrentBackfillHistoryTable({
       {
         title: "操作",
         key: "actions",
-        width: 100,
+        width: 170,
         fixed: "right",
         render: (_: unknown, row) => (
-          <Button size="small" onClick={() => openDetail(row)}>
-            查看详情
-          </Button>
+          <Space size={4}>
+            <Button size="small" onClick={() => openDetail(row)}>
+              查看详情
+            </Button>
+            <Button
+              size="small"
+              disabled={!row.task_id || !canReadLogs}
+              onClick={() => openLogViewer(row.task_id, row.line_name || row.line_id || "未知线路")}
+            >
+              日志
+            </Button>
+          </Space>
         ),
       },
     ],
-    [openDetail],
+    [canReadLogs, openDetail, openLogViewer],
   );
 
   const towerColumns = useMemo<ColumnsType<LightningCurrentBackfillTowerDetail>>(
@@ -951,6 +985,14 @@ export function LightningCurrentBackfillHistoryTable({
             />
           )}
       </Drawer>
+
+      <TaskLogViewerDrawer
+        taskId={logTaskId}
+        title={logTitle}
+        open={logModalOpen}
+        onClose={() => setLogModalOpen(false)}
+        variant="modal"
+      />
     </div>
   );
 }
