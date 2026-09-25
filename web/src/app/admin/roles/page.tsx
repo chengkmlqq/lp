@@ -593,7 +593,8 @@ export default function AdminRolesPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-        width: 180,
+      align: "right" as const,
+      width: 180,
         render: (_, role) => {
           const isDeleting = deletingRoleId === role.id;
           const isSaving = savingRoleId === role.id;

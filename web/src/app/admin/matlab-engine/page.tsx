@@ -812,6 +812,7 @@ export default function AdminMatlabEnginePage() {
       key: "actions",
       width: 200,
       fixed: "right",
+      align: "right" as const,
       render: (_, record) => {
         const moreMenuItems: MenuProps["items"] = [
           // 下载紧随「生效」之后，收纳于三点菜单中

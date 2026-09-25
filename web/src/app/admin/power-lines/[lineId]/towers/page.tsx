@@ -369,6 +369,7 @@ export default function AdminPowerLineTowersPage() {
       key: "actions",
       width: 120,
       fixed: "right" as const,
+      align: "right" as const,
       render: (_: unknown, row) => (
         <Space size="small">
           {canTowerRead && (

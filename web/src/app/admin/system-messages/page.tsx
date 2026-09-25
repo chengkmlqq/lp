@@ -777,6 +777,7 @@ export default function AdminSystemMessagesPage() {
       key: "actions",
       width: 200,
       fixed: "right",
+      align: "right" as const,
       render: (_, item) => {
         const isDeleting = deletingMessageId === item.id;
 

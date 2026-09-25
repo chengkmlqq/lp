@@ -145,6 +145,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
                 title: "操作",
                 key: "operation",
                 width: 110,
+                align: "right" as const,
                 render: (_value, row: { path: string; name: string; is_dir: boolean }) =>
                   !row.is_dir && row.path.toLowerCase().endsWith(".dat") ? (
                     <Button

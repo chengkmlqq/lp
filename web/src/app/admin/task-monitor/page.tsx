@@ -291,7 +291,8 @@ export default function AdminTaskMonitorPage() {
         key: "actions",
         width: 200,
         fixed: "right",
-        render: (_: unknown, record: TaskTableRow) => (
+      align: "right" as const,
+      render: (_: unknown, record: TaskTableRow) => (
           <Space wrap>
             <Button size="small" onClick={() => handleViewLog(record.task_id)}>
               日志

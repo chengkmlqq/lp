@@ -986,6 +986,7 @@ export default function AdminUsersPage() {
       title: "操作",
       key: "actions",
       fixed: "right",
+      align: "right" as const,
       width: 200,
       render: (_value, row) => {
         const updatingLoading = updatingStatusUserId === row.id;

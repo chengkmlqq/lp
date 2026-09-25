@@ -498,6 +498,7 @@ export default function AtpParamTemplatesPage() {
       title: "操作",
       key: "actions",
       fixed: "right",
+      align: "right" as const,
       width: 240,
       render: (_v, row) => (
         <Space wrap size={4}>

@@ -722,7 +722,8 @@ export default function AdminDimensionsPage() {
         key: "actions",
         width: 180,
         fixed: "right",
-        render: (_, record) => {
+      align: "right" as const,
+      render: (_, record) => {
           const deleteLoading = deletingId === record.id;
           const rowBusy = deleteLoading;
           const moreMenuItems: MenuProps["items"] = [

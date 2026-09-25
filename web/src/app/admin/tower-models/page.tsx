@@ -629,7 +629,8 @@ export default function AdminTowerModelsPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-        width: 180,
+      align: "right" as const,
+      width: 180,
         render: (_: unknown, row) => {
           const rowBusy = isDeletingModel || isSavingModel || isUploadingImage;
           const moreMenuItems: MenuProps["items"] = [

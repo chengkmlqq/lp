@@ -555,6 +555,7 @@ export function LightningCurrentBackfillHistoryTable({
         key: "actions",
         width: 170,
         fixed: "right",
+      align: "right" as const,
         render: (_: unknown, row) => (
           <Space size={4}>
             <Button
@@ -636,6 +637,7 @@ export function LightningCurrentBackfillHistoryTable({
         key: "actions",
         width: 170,
         fixed: "right",
+      align: "right" as const,
         render: (_: unknown, row) => (
           <Space size={4}>
             <Button size="small" onClick={() => openDetail(row)}>

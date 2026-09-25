@@ -544,6 +544,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       key: "actions",
       width: 180,
       fixed: "right" as const,
+      align: "right" as const,
       render: (_: unknown, row) => {
         const menuItems: MenuProps["items"] = [
           ...(canTowerManage

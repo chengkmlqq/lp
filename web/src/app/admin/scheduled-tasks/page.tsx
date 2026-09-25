@@ -356,7 +356,8 @@ export default function AdminScheduledTasksPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-        width: 180,
+      align: "right" as const,
+      width: 180,
         render: (_, record) => (
           <Space size="small">
             <Button size="small" onClick={() => startEdit(record)}>

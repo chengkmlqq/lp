@@ -705,7 +705,8 @@ export default function AtpModelsPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-        width: 180,
+      align: "right" as const,
+      width: 180,
         render: (_, item) => {
           const deleteLoading = deleteMutation.isPending;
           const rowBusy = deleteLoading;

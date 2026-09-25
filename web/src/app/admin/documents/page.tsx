@@ -626,6 +626,7 @@ export default function AdminDocumentsPage() {
       title: "操作",
       key: "actions",
       fixed: "right",
+      align: "right" as const,
       width: 180,
       render: (_value, record) => {
         const deleteLoading = deletingDocumentId === record.id;
