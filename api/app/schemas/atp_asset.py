@@ -95,8 +95,13 @@ class AtpAssetFileContentResponse(BaseModel):
     size: int
     mime_type: str | None = None
     content_type: str  # "text" | "binary" | "not-found"
-    content: str = ""  # text 时为内容(UTF-8);binary 时为空
+    content: str = ""  # text 时为请求行范围内的内容(UTF-8);binary 时为空
     preview_lines: list[str] = []  # text 前 N 行,供前端快速渲染
+    # 懒加载分页：offset/limit 请求的行切片 + 总行数，前端滚动追加读取全文
+    offset: int = 0
+    limit: int = 0
+    total_lines: int = 0
+    has_more: bool = False
 
 
 class AtpAssetFileUploadResponse(BaseModel):

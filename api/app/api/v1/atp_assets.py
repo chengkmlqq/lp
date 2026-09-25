@@ -128,11 +128,17 @@ def list_atp_asset_files_endpoint(
 def read_atp_asset_file_content_endpoint(
     asset_id: str,
     path: str = Query(..., description="相对存储根目录的文件路径，如 templates/fanji/short.dat"),
+    offset: int = Query(default=0, ge=0, description="行级懒加载：起始行(0-based)，配合 limit 分段读取全文"),
+    limit: int | None = Query(default=None, ge=1, le=100000, description="本次返回的行数上限；不传则返回全文"),
     _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
     db: Session = Depends(get_db),
 ) -> AtpAssetFileContentResponse:
-    """读取资产目录下文本文件内容（dat 文件详情查看、lib 结果查看等）。"""
-    return read_asset_file_content(db, asset_id=asset_id, relative_path=path)
+    """读取资产目录下文本文件内容（在线查看：行级懒加载全文，不截断）。
+
+    - 不传 offset/limit 时返回全文，兼容 dat 详情等一次性读取场景。
+    - 传 offset/limit 时只返回该行区间，配合 total_lines/has_more 前端滚动续读。
+    """
+    return read_asset_file_content(db, asset_id=asset_id, relative_path=path, offset=offset, limit=limit)
 
 
 @router.get("/assets/{asset_id}", response_model=AtpAssetDetail)

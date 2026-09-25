@@ -987,13 +987,19 @@ def read_asset_file_content(
     *,
     asset_id: str,
     relative_path: str,
-    max_bytes: int = 2 * 1024 * 1024,
+    offset: int = 0,
+    limit: int | None = None,
 ) -> AtpAssetFileContentResponse:
-    """读取资产目录下文本文件内容(供详情页「dat 文件详情查看」等用途)。
+    """读取资产目录下文本文件内容(供详情页在线查看等用途)。
 
     - 仅允许读取资产存储目录内的相对路径(防越权)。
     - 二进制(不可解码为 UTF-8)返回 content_type="binary",不返回内容。
-    - 超大文本截断到 max_bytes 并返回前 N 行预览。
+    - 行级懒加载分页：传 offset/limit 只返回该行区间(content)，并带 total_lines /
+      has_more，前端滚动到底部继续拉取，**不再截断**（可看全文）。
+    - limit=None 时返回全文(兼容详情页等一次性读取场景)。
+    - 备注：当前 storage driver 仅支持整文件读取，故每页请求均会读取完整文件后
+      按行切片返回；ATP 模型文件体量通常较小，可接受；大文件场景后续可扩展
+      driver 字节级 range 读。
     """
     asset = get_asset_by_id(db, asset_id)
     if not asset:
@@ -1035,19 +1041,16 @@ def read_asset_file_content(
         )
 
     lines = text.splitlines()
+    total_lines = len(lines)
     preview = [line for line in lines[:300] if len(line) <= 2000]
-    if len(raw) <= max_bytes:
-        return AtpAssetFileContentResponse(
-            asset_id=asset_id,
-            relative_path=relative_path,
-            name=result.name,
-            size=len(raw),
-            mime_type=result.mime_type,
-            content_type="text",
-            content=text,
-            preview_lines=preview,
-        )
-    # 超大:只给预览,不给全文
+    start = max(0, offset)
+    if limit is None:
+        # 不分页:返回全文(受 max_bytes 保护)
+        end = total_lines
+    else:
+        end = min(total_lines, start + max(0, limit))
+    page = lines[start:end]
+    has_more = end < total_lines
     return AtpAssetFileContentResponse(
         asset_id=asset_id,
         relative_path=relative_path,
@@ -1055,8 +1058,12 @@ def read_asset_file_content(
         size=len(raw),
         mime_type=result.mime_type,
         content_type="text",
-        content="",
+        content="\n".join(page),
         preview_lines=preview,
+        offset=start,
+        limit=end - start,
+        total_lines=total_lines,
+        has_more=has_more,
     )
 
 
