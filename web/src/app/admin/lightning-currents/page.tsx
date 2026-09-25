@@ -33,12 +33,12 @@ import {
   ClockCircleOutlined,
   DeleteOutlined,
   EditOutlined,
-  EnvironmentOutlined,
   EyeOutlined,
   FileTextOutlined,
   HistoryOutlined,
   InboxOutlined,
   MoreOutlined,
+  NodeIndexOutlined,
   NumberOutlined,
   QuestionCircleOutlined,
   SearchOutlined,
@@ -738,10 +738,6 @@ export default function AdminLightningCurrentsPage() {
 
           <div className="flex flex-col gap-2 px-4 py-3">
             <div className="flex items-center gap-2">
-              <EnvironmentOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">采样城市：{record.city || "-"}</Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
               <NumberOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">采样点数：{record.sample_count}</Typography.Text>
             </div>
@@ -756,6 +752,31 @@ export default function AdminLightningCurrentsPage() {
             <div className="flex items-center gap-2">
               <SwapOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">极性：{formatPolarity(record.polarity)}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <HistoryOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">导入时间：{formatDateTime(record.create_date) || "-"}</Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <NodeIndexOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
+                回填线路数：
+                {(record.backfill_line_count ?? 0) > 0 ? (
+                  <Button
+                    type="link"
+                    size="small"
+                    style={{ padding: 0, height: "auto", fontSize: 12 }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openBackfillLines(record);
+                    }}
+                  >
+                    {record.backfill_line_count} 条
+                  </Button>
+                ) : (
+                  "-"
+                )}
+              </Typography.Text>
             </div>
           </div>
 
@@ -881,19 +902,6 @@ export default function AdminLightningCurrentsPage() {
         render: (value: string) => value || "-",
       },
       {
-        title: "采样城市",
-        dataIndex: "city",
-        width: 110,
-        ellipsis: { showTitle: true },
-        render: (value: string | null) => value || "-",
-      },
-      {
-        title: "导入时间",
-        dataIndex: "create_date",
-        width: 170,
-        render: (value: string) => formatDateTime(value),
-      },
-      {
         title: "采样点数",
         dataIndex: "sample_count",
         width: 100,
@@ -934,6 +942,12 @@ export default function AdminLightningCurrentsPage() {
             </Space>
           );
         },
+      },
+      {
+        title: "导入时间",
+        dataIndex: "create_date",
+        width: 170,
+        render: (value: string) => formatDateTime(value),
       },
       {
         title: "回填线路数",
