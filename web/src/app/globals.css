@@ -6358,6 +6358,48 @@ body {
   min-height: var(--admin-lightning-backfill-table-body-min-height, 180px);
 }
 
+/* 雷电流幅值统计-回填记录：回填进行中的进度条面板（位于筛选栏与表格之间，
+   回填动作已从外层列表迁入本页，进度在此实时展示）。 */
+.admin-lightning-backfill-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--ant-color-border, #f0f0f0);
+  border-radius: 6px;
+  background: var(--ant-color-fill-quaternary, #fafafa);
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.admin-lightning-backfill-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.admin-lightning-backfill-progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-lightning-backfill-progress-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-lightning-backfill-progress-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
 /* 地闪密度统计-回填记录：面板内边距 12px + 表体动态最小高度（与线路管理列表页一致）。
    底部间距由组件按面板 padding-box 底边推导后写入 CSS 变量。 */
 .admin-lightning-distribution-backfill-view {

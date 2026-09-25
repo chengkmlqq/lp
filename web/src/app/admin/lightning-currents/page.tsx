@@ -170,10 +170,6 @@ export default function AdminLightningCurrentsPage() {
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [backfillLinesOpen, setBackfillLinesOpen] = useState(false);
   const [backfillLinesRecord, setBackfillLinesRecord] = useState<LightningAmplitudeRecord | null>(null);
-  const [backfillOpen, setBackfillOpen] = useState(false);
-  const [backfillRecord, setBackfillRecord] = useState<LightningAmplitudeRecord | null>(null);
-  const [backfillLineIds, setBackfillLineIds] = useState<string[]>([]);
-  const [backfillTaskIds, setBackfillTaskIds] = useState<string[]>([]);
   const [tableScrollY, setTableScrollY] = useState(LIGHTNING_TABLE_MIN_SCROLL_Y);
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -303,7 +299,6 @@ export default function AdminLightningCurrentsPage() {
         current_b?: number;
       };
       if (name === "backfill.completed") {
-        setBackfillTaskIds((prev) => prev.filter((item) => item !== (payload.backfill_task_id || "")));
         if (payload.sampled_event_count != null) {
           setSuccess(
             `回填完成：峰值 A=${formatNumber(payload.current_a, 2)}kA，B=${formatNumber(payload.current_b, 2)}kA，采样点 ${payload.sampled_event_count} 个`,
@@ -313,7 +308,6 @@ export default function AdminLightningCurrentsPage() {
         }
         void refreshAll();
       } else if (name === "backfill.failed") {
-        setBackfillTaskIds((prev) => prev.filter((item) => item !== (payload.backfill_task_id || "")));
         setError(new ApiError(payload?.error || "线路回填失败"));
         void refreshAll();
       } else if (name === "backfill.started") {
@@ -560,57 +554,6 @@ export default function AdminLightningCurrentsPage() {
     },
   });
 
-  const backfillMutation = useMutation({
-    mutationFn: async (lineIds: string[]) => {
-      if (!canManage) {
-        throw new Error("缺少 lightning.manage 权限");
-      }
-      type BackfillResult =
-        | { lineId: string; success: true; payload: { backfill_task_id: string } }
-        | { lineId: string; success: false; message: string };
-      const tasks: Promise<BackfillResult>[] = lineIds.map((lineId) =>
-        fetchWithAuth("/api/v1/lightning-currents/prepare-current", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ line_id: lineId }),
-        }).then((response): Promise<BackfillResult> => {
-          if (!response.ok) {
-            return readApiError(response).then((message) => ({ lineId, success: false, message }));
-          }
-          return response.json().then((payload) => ({
-            lineId,
-            success: true,
-            payload: payload as { backfill_task_id: string },
-          }));
-        }),
-      );
-      const results = await Promise.all(tasks);
-      const accepted = results.filter((item) => item.success);
-      const failures = results
-        .filter((item) => !item.success)
-        .map((item) => `${item.lineId}: ${item.message}`);
-      setBackfillTaskIds(accepted.map((item) => item.payload.backfill_task_id));
-      return { successCount: accepted.length, failures };
-    },
-    onSuccess: async ({ successCount, failures }) => {
-      setBackfillOpen(false);
-      setBackfillRecord(null);
-      setBackfillLineIds([]);
-      if (failures.length > 0) {
-        setSuccess("");
-        setError(new ApiError(`回填完成：成功 ${successCount} 条，失败 ${failures.length} 条（${failures.join("；")}）`));
-      } else {
-        setError(null);
-        setSuccess(`回填任务已提交（${successCount} 条线路），处理完成后将自动刷新列表`);
-      }
-      await refreshAll();
-    },
-    onError: (candidate) => {
-      setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "回填失败"));
-    },
-  });
-
   const editMutation = useMutation({
     mutationFn: async (values: Partial<LightningAmplitudeUpdateRequest>) => {
       if (!canManage) {
@@ -746,19 +689,6 @@ export default function AdminLightningCurrentsPage() {
     }
   }, [messageApi]);
 
-  // 回填线路选择：复用现有线路列表接口
-  const linesQuery = useQuery<LineListResponse>({
-    queryKey: ["lines"],
-    enabled: backfillOpen,
-    queryFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/lines?limit=1000`);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LineListResponse;
-    },
-  });
-
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
     if (action !== "remove") {
       return;
@@ -857,9 +787,7 @@ export default function AdminLightningCurrentsPage() {
                     icon={<SendOutlined />}
                     onClick={(event) => {
                       event.stopPropagation();
-                      setBackfillRecord(record);
-                      setBackfillLineIds([]);
-                      setBackfillOpen(true);
+                      openBackfillHistory(record);
                     }}
                   />
                 </AntTooltip>
@@ -1105,15 +1033,7 @@ export default function AdminLightningCurrentsPage() {
                 详情
               </Button>
               {canManage && (
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setBackfillRecord(row);
-                    setBackfillLineIds([]);
-                    setBackfillOpen(true);
-                  }}
-                  disabled={backfillMutation.isPending}
-                >
+                <Button size="small" onClick={() => openBackfillHistory(row)}>
                   回填
                 </Button>
               )}
@@ -1125,7 +1045,7 @@ export default function AdminLightningCurrentsPage() {
         },
       },
     ],
-    [canManage, canRead, handleDownloadSource, deleteMutation, backfillMutation, editMutation, openEditModal, openDetail, openBackfillLines, openBackfillHistory, canReadLogs, openLogViewer, modalApi],
+    [canManage, canRead, handleDownloadSource, deleteMutation, editMutation, openEditModal, openDetail, openBackfillLines, openBackfillHistory, canReadLogs, openLogViewer, modalApi],
   );
 
   if (initializing) {
@@ -1569,40 +1489,6 @@ export default function AdminLightningCurrentsPage() {
             </Form.Item>
           </div>
         </Form>
-      </Modal>
-
-      {/* 回填：选择线路列表后执行回填 */}
-      <Modal
-        title={backfillRecord ? `回填线路 - ${backfillRecord.source_file_name}` : "回填线路"}
-        open={backfillOpen}
-        onCancel={() => {
-          setBackfillOpen(false);
-          setBackfillRecord(null);
-          setBackfillLineIds([]);
-        }}
-        onOk={() => {
-          if (backfillLineIds.length > 0) {
-            backfillMutation.mutate(backfillLineIds);
-          }
-        }}
-        okText="确认回填"
-        okButtonProps={{ disabled: backfillLineIds.length === 0, loading: backfillMutation.isPending }}
-        width={480}
-      >
-        <Select
-          mode="multiple"
-          style={{ width: "100%" }}
-          showSearch
-          optionFilterProp="label"
-          placeholder="搜索并选择线路（可多选）"
-          value={backfillLineIds}
-          onChange={(value) => setBackfillLineIds(value)}
-          loading={linesQuery.isFetching}
-          options={(linesQuery.data?.items ?? []).map((line: LineSummary) => ({
-            label: `${line.code} - ${line.name}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`,
-            value: line.id,
-          }))}
-        />
       </Modal>
 
       <TaskLogViewerDrawer
