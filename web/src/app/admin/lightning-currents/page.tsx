@@ -30,7 +30,6 @@ import {
 } from "antd";
 import {
   CheckCircleOutlined,
-  ClockCircleOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
@@ -742,20 +741,12 @@ export default function AdminLightningCurrentsPage() {
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">采样点数：{record.sample_count}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
-              <ClockCircleOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">采样时间：{formatDateTime(record.event_time) || "-"}</Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
               <ThunderboltOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">峰值(kA)：{formatNumber(record.peak_abs_current_ka, 2)}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <SwapOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">极性：{formatPolarity(record.polarity)}</Typography.Text>
-            </div>
-            <div className="flex items-center gap-2">
-              <HistoryOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">导入时间：{formatDateTime(record.create_date) || "-"}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <NodeIndexOutlined className="text-xs text-gray-500" />
@@ -777,6 +768,10 @@ export default function AdminLightningCurrentsPage() {
                   "-"
                 )}
               </Typography.Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <HistoryOutlined className="text-xs text-gray-500" />
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">导入时间：{formatDateTime(record.create_date) || "-"}</Typography.Text>
             </div>
           </div>
 
