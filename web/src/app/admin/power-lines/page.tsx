@@ -160,8 +160,19 @@ export default function AdminPowerLinesPage() {
   const [tableScrollY, setTableScrollY] = useState(POWER_LINES_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
+  // 按钮级：manage 隐含全部细码（后端同样展开，老角色免重配）
   const canLineManage = hasPermission("line.manage");
+  const canCreateLine = hasPermission("line.create") || canLineManage;
+  const canUpdateLine = hasPermission("line.update") || canLineManage;
+  const canDeleteLine = hasPermission("line.delete") || canLineManage;
+  const canMap = hasPermission("line.map") || hasPermission("line.read") || canLineManage;
   const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
+  const canTowerManage = hasPermission("tower.manage");
+  const canTowerCreate = hasPermission("tower.create") || canTowerManage;
+  const canTowerUpdate = hasPermission("tower.update") || canTowerManage;
+  const canTowerDelete = hasPermission("tower.delete") || canTowerManage;
+  const canTowerImport = hasPermission("tower.import") || hasPermission("line.import") || canTowerManage || canLineManage;
+  const canTowerExport = hasPermission("tower.export") || hasPermission("line.export") || canTowerRead || canLineRead;
   const canRead = canLineRead || canTowerRead;
 
   const updateTableScrollHeight = useCallback(() => {
@@ -469,7 +480,7 @@ export default function AdminPowerLinesPage() {
         onEdit={handleTabsEdit}
         className="admin-power-lines-tabs"
         tabBarExtraContent={
-          canLineManage ? (
+          canCreateLine ? (
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreateLineModal}>
               新建线路
             </Button>
@@ -542,6 +553,9 @@ export default function AdminPowerLinesPage() {
                             key={line.id}
                             line={line}
                             canLineManage={canLineManage}
+                            canUpdateLine={canUpdateLine}
+                            canDeleteLine={canDeleteLine}
+                            canMap={canMap}
                             onEdit={openEditLineModal}
                             onDetail={openDetail}
                             onPreview={openPreview}
@@ -662,6 +676,9 @@ export default function AdminPowerLinesPage() {
 interface PowerLineCardProps {
   line: LineSummary;
   canLineManage: boolean;
+  canUpdateLine?: boolean;
+  canDeleteLine?: boolean;
+  canMap?: boolean;
   onEdit: (line: LineSummary) => void;
   onDetail: (line: LineSummary) => void;
   onPreview: (line: LineSummary) => void;
@@ -669,7 +686,7 @@ interface PowerLineCardProps {
   deleteLoading: boolean;
 }
 
-function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDelete, deleteLoading }: PowerLineCardProps) {
+function PowerLineCard({ line, canLineManage, canUpdateLine, canDeleteLine, canMap, onEdit, onDetail, onPreview, onDelete, deleteLoading }: PowerLineCardProps) {
   return (
     <Card
       size="small"
@@ -730,13 +747,15 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
                 }}
               />
             </Tooltip>
-            <Tooltip title="预览">
+            <Tooltip title={canMap === false ? "无地图预览权限" : "预览"}>
               <Button
                 type="text"
                 size="small"
                 icon={<GlobalOutlined />}
+                disabled={canMap === false}
                 onClick={(event) => {
                   event.stopPropagation();
+                  if (canMap === false) return;
                   onPreview(line);
                 }}
               />
@@ -752,12 +771,14 @@ function PowerLineCard({ line, canLineManage, onEdit, onDetail, onPreview, onDel
                         <span>编辑</span>
                       </Space>
                     ),
+                    disabled: canUpdateLine === false,
                     onClick: (event) => {
                       event.domEvent.stopPropagation();
+                      if (canUpdateLine === false) return;
                       onEdit(line);
                     },
                   },
-                  ...(canLineManage
+                  ...((canDeleteLine ?? canLineManage)
                     ? [
                         {
                           key: "delete",

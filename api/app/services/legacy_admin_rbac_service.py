@@ -505,6 +505,8 @@ def delete_role(db: Session, role_id: str, *, actor_user_id: str | None) -> bool
 PERMISSION_MODULE_NAMES: dict[str, str] = {
     "line": "线路",
     "tower": "杆塔",
+    "fl": "防雷分析",
+    "fault": "故障分析",
     "tower_model": "杆塔模型",
     "atp": "ATP模型",
     "atp_param": "ATP参数",
@@ -524,6 +526,15 @@ PERMISSION_ACTION_NAMES: dict[str, str] = {
     "manage": "管理",
     "run": "运行",
     "write": "写入",
+    "create": "新建",
+    "update": "编辑",
+    "delete": "删除",
+    "import": "导入",
+    "export": "导出",
+    "start": "启动",
+    "cancel": "取消",
+    "map": "地图预览",
+    "runtime": "运行时读取",
 }
 
 

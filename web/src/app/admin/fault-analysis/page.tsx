@@ -192,6 +192,8 @@ export default function AdminFaultAnalysisPage() {
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage");
+  const canFaultCreate = hasPermission("fault.create") || canManage;
+  const canFaultDelete = hasPermission("fault.delete") || canManage;
 
   // 打开分析执行日志抽屉（不设权限门控；task_id 缺失时给出提示）
   const openLogViewer = useCallback(
@@ -794,7 +796,7 @@ export default function AdminFaultAnalysisPage() {
                             const record = analyses.find((item) => item.id === id);
                             openDetail(record ?? { id });
                           }}
-                          onDelete={canManage ? handleDelete : undefined}
+                          onDelete={canFaultDelete ? handleDelete : undefined}
                           onLog={(id) => {
                             const record = analyses.find((item) => item.id === id);
                             openLogViewer(record?.task_id, "分析日志", record?.title ?? "");

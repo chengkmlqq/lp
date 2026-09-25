@@ -105,7 +105,7 @@ def get_fl_analysis_job_results(
 def download_fl_analysis_results(
     job_id: str,
     run_id: str | None = Query(default=None),
-    _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
+    _: CurrentUser = Depends(require_any_permission("fl.export", "line.manage", "line.read")),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     filename, content = download_result_csv(db, job_id=job_id, run_id=run_id)
@@ -116,7 +116,7 @@ def download_fl_analysis_results(
 @router.get("/jobs/{job_id}/report/download")
 def download_fl_analysis_report(
     job_id: str,
-    _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
+    _: CurrentUser = Depends(require_any_permission("fl.export", "line.manage", "line.read")),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     filename, content = download_report_document(db, job_id=job_id)
@@ -127,7 +127,7 @@ def download_fl_analysis_report(
 @router.post("/jobs", response_model=FlAnalysisJobCreateResponse)
 def create_fl_analysis_job(
     payload: FlAnalysisJobCreateRequest,
-    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("fl.create", "line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> FlAnalysisJobCreateResponse:
     return create_job(db, payload, actor=current_user.user)
@@ -136,7 +136,7 @@ def create_fl_analysis_job(
 @router.post("/jobs/{job_id}/start", response_model=FlAnalysisJobStartResponse)
 def start_fl_analysis_job(
     job_id: str,
-    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("fl.start", "line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> FlAnalysisJobStartResponse:
     return start_job(db, job_id, actor=current_user.user)
@@ -145,7 +145,7 @@ def start_fl_analysis_job(
 @router.post("/jobs/{job_id}/cancel", response_model=FlAnalysisJobCancelResponse)
 def cancel_fl_analysis_job(
     job_id: str,
-    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("fl.cancel", "line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> FlAnalysisJobCancelResponse:
     """取消排队中 / 运行中的任务（revoke celery 任务 + 状态置 cancelled + 清理残留引擎进程）。"""
@@ -160,7 +160,7 @@ def cancel_fl_analysis_job(
 @router.delete("/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_fl_analysis_job(
     job_id: str,
-    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("fl.delete", "line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> None:
     delete_job(db, job_id=job_id, actor=current_user.user)

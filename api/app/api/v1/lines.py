@@ -85,7 +85,7 @@ def _parse_bbox(bbox: str | None) -> tuple[float, float, float, float] | None:
 @router.post("", response_model=LineSummary)
 def create_line_endpoint(
     payload: LineCreateRequest,
-    current_user: CurrentUser = Depends(require_permission("line.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("line.create", "line.manage")),
     db: Session = Depends(get_db),
 ) -> LineSummary:
     return create_line(db, payload, actor_user_id=current_user.user.id)
@@ -108,7 +108,7 @@ def get_line_detail(
 def update_line_endpoint(
     line_id: str,
     payload: LineUpdateRequest,
-    current_user: CurrentUser = Depends(require_permission("line.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("line.update", "line.manage")),
     db: Session = Depends(get_db),
 ) -> LineSummary:
     updated = update_line(db, line_id, payload, actor_user_id=current_user.user.id)
@@ -120,7 +120,7 @@ def update_line_endpoint(
 @router.delete("/{line_id}")
 def delete_line_endpoint(
     line_id: str,
-    _: CurrentUser = Depends(require_permission("line.manage")),
+    _: CurrentUser = Depends(require_any_permission("line.delete", "line.manage")),
     db: Session = Depends(get_db),
 ) -> dict[str, bool]:
     deleted = delete_line(db, line_id)
@@ -158,7 +158,7 @@ def get_line_tower_list(
 def create_line_tower_endpoint(
     line_id: str,
     payload: LineTowerCreateRequest,
-    current_user: CurrentUser = Depends(require_permission("tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("tower.create", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> LineTowerSummary:
     created = create_line_tower(db, line_id, payload, actor_user_id=current_user.user.id)
@@ -171,7 +171,7 @@ def create_line_tower_endpoint(
 def update_line_tower_endpoint(
     tower_id: str,
     payload: LineTowerUpdateRequest,
-    current_user: CurrentUser = Depends(require_permission("tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("tower.update", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> LineTowerSummary:
     updated = update_line_tower(db, tower_id, payload, actor_user_id=current_user.user.id)
@@ -183,7 +183,7 @@ def update_line_tower_endpoint(
 @router.delete("/towers/{tower_id}")
 def delete_line_tower_endpoint(
     tower_id: str,
-    _: CurrentUser = Depends(require_permission("tower.manage")),
+    _: CurrentUser = Depends(require_any_permission("tower.delete", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> dict[str, bool]:
     deleted = delete_line_tower(db, tower_id)
@@ -197,7 +197,7 @@ def import_line_tower_csv_endpoint(
     line_id: str,
     file: UploadFile | None = File(default=None),
     temp_file_id: str | None = Form(default=None),
-    current_user: CurrentUser = Depends(require_permission("tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("tower.import", "tower.manage", "line.import", "line.manage")),
     db: Session = Depends(get_db),
 ) -> LineTowerImportResponse:
     validate_upload(file, allowed_exts={"csv", "xlsx"}, allowed_exts_label="csv/xlsx")
@@ -225,7 +225,7 @@ def import_line_tower_csv_endpoint(
 @router.get("/{line_id}/towers/export")
 def export_line_towers_endpoint(
     line_id: str,
-    _: CurrentUser = Depends(require_any_permission("tower.read", "tower.manage", "line.read", "line.manage")),
+    _: CurrentUser = Depends(require_any_permission("tower.export", "tower.manage", "line.export", "line.manage", "tower.read", "line.read")),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     line = get_line_by_id(db, line_id)

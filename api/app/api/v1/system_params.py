@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
-from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
+from ...core.dependencies import CurrentUser, get_current_user, require_any_permission, require_enabled_menu_route, require_permission
 from ...schemas.system_param import (
     SystemParamCreateRequest,
     SystemParamListResponse,
@@ -58,7 +58,7 @@ def create_system_param_endpoint(
 @router.get("/runtime", response_model=SystemParamRuntimeResponse)
 def get_system_params_runtime_endpoint(
     keys: str = Query(description="逗号分隔的参数键列表，服务端解密后仅返回实际使用参数明文"),
-    _: CurrentUser = Depends(require_any_permission("system_param.read", "system_param.manage")),
+    _: CurrentUser = Depends(require_any_permission("system_param.runtime", "system_param.read", "system_param.manage", "line.read", "line.manage", "tower.read", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> SystemParamRuntimeResponse:
     key_list = [key.strip() for key in keys.split(",") if key.strip()]

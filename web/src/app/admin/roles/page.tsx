@@ -276,11 +276,13 @@ export default function AdminRolesPage() {
       const children = childrenByParent.get(key) ?? [];
       return children.map((menu) => {
         const isDir = menu.type === "directory";
-        const label = isDir ? `📁 ${menu.name}` : menu.name;
+        const isButtonParent = menu.type === "menu";
+        const label = isDir ? `📁 ${menu.name}` : isButtonParent ? `📄 ${menu.name}` : menu.name;
         const subChildren = buildNodes(menu.id);
+        const buttonChildren = (childrenByParent.get(menu.id) ?? []).filter((b) => b.type === "button").sort((a, b) => a.sort_order - b.sort_order).map((b) => ({ title: `🔘 ${b.name}${b.permission_code ? `（${b.permission_code}）` : ""}`, value: `menu:${b.id}`, key: b.id, selectable: true }));
         let permNodes: DataNode[] | undefined;
         // 叶子菜单(非目录)且带 permission_code -> 在树下挂该模块权限码 checkbox
-        if (!isDir && subChildren.length === 0 && menu.permission_code) {
+        if (buttonChildren.length === 0 && !isDir && subChildren.length === 0 && menu.permission_code) {
           const mod = menu.permission_code.split(".")[0];
           const perms = permsByModule.get(mod);
           if (perms && perms.length > 0) {
@@ -292,7 +294,7 @@ export default function AdminRolesPage() {
             }));
           }
         }
-        const merged = [...subChildren, ...(permNodes ?? [])];
+        const merged = [...subChildren, ...buttonChildren, ...(permNodes ?? [])];
         return {
           title: label,
           value: `menu:${menu.id}`,
@@ -415,11 +417,13 @@ export default function AdminRolesPage() {
       const permCodes = checkedValues
         .filter((v) => v.startsWith("perm:"))
         .map((v) => v.slice("perm:".length));
+      const menuById = new Map(menus.map((m) => [m.id, m]));
+      const buttonPerms = menuIds.map((mid) => menuById.get(mid)).filter((m): m is (typeof menus)[number] => Boolean(m && m.type === "button" && m.permission_code)).map((m) => m.permission_code as string);
       const payload: RoleFormValues = {
         code: values.code.trim(),
         name: values.name.trim(),
         menu_ids: menuIds,
-        permission_codes: [...new Set(permCodes)],
+        permission_codes: [...new Set([...permCodes, ...buttonPerms])],
       };
       const formatError = validateRoleCodeFormat(payload.code);
       if (formatError) {

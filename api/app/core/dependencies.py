@@ -27,6 +27,8 @@ MENU_ROUTE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/api/v1/users", "/admin/users"),
     ("/api/v1/admin/roles-with-menus", "/admin/roles"),
     ("/api/v1/admin/roles", "/admin/roles"),
+    # /runtime 为共享读（天地图等），不绑「系统参数」菜单可见性
+    ("/api/v1/admin/system-params/runtime", ""),
     ("/api/v1/admin/system-params", "/admin/system-params"),
     ("/api/v1/system-messages", "/admin/system-messages"),
     ("/api/v1/lines", "/admin/power-lines"),

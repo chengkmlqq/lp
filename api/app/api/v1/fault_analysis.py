@@ -99,7 +99,7 @@ def get_fault_analysis_detail(
 @router.post("", response_model=FaultAnalysisCreateResponse)
 def create_fault_analysis(
     payload: FaultAnalysisCreateRequest,
-    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("fault.create", "line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> FaultAnalysisCreateResponse:
     return create_analysis(db, payload, actor=current_user.user)
@@ -108,7 +108,7 @@ def create_fault_analysis(
 @router.post("/upload-temp", response_model=FaultAnalysisTempUploadResponse)
 def upload_fault_analysis_temp_file(
     file: UploadFile = File(...),
-    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("fault.create", "line.manage", "tower.manage")),
 ) -> FaultAnalysisTempUploadResponse:
     """选择文件后立即上传到临时目录，返回 temp_file_id 供确认提交时引用（LP-369）。
 
@@ -123,7 +123,7 @@ def upload_fault_analysis_temp_file(
 @router.post("/extract-wave", response_model=None)
 async def extract_wave(
     file: UploadFile = File(...),
-    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("fault.create", "line.manage", "tower.manage")),
 ) -> ExtractWavePdfResponse:
     """从录波数据文件（pdf/txt/csv/json/xlsx）中提取 13 个故障字段，供前端自动回填，不回写数据库（LP-421）。"""
     validate_upload(
@@ -174,7 +174,7 @@ async def create_fault_analysis_with_files(
     ledger_data_temp_file_id: str | None = Form(default=None),
     traveling_wave_temp_file_id: list[str] | None = Form(default=None),
     optical_data_temp_file_id: str | None = Form(default=None),
-    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("fault.create", "line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> FaultAnalysisCreateResponse:
     """创建故障分析记录并附带判别输入文件（录波/雷电/台账/行波/光学）。
@@ -309,7 +309,7 @@ async def _store_explicit_uploads(
 def update_fault_analysis(
     analysis_id: str,
     payload: FaultAnalysisUpdateRequest,
-    current_user: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("fault.create", "line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> FaultAnalysisDetail:
     result = update_analysis(db, analysis_id, payload, actor=current_user.user)
@@ -319,7 +319,7 @@ def update_fault_analysis(
 @router.delete("/{analysis_id}")
 def delete_fault_analysis(
     analysis_id: str,
-    _: CurrentUser = Depends(require_any_permission("line.manage", "tower.manage")),
+    _: CurrentUser = Depends(require_any_permission("fault.delete", "line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     delete_analysis(db, analysis_id)

@@ -7,6 +7,13 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+# 按钮级细粒度码 → 其所属模块 manage 码（含 manage 即含全部细码，老角色免重配）
+MANAGE_IMPLIED_PERMISSIONS: dict[str, set[str]] = {
+    "line.manage": {"line.create", "line.update", "line.delete", "line.import", "line.export", "line.map"},
+    "tower.manage": {"tower.create", "tower.update", "tower.delete", "tower.import", "tower.export"},
+    "system_param.manage": {"system_param.runtime"},
+}
+
 # Keep this list aligned with runtime permission checks used by API endpoints.
 DEFAULT_ADMIN_PERMISSION_CODES: set[str] = {
     "user.read",
@@ -18,6 +25,7 @@ DEFAULT_ADMIN_PERMISSION_CODES: set[str] = {
     "menu.manage",
     "system_param.read",
     "system_param.manage",
+    "system_param.runtime",
     "admin.system_message",
     "file.read",
     "file.manage",
@@ -36,6 +44,25 @@ DEFAULT_ADMIN_PERMISSION_CODES: set[str] = {
     "atp.run",
     "celery.read",
     "celery.manage",
+    # 按钮级细码（首批 4 页面；admin 全含）
+    "line.create",
+    "line.update",
+    "line.delete",
+    "line.import",
+    "line.export",
+    "line.map",
+    "tower.create",
+    "tower.update",
+    "tower.delete",
+    "tower.import",
+    "tower.export",
+    "fl.create",
+    "fl.start",
+    "fl.cancel",
+    "fl.delete",
+    "fl.export",
+    "fault.create",
+    "fault.delete",
 }
 
 ADMIN_ROLE_IDS = {
@@ -248,6 +275,10 @@ def get_user_authorization(db: Session, user_id: str) -> UserAuthorization:
         permission_codes.update(_load_legacy_permissions(db, role_codes))
         if not permission_codes:
             permission_codes.update(_load_modern_permissions(db, role_codes))
+        # manage 隐含全部细码（老角色仅有 manage 也能自动获得按钮权限）
+        for manage_code, implied in MANAGE_IMPLIED_PERMISSIONS.items():
+            if manage_code in permission_codes:
+                permission_codes.update(implied)
 
     return UserAuthorization(role_codes=role_codes, permission_codes=permission_codes)
 
@@ -575,8 +606,10 @@ def _permissions_for_menu(menu_name: str, menu_type: str | None) -> set[str]:
     mapped = MENU_CODE_PERMISSION_MAP.get(menu_name)
     if mapped:
         return set(mapped)
-    if (menu_type or "").strip().upper() == "BUTTON" and "." in menu_name:
-        return {menu_name}
+    # button 类型：menu_name 即为按钮的 permission_code（如 line.create）
+    if (menu_type or "").strip().upper() == "BUTTON" or (menu_type or "").strip().lower() == "button":
+        if "." in menu_name:
+            return {menu_name}
     return set()
 
 

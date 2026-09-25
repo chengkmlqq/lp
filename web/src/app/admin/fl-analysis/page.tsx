@@ -87,6 +87,12 @@ export default function AdminFlAnalysisPage() {
 
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const canManage = hasPermission("line.manage") || hasPermission("tower.manage");
+  // 防雷按钮级：fl.* 细码，manage 兼容
+  const canFlCreate = hasPermission("fl.create") || canManage;
+  const canFlStart = hasPermission("fl.start") || canManage;
+  const canFlCancel = hasPermission("fl.cancel") || canManage;
+  const canFlDelete = hasPermission("fl.delete") || canManage;
+  const canFlExport = hasPermission("fl.export") || canManage;
   const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
@@ -631,7 +637,7 @@ export default function AdminFlAnalysisPage() {
         className="admin-fl-analysis-tabs"
         tabBarExtraContent={
           <Space>
-            {canManage && (
+            {canFlCreate && (
               <Button type="primary" onClick={openCreateJobModal}>
                 新建任务
               </Button>
