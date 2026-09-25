@@ -114,7 +114,11 @@ class LightningAmplitudeListResponse(BaseModel):
 
 
 class LightningAmplitudeBackfillLine(BaseModel):
-    """一条雷电流幅值记录被某线路回填使用的摘要（回填线路小窗行）。"""
+    """一条雷电流幅值记录关联的一次线路回填（回填记录行）。
+
+    以 `lightning_current_backfill_task` 为准：一次回填 = 一条记录，
+    行进中（pending/processing）也会立即出现，并带上 status/progress 供前端逐行画进度条。
+    """
 
     line_id: str
     line_code: str | None = None
@@ -126,6 +130,11 @@ class LightningAmplitudeBackfillLine(BaseModel):
     peak_max: float | None = None
     peak_min: float | None = None
     sampled_event_count: int = 0
+    # 回填任务态（逐行进度条用）
+    task_id: str | None = None
+    status: str = "completed"
+    progress: int = 0
+    error_message: str | None = None
 
 
 class LightningAmplitudeBackfillLineListResponse(BaseModel):
@@ -222,6 +231,9 @@ class LightningCurrentPreparationRequest(BaseModel):
     line_id: str = Field(min_length=1, max_length=64)
     region_id: str | None = Field(default=None, max_length=64)
     is_synthetic: bool | None = None
+    # 从某条幅值记录页发起时带上：提交即写入任务的 source_amplitude_ids，
+    # 使「回填记录」列表能立刻显示这条行进中的记录（否则要等回填成功才可见）。
+    amplitude_id: str | None = Field(default=None, max_length=64)
 
 
 class LightningCurrentPreparationResponse(BaseModel):

@@ -20,6 +20,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from "antd";
 
@@ -46,28 +47,54 @@ type LightningCurrentBackfillHistoryTableProps = {
   amplitudeId?: string;
 };
 
-/** 一次「线路回填」的运行态（每条线路一个回填任务，进度条据此展示）。 */
-type BackfillRun = {
-  /** 前端去重键：回填任务 ID */
-  taskId: string;
-  lineId: string;
-  lineName: string;
-  status: "pending" | "processing" | "completed" | "failed";
-  progress: number;
-  errorMessage: string | null;
-};
-
-const BACKFILL_RUN_STATUS_META: Record<
-  BackfillRun["status"],
-  { label: string; progressStatus: "normal" | "active" | "success" | "exception" }
+/** 回填任务状态 → 标签文案 / 标签色 / 进度条状态（逐行进度条用）。 */
+const BACKFILL_STATUS_META: Record<
+  string,
+  { label: string; tagColor: string; progressStatus: "normal" | "active" | "success" | "exception" }
 > = {
-  pending: { label: "排队中", progressStatus: "normal" },
-  processing: { label: "处理中", progressStatus: "active" },
-  completed: { label: "已完成", progressStatus: "success" },
-  failed: { label: "失败", progressStatus: "exception" },
+  pending: { label: "排队中", tagColor: "default", progressStatus: "normal" },
+  processing: { label: "处理中", tagColor: "processing", progressStatus: "active" },
+  completed: { label: "已完成", tagColor: "success", progressStatus: "success" },
+  failed: { label: "失败", tagColor: "error", progressStatus: "exception" },
 };
 
-const BACKFILL_RUN_TERMINAL_STATUSES = new Set<BackfillRun["status"]>(["completed", "failed"]);
+/**
+ * 渲染「回填状态 + 进度条」单元格。
+ *
+ * 一次回填 = 一条记录：进度条落在该记录**自己的那一行**里，
+ * 多条回填任务各占一行、各自推进，互不影响（不再需要页面级/置顶的进度面板）。
+ */
+function renderBackfillProgressCell(
+  status: string | null | undefined,
+  progress: number | null | undefined,
+  errorMessage?: string | null,
+) {
+  const key = status || "pending";
+  const meta = BACKFILL_STATUS_META[key] ?? {
+    label: key,
+    tagColor: "default",
+    progressStatus: "normal" as const,
+  };
+  const percent = Math.max(0, Math.min(100, Math.round(progress ?? 0)));
+  const isActive = key === "pending" || key === "processing";
+  const tip =
+    key === "failed" ? errorMessage || "回填失败" : isActive ? `进度 ${percent}%` : undefined;
+  return (
+    <Tooltip title={tip}>
+      <Space direction="vertical" size={2} style={{ width: "100%" }}>
+        <Tag color={meta.tagColor} style={{ marginInlineEnd: 0 }}>
+          {meta.label}
+        </Tag>
+        <Progress
+          percent={key === "completed" ? 100 : percent}
+          status={meta.progressStatus}
+          size="small"
+          showInfo={false}
+        />
+      </Space>
+    </Tooltip>
+  );
+}
 
 function formatDateTime(iso: string | null | undefined): string {
   if (!iso) {
@@ -122,14 +149,13 @@ export function LightningCurrentBackfillHistoryTable({
   const [tableScrollY, setTableScrollY] = useState(BACKFILL_HISTORY_MIN_SCROLL_Y);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
-  // 幅值模式：筛选关键词 + 点击某线路查看该次回填具体填了什么值
+  // 幅值模式：筛选关键词
   const [keyword, setKeyword] = useState("");
-  const [amplitudeLineTarget, setAmplitudeLineTarget] = useState<{ lineId: string; lineName: string | null } | null>(null);
-  // 线路回填：本页内发起 + 进度条跟踪（外层列表只负责跳到本页）
+  // 线路回填：本页内发起（外层列表只负责跳到本页）。
+  // 进度不再由本组件另行跟踪 —— 列表本身即以回填任务为准，每行自带 status/progress，
+  // 进度条直接渲染在对应记录行内，多条任务各占一行、互不干扰。
   const [backfillModalOpen, setBackfillModalOpen] = useState(false);
   const [backfillLineIds, setBackfillLineIds] = useState<string[]>([]);
-  // 已提交的回填任务（进度由轮询结果派生，见下方 backfillRuns）
-  const [backfillSubmissions, setBackfillSubmissions] = useState<BackfillRun[]>([]);
 
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
   const canManage = hasPermission("lightning.manage");
@@ -239,6 +265,14 @@ export function LightningCurrentBackfillHistoryTable({
   const amplitudeLinesQuery = useQuery<LightningAmplitudeBackfillLineListResponse>({
     queryKey: ["lightning-currents", amplitudeId, "backfill-lines", keyword, pagination.current, pagination.pageSize],
     enabled: !!user && canRead && isAmplitudeMode,
+    // 有行进中的回填任务时按 5s 轮询，让每行进度条自己往前走；全部结束即停。
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? [];
+      const hasActive = items.some(
+        (row) => row.status === "pending" || row.status === "processing",
+      );
+      return hasActive ? 5000 : false;
+    },
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("offset", String((pagination.current - 1) * pagination.pageSize));
@@ -251,21 +285,6 @@ export function LightningCurrentBackfillHistoryTable({
         throw new Error(await readApiError(response));
       }
       return (await response.json()) as LightningAmplitudeBackfillLineListResponse;
-    },
-  });
-
-  // 幅值模式：某线路使用该幅值那一次回填的明细（含每塔回填前/后幅值）
-  const amplitudeTaskQuery = useQuery<LightningCurrentBackfillTaskDetail>({
-    queryKey: ["lightning-currents", amplitudeId, "line-task", amplitudeLineTarget?.lineId],
-    enabled: !!user && canRead && isAmplitudeMode && !!amplitudeId && !!amplitudeLineTarget,
-    queryFn: async () => {
-      const response = await fetchWithAuth(
-        `/api/v1/lightning-currents/amplitudes/${amplitudeId}/backfill-lines/${amplitudeLineTarget?.lineId}/task`,
-      );
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as LightningCurrentBackfillTaskDetail;
     },
   });
 
@@ -285,14 +304,6 @@ export function LightningCurrentBackfillHistoryTable({
     },
   });
 
-  const lineLabelById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const line of backfillCandidatesQuery.data?.items ?? []) {
-      map.set(line.id, `${line.code} - ${line.name}`);
-    }
-    return map;
-  }, [backfillCandidatesQuery.data]);
-
   const backfillMutation = useMutation({
     mutationFn: async (lineIds: string[]) => {
       if (!canManage) {
@@ -306,7 +317,12 @@ export function LightningCurrentBackfillHistoryTable({
           const response = await fetchWithAuth("/api/v1/lightning-currents/prepare-current", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ line_id: targetLineId }),
+            body: JSON.stringify({
+              line_id: targetLineId,
+              // 带上来源幅值：后端据此把任务与这条幅值记录关联，
+              // 使行进中的记录立刻出现在本列表（每行一条、各自带进度）
+              ...(amplitudeId ? { amplitude_id: amplitudeId } : {}),
+            }),
           });
           if (!response.ok) {
             return { lineId: targetLineId, ok: false, message: await readApiError(response) };
@@ -329,19 +345,6 @@ export function LightningCurrentBackfillHistoryTable({
       const failures = results.filter((item) => !item.ok);
       setBackfillModalOpen(false);
       setBackfillLineIds([]);
-      if (accepted.length > 0) {
-        setBackfillSubmissions((previous) => [
-          ...accepted.map<BackfillRun>((item) => ({
-            taskId: item.taskId,
-            lineId: item.lineId,
-            lineName: lineLabelById.get(item.lineId) ?? item.lineId,
-            status: "pending",
-            progress: 0,
-            errorMessage: null,
-          })),
-          ...previous.filter((run) => !accepted.some((item) => item.taskId === run.taskId)),
-        ]);
-      }
       if (failures.length > 0) {
         messageApi.error(
           `已提交 ${accepted.length} 条，失败 ${failures.length} 条：${failures
@@ -351,119 +354,18 @@ export function LightningCurrentBackfillHistoryTable({
       } else {
         messageApi.success(`回填任务已提交（${accepted.length} 条线路）`);
       }
+      // 刷新列表：新提交的任务立即以「行进中 + 进度条」出现在对应记录行内
+      void queryClient.invalidateQueries({ queryKey: ["lightning-currents"] });
     },
     onError: (candidate) => {
       messageApi.error(candidate instanceof Error ? candidate.message : "回填失败");
     },
   });
 
-  // 已提交的任务 ID（稳定列表，仅随提交变化）——作为轮询查询键，避免键随进度抖动
-  const submittedBackfillTaskIds = useMemo(
-    () => backfillSubmissions.map((run) => run.taskId),
-    [backfillSubmissions],
-  );
-
-  // 轮询所有已提交任务；全部进入终态后自动停止（refetchInterval 返回 false）
-  const backfillProgressQuery = useQuery<
-    {
-      taskId: string;
-      status: BackfillRun["status"];
-      progress: number;
-      errorMessage: string | null;
-    }[]
-  >({
-    queryKey: ["lightning-currents", "backfill-progress", submittedBackfillTaskIds],
-    enabled: !!user && canRead && submittedBackfillTaskIds.length > 0,
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      if (!data || data.length === 0) {
-        return 3000;
-      }
-      const allTerminal = data.every((item) => BACKFILL_RUN_TERMINAL_STATUSES.has(item.status));
-      return allTerminal ? false : 3000;
-    },
-    queryFn: async () => {
-      const items = await Promise.all(
-        submittedBackfillTaskIds.map(async (taskId) => {
-          const response = await fetchWithAuth(`/api/v1/lightning-currents/backfill-tasks/${taskId}`);
-          if (!response.ok) {
-            return null;
-          }
-          const payload = (await response.json()) as LightningCurrentBackfillTaskDetail;
-          return {
-            taskId,
-            status: (payload.task.status || "pending") as BackfillRun["status"],
-            progress: Number.isFinite(payload.task.progress) ? payload.task.progress : 0,
-            errorMessage: payload.task.error_message ?? null,
-          };
-        }),
-      );
-      return items.filter(
-        (item): item is { taskId: string; status: BackfillRun["status"]; progress: number; errorMessage: string | null } =>
-          item !== null,
-      );
-    },
-  });
-
-  // 进度直接由「提交记录 + 轮询结果」派生，不在 effect 里同步 state（避免级联渲染）
-  const backfillRuns = useMemo<BackfillRun[]>(() => {
-    const progressByTaskId = new Map(
-      (backfillProgressQuery.data ?? []).map((item) => [item.taskId, item]),
-    );
-    if (progressByTaskId.size === 0) {
-      return backfillSubmissions;
-    }
-    return backfillSubmissions.map((run) => {
-      const hit = progressByTaskId.get(run.taskId);
-      return hit
-        ? { ...run, status: hit.status, progress: hit.progress, errorMessage: hit.errorMessage }
-        : run;
-    });
-  }, [backfillSubmissions, backfillProgressQuery.data]);
-
-  // 已触发过列表刷新的任务（避免同一任务重复 invalidate 造成请求风暴）
-  const refreshedBackfillTaskIdsRef = useRef<Set<string>>(new Set());
-
-  // 铁到终态时刷新列表，让新回填的线路立刻进表格（纯副作用，无 setState）
-  useEffect(() => {
-    const updates = backfillProgressQuery.data;
-    if (!updates || updates.length === 0) {
-      return;
-    }
-    const newlyFinished = updates.filter(
-      (item) =>
-        BACKFILL_RUN_TERMINAL_STATUSES.has(item.status) &&
-        !refreshedBackfillTaskIdsRef.current.has(item.taskId),
-    );
-    if (newlyFinished.length === 0) {
-      return;
-    }
-    for (const item of newlyFinished) {
-      refreshedBackfillTaskIdsRef.current.add(item.taskId);
-    }
-    void queryClient.invalidateQueries({ queryKey: ["lightning-currents"] });
-  }, [backfillProgressQuery.data, queryClient]);
-
   const openBackfillModal = useCallback(() => {
     setBackfillLineIds([]);
     setBackfillModalOpen(true);
   }, []);
-
-  const clearFinishedBackfillRuns = useCallback(() => {
-    const finishedIds = new Set(
-      backfillRuns
-        .filter((run) => BACKFILL_RUN_TERMINAL_STATUSES.has(run.status))
-        .map((run) => run.taskId),
-    );
-    if (finishedIds.size === 0) {
-      return;
-    }
-    setBackfillSubmissions((previous) => previous.filter((run) => !finishedIds.has(run.taskId)));
-  }, [backfillRuns]);
-
-  const hasFinishedBackfillRuns = backfillRuns.some((run) =>
-    BACKFILL_RUN_TERMINAL_STATUSES.has(run.status),
-  );
 
   const linesQuery = useQuery<LineListResponse>({
     queryKey: ["lines"],
@@ -479,7 +381,7 @@ export function LightningCurrentBackfillHistoryTable({
 
   const detailQuery = useQuery<LightningCurrentBackfillTaskDetail>({
     queryKey: ["lightning-currents", "backfill-tasks", detailTaskId],
-    enabled: !!user && canRead && !!detailTaskId && detailOpen && !isAmplitudeMode,
+    enabled: !!user && canRead && !!detailTaskId && detailOpen,
     queryFn: async () => {
       const response = await fetchWithAuth(
         `/api/v1/lightning-currents/backfill-tasks/${detailTaskId}`,
@@ -529,6 +431,13 @@ export function LightningCurrentBackfillHistoryTable({
         render: (value: string | null) => formatDateTime(value),
       },
       {
+        title: "回填进度",
+        key: "progress",
+        width: 160,
+        render: (_: unknown, row) =>
+          renderBackfillProgressCell(row.status, row.progress, row.error_message),
+      },
+      {
         title: "操作",
         key: "actions",
         width: 110,
@@ -536,7 +445,14 @@ export function LightningCurrentBackfillHistoryTable({
         render: (_: unknown, row) => (
           <Button
             size="small"
-            onClick={() => setAmplitudeLineTarget({ lineId: row.line_id, lineName: row.line_name ?? null })}
+            disabled={!row.task_id}
+            onClick={() => {
+              if (!row.task_id) {
+                return;
+              }
+              setDetailTaskId(row.task_id);
+              setDetailOpen(true);
+            }}
           >
             查看详情
           </Button>
@@ -560,6 +476,13 @@ export function LightningCurrentBackfillHistoryTable({
         width: 200,
         ellipsis: { showTitle: true },
         render: (value: string | null) => value || "-",
+      },
+      {
+        title: "回填进度",
+        key: "progress",
+        width: 160,
+        render: (_: unknown, row: LightningCurrentBackfillTaskSummary) =>
+          renderBackfillProgressCell(row.status, row.progress, row.error_message),
       },
       {
         title: "幅值a (kA)",
@@ -656,9 +579,9 @@ export function LightningCurrentBackfillHistoryTable({
   );
 
   // 抽屉数据源：任务模式用任务详情，幅值模式用「幅值+线路」明细
-  const detailData = isAmplitudeMode ? amplitudeTaskQuery.data : detailQuery.data;
-  const detailLoading = isAmplitudeMode ? amplitudeTaskQuery.isLoading : detailQuery.isLoading;
-  const detailFetching = isAmplitudeMode ? amplitudeTaskQuery.isFetching : detailQuery.isFetching;
+  const detailData = detailQuery.data;
+  const detailLoading = detailQuery.isLoading;
+  const detailFetching = detailQuery.isFetching;
   const task = detailData?.task;
 
   const handleSearch = useCallback(() => {
@@ -749,50 +672,6 @@ export function LightningCurrentBackfillHistoryTable({
         </div>
       )}
 
-      {backfillRuns.length > 0 && (
-        <div className="admin-lightning-backfill-progress">
-          <div className="admin-lightning-backfill-progress-head">
-            <Typography.Text strong>回填进度</Typography.Text>
-            {hasFinishedBackfillRuns && (
-              <Button size="small" type="link" onClick={clearFinishedBackfillRuns}>
-                清除已完成
-              </Button>
-            )}
-          </div>
-          <div className="admin-lightning-backfill-progress-list">
-            {backfillRuns.map((run) => {
-              const meta = BACKFILL_RUN_STATUS_META[run.status] ?? BACKFILL_RUN_STATUS_META.pending;
-              return (
-                <div key={run.taskId} className="admin-lightning-backfill-progress-item">
-                  <div className="admin-lightning-backfill-progress-label">
-                    <Typography.Text
-                      ellipsis={{ tooltip: run.lineName }}
-                      style={{ maxWidth: 320 }}
-                    >
-                      {run.lineName}
-                    </Typography.Text>
-                    <Typography.Text type={run.status === "failed" ? "danger" : "secondary"}>
-                      {meta.label} {run.progress}%
-                    </Typography.Text>
-                  </div>
-                  <Progress
-                    percent={run.progress}
-                    status={meta.progressStatus}
-                    size="small"
-                    showInfo={false}
-                  />
-                  {run.status === "failed" && run.errorMessage && (
-                    <Typography.Text type="danger" style={{ fontSize: 12 }}>
-                      {run.errorMessage}
-                    </Typography.Text>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       <div
         ref={tableScrollAnchorRef}
         className="admin-lightning-backfill-table-view flex-1 min-h-0"
@@ -800,8 +679,10 @@ export function LightningCurrentBackfillHistoryTable({
       >
         <Table<LightningCurrentBackfillTaskSummary | LightningAmplitudeBackfillLine>
           rowKey={(row) => {
-            if (isAmplitudeMode && "line_id" in row) {
-              return row.line_id;
+            // 幅值模式：一行 = 一次回填任务，故用 task_id（同一线路可有多条回填记录）
+            const amplitudeRow = row as LightningAmplitudeBackfillLine;
+            if (isAmplitudeMode && amplitudeRow.task_id) {
+              return amplitudeRow.task_id;
             }
             return (row as LightningCurrentBackfillTaskSummary).id;
           }}
@@ -863,21 +744,35 @@ export function LightningCurrentBackfillHistoryTable({
           value={backfillLineIds}
           onChange={(value: string[]) => setBackfillLineIds(value)}
           loading={backfillCandidatesQuery.isFetching}
-          options={(backfillCandidatesQuery.data?.items ?? []).map((line: LineSummary) => ({
-            label: `${line.code} - ${line.name}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`,
-            value: line.id,
-          }))}
+          options={(backfillCandidatesQuery.data?.items ?? []).map((line: LineSummary) => {
+            // 无杆塔 = 没有可回填的数据，后端会直接 400；这里提前标黄并禁用，避免白跑一次
+            const noTower = (line.tower_count ?? 0) === 0;
+            return {
+              label: (
+                <Space size={6} style={{ width: "100%", justifyContent: "space-between" }}>
+                  <span>{`${line.code} - ${line.name}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`}</span>
+                  {noTower ? (
+                    <Tag color="warning" style={{ marginInlineEnd: 0 }}>
+                      无杆塔数据
+                    </Tag>
+                  ) : (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {line.tower_count} 塔
+                    </Typography.Text>
+                  )}
+                </Space>
+              ),
+              value: line.id,
+              disabled: noTower,
+            };
+          })}
         />
       </Modal>
 
       <Drawer
-        title={
-          isAmplitudeMode
-            ? (amplitudeLineTarget?.lineName ? `回填明细 - ${amplitudeLineTarget.lineName}` : "回填明细")
-            : "回填任务详情"
-        }
-        open={isAmplitudeMode ? !!amplitudeLineTarget : detailOpen}
-        onClose={isAmplitudeMode ? () => setAmplitudeLineTarget(null) : closeDetail}
+        title={task?.line_name ? `回填明细 - ${task.line_name}` : "回填任务详情"}
+        open={detailOpen}
+        onClose={closeDetail}
         width={920}
         destroyOnHidden
       >

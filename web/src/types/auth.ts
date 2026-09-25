@@ -1349,6 +1349,11 @@ export type LightningAmplitudeBackfillLine = {
   peak_max: number | null;
   peak_min: number | null;
   sampled_event_count: number;
+  /** 回填任务态：一次回填 = 一条记录，行进中也会出现（逐行进度条用） */
+  task_id: string | null;
+  status: string;
+  progress: number;
+  error_message: string | null;
 };
 
 export type LightningAmplitudeBackfillLineListResponse = {

@@ -452,41 +452,53 @@ def get_backfill_lines_for_amplitude(
     offset: int = 0,
     limit: int | None = None,
 ) -> LightningAmplitudeBackfillLineListResponse:
-    """查询一条雷电流幅值记录被哪些线路回填使用过（回填线路小窗）。
+    """查询一条雷电流幅值记录关联的线路回填记录（回填记录列表）。
 
-    反查路径：`line_amplitude_backfill` WHERE amplitude_id = ? JOIN power_line，
-    按 prepared_at 倒序（最近一次回填在前）；支持线路编号/名称关键词与分页。
+    2026-09-25 改：**以 `lightning_current_backfill_task` 为准**，不再读 `line_amplitude_backfill`。
+    原因：一次回填 = 一条记录，行进中（pending/processing）也要立刻可见并带进度，
+    而 `line_amplitude_backfill` 只在回填成功后才写入 → 提交后列表无反馈。
+
+    关联依据：任务的 `source_amplitude_ids` 含该幅值 id（提交时即写入该幅值，
+    成功后再并入实际使用的幅值，见 `_merge_source_amplitudes`）。
     """
     amp = get_lightning_amplitude_by_id(db, amplitude_id)
     if not amp:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="雷电流幅值记录不存在")
 
-    rows = db.execute(
-        select(LineAmplitudeBackfill)
-        .where(LineAmplitudeBackfill.amplitude_id == amplitude_id)
-        .order_by(LineAmplitudeBackfill.prepared_at.desc(), LineAmplitudeBackfill.create_date.desc())
+    tasks = db.execute(
+        select(LightningCurrentBackfillTask)
+        .order_by(
+            LightningCurrentBackfillTask.prepared_at.desc(),
+            LightningCurrentBackfillTask.create_date.desc(),
+        )
     ).scalars().all()
+
+    matched = [t for t in tasks if amplitude_id in (t.source_amplitude_ids or [])]
 
     kw = (keyword or "").strip().lower()
     items: list[LightningAmplitudeBackfillLine] = []
-    for row in rows:
-        line = row.line
+    for task in matched:
+        line = task.line
         if kw:
-            haystack = f"{(line.code or '')} {(line.name or '')}".lower()
+            haystack = f"{(line.code or '') if line else ''} {(line.name or '') if line else ''}".lower()
             if kw not in haystack:
                 continue
         items.append(
             LightningAmplitudeBackfillLine(
-                line_id=row.line_id,
+                line_id=task.line_id,
                 line_code=line.code if line else None,
                 line_name=line.name if line else None,
                 voltage_kv=line.voltage_kv if line else None,
-                prepared_at=row.prepared_at,
-                current_a=row.current_a,
-                current_b=row.current_b,
-                peak_max=row.peak_max,
-                peak_min=row.peak_min,
-                sampled_event_count=row.sampled_event_count,
+                prepared_at=task.prepared_at,
+                current_a=task.current_a,
+                current_b=task.current_b,
+                peak_max=task.peak_max,
+                peak_min=task.peak_min,
+                sampled_event_count=task.sampled_event_count or 0,
+                task_id=task.id,
+                status=task.status or "pending",
+                progress=int(task.progress or 0),
+                error_message=task.error_message,
             )
         )
     total = len(items)
@@ -717,6 +729,7 @@ def prepare_line_lightning_current(
 
     now = utcnow()
     normalized_region = _normalize_str(payload.region_id)
+    requested_amplitude_id = _normalize_str(payload.amplitude_id)
     task = LightningCurrentBackfillTask(
         line_id=line.id,
         prepared_at=now,
@@ -725,6 +738,9 @@ def prepare_line_lightning_current(
         is_synthetic=bool(payload.is_synthetic),
         status="pending",
         progress=0,
+        # 提交即写入来源幅值：让该幅值的「回填记录」立刻出现这条行进中的记录
+        # （成功时 worker 会并入实际使用的幅值，见 _merge_source_amplitudes）
+        source_amplitude_ids=[requested_amplitude_id] if requested_amplitude_id else [],
     )
     db.add(task)
     db.commit()
@@ -770,6 +786,19 @@ def _has_usable_lightning_amplitudes(
         filters.append(LightningAmplitude.is_synthetic == payload.is_synthetic)
     count = db.execute(select(func.count()).select_from(LightningAmplitude).where(*filters)).scalar() or 0
     return count > 0
+
+
+def _merge_source_amplitudes(task: LightningCurrentBackfillTask, amplitude_ids: list[str]) -> None:
+    """把实际使用的幅值并入任务的 source_amplitude_ids（去重保序，不丢提交时写入的请求幅值）。
+
+    2026-09-25：原先这里是直接赋值覆盖，会导致「从某幅值页发起、提交时写入的关联」
+    在回填成功后被实际使用列表覆盖掉 —— 若两者不同，那条记录就会从该幅值的回填记录里消失。
+    """
+    merged: list[str] = []
+    for amp_id in list(task.source_amplitude_ids or []) + [str(a) for a in amplitude_ids if a]:
+        if amp_id and amp_id not in merged:
+            merged.append(amp_id)
+    task.source_amplitude_ids = merged
 
 
 def _execute_line_lightning_current_backfill(
@@ -868,7 +897,7 @@ def _execute_line_lightning_current_backfill(
             region_id=normalized_region,
             is_synthetic=bool(payload.is_synthetic),
         )
-    task.source_amplitude_ids = [amp_id for amp_id in used_amplitude_ids]
+    _merge_source_amplitudes(task, used_amplitude_ids)
     task.status = "processing"
     task.progress = 30
     db.add(task)
