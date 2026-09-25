@@ -698,12 +698,14 @@ function PowerLineCard({ line, canLineManage, canUpdateLine, canDeleteLine, canM
         <div className="admin-power-lines-line-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
           <DeploymentUnitOutlined className="text-base text-gray-500" />
           <Typography.Text strong className="truncate flex-1">{line.name}</Typography.Text>
-          <div className="flex flex-shrink-0 items-center gap-2">
-            <Badge status={line.status === "processing" ? "processing" : line.status === "disabled" ? "error" : "success"} />
-            <Typography.Text type="secondary" className="text-xs">
-              {line.status === "processing" ? "处理中" : line.status === "disabled" ? "已停用" : "正常"}
-            </Typography.Text>
-          </div>
+          {(line.status === "processing" || line.status === "disabled") && (
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <Badge status={line.status === "processing" ? "processing" : "error"} />
+              <Typography.Text type="secondary" className="text-xs">
+                {line.status === "processing" ? "处理中" : "已停用"}
+              </Typography.Text>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 px-4 py-3">
@@ -875,6 +877,7 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
       key: "actions",
       width: 180,
       fixed: "right",
+      align: "right" as const,
       render: (_, line) => {
         const menuItems: MenuProps["items"] = [
           {
