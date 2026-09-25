@@ -75,8 +75,6 @@ import type {
   LightningAmplitudeUpdateRequest,
   LightningCurrentPreparationAsyncResponse,
   LightningTempUploadResponse,
-  LineListResponse,
-  LineSummary,
   LightningPolarity,
 } from "@/types/auth";
 import { CHINESE_CITIES, type CityOption } from "@/data/chinese-cities";
@@ -817,14 +815,6 @@ export default function AdminLightningCurrentsPage() {
                               void handleDownloadSource(record);
                             },
                           },
-                          {
-                            key: "backfill-history",
-                            label: "回填记录",
-                            onClick: (info) => {
-                              info.domEvent?.stopPropagation();
-                              openBackfillHistory(record);
-                            },
-                          },
                         ]
                       : []),
                     ...(canReadLogs && record.task_id
@@ -988,11 +978,6 @@ export default function AdminLightningCurrentsPage() {
                     onClick: () => {
                       void handleDownloadSource(row);
                     },
-                  },
-                  {
-                    key: "backfill-history",
-                    label: "回填记录",
-                    onClick: () => openBackfillHistory(row),
                   },
                 ]
               : []),
