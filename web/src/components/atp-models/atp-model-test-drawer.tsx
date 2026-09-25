@@ -598,7 +598,6 @@ function StageCard({
   runId: string | null;
   onRun: () => void;
 }) {
-  const hasResult = Boolean(result);
   return (
     <Card
       size="small"
@@ -646,7 +645,7 @@ function StageCard({
             该段在本次运行中未执行（未勾选且非依赖段）。
           </Typography.Text>
         ) : null}
-        {hasResult ? <StageDetail result={result} runId={runId} /> : null}
+        {result ? <StageDetail result={result} runId={runId} /> : null}
         {!result && !running ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该段尚未运行，点击「测试该段」发起" />
         ) : null}
