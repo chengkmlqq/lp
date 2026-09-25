@@ -3,7 +3,7 @@
 // ATP 参数模板管理页。
 // 布局严格参照「菜单管理」页:左侧模板树(可搜索/可拖拽调宽) + 右侧模板节点表格;
 // 原「选中节点详情 + 试算预览」改为表格操作列的「详情 / 试算」按钮,点击用抽屉打开。
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Alert,
   App,
@@ -20,6 +20,7 @@ import {
   Spin,
   Switch,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Tree,
@@ -38,6 +39,7 @@ import {
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
+import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
 
 type TreeNodeData = {
@@ -98,6 +100,11 @@ type SlotRow = { key: string; slot: string; expr: string; fmt: number; enabled: 
 
 const { Text, Title } = Typography;
 
+// 右表高度自适应视口(参照菜单管理页 updateTableScrollY 口径)
+const TEMPLATE_TABLE_MIN_SCROLL_Y = 180;
+const TEMPLATE_TABLE_VIEWPORT_GAP = 40;
+const TEMPLATE_TABLE_FALLBACK_RESERVE = 220;
+
 /** 树节点平铺成「模板行」(含祖先链,用于树点击过滤)。 */
 type TemplateRow = {
   key: string;
@@ -141,9 +148,18 @@ export default function AtpParamTemplatesPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
 
   // 左侧树宽度(参照菜单页:可拖拽调宽)
-  const [leftPanelWidth, setLeftPanelWidth] = useState(300);
+  const isMobile = useMobileDetection();
+  const [leftPanelWidth, setLeftPanelWidth] = useState(240);
   const containerRef = useRef<HTMLDivElement>(null);
   const isResizing = useRef(false);
+  // 右表高度随视口自适应(参照菜单管理页)
+  const [tableScrollY, setTableScrollY] = useState(TEMPLATE_TABLE_MIN_SCROLL_Y);
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  // 右表本地筛选(参照菜单管理页:关键词 + 层级 + 查询)
+  const [tableKeywordInput, setTableKeywordInput] = useState("");
+  const [tableKeyword, setTableKeyword] = useState("");
+  const [levelFilter, setLevelFilter] = useState<"own" | "inherit" | undefined>(undefined);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
 
   const loadTree = useCallback(async () => {
     setLoading(true);
@@ -216,6 +232,7 @@ export default function AtpParamTemplatesPage() {
   const onSelect = (keys: React.Key[]) => {
     const key = String(keys[0] ?? "");
     setSelectedKey(key);
+    setPagination((prev) => ({ ...prev, current: 1 }));
     const node = nodeMap.get(key);
     if (node?.rule_id) {
       void loadDetail(node.rule_id);
@@ -223,6 +240,21 @@ export default function AtpParamTemplatesPage() {
       setDetail(null);
       setPreview(null);
     }
+  };
+
+  // 右表「查询」:提交关键词(本地过滤,参照菜单页)
+  const handleTableSearch = () => {
+    setTableKeyword(tableKeywordInput);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  };
+
+  // 清除筛选:同时清掉树选中、右表关键词与层级过滤
+  const clearFilters = () => {
+    setSelectedKey("");
+    setTableKeywordInput("");
+    setTableKeyword("");
+    setLevelFilter(undefined);
+    setPagination((prev) => ({ ...prev, current: 1 }));
   };
 
   // 打开详情抽屉:先加载模板数据再开
@@ -417,11 +449,24 @@ export default function AtpParamTemplatesPage() {
 
   // 表格数据:树节点平铺(rule/has_template 节点)
   const templateRows = useMemo(() => (tree?.root ? flattenRules(tree.root, [], []) : []), [tree]);
+  const hasTableFilter = Boolean(tableKeyword.trim() || levelFilter);
   const filteredRows = useMemo(() => {
-    if (!selectedKey) return templateRows;
-    // 树点击:只显示选中节点及其子节点的模板
-    return templateRows.filter((row) => row.ancestors.includes(selectedKey) || row.key === selectedKey);
-  }, [templateRows, selectedKey]);
+    let rows = templateRows;
+    if (selectedKey) {
+      // 树点击:只显示选中节点及其子节点的模板
+      rows = rows.filter((row) => row.ancestors.includes(selectedKey) || row.key === selectedKey);
+    }
+    const kw = tableKeyword.trim().toLowerCase();
+    if (kw) {
+      rows = rows.filter(
+        (row) => row.node.label.toLowerCase().includes(kw) || row.pathLabel.toLowerCase().includes(kw),
+      );
+    }
+    if (levelFilter) {
+      rows = rows.filter((row) => row.node.status === levelFilter);
+    }
+    return rows;
+  }, [templateRows, selectedKey, tableKeyword, levelFilter]);
 
   const slotColumns: ColumnsType<SlotRow> = [
     { title: "槽位", dataIndex: "slot", width: 130, render: (v) => <Text code>{v}</Text> },
@@ -579,30 +624,95 @@ export default function AtpParamTemplatesPage() {
     };
   }, []);
 
+  // 参照菜单管理页:根据筛选栏/表格顶部位置计算滚动区高度,
+  // 避免固定 320px 在不同窗口下出现底部留白或双滚动条。
+  const updateTableScrollY = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) return;
+
+    const anchorTop = anchor.getBoundingClientRect().top;
+    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
+    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
+
+    let nextHeight = Math.floor(window.innerHeight - anchorTop - TEMPLATE_TABLE_FALLBACK_RESERVE);
+    if (tableWrapper) {
+      const wrapperRect = tableWrapper.getBoundingClientRect();
+      const bodyHeight = tableBody?.getBoundingClientRect().height ?? TEMPLATE_TABLE_MIN_SCROLL_Y;
+      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
+      const topGap = Math.max(0, wrapperRect.top - anchorTop);
+      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - TEMPLATE_TABLE_VIEWPORT_GAP);
+    }
+
+    const clampedHeight = Math.max(TEMPLATE_TABLE_MIN_SCROLL_Y, nextHeight);
+    setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(updateTableScrollY);
+  }, [filteredRows.length, hasTableFilter, levelFilter, loading, tableKeyword, updateTableScrollY]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onViewportChange = () => {
+      window.requestAnimationFrame(updateTableScrollY);
+    };
+    window.addEventListener("resize", onViewportChange);
+    return () => window.removeEventListener("resize", onViewportChange);
+  }, [updateTableScrollY]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") return;
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) return;
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(updateTableScrollY);
+    });
+    resizeObserver.observe(anchor);
+    return () => resizeObserver.disconnect();
+  }, [updateTableScrollY]);
+
   return (
-    <div className="admin_menus_list_pane">
-      <div ref={containerRef} className="admin-menus-page-body">
-        {/* 左侧:模板树(参照菜单管理页) */}
-        <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
-          <Card
-            className="admin-menus-tree-card"
-            style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-            styles={{ body: { flex: 1, padding: 0 } }}
-          >
-            <div className="admin-menus-sider-search">
-              <Input
-                className="admin-menus-search-input"
-                placeholder="搜索模板..."
-                prefix={<SearchOutlined />}
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                onPressEnter={() => void loadTree()}
-                allowClear
-              />
-            </div>
-            <div className="admin-menus-sider-menu">
-              <Spin spinning={loading}>
-                {treeData.length ? (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <Tabs
+        type="editable-card"
+        hideAdd
+        defaultActiveKey="list"
+        className="admin_menus_tabs"
+        items={[
+          {
+            key: "list",
+            label: <span className="admin-menus-tab-title">参数模板管理</span>,
+            closable: false,
+            children: (
+              <div className="admin_menus_list_pane">
+                <div ref={containerRef} className="admin-menus-page-body">
+        {/* 左侧:模板树(参照菜单管理页,移动端隐藏) */}
+        {!isMobile ? (
+          <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
+            <Card
+              className="admin-menus-tree-card"
+              style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
+              styles={{ body: { flex: 1, padding: 0 } }}
+            >
+              <div className="admin-menus-sider-search">
+                <Input
+                  className="admin-menus-search-input"
+                  placeholder="搜索模板..."
+                  prefix={<SearchOutlined />}
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  onPressEnter={() => void loadTree()}
+                  allowClear
+                />
+              </div>
+              <div className="admin-menus-sider-menu">
+                {loading ? (
+                  <div style={{ textAlign: "center", padding: "24px" }}>
+                    <Spin />
+                  </div>
+                ) : treeData.length ? (
                   <Tree
                     showLine
                     defaultExpandAll
@@ -611,40 +721,83 @@ export default function AtpParamTemplatesPage() {
                     treeData={treeData}
                   />
                 ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无参数模板" />
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description={keyword.trim() ? "未找到匹配的模板" : "暂无参数模板"}
+                  />
                 )}
-              </Spin>
-            </div>
-          </Card>
-        </div>
-        <div className="admin-menus-resize-handle" onMouseDown={handleResizeStart}>
-          <div className="admin-menus-resize-handle-line" />
-        </div>
+              </div>
+            </Card>
+          </div>
+        ) : null}
+        {!isMobile ? (
+          <div className="admin-menus-resize-handle" onMouseDown={handleResizeStart}>
+            <div className="admin-menus-resize-handle-line" />
+          </div>
+        ) : null}
 
         {/* 右侧:模板节点表格 */}
         <div className="admin-menus-main">
           <div className="admin-filter-bar">
             <Form layout="inline">
+              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                <Input
+                  allowClear
+                  value={tableKeywordInput}
+                  onChange={(event) => setTableKeywordInput(event.currentTarget.value)}
+                  placeholder="按模板名称/覆盖路径搜索"
+                  onPressEnter={() => handleTableSearch()}
+                />
+              </Form.Item>
+
+              <Form.Item label="层级" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                <Select<"own" | "inherit">
+                  value={levelFilter}
+                  allowClear
+                  placeholder="全部"
+                  onChange={(value) => {
+                    setLevelFilter(value);
+                    setPagination((prev) => ({ ...prev, current: 1 }));
+                  }}
+                  options={[
+                    { value: "own", label: "本级模板" },
+                    { value: "inherit", label: "继承节点" },
+                  ]}
+                />
+              </Form.Item>
+
               <Form.Item style={{ marginBottom: 0 }}>
-                <Button icon={<ReloadOutlined />} onClick={() => void loadTree()}>
+                <Button htmlType="button" icon={<SearchOutlined />} onClick={() => handleTableSearch()} className="admin-search-btn">
+                  查询
+                </Button>
+              </Form.Item>
+
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Button htmlType="button" icon={<ReloadOutlined />} onClick={() => void loadTree()}>
                   刷新
                 </Button>
               </Form.Item>
-              {selectedKey ? (
+
+              {selectedKey || hasTableFilter ? (
                 <Form.Item style={{ marginBottom: 0 }}>
-                  <Button onClick={() => setSelectedKey("")}>清除筛选</Button>
+                  <Button htmlType="button" onClick={() => clearFilters()}>
+                    清除筛选
+                  </Button>
                 </Form.Item>
               ) : null}
+
               <Form.Item style={{ marginBottom: 0 }}>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  共 {filteredRows.length} 个模板节点{selectedKey ? `(筛选自 ${templateRows.length})` : ""}
+                  共 {filteredRows.length} 个模板节点
+                  {selectedKey || hasTableFilter ? `(筛选自 ${templateRows.length})` : ""}
                 </Text>
               </Form.Item>
             </Form>
           </div>
           <div
+            ref={tableScrollAnchorRef}
             className="admin-menus-table-anchor"
-            style={{ "--admin-menus-table-body-min-height": "320px" } as React.CSSProperties}
+            style={{ "--admin-menus-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
           >
             <Table<TemplateRow>
               rowKey="key"
@@ -653,14 +806,19 @@ export default function AtpParamTemplatesPage() {
               loading={loading}
               columns={tableColumns}
               tableLayout="fixed"
-              scroll={{ x: 900 }}
+              scroll={{ x: 900, y: tableScrollY }}
               pagination={{
-                pageSize: 20,
+                current: pagination.current,
+                pageSize: pagination.pageSize,
+                total: Math.max(filteredRows.length, 1),
                 showSizeChanger: true,
                 pageSizeOptions: [10, 20, 50, 100],
                 showTotal: () => `共 ${filteredRows.length} 条`,
                 hideOnSinglePage: false,
                 style: { marginBottom: 0 },
+                onChange: (page, pageSize) => {
+                  setPagination({ current: page, pageSize });
+                },
               }}
               locale={{
                 emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的模板节点。" />,
@@ -668,7 +826,12 @@ export default function AtpParamTemplatesPage() {
             />
           </div>
         </div>
-      </div>
+                </div>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       {/* ── 详情抽屉 ── */}
       <Drawer
