@@ -103,7 +103,9 @@ def _create_asset(session: Session, *, code: str = "ATP-TEST-001", tower_type: s
             {
                 "work.atp": "$INCLUDE, D:\\ATP\\220\\maotou\\fanji\\M123\\long.lib, X0148A, X0148B, X0148C\n",
                 "long.dat": b"DAT PLACEHOLDER",
-                "tpbig.exe": b"binary",
+                "short.dat": b"DAT PLACEHOLDER",
+                "dahao.dat": b"DAT PLACEHOLDER",
+                "xiaohao.dat": b"DAT PLACEHOLDER",
             }
         ),
         actor_user_id="tester",

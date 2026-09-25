@@ -64,6 +64,15 @@ VALID_RUN_STATUS = {"pending", "running", "success", "failed"}
 LOG_MAX_CHARS = 200_000
 ATP_ASSET_FILES_ROOT = "/atp-assets"
 
+# ATP 模型包上传白名单：只接受 .atp（仿真入口）与 .dat（几何/LCC 源）。
+# .lib/.pch/.lis/.pl4/.log 等是 ATP 运行产物，由 geometry/simulate 阶段现场生成，不允许上传
+# （2026-09-26 实测：geometry 每轮按当轮参数重算覆盖 .lib，上传的 .lib 无兜底价值；
+# 删 .lib 后系统可从 .dat 自动重生成并跑通）。
+# ⚠️ 若未来接入带 egm 引擎的资产包（egm 子目录 + .exe），需在此放开对应扩展名。
+_ALLOWED_ATP_MODEL_EXTENSIONS: tuple[str, ...] = (".atp", ".dat")
+_DAT_MODEL_NAMES: tuple[str, ...] = ("long", "short", "dahao", "xiaohao")
+_ENTRY_ATP_FILE = "work.atp"
+
 
 @dataclass(slots=True)
 class StorageTree:
@@ -342,6 +351,41 @@ def _normalize_archive_member_path(value: str) -> str | None:
     return "/".join(parts) or None
 
 
+def _validate_atp_model_members(relative_paths: list[str]) -> None:
+    """校验上传的 ATP 模型文件清单（zip 成员或散文件，只读不写）。
+
+    规则（2026-09-26 改造，见 _ALLOWED_ATP_MODEL_EXTENSIONS）：
+    1. 白名单：只允许 .atp / .dat；发现其他扩展名 → 400 并列出
+    2. 入口：必须存在 work.atp，或恰好一个 .atp
+    3. 几何：long/short/dahao/xiaohao 四个 .dat 必须齐全（缺一 → 400 并列出）
+    校验失败时调用方保证零写入（本函数只读清单）。
+    """
+    if not relative_paths:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传包内没有有效文件")
+    lower_map = {path.lower(): path for path in relative_paths}
+    illegal = sorted(path for path in relative_paths if not path.lower().endswith(_ALLOWED_ATP_MODEL_EXTENSIONS))
+    if illegal:
+        shown = ", ".join(illegal[:8])
+        suffix = f" 等 {len(illegal)} 个" if len(illegal) > 8 else ""
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"ATP 模型只接受 .atp / .dat 文件，发现非法文件：{shown}{suffix}",
+        )
+    atp_files = sorted(path for path in relative_paths if path.lower().endswith(".atp"))
+    if _ENTRY_ATP_FILE not in lower_map and len(atp_files) != 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"必须包含 work.atp，或恰好一个 .atp 入口文件（当前 {len(atp_files)} 个 .atp）",
+        )
+    missing_dats = [name for name in _DAT_MODEL_NAMES if f"{name}.dat" not in lower_map]
+    if missing_dats:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="缺少几何文件（必须含 long/short/dahao/xiaohao 四个 .dat）："
+            + ", ".join(f"{name}.dat" for name in missing_dats),
+        )
+
+
 def _sanitize_storage_segment(value: str, *, fallback: str) -> str:
     normalized = _normalize_optional_str(value) or fallback
     normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", normalized).strip(".-")
@@ -416,12 +460,18 @@ def _write_archive_to_storage(
     extracted_count = 0
     try:
         with zipfile.ZipFile(io.BytesIO(archive_content)) as archive:
+            # 第一遍：收集全部成员路径并整体校验（失败时零写入，不留脏数据）
+            members: list[tuple[str, zipfile.ZipInfo]] = []
             for member in archive.infolist():
                 if member.is_dir():
                     continue
                 relative_path = _normalize_archive_member_path(member.filename)
                 if relative_path is None:
                     continue
+                members.append((relative_path, member))
+            _validate_atp_model_members([path for path, _ in members])
+            # 第二遍：写入
+            for relative_path, member in members:
                 target_path = normalize_virtual_path(f"{storage_root_path.rstrip('/')}/{relative_path}")
                 parent_path = _parent_virtual_path(target_path)
                 if parent_path not in ensured_directories:
@@ -1086,10 +1136,15 @@ def upload_asset_files(
     driver = _build_driver_or_400(mount)
     driver.ensure_directory(storage_root_path)
 
-    def _write_upload_file(upload: Any, *, base_root: str) -> None:
+    def _collect_upload_file(upload: Any) -> list[tuple[str, bytes, str | None]]:
+        """把单个上传（zip 或散文件）展开为 (相对路径, 内容, content_type) 列表，暂不写存储。
+
+        收集完成后由 _validate_atp_model_members 统一校验（失败时零写入）。
+        """
         raw_name = (getattr(upload, "filename", "") or "").strip()
         if not raw_name:
-            return
+            return []
+        collected: list[tuple[str, bytes, str | None]] = []
         try:
             content = upload.file.read()
         finally:
@@ -1097,32 +1152,27 @@ def upload_asset_files(
                 upload.file.close()
             except Exception:
                 pass
-
         content_type = getattr(upload, "content_type", None) or mimetypes.guess_type(raw_name)[0]
-        lower_name = raw_name.lower()
-        if lower_name.endswith(".zip"):
-            with zipfile.ZipFile(io.BytesIO(content)) as archive:
-                for member in archive.infolist():
-                    if member.is_dir():
-                        continue
-                    relative_path = _normalize_archive_member_path(member.filename)
-                    if relative_path is None:
-                        continue
-                    target_path = normalize_virtual_path(f"{base_root.rstrip('/')}/{relative_path}")
-                    parent_path = _parent_virtual_path(target_path)
-                    driver.ensure_directory(parent_path)
-                    driver.write_file(
-                        target_path,
-                        content=archive.read(member),
-                        content_type=mimetypes.guess_type(relative_path)[0],
-                    )
-            return
-
+        if raw_name.lower().endswith(".zip"):
+            try:
+                with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                    for member in archive.infolist():
+                        if member.is_dir():
+                            continue
+                        relative_path = _normalize_archive_member_path(member.filename)
+                        if relative_path is None:
+                            continue
+                        collected.append(
+                            (relative_path, archive.read(member), mimetypes.guess_type(relative_path)[0])
+                        )
+            except zipfile.BadZipFile as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail=f"ZIP 文件损坏: {exc}"
+                ) from exc
+            return collected
         relative_path = _normalize_archive_member_path(raw_name) or raw_name
-        target_path = normalize_virtual_path(f"{base_root.rstrip('/')}/{relative_path}")
-        parent_path = _parent_virtual_path(target_path)
-        driver.ensure_directory(parent_path)
-        driver.write_file(target_path, content=content, content_type=content_type)
+        collected.append((relative_path, content, content_type))
+        return collected
 
     resolved_files = list(files or [])
     if temp_file_id:
@@ -1144,8 +1194,16 @@ def upload_asset_files(
             detail="缺少文件，请提供 files 或 temp_file_id",
         )
 
+    pending: list[tuple[str, bytes, str | None]] = []
     for file in resolved_files:
-        _write_upload_file(file, base_root=storage_root_path)
+        pending.extend(_collect_upload_file(file))
+    # 统一校验：白名单扩展名 + .atp 入口 + 四个标准 .dat（失败时零写入）
+    _validate_atp_model_members([path for path, _, _ in pending])
+    for relative_path, content, content_type in pending:
+        target_path = normalize_virtual_path(f"{storage_root_path.rstrip('/')}/{relative_path}")
+        parent_path = _parent_virtual_path(target_path)
+        driver.ensure_directory(parent_path)
+        driver.write_file(target_path, content=content, content_type=content_type)
 
     asset.storage_mount_code = mount.code
     asset.storage_root_path = storage_root_path

@@ -90,7 +90,10 @@ def test_create_asset_and_upload_archive(tmp_path) -> None:
             archive_content=_build_zip(
                 {
                     "work.atp": b"ATP INPUT",
-                    "EGM/config.txt": b"egm",
+                    "long.dat": b"1",
+                    "short.dat": b"1",
+                    "dahao.dat": b"1",
+                    "xiaohao.dat": b"1",
                 }
             ),
             actor_user_id="tester",
@@ -124,7 +127,15 @@ def test_upload_asset_archive_and_list_asset_files(tmp_path) -> None:
             session,
             asset_id=asset.id,
             archive_filename="model.zip",
-            archive_content=_build_zip({"work.atp": b"ATP INPUT", "docs/readme.txt": b"docs"}),
+            archive_content=_build_zip(
+                {
+                    "work.atp": b"ATP INPUT",
+                    "long.dat": b"1",
+                    "short.dat": b"1",
+                    "dahao.dat": b"1",
+                    "xiaohao.dat": b"1",
+                }
+            ),
             actor_user_id="tester",
         )
 
@@ -134,8 +145,14 @@ def test_upload_asset_archive_and_list_asset_files(tmp_path) -> None:
         files = atp_asset_service.list_asset_files(session, asset_id=asset.id)
         assert files.asset_id == asset.id
         assert files.storage_mount_code == "main"
-        assert files.total == 3
-        assert [item.relative_path for item in files.items] == ["docs", "docs/readme.txt", "work.atp"]
+        assert files.total == 5
+        assert [item.relative_path for item in files.items] == [
+            "dahao.dat",
+            "long.dat",
+            "short.dat",
+            "work.atp",
+            "xiaohao.dat",
+        ]
     finally:
         session.close()
 
@@ -161,7 +178,15 @@ def test_run_asset_dry_run_materializes_directory(tmp_path, monkeypatch) -> None
             session,
             asset_id=asset.id,
             archive_filename="model.zip",
-            archive_content=_build_zip({"work.atp": b"ATP INPUT", "tpbig.exe": b"binary"}),
+            archive_content=_build_zip(
+                {
+                    "work.atp": b"ATP INPUT",
+                    "long.dat": b"1",
+                    "short.dat": b"1",
+                    "dahao.dat": b"1",
+                    "xiaohao.dat": b"1",
+                }
+            ),
             actor_user_id="tester",
         )
 
@@ -215,7 +240,10 @@ def test_delete_asset_removes_storage_files(tmp_path) -> None:
             archive_filename="model.zip",
             archive_content=_build_zip({
                 "work.atp": b"ATP INPUT",
-                "README.txt": b"documentation",
+                "long.dat": b"1",
+                "short.dat": b"1",
+                "dahao.dat": b"1",
+                "xiaohao.dat": b"1",
             }),
             actor_user_id="tester",
         )
@@ -223,7 +251,7 @@ def test_delete_asset_removes_storage_files(tmp_path) -> None:
         asset_root = tmp_path / "vfs" / "atp-assets" / "ATP-ASSET-DELETE-TEST"
         assert asset_root.exists()
         assert (asset_root / "work.atp").exists()
-        assert (asset_root / "README.txt").exists()
+        assert (asset_root / "long.dat").exists()
 
         deleted = atp_asset_service.delete_asset(session, asset.id)
         assert deleted is True
