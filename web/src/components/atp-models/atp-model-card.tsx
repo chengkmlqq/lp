@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Card, Dropdown, Modal, Progress, Space, Tooltip, Typography } from "antd";
+import { Badge, Button, Card, Dropdown, Modal, Progress, Space, Tooltip, Typography } from "antd";
 import {
   ApartmentOutlined,
   ClockCircleOutlined,
+  DatabaseOutlined,
   DeleteOutlined,
   EditOutlined,
   ExperimentOutlined,
@@ -13,9 +14,7 @@ import {
 } from "@ant-design/icons";
 import { useCallback } from "react";
 
-import type { AtpAssetSummary } from "@/types/auth";
-
-const { Text } = Typography;
+import type { AtpAssetStatus, AtpAssetSummary } from "@/types/auth";
 
 interface AtpModelCardProps {
   asset: AtpAssetSummary;
@@ -40,6 +39,21 @@ function formatDimension(
 ): string {
   if (!value) return "-";
   return map?.get(value) ?? value;
+}
+
+function assetBadgeStatus(status: AtpAssetStatus): { badge: "success" | "processing" | "error" | "warning" | "default"; text: string } {
+  switch (status) {
+    case "processing":
+      return { badge: "processing", text: "处理中" };
+    case "disabled":
+      return { badge: "error", text: "已停用" };
+    case "archived":
+      return { badge: "warning", text: "已归档" };
+    case "draft":
+      return { badge: "default", text: "草稿" };
+    default:
+      return { badge: "success", text: "正常" };
+  }
 }
 
 export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, dimensionLabelMap }: AtpModelCardProps) {
@@ -68,6 +82,8 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
     });
   }, [deleteLoading, onDelete, asset.id]);
 
+  const { badge: statusBadge, text: statusText } = assetBadgeStatus(asset.status);
+
   return (
     <Card
       size="small"
@@ -77,99 +93,114 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
     >
       <div className="flex flex-col">
         <div className="admin-atp-models-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
-          <Typography.Text strong className="truncate" style={{ flex: 1 }}>
-            {asset.name}
-          </Typography.Text>
+          <DatabaseOutlined className="text-base text-gray-500" />
+          <Typography.Text strong className="truncate flex-1">{asset.name}</Typography.Text>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Badge status={statusBadge} />
+            <Typography.Text type="secondary" className="text-xs">
+              {statusText}
+            </Typography.Text>
+          </div>
         </div>
 
         <div className="flex flex-col gap-2 px-4 py-3">
-          <div className="admin-atp-models-card-field flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <ThunderboltOutlined className="text-xs text-gray-500" />
-            <Text type="secondary" className="text-xs">电压等级：{formatDimension(asset.voltage_level, dimensionLabelMap?.voltage_level)}</Text>
+            <Typography.Text type="secondary" className="text-xs">电压等级：{formatDimension(asset.voltage_level, dimensionLabelMap?.voltage_level)}</Typography.Text>
           </div>
-          <div className="admin-atp-models-card-field flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <ApartmentOutlined className="text-xs text-gray-500" />
-            <Text type="secondary" className="text-xs">塔型：{formatDimension(asset.tower_type, dimensionLabelMap?.tower_type)}</Text>
+            <Typography.Text type="secondary" className="text-xs">塔型：{formatDimension(asset.tower_type, dimensionLabelMap?.tower_type)}</Typography.Text>
           </div>
-          <div className="admin-atp-models-card-field flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <ClockCircleOutlined className="text-xs text-gray-500" />
-            <Text type="secondary" className="text-xs">场景：{formatDimension(asset.scene_type, dimensionLabelMap?.scene_type)}</Text>
+            <Typography.Text type="secondary" className="text-xs">场景：{formatDimension(asset.scene_type, dimensionLabelMap?.scene_type)}</Typography.Text>
           </div>
-          <div className="admin-atp-models-card-field flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <EyeOutlined className="text-xs text-gray-500" />
-            <Text type="secondary" className="text-xs">避雷器组合：{formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config)}</Text>
+            <Typography.Text type="secondary" className="text-xs">避雷器组合：{formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config)}</Typography.Text>
           </div>
         </div>
 
         <div className="admin-atp-models-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
-        {asset.status === "processing" ? (
-          <Progress percent={asset.progress ?? 0} size="small" className="flex-1 max-w-40" />
-        ) : (
-          <div />
-        )}
-        <Space size="small" className="shrink-0">
-          <Tooltip title={canTest ? "模型测试" : "缺少测试权限（需要 atp.run / atp.manage）"}>
-            <Button
-              type="text"
-              size="small"
-              icon={<ExperimentOutlined />}
-              disabled={!canTest}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleTest();
-              }}
-            />
-          </Tooltip>
-          <Tooltip title="详情">
-            <Button
-              type="text"
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleView();
-              }}
-            />
-          </Tooltip>
-          <Tooltip title="编辑">
-            <Button
-              type="text"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleEdit();
-              }}
-            />
-          </Tooltip>
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: "delete",
-                  label: "删除",
-                  icon: <DeleteOutlined />,
-                  danger: true,
-                  disabled: !canManage || rowBusy,
-                  onClick: (info) => {
-                    info.domEvent?.stopPropagation();
-                    handleDelete();
-                  },
-                },
-              ],
-            }}
-            trigger={["click"]}
-          >
-            <Tooltip title="更多">
+          {asset.status === "processing" ? (
+            <Progress percent={asset.progress ?? 0} size="small" className="flex-1 max-w-40" />
+          ) : (
+            <div />
+          )}
+          <Space size="small" className="shrink-0">
+            <Tooltip title={canTest ? "模型测试" : "缺少测试权限（需要 atp.run / atp.manage）"}>
               <Button
                 type="text"
                 size="small"
-                icon={<MoreOutlined />}
-                onClick={(event) => event.stopPropagation()}
+                icon={<ExperimentOutlined />}
+                disabled={!canTest}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleTest();
+                }}
               />
             </Tooltip>
-          </Dropdown>
-        </Space>
+            <Tooltip title="详情">
+              <Button
+                type="text"
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleView();
+                }}
+              />
+            </Tooltip>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "edit",
+                    label: (
+                      <Space size={4}>
+                        <EditOutlined />
+                        <span>编辑</span>
+                      </Space>
+                    ),
+                    onClick: (event) => {
+                      event.domEvent.stopPropagation();
+                      handleEdit();
+                    },
+                  },
+                  ...(canManage
+                    ? [
+                        {
+                          key: "delete",
+                          label: (
+                            <Space size={4}>
+                              <DeleteOutlined />
+                              <span>删除</span>
+                            </Space>
+                          ),
+                          danger: true,
+                          disabled: rowBusy,
+                          onClick: (event) => {
+                            event.domEvent.stopPropagation();
+                            handleDelete();
+                          },
+                        },
+                      ]
+                    : []),
+                ],
+              }}
+              trigger={["click"]}
+            >
+              <Tooltip title="更多">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MoreOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </Tooltip>
+            </Dropdown>
+          </Space>
         </div>
       </div>
     </Card>

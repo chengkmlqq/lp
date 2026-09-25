@@ -22,7 +22,7 @@ import {
   Upload,
   type MenuProps,
 } from "antd";
-import { CheckCircleOutlined, ExperimentOutlined, InboxOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, DeleteOutlined, EditOutlined, InboxOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
@@ -705,18 +705,34 @@ export default function AtpModelsPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-        width: 240,
+        width: 180,
         render: (_, item) => {
           const deleteLoading = deleteMutation.isPending;
           const rowBusy = deleteLoading;
 
-          // 详情/编辑平铺为按钮（无图标）；删除收进 ⋯ 三点下拉（参考故障分析列表页）
+          // 编辑收进 ⋯ 三点下拉，删除仅在具备管理权限时出现（对齐 power-lines 线路管理页操作列）
           const moreMenuItems: MenuProps["items"] = [
+            {
+              key: "edit",
+              label: (
+                <Space size={4}>
+                  <EditOutlined />
+                  <span>编辑</span>
+                </Space>
+              ),
+              disabled: !canManage || rowBusy,
+              onClick: () => openEditModal(item),
+            },
             ...(canManage
               ? [
                   {
                     key: "delete",
-                    label: "删除",
+                    label: (
+                      <Space size={4}>
+                        <DeleteOutlined />
+                        <span>删除</span>
+                      </Space>
+                    ),
                     danger: true,
                     disabled: rowBusy,
                     onClick: () => {
@@ -741,20 +757,14 @@ export default function AtpModelsPage() {
               </Button>
               <Button
                 size="small"
-                icon={<ExperimentOutlined />}
                 disabled={!canTest}
                 onClick={() => openTestDrawer(item)}
               >
                 测试
               </Button>
-              <Button size="small" disabled={!canManage} onClick={() => openEditModal(item)}>
-                编辑
-              </Button>
-              {moreMenuItems.length > 0 ? (
-                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Button size="small" icon={<MoreOutlined />} />
-                </Dropdown>
-              ) : null}
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button size="small" icon={<MoreOutlined />} />
+              </Dropdown>
             </Space>
           );
         },
