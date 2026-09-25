@@ -1,13 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Descriptions, Empty, Modal, Spin, Table, Typography } from "antd";
+import { Alert, Button, Descriptions, Empty, Modal, Space, Spin, Table, Typography } from "antd";
 import { useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import type { AtpAssetSummary, AtpAssetFileListResponse } from "@/types/auth";
 import { AtpDatDetailView } from "./atp-dat-detail-view";
+import { AtpFileContentViewer } from "./atp-file-content-viewer";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -31,6 +32,8 @@ interface AtpModelDetailTabProps {
 export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const [datDetail, setDatDetail] = useState<{ path: string; name: string } | null>(null);
+  // 通用文件在线查看：所有非目录文件均可打开（dat 另有结构化「查看详情」）
+  const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
 
   const canRead = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
 
@@ -144,21 +147,36 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
               {
                 title: "操作",
                 key: "operation",
-                width: 110,
+                width: 170,
                 align: "right" as const,
                 render: (_value, row: { path: string; name: string; is_dir: boolean }) =>
-                  !row.is_dir && row.path.toLowerCase().endsWith(".dat") ? (
-                    <Button
-                      type="link"
-                      size="small"
-                      style={{ padding: 0 }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setDatDetail({ path: row.path, name: row.name });
-                      }}
-                    >
-                      查看详情
-                    </Button>
+                  !row.is_dir ? (
+                    <Space size={4}>
+                      {row.path.toLowerCase().endsWith(".dat") ? (
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ padding: 0 }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDatDetail({ path: row.path, name: row.name });
+                          }}
+                        >
+                          查看详情
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="link"
+                        size="small"
+                        style={{ padding: 0 }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setPreviewFile({ path: row.path, name: row.name });
+                        }}
+                      >
+                        在线查看
+                      </Button>
+                    </Space>
                   ) : (
                     <span style={{ color: "#bbb", fontSize: 12 }}>-</span>
                   ),
@@ -176,6 +194,18 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
         onCancel={() => setDatDetail(null)}
       >
         {datDetail ? <AtpDatDetailView assetId={assetId} relativePath={datDetail.path} /> : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(previewFile)}
+        title={`文件内容：${previewFile?.name ?? ""}`}
+        width={900}
+        footer={null}
+        onCancel={() => setPreviewFile(null)}
+      >
+        {previewFile ? (
+          <AtpFileContentViewer assetId={assetId} relativePath={previewFile.path} name={previewFile.name} />
+        ) : null}
       </Modal>
     </div>
   );
