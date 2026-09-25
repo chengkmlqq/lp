@@ -6427,6 +6427,30 @@ body {
   flex-shrink: 0;
 }
 
+/* LP-322: 列表视图分页条与卡片视图一样贴面板底（底部 8px）。
+   .admin-power-lines-table-view 的 flex 撑高把 .ant-table-wrapper 拉满，
+   而 JS 表体高度按 antd 默认 16px 分页间距预留（实际 margin-top 被覆盖为 12px），
+   差出的剩余空间留在分页下方（实测 15px），导致两视图分页距底不一致。
+   处理：spin 容器转 flex 列，margin-top:auto 把剩余空间吸收到表格与分页之间，
+   分页 margin-bottom 固定 8px，与 .admin-power-lines-pagination 的 padding-bottom 对齐。 */
+.admin-power-lines-tabs .admin-power-lines-table-view .ant-table-wrapper,
+.admin-power-lines-tabs .admin-power-lines-table-view .ant-spin-nested-loading,
+.admin-power-lines-tabs .admin-power-lines-table-view .ant-spin-container {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-power-lines-tabs .admin-power-lines-table-view .ant-table {
+  flex: 0 0 auto;
+}
+
+.admin-power-lines-tabs .admin-power-lines-table-view .ant-table-pagination {
+  margin: auto 0 8px !important;
+  flex-shrink: 0;
+}
+
 /* line-detail-view: 线路详情页杆塔表格锚点，参考主列表表格高度自适应 */
 .admin-power-line-detail-table-anchor {
   display: flex;
