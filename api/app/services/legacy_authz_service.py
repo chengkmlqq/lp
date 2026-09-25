@@ -122,6 +122,8 @@ MENU_CODE_PERMISSION_MAP: dict[str, set[str]] = {
     "admin.task_monitor": {"celery.read", "celery.manage"},
     "admin.scheduled_tasks": {"celery.read", "celery.manage"},
     "admin.atp_models": {"atp.read", "atp.manage", "atp.run"},
+    "admin.atp_param_templates": {"atp.read", "atp.manage"},
+    "admin.atp_params": {"atp.read", "atp.manage"},
     "admin.fault_recurrence": {"line.read", "line.manage", "tower.read", "tower.manage"},
     "admin.lightning_currents": {"lightning.read", "lightning.manage"},
     "admin.lightning_distribution": {"lightning.read", "lightning.manage"},

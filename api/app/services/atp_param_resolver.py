@@ -28,6 +28,7 @@ from app.services.atp_param_dsl import (
     parse_expression,
     validate_expression,
 )
+from app.services.atp_param_registry import Definition, DefinitionError, resolve_definitions
 
 MAPPINGS_DIR = Path(__file__).resolve().parent / "atp_param_mappings"
 
@@ -84,7 +85,7 @@ class Rule:
 
 @dataclass
 class MappingRules:
-    """全部规则 + 全局槽位 + 塔型归一化配置。"""
+    """全部规则 + 全局槽位 + 塔型归一化配置 + 参数注册表。"""
 
     rules: dict[str, Rule] = field(default_factory=dict)  # marker -> Rule
     globals: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -94,6 +95,8 @@ class MappingRules:
     voltage_rules: list[Rule] = field(default_factory=list)  # 带非 tower_type 维度的细分规则
     # 全局默认上下文变量（_common.json 顶层 defaults）—— 仅 allow_defaults=True 时生效
     defaults: dict[str, Any] = field(default_factory=dict)
+    # 参数注册表（atp_param_definition）；为空 = 旧行为（只有 SOURCE_VARS 上下文）
+    definitions: list[Definition] = field(default_factory=list)
 
 
 @dataclass
@@ -117,8 +120,8 @@ class ResolvedParams:
 
 def _validate_slots(rule_name: str, slots: Mapping[str, Any]) -> None:
     for slot, spec in slots.items():
-        if not isinstance(spec, dict) or ("expr" not in spec and "value" not in spec):
-            raise MappingConfigError(f"{rule_name}.{slot} 缺少 expr/value")
+        if not isinstance(spec, dict) or not any(k in spec for k in ("expr", "value", "param")):
+            raise MappingConfigError(f"{rule_name}.{slot} 缺少 expr/value/param")
         if "expr" in spec:
             validate_expression(str(spec["expr"]))
         when = spec.get("when")
@@ -177,7 +180,15 @@ def load_mappings(mappings_dir: Path | None = None) -> MappingRules:
             rules.rules[marker] = rule
         else:
             rules.voltage_rules.append(rule)
+    rules.definitions = _seed_definitions()
     return rules
+
+
+def _seed_definitions() -> list:
+    """代码内种子定义（与 atp_param_definition_seed 同源），供 JSON 回落路径使用。"""
+    from app.services.atp_param_definition_seed import build_seed_definition_objects  # noqa: PLC0415
+
+    return build_seed_definition_objects()
 
 
 def globals_from_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -322,6 +333,28 @@ def _collect_defaults(
     return out
 
 
+def _collect_requested_params(rules: MappingRules) -> set[str]:
+    """收集规则里被引用的注册表参数 code：
+    - 槽位 `param` 键；- expr 里 `collect_names` 命中的注册表定义（非 SOURCE_VARS/上下文键）。
+    """
+    referenced: set[str] = set()
+    registered = {d.code for d in rules.definitions}
+    if not registered:
+        return referenced
+    for slot_group in (rules.globals, *(rule.slots for rule in rules.rules.values()), *(rule.slots for rule in rules.voltage_rules)):
+        for spec in slot_group.values():
+            if not isinstance(spec, dict):
+                continue
+            code = spec.get("param")
+            if code and code in registered:
+                referenced.add(str(code))
+            for key in ("expr", "when"):
+                expr = spec.get(key)
+                if expr:
+                    referenced.update(name for name in collect_names(str(expr)) if name in registered)
+    return referenced
+
+
 def resolve_params(
     context: Mapping[str, Any],
     rules: MappingRules,
@@ -334,6 +367,9 @@ def resolve_params(
     allow_defaults=True 时（**仅「无杆塔测试」使用**）：
     把规则链上的 ``defaults``（全局 → 塔型 → 细分）合并进上下文，**只补为 None 的键**，
     并记入 ``defaults_applied``。生产路径保持 False —— 行为与改动前逐字节一致。
+
+    参数注册表（rules.definitions）：按槽位引用惰性求值；只有被 expr/param 引用的
+    定义才解析（避免未引用的失败定义破坏整条链路），失败显式抛 DefinitionError。
     """
     canonical = normalize_tower_kind(context.get("tower_type"), rules)
     ctx = dict(context)
@@ -344,6 +380,20 @@ def resolve_params(
 
     variables: dict[str, Any] = dict(ctx)
     raw_values: dict[str, Any] = {}
+
+    # 注册表参数：只解析被引用的（expr 引用注册表 code 或 param 键）
+    if rules.definitions:
+        requested = _collect_requested_params(rules)
+        if requested:
+            resolved_params = resolve_definitions(
+                definitions=rules.definitions,
+                context=ctx,
+                requested=requested,
+            )
+            # 注册表只补 ctx 里缺失（None）的键；ctx 已有值保持原值（种子=现状镜像，零回归）
+            for code in requested:
+                if ctx.get(code) is None and code in resolved_params:
+                    variables[code] = resolved_params[code]
 
     if allow_defaults:
         defaults = _collect_defaults(rules, base_rule, ctx, effective_kind)
@@ -376,6 +426,22 @@ def resolve_params(
                 result.values[slot] = str(spec["value"])
                 result.sources[slot] = source_label
                 raw_values.pop(slot, None)
+                continue
+            param_code = spec.get("param")
+            if param_code:  # 注册表参数引用（page 参数管理定义的 code）
+                code = str(param_code)
+                if code not in variables:
+                    raise DefinitionError(f"{slot}: 注册表参数 {code} 未解析到（未定义或被停用）")
+                raw = variables[code]
+                if raw is None:
+                    result.values[slot] = format_value(None, int(spec.get("fmt", 2)))
+                    result.unresolved[slot] = [code]
+                    result.sources[slot] = f"{source_label}（注册表参数 {code} 缺值→{result.values[slot]}）"
+                    raw_values[slot] = None
+                    continue
+                raw_values[slot] = raw
+                result.values[slot] = format_value(raw, int(spec.get("fmt", 2)))
+                result.sources[slot] = source_label
                 continue
             expression = str(spec["expr"])
             scope = {**variables, **raw_values}

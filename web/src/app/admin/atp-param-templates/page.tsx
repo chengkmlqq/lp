@@ -77,7 +77,7 @@ type TemplateDetail = {
   specificity: number;
   defined_slots: number;
   defined_defaults?: number;
-  slots: Record<string, { expr?: string; value?: string; fmt?: number; enabled?: boolean; when?: string; else?: string }>;
+  slots: Record<string, { expr?: string; value?: string; fmt?: number; enabled?: boolean; when?: string; else?: string; param?: string }>;
   defaults?: Record<string, string | number>;
   updated_at: string | null;
   updated_by: string | null;
@@ -96,7 +96,7 @@ type MetaResponse = {
   variable_names?: string[];
 };
 
-type SlotRow = { key: string; slot: string; expr: string; fmt: number; enabled: boolean; value?: string; when?: string };
+type SlotRow = { key: string; slot: string; expr: string; fmt: number; enabled: boolean; value?: string; when?: string; param?: string };
 
 const { Text, Title } = Typography;
 
@@ -142,6 +142,8 @@ export default function AtpParamTemplatesPage() {
   const [slotRows, setSlotRows] = useState<SlotRow[]>([]);
   const [defaultRows, setDefaultRows] = useState<DefaultRow[]>([]);
   const [form] = Form.useForm();
+  // 参数注册表 code（槽位「参数引用」模式用）
+  const [paramCodes, setParamCodes] = useState<string[]>([]);
 
   // 抽屉状态
   const [detailOpen, setDetailOpen] = useState(false);
@@ -185,10 +187,22 @@ export default function AtpParamTemplatesPage() {
     }
   }, []);
 
+  const loadParamCodes = useCallback(async () => {
+    try {
+      const response = await fetchWithAuth("/api/v1/atp/param-definitions");
+      if (!response.ok) return;
+      const data: { items?: { code: string; enabled: boolean }[] } = await response.json();
+      setParamCodes((data.items ?? []).filter((item) => item.enabled).map((item) => item.code));
+    } catch {
+      // 注册表加载失败不阻塞页面
+    }
+  }, []);
+
   useEffect(() => {
     void loadTree();
     void loadMeta();
-  }, [loadTree, loadMeta]);
+    void loadParamCodes();
+  }, [loadTree, loadMeta, loadParamCodes]);
 
   const nodeMap = useMemo(() => {
     const map = new Map<string, TreeNodeData>();
@@ -369,6 +383,7 @@ export default function AtpParamTemplatesPage() {
           enabled: spec.enabled !== false,
           value: spec.value ?? "",
           when: spec.when ?? "",
+          param: spec.param ?? undefined,
         })),
       );
       setDefaultRows(
@@ -392,7 +407,8 @@ export default function AtpParamTemplatesPage() {
       slotRows.forEach((row) => {
         if (!row.slot) return;
         const spec: Record<string, unknown> = { fmt: row.fmt, enabled: row.enabled };
-        if (row.value) spec.value = row.value;
+        if (row.param) spec.param = row.param;
+        else if (row.value) spec.value = row.value;
         else spec.expr = row.expr;
         if (row.when) spec.when = row.when;
         slots[row.slot] = spec;
@@ -470,7 +486,21 @@ export default function AtpParamTemplatesPage() {
 
   const slotColumns: ColumnsType<SlotRow> = [
     { title: "槽位", dataIndex: "slot", width: 130, render: (v) => <Text code>{v}</Text> },
-    { title: "表达式 / 值", dataIndex: "expr", render: (v, row) => (row.value ? <Text type="secondary">字面量 {row.value}</Text> : <Text>{v}</Text>) },
+    {
+      title: "表达式 / 值 / 参数",
+      dataIndex: "expr",
+      render: (v, row) =>
+        row.param ? (
+          <Space size={4}>
+            <Tag color="purple">参数</Tag>
+            <Text code>{row.param}</Text>
+          </Space>
+        ) : row.value ? (
+          <Text type="secondary">字面量 {row.value}</Text>
+        ) : (
+          <Text>{v}</Text>
+        ),
+    },
     { title: "格式", dataIndex: "fmt", width: 70, render: (v) => `${v} 位` },
     { title: "启用", dataIndex: "enabled", width: 70, render: (v) => (v ? <Tag color="green">启用</Tag> : <Tag>关闭</Tag>) },
     {
@@ -882,6 +912,7 @@ export default function AtpParamTemplatesPage() {
                   enabled: spec.enabled !== false,
                   value: spec.value ?? undefined,
                   when: spec.when ?? undefined,
+                  param: spec.param ?? undefined,
                 }))}
               />
               <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
@@ -1080,12 +1111,31 @@ export default function AtpParamTemplatesPage() {
               ),
             },
             {
+              title: "参数引用（可选）",
+              dataIndex: "param",
+              width: 180,
+              render: (value: string | undefined, row: SlotRow) => (
+                <Select
+                  showSearch
+                  allowClear
+                  style={{ width: 160 }}
+                  value={value || undefined}
+                  placeholder="选注册表参数（ATP计算参数管理）"
+                  options={paramCodes.map((item) => ({ value: item, label: item }))}
+                  onChange={(next) =>
+                    setSlotRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, param: next, expr: next ? "" : item.expr, value: next ? "" : item.value } : item)))
+                  }
+                />
+              ),
+            },
+            {
               title: "表达式（或字面量）",
               dataIndex: "expr",
               render: (value: string, row: SlotRow) => (
                 <Input
                   value={value}
-                  placeholder="如：abs(h_u - insul_m - v(10/3,1.5,10/3,14/3,14/3,8,14/3,0))"
+                  disabled={!!row.param}
+                  placeholder={row.param ? "已选参数引用" : "如：abs(h_u - insul_m - v(10/3,1.5,10/3,14/3,14/3,8,14/3,0))"}
                   onChange={(event) => setSlotRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, expr: event.target.value } : item)))}
                 />
               ),

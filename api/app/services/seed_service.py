@@ -25,6 +25,7 @@ SEED_RESULT_CATEGORIES = (
     "file_storage_mounts",
     "admin_users",
     "legacy_tower_models",
+    "atp_param_definitions",
 )
 
 
@@ -359,6 +360,19 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "permission_code": "atp.read",
     },
     {
+        "code": "admin.atp_params",
+        "name": "ATP计算参数管理",
+        "path": "/admin/atp-params",
+        "icon": "FunctionOutlined",
+        "parent_code": "admin.basic_data",
+        "type": "menu",
+        "sort_order": 26,
+        "status": "enabled",
+        "visible": True,
+        "cacheable": False,
+        "permission_code": "atp.read",
+    },
+    {
         "code": "admin.elevation",
         "name": "高程数据管理",
         "path": "/admin/elevation",
@@ -681,7 +695,31 @@ def seed_defaults(db: Session, *, force: bool = False) -> SeedDefaultsResult:
     seed_default_scheduled_tasks(db)
     db.commit()
 
+    # ATP 参数注册表种子（SOURCE_VARS → line_binding 翻译；运行期脚本基线）
+    _seed_atp_param_definitions(db, result=result, force=force)
+    db.commit()
+
     return result
+
+
+def _seed_atp_param_definitions(
+    db: Session,
+    *,
+    result: SeedDefaultsResult,
+    force: bool,
+) -> None:
+    from .atp_param_definition_seed import seed_param_definitions  # noqa: PLC0415
+
+    category = result.summary["atp_param_definitions"]
+    try:
+        stats = seed_param_definitions(db, force=force, operator="seed")
+    except Exception:
+        # 表尚未创建（首次 init_db 前）时跳过，不阻断其它种子
+        db.rollback()
+        return
+    category.created += stats["created"]
+    category.updated += stats["updated"]
+    category.unchanged += stats["skipped"]
 
 
 def _seed_permissions(

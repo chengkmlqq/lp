@@ -945,6 +945,7 @@ def init_db() -> None:
     # Import models so metadata includes every table before create_all.
     from ..models import (
         atp_asset,
+        atp_param_definition,
         audit_log,
         auth_session,
         dimension_item,

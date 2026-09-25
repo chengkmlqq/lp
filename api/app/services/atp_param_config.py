@@ -73,13 +73,36 @@ def _load_from_db() -> MappingRules | None:
                 dict(row._mapping)
                 for row in db.execute(text("SELECT * FROM atp_param_global WHERE enabled")).fetchall()
             ]
+            definitions = _load_definitions_safely(db)
         finally:
             db.close()
         if not tpl_rows:
             return None
-        return load_mappings_from_rows(tpl_rows, common=_load_common(glob_rows))
+        rules = load_mappings_from_rows(tpl_rows, common=_load_common(glob_rows))
+        rules.definitions = definitions
+        return rules
     except Exception:
         return None
+
+
+def _load_definitions_safely(db) -> list:
+    """加载参数注册表；表不存在（首次部署未跑迁移）时回落到代码内种子定义。"""
+    try:
+        from app.services.atp_param_registry import load_definitions
+
+        definitions = load_definitions(db)
+        if definitions:
+            return definitions
+    except Exception:
+        pass
+    return _seed_definitions()
+
+
+def _seed_definitions() -> list:
+    """代码内种子（与 atp_param_definition_seed 同源），供 DB 表缺失场景。"""
+    from app.services.atp_param_definition_seed import build_seed_definition_objects  # noqa: PLC0415
+
+    return build_seed_definition_objects()
 
 
 def get_rules(*, force: bool = False) -> MappingRules | None:

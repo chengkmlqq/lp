@@ -48,7 +48,48 @@ def _allowed_vars(db: Session, slots: dict[str, Any] | None = None) -> set[str]:
             names.update(str(k) for k in payload)
     if slots:
         names.update(str(k) for k in slots)
+    # 参数注册表 code 也允许被引用（参数管理页定义的参数）
+    try:
+        from app.services.atp_param_registry import load_definitions
+
+        names.update(d.code for d in load_definitions(db))
+    except Exception:  # noqa: BLE001 - 表未就绪时忽略
+        pass
     return names
+
+
+def _validate_slot_spec(db: Session, slot: str, spec: dict[str, Any], allowed: set[str]) -> None:
+    if not isinstance(spec, dict) or not any(k in spec for k in ("expr", "value", "param")):
+        raise TemplateError(f"{slot} 需要 expr/value/param")
+    if spec.get("param"):
+        param_code = str(spec["param"])
+        if param_code not in allowed:
+            raise TemplateError(f"{slot} 引用了未注册的参数：{param_code}（请先在「ATP 计算参数管理」页定义）")
+    try:
+        if spec.get("expr"):
+            validate_expression(str(spec["expr"]), allowed)
+        if spec.get("when"):
+            validate_expression(str(spec["when"]), allowed)
+    except DslError as exc:
+        raise TemplateError(f"{slot}: {exc}") from exc
+
+
+def validate_slots(db: Session, slots: dict[str, Any]) -> None:
+    allowed = _allowed_vars(db, slots)
+    for slot, spec in (slots or {}).items():
+        if not _SLOT_NAME_RE.match(str(slot)):
+            raise TemplateError(f"槽位名非法：{slot}")
+        if not isinstance(spec, dict):
+            raise TemplateError(f"{slot} 的定义必须是对象")
+        _validate_slot_spec(db, slot, spec, allowed)
+        fmt = spec.get("fmt", 2)
+        if not isinstance(fmt, int) or not 0 <= fmt <= 10:
+            raise TemplateError(f"{slot} 的 fmt 非法：{fmt}")
+        if "default" in spec:
+            # 表达式取不到值（无杆塔上下文）时的兜底字面值 —— 「无杆塔测试」用
+            default = spec["default"]
+            if isinstance(default, bool) or not isinstance(default, (int, float, str)):
+                raise TemplateError(f"{slot} 的 default 非法：{default!r}")
 
 
 def _normalize_defaults(value: Any) -> dict[str, Any]:
@@ -69,32 +110,6 @@ def _normalize_defaults(value: Any) -> dict[str, Any]:
             raise TemplateError(f"defaults[{name}] 需要是数值或字符串，实际：{item!r}")
         out[name] = item
     return out
-
-
-def validate_slots(db: Session, slots: dict[str, Any]) -> None:
-    allowed = _allowed_vars(db, slots)
-    for slot, spec in (slots or {}).items():
-        if not _SLOT_NAME_RE.match(str(slot)):
-            raise TemplateError(f"槽位名非法：{slot}")
-        if not isinstance(spec, dict):
-            raise TemplateError(f"{slot} 的定义必须是对象")
-        if not spec.get("expr") and not spec.get("value"):
-            raise TemplateError(f"{slot} 需要 expr 或 value")
-        try:
-            if spec.get("expr"):
-                validate_expression(str(spec["expr"]), allowed)
-            if spec.get("when"):
-                validate_expression(str(spec["when"]), allowed)
-        except DslError as exc:
-            raise TemplateError(f"{slot}: {exc}") from exc
-        fmt = spec.get("fmt", 2)
-        if not isinstance(fmt, int) or not 0 <= fmt <= 10:
-            raise TemplateError(f"{slot} 的 fmt 非法：{fmt}")
-        if "default" in spec:
-            # 表达式取不到值（无杆塔上下文）时的兜底字面值 —— 「无杆塔测试」用
-            default = spec["default"]
-            if isinstance(default, bool) or not isinstance(default, (int, float, str)):
-                raise TemplateError(f"{slot} 的 default 非法：{default!r}")
 
 
 # --------------------------------------------------------------------------------------
