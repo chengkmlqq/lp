@@ -19,6 +19,8 @@ import {
   Input,
   InputNumber,
   Modal,
+  Pagination,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -113,6 +115,116 @@ function formatValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** 绑定 / 脚本摘要（表格列与卡片共用）。 */
+function renderSourceSummary(record: DefinitionItem) {
+  if (record.source_type === "line_binding") {
+    const binding = record.binding_json as { runtime_key?: string; source?: string; path?: string };
+    const label = binding.runtime_key
+      ? `现状镜像 ${binding.runtime_key}`
+      : `${binding.source ?? ""}.${binding.path ?? ""}`;
+    return (
+      <Tooltip title={binding.path ?? ""}>
+        <Space size={4} style={{ minWidth: 0 }}>
+          <LinkOutlined style={{ color: "#1677ff" }} />
+          <Text style={{ fontSize: 12, maxWidth: 200 }} ellipsis={{ tooltip: label }}>
+            {label}
+          </Text>
+        </Space>
+      </Tooltip>
+    );
+  }
+  if (record.source_type === "script") {
+    return (
+      <Space size={4} style={{ minWidth: 0 }}>
+        <CodeOutlined style={{ color: "#722ed1" }} />
+        <Text
+          style={{ fontSize: 12, maxWidth: 200 }}
+          ellipsis={{ tooltip: record.script_code ?? "" }}
+        >
+          {record.script_code ? `${record.script_code.slice(0, 60)}${record.script_code.length > 60 ? "…" : ""}` : "(空脚本)"}
+        </Text>
+      </Space>
+    );
+  }
+  const binding = record.binding_json as { value?: unknown };
+  return <Text style={{ fontSize: 12 }}>{formatValue(binding.value)}</Text>;
+}
+
+interface DefinitionCardProps {
+  item: DefinitionItem;
+  canManage: boolean;
+  onTest: (item: DefinitionItem) => void;
+  onDetail: (item: DefinitionItem) => void;
+  onDelete: (item: DefinitionItem) => void;
+}
+
+/** 参数定义卡片（严格参照线路管理 <PowerLineCard> 结构）。 */
+function DefinitionCard({ item, canManage, onTest, onDetail, onDelete }: DefinitionCardProps) {
+  const sourceColor = SOURCE_TYPE_COLOR[item.source_type];
+  const sourceLabel = SOURCE_TYPE_LABEL[item.source_type];
+  return (
+    <Card
+      size="small"
+      hoverable
+      className="admin-atp-params-card admin-atp-models-card"
+      onClick={() => onDetail(item)}
+    >
+      <div className="admin-atp-params-card-title admin-atp-models-card-title flex items-center gap-2 px-4 py-3">
+        {item.source_type === "line_binding" ? (
+          <LinkOutlined className="text-base" style={{ color: "#1677ff" }} />
+        ) : item.source_type === "script" ? (
+          <CodeOutlined className="text-base" style={{ color: "#722ed1" }} />
+        ) : (
+          <FunctionOutlined className="text-base text-gray-500" />
+        )}
+        <Typography.Text strong className="truncate flex-1">{item.name}</Typography.Text>
+        {item.enabled ? <Tag color="green" style={{ marginInlineEnd: 0 }}>启用</Tag> : <Tag style={{ marginInlineEnd: 0 }}>停用</Tag>}
+      </div>
+
+      <div className="flex flex-col gap-2 px-4 py-3" style={{ minHeight: 120 }}>
+        <div className="admin-atp-params-card-field admin-atp-models-card-field">
+          <Typography.Text code style={{ fontSize: 12 }}>{item.code}</Typography.Text>
+          <Tag color={sourceColor} style={{ marginInlineEnd: 0 }}>{sourceLabel}</Tag>
+        </div>
+        <div className="admin-atp-params-card-field admin-atp-models-card-field">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            单位：{item.unit ?? "-"}
+          </Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            类型：{item.data_type}
+          </Typography.Text>
+        </div>
+        {item.description ? (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis={{ tooltip: item.description }}>
+            说明：{item.description}
+          </Typography.Text>
+        ) : null}
+        <div className="admin-atp-params-card-field admin-atp-models-card-field">{renderSourceSummary(item)}</div>
+      </div>
+
+      <div className="admin-atp-params-card-actions admin-atp-models-card-actions flex items-center justify-end gap-1 px-4 py-2">
+        {canManage ? (
+          <Space size={4}>
+            <Tooltip title="试算（脚本）">
+              <Button size="small" type="text" icon={<ExperimentOutlined />} onClick={(event) => { event.stopPropagation(); onTest(item); }} />
+            </Tooltip>
+            <Tooltip title="详情">
+              <Button size="small" type="text" icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); onDetail(item); }} />
+            </Tooltip>
+            <Tooltip title="删除">
+              <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={(event) => { event.stopPropagation(); onDelete(item); }} />
+            </Tooltip>
+          </Space>
+        ) : (
+          <Button size="small" type="text" icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); onDetail(item); }}>
+            查看
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 export default function AtpParamsPage() {
   const { message, modal } = App.useApp();
   const { fetchWithAuth, hasPermission } = useAuth();
@@ -123,6 +235,9 @@ export default function AtpParamsPage() {
   const [filterSource, setFilterSource] = useState<SourceType | undefined>(undefined);
   const [keyword, setKeyword] = useState("");
   const [fieldsMeta, setFieldsMeta] = useState<FieldsResponse | null>(null);
+  // 卡片 / 列表双视图（严格参照线路管理 power-lines 的切换模式；默认卡片视图）
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
 
   const [detail, setDetail] = useState<DefinitionItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -416,37 +531,7 @@ export default function AtpParamsPage() {
       title: "绑定 / 脚本",
       dataIndex: "source_type",
       width: 260,
-      render: (_, record) => {
-        if (record.source_type === "line_binding") {
-          const binding = record.binding_json as { runtime_key?: string; source?: string; path?: string };
-          const label = binding.runtime_key
-            ? `现状镜像 ${binding.runtime_key}`
-            : `${binding.source ?? ""}.${binding.path ?? ""}`;
-          return (
-            <Tooltip title={binding.path ?? ""}>
-              <Space size={4}>
-                <LinkOutlined style={{ color: "#1677ff" }} />
-                <Text style={{ fontSize: 12 }}>{label}</Text>
-              </Space>
-            </Tooltip>
-          );
-        }
-        if (record.source_type === "script") {
-          return (
-            <Space size={4}>
-              <CodeOutlined style={{ color: "#722ed1" }} />
-              <Text
-                style={{ fontSize: 12, maxWidth: 180 }}
-                ellipsis={{ tooltip: record.script_code ?? "" }}
-              >
-                {record.script_code ? `${record.script_code.slice(0, 60)}${record.script_code.length > 60 ? "…" : ""}` : "(空脚本)"}
-              </Text>
-            </Space>
-          );
-        }
-        const binding = record.binding_json as { value?: unknown };
-        return <Text style={{ fontSize: 12 }}>{formatValue(binding.value)}</Text>;
-      },
+      render: (_, record) => renderSourceSummary(record),
     },
     {
       title: "状态",
@@ -510,6 +595,17 @@ export default function AtpParamsPage() {
             ]}
           />
           <Button icon={<ReloadOutlined />} onClick={() => void loadList()} />
+          <Segmented
+            value={viewMode}
+            onChange={(value) => {
+              setViewMode(value as "card" | "list");
+              setPagination((prev) => ({ ...prev, current: 1 }));
+            }}
+            options={[
+              { label: "卡片视图", value: "card" },
+              { label: "列表视图", value: "list" },
+            ]}
+          />
           <Tooltip title="用样例杆塔上下文解析全部参数（与参数模板试算同口径）">
             <Button icon={<ExperimentOutlined />} onClick={() => void openPreview()}>
               试算
@@ -526,13 +622,53 @@ export default function AtpParamsPage() {
       <Spin spinning={loading}>
         {list.length === 0 && !loading ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无参数（可先执行「系统种子」或新建）" style={{ padding: 40 }} />
+        ) : viewMode === "card" ? (
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div className="admin-atp-params-card-scroll">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {list
+                  .slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize)
+                  .map((item) => (
+                    <DefinitionCard
+                      key={item.id}
+                      item={item}
+                      canManage={canManage}
+                      onTest={openEdit}
+                      onDetail={openDetail}
+                      onDelete={removeDefinition}
+                    />
+                  ))}
+              </div>
+            </div>
+            {loading ? (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color-mix(in_srgb,var(--ant-color-bg-layout)_60%,transparent)]">
+                <Spin />
+              </div>
+            ) : null}
+            <div className="admin-atp-params-pagination">
+              <Pagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={list.length}
+                onChange={(page, pageSize) => setPagination({ current: page, pageSize })}
+                showSizeChanger
+                showTotal={(total) => `共 ${total} 条`}
+              />
+            </div>
+          </div>
         ) : (
           <Table
             rowKey="id"
             size="small"
             columns={columns}
             dataSource={list}
-            pagination={{ pageSize: 20, showSizeChanger: false }}
+            pagination={{
+              current: pagination.current,
+              pageSize: pagination.pageSize,
+              showSizeChanger: true,
+              showTotal: (total) => `共 ${total} 条`,
+              onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
+            }}
             scroll={{ x: 900, y: "calc(100vh - 260px)" }}
           />
         )}
