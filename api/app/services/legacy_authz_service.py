@@ -44,6 +44,8 @@ DEFAULT_ADMIN_PERMISSION_CODES: set[str] = {
     "atp.run",
     "celery.read",
     "celery.manage",
+    "traveling_wave.read",
+    "traveling_wave.manage",
     # 按钮级细码（首批 4 页面；admin 全含）
     "line.create",
     "line.update",

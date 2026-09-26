@@ -519,6 +519,7 @@ PERMISSION_MODULE_NAMES: dict[str, str] = {
     "system_param": "系统参数",
     "celery": "任务监控",
     "ai_chat": "AI助手",
+    "traveling_wave": "行波分析",
     "admin": "系统",
 }
 PERMISSION_ACTION_NAMES: dict[str, str] = {
