@@ -285,7 +285,7 @@ def _context_var_names() -> set[str]:
     }
 
 
-def test_script(payload: dict[str, Any]) -> dict[str, Any]:
+def test_script(payload: dict[str, Any], db: Session | None = None) -> dict[str, Any]:
     script = str(payload.get("script_code") or "").strip()
     deps = list(payload.get("deps_json") or [])
     if not script:
@@ -299,7 +299,30 @@ def test_script(payload: dict[str, Any]) -> dict[str, Any]:
     options = dict(payload.get("execution_options") or {})
     context = build_context(base_tower=base_tower, profile=profile, execution_options=options)
     context["angle_deg"] = profile.get("angle_deg") if profile.get("angle_deg") is not None else context.get("angle_deg", 0.0)
-    variables = {**context, **{dep: context.get(dep) for dep in deps}}
+    variables = dict(context)
+    # 注册表依赖参数：先用 resolve_definitions 从样例上下文解析（用户自定义 line_binding/脚本参数）
+    if db is not None and deps:
+        from app.services.atp_param_registry import resolve_definitions  # noqa: PLC0415
+
+        definitions = load_definitions(db)
+        registered_deps = [dep for dep in deps if any(d.code == dep for d in definitions)]
+        if registered_deps:
+            try:
+                resolved = resolve_definitions(
+                    definitions=definitions,
+                    base_tower=base_tower,
+                    profile=profile,
+                    execution_options=options,
+                    context=context,
+                    requested=registered_deps,
+                )
+                variables.update({k: v for k, v in resolved.items() if v is not None})
+            except DefinitionError as exc:
+                raise DefinitionServiceError(str(exc)) from exc
+    # 显式声明的依赖若仍缺失 → 明确报错（禁静默，用户铁律）
+    missing = [dep for dep in deps if variables.get(dep) is None]
+    if missing:
+        raise DefinitionServiceError(f"依赖参数缺失：{', '.join(missing)}（试算样例未提供该字段）")
     value, errors = evaluate_script(script, variables)
     referenced = sorted(collect_names(script))
     return {

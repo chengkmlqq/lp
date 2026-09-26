@@ -249,6 +249,7 @@ export default function AtpParamsPage() {
             line_voltage_kv: 220.0,
             ground_resistance_ohm: 10.0,
             circuit_geometry_json: {
+              tower_height_m: 42.0,
               lightning_wire: { left_mid_distance_m: 12.4, right_mid_distance_m: 12.4, height_m: 73.5 },
             },
           },
@@ -354,6 +355,7 @@ export default function AtpParamsPage() {
             line_voltage_kv: 220.0,
             ground_resistance_ohm: 10.0,
             circuit_geometry_json: {
+              tower_height_m: 42.0,
               lightning_wire: { left_mid_distance_m: 12.4, right_mid_distance_m: 12.4, height_m: 73.5 },
             },
           },
@@ -472,9 +474,6 @@ export default function AtpParamsPage() {
       ),
     });
   }
-
-  const bindingSource = Form.useWatch("binding_source", form);
-  const bindingPath = Form.useWatch("binding_path", form);
 
   return (
     <Card
@@ -702,7 +701,6 @@ export default function AtpParamsPage() {
                     allowClear
                     placeholder="或选来源域"
                     options={bindingSourceOptions}
-                    onChange={() => form.setFieldValue(["binding_json", "path"], undefined)}
                   />
                 </Form.Item>
                 <Form.Item label="字段路径" name={["binding_json", "path"]} style={{ width: 280 }}>
@@ -710,7 +708,14 @@ export default function AtpParamsPage() {
                     allowClear
                     placeholder="选择杆塔属性字段"
                     showSearch
-                    options={bindingFieldOptions.filter((item) => !bindingSource || item.source === bindingSource)}
+                    options={bindingFieldOptions}
+                    onChange={(next) => {
+                      const field = (fieldsMeta?.fields ?? []).find((item) => item.value === next);
+                      if (field) {
+                        // 选字段即确定来源域（避免来源/路径不匹配）
+                        form.setFieldValue(["binding_json", "source"], field.source);
+                      }
+                    }}
                   />
                 </Form.Item>
               </Space>

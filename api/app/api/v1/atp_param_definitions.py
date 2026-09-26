@@ -51,10 +51,11 @@ def get_bindable_fields(
 @router.post("/test-script", response_model=TestScriptResponse)
 def post_test_script(
     payload: TestScriptRequest,
+    db: Session = Depends(get_db),
     _: CurrentUser = Depends(_guard("read")),
 ) -> TestScriptResponse:
     try:
-        result = test_script(payload.model_dump())
+        result = test_script(payload.model_dump(), db)
     except (DefinitionError, DefinitionServiceError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return TestScriptResponse(**result)
