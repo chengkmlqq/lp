@@ -159,6 +159,12 @@ export default function AdminLightningMeasureRecommendPage() {
     }
   }, [fetchWithAuth]);
 
+  // ⚠️ 2026-09-27 修复：初载不调 loadBaseJobs → 前置任务下拉恒空、页面功能不可用
+  // （loadBaseJobs 此前只在下拉切换/刷新按钮/创建完成后触发）
+  useEffect(() => {
+    void loadBaseJobs();
+  }, [loadBaseJobs]);
+
   const handleBaseJobChange = async (nextJobId: string) => {
     setSelectedBaseJobId(nextJobId);
     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -191,7 +197,7 @@ export default function AdminLightningMeasureRecommendPage() {
         job_type: "mitigation",
         execution_options_json: {
           non_construction: false,
-          base_job_id: selectedBaseJob.id,
+          source_job_id: selectedBaseJob.id,
           selected_tower_ids: selectedTowers.map((row) => row.tower_id),
         },
       };

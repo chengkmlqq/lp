@@ -3000,7 +3000,8 @@ def _normalize_execution_options(job_type: str, execution_options: dict[str, Any
 
 
 def _validate_mitigation_options(db: Session, *, line_id: str, execution_options: dict[str, Any]) -> int:
-    source_job_id = str(execution_options.get("source_job_id") or "")
+    # ⚠️ 2026-09-27 修复：兼容 base_job_id（早期前端 payload 字段名）与 source_job_id 双写
+    source_job_id = str(execution_options.get("source_job_id") or execution_options.get("base_job_id") or "")
     if not source_job_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="措施推荐任务缺少前驱风险任务")
     selected_tower_ids = execution_options.get("selected_tower_ids") or []
@@ -3012,8 +3013,11 @@ def _validate_mitigation_options(db: Session, *, line_id: str, execution_options
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="前驱风险任务不存在")
     if source_job.line_id != line_id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="前驱风险任务与当前线路不匹配")
-    if source_job.job_type != "risk":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="前驱任务必须为风险评估任务")
+    # ⚠️ 2026-09-27 修复：前驱类型由「仅 risk」放宽为 normal/tongtiao/risk ——
+    # C# 逻辑（Form5_CuoShiTuiJian）的前驱是「普通计算已完成」（Finished1_PuTongJiSuan），
+    # 前端措施推荐页也筛 normal/tongtiao；旧实现强制 risk 导致 UI 创建必 400（千万次实测）。
+    if source_job.job_type not in {"normal", "tongtiao", "risk"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="前驱任务必须为普通计算/同跳/风险评估任务")
     if source_job.status != "success":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="前驱风险任务尚未成功完成")
 
