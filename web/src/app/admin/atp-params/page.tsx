@@ -8,6 +8,7 @@
 // 参数目录（参数模板页 slots_json 的 {"param": code} 形态）消费本页定义；
 // 参数 ↔ ATP 模型槽位的关系仍由「参数模板」映射。
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   Alert,
   App,
@@ -26,6 +27,7 @@ import {
   Spin,
   Switch,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -101,6 +103,12 @@ const SOURCE_TYPE_LABEL: Record<SourceType, string> = {
   script: "计算脚本",
   constant: "字面量",
 };
+
+// 列表视图动态表体高度（严格照搬 power-lines 的常量口径）
+const ATP_PARAMS_TABLE_MIN_SCROLL_Y = 180;
+const ATP_PARAMS_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
+const ATP_PARAMS_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
+const ATP_PARAMS_TABLE_BOTTOM_GAP = 8;
 
 const SOURCE_TYPE_COLOR: Record<SourceType, string> = {
   line_binding: "geekblue",
@@ -233,11 +241,66 @@ export default function AtpParamsPage() {
   const [list, setList] = useState<DefinitionItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterSource, setFilterSource] = useState<SourceType | undefined>(undefined);
+  // 搜索：输入框值（keywordInput）与生效值（keyword）分离，点「查询」/回车才生效（参照线路管理）
+  const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
+  const handleSearch = useCallback(() => {
+    setKeyword(keywordInput.trim());
+  }, [keywordInput]);
   const [fieldsMeta, setFieldsMeta] = useState<FieldsResponse | null>(null);
   // 卡片 / 列表双视图（严格参照线路管理 power-lines 的切换模式；默认卡片视图）
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  // 列表视图动态表体高度（参照 power-lines：按列表面板 padding-box 底边推导，自适应窗口）
+  const [tableScrollY, setTableScrollY] = useState(ATP_PARAMS_TABLE_MIN_SCROLL_Y);
+  const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const updateTableScrollHeight = useCallback(() => {
+    if (typeof window === "undefined") {
+      return ATP_PARAMS_TABLE_MIN_SCROLL_Y;
+    }
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) {
+      return ATP_PARAMS_TABLE_MIN_SCROLL_Y;
+    }
+    // 口径与 power-lines 一致：不用 anchor 自身高度反推（会被 min-height 撑大 → 正反馈），
+    // 不用 window.innerHeight（漏底部 padding → 多余纵向滚动条）。
+    const anchorTop = anchor.getBoundingClientRect().top;
+    const pane = anchor.closest<HTMLElement>(".admin-atp-params-list-pane");
+    const container = pane ?? document.documentElement;
+    const containerRect = container.getBoundingClientRect();
+    const containerPadBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
+    const header = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = header?.getBoundingClientRect().height ?? ATP_PARAMS_TABLE_ESTIMATED_HEADER_HEIGHT;
+    const paginationHeight =
+      paginationEl?.getBoundingClientRect().height ?? ATP_PARAMS_TABLE_ESTIMATED_PAGINATION_HEIGHT;
+    const available =
+      containerRect.bottom - containerPadBottom - anchorTop - ATP_PARAMS_TABLE_BOTTOM_GAP;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16 - 4);
+    return Math.max(ATP_PARAMS_TABLE_MIN_SCROLL_Y, nextHeight);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const onViewportChange = () => {
+      window.requestAnimationFrame(updateTableScrollHeight);
+    };
+    window.addEventListener("resize", onViewportChange);
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+    };
+  }, [updateTableScrollHeight]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setTableScrollY(updateTableScrollHeight());
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [updateTableScrollHeight, viewMode, list.length, loading, pagination.current, pagination.pageSize]);
 
   const [detail, setDetail] = useState<DefinitionItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -561,65 +624,89 @@ export default function AtpParamsPage() {
   }
 
   return (
-    <Card
-      size="small"
-      className="admin-menus-card"
-      styles={{ body: { padding: 0 } }}
-      title={
-        <Space size={8}>
-          <FunctionOutlined />
-          <Text strong>ATP 计算参数管理（参数注册表）</Text>
-        </Space>
-      }
-      extra={
-        <Space size={8}>
-          <Input
-            allowClear
-            prefix={<SearchOutlined />}
-            placeholder="搜索 code/名称"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            onPressEnter={() => void loadList()}
-            style={{ width: 200 }}
-          />
-          <Select
-            allowClear
-            placeholder="来源类型"
-            value={filterSource}
-            onChange={(value) => setFilterSource(value as SourceType | undefined)}
-            style={{ width: 140 }}
-            options={[
-              { value: "line_binding", label: "线路导入绑定" },
-              { value: "script", label: "计算脚本" },
-              { value: "constant", label: "字面量" },
-            ]}
-          />
-          <Button icon={<ReloadOutlined />} onClick={() => void loadList()} />
-          <Segmented
-            value={viewMode}
-            onChange={(value) => {
-              setViewMode(value as "card" | "list");
-              setPagination((prev) => ({ ...prev, current: 1 }));
-            }}
-            options={[
-              { label: "卡片视图", value: "card" },
-              { label: "列表视图", value: "list" },
-            ]}
-          />
-          <Tooltip title="用样例杆塔上下文解析全部参数（与参数模板试算同口径）">
-            <Button icon={<ExperimentOutlined />} onClick={() => void openPreview()}>
-              试算
-            </Button>
-          </Tooltip>
-          {canManage ? (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => openEdit(null)}>
-              新建参数
-            </Button>
-          ) : null}
-        </Space>
-      }
-    >
-      <Spin spinning={loading}>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <Tabs
+        type="editable-card"
+        hideAdd
+        activeKey="list"
+        className="admin-atp-params-tabs"
+        tabBarExtraContent={
+          <Space size={8}>
+            <Tooltip title="用样例杆塔上下文解析全部参数（与参数模板试算同口径）">
+              <Button icon={<ExperimentOutlined />} onClick={() => void openPreview()}>
+                试算
+              </Button>
+            </Tooltip>
+            {canManage ? (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openEdit(null)}>
+                新建参数
+              </Button>
+            ) : null}
+          </Space>
+        }
+        items={[
+          {
+            key: "list",
+            label: (
+              <span className="admin-atp-params-tab-title">
+                <FunctionOutlined /> ATP 计算参数管理（参数注册表）
+              </span>
+            ),
+            closable: false,
+            children: (
+              <div className="admin-atp-params-list-pane">
+                <div className="admin-filter-bar">
+                  <Form layout="inline">
+                    <Form.Item label="参数名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Input
+                        allowClear
+                        value={keywordInput}
+                        onChange={(event) => setKeywordInput(event.target.value)}
+                        placeholder="按 code/名称筛选"
+                        onPressEnter={handleSearch}
+                      />
+                    </Form.Item>
+                    <Form.Item label="来源类型" style={{ marginBottom: 0 }}>
+                      <Select
+                        allowClear
+                        placeholder="来源类型"
+                        value={filterSource}
+                        onChange={(value) => setFilterSource(value as SourceType | undefined)}
+                        style={{ width: 140 }}
+                        options={[
+                          { value: "line_binding", label: "线路导入绑定" },
+                          { value: "script", label: "计算脚本" },
+                          { value: "constant", label: "字面量" },
+                        ]}
+                      />
+                    </Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button
+                        htmlType="button"
+                        icon={<SearchOutlined />}
+                        onClick={handleSearch}
+                        className="admin-search-btn"
+                      >
+                        查询
+                      </Button>
+                    </Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button icon={<ReloadOutlined />} onClick={() => void loadList()} />
+                    </Form.Item>
+                  </Form>
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => {
+                      setViewMode(value as "card" | "list");
+                      setPagination((prev) => ({ ...prev, current: 1 }));
+                    }}
+                    options={[
+                      { label: "卡片视图", value: "card" },
+                      { label: "列表视图", value: "list" },
+                    ]}
+                  />
+                </div>
+                <Spin spinning={loading}>
         {list.length === 0 && !loading ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无参数（可先执行「系统种子」或新建）" style={{ padding: 40 }} />
         ) : viewMode === "card" ? (
@@ -657,22 +744,33 @@ export default function AtpParamsPage() {
             </div>
           </div>
         ) : (
-          <Table
-            rowKey="id"
-            size="small"
-            columns={columns}
-            dataSource={list}
-            pagination={{
-              current: pagination.current,
-              pageSize: pagination.pageSize,
-              showSizeChanger: true,
-              showTotal: (total) => `共 ${total} 条`,
-              onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
-            }}
-            scroll={{ x: 900, y: "calc(100vh - 260px)" }}
-          />
+          <div
+            ref={tableScrollAnchorRef}
+            className="admin-atp-params-table-view"
+            style={{ "--admin-atp-params-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+          >
+            <Table
+              rowKey="id"
+              size="small"
+              columns={columns}
+              dataSource={list}
+              pagination={{
+                current: pagination.current,
+                pageSize: pagination.pageSize,
+                showSizeChanger: true,
+                showTotal: (total) => `共 ${total} 条`,
+                onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
+              }}
+              scroll={{ x: 900, y: tableScrollY }}
+            />
+          </div>
         )}
       </Spin>
+      </div>
+      ),
+      },
+    ]}>
+    </Tabs>
 
       {/* 详情抽屉 */}
       <Drawer title={`参数详情 · ${detail?.code ?? ""}`} open={detailOpen} onClose={() => setDetailOpen(false)} width={520}>
@@ -933,6 +1031,6 @@ export default function AtpParamsPage() {
           ) : null}
         </Form>
       </Drawer>
-    </Card>
+    </div>
   );
 }

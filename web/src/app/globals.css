@@ -6455,6 +6455,111 @@ body {
   flex-shrink: 0;
 }
 
+/* ======================================
+   atp-params 骨架对齐线路管理（Tabs 容器 + list-pane + 动态表体高度）
+   ====================================== */
+.admin-atp-params-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.admin-atp-params-tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  background: var(--ant-color-bg-container);
+}
+
+.admin-atp-params-tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-atp-params-tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-atp-params-tabs .ant-table-pagination {
+  margin: 12px 0 0 !important;
+}
+
+.admin-atp-params-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+  margin: 0;
+  border-bottom: none;
+  padding: 12px;
+}
+
+.admin-atp-params-tab-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ant-color-text);
+}
+
+.admin-atp-params-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+  border-color: transparent !important;
+  border-top-color: transparent !important;
+  border-inline-color: transparent !important;
+}
+
+.admin-atp-params-tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-atp-params-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ant-color-text) !important;
+}
+
+.admin-atp-params-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--ant-color-text-secondary);
+}
+
+:root[data-fquiz-theme="dark"] .admin-atp-params-tabs > .ant-tabs-nav {
+  background: var(--ant-color-bg-container);
+}
+
+:root[data-fquiz-theme="dark"] .admin-atp-params-tabs > .ant-tabs-nav .ant-tabs-tab {
+  background: var(--ant-color-bg-container) !important;
+}
+
+.admin-atp-params-list-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.admin-atp-params-table-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-atp-params-table-view .ant-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.admin-atp-params-table-view .ant-table-body {
+  min-height: var(--admin-atp-params-table-body-min-height, 180px);
+}
+
+
 
 /* LP-322: 双视图页面列表分页条与卡片分页一致，贴面板底 8px。
    列表视图容器的 flex 撑高把 .ant-table-wrapper 拉满，而 JS 表体高度按 antd 默认
