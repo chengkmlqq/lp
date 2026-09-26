@@ -722,15 +722,20 @@ export default function AdminLightningDistributionPage() {
       return;
     }
 
-    // 用「视口可用高度」推导：anchor 自身高度会被表体 min-height 撑大，用它反推
-    // 会形成正反馈（每次翻页多累加一次未计入间距，表体持续变高）。2026-09-12 修复
+    // 以可滚动容器（列表面板）的 padding-box 底边为准（LP-322 与线路管理页对齐）：
+    // 用 window.innerHeight 会漏掉面板底部 padding 与页面底边距 → 表体过高，
+    // 把列表分页的 margin-bottom 8px 挤溢出（实测溢出 7px）。2026-09-12 修复 + 2026-09-25 对齐
     const anchorTop = anchor.getBoundingClientRect().top;
+    const pane = anchor.closest<HTMLElement>(".admin-lightning-distribution-list-pane");
+    const container = pane ?? document.documentElement;
+    const containerRect = container.getBoundingClientRect();
+    const containerPadBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
     const header = anchor.querySelector<HTMLElement>(".ant-table-header");
     const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
     const headerHeight = header?.getBoundingClientRect().height ?? LIGHTNING_TABLE_ESTIMATED_HEADER_HEIGHT;
     const paginationHeight = paginationEl?.getBoundingClientRect().height ?? LIGHTNING_TABLE_ESTIMATED_PAGINATION_HEIGHT;
-    const available = window.innerHeight - anchorTop - LIGHTNING_TABLE_BOTTOM_GAP;
-    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16);
+    const available = containerRect.bottom - containerPadBottom - anchorTop - LIGHTNING_TABLE_BOTTOM_GAP;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16 - 4);
 
     const clampedHeight = Math.max(LIGHTNING_TABLE_MIN_SCROLL_Y, nextHeight);
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));

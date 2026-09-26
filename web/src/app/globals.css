@@ -3884,8 +3884,10 @@ body {
 
 /* LP-465: 表格锚点允许收缩，避免被表格内容撑开 */
 .lightning-table-anchor {
+  display: flex;
   min-height: 0;
   flex: 1 1 auto;
+  flex-direction: column;
 }
 
 .lightning-table-anchor .ant-table-body {
@@ -6427,26 +6429,58 @@ body {
   flex-shrink: 0;
 }
 
-/* LP-322: 列表视图分页条与卡片视图一样贴面板底（底部 8px）。
-   .admin-power-lines-table-view 的 flex 撑高把 .ant-table-wrapper 拉满，
-   而 JS 表体高度按 antd 默认 16px 分页间距预留（实际 margin-top 被覆盖为 12px），
-   差出的剩余空间留在分页下方（实测 15px），导致两视图分页距底不一致。
+/* LP-322: 双视图页面列表分页条与卡片分页一致，贴面板底 8px。
+   列表视图容器的 flex 撑高把 .ant-table-wrapper 拉满，而 JS 表体高度按 antd 默认
+   16px 分页间距预留（实际 margin-top 被覆盖为 12px），差出的剩余空间留在分页下方
+   （实测 15px 或贴底 0px，视容器而定），与卡片视图 8px 不一致。
    处理：spin 容器转 flex 列，margin-top:auto 把剩余空间吸收到表格与分页之间，
-   分页 margin-bottom 固定 8px，与 .admin-power-lines-pagination 的 padding-bottom 对齐。 */
+   分页 margin-bottom 固定 8px，与各卡片分页容器（padding-bottom 8px）对齐。
+   覆盖页面：power-lines / atp-models / elevation-records / fault-analysis /
+   fl-analysis / lightning-currents / lightning-distribution / lightning-retrofit。 */
 .admin-power-lines-tabs .admin-power-lines-table-view .ant-table-wrapper,
+.admin-atp-models-table-view .ant-table-wrapper,
+.admin-elevation-table-anchor .ant-table-wrapper,
+.admin-fault-analysis-table-anchor .ant-table-wrapper,
+.admin-fl-analysis-table-view .ant-table-wrapper,
+.lightning-table-anchor .ant-table-wrapper,
+.admin-lightning-distribution-table-anchor .ant-table-wrapper,
 .admin-power-lines-tabs .admin-power-lines-table-view .ant-spin-nested-loading,
-.admin-power-lines-tabs .admin-power-lines-table-view .ant-spin-container {
+.admin-atp-models-table-view .ant-spin-nested-loading,
+.admin-elevation-table-anchor .ant-spin-nested-loading,
+.admin-fault-analysis-table-anchor .ant-spin-nested-loading,
+.admin-fl-analysis-table-view .ant-spin-nested-loading,
+.lightning-table-anchor .ant-spin-nested-loading,
+.admin-lightning-distribution-table-anchor .ant-spin-nested-loading,
+.admin-power-lines-tabs .admin-power-lines-table-view .ant-spin-container,
+.admin-atp-models-table-view .ant-spin-container,
+.admin-elevation-table-anchor .ant-spin-container,
+.admin-fault-analysis-table-anchor .ant-spin-container,
+.admin-fl-analysis-table-view .ant-spin-container,
+.lightning-table-anchor .ant-spin-container,
+.admin-lightning-distribution-table-anchor .ant-spin-container {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
 }
 
-.admin-power-lines-tabs .admin-power-lines-table-view .ant-table {
+.admin-power-lines-tabs .admin-power-lines-table-view .ant-table,
+.admin-atp-models-table-view .ant-table,
+.admin-elevation-table-anchor .ant-table,
+.admin-fault-analysis-table-anchor .ant-table,
+.admin-fl-analysis-table-view .ant-table,
+.lightning-table-anchor .ant-table,
+.admin-lightning-distribution-table-anchor .ant-table {
   flex: 0 0 auto;
 }
 
-.admin-power-lines-tabs .admin-power-lines-table-view .ant-table-pagination {
+.admin-power-lines-tabs .admin-power-lines-table-view .ant-table-pagination,
+.admin-atp-models-table-view .ant-table-pagination,
+.admin-elevation-table-anchor .ant-table-pagination,
+.admin-fault-analysis-table-anchor .ant-table-pagination,
+.admin-fl-analysis-table-view .ant-table-pagination,
+.lightning-table-anchor .ant-table-pagination,
+.admin-lightning-distribution-table-anchor .ant-table-pagination {
   margin: auto 0 8px !important;
   flex-shrink: 0;
 }
