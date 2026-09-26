@@ -1016,7 +1016,12 @@ def serialize_menu_row(row: dict[str, object]) -> MenuPublic:
         visible=_to_api_state(row.get("state")) == "enabled",
         cacheable=False,
         component=None,
-        permission_code=_primary_permission(menu_code, row.get("menu_type")),
+        # ⚠️ 2026-09-26 修复：旧实现只走 _primary_permission 按 menu_code 推断，
+        # 新菜单（admin.traveling_wave / admin.lightning_retrofit_*）不在映射表 → 推断为 None，
+        # 角色权限树挂不出 traveling_wave.* / line.* 权限子节点（实测）。改为 DB 值优先、
+        # 推断兜底（老菜单行为不变）。
+        permission_code=str(row.get("menu_descr") or "").strip()
+        or _primary_permission(menu_code, row.get("menu_type")),
     )
 
 
