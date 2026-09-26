@@ -511,7 +511,7 @@ def _configure_chinese_font() -> None:
         )
 
 
-# 公共入口：供其他模块（如 traveling_wave_service 行波波形图）复用同一套中文字体配置。
+# 公共入口：供其他模块复用同一套中文字体配置。
 configure_chinese_font = _configure_chinese_font
 
 
