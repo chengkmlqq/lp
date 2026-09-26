@@ -113,16 +113,24 @@ export default function AdminLightningMeasureRecommendPage() {
       tower_no: row.tower_no,
       risk_level: row.risk_level,
       status: row.status,
-      include: Boolean(row.risk_level === "high" || (row.risk_level && parseInt(row.risk_level, 10) > 2)),
+      include: isHighRisk(row.risk_level),
     }));
   }, [towerQuery.data?.items]);
 
+  // ⚠️ LP-519 回归修复：computedTowerRows 仅是「查询结果的派生视图」，而勾选
+  // 交互（toggleTowerInclude）与提交（handleCreateJob）读的是 towerRows 状态。
+  // LP-514 重构 UI 时丢失了 setTowerRows(computedTowerRows) 同步，导致
+  // towerRows 恒为空数组 → 「生成措施推荐」按钮永远 disabled，无法创建任务。
+  useEffect(() => {
+    setTowerRows(computedTowerRows);
+  }, [computedTowerRows]);
+
   const total = towerQuery.data?.total ?? 0;
+  // 表格数据源必须取 towerRows（勾选状态所在），否则勾选后复选框不回显
   const paginatedTowerRows = useMemo(() => {
     const start = (paginationCurrent - 1) * paginationPageSize;
-    const end = start + paginationPageSize;
-    return computedTowerRows.slice(start, end);
-  }, [computedTowerRows, paginationCurrent, paginationPageSize]);
+    return towerRows.slice(start, start + paginationPageSize);
+  }, [towerRows, paginationCurrent, paginationPageSize]);
 
   const invalidateMeasureQueries = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -440,4 +448,22 @@ export default function AdminLightningMeasureRecommendPage() {
       </div>
     </>
   );
+}
+
+/**
+ * 默认勾选高风险杆塔。
+ *
+ * risk_level 现行口径为 low/medium/high 字符串，历史存在数值口径（>2 视为高风险）。
+ * 原实现 `parseInt("high", 10)` 得到 NaN，数值分支恒为 false（死代码），
+ * 这里显式区分字符串口径与数值口径。
+ */
+function isHighRisk(riskLevel: string | null | undefined): boolean {
+  if (!riskLevel) {
+    return false;
+  }
+  if (riskLevel === "high") {
+    return true;
+  }
+  const numeric = Number(riskLevel);
+  return Number.isFinite(numeric) && numeric > 2;
 }

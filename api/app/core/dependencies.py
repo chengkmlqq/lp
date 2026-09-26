@@ -38,6 +38,7 @@ MENU_ROUTE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/api/v1/lightning-currents/stats/distribution", "/admin/lightning-distribution"),
     ("/api/v1/lightning-currents/import-distribution", "/admin/lightning-distribution"),
     ("/api/v1/lightning-currents", "/admin/lightning-currents"),
+    ("/api/v1/lightning-retrofit", "/admin/lightning-retrofit"),
     ("/api/v1/admin/flower", "/admin/workers"),
     ("/api/v1/admin/task-monitor", "/admin/task-monitor"),
     ("/api/v1/admin/scheduled-tasks", "/admin/scheduled-tasks"),

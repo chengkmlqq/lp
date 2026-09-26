@@ -18,6 +18,7 @@ from .v1.fault_recurrence import router as fault_recurrence_router
 from .v1.fl_analysis import router as fl_analysis_router
 from .v1.flower_monitor import router as flower_monitor_router
 from .v1.lightning import router as lightning_router
+from .v1.lightning_retrofit import router as lightning_retrofit_router
 from .v1.lines import router as lines_router
 from .v1.param_category import router as param_category_router
 from .v1.scheduled_tasks import router as scheduled_tasks_router
@@ -60,6 +61,7 @@ v1_router.include_router(fault_recurrence_router)
 v1_router.include_router(fl_analysis_router)
 v1_router.include_router(flower_monitor_router)
 v1_router.include_router(lightning_router)
+v1_router.include_router(lightning_retrofit_router)
 v1_router.include_router(lines_router)
 v1_router.include_router(tower_models_router)
 v1_router.include_router(tower_profiles_router)

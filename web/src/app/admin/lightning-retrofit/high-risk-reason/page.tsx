@@ -32,8 +32,6 @@ import type {
 } from "@/types/auth";
 import { readApiError } from "@/lib/api";
 import {
-  formatJobType,
-  readMitigationMode,
   riskColor,
   statusColor,
 } from "@/components/fl-analysis/types";
@@ -100,11 +98,10 @@ export default function AdminLightningHighRiskReasonPage() {
     void invalidateHighRisk();
   }, [invalidateHighRisk]));
 
-  const loadLines = useCallback(async (nextLineId: string) => {
-    if (!nextLineId) {
-      setLines([]);
-      return;
-    }
+  // 线路下拉：一次拉取全部任务后按 line_id 去重成线路选项。
+  // ⚠️ 原实现只保留 line_id === 当前选中值 的任务，而下拉选项又来自该结果，
+  //    初始 lines=[] 时永远无选项可选（自锁），且无首次加载触发。
+  const loadLines = useCallback(async () => {
     setLoadingLines(true);
     try {
       const response = await fetchWithAuth("/api/v1/fl-analysis/jobs?limit=200");
@@ -112,8 +109,17 @@ export default function AdminLightningHighRiskReasonPage() {
         throw new Error(await readApiError(response));
       }
       const data = (await response.json()) as { items: FlAnalysisJobSummary[] };
-      const matched = data.items.filter((item) => item.line_id === nextLineId);
-      setLines(matched);
+      const seen = new Set<string>();
+      const distinctLines: FlAnalysisJobSummary[] = [];
+      for (const item of data.items) {
+        const key = item.line_id || item.id;
+        if (!key || seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        distinctLines.push(item);
+      }
+      setLines(distinctLines);
     } catch (error) {
       setLines([]);
     } finally {
@@ -121,11 +127,52 @@ export default function AdminLightningHighRiskReasonPage() {
     }
   }, [fetchWithAuth]);
 
-  const handleLineChange = async (nextLineId: string) => {
+  const handleLineChange = (nextLineId: string) => {
     setLineId(nextLineId);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    await loadLines(nextLineId);
   };
+
+  // 首次进入即加载线路下拉（原实现只在 onChange 时加载，而无选项可点 → 死锁）
+  useEffect(() => {
+    if (!user || !canRead) {
+      return;
+    }
+    void loadLines();
+  }, [user, canRead, loadLines]);
+
+  // 任务列表「查看详情」以 ?jobId= 跳转过来；据此反查该任务的线路并预选，
+  // 否则页面会停在「请先选择线路」空态（原实现完全忽略 jobId 参数）。
+  // 用 window.location.search 而非 useSearchParams：后者在静态预渲染下
+  // 需 Suspense 包裹，本页为纯客户端页不宜引入该约束。
+  useEffect(() => {
+    if (!user || !canRead) {
+      return;
+    }
+    const jobIdFromUrl = new URLSearchParams(window.location.search).get("jobId");
+    if (!jobIdFromUrl) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${jobIdFromUrl}`);
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as { job: FlAnalysisJobSummary };
+        const targetLineId = data.job?.line_id;
+        if (!cancelled && targetLineId) {
+          setLineId(targetLineId);
+          setPagination((prev) => ({ ...prev, current: 1 }));
+        }
+      } catch {
+        // 预选失败不阻断页面，用户仍可手动在下拉中选择线路
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, canRead, fetchWithAuth]);
 
   const handleExport = () => {
     const headers = "塔号,风险等级,原因类型,状态\n";
@@ -288,7 +335,8 @@ export default function AdminLightningHighRiskReasonPage() {
                   style={{ width: 320 }}
                   options={lines.map((line) => ({
                     value: line.line_id || line.id,
-                    label: `${line.line_name || line.line_code || "-"}（${formatJobType(line.job_type, readMitigationMode(line))}）`,
+                    // 该下拉是「线路」选择器（选项已按 line_id 去重），故只展示线路名
+                    label: line.line_name || line.line_code || "-",
                   }))}
                   showSearch
                   optionFilterProp="label"
@@ -298,7 +346,7 @@ export default function AdminLightningHighRiskReasonPage() {
                 <Button
                   htmlType="button"
                   icon={<ArrowUpOutlined />}
-                  onClick={() => loadLines(lineId)}
+                  onClick={() => loadLines()}
                   className="admin-search-btn"
                 >
                   刷新
