@@ -112,6 +112,8 @@ DEFAULT_PERMISSIONS: dict[str, str] = {
     "atp.run": "Run ATP simulations",
     "celery.read": "Read Celery workers, queues, and task statuses",
     "celery.manage": "Manage Celery worker control operations",
+    "traveling_wave.read": "Read traveling wave analysis and results",
+    "traveling_wave.manage": "Run and manage traveling wave analyses",
 }
 
 DEFAULT_ROLES: dict[str, dict[str, object]] = {
@@ -157,6 +159,8 @@ DEFAULT_ROLES: dict[str, dict[str, object]] = {
             "atp.run",
             "celery.read",
             "celery.manage",
+            "traveling_wave.read",
+            "traveling_wave.manage",
             "ai_chat.read",
             "fl.create",
             "fl.start",
