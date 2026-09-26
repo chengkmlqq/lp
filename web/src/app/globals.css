@@ -6487,8 +6487,27 @@ body {
   flex-direction: column;
 }
 
-.admin-atp-params-tabs .ant-table-pagination {
-  margin: 12px 0 0 !important;
+/* LP-322 对齐：列表视图分页贴面板底 8px（与线路管理一致）。
+   页面级 Spin 包在 table-view 外层（打断 flex 链），故 list-pane 内 spin 容器
+   也纳入 flex 列；margin-top:auto 吸收剩余空间，分页固定在右下角。 */
+.admin-atp-params-tabs .admin-atp-params-list-pane .ant-spin-nested-loading,
+.admin-atp-params-tabs .admin-atp-params-list-pane .ant-spin-container,
+.admin-atp-params-tabs .admin-atp-params-table-view .ant-table-wrapper,
+.admin-atp-params-tabs .admin-atp-params-table-view .ant-spin-nested-loading,
+.admin-atp-params-tabs .admin-atp-params-table-view .ant-spin-container {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-atp-params-tabs .admin-atp-params-table-view .ant-table {
+  flex: 0 0 auto;
+}
+
+.admin-atp-params-tabs .admin-atp-params-table-view .ant-table-pagination {
+  margin: auto 0 8px !important;
+  flex-shrink: 0;
 }
 
 .admin-atp-params-tabs > .ant-tabs-nav {

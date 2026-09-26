@@ -43,7 +43,6 @@ import {
   FunctionOutlined,
   LinkOutlined,
   PlusOutlined,
-  ReloadOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 
@@ -244,13 +243,18 @@ export default function AtpParamsPage() {
   // 搜索：输入框值（keywordInput）与生效值（keyword）分离，点「查询」/回车才生效（参照线路管理）
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
-  const handleSearch = useCallback(() => {
-    setKeyword(keywordInput.trim());
-  }, [keywordInput]);
   const [fieldsMeta, setFieldsMeta] = useState<FieldsResponse | null>(null);
   // 卡片 / 列表双视图（严格参照线路管理 power-lines 的切换模式；默认卡片视图）
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  // 查询强制重拉：每次点「查询」自增 searchNonce（参照线路管理），
+  // 即使关键词/筛选未变化也必然触发一次 loadList。
+  const [searchNonce, setSearchNonce] = useState(0);
+  const handleSearch = useCallback(() => {
+    setKeyword(keywordInput.trim());
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    setSearchNonce((n) => n + 1);
+  }, [keywordInput]);
   // 列表视图动态表体高度（参照 power-lines：按列表面板 padding-box 底边推导，自适应窗口）
   const [tableScrollY, setTableScrollY] = useState(ATP_PARAMS_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -331,7 +335,7 @@ export default function AtpParamsPage() {
     } finally {
       setLoading(false);
     }
-  }, [keyword, filterSource, message]);
+  }, [keyword, filterSource, searchNonce, message]);
 
   const loadFieldsMeta = useCallback(async () => {
     try {
@@ -689,9 +693,6 @@ export default function AtpParamsPage() {
                       >
                         查询
                       </Button>
-                    </Form.Item>
-                    <Form.Item style={{ marginBottom: 0 }}>
-                      <Button icon={<ReloadOutlined />} onClick={() => void loadList()} />
                     </Form.Item>
                   </Form>
                   <Segmented
