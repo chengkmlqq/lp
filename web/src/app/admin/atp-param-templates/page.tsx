@@ -100,6 +100,9 @@ type MetaResponse = {
 };
 
 type SlotRow = { key: string; slot: string; expr: string; fmt: number; enabled: boolean; value?: string; when?: string; param?: string };
+// 槽位引用的注册表参数（详情接口 slot_params 返回）
+type SlotParamRef = { code: string; name: string; source_type: string; via: string };
+type ParamSourceMap = Record<string, SlotParamRef>;
 
 const { Text, Title } = Typography;
 
@@ -147,6 +150,9 @@ export default function AtpParamTemplatesPage() {
   const [form] = Form.useForm();
   // 参数注册表 code（槽位「参数引用」模式用）
   const [paramCodes, setParamCodes] = useState<string[]>([]);
+  // 槽位引用参数解析（详情接口返回）: {槽位名: [参数...]}
+  const [slotParams, setSlotParams] = useState<Record<string, SlotParamRef[]>>({});
+  const [paramSources, setParamSources] = useState<ParamSourceMap>({});
 
   // 抽屉状态
   const [detailOpen, setDetailOpen] = useState(false);
@@ -224,7 +230,13 @@ export default function AtpParamTemplatesPage() {
       try {
         const response = await fetchWithAuth(`/api/v1/atp/param-templates/${ruleId}`);
         if (!response.ok) throw new Error(await readApiError(response));
-        setDetail((await response.json()) as TemplateDetail);
+        const data = (await response.json()) as TemplateDetail & {
+          slot_params?: Record<string, SlotParamRef[]>;
+          param_sources?: ParamSourceMap;
+        };
+        setDetail(data);
+        setSlotParams(data.slot_params ?? {});
+        setParamSources(data.param_sources ?? {});
       } catch (error) {
         message.error(error instanceof Error ? error.message : "加载模板失败");
       }
@@ -505,6 +517,60 @@ export default function AtpParamTemplatesPage() {
         ) : (
           <Text>{v}</Text>
         ),
+    },
+    {
+      title: "映射参数",
+      key: "ref_params",
+      width: 190,
+      render: (_, row) => {
+        const refs = slotParams[row.slot] ?? [];
+        if (refs.length === 0) return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+        return (
+          <Space size={4} wrap>
+            {refs.map((ref) => (
+              <Tooltip
+                key={ref.code}
+                title={
+                  ref.source_type === "line_binding"
+                    ? `线路导入绑定：${ref.via}`
+                    : ref.source_type === "script"
+                      ? `${ref.name}（脚本计算）`
+                      : "字面量"
+                }
+              >
+                <Tag color={ref.source_type === "line_binding" ? "geekblue" : "purple"} style={{ marginInlineEnd: 0 }}>
+                  {ref.code}
+                </Tag>
+              </Tooltip>
+            ))}
+          </Space>
+        );
+      },
+    },
+    {
+      title: "参数来源",
+      key: "param_source",
+      width: 240,
+      render: (_, row) => {
+        const refs = slotParams[row.slot] ?? [];
+        if (refs.length === 0) return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+        return (
+          <Space direction="vertical" size={2} style={{ width: "100%" }}>
+            {refs.map((ref) => (
+              <Tooltip key={ref.code} title={ref.via}>
+                <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: ref.via }}>
+                  <Text code style={{ fontSize: 12 }}>{ref.code}</Text>{" "}
+                  {ref.source_type === "line_binding" ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>{ref.via}</Text>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 12 }}>脚本计算</Text>
+                  )}
+                </Text>
+              </Tooltip>
+            ))}
+          </Space>
+        );
+      },
     },
     { title: "格式", dataIndex: "fmt", width: 70, render: (v) => `${v} 位` },
     { title: "启用", dataIndex: "enabled", width: 70, render: (v) => (v ? <Tag color="green">启用</Tag> : <Tag>关闭</Tag>) },

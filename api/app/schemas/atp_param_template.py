@@ -48,6 +48,10 @@ class TemplateDetail(TemplateSummary):
     slots: dict[str, Any] = Field(default_factory=dict)
     # 「无杆塔测试」用的默认上下文变量（{变量名: 默认值}）
     defaults: dict[str, Any] = Field(default_factory=dict)
+    # 槽位 → 引用参数解析（{槽位名: [{code, name, source_type, via}]}）
+    slot_params: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    # 注册表参数来源总表（{code: {name, source_type, via}}）
+    param_sources: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class TemplateListResponse(BaseModel):

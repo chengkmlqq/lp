@@ -6,7 +6,7 @@ import json
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Mapping
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -143,7 +143,79 @@ def serialize_template(row: AtpParamTemplate, *, with_slots: bool = False) -> di
     if with_slots:
         payload["slots"] = slots
         payload["defaults"] = row.defaults_json or {}
+        # 槽位 → 引用参数解析 + 注册表参数来源总表
+        slot_params, param_sources = build_slot_param_map(slots)
+        payload["slot_params"] = slot_params
+        payload["param_sources"] = param_sources
     return payload
+
+
+def build_slot_param_map(slots: Mapping[str, Any]) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
+    """从槽位表达式里解析引用的注册表参数，返回 (槽位→参数列表, 参数来源总表)。
+
+    槽位表达式可引用：注册表参数（如 h_u / insul_m）、其他槽位（RELE05 * 1.5）、
+    电压分档函数 v(...) 的字面量。只把「注册表参数」挑出来，并附上其来源说明：
+    - line_binding：来源域.路径（如 profile.shield_wire_height_m）
+    - script：脚本（口径写在其 description）
+    - constant：字面量
+    """
+    from app.services.atp_param_dsl import collect_names  # noqa: PLC0415
+    from app.services.atp_param_registry import Definition, definition_from_row  # noqa: PLC0415
+
+    # 加载注册表（DB 优先；表缺失时回落代码种子）
+    definitions: list[Definition] = []
+    try:
+        from app.core.database import SessionLocal  # noqa: PLC0415
+
+        db = SessionLocal()
+        try:
+            from app.services.atp_param_registry import load_definitions  # noqa: PLC0415
+
+            definitions = load_definitions(db)
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        pass
+    if not definitions:
+        from app.services.atp_param_definition_seed import build_seed_definition_objects  # noqa: PLC0415
+
+        definitions = build_seed_definition_objects()
+
+    by_code = {d.code: d for d in definitions}
+
+    def describe(d: Definition) -> dict[str, Any]:
+        if d.source_type == "line_binding":
+            b = d.binding_json or {}
+            via = f"{b.get('source') or ''}.{b.get('path') or ''}"
+            transform = b.get("transform")
+            if transform:
+                via += f"（{transform}）"
+            return {"code": d.code, "name": d.name, "source_type": "line_binding", "via": via}
+        if d.source_type == "script":
+            return {"code": d.code, "name": d.name, "source_type": "script", "via": d.description or "脚本计算"}
+        return {"code": d.code, "name": d.name, "source_type": "constant", "via": f"字面量 {d.binding_json.get('value')}"}
+
+    param_sources: dict[str, dict[str, Any]] = {code: describe(d) for code, d in by_code.items()}
+    slot_params: dict[str, list[dict[str, Any]]] = {}
+    for slot, spec in slots.items():
+        if not isinstance(spec, dict):
+            continue
+        expr = spec.get("expr") or spec.get("param")
+        if not expr:
+            continue
+        try:
+            names = collect_names(str(expr))
+        except Exception:  # noqa: BLE001 - 表达式解析失败不阻塞页面
+            continue
+        # 仅挑出注册表参数（排除其它槽位引用/维度键）
+        refs = [
+            describe(by_code[n])
+            for n in sorted(names)
+            if n in by_code
+        ]
+        if refs:
+            slot_params[slot] = refs
+    return slot_params, param_sources
 
 
 def list_templates(
