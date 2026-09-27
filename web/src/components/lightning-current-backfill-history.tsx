@@ -10,10 +10,12 @@ import {
   Button,
   DatePicker,
   Descriptions,
-  Input,
+  Dropdown,
   Drawer,
   Empty,
+  FloatButton,
   Form,
+  Input,
   Modal,
   Progress,
   Select,
@@ -23,8 +25,10 @@ import {
   Tooltip,
   Typography,
 } from "antd";
+import type { MenuProps } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
+import { MoreOutlined } from "@ant-design/icons";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useBackfillTaskProgressSync, type BackfillTaskPatch } from "@/hooks/use-backfill-task-progress";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
@@ -81,19 +85,25 @@ function renderBackfillProgressCell(
   const isActive = key === "pending" || key === "processing";
   const tip =
     key === "failed" ? errorMessage || "回填失败" : isActive ? `进度 ${percent}%` : undefined;
-  return (
-    <Tooltip title={tip}>
-      <Space direction="vertical" size={2} style={{ width: "100%" }}>
-        <Tag color={meta.tagColor} style={{ marginInlineEnd: 0 }}>
-          {meta.label}
-        </Tag>
+  // 2026-09-27 规范：回填过程中展示进度条；完成/失败后直接展示状态标签
+  if (isActive) {
+    return (
+      <Tooltip title={tip}>
         <Progress
-          percent={key === "completed" ? 100 : percent}
+          percent={percent}
           status={meta.progressStatus}
           size="small"
           showInfo={false}
+          style={{ width: 140 }}
         />
-      </Space>
+      </Tooltip>
+    );
+  }
+  return (
+    <Tooltip title={tip}>
+      <Tag color={meta.tagColor} style={{ marginInlineEnd: 0 }}>
+        {meta.label}
+      </Tag>
     </Tooltip>
   );
 }
@@ -217,7 +227,7 @@ export function LightningCurrentBackfillHistoryTable({
   amplitudeId,
 }: LightningCurrentBackfillHistoryTableProps) {
   const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
-  const { message: messageApi } = App.useApp();
+  const { message: messageApi, modal: modalApi } = App.useApp();
   const queryClient = useQueryClient();
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
@@ -449,6 +459,29 @@ export function LightningCurrentBackfillHistoryTable({
     },
   });
 
+  // 删除回填记录（2026-09-27 回填记录列表删除按钮）：仅删记录，不回滚已写入塔的幅值
+  const deleteBackfillMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      if (!canManage) {
+        throw new Error("缺少 lightning.manage 权限");
+      }
+      const response = await fetchWithAuth(`/api/v1/lightning-currents/backfill-tasks/${taskId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return true;
+    },
+    onSuccess: () => {
+      messageApi.success("回填记录已删除");
+      void queryClient.invalidateQueries({ queryKey: ["lightning-currents"] });
+    },
+    onError: (candidate) => {
+      messageApi.error(candidate instanceof Error ? candidate.message : "删除回填记录失败");
+    },
+  });
+
   // ---- 进度「按记录就地更新」：只轮询进行中的任务，合并进对应行，不重新请求列表 ----
   useBackfillTaskProgressSync<LightningAmplitudeBackfillLine>({
     items: isAmplitudeMode ? amplitudeLinesQuery.data?.items ?? [] : [],
@@ -518,18 +551,14 @@ export function LightningCurrentBackfillHistoryTable({
 
   const amplitudeColumns = useMemo<ColumnsType<LightningAmplitudeBackfillLine>>(
     () => [
-      {
-        title: "线路编号",
-        dataIndex: "line_code",
-        width: 120,
-        render: (value: string | null) => value || "-",
-      },
+      // 2026-09-27：去掉「线路编号」列，线路名称后增加「杆塔数量」列
       {
         title: "线路名称",
         dataIndex: "line_name",
-        width: 180,
+        width: 200,
         ellipsis: { showTitle: true },
-        render: (value: string | null) => value || "-",
+        render: (value: string | null, row) =>
+          value || row.line_code || "-",
       },
       {
         title: "电压(kV)",
@@ -538,13 +567,20 @@ export function LightningCurrentBackfillHistoryTable({
         render: (value: number | null) => (value == null ? "-" : value),
       },
       {
+        title: "杆塔数量",
+        key: "tower_count",
+        width: 100,
+        align: "center" as const,
+        render: (_: unknown, row) => row.tower_count ?? 0,
+      },
+      {
         title: "回填时间",
         dataIndex: "prepared_at",
         width: 170,
         render: (value: string | null) => formatDateTime(value),
       },
       {
-        title: "回填进度",
+        title: "回填状态",
         key: "progress",
         width: 160,
         render: (_: unknown, row) =>
@@ -553,36 +589,69 @@ export function LightningCurrentBackfillHistoryTable({
       {
         title: "操作",
         key: "actions",
-        width: 170,
+        width: 150,
         fixed: "right",
-      align: "right" as const,
-        render: (_: unknown, row) => (
-          <Space size={4}>
-            <Button
-              size="small"
-              disabled={!row.task_id}
-              onClick={() => {
-                if (!row.task_id) {
-                  return;
-                }
-                setDetailTaskId(row.task_id);
-                setDetailOpen(true);
-              }}
-            >
-              查看详情
-            </Button>
-            <Button
-              size="small"
-              disabled={!row.task_id || !canReadLogs}
-              onClick={() => openLogViewer(row.task_id, row.line_name || row.line_code || "未知线路")}
-            >
-              日志
-            </Button>
-          </Space>
-        ),
+        align: "right" as const,
+        render: (_: unknown, row) => {
+          const moreMenuItems: MenuProps["items"] = [
+            ...(canReadLogs && row.task_id
+              ? [
+                  {
+                    key: "log",
+                    label: "日志",
+                    onClick: () => openLogViewer(row.task_id, row.line_name || row.line_code || "未知线路"),
+                  },
+                ]
+              : []),
+            ...(canManage && row.task_id
+              ? [
+                  {
+                    key: "delete",
+                    label: "删除",
+                    danger: true,
+                    disabled: deleteBackfillMutation.isPending,
+                    onClick: () => {
+                      modalApi.confirm({
+                        title: "删除回填记录",
+                        content: `确认删除线路「${row.line_name || row.line_code || "-"}」的回填记录吗？该操作仅删除记录，已写入塔的幅值数据不回滚。`,
+                        okText: "删除",
+                        cancelText: "取消",
+                        okButtonProps: { danger: true },
+                        onOk: async () => {
+                          if (row.task_id) {
+                            await deleteBackfillMutation.mutateAsync(row.task_id);
+                          }
+                        },
+                      });
+                    },
+                  },
+                ]
+              : []),
+          ];
+          return (
+            <Space size={4}>
+              <Button
+                size="small"
+                disabled={!row.task_id}
+                onClick={() => {
+                  if (!row.task_id) {
+                    return;
+                  }
+                  setDetailTaskId(row.task_id);
+                  setDetailOpen(true);
+                }}
+              >
+                详情
+              </Button>
+              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+                <Button size="small" icon={<MoreOutlined />} />
+              </Dropdown>
+            </Space>
+          );
+        },
       },
     ],
-    [canReadLogs, openLogViewer],
+    [canManage, canReadLogs, openLogViewer, deleteBackfillMutation, modalApi],
   );
 
   const taskColumns = useMemo<ColumnsType<LightningCurrentBackfillTaskSummary>>(
@@ -601,7 +670,7 @@ export function LightningCurrentBackfillHistoryTable({
         render: (value: string | null) => value || "-",
       },
       {
-        title: "回填进度",
+        title: "回填状态",
         key: "progress",
         width: 160,
         render: (_: unknown, row: LightningCurrentBackfillTaskSummary) =>
@@ -730,6 +799,12 @@ export function LightningCurrentBackfillHistoryTable({
 
   return (
     <div className="admin-lightning-backfill-pane">
+      {/* 2026-09-27：悬浮组件（回到顶部）始终固定在右下角 */}
+      <FloatButton.BackTop
+        tooltip="回到顶部"
+        style={{ right: 32, bottom: 32 }}
+        visibilityHeight={240}
+      />
       {isAmplitudeMode && (
         <div className="admin-filter-bar">
           <Form layout="inline" onFinish={handleSearch}>

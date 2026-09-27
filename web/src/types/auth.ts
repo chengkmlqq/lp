@@ -1343,6 +1343,8 @@ export type LightningAmplitudeBackfillLine = {
   line_code: string | null;
   line_name: string | null;
   voltage_kv: number | null;
+  /** 线路杆塔总数（列表「杆塔数量」列，2026-09-27） */
+  tower_count: number;
   prepared_at: string | null;
   current_a: number | null;
   current_b: number | null;

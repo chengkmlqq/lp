@@ -489,6 +489,14 @@ def get_backfill_lines_for_amplitude(
                 line_code=line.code if line else None,
                 line_name=line.name if line else None,
                 voltage_kv=line.voltage_kv if line else None,
+                tower_count=int(
+                    db.execute(
+                        select(func.count())
+                        .select_from(LineTower)
+                        .where(LineTower.line_id == task.line_id)
+                    ).scalar()
+                    or 0
+                ),
                 prepared_at=task.prepared_at,
                 current_a=task.current_a,
                 current_b=task.current_b,
@@ -507,6 +515,22 @@ def get_backfill_lines_for_amplitude(
     elif offset:
         items = items[offset:]
     return LightningAmplitudeBackfillLineListResponse(items=items, total=total)
+
+
+def delete_lightning_current_backfill_task(db: Session, task_id: str) -> dict[str, bool]:
+    """删除一条雷电流幅值回填任务记录（2026-09-27 回填记录列表删除按钮）。
+
+    语义：**仅删除回填记录**（任务行 + 级联的塔明细行），已写入塔的幅值数据
+    不回滚（如需回滚幅值请另行处理），与「删除幅值记录」是两种操作。
+    """
+    task = db.scalar(
+        select(LightningCurrentBackfillTask).where(LightningCurrentBackfillTask.id == task_id)
+    )
+    if not task:
+        return {"success": False}
+    db.delete(task)
+    db.flush()
+    return {"success": True}
 
 
 def get_backfill_task_detail_for_amplitude_line(

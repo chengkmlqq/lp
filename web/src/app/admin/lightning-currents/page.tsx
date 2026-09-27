@@ -920,7 +920,7 @@ export default function AdminLightningCurrentsPage() {
         render: (value: LightningPolarity) => formatPolarity(value),
       },
       {
-        title: "状态",
+        title: "回填状态",
         dataIndex: "status",
         width: 160,
         render: (_: unknown, row) => {
@@ -944,12 +944,6 @@ export default function AdminLightningCurrentsPage() {
         },
       },
       {
-        title: "导入时间",
-        dataIndex: "create_date",
-        width: 170,
-        render: (value: string) => formatDateTime(value),
-      },
-      {
         title: "回填线路数",
         dataIndex: "backfill_line_count",
         key: "backfill_line_count",
@@ -965,6 +959,12 @@ export default function AdminLightningCurrentsPage() {
             </Button>
           );
         },
+      },
+      {
+        title: "导入时间",
+        dataIndex: "create_date",
+        width: 170,
+        render: (value: string) => formatDateTime(value),
       },
       {
         title: "操作",
@@ -1010,6 +1010,7 @@ export default function AdminLightningCurrentsPage() {
                   {
                     key: "delete",
                     label: "删除",
+                    danger: true,
                     disabled: deleteMutation.isPending,
                     onClick: () => {
                       modalApi.confirm({

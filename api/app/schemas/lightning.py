@@ -124,6 +124,8 @@ class LightningAmplitudeBackfillLine(BaseModel):
     line_code: str | None = None
     line_name: str | None = None
     voltage_kv: int | None = None
+    # 线路杆塔总数（列表「杆塔数量」列，2026-09-27）
+    tower_count: int = 0
     prepared_at: datetime | None = None
     current_a: float | None = None
     current_b: float | None = None

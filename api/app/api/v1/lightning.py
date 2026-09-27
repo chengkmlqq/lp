@@ -50,6 +50,7 @@ from ...services.lightning_service import (
     delete_lightning_amplitude,
     delete_lightning_distribution,
     get_backfill_lines_for_amplitude,
+    delete_lightning_current_backfill_task,
     get_backfill_task_detail_for_amplitude_line,
     get_lightning_amplitude_by_id,
     get_lightning_amplitude_detail,
@@ -609,6 +610,26 @@ def get_lightning_current_backfill_task_towers_endpoint(
     db: Session = Depends(get_db),
 ) -> LightningCurrentBackfillTaskDetail:
     return get_lightning_current_backfill_task_towers(db, task_id, page=page, page_size=page_size)
+
+
+@router.delete("/backfill-tasks/{task_id}")
+def delete_lightning_current_backfill_task_endpoint(
+    task_id: str,
+    current_user: CurrentUser = Depends(require_permission("lightning.manage")),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    """删除一条雷电流幅值回填任务记录（仅删记录，不回滚已写入塔的幅值）。"""
+    deleted = delete_lightning_current_backfill_task(db, task_id)
+    if not deleted.get("success"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="回填任务记录不存在")
+    write_audit_log(
+        db,
+        action="lightning.current_backfill_task.delete",
+        actor_user_id=current_user.user.id,
+        detail=f"backfill_task_id={task_id}",
+    )
+    db.commit()
+    return deleted
 
 
 # ---------------------------------------------------------------------------
