@@ -624,6 +624,20 @@ DEFAULT_MENUS: list[dict[str, object]] = [
     # 故障分析
     {"code": "admin.fault_analysis:btn.create", "name": "新建分析", "path": None, "icon": None, "parent_code": "admin.fault_analysis", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "fault.create"},
     {"code": "admin.fault_analysis:btn.delete", "name": "删除分析", "path": None, "icon": None, "parent_code": "admin.fault_analysis", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "fault.delete"},
+    # 防雷改造（2026-09-27：并入种子，带图标；目录含主页路由 /admin/lightning-retrofit）
+    {
+        "code": "admin.lightning_retrofit",
+        "name": "防雷改造",
+        "path": "/admin/lightning-retrofit",
+        "icon": "ThunderboltOutlined",
+        "parent_code": None,
+        "type": "directory",
+        "sort_order": 53,
+        "status": "enabled",
+        "visible": True,
+        "cacheable": False,
+        "permission_code": "",
+    },
 ]
 
 ROLE_MENU_BINDINGS: dict[str, list[str]] = {
