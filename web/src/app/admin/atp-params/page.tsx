@@ -38,6 +38,7 @@ import {
   CloseCircleOutlined,
   CodeOutlined,
   DeleteOutlined,
+  EditOutlined,
   ExperimentOutlined,
   EyeOutlined,
   FunctionOutlined,
@@ -161,12 +162,13 @@ interface DefinitionCardProps {
   item: DefinitionItem;
   canManage: boolean;
   onTest: (item: DefinitionItem) => void;
+  onEdit: (item: DefinitionItem) => void;
   onDetail: (item: DefinitionItem) => void;
   onDelete: (item: DefinitionItem) => void;
 }
 
 /** 参数定义卡片（严格参照线路管理 <PowerLineCard> 结构）。 */
-function DefinitionCard({ item, canManage, onTest, onDetail, onDelete }: DefinitionCardProps) {
+function DefinitionCard({ item, canManage, onTest, onEdit, onDetail, onDelete }: DefinitionCardProps) {
   const sourceColor = SOURCE_TYPE_COLOR[item.source_type];
   const sourceLabel = SOURCE_TYPE_LABEL[item.source_type];
   return (
@@ -212,8 +214,13 @@ function DefinitionCard({ item, canManage, onTest, onDetail, onDelete }: Definit
       <div className="admin-atp-params-card-actions admin-atp-models-card-actions flex items-center justify-end gap-1 px-4 py-2">
         {canManage ? (
           <Space size={4}>
-            <Tooltip title="试算（脚本）">
-              <Button size="small" type="text" icon={<ExperimentOutlined />} onClick={(event) => { event.stopPropagation(); onTest(item); }} />
+            {item.source_type === "script" ? (
+              <Tooltip title="试算（脚本）">
+                <Button size="small" type="text" icon={<ExperimentOutlined />} onClick={(event) => { event.stopPropagation(); onTest(item); }} />
+              </Tooltip>
+            ) : null}
+            <Tooltip title="编辑">
+              <Button size="small" type="text" icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); onEdit(item); }} />
             </Tooltip>
             <Tooltip title="详情">
               <Button size="small" type="text" icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); onDetail(item); }} />
@@ -314,6 +321,7 @@ export default function AtpParamsPage() {
 
   const [editing, setEditing] = useState<DefinitionItem | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
   const [scriptTest, setScriptTest] = useState<TestScriptResponse | null>(null);
   const [scriptTesting, setScriptTesting] = useState(false);
@@ -448,6 +456,7 @@ export default function AtpParamsPage() {
   };
 
   const saveDefinition = async () => {
+    setSaving(true);
     try {
       const values = await form.validateFields();
       const payload = {
@@ -485,6 +494,8 @@ export default function AtpParamsPage() {
     } catch (error) {
       if (error instanceof Error && "errorFields" in error) return; // 表单校验失败由表单提示
       message.error(error instanceof Error ? error.message : "保存失败");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -617,8 +628,13 @@ export default function AtpParamsPage() {
       align: "right",
       render: (_, record) => (
         <Space size={4}>
-          <Tooltip title="试算（脚本）">
-            <Button size="small" type="text" icon={<ExperimentOutlined />} onClick={() => openEdit(record)} />
+          {record.source_type === "script" ? (
+            <Tooltip title="试算（脚本）">
+              <Button size="small" type="text" icon={<ExperimentOutlined />} onClick={() => openEdit(record)} />
+            </Tooltip>
+          ) : null}
+          <Tooltip title="编辑">
+            <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEdit(record)} />
           </Tooltip>
           <Button size="small" type="text" icon={<EyeOutlined />} onClick={() => openDetail(record)} />
           <Button size="small" type="text" icon={<DeleteOutlined />} danger onClick={() => removeDefinition(record)} />
@@ -722,6 +738,7 @@ export default function AtpParamsPage() {
                       item={item}
                       canManage={canManage}
                       onTest={openEdit}
+                      onEdit={openEdit}
                       onDetail={openDetail}
                       onDelete={removeDefinition}
                     />
@@ -859,20 +876,17 @@ export default function AtpParamsPage() {
         </Space>
       </Drawer>
 
-      {/* 新建/编辑抽屉 */}
-      <Drawer
+      {/* 新建/编辑弹窗（参照防雷计算任务新建：Modal + 表单内按钮） */}
+      <Modal
         title={editing ? `编辑参数 ${editing.code}` : "新建参数"}
         open={editOpen}
-        onClose={() => setEditOpen(false)}
-        width={620}
-        extra={
-          <Space>
-            <Button onClick={() => setEditOpen(false)}>取消</Button>
-            <Button type="primary" onClick={() => void saveDefinition()}>
-              保存
-            </Button>
-          </Space>
-        }
+        width={880}
+        footer={null}
+        onCancel={() => {
+          if (saving) return;
+          setEditOpen(false);
+        }}
+        destroyOnHidden={false}
       >
         <Form form={form} layout="vertical" initialValues={{ data_type: "number", enabled: true, sort_order: 0 }}>
           <Space size={12} style={{ display: "flex" }} wrap>
@@ -1030,8 +1044,17 @@ export default function AtpParamsPage() {
           {watchSource === "script" && (watchDeps ?? []).length === 0 ? (
             <Alert type="warning" showIcon message="尚未声明依赖参数：脚本只能引用输入框外的上下文键（如 shield_h / h_u / voltage），否则保存校验会拦截。" style={{ marginBottom: 12 }} />
           ) : null}
+
+          <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+            <Button disabled={saving} onClick={() => setEditOpen(false)}>
+              取消
+            </Button>
+            <Button type="primary" loading={saving} onClick={() => void saveDefinition()}>
+              保存
+            </Button>
+          </Space>
         </Form>
-      </Drawer>
+      </Modal>
     </div>
   );
 }
