@@ -59,12 +59,14 @@ export function JobTable({
       title: "任务名",
       dataIndex: "job_name",
       key: "job_name",
+      width: 280,
       ellipsis: true,
       render: (value: string | null, job) => value || job.line_name || job.line_code || "-",
     },
     {
       title: "线路",
       key: "line",
+      width: 200,
       ellipsis: true,
       render: (_value, job) => job.line_name || job.line_code || "-",
     },
@@ -203,7 +205,7 @@ export function JobTable({
           onPaginationChange({ current: page, pageSize });
         },
       }}
-      scroll={{ x: 1200, y: scrollY }}
+      scroll={{ x: 1520, y: scrollY }}
       locale={{
         emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无防雷分析任务" />,
       }}
