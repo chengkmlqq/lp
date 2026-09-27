@@ -653,7 +653,7 @@ export default function AtpParamsPage() {
             key: "list",
             label: (
               <span className="admin-atp-params-tab-title">
-                <FunctionOutlined /> ATP 计算参数管理（参数注册表）
+                <FunctionOutlined /> ATP 计算参数管理
               </span>
             ),
             closable: false,
