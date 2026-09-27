@@ -6,7 +6,7 @@ import signal
 import time
 
 from ..core.celery_app import celery_app
-from ..services.fl_analysis_service import execute_job
+from ..services.fl_analysis_service import clean_job_run_artifacts, execute_job
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +283,8 @@ def cleanup_cancelled_fl_analysis_run(self, job_id: str) -> dict[str, str]:
         "取消清理完成：job=%s 杀任务进程=%s 树内进程=%d 命中引擎进程数=%d 兜底写状态=%s",
         job_id, task_killed, tree_killed, killed, status_fixed,
     )
+    # 进程清理完后再删本 job 的运行结果目录（只删结果，不动引擎/资产物化目录）
+    clean_job_run_artifacts(job_id)
     return {
         "job_id": job_id,
         "task_process_killed": str(task_killed),

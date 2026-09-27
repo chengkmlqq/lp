@@ -378,6 +378,11 @@ def execute_test_run_job(
             run.update_user = actor_user_id
             run.update_date = utcnow()
             db.commit()
+            # 任务终态清理：删本 run 的运行结果目录（成功路径）
+            try:
+                cleanup_test_run_dir(run.id)
+            except Exception as exc:  # noqa: BLE001 - 清理是 best-effort
+                logger.warning("[ATP测试] 清理运行目录失败 run=%s err=%s", run.id, exc)
             return
 
         try:
@@ -445,6 +450,11 @@ def execute_test_run_job(
             failed_stage,
             run.duration_ms,
         )
+        # 任务终态清理：删本 run 的运行结果目录（成功/失败路径均清理，只删结果）
+        try:
+            cleanup_test_run_dir(run.id)
+        except Exception as exc:  # noqa: BLE001 - 清理是 best-effort
+            logger.warning("[ATP测试] 清理运行目录失败 run=%s err=%s", run.id, exc)
     finally:
         db.close()
 

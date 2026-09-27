@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import os
+import shutil
 import time
 from contextlib import closing
 from pathlib import Path
@@ -19,6 +20,7 @@ from sqlalchemy.orm import Session, noload, selectinload
 
 logger = logging.getLogger(__name__)
 
+from ..core.config import get_settings
 from ..core.database import SessionLocal
 from ..models.base import utcnow
 from ..models.fl_analysis import FlAnalysisJob, FlAnalysisRun, FlAnalysisTowerResult, FlAnalysisTowerSnapshot
@@ -1332,6 +1334,39 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
             }
 
 
+def clean_job_run_artifacts(job_id: str) -> None:
+    """清理任务（Job）完成后残留的运行结果目录（只删结果，不动引擎/资产物化目录）。
+
+    覆盖两类运行目录：
+    - fl-analysis： ``{atp_storage_root}/runs/fl-analysis/{job_id}``
+    - legacy：     ``{atp_run_root}/{job_id}``
+
+    每个任务跑完后至少命中其中一类；两类都尝试删除（``ignore_errors=True``，
+    目录不存在或删除失败都不会抛出）。资产测试运行目录由
+    ``atp_asset_test_service.cleanup_test_run_dir`` 单独负责，此处不处理。
+    """
+    from .atp_asset_service import _resolve_engine_workdir
+
+    targets: list[Path] = []
+    try:
+        targets.append(_resolve_engine_workdir() / "fl-analysis" / job_id)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        settings = get_settings()
+        targets.append(Path(settings.atp_run_root).expanduser() / job_id)
+    except Exception:  # noqa: BLE001
+        pass
+
+    for target in targets:
+        try:
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+                logger.info("[fl-analysis] 已清理任务 %s 运行结果目录：%s", job_id, target)
+        except Exception as exc:  # noqa: BLE001 —— 清理是 best-effort
+            logger.warning("[fl-analysis] 清理任务 %s 运行结果目录失败 %s：%s", job_id, target, exc)
+
+
 def execute_job(job_id: str) -> None:
     db = SessionLocal()
     started_perf = time.perf_counter()
@@ -1654,12 +1689,17 @@ def execute_job(job_id: str) -> None:
             adapter_status="executed" if external_job is not None or legacy_external_job is not None else "computed",
         )
 
+        # 任务终态清理：删本 job 的运行结果目录（成功路径）
+        clean_job_run_artifacts(job.id)
+
     except Exception as exc:
         db.rollback()
         if run_id is not None:
             _mark_run_failed(db, job_id=job_id, run_id=run_id, error_message=str(exc), started_perf=started_perf)
         else:
             _mark_job_failed_without_run(db, job_id=job_id, error_message=str(exc))
+        # 任务终态清理：异常路径同样清理运行结果目录
+        clean_job_run_artifacts(job_id)
     finally:
         db.close()
 
