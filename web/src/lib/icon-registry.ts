@@ -21,6 +21,7 @@ import IdcardOutlined from "@ant-design/icons/IdcardOutlined";
 // ─── 业务功能（ATP模型、防雷计算、波形分析、定时任务、报告等） ───
 import ThunderboltOutlined from "@ant-design/icons/ThunderboltOutlined";
 import ExperimentOutlined from "@ant-design/icons/ExperimentOutlined";
+import FunctionOutlined from "@ant-design/icons/FunctionOutlined";
 import RadarChartOutlined from "@ant-design/icons/RadarChartOutlined";
 import ApartmentOutlined from "@ant-design/icons/ApartmentOutlined";
 import DeploymentUnitOutlined from "@ant-design/icons/DeploymentUnitOutlined";
@@ -159,6 +160,7 @@ export const ICON_MAP: Record<string, ComponentType<{ className?: string; style?
   // 业务功能
   ThunderboltOutlined,
   ExperimentOutlined,
+  FunctionOutlined,
   RadarChartOutlined,
   ApartmentOutlined,
   DeploymentUnitOutlined,
@@ -292,6 +294,7 @@ export const ICON_CATEGORIES: IconCategory[] = [
     icons: [
       { name: "ThunderboltOutlined", label: "雷电/防雷", component: ThunderboltOutlined },
       { name: "ExperimentOutlined", label: "实验/ATP", component: ExperimentOutlined },
+      { name: "FunctionOutlined", label: "函数/参数", component: FunctionOutlined },
       { name: "RadarChartOutlined", label: "雷达/分析", component: RadarChartOutlined },
       { name: "ApartmentOutlined", label: "架构/模型", component: ApartmentOutlined },
       { name: "DeploymentUnitOutlined", label: "部署单元", component: DeploymentUnitOutlined },
