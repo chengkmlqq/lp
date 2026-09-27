@@ -3772,6 +3772,168 @@ body {
   padding: 12px;
 }
 
+/* ---- ATP 模型管理页左右结构（参考菜单管理页 / 系统参数管理页） ---- */
+.admin-atp-models-page-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* ---- 左侧维度树卡片 ---- */
+.admin-atp-models-sider-card {
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.admin-atp-models-sider-card > .ant-card-body {
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-atp-models-sider-card .ant-tree {
+  font-size: 13px;
+}
+
+/* ---- 树卡片内搜索框 ---- */
+.admin-atp-models-sider-card-search {
+  padding: 12px;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+  flex-shrink: 0;
+}
+
+.admin-atp-models-search-input {
+  border-radius: 6px;
+  height: 32px;
+  transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.admin-atp-models-search-input:focus {
+  border-color: var(--ant-color-primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ant-color-primary) 22%, transparent);
+}
+
+/* ---- 树滚动容器 ---- */
+.admin-atp-models-sider-menu {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.admin-atp-models-sider-menu .ant-tree {
+  background: transparent;
+}
+
+.admin-atp-models-sider-menu .ant-tree-treenode {
+  padding: 2px 0;
+  transition: background 140ms cubic-bezier(0.2, 0, 0, 1);
+  border-radius: 6px;
+}
+
+.admin-atp-models-sider-menu .ant-tree-treenode:hover {
+  background: var(--ant-color-bg-text-hover);
+}
+
+.admin-atp-models-sider-menu .ant-tree-treenode.ant-tree-treenode-selected {
+  background: color-mix(in srgb, var(--ant-color-primary) 8%, transparent);
+}
+
+.admin-atp-models-sider-menu .ant-tree-node-content-wrapper {
+  transition: color 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.admin-atp-models-sider-menu .ant-tree-node-content-wrapper:hover {
+  background: transparent !important;
+}
+
+.admin-atp-models-sider-menu .ant-tree-treenode-selected .ant-tree-node-content-wrapper {
+  color: var(--ant-color-primary);
+  font-weight: 500;
+  background: transparent !important;
+}
+
+.admin-atp-models-sider-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.admin-atp-models-sider-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-atp-models-sider-menu::-webkit-scrollbar-thumb {
+  background: var(--fquiz-scrollbar-thumb);
+  border-radius: 3px;
+}
+
+.admin-atp-models-sider-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--fquiz-scrollbar-thumb-hover);
+}
+
+/* ---- 树节点（标题 + 计数） ---- */
+.admin-atp-models-tree-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-atp-models-tree-node-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-atp-models-tree-node-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--ant-color-fill-secondary, rgba(0, 0, 0, 0.06));
+  color: var(--ant-color-text-secondary);
+}
+
+/* ---- 分隔条 ---- */
+.admin-atp-models-resize-handle {
+  width: 8px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.admin-atp-models-resize-handle-line {
+  width: 2px;
+  height: 32px;
+  background: var(--ant-color-border-secondary);
+  border-radius: 1px;
+  transition: all 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.admin-atp-models-resize-handle:hover .admin-atp-models-resize-handle-line {
+  background: var(--ant-color-primary);
+  height: 48px;
+}
+
+/* ---- 右侧面板（镜像 .admin-menus-main） ---- */
+.admin-atp-models-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 /* LP-246: 移除主列表外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
 .admin-lightning-currents-list-pane {
   display: flex;

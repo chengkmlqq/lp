@@ -1168,9 +1168,13 @@ export type AtpAssetSummary = {
   description: string;
   status: AtpAssetStatus;
   voltage_level: string | null;
+  voltage_level_label?: string | null;
   tower_type: string | null;
+  tower_type_label?: string | null;
   scene_type: string | null;
+  scene_type_label?: string | null;
   arrester_config: string | null;
+  arrester_config_label?: string | null;
   storage_mount_code: string | null;
   storage_root_path: string | null;
   run_count: number;
