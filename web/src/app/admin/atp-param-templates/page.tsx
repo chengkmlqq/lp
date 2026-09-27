@@ -10,6 +10,7 @@ import {
   Button,
   Card,
   Drawer,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -25,15 +26,17 @@ import {
   Tooltip,
   Tree,
   Typography,
+  type MenuProps,
 } from "antd";
 import type { DataNode } from "antd/es/tree";
 import type { ColumnsType } from "antd/es/table";
 import {
   DeleteOutlined,
+  EditOutlined,
   ExperimentOutlined,
   EyeOutlined,
+  MoreOutlined,
   PlusOutlined,
-  ReloadOutlined,
   SearchOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
@@ -256,10 +259,12 @@ export default function AtpParamTemplatesPage() {
     }
   };
 
-  // 右表「查询」:提交关键词(本地过滤,参照菜单页)
+  // 右表「查询」:提交关键词(本地过滤,参照菜单页);每次点击都强制触发一次接口请求
   const handleTableSearch = () => {
     setTableKeyword(tableKeywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
+    // 参照菜单管理页:即使关键词/分页未变化也重新拉取接口(替代原「刷新」按钮)
+    void loadTree();
   };
 
   // 清除筛选:同时清掉树选中、右表关键词与层级过滤
@@ -574,55 +579,79 @@ export default function AtpParamTemplatesPage() {
       key: "actions",
       fixed: "right",
       align: "right" as const,
-      width: 240,
-      render: (_v, row) => (
-        <Space wrap size={4}>
-          <Button size="small" icon={<EyeOutlined />} disabled={!row.node.rule_id} onClick={() => void openDetailDrawer(row)}>
-            详情
-          </Button>
-          <Button size="small" icon={<ExperimentOutlined />} disabled={!row.node.rule_id} onClick={() => void openPreviewDrawer(row)}>
-            试算
-          </Button>
-          {canManage ? (
-            <>
-              <Button
-                size="small"
-                disabled={!row.node.rule_id}
-                onClick={() => {
-                  setSelectedKey(row.key);
-                  if (row.node.rule_id) void loadDetail(row.node.rule_id).then(() => openEditor());
-                }}
-              >
-                编辑
+      width: 200,
+      render: (_v, row) => {
+        const hasRule = Boolean(row.node.rule_id);
+        const editTemplate = () => {
+          setSelectedKey(row.key);
+          if (row.node.rule_id) void loadDetail(row.node.rule_id).then(() => openEditor());
+        };
+        const deleteTemplate = () => {
+          setSelectedKey(row.key);
+          if (row.node.rule_id) void loadDetail(row.node.rule_id).then(() => void removeTemplate());
+        };
+        const deriveTemplate = () => {
+          setSelectedKey(row.key);
+          const ruleId = row.node.rule_id;
+          if (ruleId) void loadDetail(ruleId).then(() => void deriveChild());
+        };
+
+        const moreMenuItems: MenuProps["items"] = [
+          {
+            key: "preview",
+            label: "试算",
+            icon: <ExperimentOutlined />,
+            disabled: !hasRule,
+            onClick: () => void openPreviewDrawer(row),
+          },
+          ...(canManage
+            ? [
+                {
+                  key: "derive",
+                  label: "细分",
+                  icon: <PlusOutlined />,
+                  disabled: !hasRule,
+                  onClick: () => void deriveTemplate(),
+                },
+                {
+                  key: "delete",
+                  label: "删除",
+                  icon: <DeleteOutlined />,
+                  danger: true,
+                  disabled: !hasRule,
+                  onClick: () => void deleteTemplate(),
+                },
+              ]
+            : []),
+        ];
+
+        if (!canManage) {
+          return (
+            <Space wrap size={4}>
+              <Button size="small" icon={<EyeOutlined />} disabled={!hasRule} onClick={() => void openDetailDrawer(row)}>
+                详情
               </Button>
-              {row.node.rule_id ? (
-                <Button
-                  size="small"
-                  icon={<PlusOutlined />}
-                  onClick={() => {
-                    setSelectedKey(row.key);
-                    const ruleId = row.node.rule_id;
-                    if (ruleId) void loadDetail(ruleId).then(() => void deriveChild());
-                  }}
-                >
-                  细分
-                </Button>
-              ) : null}
-              <Button
-                size="small"
-                danger
-                disabled={!row.node.rule_id}
-                onClick={() => {
-                  setSelectedKey(row.key);
-                  if (row.node.rule_id) void loadDetail(row.node.rule_id).then(() => void removeTemplate());
-                }}
-              >
-                删除
+              <Button size="small" icon={<ExperimentOutlined />} disabled={!hasRule} onClick={() => void openPreviewDrawer(row)}>
+                试算
               </Button>
-            </>
-          ) : null}
-        </Space>
-      ),
+            </Space>
+          );
+        }
+
+        return (
+          <Space wrap size={4}>
+            <Button size="small" icon={<EyeOutlined />} disabled={!hasRule} onClick={() => void openDetailDrawer(row)}>
+              详情
+            </Button>
+            <Button size="small" icon={<EditOutlined />} disabled={!hasRule} onClick={() => void editTemplate()}>
+              编辑
+            </Button>
+            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+              <Button size="small" icon={<MoreOutlined />} aria-label="更多操作" />
+            </Dropdown>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -802,12 +831,6 @@ export default function AtpParamTemplatesPage() {
                 </Button>
               </Form.Item>
 
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button htmlType="button" icon={<ReloadOutlined />} onClick={() => void loadTree()}>
-                  刷新
-                </Button>
-              </Form.Item>
-
               {selectedKey || hasTableFilter ? (
                 <Form.Item style={{ marginBottom: 0 }}>
                   <Button htmlType="button" onClick={() => clearFilters()}>
@@ -815,13 +838,6 @@ export default function AtpParamTemplatesPage() {
                   </Button>
                 </Form.Item>
               ) : null}
-
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  共 {filteredRows.length} 个模板节点
-                  {selectedKey || hasTableFilter ? `(筛选自 ${templateRows.length})` : ""}
-                </Text>
-              </Form.Item>
             </Form>
           </div>
           <div
