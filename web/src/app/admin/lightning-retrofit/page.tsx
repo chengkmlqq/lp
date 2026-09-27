@@ -895,11 +895,6 @@ export default function AdminLightningRetrofitPage() {
               </Button>
             </Form.Item>
           </Form>
-          <Segmented
-            value={viewMode}
-            onChange={(value) => setViewMode(value as "card" | "list")}
-            options={[{ label: "列表视图", value: "list" }]}
-          />
         </div>
 
         {errorMessage && (
@@ -971,7 +966,7 @@ export default function AdminLightningRetrofitPage() {
         )}
         {!lineId ? (
           <Empty description="请先选择线路" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        ) : viewMode === "list" ? (
+        ) : (
           <div
             ref={tableScrollAnchorRef}
             className="admin-fl-analysis-table-view"
@@ -1002,12 +997,6 @@ export default function AdminLightningRetrofitPage() {
               }}
             />
           </div>
-        ) : (
-          <Card>
-            <Space direction="vertical" size={12}>
-              <Typography.Text type="secondary">高风险原因分析当前仅支持列表视图。</Typography.Text>
-            </Space>
-          </Card>
         )}
         <div className="flex justify-end">
           <Button onClick={handleExport} disabled={!lineId || riskRows.length === 0}>
@@ -1065,7 +1054,7 @@ export default function AdminLightningRetrofitPage() {
         ) : null}
         {!selectedBaseJobId ? (
           <Empty description="请先选择前置任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        ) : viewMode === "list" ? (
+        ) : (
           <div
             ref={tableScrollAnchorRef}
             className="admin-fl-analysis-table-view"
@@ -1096,12 +1085,6 @@ export default function AdminLightningRetrofitPage() {
               }}
             />
           </div>
-        ) : (
-          <Card>
-            <Space direction="vertical" size={12}>
-              <Typography.Text type="secondary">措施推荐当前仅支持列表视图。</Typography.Text>
-            </Space>
-          </Card>
         )}
         <div className="flex flex-col gap-2">
           <Input
