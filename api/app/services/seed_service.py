@@ -665,7 +665,7 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "icon": "ThunderboltOutlined",
         "parent_code": None,
         "type": "directory",
-        "sort_order": 53,
+        "sort_order": 51,
         "status": "enabled",
         "visible": True,
         "cacheable": False,
