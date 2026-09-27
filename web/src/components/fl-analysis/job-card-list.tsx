@@ -194,18 +194,6 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                   </Typography.Text>
                 </div>
                 <div className="flex items-center gap-2">
-                  <ClockCircleOutlined className="text-xs text-gray-500" />
-                  <Typography.Text type="secondary" className="text-xs">
-                    创建时间：{formatDateTime(job.create_date)}
-                  </Typography.Text>
-                </div>
-                <div className="flex items-center gap-2">
-                  <ClockCircleOutlined className="text-xs text-gray-500" />
-                  <Typography.Text type="secondary" className="text-xs">
-                    完成时间：{formatDateTime(job.finished_at)}
-                  </Typography.Text>
-                </div>
-                <div className="flex items-center gap-2">
                   <DeploymentUnitOutlined className="text-xs text-gray-500" />
                   <Typography.Text type="secondary" className="text-xs">
                     杆塔数：{job.total_tower_count}
@@ -215,6 +203,18 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                   <BarChartOutlined className="text-xs text-gray-500" />
                   <Typography.Text type="secondary" className="text-xs">
                     结果数：{job.result_tower_count}
+                  </Typography.Text>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ClockCircleOutlined className="text-xs text-gray-500" />
+                  <Typography.Text type="secondary" className="text-xs">
+                    创建时间：{formatDateTime(job.create_date)}
+                  </Typography.Text>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ClockCircleOutlined className="text-xs text-gray-500" />
+                  <Typography.Text type="secondary" className="text-xs">
+                    完成时间：{formatDateTime(job.finished_at)}
                   </Typography.Text>
                 </div>
               </div>

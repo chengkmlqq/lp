@@ -289,10 +289,9 @@ export default function AdminTaskMonitorPage() {
       {
         title: "操作",
         key: "actions",
-        width: 200,
+        width: 130,
         fixed: "right",
-      align: "right" as const,
-      render: (_: unknown, record: TaskTableRow) => (
+        render: (_: unknown, record: TaskTableRow) => (
           <Space wrap>
             <Button size="small" onClick={() => handleViewLog(record.task_id)}>
               日志
