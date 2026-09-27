@@ -13,7 +13,6 @@ import {
   Input,
   Modal,
   Row,
-  Select,
   Space,
   Spin,
   Table,
@@ -24,7 +23,7 @@ import {
   type CardProps,
   type MenuProps,
 } from "antd";
-import { EditOutlined, MoreOutlined, SearchOutlined } from "@ant-design/icons";
+import { EditOutlined, KeyOutlined, MoreOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { CSSProperties, ComponentType, RefAttributes } from "react";
 
@@ -45,18 +44,24 @@ type RolesWithMenusResponse = {
   menus_total: number;
 };
 
+/** 「新建 / 编辑角色」弹窗：只含角色自身属性。 */
 type RoleFormValues = {
   code: string;
   name: string;
+};
+
+/** 「分配权限」弹窗：只含菜单与操作权限（按钮级）。 */
+type RolePermissionFormValues = {
   menu_ids: string[];
-  permission_codes: string[];
 };
 
 const EMPTY_FORM: RoleFormValues = {
   code: "",
   name: "",
+};
+
+const EMPTY_PERMISSION_FORM: RolePermissionFormValues = {
   menu_ids: [],
-  permission_codes: [],
 };
 
 const ROLE_TABLE_MIN_SCROLL_Y = 180;
@@ -68,6 +73,8 @@ export default function AdminRolesPage() {
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
   const [form] = Form.useForm<RoleFormValues>();
+  // 权限分配用独立表单实例：与角色属性表单分开渲染（两个弹窗可各自独立校验/重置）
+  const [permissionForm] = Form.useForm<RolePermissionFormValues>();
 
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -83,6 +90,10 @@ export default function AdminRolesPage() {
   const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // 「分配权限」独立弹窗：与「编辑角色」拆成两个入口，
+  // 避免改角色名时误把菜单/操作权限一起提交（反之亦然）。
+  const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
+  const [editingPermissionRole, setEditingPermissionRole] = useState<RoleItem | null>(null);
   const roleCodeCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [tableScrollY, setTableScrollY] = useState(ROLE_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -187,7 +198,9 @@ export default function AdminRolesPage() {
   const updateRoleMutation = useMutation({
     mutationFn: async ({ roleId, payload }: {
       roleId: string;
-      payload: { name: string; menu_ids: string[]; permission_codes: string[] };
+      // 字段均可选：后端 PATCH 对 None 字段视为「不修改」，
+      // 因此「编辑角色」只传 name、「分配权限」只传 menu_ids/permission_codes。
+      payload: { name?: string; menu_ids?: string[]; permission_codes?: string[] };
     }) => {
       const response = await fetchWithAuth(`/api/v1/admin/roles/${roleId}`, {
         method: "PATCH",
@@ -205,8 +218,11 @@ export default function AdminRolesPage() {
     onSuccess: async () => {
       setSuccess("角色已更新");
       setDialogOpen(false);
+      setPermissionDialogOpen(false);
       setEditingRole(null);
+      setEditingPermissionRole(null);
       form.resetFields();
+      permissionForm.resetFields();
       await refreshData();
     },
     onError: (candidate) => {
@@ -379,6 +395,13 @@ export default function AdminRolesPage() {
     form.resetFields();
   }, [createRoleMutation.isPending, form, updateRoleMutation.isPending]);
 
+  const closePermissionDialog = useCallback(() => {
+    if (updateRoleMutation.isPending) return;
+    setEditingPermissionRole(null);
+    setPermissionDialogOpen(false);
+    permissionForm.resetFields();
+  }, [permissionForm, updateRoleMutation.isPending]);
+
   const startCreate = useCallback(() => {
     setError(null);
     setSuccess("");
@@ -388,42 +411,42 @@ export default function AdminRolesPage() {
     setDialogOpen(true);
   }, [form]);
 
-  const startEdit = useCallback((role: RoleItem) => {
+  /** 编辑角色：只填角色自身属性（编码只读、名称可改），不含权限。 */
+  const startEditRole = useCallback((role: RoleItem) => {
     setError(null);
     setSuccess("");
     setRoleCodeValidationError("");
     setEditingRole(role);
-    const menuVals = (role.menu_ids ?? []).map((mid) => `menu:${mid}`);
-    const permVals = (role.permission_codes ?? []).map((pc) => `perm:${pc}`);
-    form.setFieldsValue({
-      code: role.code,
-      name: role.name,
-      menu_ids: [...new Set([...menuVals, ...permVals])],
-      permission_codes: role.permission_codes ?? [],
-    });
+    form.setFieldsValue({ code: role.code, name: role.name });
     setDialogOpen(true);
   }, [form]);
 
-  const submit = useCallback(async () => {
+  /**
+   * 分配权限：只处理「菜单 + 操作权限（按钮级）」。
+   *
+   * 勾选值用统一前缀编码：`menu:<id>` 表示菜单/按钮行，`perm:<code>` 表示模块权限码；
+   * 提交时分拆并合并按钮自身的 permission_code（与后端 role_menus / role_permissions 双写对应）。
+   */
+  const startEditPermissions = useCallback((role: RoleItem) => {
+    setError(null);
+    setSuccess("");
+    const menuVals = (role.menu_ids ?? []).map((mid) => `menu:${mid}`);
+    const permVals = (role.permission_codes ?? []).map((pc) => `perm:${pc}`);
+    setEditingPermissionRole(role);
+    permissionForm.setFieldsValue({ menu_ids: [...new Set([...menuVals, ...permVals])] });
+    setPermissionDialogOpen(true);
+  }, [permissionForm]);
+
+  /** 提交「新建 / 编辑角色」：只发角色自身属性。 */
+  const submitRole = useCallback(async () => {
     setError(null);
     setSuccess("");
 
     try {
       const values = await form.validateFields();
-      const checkedValues: string[] = values.menu_ids ?? [];
-      const menuIds = checkedValues
-        .filter((v) => v.startsWith("menu:"))
-        .map((v) => v.slice("menu:".length));
-      const permCodes = checkedValues
-        .filter((v) => v.startsWith("perm:"))
-        .map((v) => v.slice("perm:".length));
-      const menuById = new Map(menus.map((m) => [m.id, m]));
-      const buttonPerms = menuIds.map((mid) => menuById.get(mid)).filter((m): m is (typeof menus)[number] => Boolean(m && m.type === "button" && m.permission_code)).map((m) => m.permission_code as string);
       const payload: RoleFormValues = {
         code: values.code.trim(),
         name: values.name.trim(),
-        menu_ids: menuIds,
-        permission_codes: [...new Set([...permCodes, ...buttonPerms])],
       };
       const formatError = validateRoleCodeFormat(payload.code);
       if (formatError) {
@@ -432,13 +455,11 @@ export default function AdminRolesPage() {
       }
 
       if (editingRole) {
+        // 只提交 name：menu_ids / permission_codes 一律不传，
+        // 后端对 None 字段视为「不修改」，因此编辑角色不会把已有权限清空。
         updateRoleMutation.mutate({
           roleId: editingRole.id,
-          payload: {
-            name: payload.name,
-            menu_ids: payload.menu_ids,
-            permission_codes: payload.permission_codes,
-          },
+          payload: { name: payload.name },
         });
       } else {
         const availabilityCheck = await checkRoleCodeAvailability(payload.code);
@@ -446,6 +467,7 @@ export default function AdminRolesPage() {
           setRoleCodeValidationError(availabilityCheck.message);
           return;
         }
+        // 新建时不带菜单/权限（后端默认为空列表），权限创建后经「分配权限」授予。
         createRoleMutation.mutate(payload);
       }
     } catch (candidate) {
@@ -462,6 +484,46 @@ export default function AdminRolesPage() {
       setError(new ApiError(nextError));
     }
   }, [checkRoleCodeAvailability, createRoleMutation, editingRole, form, updateRoleMutation, validateRoleCodeFormat]);
+
+  /** 提交「分配权限」：只发 menu_ids / permission_codes，不动角色名称。 */
+  const submitPermissions = useCallback(async () => {
+    setError(null);
+    setSuccess("");
+    if (!editingPermissionRole) return;
+
+    try {
+      const values = await permissionForm.validateFields();
+      const checkedValues: string[] = values.menu_ids ?? [];
+      const menuIds = checkedValues
+        .filter((v) => v.startsWith("menu:"))
+        .map((v) => v.slice("menu:".length));
+      const permCodes = checkedValues
+        .filter((v) => v.startsWith("perm:"))
+        .map((v) => v.slice("perm:".length));
+      const menuById = new Map(menus.map((m) => [m.id, m]));
+      const buttonPerms = menuIds.map((mid) => menuById.get(mid)).filter((m): m is (typeof menus)[number] => Boolean(m && m.type === "button" && m.permission_code)).map((m) => m.permission_code as string);
+
+      updateRoleMutation.mutate({
+        roleId: editingPermissionRole.id,
+        payload: {
+          menu_ids: menuIds,
+          permission_codes: [...new Set([...permCodes, ...buttonPerms])],
+        },
+      });
+    } catch (candidate) {
+      if (
+        candidate
+        && typeof candidate === "object"
+        && "errorFields" in candidate
+        && Array.isArray((candidate as { errorFields?: unknown }).errorFields)
+      ) {
+        return;
+      }
+
+      const nextError = candidate instanceof Error ? candidate.message : "提交失败，请稍后重试";
+      setError(new ApiError(nextError));
+    }
+  }, [editingPermissionRole, menus, permissionForm, updateRoleMutation]);
 
   const handleKeywordChange = (value: string) => {
     setKeywordInput(value);
@@ -594,7 +656,7 @@ export default function AdminRolesPage() {
         key: "actions",
         fixed: "right",
       align: "right" as const,
-      width: 180,
+      width: 260,
         render: (_, role) => {
           const isDeleting = deletingRoleId === role.id;
           const isSaving = savingRoleId === role.id;
@@ -605,9 +667,16 @@ export default function AdminRolesPage() {
               <Button
                 size="small"
                 disabled={rowBusy}
-                onClick={() => startEdit(role)}
+                onClick={() => startEditRole(role)}
               >
                 编辑
+              </Button>
+              <Button
+                size="small"
+                disabled={rowBusy}
+                onClick={() => startEditPermissions(role)}
+              >
+                分配权限
               </Button>
               <Button
                 danger
@@ -634,7 +703,7 @@ export default function AdminRolesPage() {
     }
 
     return base;
-  }, [canManage, createRoleMutation.isPending, deletingRoleId, deleteRoleMutation, menuNameById, savingRoleId, startEdit, updateRoleMutation.isPending]);
+  }, [canManage, createRoleMutation.isPending, deletingRoleId, deleteRoleMutation, menuNameById, savingRoleId, startEditRole, startEditPermissions, updateRoleMutation.isPending]);
 
   const renderRoleCard = (role: RoleItem) => {
     const isDeleting = deletingRoleId === role.id;
@@ -693,7 +762,7 @@ export default function AdminRolesPage() {
         className="admin-roles-role-card"
         size="small"
         hoverable
-        onClick={() => startEdit(role)}
+        onClick={() => startEditRole(role)}
         title={
           <Space className="min-w-0" size={8}>
             <Typography.Text strong ellipsis={{ tooltip: role.name }}>
@@ -743,7 +812,19 @@ export default function AdminRolesPage() {
                     disabled={rowBusy}
                     onClick={(event) => {
                       event.stopPropagation();
-                      startEdit(role);
+                      startEditRole(role);
+                    }}
+                  />
+                </Tooltip>
+                <Tooltip title="分配权限">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<KeyOutlined />}
+                    disabled={rowBusy}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      startEditPermissions(role);
                     }}
                   />
                 </Tooltip>
@@ -1045,7 +1126,7 @@ export default function AdminRolesPage() {
           cancelText="取消"
           confirmLoading={createRoleMutation.isPending || updateRoleMutation.isPending}
           onCancel={closeDialog}
-          onOk={() => void submit()}
+          onOk={() => void submitRole()}
         >
           <Form<RoleFormValues>
             form={form}
@@ -1086,24 +1167,54 @@ export default function AdminRolesPage() {
                 </Form.Item>
               </Col>
               <Col xs={24}>
-                <Form.Item
-                  label="菜单与操作权限"
-                  name="menu_ids"
-                  extra="勾选菜单即授予页面查看权限；展开菜单可勾选查看/管理/运行等操作权限（按钮级）。"
-                >
-                  <TreeSelect
-                    allowClear
-                    showSearch
-                    treeCheckable
-                    showCheckedStrategy="SHOW_PARENT"
-                    treeData={menuTreeOptions}
-                    placeholder="请选择菜单与操作权限"
-                    maxTagCount={4}
-                    maxTagPlaceholder={(omitted) => `+${omitted.length} 项`}
-                  />
-                </Form.Item>
+                <Typography.Text type="secondary">
+                  {editingRole
+                    ? "菜单与操作权限请在「分配权限」中单独设置，此处只修改角色名称。"
+                    : "新角色默认无任何权限，创建后请在「分配权限」中授予菜单与操作权限。"}
+                </Typography.Text>
               </Col>
             </Row>
+          </Form>
+        </Modal>
+      )}
+
+      {/* 分配权限：与「编辑角色」拆开的独立入口，只提交 menu_ids / permission_codes */}
+      {canManage && (
+        <Modal
+          title={editingPermissionRole ? `分配权限：${editingPermissionRole.name}（${editingPermissionRole.code}）` : "分配权限"}
+          open={permissionDialogOpen}
+          forceRender
+          destroyOnHidden
+          width={560}
+          okText="保存权限"
+          cancelText="取消"
+          confirmLoading={updateRoleMutation.isPending}
+          onCancel={closePermissionDialog}
+          onOk={() => void submitPermissions()}
+        >
+          <Form<RolePermissionFormValues>
+            form={permissionForm}
+            layout="vertical"
+            initialValues={EMPTY_PERMISSION_FORM}
+            preserve={false}
+          >
+            <Form.Item
+              label="菜单与操作权限"
+              name="menu_ids"
+              extra="勾选菜单即授予页面查看权限；展开菜单可勾选查看/管理/运行等操作权限（按钮级）。"
+            >
+              <TreeSelect
+                allowClear
+                showSearch
+                treeCheckable
+                showCheckedStrategy="SHOW_PARENT"
+                treeData={menuTreeOptions}
+                placeholder="请选择菜单与操作权限"
+                maxTagCount={6}
+                maxTagPlaceholder={(omitted) => `+${omitted.length} 项`}
+                style={{ width: "100%" }}
+              />
+            </Form.Item>
           </Form>
         </Modal>
       )}
