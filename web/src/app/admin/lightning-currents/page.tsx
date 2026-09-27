@@ -1225,7 +1225,7 @@ export default function AdminLightningCurrentsPage() {
           setUploadError("");
         }}
         footer={null}
-        width={800}
+        width={560}
         destroyOnHidden
       >
         <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
@@ -1452,7 +1452,7 @@ export default function AdminLightningCurrentsPage() {
         confirmLoading={editMutation.isPending}
         okText="保存"
         cancelText="取消"
-        width={800}
+        width={560}
         destroyOnHidden
       >
         <Form<ImportFormValues> form={editForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
