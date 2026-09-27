@@ -76,7 +76,8 @@ export default function DocsViewPage() {
   const [copiedCodeBlockId, setCopiedCodeBlockId] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const canRead = hasPermission("document.read") || true;
+  // 后端 admin_files.py 的权限码是 file.read / file.manage（document.* 是无效码）
+  const canRead = hasPermission("file.read") || hasPermission("file.manage");
 
   const { data: treeData, isLoading: treeLoading } = useQuery({
     queryKey: ["/api/v1/documents/chapters/tree"],

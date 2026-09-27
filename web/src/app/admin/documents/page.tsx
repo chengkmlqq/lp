@@ -139,8 +139,11 @@ export default function AdminDocumentsPage() {
   const [chapterForm] = Form.useForm<ChapterFormValues>();
   const [documentForm] = Form.useForm<DocumentFormValues>();
 
-  const canManage = hasPermission("document.manage") || true;
-  const canRead = hasPermission("document.read") || true;
+  // 后端 admin_files.py 的权限码是 file.read / file.manage。
+  // 原代码用 document.read/document.manage（从未注册、无菜单出口、后端不认）并用 `|| true`
+  // 把判定整个废掉了 —— 这里对齐后端真实契约，恢复有效校验。
+  const canRead = hasPermission("file.read") || hasPermission("file.manage");
+  const canManage = hasPermission("file.manage");
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
 
   const { data: treeData, isLoading: treeLoading } = useQuery({
@@ -779,7 +782,7 @@ export default function AdminDocumentsPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `document.read`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `file.read`）。</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"

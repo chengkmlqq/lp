@@ -133,6 +133,10 @@ DEFAULT_PERMISSIONS: dict[str, str] = {
     "fault.delete": "Delete fault analysis records",
     "celery.read": "Read Celery workers, queues, and task statuses",
     "celery.manage": "Manage Celery worker control operations",
+    # 2026-09-27 补齐：维度管理接口（dimensions.py / dimension_types.py）要求 dimension.read/manage，
+    # 但本字典与 permissions 表均未注册，导致非 admin 角色永远无法通过任何途径获得。
+    "dimension.read": "Read dimension types and dimensions",
+    "dimension.manage": "Manage dimension types and dimensions",
 }
 
 DEFAULT_ROLES: dict[str, dict[str, object]] = {
@@ -624,6 +628,35 @@ DEFAULT_MENUS: list[dict[str, object]] = [
     # 故障分析
     {"code": "admin.fault_analysis:btn.create", "name": "新建分析", "path": None, "icon": None, "parent_code": "admin.fault_analysis", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "fault.create"},
     {"code": "admin.fault_analysis:btn.delete", "name": "删除分析", "path": None, "icon": None, "parent_code": "admin.fault_analysis", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "fault.delete"},
+    # ── 2026-09-27 补齐：以下权限码此前【没有任何菜单出口】，非 admin 角色在角色管理里
+    #    完全勾不到（后端 require_*permission 却要求它们）。补齐后这些细粒度授权才可配置。
+    # 线路管理：杆塔读/管（此前只有 tower.create/update/delete/import/export）
+    {"code": "admin.power_lines:btn.tower_read", "name": "查看杆塔", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 110, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower.read"},
+    {"code": "admin.power_lines:btn.tower_manage", "name": "管理杆塔", "path": None, "icon": None, "parent_code": "admin.power_lines", "type": "button", "sort_order": 111, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower.manage"},
+    # 杆塔模型管理
+    {"code": "admin.tower_models:btn.read", "name": "查看杆塔模型", "path": None, "icon": None, "parent_code": "admin.tower_models", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower_model.read"},
+    {"code": "admin.tower_models:btn.manage", "name": "管理杆塔模型", "path": None, "icon": None, "parent_code": "admin.tower_models", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "tower_model.manage"},
+    # ATP 模型
+    {"code": "admin.atp_models:btn.manage", "name": "管理ATP模型", "path": None, "icon": None, "parent_code": "admin.atp_models", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "atp.manage"},
+    {"code": "admin.atp_models:btn.run", "name": "运行ATP仿真", "path": None, "icon": None, "parent_code": "admin.atp_models", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "atp.run"},
+    # Celery / Worker 监控
+    {"code": "admin.workers:btn.manage", "name": "Worker控制", "path": None, "icon": None, "parent_code": "admin.workers", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "celery.manage"},
+    # 高程数据管理
+    {"code": "admin.elevation:btn.manage", "name": "管理高程数据", "path": None, "icon": None, "parent_code": "admin.elevation", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "elevation.manage"},
+    # 雷电数据（lightning.manage 此前仅靠库内漂移存在，全新部署拿不到）
+    {"code": "admin.lightning_currents:btn.manage", "name": "管理雷电数据", "path": None, "icon": None, "parent_code": "admin.lightning_currents", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "lightning.manage"},
+    # 文件管理
+    {"code": "admin.files:btn.manage", "name": "管理文件", "path": None, "icon": None, "parent_code": "admin.files", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "file.manage"},
+    # 菜单管理
+    {"code": "admin.menus:btn.manage", "name": "管理菜单", "path": None, "icon": None, "parent_code": "admin.menus", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "menu.manage"},
+    # 角色管理
+    {"code": "admin.roles:btn.manage", "name": "管理角色", "path": None, "icon": None, "parent_code": "admin.roles", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "role.manage"},
+    # 系统参数
+    {"code": "admin.system_params:btn.manage", "name": "管理系统参数", "path": None, "icon": None, "parent_code": "admin.system_params", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "system_param.manage"},
+    {"code": "admin.system_params:btn.runtime", "name": "运行时参数", "path": None, "icon": None, "parent_code": "admin.system_params", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "system_param.runtime"},
+    # 维度管理（dimension.* 此前连 permissions 表都没注册）
+    {"code": "admin.dimensions:btn.read", "name": "查看维度", "path": None, "icon": None, "parent_code": "admin.dimensions", "type": "button", "sort_order": 101, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "dimension.read"},
+    {"code": "admin.dimensions:btn.manage", "name": "管理维度", "path": None, "icon": None, "parent_code": "admin.dimensions", "type": "button", "sort_order": 102, "status": "enabled", "visible": False, "cacheable": False, "permission_code": "dimension.manage"},
     # 防雷改造（2026-09-27：并入种子，带图标；目录含主页路由 /admin/lightning-retrofit）
     {
         "code": "admin.lightning_retrofit",
