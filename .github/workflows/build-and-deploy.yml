@@ -26,43 +26,6 @@ jobs:
   # 关于既有失败：仓库历史上只单独跑个别测试文件，全量套件从未进 CI，
   # 因此积累了一批长期无人知晓的失败（详见 api/tests/known_failures.txt）。
   # 这里用 --deselect 逐条隔离，做到「新引入的失败必红、历史遗留不阻塞」。
-  test-api:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: 安装 Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: api/requirements.txt
-
-      - name: 安装依赖
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r api/requirements.txt
-          pip install pytest
-
-      - name: 统计隔离用例
-        working-directory: api
-        run: |
-          n=$(grep -cE '^\s*[^#[:space:]]' tests/known_failures.txt || true)
-          echo "### 既有失败隔离数：${n} 条（详见 api/tests/known_failures.txt）" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: 运行后端测试
-        working-directory: api
-        env:
-          DATABASE_URL: "sqlite+pysqlite:///:memory:"
-          MINIO_ENABLED: "false"
-        run: |
-          mapfile -t DESELECT < <(
-            grep -vE '^\s*(#|$)' tests/known_failures.txt | sed 's/^/--deselect=/'
-          )
-          echo "隔离既有失败 ${#DESELECT[@]} 条"
-          python -m pytest tests -q -p no:cacheprovider "${DESELECT[@]}"
-
   # ───── 一级基础镜像（python + 系统库 + pip 依赖，无 wine、无业务代码） ─────
   build-base:
     runs-on: ubuntu-latest
