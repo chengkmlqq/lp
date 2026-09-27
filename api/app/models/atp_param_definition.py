@@ -15,10 +15,9 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from ..core.database import Base
+from ..core.database import Base, JsonColumn
 
 
 class AtpParamDefinition(Base):
@@ -30,7 +29,7 @@ class AtpParamDefinition(Base):
     unit: Mapped[str | None] = mapped_column(String(32))
     data_type: Mapped[str] = mapped_column(String(16), default="number", nullable=False)
     source_type: Mapped[str] = mapped_column(String(16), nullable=False)
-    binding_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    binding_json: Mapped[dict[str, Any]] = mapped_column(JsonColumn, default=dict, nullable=False)
     script_code: Mapped[str | None] = mapped_column(Text)
     deps_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

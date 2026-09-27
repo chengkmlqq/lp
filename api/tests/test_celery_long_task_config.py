@@ -6,8 +6,8 @@ import unittest
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("MINIO_ENABLED", "false")
 
-from api.app.core.celery_app import celery_app  # noqa: F401,E402
-from api.app.tasks.lightning_tasks import import_lightning_distribution_job  # noqa: F401,E402
+from app.core.celery_app import celery_app  # noqa: F401,E402
+from app.tasks.lightning_tasks import import_lightning_distribution_job  # noqa: F401,E402
 
 
 class CeleryLongTaskConfigTest(unittest.TestCase):

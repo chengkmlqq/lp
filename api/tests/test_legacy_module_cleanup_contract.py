@@ -7,26 +7,26 @@ from importlib.util import find_spec
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("MINIO_ENABLED", "false")
 
-from api.app import models  # noqa: F401
-from api.app.core.celery_app import celery_app
-from api.app.core.database import Base
-from api.app.services.legacy_admin_rbac_service import PROTECTED_MENU_CODES
+from app import models  # noqa: F401
+from app.core.celery_app import celery_app
+from app.core.database import Base
+from app.services.legacy_admin_rbac_service import PROTECTED_MENU_CODES
 
 
 REMOVED_MODULES = (
-    "api.app.api.v1.jwt_generator",
-    "api.app.models.calendar_event",
-    "api.app.models.requirement",
-    "api.app.models.todo",
-    "api.app.schemas.calendar_event",
-    "api.app.schemas.jwt_generator",
-    "api.app.schemas.requirement",
-    "api.app.schemas.todo",
-    "api.app.services.calendar_event_service",
-    "api.app.services.jwt_generator_service",
-    "api.app.services.requirement_service",
-    "api.app.services.todo_service",
-    "api.app.tasks.schedule_tasks",
+    "app.api.v1.jwt_generator",
+    "app.models.calendar_event",
+    "app.models.requirement",
+    "app.models.todo",
+    "app.schemas.calendar_event",
+    "app.schemas.jwt_generator",
+    "app.schemas.requirement",
+    "app.schemas.todo",
+    "app.services.calendar_event_service",
+    "app.services.jwt_generator_service",
+    "app.services.requirement_service",
+    "app.services.todo_service",
+    "app.tasks.schedule_tasks",
 )
 
 REMOVED_TABLES = {

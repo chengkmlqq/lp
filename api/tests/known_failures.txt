@@ -1,0 +1,68 @@
+# 已知失败清单（测试隔离 / test quarantine）
+#
+# 用途：`python -m pytest tests` 在当前仓库状态下有 40 个**既有**失败，
+# 与本文件无关的改动无关。CI 通过 `--deselect` 跳过这些用例，
+# 从而做到「新引入的失败必红、历史遗留失败不阻塞」。
+#
+# 背景：这些用例长期无人执行（历史上只单独跑个别文件），
+# 直到 2026-09 把全量测试接入 CI 才暴露出来。
+#
+# 主要类别：
+#   A. SQLite 环境差异（占比最大）：测试自建 `create_engine("sqlite+pysqlite://")`
+#      并只 create_all 部分表，而业务代码写向另一处引擎/未建表 →
+#      `sqlite3.OperationalError: no such table: audit_logs / dimension_item /
+#      lightning_current_backfill_task`；以及 `can't compare offset-naive and
+#      offset-aware datetimes`（SQLite 不保留时区）。这些用例在 PostgreSQL 上应可通过。
+#   B. 真实契约漂移（**应尽快修，不要长期隔离**）：
+#      - tests/test_task_name_registry.py、test_task_monitor_service.py::
+#        TestTaskNameLabelMappingSync —— 前端 web/src/lib/celery-task-display.ts
+#        的任务名映射与后端 celery 注册表不一致（dead/missing key）。
+#      - tests/test_celery_long_task_config.py —— broker visibility_timeout
+#        期望值与实际不一致（断言 86400 != 21600）。
+#   C. 零散用例问题：数值断言、fixture 缺字段（如 SimpleNamespace 无 tower）、
+#      NameError 等，需逐个诊断。
+#
+# 处理方式：修好一个就从本文件删掉对应行（CI 会立刻开始守护它）。
+#
+# 格式（每行一个 pytest node id，相对 api/ 目录）：
+
+tests/test_atp_asset_service.py::test_delete_asset_removes_storage_files
+tests/test_atp_asset_service.py::test_list_assets_paginates_after_filtering
+tests/test_atp_asset_service.py::test_run_asset_dry_run_materializes_directory
+tests/test_atp_asset_service.py::test_upload_asset_archive_and_list_asset_files
+tests/test_atp_asset_test_service.py::test_compare_payload_is_csharp_comparable
+tests/test_atp_asset_test_service.py::test_template_params_source_needs_no_tower
+tests/test_audit_log_coverage.py::AuditLogCoverageTest::test_legacy_role_menu_and_user_role_actions_write_audit_logs
+tests/test_celery_long_task_config.py::CeleryLongTaskConfigTest::test_broker_visibility_timeout_covers_long_tasks
+tests/test_debug_mode.py::test_exception_handler_with_debug_disabled
+tests/test_debug_mode.py::test_exception_handler_with_debug_enabled
+tests/test_fault_analysis_upload_temp.py::test_assemble_ledger_rows_maps_system_data
+tests/test_fault_analysis_upload_temp.py::test_auto_classified_temp_uploads_preserve_all_wave_files
+tests/test_fault_analysis_upload_temp.py::test_auto_classified_unknown_file_fails_clearly
+tests/test_fl_analysis_export.py::test_export_mitigation_results_csv_contains_recommendation_columns
+tests/test_fl_analysis_export.py::test_export_normal_results_csv_contains_waveform_columns
+tests/test_fl_analysis_export.py::test_export_risk_results_csv_keeps_header_when_rows_are_empty
+tests/test_fl_analysis_external.py::test_create_job_with_selected_model_stores_external_adapter
+tests/test_fl_analysis_external.py::test_create_job_without_model_uses_placeholder_adapter
+tests/test_fl_analysis_external.py::test_execute_job_asset_root_mode_no_release
+tests/test_fl_analysis_external.py::test_execute_job_runs_external_adapter_and_backfills_results
+tests/test_fl_analysis_external.py::test_resolve_external_job_asset_root_mode_without_release
+tests/test_fl_analysis_external.py::test_resolve_external_job_uses_manifest_atp_text
+tests/test_fl_analysis_grading.py::test_grade_snapshot_payload_marks_low_risk_for_good_inputs
+tests/test_fl_analysis_grading.py::test_grade_snapshot_payload_uses_source_formula_and_converts_mm_to_m
+tests/test_fl_analysis_legacy_atp_adapter.py::test_execute_job_runs_legacy_atp_adapter
+tests/test_fl_analysis_service.py::test_execute_scenario_job_reuses_base_waveform_and_forces_arresters
+tests/test_fl_analysis_service.py::test_report_job_auto_links_latest_scenario_rows
+tests/test_lightning_amplitude.py::test_import_amplitude_via_temp_file_id
+tests/test_lightning_backfill_lines.py::test_backfill_lines_endpoint_empty_when_no_rows
+tests/test_lightning_backfill_lines.py::test_backfill_lines_endpoint_returns_linked_lines
+tests/test_line_contract.py::LineContractTest::test_line_tower_csv_export_header_keeps_line_tower_tower_type
+tests/test_line_preparation_flow.py::test_prepare_line_lightning_current_backfills_profiles_and_line_state
+tests/test_line_preparation_flow.py::test_prepare_line_lightning_current_dispatch_creates_pending_task_and_sends
+tests/test_login_lockout.py::LoginLockoutTestCase::test_login_after_lock_expires
+tests/test_login_lockout.py::LoginLockoutTestCase::test_login_lockout_after_5_failed_attempts
+tests/test_task_history_signals.py::TestIsSystemTask::test_blacklist_is_frozenset_of_str
+tests/test_task_monitor_service.py::TestTaskMonitorOverviewErrorIsolation::test_flower_independent_response_shape
+tests/test_task_monitor_service.py::TestTaskNameLabelMappingSync::test_backend_labels_match_ts_mapping
+tests/test_task_name_registry.py::TaskNameRegistryConsistencyTest::test_no_dead_mapping_keys
+tests/test_task_name_registry.py::TaskNameRegistryConsistencyTest::test_no_missing_mapping_keys

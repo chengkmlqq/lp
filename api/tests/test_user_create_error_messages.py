@@ -17,9 +17,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api.app.core.database import Base
-from api.app.schemas.user import UserCreateRequest
-from api.app.services.user_service import (
+from app.core.database import Base
+from app.schemas.user import UserCreateRequest
+from app.services.user_service import (
     UserDuplicateError,
     create_user,
 )

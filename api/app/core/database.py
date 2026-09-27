@@ -2,13 +2,21 @@ from collections.abc import Generator
 import logging
 from typing import Any
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import JSON, create_engine, inspect, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+# 可移植 JSON 列类型：PostgreSQL 上保持 JSONB（与既有 schema / 迁移完全一致），
+# 其他方言（如单元测试使用的 SQLite）自动回退为通用 JSON，使 Base.metadata.create_all
+# 能建表。历史遗留问题：模型直接用 postgresql.JSONB，导致测试在 SQLite 上
+# `create_all` 抛 `UnsupportedCompilationError: can't render element of type JSONB`，
+# ~120 个测试因此长期无法执行（详见 LP 权限/回归治理）。
+JsonColumn = JSON().with_variant(JSONB(), "postgresql")
 
 database_url = settings.resolved_database_url
 
@@ -20,6 +28,17 @@ elif database_url.startswith("postgresql"):
     if schema:
         connect_args["options"] = f"-csearch_path={schema}"
 
+# SQLite 的默认连接池（内存库为 SingletonThreadPool）不接受 pool_size/max_overflow，
+# 传了会直接抛 `TypeError: Invalid argument(s) 'max_overflow'` —— 这也是长期没人跑得通
+# 全量单测的原因之一（conftest 默认就是内存 SQLite）。仅在非 SQLite 方言下启用连接池参数。
+pool_kwargs: dict[str, Any] = {}
+if not database_url.startswith("sqlite"):
+    pool_kwargs = {
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_recycle": 300,
+    }
+
 engine = create_engine(
     database_url,
     # 开启 pre_ping：长耗时任务（ATP 引擎单塔可达数分钟）跨越 pool_recycle=300s 时，
@@ -28,10 +47,8 @@ engine = create_engine(
     # 其实已 succeeded，2026-09-16 并发4 时分片1 实测）。pre_ping 每次取连先 SELECT 1
     # 探测，死连接自动重连，避免该偶发失败。代价 ~0.1s/请求，对长任务可接受。
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-    pool_recycle=300,
     connect_args=connect_args,
+    **pool_kwargs,
 )
 
 SessionLocal = sessionmaker(

@@ -16,25 +16,25 @@ from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api.app import models  # noqa: F401
-from api.app.core.database import Base
-from api.app.core.security import hash_password
-from api.app.models.audit_log import AuditLog
-from api.app.models.file_storage import FileStorageBackend, FileStorageMount
-from api.app.models.user import User
-from api.app.schemas.admin import MenuCreateRequest, MenuUpdateRequest, RoleCreateRequest, RoleUpdateRequest
-from api.app.schemas.auth import LoginRequest
-from api.app.schemas.file_storage import (
+from app import models  # noqa: F401
+from app.core.database import Base
+from app.core.security import hash_password
+from app.models.audit_log import AuditLog
+from app.models.file_storage import FileStorageBackend, FileStorageMount
+from app.models.user import User
+from app.schemas.admin import MenuCreateRequest, MenuUpdateRequest, RoleCreateRequest, RoleUpdateRequest
+from app.schemas.auth import LoginRequest
+from app.schemas.file_storage import (
     FileCreateDirectoryRequest,
     FileDeleteRequest,
     FileMoveRequest,
     FileRenameRequest,
 )
-from api.app.schemas.system_param import SystemParamCreateRequest, SystemParamUpdateRequest
-from api.app.schemas.user import UserCreateRequest, UserPasswordResetRequest, UserRoleUpdateRequest, UserUpdateRequest
-from api.app.services import auth_service, file_service, legacy_admin_rbac_service, system_param_service, user_service
-from api.app.services.audit_service import write_audit_log
-from api.app.services.legacy_authz_service import UserAuthorization
+from app.schemas.system_param import SystemParamCreateRequest, SystemParamUpdateRequest
+from app.schemas.user import UserCreateRequest, UserPasswordResetRequest, UserRoleUpdateRequest, UserUpdateRequest
+from app.services import auth_service, file_service, legacy_admin_rbac_service, system_param_service, user_service
+from app.services.audit_service import write_audit_log
+from app.services.legacy_authz_service import UserAuthorization
 
 
 class AuditLogCoverageTest(unittest.TestCase):
@@ -53,7 +53,7 @@ class AuditLogCoverageTest(unittest.TestCase):
         Base.metadata.create_all(bind=self.engine)
         self.session = self.SessionLocal()
         self.tempdir = TemporaryDirectory()
-        self.session_local_patcher = patch("api.app.core.database.SessionLocal", self.SessionLocal)
+        self.session_local_patcher = patch("app.core.database.SessionLocal", self.SessionLocal)
         self.session_local_patcher.start()
 
     def tearDown(self) -> None:
@@ -208,7 +208,7 @@ class AuditLogCoverageTest(unittest.TestCase):
         self.session.commit()
 
         with patch(
-            "api.app.services.user_service.get_user_authorization",
+            "app.services.user_service.get_user_authorization",
             return_value=UserAuthorization(role_codes={"editor"}, permission_codes=set()),
         ):
             updated_user = user_service.set_user_roles(
@@ -221,13 +221,13 @@ class AuditLogCoverageTest(unittest.TestCase):
 
         with ExitStack() as stack:
             stack.enter_context(
-                patch("api.app.services.legacy_admin_rbac_service._legacy_role_table_exists", return_value=True)
+                patch("app.services.legacy_admin_rbac_service._legacy_role_table_exists", return_value=True)
             )
             stack.enter_context(
-                patch("api.app.services.legacy_admin_rbac_service._legacy_menu_table_exists", return_value=True)
+                patch("app.services.legacy_admin_rbac_service._legacy_menu_table_exists", return_value=True)
             )
             stack.enter_context(
-                patch("api.app.services.legacy_admin_rbac_service._legacy_user_role_relation_exists", return_value=True)
+                patch("app.services.legacy_admin_rbac_service._legacy_user_role_relation_exists", return_value=True)
             )
 
             first_menu = legacy_admin_rbac_service.create_menu(

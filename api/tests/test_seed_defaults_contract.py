@@ -13,17 +13,17 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api.app import models  # noqa: F401
-from api.app.api.router import v1_router
-from api.app.api.v1.admin import router as admin_router
-from api.app.core.database import Base, get_db, init_db
-from api.app.core.dependencies import CurrentUser, get_current_user
-from api.app.models.menu import Menu
-from api.app.models.scheduled_task import ScheduledTask
-from api.app.models.user import User
-from api.app.services.legacy_authz_service import DEFAULT_ADMIN_PERMISSION_CODES, SYNTHETIC_LEGACY_MENU_ROWS
-from api.app.services.seed_service import DEFAULT_MENUS, DEFAULT_PERMISSIONS, DEFAULT_ROLES, SeedDefaultsResult, seed_defaults
-from api.app.services.topic_registry import TOPIC_RULES
+from app import models  # noqa: F401
+from app.api.router import v1_router
+from app.api.v1.admin import router as admin_router
+from app.core.database import Base, get_db, init_db
+from app.core.dependencies import CurrentUser, get_current_user
+from app.models.menu import Menu
+from app.models.scheduled_task import ScheduledTask
+from app.models.user import User
+from app.services.legacy_authz_service import DEFAULT_ADMIN_PERMISSION_CODES, SYNTHETIC_LEGACY_MENU_ROWS
+from app.services.seed_service import DEFAULT_MENUS, DEFAULT_PERMISSIONS, DEFAULT_ROLES, SeedDefaultsResult, seed_defaults
+from app.services.topic_registry import TOPIC_RULES
 
 
 DEFAULT_MENU_BY_CODE = {
@@ -54,14 +54,14 @@ class DatabaseFixtureTestCase(unittest.TestCase):
 
 class InitDbContractTest(unittest.TestCase):
     def test_init_db_does_not_open_a_seed_session(self) -> None:
-        with patch("api.app.core.database._ensure_user_pk_column_compatibility"), patch(
-            "api.app.core.database._ensure_user_timestamp_column_compatibility"
-        ), patch("api.app.core.database._ensure_user_audit_column_compatibility"), patch(
-            "api.app.core.database._ensure_elevation_dataset_column_compatibility"
-        ), patch("api.app.core.database._ensure_tower_model_column_compatibility"), patch(
-            "api.app.core.database._ensure_tower_profile_column_compatibility"
-        ), patch("api.app.core.database.Base.metadata.create_all") as create_all, patch(
-            "api.app.core.database.SessionLocal"
+        with patch("app.core.database._ensure_user_pk_column_compatibility"), patch(
+            "app.core.database._ensure_user_timestamp_column_compatibility"
+        ), patch("app.core.database._ensure_user_audit_column_compatibility"), patch(
+            "app.core.database._ensure_elevation_dataset_column_compatibility"
+        ), patch("app.core.database._ensure_tower_model_column_compatibility"), patch(
+            "app.core.database._ensure_tower_profile_column_compatibility"
+        ), patch("app.core.database.Base.metadata.create_all") as create_all, patch(
+            "app.core.database.SessionLocal"
         ) as session_local:
             init_db()
 
@@ -111,7 +111,7 @@ class SeedDefaultsServiceTest(DatabaseFixtureTestCase):
 
     def _run_seed(self, *, force: bool = False) -> SeedDefaultsResult:
         with patch(
-            "api.app.services.seed_service._seed_legacy_tower_models_if_empty",
+            "app.services.seed_service._seed_legacy_tower_models_if_empty",
             return_value=None,
         ):
             return seed_defaults(self.session, force=force)
@@ -219,7 +219,7 @@ class SeedDefaultsEndpointTest(DatabaseFixtureTestCase):
         result.summary["menus"].updated = 1
         result.summary["menus"].overwritten = 1
 
-        with patch("api.app.api.v1.admin.seed_defaults", return_value=result) as seed_defaults_mock:
+        with patch("app.api.v1.admin.seed_defaults", return_value=result) as seed_defaults_mock:
             response = self.client.post("/api/v1/admin/system/seed-defaults?force=true")
 
         self.assertEqual(response.status_code, 200)

@@ -25,13 +25,13 @@ _repo_root = str(Path(__file__).resolve().parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
-from api.app.core.celery_app import celery_app  # noqa: F401,E402
+from app.core.celery_app import celery_app  # noqa: F401,E402
 
 # ---------------------------------------------------------------------------
 # Load all include modules so every @celery_app.task is registered.
 # ---------------------------------------------------------------------------
 for _mod in celery_app.conf.include:
-    importlib.import_module("api." + _mod)
+    importlib.import_module(_mod)
 
 REGISTERED_TASKS: set[str] = {
     n for n in celery_app.tasks.keys() if n.startswith("app.tasks.")

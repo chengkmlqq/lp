@@ -9,16 +9,16 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api.app import models  # noqa: F401
-from api.app.core.database import Base
-from api.app.models.dimension_item import DimensionItem
-from api.app.models.dimension_type import DimensionType
-from api.app.models.user import User
-from api.app.schemas.dimension_item import (
+from app import models  # noqa: F401
+from app.core.database import Base
+from app.models.dimension_item import DimensionItem
+from app.models.dimension_type import DimensionType
+from app.models.user import User
+from app.schemas.dimension_item import (
     DimensionItemCreateRequest,
     DimensionItemUpdateRequest,
 )
-from api.app.services.dimension_item_service import (
+from app.services.dimension_item_service import (
     create_dimension_item,
     get_dimension_tree,
     list_dimension_items,

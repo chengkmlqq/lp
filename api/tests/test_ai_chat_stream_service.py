@@ -11,11 +11,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api.app import models  # noqa: F401
-from api.app.core.database import Base
-from api.app.models.ai_chat import AiChatConversation, AiChatMessage
-from api.app.models.user import User
-from api.app.services.ai_chat_service import stream_message
+from app import models  # noqa: F401
+from app.core.database import Base
+from app.models.ai_chat import AiChatConversation, AiChatMessage
+from app.models.user import User
+from app.services.ai_chat_service import stream_message
 
 
 class AiChatStreamServiceTest(unittest.TestCase):
@@ -58,7 +58,7 @@ class AiChatStreamServiceTest(unittest.TestCase):
                 {"choices": [{"delta": {"content": "好"}, "finish_reason": "stop"}]},
             ]
 
-        with patch("api.app.services.ai_chat_service._stream_openai_api", side_effect=fake_stream):
+        with patch("app.services.ai_chat_service._stream_openai_api", side_effect=fake_stream):
             events = stream_message(self.session, 1, "你好", user_id="user-1")
             self.assertIsNotNone(events)
             event_list = list(events or [])

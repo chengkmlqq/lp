@@ -6,10 +6,9 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from ..core.database import Base
+from ..core.database import Base, JsonColumn
 
 
 class AtpParamTemplate(Base):
@@ -31,10 +30,10 @@ class AtpParamTemplate(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     fallback_to: Mapped[str | None] = mapped_column(String(64))
     fallback_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    slots_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    slots_json: Mapped[dict[str, Any]] = mapped_column(JsonColumn, default=dict, nullable=False)
     # 「无杆塔测试」用的默认上下文变量（如 {"h_u": 65.5, "shield_h": 73.5}）：
     # 仅在测试路径（allow_defaults=True）生效，只补上下文里为 None 的键；生产路径不读。
-    defaults_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    defaults_json: Mapped[dict[str, Any]] = mapped_column(JsonColumn, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[str | None] = mapped_column(String(64))

@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock
 
-from api.app.models.file_storage import FileStorageBackend
-from api.app.services.seed_service import _reconcile_s3_default_config
-from api.app.services.storage_driver import S3StorageDriver, StorageDriverError
+from app.models.file_storage import FileStorageBackend
+from app.services.seed_service import _reconcile_s3_default_config
+from app.services.storage_driver import S3StorageDriver, StorageDriverError
 
 
 def _make_driver() -> S3StorageDriver:

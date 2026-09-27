@@ -9,10 +9,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api.app import models  # noqa: F401
-from api.app.core.database import Base
-from api.app.models.tower_model import TowerModel
-from api.app.services.tower_model_service import list_tower_models
+from app import models  # noqa: F401
+from app.core.database import Base
+from app.models.tower_model import TowerModel
+from app.services.tower_model_service import list_tower_models
 
 
 class TowerModelServiceTest(unittest.TestCase):

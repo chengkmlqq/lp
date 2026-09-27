@@ -7,8 +7,11 @@ from pathlib import Path
 
 class ElevationFileRecordServiceImportTests(unittest.TestCase):
     def test_elevation_service_imports_reference_defined_symbols(self) -> None:
-        service_path = Path("api/app/services/elevation_file_record_service.py")
-        elevation_service_path = Path("api/app/services/elevation_service.py")
+        # 用「文件自身位置」推导服务目录，避免依赖 pytest 的启动目录
+        # （历史上该测试写死仓库根相对路径 "api/app/..."，从 api/ 目录运行时必失败）。
+        service_dir = Path(__file__).resolve().parent.parent / "app" / "services"
+        service_path = service_dir / "elevation_file_record_service.py"
+        elevation_service_path = service_dir / "elevation_service.py"
 
         service_tree = ast.parse(service_path.read_text(encoding="utf-8"))
         elevation_service_tree = ast.parse(elevation_service_path.read_text(encoding="utf-8"))

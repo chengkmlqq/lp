@@ -10,12 +10,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api.app import models  # noqa: F401
-from api.app.core.database import Base
-from api.app.core.param_encryption import MASK, decrypt_value, encrypt_value, is_encrypted_value
-from api.app.models.system_param import SystemParam
-from api.app.schemas.system_param import SystemParamCreateRequest, SystemParamUpdateRequest
-from api.app.services.system_param_service import (
+from app import models  # noqa: F401
+from app.core.database import Base
+from app.core.param_encryption import MASK, decrypt_value, encrypt_value, is_encrypted_value
+from app.models.system_param import SystemParam
+from app.schemas.system_param import SystemParamCreateRequest, SystemParamUpdateRequest
+from app.services.system_param_service import (
     create_system_param,
     get_system_param_decrypted,
     get_system_params_runtime,

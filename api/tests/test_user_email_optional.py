@@ -16,11 +16,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api.app.core.database import Base
-from api.app.core.security import hash_password
-from api.app.models.user import User
-from api.app.schemas.user import UserCreateRequest
-from api.app.services import user_service
+from app.core.database import Base
+from app.core.security import hash_password
+from app.models.user import User
+from app.schemas.user import UserCreateRequest
+from app.services import user_service
 
 
 class UserEmailOptionalTest(unittest.TestCase):

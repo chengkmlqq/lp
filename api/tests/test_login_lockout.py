@@ -13,12 +13,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api.app.core.database import Base
-from api.app.models.base import utcnow
-from api.app.models.user import User
-from api.app.schemas.auth import LoginRequest
-from api.app.services.auth_service import login_user
-from api.app.core.security import hash_password
+from app.core.database import Base
+from app.models.base import utcnow
+from app.models.user import User
+from app.schemas.auth import LoginRequest
+from app.services.auth_service import login_user
+from app.core.security import hash_password
 
 
 class LoginLockoutTestCase(unittest.TestCase):

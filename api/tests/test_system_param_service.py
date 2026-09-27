@@ -9,10 +9,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api.app import models  # noqa: F401
-from api.app.core.database import Base
-from api.app.models.system_param import SystemParam
-from api.app.services.system_param_service import list_system_params
+from app import models  # noqa: F401
+from app.core.database import Base
+from app.models.system_param import SystemParam
+from app.services.system_param_service import list_system_params
 
 
 class SystemParamServiceTest(unittest.TestCase):

@@ -7,10 +7,10 @@ import unittest
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("MINIO_ENABLED", "false")
 
-from api.app import models  # noqa: F401
-from api.app.core.config import Settings
-from api.app.core.database import Base
-from api.app.services import admin_service, legacy_admin_rbac_service, legacy_authz_service
+from app import models  # noqa: F401
+from app.core.config import Settings
+from app.core.database import Base
+from app.services import admin_service, legacy_admin_rbac_service, legacy_authz_service
 
 
 class LegacyLlmCleanupTest(unittest.TestCase):
@@ -47,7 +47,7 @@ class LegacyLlmCleanupTest(unittest.TestCase):
             self.assertNotIn("admin.models", codes)
 
     def test_calendar_service_module_removed(self) -> None:
-        self.assertIsNone(importlib.util.find_spec("api.app.services.calendar_event_service"))
+        self.assertIsNone(importlib.util.find_spec("app.services.calendar_event_service"))
 
 
 if __name__ == "__main__":
