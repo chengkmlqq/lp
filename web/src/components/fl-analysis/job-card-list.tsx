@@ -208,7 +208,13 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                 <div className="flex items-center gap-2">
                   <DeploymentUnitOutlined className="text-xs text-gray-500" />
                   <Typography.Text type="secondary" className="text-xs">
-                    杆塔：{job.total_tower_count} / 结果：{job.result_tower_count}
+                    杆塔数：{job.total_tower_count}
+                  </Typography.Text>
+                </div>
+                <div className="flex items-center gap-2">
+                  <BarChartOutlined className="text-xs text-gray-500" />
+                  <Typography.Text type="secondary" className="text-xs">
+                    结果数：{job.result_tower_count}
                   </Typography.Text>
                 </div>
               </div>

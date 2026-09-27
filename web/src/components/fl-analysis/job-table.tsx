@@ -75,26 +75,6 @@ export function JobTable({
       render: (_value, job) => formatJobType(job.job_type, mitigationMode(job)),
     },
     {
-      title: "状态",
-      key: "status",
-      width: 100,
-      render: (_value, job) => <Tag color={statusColor(job.status)}>{formatJobStatus(job.status)}</Tag>,
-    },
-    {
-      title: "创建时间",
-      dataIndex: "create_date",
-      key: "create_date",
-      width: 170,
-      render: (value: string | null) => formatDateTime(value),
-    },
-    {
-      title: "完成时间",
-      dataIndex: "finished_at",
-      key: "finished_at",
-      width: 170,
-      render: (value: string | null) => formatDateTime(value),
-    },
-    {
       title: "杆塔数",
       dataIndex: "total_tower_count",
       key: "total_tower_count",
@@ -109,17 +89,30 @@ export function JobTable({
       align: "right" as const,
     },
     {
-      // 实时进度：参考故障分析卡片，Progress 默认自带百分比文本（showInfo 开）。
-      // 运行中展示进度条 + 百分比；非运行状态无实时进度语义，显示占位符。
-      title: "进度",
-      key: "progress",
-      width: 140,
+      title: "状态",
+      key: "status",
+      width: 160,
       render: (_value, job) =>
+        // 运行中在本列展示实时进度条（不再单独建「进度」列）；运行结束后进度条消失，展示状态标签
         job.status === "running" ? (
           <Progress percent={runningProgressPercent(job)} size="small" />
         ) : (
-          "-"
+          <Tag color={statusColor(job.status)}>{formatJobStatus(job.status)}</Tag>
         ),
+    },
+    {
+      title: "创建时间",
+      dataIndex: "create_date",
+      key: "create_date",
+      width: 170,
+      render: (value: string | null) => formatDateTime(value),
+    },
+    {
+      title: "完成时间",
+      dataIndex: "finished_at",
+      key: "finished_at",
+      width: 170,
+      render: (value: string | null) => formatDateTime(value),
     },
     ...(onDeleteJob
       ? [
