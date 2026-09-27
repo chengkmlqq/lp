@@ -6,6 +6,7 @@
 // 后端逻辑对齐 C# MyCanShu_2/MyCanShu_3 状态机（普通计算/同跳任务作前驱）。
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import {
   Alert,
   Badge,
@@ -65,6 +66,13 @@ const TASK_MODE_MEASURE = "measure";
 const TASK_MODE_NONNEW = "measure_nonnew";
 type TaskMode = typeof TASK_MODE_REASON | typeof TASK_MODE_MEASURE | typeof TASK_MODE_NONNEW;
 
+type DetailTabItem = {
+  key: string;
+  label: React.ReactNode;
+  closable: boolean;
+  children: React.ReactNode;
+};
+
 type RetrofitTaskItem = FlAnalysisJobSummary & {
   retrofit_type?: string | null;
 };
@@ -87,7 +95,10 @@ export default function AdminLightningRetrofitPage() {
   const canManage = hasPermission("line.manage") || hasPermission("tower.manage");
 
   // ── Tab / 任务类型 ──────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<string>(LIST_TAB_KEY);
+  // 动态选项卡（严格参照线路管理）：固定「任务列表」+「成因分析与措施推荐」，
+  // 点任务「查看详情」在当前页 append 动态详情 tab（不跳转页面），可关闭
+  const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
+  const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [taskMode, setTaskMode] = useState<TaskMode>(TASK_MODE_REASON);
 
   // ── 任务列表（Tab1）────────────────────────────────────────────
@@ -166,14 +177,42 @@ export default function AdminLightningRetrofitPage() {
     messageApi.success(`已删除防雷改造任务：${job.job_name || job.line_name || job.id}`);
   };
 
+  // 查看详情 → 当前页动态追加详情 tab（严格参照线路管理 openDetail，不跳转页面）
   const handleViewDetail = (job: FlAnalysisJobSummary) => {
-    // 详情 → 切到「成因分析与措施推荐」Tab，按 ?jobId= 预选该任务所在线路
-    setActiveTab(WORK_TAB_KEY);
-    setTaskMode(TASK_MODE_REASON);
-    window.history.replaceState(null, "", `/admin/lightning-retrofit?jobId=${job.id}`);
-    setLineId(job.line_id || "");
-    setPagination((prev) => ({ ...prev, current: 1 }));
+    const key = job.id;
+    setDetailTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: <span className="admin-power-lines-tab-title">防雷改造详情 - {job.job_name || job.line_name || job.line_code || job.id}</span>,
+          closable: true,
+          children: <RetrofitJobDetail jobId={job.id} />,
+        },
+      ];
+    });
+    setActiveTabKey(key);
   };
+
+  const handleTabsEdit = useCallback(
+    (targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
+      if (action !== "remove") {
+        return;
+      }
+      const key = String(targetKey);
+      const removedIndex = detailTabs.findIndex((tab) => tab.key === key);
+      const next = detailTabs.filter((tab) => tab.key !== key);
+      setDetailTabs(next);
+      if (activeTabKey === key) {
+        const fallback = next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? LIST_TAB_KEY;
+        setActiveTabKey(fallback);
+      }
+    },
+    [detailTabs, activeTabKey],
+  );
 
   // ── 成因分析数据（Tab2 / reason）───────────────────────────────
   const loadLines = useCallback(async () => {
@@ -228,10 +267,8 @@ export default function AdminLightningRetrofitPage() {
         const data = (await response.json()) as { job: FlAnalysisJobSummary };
         const targetLineId = data.job?.line_id;
         if (!cancelled && targetLineId) {
-          setActiveTab(WORK_TAB_KEY);
-          setTaskMode(TASK_MODE_REASON);
-          setLineId(targetLineId);
-          setPagination((prev) => ({ ...prev, current: 1 }));
+          // ?jobId= 直达：打开该任务详情动态 tab（不跳转）；成因分析工作区不再预选线路
+          handleViewDetail(data.job);
         }
       } catch {
         // 预选失败不阻断页面
@@ -407,7 +444,7 @@ export default function AdminLightningRetrofitPage() {
       setSelectedBaseJobId("");
       await Promise.all([loadBaseJobs(), invalidateMeasureQueries()]);
       // 切回任务列表看新任务
-      setActiveTab(LIST_TAB_KEY);
+      setActiveTabKey(LIST_TAB_KEY);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "措施推荐任务创建失败");
     } finally {
@@ -459,7 +496,7 @@ export default function AdminLightningRetrofitPage() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [updateTableScrollHeight, jobs.length, riskRows.length, towerRows.length, viewMode, activeTab]);
+  }, [updateTableScrollHeight, jobs.length, riskRows.length, towerRows.length, viewMode, activeTabKey]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof ResizeObserver === "undefined" || viewMode !== "list") {
@@ -476,7 +513,7 @@ export default function AdminLightningRetrofitPage() {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [updateTableScrollHeight, viewMode, activeTab]);
+  }, [updateTableScrollHeight, viewMode, activeTabKey]);
 
   useToastFeedback({
     errorMessage:
@@ -533,22 +570,24 @@ export default function AdminLightningRetrofitPage() {
         <Tabs
           type="editable-card"
           hideAdd
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          className="admin-atp-params-tabs"
+          activeKey={activeTabKey}
+          onChange={setActiveTabKey}
+          onEdit={handleTabsEdit}
+          className="admin-power-lines-tabs"
           items={[
             {
               key: LIST_TAB_KEY,
-              label: <span className="admin-atp-params-tab-title">任务列表</span>,
+              label: <span className="admin-power-lines-tab-title">任务列表</span>,
               closable: false,
               children: renderJobsPane(),
             },
             {
               key: WORK_TAB_KEY,
-              label: <span className="admin-atp-params-tab-title">成因分析与措施推荐</span>,
+              label: <span className="admin-power-lines-tab-title">成因分析与措施推荐</span>,
               closable: false,
               children: renderWorkPane(),
             },
+            ...detailTabs,
           ]}
         />
       </div>
@@ -656,7 +695,7 @@ export default function AdminLightningRetrofitPage() {
     ];
 
     return (
-      <div className="admin-fl-analysis-list-pane">
+      <div className="admin-power-lines-list-pane">
         <div className="admin-filter-bar">
           <Form layout="inline">
             <Form.Item label="关键字" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -708,12 +747,11 @@ export default function AdminLightningRetrofitPage() {
         ) : viewMode === "list" ? (
           <div
             ref={tableScrollAnchorRef}
-            className="admin-fl-analysis-table-view"
-            style={{ "--admin-fl-analysis-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+            className="admin-power-lines-table-view"
+            style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
           >
             <Table<RetrofitTaskItem>
               rowKey="id"
-              className="admin-fl-analysis-job-table"
               columns={columns}
               dataSource={jobs}
               loading={jobsQuery.isFetching}
@@ -739,7 +777,7 @@ export default function AdminLightningRetrofitPage() {
             />
           </div>
         ) : (
-          <div className="admin-fl-analysis-card-view">
+          <div className="relative flex min-h-0 flex-1 flex-col">
             <div className="admin-power-lines-card-scroll">
               <Spin spinning={jobsQuery.isFetching}>
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -748,11 +786,11 @@ export default function AdminLightningRetrofitPage() {
                       key={job.id}
                       size="small"
                       hoverable
-                      className="admin-fl-analysis-job-card"
+                      className="admin-power-lines-line-card"
                       onClick={() => handleViewDetail(job)}
                     >
                       <div className="flex flex-col">
-                        <div className="admin-fl-analysis-job-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+                        <div className="admin-power-lines-line-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
                           <Typography.Text strong className="truncate flex-1">
                             {job.job_name || job.line_name || job.line_code || "-"}
                           </Typography.Text>
@@ -773,7 +811,7 @@ export default function AdminLightningRetrofitPage() {
                             </Typography.Text>
                           </div>
                         </div>
-                        <div className="admin-fl-analysis-job-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
+                        <div className="admin-power-lines-line-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
                           <div />
                           <Space size="small" className="shrink-0">
                             <Tooltip title="查看详情">
@@ -832,7 +870,7 @@ export default function AdminLightningRetrofitPage() {
     const isNonNew = taskMode === TASK_MODE_NONNEW;
 
     return (
-      <div className="admin-fl-analysis-list-pane">
+      <div className="admin-power-lines-list-pane">
         <div className="admin-filter-bar">
           <Form layout="inline">
             <Form.Item label="任务类型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -969,12 +1007,11 @@ export default function AdminLightningRetrofitPage() {
         ) : (
           <div
             ref={tableScrollAnchorRef}
-            className="admin-fl-analysis-table-view"
-            style={{ "--admin-fl-analysis-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+            className="admin-power-lines-table-view"
+            style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
           >
             <Table<FlAnalysisTowerResultSummary>
               rowKey="id"
-              className="admin-fl-analysis-job-table"
               columns={columns}
               dataSource={riskRows}
               loading={highRiskQuery.isFetching}
@@ -1057,12 +1094,11 @@ export default function AdminLightningRetrofitPage() {
         ) : (
           <div
             ref={tableScrollAnchorRef}
-            className="admin-fl-analysis-table-view"
-            style={{ "--admin-fl-analysis-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+            className="admin-power-lines-table-view"
+            style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
           >
             <Table<TowerSelectionRow>
               rowKey="id"
-              className="admin-fl-analysis-job-table"
               columns={columns}
               dataSource={towerRows}
               loading={towerQuery.isFetching}
@@ -1155,4 +1191,186 @@ function isHighRisk(riskLevel: string | null | undefined): boolean {
   }
   const numeric = Number(riskLevel);
   return Number.isFinite(numeric) && numeric > 2;
+}
+
+// ── 动态详情 Tab 内容：防雷改造任务详情（信息 + 塔结果）────────────
+function RetrofitJobDetail({ jobId }: { jobId: string }) {
+  const { user, fetchWithAuth, hasPermission } = useAuth();
+  const canRead = hasPermission("line.read") || hasPermission("line.manage");
+  const [job, setJob] = useState<FlAnalysisJobSummary | null>(null);
+  const [rows, setRows] = useState<FlAnalysisTowerResultSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+
+  const loadJob = useCallback(async () => {
+    const response = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${jobId}`);
+    if (response.ok) {
+      const data = (await response.json()) as { job: FlAnalysisJobSummary };
+      setJob(data.job);
+    }
+  }, [fetchWithAuth, jobId]);
+
+  const loadResults = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", String(pagination.pageSize));
+      params.set("offset", String((pagination.current - 1) * pagination.pageSize));
+      const response = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${jobId}/results?${params.toString()}`);
+      if (!response.ok) {
+        return;
+      }
+      const data = (await response.json()) as { items: FlAnalysisTowerResultSummary[]; total: number };
+      setRows(data.items ?? []);
+      setTotal(data.total ?? 0);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth, jobId, pagination.current, pagination.pageSize]);
+
+  useEffect(() => {
+    if (!user || !canRead) {
+      return;
+    }
+    void loadJob();
+    void loadResults();
+  }, [user, canRead, loadJob, loadResults]);
+
+  useTopicSubscription("admin.fl-analysis", useCallback(() => {
+    void loadResults();
+  }, [loadResults]));
+
+  const handleExport = () => {
+    const headers = "塔号,当前风险,预期风险,预期得分,措施建议,结论\n";
+    const lines = rows
+      .map((row) => {
+        const result = row.result_json ?? {};
+        const current = result.current_risk_level ?? row.risk_level ?? "-";
+        const expected = result.expected_risk_level ?? "-";
+        const score = result.expected_score ?? "-";
+        const recommendation = result.mitigation_recommendation ?? "-";
+        const conclusion = result.recommendation_result ?? result.summary_text ?? "-";
+        return `${row.tower_no ?? "-"},${current},${expected},${score},${String(recommendation).replace(/[",\n]/g, " ")},${String(conclusion).replace(/[",\n]/g, " ")}`;
+      })
+      .join("\n");
+    const blob = new Blob([headers + lines], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `防雷改造任务-${jobId.slice(0, 8)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const columns: ColumnsType<FlAnalysisTowerResultSummary> = [
+    {
+      title: "塔号",
+      dataIndex: "tower_no",
+      key: "tower_no",
+      width: 120,
+      render: (value) => value || "-",
+    },
+    {
+      title: "当前风险",
+      key: "current_risk",
+      width: 120,
+      render: (_value, row) => {
+        const result = (row.result_json ?? {}) as Record<string, unknown>;
+        const current = String(result.current_risk_level ?? row.risk_level ?? "-");
+        return <Tag color={riskColor(current)}>{current}</Tag>;
+      },
+    },
+    {
+      title: "预期风险",
+      key: "expected_risk",
+      width: 120,
+      render: (_value, row) => {
+        const result = (row.result_json ?? {}) as Record<string, unknown>;
+        const expected = String(result.expected_risk_level ?? "-");
+        return <Tag color={riskColor(expected)}>{expected}</Tag>;
+      },
+    },
+    {
+      title: "预期得分",
+      key: "expected_score",
+      width: 100,
+      align: "right" as const,
+      render: (_value, row) => {
+        const result = (row.result_json ?? {}) as Record<string, unknown>;
+        return String(result.expected_score ?? "-");
+      },
+    },
+    {
+      title: "措施建议",
+      key: "recommendation",
+      ellipsis: true,
+      render: (_value, row) => {
+        const recommendation = (row.result_json ?? {}).mitigation_recommendation;
+        return typeof recommendation === "string" ? recommendation : "-";
+      },
+    },
+    {
+      title: "结论",
+      key: "conclusion",
+      width: 180,
+      render: (_value, row) => {
+        const conclusion = (row.result_json ?? {}).recommendation_result;
+        if (typeof conclusion === "string") {
+          return <Tag color={conclusion.includes("避雷器") ? "orange" : "green"}>{conclusion}</Tag>;
+        }
+        return "-";
+      },
+    },
+  ];
+
+  return (
+    <div className="admin-power-lines-list-pane">
+      <Alert
+        type="info"
+        showIcon
+        message={job ? (job.job_name || job.line_name || job.line_code || "防雷改造任务") : "加载中…"}
+        description={
+          job
+            ? `${job.line_name || job.line_code || "-"} / ${formatJobType(job.job_type, readMitigationMode(job))} / ${job.status} / 创建：${formatDateTime(job.create_date)}`
+            : undefined
+        }
+      />
+      <div
+        className="admin-power-lines-table-view"
+        style={{ "--admin-power-lines-table-body-min-height": "240px" } as CSSProperties}
+      >
+        <Table<FlAnalysisTowerResultSummary>
+          rowKey="id"
+          columns={columns}
+          dataSource={rows}
+          loading={loading}
+          tableLayout="fixed"
+          pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            showTotal: (totalCount) => `共 ${totalCount} 条`,
+            hideOnSinglePage: false,
+            onChange: (page, pageSize) => {
+              setPagination({ current: page, pageSize });
+            },
+          }}
+          scroll={{ x: 1000, y: 240 }}
+          locale={{
+            emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无杆塔结果" />,
+          }}
+        />
+      </div>
+      <div className="flex justify-end">
+        <Button onClick={() => void handleExport()} disabled={rows.length === 0}>
+          导出结果
+        </Button>
+      </div>
+    </div>
+  );
 }
