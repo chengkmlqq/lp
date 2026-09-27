@@ -1061,7 +1061,8 @@ def _load_menus_map(db: Session, menu_ids: list[str], *, role_source: str = "leg
     if role_source == "legacy":
         stmt = text(
             """
-            SELECT id::text AS menu_id, code AS menu_name, type AS menu_type, status AS state
+            SELECT id::text AS menu_id, code AS menu_name, type AS menu_type, status AS state,
+                   permission_code AS menu_descr
             FROM menus
             WHERE id::text IN :menu_ids OR code IN :menu_ids
             """
@@ -1069,7 +1070,8 @@ def _load_menus_map(db: Session, menu_ids: list[str], *, role_source: str = "leg
     else:
         stmt = text(
             """
-            SELECT id::text AS menu_id, code AS menu_name, type AS menu_type, status AS state
+            SELECT id::text AS menu_id, code AS menu_name, type AS menu_type, status AS state,
+                   permission_code AS menu_descr
             FROM menus
             WHERE id::text IN :menu_ids
             """
@@ -1255,6 +1257,11 @@ def _permission_codes_from_menu_rows(
         if menu_name in REMOVED_MENU_CODES:
             continue
         menu_type = row.get("menu_type")
+        # DB 权限码优先（菜单/按钮元数据即契约），老数据退回静态映射与 button 推断
+        permission_code = str(row.get("menu_descr") or "").strip()
+        if "." in permission_code:
+            codes.add(permission_code)
+            continue
         mapped = MENU_CODE_PERMISSION_MAP.get(menu_name, set())
         codes.update(mapped)
         if not mapped and str(menu_type or "").upper() == "BUTTON" and "." in menu_name:

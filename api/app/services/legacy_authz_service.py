@@ -114,6 +114,7 @@ MENU_CODE_PERMISSION_MAP: dict[str, set[str]] = {
     "admin.menus": {"menu.read", "menu.manage"},
     "admin.system_params": {"system_param.read", "system_param.manage"},
     "admin.system_message": {"admin.system_message"},
+    "admin.power_lines": {"line.read", "line.manage"},
     "admin.fl_analysis": {"line.read", "line.manage"},
     "admin.files": {"file.read", "file.manage"},
     "admin.elevation": {"elevation.read", "elevation.manage"},
@@ -274,9 +275,10 @@ def get_user_authorization(db: Session, user_id: str) -> UserAuthorization:
     if is_admin:
         permission_codes.update(DEFAULT_ADMIN_PERMISSION_CODES)
     elif role_codes:
+        # 菜单绑定即授予页面访问码/按钮码（menus.permission_code 优先，老数据走静态映射）
         permission_codes.update(_load_legacy_permissions(db, role_codes))
-        if not permission_codes:
-            permission_codes.update(_load_modern_permissions(db, role_codes))
+        # 直接授予的权限码（现代表 role_permissions；legacy 角色一般不写此项）
+        permission_codes.update(_load_modern_permissions(db, role_codes))
         # manage 隐含全部细码（老角色仅有 manage 也能自动获得按钮权限）
         for manage_code, implied in MANAGE_IMPLIED_PERMISSIONS.items():
             if manage_code in permission_codes:
@@ -378,7 +380,9 @@ def build_legacy_menu_tree(
             "visible": True,
             "cacheable": False,
             "component": None,
-            "permission_code": _primary_permission_for_menu(menu_name, row.get("menu_type")),
+            "permission_code": _primary_permission_for_menu(
+                menu_name, row.get("menu_type"), row.get("menu_descr")
+            ),
             "children": [],
         }
         nodes[legacy_id] = node
@@ -456,35 +460,81 @@ def _load_modern_roles(db: Session, user_id: str) -> list[tuple[str, str | None,
 
 
 def _load_legacy_permissions(db: Session, role_codes: set[str]) -> set[str]:
+    """角色通过「菜单绑定」获得的权限码。
+
+    菜单元数据统一存于 menus 表（menus.permission_code 即页面访问码/按钮码），
+    角色-菜单关联存在 role_menu_rela（legacy 角色）或 role_menus（modern 角色）。
+    无 permission_code 的老数据退回 MENU_CODE_PERMISSION_MAP 静态映射与 button 推断。
+    """
     real_role_ids = sorted(code for code in role_codes if code != "admin")
     if not real_role_ids:
         return set()
-    if not _legacy_table_exists(db, "role_menu_rela") or not _legacy_table_exists(db, "menu"):
-        return set()
-
-    stmt = text(
-        """
-        SELECT DISTINCT m.menu_name, m.menu_type, m.state
-        FROM role_menu_rela rmr
-        JOIN menu m ON m.menu_id = rmr.menu_id
-        WHERE rmr.role_id IN :role_ids
-        """
-    ).bindparams(bindparam("role_ids", expanding=True))
-    try:
-        rows = db.execute(stmt, {"role_ids": real_role_ids}).mappings().all()
-    except SQLAlchemyError:
-        _rollback_safely(db)
-        return set()
 
     permission_codes: set[str] = set()
-    for row in rows:
+    for row in _load_menu_link_rows(db, real_role_ids):
         if not _is_menu_enabled(row.get("state")):
             continue
         menu_name = (row.get("menu_name") or "").strip()
         if menu_name in DISABLED_MENU_CODES:
             continue
-        permission_codes.update(_permissions_for_menu(menu_name, row.get("menu_type")))
+        permission_codes.update(
+            _permissions_for_menu(menu_name, row.get("menu_type"), row.get("menu_descr"))
+        )
     return permission_codes
+
+
+def _load_menu_link_rows(db: Session, role_ids: list[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if _legacy_table_exists(db, "role_menu_rela"):
+        # legacy 关联表：role_id 为角色码字符串，menu_id 存菜单 id::text 或 code
+        stmt = text(
+            """
+            SELECT DISTINCT m.code AS menu_name, m.type AS menu_type, m.status AS state,
+                   m.permission_code AS menu_descr
+            FROM role_menu_rela rmr
+            JOIN menus m ON m.id::text = rmr.menu_id OR m.code = rmr.menu_id
+            WHERE rmr.role_id IN :role_ids
+            """
+        ).bindparams(bindparam("role_ids", expanding=True))
+        try:
+            rows.extend(db.execute(stmt, {"role_ids": role_ids}).mappings().all())
+        except SQLAlchemyError:
+            _rollback_safely(db)
+    rows.extend(_load_modern_menu_link_rows(db, role_ids))
+    return rows
+
+
+def _load_modern_menu_link_rows(db: Session, role_ids: list[str]) -> list[dict[str, Any]]:
+    if not _legacy_table_exists(db, "role_menus"):
+        return []
+    try:
+        from sqlalchemy import select
+
+        from ..models.rbac import Role
+
+        modern_role_ids = db.execute(
+            select(Role.id).where(Role.code.in_(role_ids))
+        ).scalars().all()
+    except SQLAlchemyError:
+        _rollback_safely(db)
+        return []
+    if not modern_role_ids:
+        return []
+    stmt = text(
+        """
+        SELECT DISTINCT m.code AS menu_name, m.type AS menu_type, m.status AS state,
+               m.permission_code AS menu_descr
+        FROM role_menus rm
+        JOIN menus m ON m.id = rm.menu_id
+        WHERE rm.role_id IN :role_ids
+        """
+    ).bindparams(bindparam("role_ids", expanding=True))
+    try:
+        rows = db.execute(stmt, {"role_ids": list(modern_role_ids)}).mappings().all()
+        return [dict(row) for row in rows]
+    except SQLAlchemyError:
+        _rollback_safely(db)
+        return []
 
 
 def _load_modern_permissions(db: Session, role_codes: set[str]) -> set[str]:
@@ -529,7 +579,8 @@ def _load_legacy_menus(db: Session) -> list[dict[str, Any]]:
             m.path AS url,
             m.icon AS menu_icon,
             m.sort_order AS seq,
-            m.status AS state
+            m.status AS state,
+            m.permission_code AS menu_descr
         FROM menus m
         """
     )
@@ -602,9 +653,18 @@ def _is_menu_enabled(raw_state: str | None) -> bool:
     return state in {"ENABLED", "ACTIVE", "1", "TRUE", ""}
 
 
-def _permissions_for_menu(menu_name: str, menu_type: str | None) -> set[str]:
+def _permissions_for_menu(
+    menu_name: str,
+    menu_type: str | None,
+    permission_code: str | None = None,
+) -> set[str]:
     if not menu_name:
         return set()
+    # DB 权限码优先：menus.permission_code 即该菜单/按钮授予的访问码（如 line.read / line.create），
+    # 与 seed/menu 管理写入的元数据一致；老数据无 permission_code 时退回静态映射与 button 推断。
+    normalized_code = (permission_code or "").strip()
+    if "." in normalized_code:
+        return {normalized_code}
     mapped = MENU_CODE_PERMISSION_MAP.get(menu_name)
     if mapped:
         return set(mapped)
@@ -615,8 +675,12 @@ def _permissions_for_menu(menu_name: str, menu_type: str | None) -> set[str]:
     return set()
 
 
-def _primary_permission_for_menu(menu_name: str, menu_type: str | None) -> str | None:
-    permissions = sorted(_permissions_for_menu(menu_name, menu_type))
+def _primary_permission_for_menu(
+    menu_name: str,
+    menu_type: str | None,
+    permission_code: str | None = None,
+) -> str | None:
+    permissions = sorted(_permissions_for_menu(menu_name, menu_type, permission_code))
     return permissions[0] if permissions else None
 
 
