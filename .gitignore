@@ -54,3 +54,6 @@ deploy/*/data/app/
 
 # Agent scratch / debug files
 tmp/
+
+# Hermes agent local plans (not project content)
+.hermes/
