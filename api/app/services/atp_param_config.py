@@ -146,7 +146,13 @@ def compute_params_from_runtime(
     if rules is None:
         return None
     context = build_context(base_tower=base_tower, profile=profile, execution_options=execution_options)
-    resolved = resolve_params(context, rules)
+    resolved = resolve_params(
+        context,
+        rules,
+        base_tower=base_tower,
+        profile=profile,
+        execution_options=execution_options,
+    )
     return resolved.as_dict() or None
 
 
@@ -166,4 +172,11 @@ def compute_params_detailed_from_runtime(
     if rules is None:
         return None
     context = build_context(base_tower=base_tower, profile=profile, execution_options=execution_options)
-    return resolve_params(context, rules, allow_defaults=allow_defaults)
+    return resolve_params(
+        context,
+        rules,
+        allow_defaults=allow_defaults,
+        base_tower=base_tower,
+        profile=profile,
+        execution_options=execution_options,
+    )

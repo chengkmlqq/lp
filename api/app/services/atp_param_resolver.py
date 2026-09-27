@@ -361,6 +361,9 @@ def resolve_params(
     *,
     allow_fallback: bool = True,
     allow_defaults: bool = False,
+    base_tower: Mapping[str, Any] | None = None,
+    profile: Mapping[str, Any] | None = None,
+    execution_options: Mapping[str, Any] | None = None,
 ) -> ResolvedParams:
     """按覆盖链解析出全部槽位值（格式化）+ 来源。
 
@@ -388,11 +391,16 @@ def resolve_params(
             resolved_params = resolve_definitions(
                 definitions=rules.definitions,
                 context=ctx,
+                base_tower=base_tower,
+                profile=profile,
+                execution_options=execution_options,
                 requested=requested,
             )
-            # 注册表只补 ctx 里缺失（None）的键；ctx 已有值保持原值（种子=现状镜像，零回归）
+            # 注册表解析值为权威：凡定义能求值出非 None 的 code，一律覆盖 ctx（不再保留「ctx 短路」），
+            # 保证常规化定义（line_binding source/path、script）真正生效。
+            # 求值结果 None（缺原始域/缺数据）时不覆盖 ctx 已有真值（防把好值打成 None）。
             for code in requested:
-                if ctx.get(code) is None and code in resolved_params:
+                if code in resolved_params and resolved_params[code] is not None:
                     variables[code] = resolved_params[code]
 
     if allow_defaults:
@@ -649,6 +657,9 @@ def build_context(
         for cid in ("c1", "c2", "c3", "c4")
         if any(context.get(f"{cid}_{key}") is not None for key in ("u", "m", "l"))
     )
+    # 相序重排后的完整几何（供注册表 script 用 pick("geometry_permuted", ...) 取数，
+    # 口径与上面 h_u/sp_u/c1~c4 的取值一致 —— 由脚本显式引用，不再隐式依赖 runtime_key）
+    context["geometry_permuted"] = geometry
     return context
 
 
@@ -686,7 +697,13 @@ def compute_params_detailed(
     active = rules or load_mappings()
     context = build_context(base_tower=base_tower, profile=profile, execution_options=execution_options)
     return resolve_params(
-        context, active, allow_fallback=allow_fallback, allow_defaults=allow_defaults
+        context,
+        active,
+        allow_fallback=allow_fallback,
+        allow_defaults=allow_defaults,
+        base_tower=base_tower,
+        profile=profile,
+        execution_options=execution_options,
     )
 
 

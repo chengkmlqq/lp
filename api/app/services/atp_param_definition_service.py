@@ -282,6 +282,8 @@ def _context_var_names() -> set[str]:
     return set(SOURCE_VARS) | {
         "voltage_level", "circuit_count", "tower_type", "scene_type",
         "arrester_config", "structure_kind",
+        # 脚本保留域（pick 取数入口，非依赖）
+        "base_tower", "profile", "options", "geometry_permuted",
     }
 
 
@@ -300,6 +302,11 @@ def test_script(payload: dict[str, Any], db: Session | None = None) -> dict[str,
     context = build_context(base_tower=base_tower, profile=profile, execution_options=options)
     context["angle_deg"] = profile.get("angle_deg") if profile.get("angle_deg") is not None else context.get("angle_deg", 0.0)
     variables = dict(context)
+    # 注入原始输入域（供 pick 取数，与 resolve_definitions 同口径）
+    variables["base_tower"] = base_tower
+    variables["profile"] = profile
+    variables["options"] = options
+    variables["geometry_permuted"] = context.get("geometry_permuted") or {}
     # 注册表依赖参数：先用 resolve_definitions 从样例上下文解析（用户自定义 line_binding/脚本参数）
     if db is not None and deps:
         from app.services.atp_param_registry import resolve_definitions  # noqa: PLC0415

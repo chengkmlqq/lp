@@ -58,29 +58,39 @@ from app.services.fl_analysis_external import compute_csharp_atp_params  # noqa:
 
 
 def check_registry_mirror(rules: MappingRules, failures: list[str]) -> int:
-    """1) line_binding 种子镜像：注册表求值 == build_context 产出（逐变量）。"""
+    """1) 注册表常规化对齐：全部定义（除运行期脚本）注册表求值 == build_context 产出（逐变量）。
+
+    2026-09-27 改造后 line_binding 不再有 runtime_key 镜像；来源全部常规化
+    （line_binding source/path 或 script pick 表达式）。本检查证明常规化后
+    每个参数在有数据样例上与现状（C# 口径 build_context）逐字节一致。
+    """
     checked = 0
     base_tower, profile, options = build_case("s500maotou", 500, GEOMETRIES[0], 1, 2.6, 50.0, 146.0)
+    profile["angle_deg"] = 10.0
     context = build_context(base_tower=base_tower, profile=profile, execution_options=options)
-    mirrored = [
+    context["angle_deg"] = 10.0
+    targets = [
         d
         for d in rules.definitions
-        if d.source_type == "line_binding" and (d.binding_json or {}).get("runtime_key")
+        if d.code not in ("coupling_k0", "electric_angle")  # E 档：对照 atp_work_atp_slots 公式
     ]
     values = resolve_definitions(
-        definitions=mirrored,
+        definitions=targets,
         base_tower=base_tower,
         profile=profile,
         execution_options=options,
         context=context,
-        requested=[d.code for d in mirrored],
+        requested=[d.code for d in targets],
     )
-    for definition in mirrored:
+    for definition in targets:
         checked += 1
         expected = context.get(definition.code)
         got = values.get(definition.code)
+        if expected is None:
+            # 缺数据场景：允许显式报错或 None（expected 恒 None 时跳过比对）
+            continue
         if expected != got:
-            failures.append(f"[镜像] {definition.code}: build_context={expected!r} 注册表={got!r}")
+            failures.append(f"[常规化对齐] {definition.code}: build_context={expected!r} 注册表={got!r}")
     return checked
 
 
@@ -98,7 +108,13 @@ def check_param_slot_form(failures: list[str]) -> None:
         },
     )
     rules.voltage_rules = []
-    resolved = resolve_params(context, rules)
+    resolved = resolve_params(
+        context,
+        rules,
+        base_tower=base_tower,
+        profile=profile,
+        execution_options=options,
+    )
     if resolved.values.get("RELE01") != "65.5":
         failures.append(f"[param 槽位] RELE01 期望 65.5 实得 {resolved.values.get('RELE01')}")
     if resolved.values.get("REHG______") != "73.5":

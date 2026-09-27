@@ -16,8 +16,9 @@
 - None 感知：任一操作数为 None → 结果 None（与 DSL 一致）；
 - 任一步骤抛错（除零等）→ 结果 None 并在 ``errors`` 中记录（供页面/接口显式报错）。
 
-运行期说明：注册表 script 定义（11K0/14XXSS 基线）**执行仍走 atp_work_atp_slots.py**
-（固定列写入路径），本模块服务于「页面试算 / 新增计算参数 / 注册表驱动解析」。
+运行期说明：注册表 script 定义（coupling_k0 / electric_angle）由注册表驱动解析求值；
+11K0/14XXSS 槽位写入链路见 atp_work_atp_slots（C# 公式实现，与注册表脚本同公式）。
+本模块服务于「页面试算 / 新增计算参数 / 注册表驱动解析」。
 """
 
 from __future__ import annotations
@@ -52,6 +53,8 @@ _ALLOWED_CALLS: dict[str, Any] = {
     "degrees": math.degrees,
     "floor": math.floor,
     "ceil": math.ceil,
+    "int": int,
+    "float": float,
 }
 
 # 电压分档（与 atp_work_atp_slots._voltage_profile 一致）：(避雷线弧垂 m, 导线弧垂 m)
@@ -109,11 +112,37 @@ def _v_band(voltage: Any, series: list[Any]) -> Any:
     return series[7]
 
 
+# pick 允许访问的域（脚本输入变量注入的保留键名）
+_PICK_DOMAINS = ("base_tower", "profile", "options", "geometry_permuted")
+
+
+def _pick(domain: str, path: str, variables: Mapping[str, Any]) -> Any:
+    """按 ``a.b.c`` 点路径从原始域取数（None 感知：任一层缺失 → None）。
+
+    domain 必须是保留域白名单（base_tower/profile/options/geometry_permuted），
+    防止脚本访问任意注入键。返回原始值，不做任何换算 —— 口径由脚本显式写。
+    """
+    if not isinstance(domain, str) or not isinstance(path, str):
+        raise ScriptError("pick(domain, path) 需要字符串参数")
+    if domain not in _PICK_DOMAINS:
+        raise ScriptError(f"pick 域必须是：{', '.join(_PICK_DOMAINS)}")
+    data = variables.get(domain)
+    if not isinstance(data, Mapping):
+        return None
+    current: Any = data
+    for part in path.split("."):
+        if not isinstance(current, Mapping):
+            return None
+        current = current.get(part)
+    return current
+
+
 _SCRIPT_CALLS: dict[str, Any] = {
     **_ALLOWED_CALLS,
     "v": _v_band,
     "v_arc": _v_arc,
     "v_darc": _v_darc,
+    "pick": _pick,
 }
 
 _SAFE_NODE_TYPES = (
@@ -148,6 +177,8 @@ _SAFE_NODE_TYPES = (
     ast.LtE,
     ast.Gt,
     ast.GtE,
+    ast.Is,
+    ast.IsNot,
     ast.Store,
 )
 
@@ -196,6 +227,11 @@ def _truthy(value: Any) -> bool:
 
 
 def _compare(op: ast.cmpop, left: Any, right: Any) -> bool:
+    # is / is not 先于 None 短路（与 None 比较是合法语义，如 `x is not None`）
+    if isinstance(op, ast.Is):
+        return left is right
+    if isinstance(op, ast.IsNot):
+        return left is not right
     if left is None or right is None:
         return False
     if isinstance(op, ast.Eq):
@@ -213,7 +249,11 @@ def _compare(op: ast.cmpop, left: Any, right: Any) -> bool:
     raise ScriptError(f"不支持的比较符：{type(op).__name__}")
 
 
-def _call(name: str, args: list[Any], voltage: Any) -> Any:
+def _call(name: str, args: list[Any], voltage: Any, variables: Mapping[str, Any]) -> Any:
+    if name == "pick":
+        if len(args) != 2:
+            raise ScriptError("pick(domain, path) 需要 2 个参数")
+        return _pick(args[0], args[1], variables)
     fn = _SCRIPT_CALLS.get(name)
     if fn is None:
         raise ScriptError(f"未实现的函数：{name}")
@@ -275,15 +315,22 @@ def _eval(node: ast.AST, variables: Mapping[str, Any], voltage: Any) -> Any:
             left = right
         return True
     if isinstance(node, ast.BoolOp):
+        # Python 原生短路语义：or 返回第一个真值（全假时最后一个），
+        # and 返回第一个假值（全真时最后一个）—— 供回退链 v1 or v2 or default 使用。
+        last: Any = None
         if isinstance(node.op, ast.And):
             for value in node.values:
-                if not _truthy(_eval(value, variables, voltage)):
-                    return False
-            return True
+                evaluated = _eval(value, variables, voltage)
+                last = evaluated
+                if not _truthy(evaluated):
+                    return evaluated
+            return last
         for value in node.values:
-            if _truthy(_eval(value, variables, voltage)):
-                return True
-        return False
+            evaluated = _eval(value, variables, voltage)
+            last = evaluated
+            if _truthy(evaluated):
+                return evaluated
+        return last
     if isinstance(node, ast.IfExp):
         return (
             _eval(node.body, variables, voltage)
@@ -294,7 +341,7 @@ def _eval(node: ast.AST, variables: Mapping[str, Any], voltage: Any) -> Any:
         if not isinstance(node.func, ast.Name):
             raise ScriptError("非函数调用")
         args = [_eval(a, variables, voltage) for a in node.args]
-        return _call(node.func.id, args, voltage)
+        return _call(node.func.id, args, voltage, variables)
     raise ScriptError(f"不支持的表达式节点：{type(node).__name__}")
 
 

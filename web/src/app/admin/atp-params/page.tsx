@@ -126,10 +126,8 @@ function formatValue(value: unknown): string {
 /** 绑定 / 脚本摘要（表格列与卡片共用）。 */
 function renderSourceSummary(record: DefinitionItem) {
   if (record.source_type === "line_binding") {
-    const binding = record.binding_json as { runtime_key?: string; source?: string; path?: string };
-    const label = binding.runtime_key
-      ? `现状镜像 ${binding.runtime_key}`
-      : `${binding.source ?? ""}.${binding.path ?? ""}`;
+    const binding = record.binding_json as { source?: string; path?: string };
+    const label = `${binding.source ?? ""}.${binding.path ?? ""}`;
     return (
       <Tooltip title={binding.path ?? ""}>
         <Space size={4} style={{ minWidth: 0 }}>
@@ -474,7 +472,7 @@ export default function AtpParamsPage() {
       };
       if (values.source_type === "line_binding") {
         const binding = payload.binding_json || {};
-        if (!binding.runtime_key && (!binding.source || !binding.path)) {
+        if (!binding.source || !binding.path) {
           message.warning("线路导入绑定需要选择「来源 + 字段路径」");
           return;
         }
@@ -598,11 +596,8 @@ export default function AtpParamsPage() {
       title: "来源类型",
       dataIndex: "source_type",
       width: 130,
-      render: (value: SourceType, record) => (
-        <Tag color={SOURCE_TYPE_COLOR[value]}>
-          {SOURCE_TYPE_LABEL[value]}
-          {(record.binding_json as { runtime_baseline?: boolean })?.runtime_baseline ? "（运行期基线）" : ""}
-        </Tag>
+      render: (value: SourceType) => (
+        <Tag color={SOURCE_TYPE_COLOR[value]}>{SOURCE_TYPE_LABEL[value]}</Tag>
       ),
     },
     {
@@ -800,17 +795,12 @@ export default function AtpParamsPage() {
               message={`${detail.name} ｜ ${SOURCE_TYPE_LABEL[detail.source_type]}`}
               description={
                 detail.source_type === "line_binding"
-                  ? (detail.binding_json as { source?: string; path?: string; runtime_key?: string }).runtime_key
-                    ? `现状镜像：build_context 的 ${(detail.binding_json as { runtime_key?: string }).runtime_key}`
-                    : `绑定：${(detail.binding_json as { source?: string }).source}.${(detail.binding_json as { path?: string }).path}`
+                  ? `绑定：${(detail.binding_json as { source?: string }).source}.${(detail.binding_json as { path?: string }).path}`
                   : detail.source_type === "script"
                     ? "计算脚本（沙箱求值，纯数学函数）"
                     : "字面量"
               }
             />
-            {(detail.binding_json as { runtime_baseline?: boolean })?.runtime_baseline ? (
-              <Alert type="warning" showIcon message="运行期基线脚本" description="执行仍由 atp_work_atp_slots.py 完成（固定列写入）；此处为公式基线，可查看/编辑。" />
-            ) : null}
             {detail.source_type === "script" && detail.script_code ? (
               <pre
                 style={{
@@ -934,21 +924,13 @@ export default function AtpParamsPage() {
                 showIcon
                 style={{ marginBottom: 12 }}
                 message="线路导入绑定"
-                description="建立「线路中杆塔属性路径 ↔ 参数名」的关联。现状镜像（runtime_key）保持与现有计算链路完全一致；也可选择新字段路径（点路径 a.b.c）。"
+                description="建立「线路中杆塔属性路径 ↔ 参数名」的关联：从来源域（base_tower / profile / options）按点路径（a.b.c）抽取原始字段。"
               />
               <Space size={12} style={{ display: "flex" }} wrap>
-                <Form.Item label="来源域" name={["binding_json", "runtime_key"]} style={{ width: 220 }}>
-                  <Select
-                    allowClear
-                    placeholder="选择现状镜像键（推荐）"
-                    showSearch
-                    options={depsOptions.map((item) => ({ value: item.value, label: item.label }))}
-                  />
-                </Form.Item>
                 <Form.Item label="自定义绑定来源" name={["binding_json", "source"]} style={{ width: 200 }}>
                   <Select
                     allowClear
-                    placeholder="或选来源域"
+                    placeholder="选择来源域"
                     options={bindingSourceOptions}
                   />
                 </Form.Item>

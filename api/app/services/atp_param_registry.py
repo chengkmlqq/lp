@@ -1,19 +1,19 @@
 """ATP 参数注册表：定义加载 + 按需求值（注册表驱动解析）。
 
 来源三种（与 atp_param_definition 表 source_type 对应）：
-- ``line_binding``：从线路导入的杆塔属性绑定
-  · 种子镜像（binding_json.runtime_key）：直接取 ``build_context`` 对应键 —— **与现状逐字节一致**；
-  · 用户新增（binding_json.source/path 点路径）：从 base_tower/profile/options 抽取
-    （path 支持 ``a.b.c`` 嵌套；transform=mm_to_m 时按 >100 启发式转米）。
-- ``script``：沙箱求值（atp_param_script.evaluate_script），入参 = 上下文 + 已解析依赖。
+- ``line_binding``：从线路导入的杆塔属性绑定（source/path 点路径抽取）
+  · source: base_tower | profile | options；path 支持 ``a.b.c`` 嵌套；
+  · transform=mm_to_m 时按 >100 启发式转米。
+  · （历史兼容：旧数据若带 runtime_key 仍从 build_context 取原值 —— 2026-09-27 起种子不再使用。）
+- ``script``：沙箱求值（atp_param_script.evaluate_script），入参 = 上下文 + 已解析依赖
+  + 原始输入域（base_tower/profile/options/geometry_permuted，供 pick() 取数）。
 - ``constant``：字面量（binding_json.value）。
 
 设计约束（精度优先 / 不回归）：
-- 种子 = 现状镜像：runtime_key 命中时取 build_context 原值，杜绝二义；
+- 种子全部常规化（无 runtime_key 镜像）：每个参数用 source/path 或显式脚本表达，
+  口径写进 description；与 build_context（C# 公式 Python 等价物）逐字节一致由 golden 测试保证；
 - 求值失败（脚本抛错/依赖缺值）→ 显式抛 ``DefinitionError``，禁静默 fallback（用户铁律）；
-- 槽位按需解析：只解析其显式引用的 code（+ 依赖闭包），不为未引用参数冒失败风险；
-- ``runtime_baseline=true`` 的定义（11K0/14XXSS 运行期基线）执行仍走 atp_work_atp_slots.py，
-  注册表侧只负责页面展示与按需试算 —— 显式引用其 code 时才在沙箱里求值。
+- 槽位按需解析：只解析其显式引用的 code（+ 依赖闭包），不为未引用参数冒失败风险。
 """
 
 from __future__ import annotations
@@ -210,7 +210,15 @@ def resolve_definitions(
             if missing:
                 raise DefinitionError(f"{code}: 依赖参数缺失：{', '.join(missing)}")
             deps = {dep: resolved.get(dep, ctx.get(dep)) for dep in definition.deps}
-            value, errors = evaluate_script(script, {**ctx, **deps})
+            # 注入原始输入域供 pick() 取数（口径由脚本显式表达，不再隐式依赖 build_context 加工值）
+            script_vars = {
+                **ctx,
+                **deps,
+                "base_tower": dict(base_tower or {}),
+                "profile": dict(profile or {}),
+                "options": dict(execution_options or {}),
+            }
+            value, errors = evaluate_script(script, script_vars)
             if errors:
                 raise DefinitionError(f"{code}: 脚本求值失败：{'；'.join(errors)}")
 

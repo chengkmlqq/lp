@@ -1,16 +1,19 @@
-"""ATP 参数注册表种子生成器（SOURCE_VARS → line_binding 翻译器）。
+"""ATP 参数注册表种子生成器（49 个参数，全部常规化来源）。
 
-目标：把现有 ``atp_param_resolver.SOURCE_VARS``（build_context 产出的 38 个源变量）
-逐条翻译成 ``atp_param_definition`` 行（source_type=line_binding），
-把 ``atp_work_atp_slots`` 的两个运行期脚本（11K0 耦合系数 / 14XXSS 电角度）
-注册为 script 定义（**运行期执行仍走 atp_work_atp_slots.py**，此处为页面基线）。
+改造目标（2026-09-27，用户指令「不想要'现状计算链路'特殊来源」）：
+- 不再使用 runtime_key 现状镜像；每个参数用常规三类来源显式表达：
+  · line_binding source/path（+transform）：直接从线路导入数据域取原始字段；
+  · script：显式公式（pick() 从原始域取数 + 回退/换算/相序重排口径写死在脚本里）；
+  · constant：字面量（当前无）。
+- description 写清「来源 + 口径」，可读可审计。
+- 与 C# 口径（compute_csharp_atp_params / build_context）逐字节一致，由
+  scripts/atp_param_registry_golden_test.py 全矩阵对照保证。
 
-设计要点（迁移零风险）：
-- 种子 = 现状的忠实镜像。每个定义带 ``runtime_key``（= code 自身），
-  解析时直接取 ``build_context`` 的对应键 —— 与现状逐字节一致，golden 对照保证。
-- 用户后续新增参数：line_binding 用通用抽取器（binding_json 的 source/path 点路径），
-  script 用沙箱求值 —— 这两个路径只在 ``runtime_key`` 不存在时启用。
-- 幂等：按 code upsert；改种子后运行 seed 端点即可更新。
+口径对照基准 = atp_param_resolver.build_context（C# 公式的 Python 等价物）：
+- 相序重排后的几何已由 build_context 产出为 ``geometry_permuted`` 键，
+  script 用 pick("geometry_permuted", "I.phase_height_m.upper") 等取数，
+  与 h_u/sp_u/c1~c4 的取值链路同一口径。
+- pick 域白名单：base_tower / profile / options / geometry_permuted。
 
 调用：/admin/system/seed-defaults 已挂载（见 seed_service）。
 """
@@ -26,78 +29,215 @@ from sqlalchemy.orm import Session
 from app.models.atp_param_definition import AtpParamDefinition
 
 # --------------------------------------------------------------------------------------
-# 源变量元数据翻译表（中文名/单位/绑定路径 —— 与 atp_param_resolver.build_context 取数链对应）
-# source: base_tower | profile | options | context(维度)
-# path:   人类可读的取数路径（文档性与前端展示用；解析仍走 runtime_key）
+# 定义清单（49 个）：每项 = {code, name, unit, source_type, binding_json,
+#                        script_code?, deps?, description}
 # --------------------------------------------------------------------------------------
 
-_SOURCE_VAR_META: dict[str, dict[str, Any]] = {
-    # 电气/任务级
-    "ground_r": {"name": "接地电阻", "unit": "Ω", "source": "base_tower", "path": "ground_resistance_ohm"},
-    "insul_m": {"name": "绝缘子串长", "unit": "m", "source": "profile", "path": "insulator_length_m（>100 视为 mm÷1000）"},
-    "shield_h": {"name": "避雷线高度", "unit": "m", "source": "profile", "path": "shield_wire_height_m"},
-    "tower_h": {"name": "呼高", "unit": "m", "source": "base_tower", "path": "circuit_geometry_json.tower_height_m 或 profile.call_height_m"},
-    "voltage": {"name": "电压", "unit": "kV", "source": "base_tower", "path": "line_voltage_kv（缺省 500.0）"},
-    "current_ka": {"name": "雷电流幅值", "unit": "kA", "source": "options", "path": "binary_search_current_ka 或 profile.current_a（缺省 0.0）"},
-    "head_ms": {"name": "波头时间", "unit": "ms", "source": "profile", "path": "current_head_time_ms/us 或 options.head_time_min_us（缺省 2.6）"},
-    "tail_ms": {"name": "波尾时间", "unit": "ms", "source": "profile", "path": "current_tail_time_ms/us 或 options.tail_time_min_us（缺省 50.0）"},
-    "wave_type": {"name": "波形种类", "unit": "", "source": "profile", "path": "current_type（缺省 1）"},
-    # 避雷线几何
-    "lw_l": {"name": "左避雷线中距", "unit": "m", "source": "geometry", "path": "lightning_wire.left_mid_distance_m"},
-    "lw_r": {"name": "右避雷线中距", "unit": "m", "source": "geometry", "path": "lightning_wire.right_mid_distance_m"},
-    "lw_l_eff": {"name": "左避雷线中距(有效)", "unit": "m", "source": "geometry", "path": "左避雷中距；缺失时由保护角反推 shield_h*tan(angle_l)"},
-    "lw_r_eff": {"name": "右避雷线中距(有效)", "unit": "m", "source": "geometry", "path": "右避雷中距；缺失时由保护角反推 shield_h*tan(angle_r)"},
-    # I 回相几何（按相序重排后）
-    "h_u": {"name": "I回上相高", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_height_m.upper（相序重排）"},
-    "h_m": {"name": "I回中相高", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_height_m.middle（相序重排）"},
-    "h_l": {"name": "I回下相高", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_height_m.lower（相序重排）"},
-    "sp_u": {"name": "I回上相中距", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_spacing_m.upper（相序重排）"},
-    "sp_m": {"name": "I回中相中距", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_spacing_m.middle（相序重排）"},
-    "sp_l": {"name": "I回下相中距", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_spacing_m.lower（相序重排）"},
-    # II/III/IV 回相几何（sihuita 四回路）
-    "c1_u": {"name": "I回上相高(c1)", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_height_m.upper（相序重排）"},
-    "c1_m": {"name": "I回中相高(c1)", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_height_m.middle（相序重排）"},
-    "c1_l": {"name": "I回下相高(c1)", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_height_m.lower（相序重排）"},
-    "c1_sp_u": {"name": "I回上相中距(c1)", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_spacing_m.upper（相序重排）"},
-    "c1_sp_m": {"name": "I回中相中距(c1)", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_spacing_m.middle（相序重排）"},
-    "c1_sp_l": {"name": "I回下相中距(c1)", "unit": "m", "source": "profile", "path": "geometry_layers_json.I.phase_spacing_m.lower（相序重排）"},
-    "c2_u": {"name": "II回上相高(c2)", "unit": "m", "source": "profile", "path": "geometry_layers_json.II.phase_height_m.upper（相序重排）"},
-    "c2_m": {"name": "II回中相高(c2)", "unit": "m", "source": "profile", "path": "geometry_layers_json.II.phase_height_m.middle（相序重排）"},
-    "c2_l": {"name": "II回下相高(c2)", "unit": "m", "source": "profile", "path": "geometry_layers_json.II.phase_height_m.lower（相序重排）"},
-    "c2_sp_u": {"name": "II回上相中距(c2)", "unit": "m", "source": "profile", "path": "geometry_layers_json.II.phase_spacing_m.upper（相序重排）"},
-    "c2_sp_m": {"name": "II回中相中距(c2)", "unit": "m", "source": "profile", "path": "geometry_layers_json.II.phase_spacing_m.middle（相序重排）"},
-    "c2_sp_l": {"name": "II回下相中距(c2)", "unit": "m", "source": "profile", "path": "geometry_layers_json.II.phase_spacing_m.lower（相序重排）"},
-    "c3_u": {"name": "III回上相高(c3)", "unit": "m", "source": "profile", "path": "geometry_layers_json.III.phase_height_m.upper（相序重排）"},
-    "c3_m": {"name": "III回中相高(c3)", "unit": "m", "source": "profile", "path": "geometry_layers_json.III.phase_height_m.middle（相序重排）"},
-    "c3_l": {"name": "III回下相高(c3)", "unit": "m", "source": "profile", "path": "geometry_layers_json.III.phase_height_m.lower（相序重排）"},
-    "c3_sp_u": {"name": "III回上相中距(c3)", "unit": "m", "source": "profile", "path": "geometry_layers_json.III.phase_spacing_m.upper（相序重排）"},
-    "c3_sp_m": {"name": "III回中相中距(c3)", "unit": "m", "source": "profile", "path": "geometry_layers_json.III.phase_spacing_m.middle（相序重排）"},
-    "c3_sp_l": {"name": "III回下相中距(c3)", "unit": "m", "source": "profile", "path": "geometry_layers_json.III.phase_spacing_m.lower（相序重排）"},
-    "c4_u": {"name": "IV回上相高(c4)", "unit": "m", "source": "profile", "path": "geometry_layers_json.IV.phase_height_m.upper（相序重排）"},
-    "c4_m": {"name": "IV回中相高(c4)", "unit": "m", "source": "profile", "path": "geometry_layers_json.IV.phase_height_m.middle（相序重排）"},
-    "c4_l": {"name": "IV回下相高(c4)", "unit": "m", "source": "profile", "path": "geometry_layers_json.IV.phase_height_m.lower（相序重排）"},
-    "c4_sp_u": {"name": "IV回上相中距(c4)", "unit": "m", "source": "profile", "path": "geometry_layers_json.IV.phase_spacing_m.upper（相序重排）"},
-    "c4_sp_m": {"name": "IV回中相中距(c4)", "unit": "m", "source": "profile", "path": "geometry_layers_json.IV.phase_spacing_m.middle（相序重排）"},
-    "c4_sp_l": {"name": "IV回下相中距(c4)", "unit": "m", "source": "profile", "path": "geometry_layers_json.IV.phase_spacing_m.lower（相序重排）"},
-}
 
-# 维度键（build_context 也产出，参与维度匹配；注册为 line_binding）
-_DIMENSION_META: dict[str, dict[str, Any]] = {
-    "tower_type": {"name": "塔型", "unit": "", "source": "context", "path": "options.tower_kind / profile.tower_kind / base_tower.tower_type（缺省 ganzi）"},
-    "voltage_level": {"name": "电压等级(维度)", "unit": "kV", "source": "context", "path": "= voltage"},
-    "circuit_count": {"name": "回路数量(维度)", "unit": "", "source": "context", "path": "有相高数据的回路条数"},
-}
+def _lb(source: str, path: str, **extra) -> dict[str, Any]:
+    """line_binding 绑定 JSON（source/path 点路径抽取；可选 transform）。"""
+    out: dict[str, Any] = {"source": source, "path": path}
+    out.update(extra)
+    return out
 
-# 运行期脚本基线（与 atp_work_atp_slots.py 同公式；运行期执行仍走该模块）
-_SCRIPT_SEEDS: list[dict[str, Any]] = [
-    {
-        "code": "coupling_k0",
-        "name": "耦合系数 k0（几何）",
-        "unit": "",
-        "deps": ["shield_h", "lw_l", "lw_r", "insul_m", "h_u", "sp_u", "voltage", "tower_type"],
-        "script": (
-            "# 与 atp_work_atp_slots.coupling_k0 同公式（C# fetch_CouplingCoefficient :11484-11668）\n"
-            "# 运行期执行仍走 atp_work_atp_slots.py；此处为注册表基线，仅供页面查看/编辑。\n"
+
+def _def(code, name, unit, source_type, binding, description, script=None, deps=()):
+    return {
+        "code": code,
+        "name": name,
+        "unit": unit,
+        "data_type": "number",
+        "source_type": source_type,
+        "binding_json": binding,
+        "script_code": script,
+        "deps": list(deps),
+        "enabled": True,
+        "sort_order": 0,
+        "description": description,
+    }
+
+
+# =============================== A 档：字段直取（line_binding source/path） ============
+_A_LINE_BINDINGS: list[dict[str, Any]] = [
+    _def(
+        "ground_r", "接地电阻", "Ω", "line_binding",
+        _lb("base_tower", "ground_resistance_ohm"),
+        "来源：base_tower.ground_resistance_ohm（杆塔基础-接地电阻）。口径：原值直取，单位 Ω。",
+    ),
+    _def(
+        "shield_h", "避雷线高度", "m", "line_binding",
+        _lb("profile", "shield_wire_height_m"),
+        "来源：profile.shield_wire_height_m（档距剖面-避雷线对地高度）。口径：原值直取，单位 m。",
+    ),
+    _def(
+        "insul_m", "绝缘子串长", "m", "line_binding",
+        _lb("profile", "insulator_length_m", transform="mm_to_m"),
+        "来源：profile.insulator_length_m（档距剖面-绝缘子串长，原始单位毫米）。口径：>100 视为 mm÷1000 转 m（启发式，与 build_context 一致）。",
+    ),
+    _def(
+        "angle_deg", "电角度", "°", "line_binding",
+        _lb("profile", "angle_deg"),
+        "来源：profile.angle_deg（档距剖面-电角度）。口径：原值直取；供 electric_angle 计算（电角度−90）。",
+    ),
+]
+
+# =============================== B 档：回退/缺省/换算链（script + pick 原始域） =========
+_B_SCRIPTS: list[dict[str, Any]] = [
+    _def(
+        "tower_h", "呼高", "m", "script",
+        {},
+        "来源：base_tower.circuit_geometry_json.tower_height_m；缺失时回退 profile.call_height_m。口径：or 回退链（0 视为缺失，与 build_context 一致）。",
+        script="v1 = pick(\"base_tower\", \"circuit_geometry_json.tower_height_m\")\nv2 = pick(\"profile\", \"call_height_m\")\nresult = v1 or v2",
+    ),
+    _def(
+        "voltage", "电压", "kV", "script",
+        {},
+        "来源：base_tower.line_voltage_kv。口径：or 回退（0 视为缺失），缺省 500.0 kV（与 build_context 一致）。",
+        script="v = pick(\"base_tower\", \"line_voltage_kv\")\nresult = v or 500.0",
+    ),
+    _def(
+        "current_ka", "雷电流幅值", "kA", "script",
+        {},
+        "来源：options.binary_search_current_ka（任务二分电流优先）；缺失时回退 profile.current_a；再缺省 0.0。口径：or 回退链（0 视为缺失，与 build_context 一致）。",
+        script="v1 = pick(\"options\", \"binary_search_current_ka\")\nv2 = pick(\"profile\", \"current_a\")\nresult = v1 or v2 or 0.0",
+    ),
+    _def(
+        "head_ms", "波头时间", "ms", "script",
+        {},
+        "来源：profile.current_head_time_ms → profile.current_head_time_us → options.head_time_min_us。口径：依次回退，缺省 2.6；ms/us 数值直接用（C# 语义，见 build_context 注释）。",
+        script="h1 = pick(\"profile\", \"current_head_time_ms\")\nh2 = pick(\"profile\", \"current_head_time_us\")\nh3 = pick(\"options\", \"head_time_min_us\")\nresult = h1 if h1 is not None else (h2 if h2 is not None else (h3 if h3 is not None else 2.6))",
+    ),
+    _def(
+        "tail_ms", "波尾时间", "ms", "script",
+        {},
+        "来源：profile.current_tail_time_ms → profile.current_tail_time_us → options.tail_time_min_us。口径：依次回退，缺省 50.0；ms/us 数值直接用（C# 语义）。",
+        script="t1 = pick(\"profile\", \"current_tail_time_ms\")\nt2 = pick(\"profile\", \"current_tail_time_us\")\nt3 = pick(\"options\", \"tail_time_min_us\")\nresult = t1 if t1 is not None else (t2 if t2 is not None else (t3 if t3 is not None else 50.0))",
+    ),
+    _def(
+        "wave_type", "波形种类", "", "script",
+        {},
+        "来源：profile.current_type。口径：or 回退（0 视为缺失）+ int 转换，缺省 1（与 build_context 一致）。",
+        script="v = pick(\"profile\", \"current_type\")\nresult = int(v or 1)",
+    ),
+    _def(
+        "tower_type", "塔型", "", "script",
+        {},
+        "来源：options.tower_kind → profile.tower_kind → base_tower.tower_type。口径：or 回退链（0/空串视为缺失），缺省 ganzi（与 build_context 一致）。",
+        script="v1 = pick(\"options\", \"tower_kind\")\nv2 = pick(\"profile\", \"tower_kind\")\nv3 = pick(\"base_tower\", \"tower_type\")\nresult = v1 or v2 or v3 or \"ganzi\"",
+    ),
+    _def(
+        "lw_l", "左避雷线中距", "m", "script",
+        {},
+        "来源：base_tower.circuit_geometry_json.lightning_wire.left_mid_distance_m → cg.left_mid_distance_m → profile.geometry_layers_json.lightning_wire.left_mid_distance_m。口径：三级回退，与 build_context 一致。",
+        script="v1 = pick(\"base_tower\", \"circuit_geometry_json.lightning_wire.left_mid_distance_m\")\nv2 = pick(\"base_tower\", \"circuit_geometry_json.left_mid_distance_m\")\nv3 = pick(\"profile\", \"geometry_layers_json.lightning_wire.left_mid_distance_m\")\nresult = v1 if v1 is not None else (v2 if v2 is not None else v3)",
+    ),
+    _def(
+        "lw_r", "右避雷线中距", "m", "script",
+        {},
+        "来源：base_tower.circuit_geometry_json.lightning_wire.right_mid_distance_m → cg.right_mid_distance_m → profile.geometry_layers_json.lightning_wire.right_mid_distance_m。口径：三级回退，与 build_context 一致。",
+        script="v1 = pick(\"base_tower\", \"circuit_geometry_json.lightning_wire.right_mid_distance_m\")\nv2 = pick(\"base_tower\", \"circuit_geometry_json.right_mid_distance_m\")\nv3 = pick(\"profile\", \"geometry_layers_json.lightning_wire.right_mid_distance_m\")\nresult = v1 if v1 is not None else (v2 if v2 is not None else v3)",
+    ),
+    _def(
+        "lw_l_eff", "左避雷线中距(有效)", "m", "script",
+        {},
+        "来源：同 lw_l 三级回退（base_tower.circuit_geometry_json → cg 顶层 → profile 几何）；全缺时由保护角反推 shield_wire_height_m*tan(radians(protection_angle_left_deg))。口径：is-None 语义（0 合法），与 build_context 一致。",
+        script="v1 = pick(\"base_tower\", \"circuit_geometry_json.lightning_wire.left_mid_distance_m\")\nv2 = pick(\"base_tower\", \"circuit_geometry_json.left_mid_distance_m\")\nv3 = pick(\"profile\", \"geometry_layers_json.lightning_wire.left_mid_distance_m\")\nbase = v1 if v1 is not None else (v2 if v2 is not None else v3)\ns_h = pick(\"profile\", \"shield_wire_height_m\")\nang = pick(\"profile\", \"protection_angle_left_deg\")\nresult = base if base is not None else (s_h * tan(radians(ang)) if (ang is not None and s_h is not None) else None)",
+    ),
+    _def(
+        "lw_r_eff", "右避雷线中距(有效)", "m", "script",
+        {},
+        "来源：同 lw_r 三级回退；全缺时由保护角反推 shield_wire_height_m*tan(radians(protection_angle_right_deg))。口径：is-None 语义（0 合法），与 build_context 一致。",
+        script="v1 = pick(\"base_tower\", \"circuit_geometry_json.lightning_wire.right_mid_distance_m\")\nv2 = pick(\"base_tower\", \"circuit_geometry_json.right_mid_distance_m\")\nv3 = pick(\"profile\", \"geometry_layers_json.lightning_wire.right_mid_distance_m\")\nbase = v1 if v1 is not None else (v2 if v2 is not None else v3)\ns_h = pick(\"profile\", \"shield_wire_height_m\")\nang = pick(\"profile\", \"protection_angle_right_deg\")\nresult = base if base is not None else (s_h * tan(radians(ang)) if (ang is not None and s_h is not None) else None)",
+    ),
+]
+
+# =============================== C 档：相序重排几何（script + pick geometry_permuted） ===
+# 相高/中距一律从 build_context 产出的「重排后几何」取，口径 = C# 相序映射
+# （atp_phase_sequence，见 build_context 注释）。
+_C_GEOM_SPECS: list[tuple[str, str, str, str]] = [
+    # (code, 中文名, 回路层, 字段)
+    ("h_u", "I回上相高", "I", "phase_height_m.upper"),
+    ("h_m", "I回中相高", "I", "phase_height_m.middle"),
+    ("h_l", "I回下相高", "I", "phase_height_m.lower"),
+    ("sp_u", "I回上相中距", "I", "phase_spacing_m.upper"),
+    ("sp_m", "I回中相中距", "I", "phase_spacing_m.middle"),
+    ("sp_l", "I回下相中距", "I", "phase_spacing_m.lower"),
+    ("c1_u", "I回上相高(c1)", "I", "phase_height_m.upper"),
+    ("c1_m", "I回中相高(c1)", "I", "phase_height_m.middle"),
+    ("c1_l", "I回下相高(c1)", "I", "phase_height_m.lower"),
+    ("c1_sp_u", "I回上相中距(c1)", "I", "phase_spacing_m.upper"),
+    ("c1_sp_m", "I回中相中距(c1)", "I", "phase_spacing_m.middle"),
+    ("c1_sp_l", "I回下相中距(c1)", "I", "phase_spacing_m.lower"),
+    ("c2_u", "II回上相高(c2)", "II", "phase_height_m.upper"),
+    ("c2_m", "II回中相高(c2)", "II", "phase_height_m.middle"),
+    ("c2_l", "II回下相高(c2)", "II", "phase_height_m.lower"),
+    ("c2_sp_u", "II回上相中距(c2)", "II", "phase_spacing_m.upper"),
+    ("c2_sp_m", "II回中相中距(c2)", "II", "phase_spacing_m.middle"),
+    ("c2_sp_l", "II回下相中距(c2)", "II", "phase_spacing_m.lower"),
+    ("c3_u", "III回上相高(c3)", "III", "phase_height_m.upper"),
+    ("c3_m", "III回中相高(c3)", "III", "phase_height_m.middle"),
+    ("c3_l", "III回下相高(c3)", "III", "phase_height_m.lower"),
+    ("c3_sp_u", "III回上相中距(c3)", "III", "phase_spacing_m.upper"),
+    ("c3_sp_m", "III回中相中距(c3)", "III", "phase_spacing_m.middle"),
+    ("c3_sp_l", "III回下相中距(c3)", "III", "phase_spacing_m.lower"),
+    ("c4_u", "IV回上相高(c4)", "IV", "phase_height_m.upper"),
+    ("c4_m", "IV回中相高(c4)", "IV", "phase_height_m.middle"),
+    ("c4_l", "IV回下相高(c4)", "IV", "phase_height_m.lower"),
+    ("c4_sp_u", "IV回上相中距(c4)", "IV", "phase_spacing_m.upper"),
+    ("c4_sp_m", "IV回中相中距(c4)", "IV", "phase_spacing_m.middle"),
+    ("c4_sp_l", "IV回下相中距(c4)", "IV", "phase_spacing_m.lower"),
+]
+
+_C_GEOM_DEFS: list[dict[str, Any]] = [
+    _def(
+        code, name, "m", "script",
+        {},
+        f"来源：profile.geometry_layers_json.{cid} 回相几何（原始台账列）。口径：按回路相序重排（atp_phase_sequence，C# 相序映射）后取 {field}，与 build_context 同口径。",
+        script=f"result = pick(\"geometry_permuted\", \"{cid}.{field}\")",
+    )
+    for code, name, cid, field in _C_GEOM_SPECS
+]
+
+# =============================== D 档：维度键（script） ================================
+_D_DEFS: list[dict[str, Any]] = [
+    _def(
+        "voltage_level", "电压等级(维度)", "kV", "script",
+        {},
+        "来源：= voltage（base_tower.line_voltage_kv，缺省 500.0）。口径：or 回退（0 视为缺失），维度匹配用，与电压同值（与 build_context 一致）。",
+        script="v = pick(\"base_tower\", \"line_voltage_kv\")\nresult = v or 500.0",
+    ),
+    _def(
+        "circuit_count", "回路数量(维度)", "", "script",
+        {},
+        "来源：geometry_permuted 各回路（I~IV）是否存在上/中/下相高数据。口径：有相高数据的回路条数，与 build_context 一致（维度匹配用）。",
+        script=(
+            "r1 = 1 if (pick(\"geometry_permuted\", \"I.phase_height_m.upper\") is not None "
+            "or pick(\"geometry_permuted\", \"I.phase_height_m.middle\") is not None "
+            "or pick(\"geometry_permuted\", \"I.phase_height_m.lower\") is not None) else 0\n"
+            "r2 = 1 if (pick(\"geometry_permuted\", \"II.phase_height_m.upper\") is not None "
+            "or pick(\"geometry_permuted\", \"II.phase_height_m.middle\") is not None "
+            "or pick(\"geometry_permuted\", \"II.phase_height_m.lower\") is not None) else 0\n"
+            "r3 = 1 if (pick(\"geometry_permuted\", \"III.phase_height_m.upper\") is not None "
+            "or pick(\"geometry_permuted\", \"III.phase_height_m.middle\") is not None "
+            "or pick(\"geometry_permuted\", \"III.phase_height_m.lower\") is not None) else 0\n"
+            "r4 = 1 if (pick(\"geometry_permuted\", \"IV.phase_height_m.upper\") is not None "
+            "or pick(\"geometry_permuted\", \"IV.phase_height_m.middle\") is not None "
+            "or pick(\"geometry_permuted\", \"IV.phase_height_m.lower\") is not None) else 0\n"
+            "result = r1 + r2 + r3 + r4"
+        ),
+    ),
+]
+
+# =============================== E 档：计算脚本（常规 script，运行期执行） ==============
+# 运行期执行走注册表脚本（不再依赖 atp_work_atp_slots 基线）；公式与 C# 逐字节对齐
+# （fetch_CouplingCoefficient :11484-11668 / :1906-1916），golden 测试验证。
+_E_SCRIPTS: list[dict[str, Any]] = [
+    _def(
+        "coupling_k0", "耦合系数 k0（几何）", "", "script",
+        {},
+        "来源：几何公式计算（镜像法）。口径：rk=0.0055 导体半径，按避雷线/相导线几何+镜像距离算耦合系数，与 C# fetch_CouplingCoefficient :11484-11668 同公式；依赖 shield_h/lw_l/lw_r/insul_m/h_u/sp_u/voltage/tower_type。",
+        script=(
+            "# 镜像法耦合系数（与 C# fetch_CouplingCoefficient :11484-11668 同公式）\n"
             "rk = 0.0055\n"
             "y1 = shield_h - v_arc(voltage) * 2.0 / 3.0\n"
             "x1 = lw_r\n"
@@ -116,73 +256,32 @@ _SCRIPT_SEEDS: list[dict[str, Any]] = [
             "z32 = log(D32 / d32)\n"
             "result = (z31 + z32) / (z11 + z12)\n"
         ),
-    },
-    {
-        "code": "electric_angle",
-        "name": "电源电角度（−90）",
-        "unit": "°",
-        "deps": ["angle_deg"],
-        "script": (
-            "# 与 atp_work_atp_slots.rewrite_electric_angle 同规则（C# :1906-1916）：\n"
-            "# 电角度 = 输入电角度 − 90；A/B/C = 该值 / −120 / −240。\n"
-            "# 运行期执行仍走 atp_work_atp_slots.py；此处为注册表基线。\n"
-            "result = angle_deg - 90.0\n"
-        ),
-    },
+        deps=("shield_h", "lw_l", "lw_r", "insul_m", "h_u", "sp_u", "voltage", "tower_type"),
+    ),
+    _def(
+        "electric_angle", "电源电角度（−90）", "°", "script",
+        {},
+        "来源：angle_deg（profile.angle_deg）减 90。口径：电角度 = 输入电角度 − 90；A/B/C 相 = 该值 / −120 / −240（C# :1906-1916，与 atp_work_atp_slots.rewrite_electric_angle 同规则）。",
+        script="result = angle_deg - 90.0\n",
+        deps=("angle_deg",),
+    ),
 ]
 
-# angle_deg 从 profile 取（build_context 未产出，需在 _SCRIPT_SEEDS 挂到 line_binding 元数据）
-_EXTRA_LINE_BINDINGS: dict[str, dict[str, Any]] = {
-    "angle_deg": {"name": "电角度", "unit": "°", "source": "profile", "path": "angle_deg"},
-}
+# =============================== 汇总 ==================================================
+
+def _all_definitions() -> list[dict[str, Any]]:
+    return [
+        *_A_LINE_BINDINGS,
+        *_B_SCRIPTS,
+        *_C_GEOM_DEFS,
+        *_D_DEFS,
+        *_E_SCRIPTS,
+    ]
 
 
 def build_seed_definitions() -> list[dict[str, Any]]:
-    """生成全部种子定义（line_binding + script）。"""
-    out: list[dict[str, Any]] = []
-    for code, meta in {**_SOURCE_VAR_META, **_DIMENSION_META, **_EXTRA_LINE_BINDINGS}.items():
-        out.append(
-            {
-                "code": code,
-                "name": meta["name"],
-                "unit": meta.get("unit", ""),
-                "data_type": "number",
-                "source_type": "line_binding",
-                # runtime_key=code：解析时直接取 build_context 对应键（现状镜像，零回归）
-                "binding_json": {
-                    "runtime_key": code,
-                    "source": meta.get("source", ""),
-                    "path": meta.get("path", ""),
-                },
-                "script_code": None,
-                "deps": [],
-                "enabled": True,
-                "sort_order": 0,
-                "description": f"线路导入的杆塔属性绑定：{meta.get('path', '')}",
-            }
-        )
-    for seed in _SCRIPT_SEEDS:
-        out.append(
-            {
-                "code": seed["code"],
-                "name": seed["name"],
-                "unit": seed.get("unit", ""),
-                "data_type": "number",
-                "source_type": "script",
-                "binding_json": {
-                    "runtime_key": seed["code"],
-                    "runtime_baseline": True,
-                    "source": "script",
-                    "path": "运行期脚本（atp_work_atp_slots.py 基线）",
-                },
-                "script_code": seed["script"],
-                "deps": seed["deps"],
-                "enabled": True,
-                "sort_order": 100,
-                "description": "运行期脚本基线：页面可查看/编辑公式，执行仍走 atp_work_atp_slots.py（固定列写入）。",
-            }
-        )
-    return out
+    """生成全部种子定义（49 个，全部常规来源，无 runtime_key/现状镜像）。"""
+    return _all_definitions()
 
 
 def build_seed_definition_objects() -> list:
@@ -234,7 +333,7 @@ def seed_param_definitions(db: Session, *, force: bool = False, operator: str | 
         row.script_code = item["script_code"]
         row.deps_json = item["deps"]
         row.enabled = bool(item["enabled"])
-        row.sort_order = int(item["sort_order"])
+        row.sort_order = int(item.get("sort_order", 0))
         row.description = item.get("description")
         row.updated_at = now
         row.updated_by = operator
