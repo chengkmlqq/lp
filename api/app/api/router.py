@@ -20,6 +20,7 @@ from .v1.flower_monitor import router as flower_monitor_router
 from .v1.lightning import router as lightning_router
 from .v1.lightning_retrofit import router as lightning_retrofit_router
 from .v1.lines import router as lines_router
+from .v1.overview import router as overview_router
 from .v1.param_category import router as param_category_router
 from .v1.scheduled_tasks import router as scheduled_tasks_router
 from .v1.system_messages import router as system_messages_router
@@ -38,6 +39,7 @@ v1_router.include_router(auth_router)
 v1_router.include_router(users_router)
 v1_router.include_router(avatar_router)
 v1_router.include_router(admin_router)
+v1_router.include_router(overview_router)
 v1_router.include_router(admin_files_router)
 v1_router.include_router(ai_chat_router)
 v1_router.include_router(atp_assets_router)

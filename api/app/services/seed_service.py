@@ -176,6 +176,19 @@ DEFAULT_ROLES: dict[str, dict[str, object]] = {
 DEFAULT_MENUS: list[dict[str, object]] = [
     # ── Top-level (parent_code=None) ─────────────────────────────────
     {
+        "code": "admin.overview",
+        "name": "系统总览",
+        "path": "/admin/overview",
+        "icon": "DashboardOutlined",
+        "parent_code": None,
+        "type": "menu",
+        "sort_order": -10,
+        "status": "enabled",
+        "visible": True,
+        "cacheable": False,
+        "permission_code": "menu.read",
+    },
+    {
         "code": "admin.power_lines",
         "name": "线路管理",
         "path": "/admin/power-lines",
@@ -594,6 +607,7 @@ DEFAULT_MENUS: list[dict[str, object]] = [
 
 ROLE_MENU_BINDINGS: dict[str, list[str]] = {
     "admin": [
+        "admin.overview",
         "admin.ai_chat",
         "admin.power_lines",
         "admin.fault_analysis",

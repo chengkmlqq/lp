@@ -7,7 +7,7 @@ export default function AdminEntryRedirectPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/users");
+    router.replace("/overview");
   }, [router]);
 
   return null;
