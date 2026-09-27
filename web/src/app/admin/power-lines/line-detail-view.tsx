@@ -56,7 +56,13 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
 
-  const canTowerReadLocal = canTowerRead || hasPermission("tower.read") || hasPermission("tower.manage");
+  // 与后端 /lines/{id}/towers 契约一致：具备 line.read/line.manage 亦可读取杆塔列表
+  const canTowerReadLocal =
+    canTowerRead ||
+    hasPermission("tower.read") ||
+    hasPermission("tower.manage") ||
+    hasPermission("line.read") ||
+    hasPermission("line.manage");
   const canTowerManage = hasPermission("tower.manage");
 
   const [lineError, setLineError] = useState("");
@@ -575,7 +581,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                 详情
               </Button>
             )}
-            {canTowerReadLocal && (
+            {canTowerManage && (
               <Button size="small" onClick={() => openEditTowerModal(row)}>
                 编辑
               </Button>

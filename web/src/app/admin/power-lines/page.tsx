@@ -166,7 +166,8 @@ export default function AdminPowerLinesPage() {
   const canUpdateLine = hasPermission("line.update") || canLineManage;
   const canDeleteLine = hasPermission("line.delete") || canLineManage;
   const canMap = hasPermission("line.map") || hasPermission("line.read") || canLineManage;
-  const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
+  // 与后端 /lines/{id}/towers 契约一致：具备 line.read/line.manage 亦可读取杆塔
+  const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage") || canLineRead;
   const canTowerManage = hasPermission("tower.manage");
   const canTowerCreate = hasPermission("tower.create") || canTowerManage;
   const canTowerUpdate = hasPermission("tower.update") || canTowerManage;

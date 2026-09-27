@@ -24,7 +24,8 @@ type PowerLineMapPanelProps = {
 export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProps) {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
-  const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
+  // 与后端 /lines/{id}/towers 契约一致：具备 line.read/line.manage 亦可读取杆塔
+  const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage") || canLineRead;
 
   const [keyword, setKeyword] = useState("");
   const [towerType, setTowerType] = useState("");
@@ -96,7 +97,7 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">你没有访问该页面的权限（需要 `tower.read`）。</Typography.Text>
+          <Typography.Text type="secondary">你没有访问该页面的权限（需要 `tower.read` 或 `line.read`）。</Typography.Text>
           <Button>
             <Link href="/admin/power-lines">返回线路列表</Link>
           </Button>

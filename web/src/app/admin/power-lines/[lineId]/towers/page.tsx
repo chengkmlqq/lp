@@ -69,7 +69,8 @@ export default function AdminPowerLineTowersPage() {
   const { message: messageApi } = App.useApp();
 
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
-  const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage");
+  // 与后端 /lines/{id}/towers 契约一致：具备 line.read/line.manage 亦可读取杆塔
+  const canTowerRead = hasPermission("tower.read") || hasPermission("tower.manage") || canLineRead;
   const canTowerManage = hasPermission("tower.manage");
 
   const [lineDetail, setLineDetail] = useState<{ code: string; name: string } | null>(null);
