@@ -81,19 +81,20 @@ export function JobTable({
       dataIndex: "total_tower_count",
       key: "total_tower_count",
       width: 90,
-      align: "right" as const,
+      align: "center" as const,
     },
     {
       title: "结果数",
       dataIndex: "result_tower_count",
       key: "result_tower_count",
       width: 90,
-      align: "right" as const,
+      align: "center" as const,
     },
     {
       title: "状态",
       key: "status",
       width: 160,
+      align: "center" as const,
       render: (_value, job) =>
         // 运行中在本列展示实时进度条（不再单独建「进度」列）；运行结束后进度条消失，展示状态标签
         job.status === "running" ? (
