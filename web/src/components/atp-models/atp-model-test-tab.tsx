@@ -11,6 +11,7 @@ import {
   App,
   Button,
   Card,
+  DatePicker,
   Descriptions,
   Drawer,
   Empty,
@@ -24,6 +25,7 @@ import {
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import type { Dayjs } from "dayjs";
 import {
   CopyOutlined,
   DownloadOutlined,
@@ -113,6 +115,8 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
   const [testModalOpen, setTestModalOpen] = useState(false);
   const [detailRunId, setDetailRunId] = useState<string | null>(null);
   const [traceOpen, setTraceOpen] = useState(false);
+  // 测试时间过滤（前端过滤已拉取的最大 100 条记录）
+  const [timeRange, setTimeRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
 
   const assetQuery = useQuery({
     queryKey: ["atp-models-asset-detail", assetId],
@@ -155,6 +159,19 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
 
   const asset = assetQuery.data;
   const runs = runsQuery.data?.items ?? [];
+  // 测试时间过滤（按 create_date 起止区间；clear 后为全部）
+  const filteredRuns = useMemo(() => {
+    if (!timeRange || (!timeRange[0] && !timeRange[1])) return runs;
+    const start = timeRange[0]?.valueOf();
+    const end = timeRange[1]?.valueOf();
+    return runs.filter((run) => {
+      const ts = new Date(run.create_date).getTime();
+      if (Number.isNaN(ts)) return true;
+      if (start != null && ts < start) return false;
+      if (end != null && ts > end) return false;
+      return true;
+    });
+  }, [runs, timeRange]);
   const detail = detailQuery.data;
   const detailSummary = readSummary(detail);
   const detailRunning =
@@ -200,7 +217,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
   const columns = useMemo<ColumnsType<AtpAssetRunSummary>>(
     () => [
       {
-        title: "发起时间",
+        title: "测试时间",
         dataIndex: "create_date",
         width: 170,
         render: (value: string) => formatDateTime(value),
@@ -287,23 +304,21 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col p-4">
-      {/* 工具条：模型信息 + 测试按钮 */}
+      {/* 工具条：测试时间过滤 + 测试按钮 */}
       <div className="mb-4 flex items-center gap-3">
-        <Card size="small" style={{ flex: 1 }}>
-          <Space size={16} wrap>
-            <Typography.Text strong>
-              {asset?.name || asset?.code || assetId}
-            </Typography.Text>
-            {asset?.voltage_level ? (
-              <Tag>{asset.voltage_level}kV</Tag>
-            ) : null}
-            {asset?.tower_type ? <Tag color="blue">{asset.tower_type}</Tag> : null}
-            {asset?.scene_type ? <Tag color="purple">{asset.scene_type}</Tag> : null}
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              共 {runs.length} 条测试记录
-            </Typography.Text>
-          </Space>
-        </Card>
+        <Space size={8} wrap>
+          <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+            测试时间：
+          </Typography.Text>
+          <DatePicker.RangePicker
+            allowClear
+            showTime={{ format: "HH:mm:ss" }}
+            format="YYYY-MM-DD HH:mm:ss"
+            value={timeRange}
+            onChange={(range) => setTimeRange(range)}
+            placeholder={["开始时间", "结束时间"]}
+          />
+        </Space>
         {canRun ? (
           <Button
             type="primary"
@@ -320,7 +335,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
           <Table<AtpAssetRunSummary>
             rowKey="id"
             size="small"
-            dataSource={runs}
+            dataSource={filteredRuns}
             loading={runsQuery.isLoading}
             columns={columns}
             pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
