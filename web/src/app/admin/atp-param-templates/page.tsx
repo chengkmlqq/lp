@@ -1,8 +1,8 @@
 "use client";
 
 // ATP 参数模板管理页。
-// 布局严格参照「菜单管理」页:左侧模板树(可搜索/可拖拽调宽) + 右侧模板节点表格;
-// 原「选中节点详情 + 试算预览」改为表格操作列的「详情 / 试算」按钮,点击用抽屉打开。
+// 布局参照「ATP 计算参数管理」页：筛选栏 + 卡片/列表双视图 + 表格操作列。
+// 数据源仍为模板树接口（平铺成行），详情/试算/编辑弹窗保留原逻辑。
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Alert,
@@ -16,6 +16,8 @@ import {
   Input,
   InputNumber,
   Modal,
+  Pagination,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -24,25 +26,22 @@ import {
   Tabs,
   Tag,
   Tooltip,
-  Tree,
   Typography,
   type MenuProps,
 } from "antd";
-import type { DataNode } from "antd/es/tree";
 import type { ColumnsType } from "antd/es/table";
 import {
   DeleteOutlined,
   EditOutlined,
   ExperimentOutlined,
   EyeOutlined,
+  FunctionOutlined,
   MoreOutlined,
   PlusOutlined,
   SearchOutlined,
-  ThunderboltOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
-import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
 
 type TreeNodeData = {
@@ -131,14 +130,91 @@ function flattenRules(node: TreeNodeData, ancestors: string[], path: string[]): 
   return rows;
 }
 
+interface TemplateCardProps {
+  row: TemplateRow;
+  canManage: boolean;
+  onDetail: () => void;
+  onEdit: () => void;
+  onPreview: () => void;
+  onDerive: () => void;
+  onDelete: () => void;
+}
+
+/** 参数模板卡片（参照 ATP 计算参数管理页 DefinitionCard 结构）。 */
+function TemplateCard({ row, canManage, onDetail, onEdit, onPreview, onDerive, onDelete }: TemplateCardProps) {
+  const hasRule = Boolean(row.node.rule_id);
+  const moreItems: MenuProps["items"] = [
+    { key: "preview", label: "试算", icon: <ExperimentOutlined />, disabled: !hasRule, onClick: onPreview },
+    ...(canManage
+      ? [
+          { key: "derive", label: "细分", icon: <PlusOutlined />, disabled: !hasRule, onClick: onDerive },
+          { key: "delete", label: "删除", icon: <DeleteOutlined />, danger: true, disabled: !hasRule, onClick: onDelete },
+        ]
+      : []),
+  ];
+  return (
+    <Card
+      size="small"
+      hoverable
+      className="admin-atp-params-card admin-atp-models-card"
+      onClick={() => void onDetail()}
+    >
+      <div className="admin-atp-params-card-title admin-atp-models-card-title flex items-center gap-2 px-4 py-3">
+        <FunctionOutlined className="text-base text-gray-500" />
+        <Typography.Text strong className="truncate flex-1">{row.node.label}</Typography.Text>
+        {row.node.status === "inherit" ? (
+          <Tag style={{ marginInlineEnd: 0 }}>继承</Tag>
+        ) : (
+          <Tag color="blue" style={{ marginInlineEnd: 0 }}>本级</Tag>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 px-4 py-3" style={{ minHeight: 120 }}>
+        <div className="admin-atp-params-card-field admin-atp-models-card-field">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>覆盖路径：</Typography.Text>
+          <Text type="secondary" style={{ fontSize: 12 }} ellipsis={{ tooltip: row.pathLabel }}>
+            {row.pathLabel}
+          </Text>
+        </div>
+        <div className="admin-atp-params-card-field admin-atp-models-card-field">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>槽位数量：</Typography.Text>
+          {row.node.has_template ? (
+            <Typography.Text style={{ fontSize: 12 }}>
+              {row.node.defined_slots}/{row.node.effective_slots}
+            </Typography.Text>
+          ) : (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>继承</Typography.Text>
+          )}
+        </div>
+      </div>
+
+      <div className="admin-atp-params-card-actions admin-atp-models-card-actions flex items-center justify-end gap-1 px-4 py-2">
+        <Space size={4}>
+          <Tooltip title="详情">
+            <Button size="small" type="text" icon={<EyeOutlined />} disabled={!hasRule} onClick={(event) => { event.stopPropagation(); onDetail(); }} />
+          </Tooltip>
+          {canManage ? (
+            <Tooltip title="编辑">
+              <Button size="small" type="text" icon={<EditOutlined />} disabled={!hasRule} onClick={(event) => { event.stopPropagation(); onEdit(); }} />
+            </Tooltip>
+          ) : null}
+          <Dropdown menu={{ items: moreItems }} trigger={["click"]}>
+            <Tooltip title="更多">
+              <Button size="small" type="text" icon={<MoreOutlined />} onClick={(event) => { event.stopPropagation(); }} />
+            </Tooltip>
+          </Dropdown>
+        </Space>
+      </div>
+    </Card>
+  );
+}
+
 export default function AtpParamTemplatesPage() {
   const { message } = App.useApp();
   const { fetchWithAuth, hasPermission } = useAuth();
   const canManage = hasPermission("atp.manage");
-  const [keyword, setKeyword] = useState("");
   const [tree, setTree] = useState<TreeResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<string>("");
   const [detail, setDetail] = useState<TemplateDetail | null>(null);
   const [meta, setMeta] = useState<MetaResponse | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
@@ -154,19 +230,16 @@ export default function AtpParamTemplatesPage() {
   const [slotParams, setSlotParams] = useState<Record<string, SlotParamRef[]>>({});
   const [paramSources, setParamSources] = useState<ParamSourceMap>({});
 
-  // 抽屉状态
+  // 弹窗状态
   const [detailOpen, setDetailOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  // 左侧树宽度(参照菜单页:可拖拽调宽)
-  const isMobile = useMobileDetection();
-  const [leftPanelWidth, setLeftPanelWidth] = useState(240);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const isResizing = useRef(false);
-  // 右表高度随视口自适应(参照菜单管理页)
+  // 视图模式：卡片 / 列表（参照 ATP 计算参数管理页）
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  // 表体高度随视口自适应
   const [tableScrollY, setTableScrollY] = useState(TEMPLATE_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
-  // 右表本地筛选(参照菜单管理页:关键词 + 层级 + 查询)
+  // 本地筛选（关键词 + 层级 + 查询）
   const [tableKeywordInput, setTableKeywordInput] = useState("");
   const [tableKeyword, setTableKeyword] = useState("");
   const [levelFilter, setLevelFilter] = useState<"own" | "inherit" | undefined>(undefined);
@@ -175,7 +248,7 @@ export default function AtpParamTemplatesPage() {
   const loadTree = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetchWithAuth(`/api/v1/atp/param-templates/tree${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ""}`);
+      const response = await fetchWithAuth("/api/v1/atp/param-templates/tree");
       if (!response.ok) throw new Error(await readApiError(response));
       const data: TreeResponse = await response.json();
       setTree(data);
@@ -184,7 +257,7 @@ export default function AtpParamTemplatesPage() {
     } finally {
       setLoading(false);
     }
-  }, [keyword, message]);
+  }, [message]);
 
   const loadMeta = useCallback(async () => {
     try {
@@ -223,8 +296,6 @@ export default function AtpParamTemplatesPage() {
     return map;
   }, [tree]);
 
-  const selectedNode = nodeMap.get(selectedKey) ?? null;
-
   const loadDetail = useCallback(
     async (ruleId: string) => {
       try {
@@ -258,43 +329,27 @@ export default function AtpParamTemplatesPage() {
     }
   }, [previewCtx, detail?.id, message]);
 
-  const onSelect = (keys: React.Key[]) => {
-    const key = String(keys[0] ?? "");
-    setSelectedKey(key);
-    setPagination((prev) => ({ ...prev, current: 1 }));
-    const node = nodeMap.get(key);
-    if (node?.rule_id) {
-      void loadDetail(node.rule_id);
-    } else {
-      setDetail(null);
-      setPreview(null);
-    }
-  };
-
-  // 右表「查询」:提交关键词(本地过滤,参照菜单页);每次点击都强制触发一次接口请求
+  // 右表「查询」:提交关键词(本地过滤);每次点击都强制触发一次接口请求
   const handleTableSearch = () => {
     setTableKeyword(tableKeywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    // 参照菜单管理页:即使关键词/分页未变化也重新拉取接口(替代原「刷新」按钮)
     void loadTree();
   };
 
-  // 清除筛选:同时清掉树选中、右表关键词与层级过滤
+  // 清除筛选:清掉关键词与层级过滤
   const clearFilters = () => {
-    setSelectedKey("");
     setTableKeywordInput("");
     setTableKeyword("");
     setLevelFilter(undefined);
     setPagination((prev) => ({ ...prev, current: 1 }));
   };
 
-  // 打开详情抽屉:先加载模板数据再开
+  // 打开详情弹窗:先加载模板数据再开
   const openDetailDrawer = async (row: TemplateRow) => {
     if (!row.node.rule_id) {
       message.info(row.node.has_template ? "该节点是继承节点,没有独立模板" : "该层为分组节点");
       return;
     }
-    setSelectedKey(row.key);
     await loadDetail(row.node.rule_id);
     setDetailOpen(true);
   };
@@ -305,7 +360,6 @@ export default function AtpParamTemplatesPage() {
       message.info("该节点没有独立模板,请选择一个有模板的节点试算");
       return;
     }
-    setSelectedKey(row.key);
     await loadDetail(row.node.rule_id);
     setPreview(null);
     setPreviewOpen(true);
@@ -375,6 +429,17 @@ export default function AtpParamTemplatesPage() {
     } catch (error) {
       message.error(error instanceof Error ? error.message : "派生失败");
     }
+  };
+
+  // 新建顶层模板（不带父级细分）
+  const openCreate = () => {
+    setDetail(null);
+    setEditingForChild(false);
+    form.resetFields();
+    form.setFieldsValue({ priority: 100, mode: "merge", fallback_enabled: true });
+    setSlotRows([]);
+    setDefaultRows([]);
+    setEditing(true);
   };
 
   const openEditor = (inherited?: Record<string, string>) => {
@@ -454,41 +519,11 @@ export default function AtpParamTemplatesPage() {
     }
   };
 
-  const treeData = useMemo(() => {
-    const convert = (node: TreeNodeData): DataNode => {
-      const badge =
-        node.node_type === "global" ? null : node.has_template ? (
-          <Tag color="blue" style={{ marginInlineStart: 6 }}>
-            {node.defined_slots}/{node.effective_slots}
-          </Tag>
-        ) : (
-          <Tag style={{ marginInlineStart: 6 }}>继承</Tag>
-        );
-      const dot = node.node_type === "rule" && node.has_template ? "●" : node.node_type === "group" && node.children.length ? "" : "○";
-      return {
-        key: node.key,
-        title: (
-          <span>
-            <span style={{ opacity: node.has_template || node.node_type === "global" ? 1 : 0.55, marginInlineEnd: 4 }}>{dot}</span>
-            {node.label}
-            {badge}
-          </span>
-        ),
-        children: node.children.map(convert),
-      };
-    };
-    return tree ? [convert(tree.root)] : [];
-  }, [tree]);
-
   // 表格数据:树节点平铺(rule/has_template 节点)
   const templateRows = useMemo(() => (tree?.root ? flattenRules(tree.root, [], []) : []), [tree]);
   const hasTableFilter = Boolean(tableKeyword.trim() || levelFilter);
   const filteredRows = useMemo(() => {
     let rows = templateRows;
-    if (selectedKey) {
-      // 树点击:只显示选中节点及其子节点的模板
-      rows = rows.filter((row) => row.ancestors.includes(selectedKey) || row.key === selectedKey);
-    }
     const kw = tableKeyword.trim().toLowerCase();
     if (kw) {
       rows = rows.filter(
@@ -499,7 +534,7 @@ export default function AtpParamTemplatesPage() {
       rows = rows.filter((row) => row.node.status === levelFilter);
     }
     return rows;
-  }, [templateRows, selectedKey, tableKeyword, levelFilter]);
+  }, [templateRows, tableKeyword, levelFilter]);
 
   const slotColumns: ColumnsType<SlotRow> = [
     { title: "槽位", dataIndex: "slot", width: 130, render: (v) => <Text code>{v}</Text> },
@@ -649,15 +684,12 @@ export default function AtpParamTemplatesPage() {
       render: (_v, row) => {
         const hasRule = Boolean(row.node.rule_id);
         const editTemplate = () => {
-          setSelectedKey(row.key);
           if (row.node.rule_id) void loadDetail(row.node.rule_id).then(() => openEditor());
         };
         const deleteTemplate = () => {
-          setSelectedKey(row.key);
           if (row.node.rule_id) void loadDetail(row.node.rule_id).then(() => void removeTemplate());
         };
         const deriveTemplate = () => {
-          setSelectedKey(row.key);
           const ruleId = row.node.rule_id;
           if (ruleId) void loadDetail(ruleId).then(() => void deriveChild());
         };
@@ -721,34 +753,6 @@ export default function AtpParamTemplatesPage() {
     },
   ];
 
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizing.current = true;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  }, []);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      setLeftPanelWidth(Math.max(180, Math.min(600, e.clientX - rect.left)));
-    };
-    const handleMouseUp = () => {
-      if (isResizing.current) {
-        isResizing.current = false;
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      }
-    };
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
-
   // 参照菜单管理页:根据筛选栏/表格顶部位置计算滚动区高度,
   // 避免固定 320px 在不同窗口下出现底部留白或双滚动条。
   const updateTableScrollY = useCallback(() => {
@@ -804,155 +808,172 @@ export default function AtpParamTemplatesPage() {
         type="editable-card"
         hideAdd
         defaultActiveKey="list"
-        className="admin_menus_tabs"
+        className="admin-atp-params-tabs"
+        tabBarExtraContent={
+          canManage ? (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
+              新建模板
+            </Button>
+          ) : null
+        }
         items={[
           {
             key: "list",
-            label: <span className="admin-menus-tab-title">参数模板管理</span>,
+            label: (
+              <span className="admin-atp-params-tab-title">
+                <FunctionOutlined /> 参数模板管理
+              </span>
+            ),
             closable: false,
             children: (
-              <div className="admin_menus_list_pane">
-                <div ref={containerRef} className="admin-menus-page-body">
-        {/* 左侧:模板树(参照菜单管理页,移动端隐藏) */}
-        {!isMobile ? (
-          <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
-            <Card
-              className="admin-menus-tree-card"
-              style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-              styles={{ body: { flex: 1, padding: 0 } }}
-            >
-              <div className="admin-menus-sider-search">
-                <Input
-                  className="admin-menus-search-input"
-                  placeholder="搜索模板..."
-                  prefix={<SearchOutlined />}
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  onPressEnter={() => void loadTree()}
-                  allowClear
-                />
-              </div>
-              <div className="admin-menus-sider-menu">
-                {loading ? (
-                  <div style={{ textAlign: "center", padding: "24px" }}>
-                    <Spin />
-                  </div>
-                ) : treeData.length ? (
-                  <Tree
-                    showLine
-                    defaultExpandAll
-                    selectedKeys={selectedKey ? [selectedKey] : []}
-                    onSelect={onSelect}
-                    treeData={treeData}
-                  />
-                ) : (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description={keyword.trim() ? "未找到匹配的模板" : "暂无参数模板"}
-                  />
-                )}
-              </div>
-            </Card>
-          </div>
-        ) : null}
-        {!isMobile ? (
-          <div className="admin-menus-resize-handle" onMouseDown={handleResizeStart}>
-            <div className="admin-menus-resize-handle-line" />
-          </div>
-        ) : null}
+              <div className="admin-atp-params-list-pane">
+                <div className="admin-filter-bar">
+                  <Form layout="inline">
+                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Input
+                        allowClear
+                        value={tableKeywordInput}
+                        onChange={(event) => setTableKeywordInput(event.currentTarget.value)}
+                        placeholder="按模板名称/覆盖路径搜索"
+                        onPressEnter={() => handleTableSearch()}
+                      />
+                    </Form.Item>
 
-        {/* 右侧:模板节点表格 */}
-        <div className="admin-menus-main">
-          <div className="admin-filter-bar">
-            <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Input
-                  allowClear
-                  value={tableKeywordInput}
-                  onChange={(event) => setTableKeywordInput(event.currentTarget.value)}
-                  placeholder="按模板名称/覆盖路径搜索"
-                  onPressEnter={() => handleTableSearch()}
-                />
-              </Form.Item>
+                    <Form.Item label="层级" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Select<"own" | "inherit">
+                        value={levelFilter}
+                        allowClear
+                        placeholder="全部"
+                        onChange={(value) => {
+                          setLevelFilter(value);
+                          setPagination((prev) => ({ ...prev, current: 1 }));
+                        }}
+                        options={[
+                          { value: "own", label: "本级模板" },
+                          { value: "inherit", label: "继承节点" },
+                        ]}
+                      />
+                    </Form.Item>
 
-              <Form.Item label="层级" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-                <Select<"own" | "inherit">
-                  value={levelFilter}
-                  allowClear
-                  placeholder="全部"
-                  onChange={(value) => {
-                    setLevelFilter(value);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                  }}
-                  options={[
-                    { value: "own", label: "本级模板" },
-                    { value: "inherit", label: "继承节点" },
-                  ]}
-                />
-              </Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button htmlType="button" icon={<SearchOutlined />} onClick={() => handleTableSearch()} className="admin-search-btn">
+                        查询
+                      </Button>
+                    </Form.Item>
 
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Button htmlType="button" icon={<SearchOutlined />} onClick={() => handleTableSearch()} className="admin-search-btn">
-                  查询
-                </Button>
-              </Form.Item>
+                    {hasTableFilter ? (
+                      <Form.Item style={{ marginBottom: 0 }}>
+                        <Button htmlType="button" onClick={() => clearFilters()}>
+                          清除筛选
+                        </Button>
+                      </Form.Item>
+                    ) : null}
 
-              {selectedKey || hasTableFilter ? (
-                <Form.Item style={{ marginBottom: 0 }}>
-                  <Button htmlType="button" onClick={() => clearFilters()}>
-                    清除筛选
-                  </Button>
-                </Form.Item>
-              ) : null}
-            </Form>
-          </div>
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-menus-table-anchor"
-            style={{ "--admin-menus-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<TemplateRow>
-              rowKey="key"
-              size="small"
-              dataSource={filteredRows}
-              loading={loading}
-              columns={tableColumns}
-              tableLayout="fixed"
-              scroll={{ x: 900, y: tableScrollY }}
-              pagination={{
-                current: pagination.current,
-                pageSize: pagination.pageSize,
-                total: Math.max(filteredRows.length, 1),
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: () => `共 ${filteredRows.length} 条`,
-                hideOnSinglePage: false,
-                style: { marginBottom: 0 },
-                onChange: (page, pageSize) => {
-                  setPagination({ current: page, pageSize });
-                },
-              }}
-              locale={{
-                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的模板节点。" />,
-              }}
-            />
-          </div>
-        </div>
+                    <Form.Item style={{ marginBottom: 0, marginInlineStart: "auto" }}>
+                      <Segmented
+                        value={viewMode}
+                        onChange={(value) => {
+                          setViewMode(value as "card" | "list");
+                          setPagination((prev) => ({ ...prev, current: 1 }));
+                        }}
+                        options={[
+                          { label: "卡片视图", value: "card" },
+                          { label: "列表视图", value: "list" },
+                        ]}
+                      />
+                    </Form.Item>
+                  </Form>
                 </div>
+
+                <Spin spinning={loading}>
+                {filteredRows.length === 0 && !loading ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的模板节点。" style={{ padding: 40 }} />
+                ) : viewMode === "card" ? (
+                  <div className="relative flex min-h-0 flex-1 flex-col">
+                    <div className="admin-atp-params-card-scroll">
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        {filteredRows
+                          .slice((pagination.current - 1) * pagination.pageSize, pagination.current * pagination.pageSize)
+                          .map((row) => (
+                            <TemplateCard
+                              key={row.key}
+                              row={row}
+                              canManage={canManage}
+                              onDetail={() => void openDetailDrawer(row)}
+                              onEdit={() => {
+                                if (row.node.rule_id) void loadDetail(row.node.rule_id).then(() => openEditor());
+                              }}
+                              onPreview={() => void openPreviewDrawer(row)}
+                              onDerive={() => {
+                                const ruleId = row.node.rule_id;
+                                if (ruleId) void loadDetail(ruleId).then(() => void deriveChild());
+                              }}
+                              onDelete={() => {
+                                if (row.node.rule_id) void loadDetail(row.node.rule_id).then(() => void removeTemplate());
+                              }}
+                            />
+                          ))}
+                      </div>
+                      {filteredRows.length > 0 ? (
+                        <div className="admin-atp-params-pagination">
+                          <Pagination
+                            current={pagination.current}
+                            pageSize={pagination.pageSize}
+                            total={filteredRows.length}
+                            onChange={(page, pageSize) => setPagination({ current: page, pageSize })}
+                            showSizeChanger
+                            showTotal={(total) => `共 ${total} 条`}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    ref={tableScrollAnchorRef}
+                    className="admin-menus-table-anchor"
+                    style={{ "--admin-menus-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                  >
+                    <Table<TemplateRow>
+                      rowKey="key"
+                      size="small"
+                      dataSource={filteredRows}
+                      loading={loading}
+                      columns={tableColumns}
+                      tableLayout="fixed"
+                      scroll={{ x: 900, y: tableScrollY }}
+                      pagination={{
+                        current: pagination.current,
+                        pageSize: pagination.pageSize,
+                        total: Math.max(filteredRows.length, 1),
+                        showSizeChanger: true,
+                        pageSizeOptions: [10, 20, 50, 100],
+                        showTotal: () => `共 ${filteredRows.length} 条`,
+                        hideOnSinglePage: false,
+                        style: { marginBottom: 0 },
+                        onChange: (page, pageSize) => {
+                          setPagination({ current: page, pageSize });
+                        },
+                      }}
+                      locale={{
+                        emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的模板节点。" />,
+                      }}
+                    />
+                  </div>
+                )}
+                </Spin>
               </div>
             ),
           },
         ]}
       />
 
-      {/* ── 详情抽屉 ── */}
-      <Drawer
+      {/* ── 详情弹窗（原抽屉） ── */}
+      <Modal
         open={detailOpen}
         title={detail ? `模板详情：${detail.name}` : "模板详情"}
-        width={680}
-        onClose={() => setDetailOpen(false)}
-        destroyOnClose
-        extra={
+        width={720}
+        footer={
           detail && canManage ? (
             <Space>
               <Button icon={<PlusOutlined />} onClick={() => { setEditingForChild(true); void deriveChild(); }}>
@@ -965,6 +986,8 @@ export default function AtpParamTemplatesPage() {
             </Space>
           ) : null
         }
+        onCancel={() => setDetailOpen(false)}
+        destroyOnHidden
       >
         {!detail ? (
           <div style={{ textAlign: "center", padding: "40px 0" }}>
@@ -1018,7 +1041,7 @@ export default function AtpParamTemplatesPage() {
             ) : null}
           </Space>
         )}
-      </Drawer>
+      </Modal>
 
       {/* ── 试算抽屉 ── */}
       <Drawer
@@ -1095,10 +1118,10 @@ export default function AtpParamTemplatesPage() {
         </Space>
       </Drawer>
 
-      {/* ── 编辑 / 新建细分弹窗(保留原逻辑) ── */}
+      {/* ── 编辑 / 新建 / 新建细分弹窗 ── */}
       <Modal
         open={editing}
-        title={editingForChild || !detail ? "新建细分模板" : `编辑：${detail.name}`}
+        title={editingForChild ? "新建细分模板" : detail ? `编辑：${detail.name}` : "新建模板"}
         width={880}
         onCancel={() => setEditing(false)}
         onOk={() => void saveEditor()}
@@ -1332,7 +1355,7 @@ export default function AtpParamTemplatesPage() {
                   placeholder="如 h_u / shield_h"
                   options={(meta?.variable_names ?? []).map((item) => ({ value: item, label: item }))}
                   onChange={(next) => setDefaultRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, name: next, key: next } : item)))}
-                  dropdownRender={(menu) => (
+                  popupRender={(menu) => (
                     <>
                       {menu}
                       <Input
