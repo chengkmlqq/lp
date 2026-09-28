@@ -7,20 +7,23 @@
 //   · constant     : 字面量
 // 参数目录（参数模板页 slots_json 的 {"param": code} 形态）消费本页定义；
 // 参数 ↔ ATP 模型槽位的关系仍由「参数模板」映射。
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   Alert,
   App,
   Button,
   Card,
+  Col,
   Drawer,
+  Dropdown,
   Empty,
   Form,
   Input,
   InputNumber,
   Modal,
   Pagination,
+  Row,
   Segmented,
   Select,
   Space,
@@ -43,6 +46,7 @@ import {
   EyeOutlined,
   FunctionOutlined,
   LinkOutlined,
+  MoreOutlined,
   PlusOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
@@ -102,6 +106,12 @@ const SOURCE_TYPE_LABEL: Record<SourceType, string> = {
   line_binding: "线路导入绑定",
   script: "计算脚本",
   constant: "字面量",
+};
+
+const DATA_TYPE_LABEL: Record<string, string> = {
+  number: "数值",
+  string: "字符串",
+  bool: "布尔",
 };
 
 // 列表视图动态表体高度（严格照搬 power-lines 的常量口径）
@@ -190,23 +200,31 @@ function DefinitionCard({ item, canManage, onTest, onEdit, onDetail, onDelete }:
 
       <div className="flex flex-col gap-2 px-4 py-3" style={{ minHeight: 120 }}>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>参数编码：</Typography.Text>
           <Typography.Text code style={{ fontSize: 12 }}>{item.code}</Typography.Text>
+        </div>
+        <div className="admin-atp-params-card-field admin-atp-models-card-field">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>参数来源：</Typography.Text>
           <Tag color={sourceColor} style={{ marginInlineEnd: 0 }}>{sourceLabel}</Tag>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            单位：{item.unit ?? "-"}
+            参数类型：{DATA_TYPE_LABEL[item.data_type] ?? item.data_type}
           </Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            类型：{item.data_type}
-          </Typography.Text>
+        </div>
+        <div className="admin-atp-params-card-field admin-atp-models-card-field">
+          {item.source_type === "line_binding" ? (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>取数口径：</Typography.Text>
+          ) : item.source_type === "script" ? (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>脚本内容：</Typography.Text>
+          ) : null}
+          {renderSourceSummary(item)}
         </div>
         {item.description ? (
           <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis={{ tooltip: item.description }}>
-            说明：{item.description}
+            参数说明：{item.description}
           </Typography.Text>
         ) : null}
-        <div className="admin-atp-params-card-field admin-atp-models-card-field">{renderSourceSummary(item)}</div>
       </div>
 
       <div className="admin-atp-params-card-actions admin-atp-models-card-actions flex items-center justify-end gap-1 px-4 py-2">
@@ -220,12 +238,51 @@ function DefinitionCard({ item, canManage, onTest, onEdit, onDetail, onDelete }:
             <Tooltip title="编辑">
               <Button size="small" type="text" icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); onEdit(item); }} />
             </Tooltip>
-            <Tooltip title="详情">
-              <Button size="small" type="text" icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); onDetail(item); }} />
-            </Tooltip>
-            <Tooltip title="删除">
-              <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={(event) => { event.stopPropagation(); onDelete(item); }} />
-            </Tooltip>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "detail",
+                    label: (
+                      <Space size={4}>
+                        <EyeOutlined />
+                        <span>详情</span>
+                      </Space>
+                    ),
+                    onClick: (event) => {
+                      event.domEvent.stopPropagation();
+                      onDetail(item);
+                    },
+                  },
+                  {
+                    key: "delete",
+                    label: (
+                      <Space size={4}>
+                        <DeleteOutlined />
+                        <span>删除</span>
+                      </Space>
+                    ),
+                    danger: true,
+                    onClick: (event) => {
+                      event.domEvent.stopPropagation();
+                      onDelete(item);
+                    },
+                  },
+                ],
+              }}
+              trigger={["click"]}
+            >
+              <Tooltip title="更多">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MoreOutlined />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                />
+              </Tooltip>
+            </Dropdown>
           </Space>
         ) : (
           <Button size="small" type="text" icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); onDetail(item); }}>
@@ -398,8 +455,6 @@ export default function AtpParamsPage() {
   };
 
   const watchSource = Form.useWatch("source_type", form);
-  const watchScript = Form.useWatch("script_code", form);
-  const watchDeps = Form.useWatch("deps_json", form);
 
   const runScriptTest = async () => {
     const script = String(form.getFieldValue("script_code") ?? "");
@@ -456,7 +511,11 @@ export default function AtpParamsPage() {
   const saveDefinition = async () => {
     setSaving(true);
     try {
-      const values = await form.validateFields();
+      await form.validateFields();
+      // ⚠️ 不用 validateFields() 的返回值：它只含「有 Form.Item 绑定」的字段，
+      // 而 binding_json.source 由取数口径 onChange 写入 store、无对应 Form.Item，会被漏掉。
+      // 这里校验后从完整 store 取值（true = 含未注册字段）。
+      const values = form.getFieldsValue(true);
       const payload = {
         code: String(values.code ?? "").trim(),
         name: String(values.name ?? "").trim(),
@@ -473,7 +532,7 @@ export default function AtpParamsPage() {
       if (values.source_type === "line_binding") {
         const binding = payload.binding_json || {};
         if (!binding.source || !binding.path) {
-          message.warning("线路导入绑定需要选择「来源 + 字段路径」");
+          message.warning("线路导入绑定需要选择「来源 + 取数口径」");
           return;
         }
       }
@@ -567,11 +626,18 @@ export default function AtpParamsPage() {
     .map((item) => ({ value: item.code, label: `${item.code}（${item.name}）` }));
 
   const bindingSourceOptions = fieldsMeta?.source_options ?? [];
-  const bindingFieldOptions = (fieldsMeta?.fields ?? []).map((field) => ({
-    value: field.value,
-    label: `${field.label}【${field.source}】`,
-    source: field.source,
-  }));
+  // 取数口径按来源域分组（OptGroup）：选中字段即确定来源域，无需单独选择来源
+  const bindingFieldOptions = useMemo(() => {
+    const groups = new Map<string, { label: string; options: { value: string; label: string; source: string }[] }>();
+    for (const field of fieldsMeta?.fields ?? []) {
+      const groupLabel = bindingSourceOptions.find((s) => s.value === field.source)?.label ?? field.source;
+      if (!groups.has(field.source)) {
+        groups.set(field.source, { label: groupLabel, options: [] });
+      }
+      groups.get(field.source)!.options.push({ value: field.value, label: field.label, source: field.source });
+    }
+    return Array.from(groups.values());
+  }, [fieldsMeta, bindingSourceOptions]);
 
   const columns: ColumnsType<DefinitionItem> = [
     {
@@ -631,8 +697,38 @@ export default function AtpParamsPage() {
           <Tooltip title="编辑">
             <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEdit(record)} />
           </Tooltip>
-          <Button size="small" type="text" icon={<EyeOutlined />} onClick={() => openDetail(record)} />
-          <Button size="small" type="text" icon={<DeleteOutlined />} danger onClick={() => removeDefinition(record)} />
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: "detail",
+                  label: (
+                    <Space size={4}>
+                      <EyeOutlined />
+                      <span>详情</span>
+                    </Space>
+                  ),
+                  onClick: () => openDetail(record),
+                },
+                {
+                  key: "delete",
+                  label: (
+                    <Space size={4}>
+                      <DeleteOutlined />
+                      <span>删除</span>
+                    </Space>
+                  ),
+                  danger: true,
+                  onClick: () => removeDefinition(record),
+                },
+              ],
+            }}
+            trigger={["click"]}
+          >
+            <Tooltip title="更多">
+              <Button type="text" size="small" icon={<MoreOutlined />} />
+            </Tooltip>
+          </Dropdown>
         </Space>
       ),
     });
@@ -823,7 +919,7 @@ export default function AtpParamsPage() {
               dataSource={[
                 { key: "code", label: "参数 code", value: detail.code },
                 { key: "unit", label: "单位", value: detail.unit ?? "-" },
-                { key: "data_type", label: "数据类型", value: detail.data_type },
+                { key: "data_type", label: "数据类型", value: DATA_TYPE_LABEL[detail.data_type] ?? detail.data_type },
                 { key: "deps", label: "依赖参数", value: detail.deps_json.length ? detail.deps_json.join(", ") : "-" },
                 { key: "enabled", label: "启用", value: detail.enabled ? "是" : "否" },
                 { key: "desc", label: "说明", value: detail.description ?? "-" },
@@ -879,62 +975,69 @@ export default function AtpParamsPage() {
         destroyOnHidden={false}
       >
         <Form form={form} layout="vertical" initialValues={{ data_type: "number", enabled: true, sort_order: 0 }}>
-          <Space size={12} style={{ display: "flex" }} wrap>
-            <Form.Item label="来源类型" name="source_type" rules={[{ required: true }]} style={{ width: 180 }}>
-              <Select
-                options={[
-                  { value: "line_binding", label: "线路导入绑定" },
-                  { value: "script", label: "计算脚本" },
-                  { value: "constant", label: "字面量" },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item label="参数 code" name="code" rules={[{ required: true, pattern: /^[A-Za-z0-9_]+$/, message: "字母/数字/下划线" }]} style={{ width: 200 }}>
-              <Input placeholder="如 h_u / coupling_k0" disabled={!!editing} />
-            </Form.Item>
-            <Form.Item label="名称" name="name" rules={[{ required: true }]} style={{ width: 220 }}>
-              <Input placeholder="中文名（如 耦合系数 k0）" />
-            </Form.Item>
-          </Space>
-          <Space size={12} style={{ display: "flex" }} wrap>
-            <Form.Item label="单位" name="unit" style={{ width: 120 }}>
-              <Input placeholder="如 m / kA" />
-            </Form.Item>
-            <Form.Item label="数据类型" name="data_type" style={{ width: 120 }}>
-              <Select
-                options={[
-                  { value: "number", label: "数值" },
-                  { value: "string", label: "字符串" },
-                  { value: "bool", label: "布尔" },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item label="排序" name="sort_order" style={{ width: 100 }}>
-              <InputNumber min={0} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item label="启用" name="enabled" valuePropName="checked" style={{ width: 80 }}>
-              <Switch />
-            </Form.Item>
-          </Space>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="参数 code"
+                name="code"
+                tooltip="字母/数字/下划线，如 h_u / coupling_k0"
+                rules={[{ required: true, pattern: /^[A-Za-z0-9_]+$/, message: "字母/数字/下划线" }]}
+              >
+                <Input placeholder="请输入参数 code" disabled={!!editing} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="名称" name="name" tooltip="中文名，如 耦合系数 k0" rules={[{ required: true }]}>
+                <Input placeholder="请输入中文名称" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="参数来源" name="source_type" rules={[{ required: true }]}>
+                <Select
+                  options={[
+                    { value: "line_binding", label: "线路导入绑定" },
+                    { value: "script", label: "计算脚本" },
+                    { value: "constant", label: "字面量" },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="单位" name="unit" tooltip="结果单位，如 m / kA">
+                <Input placeholder="请输入单位" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="数据类型" name="data_type" tooltip="数值 / 字符串 / 布尔">
+                <Select
+                  options={[
+                    { value: "number", label: "数值" },
+                    { value: "string", label: "字符串" },
+                    { value: "bool", label: "布尔" },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="排序" name="sort_order" tooltip="数字越小越靠前">
+                <InputNumber min={0} style={{ width: "100%" }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="启用" name="enabled" valuePropName="checked" tooltip="关闭后模板解析将跳过该参数">
+                <Switch />
+              </Form.Item>
+            </Col>
+          </Row>
 
           {watchSource === "line_binding" ? (
-            <>
-              <Alert
-                type="info"
-                showIcon
-                style={{ marginBottom: 12 }}
-                message="线路导入绑定"
-                description="建立「线路中杆塔属性路径 ↔ 参数名」的关联：从来源域（base_tower / profile / options）按点路径（a.b.c）抽取原始字段。"
-              />
-              <Space size={12} style={{ display: "flex" }} wrap>
-                <Form.Item label="自定义绑定来源" name={["binding_json", "source"]} style={{ width: 200 }}>
-                  <Select
-                    allowClear
-                    placeholder="选择来源域"
-                    options={bindingSourceOptions}
-                  />
-                </Form.Item>
-                <Form.Item label="字段路径" name={["binding_json", "path"]} style={{ width: 280 }}>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label="取数口径"
+                  name={["binding_json", "path"]}
+                  tooltip="从来源域（杆塔主表 / 塔属性 / 任务执行选项）按点路径（a.b.c）抽取原始字段；按来源域分组展示，选中字段即确定来源"
+                >
                   <Select
                     allowClear
                     placeholder="选择杆塔属性字段"
@@ -943,46 +1046,52 @@ export default function AtpParamsPage() {
                     onChange={(next) => {
                       const field = (fieldsMeta?.fields ?? []).find((item) => item.value === next);
                       if (field) {
-                        // 选字段即确定来源域（避免来源/路径不匹配）
-                        form.setFieldValue(["binding_json", "source"], field.source);
+                        // 选字段即确定来源域（避免来源/路径不匹配）。
+                        // ⚠️ 不用 form.setFieldValue：它内部 setFields 每次传新的 errors 字面量，
+                        // 触发 rc-util isEqual 把「errors/warnings 共享的 EMPTY_ERRORS 引用」误判为
+                        // 循环引用（控制台 Warning: There may be circular references）。
+                        // setFieldsValue 走 external 分支不传 errors/warnings，深合并只改 source。
+                        form.setFieldsValue({ binding_json: { source: field.source } });
                       }
                     }}
                   />
                 </Form.Item>
-              </Space>
-              <Form.Item label="单位换算" name={["binding_json", "transform"]} style={{ width: 200 }}>
-                <Select
-                  allowClear
-                  placeholder="无"
-                  options={(fieldsMeta?.transform_options ?? []).map((value) => ({ value, label: value === "mm_to_m" ? "毫米→米（>100 启发式）" : value }))}
-                />
-              </Form.Item>
-            </>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="单位换算" name={["binding_json", "transform"]} tooltip="取值后应用换算，如 毫米→米（>100 启发式）">
+                  <Select
+                    allowClear
+                    placeholder="无"
+                    options={(fieldsMeta?.transform_options ?? []).map((value) => ({ value, label: value === "mm_to_m" ? "毫米→米（>100 启发式）" : value }))}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
           ) : null}
 
           {watchSource === "script" ? (
             <>
-              <Alert
-                type="warning"
-                showIcon
-                style={{ marginBottom: 12 }}
-                message="Python 计算脚本（沙箱）"
-                description="只允许纯数学函数（abs/sqrt/hypot/log/pow/exp/sin/cos/tan/clamp/v 等），禁止 import/IO/循环。最后变量 result 作为输出；依赖参数需在下方显式声明。"
-              />
-              <Form.Item label="依赖参数" name="deps_json">
+              <Form.Item
+                label="依赖参数"
+                name="deps_json"
+                tooltip="声明脚本依赖的参数（可从注册表选，也可用上下文键名）；依赖会先于脚本求值。未声明依赖时，脚本只能引用输入框外的上下文键（如 shield_h / h_u / voltage），否则保存校验会拦截"
+              >
                 <Select
                   mode="multiple"
                   allowClear
-                  placeholder="声明脚本依赖的参数（可从注册表选，也可用上下文键名）"
+                  placeholder="选择依赖参数"
                   options={depsOptions}
                 />
               </Form.Item>
-              <Form.Item label="脚本内容" name="script_code" rules={[{ required: true, message: "请输入脚本" }]}>
+              <Form.Item
+                label="脚本内容"
+                name="script_code"
+                tooltip="Python 沙箱：只允许纯数学函数（abs/sqrt/hypot/log/pow/exp/sin/cos/tan/clamp/v 等），禁止 import/IO/循环；最后变量 result 作为输出"
+                rules={[{ required: true, message: "请输入脚本" }]}
+              >
                 <Input.TextArea
                   rows={10}
-                  placeholder={
-                    "示例：\n# 耦合系数 k0\nrk = 0.0055\ny1 = shield_h - v_arc(voltage) * 2.0 / 3.0\n...\nresult = (z31 + z32) / (z11 + z12)\n\n可用函数见右侧「字段目录」标签的 script_functions。"
-                  }
+                  placeholder="请输入计算脚本"
                   style={{ fontFamily: "monospace", fontSize: 12 }}
                 />
               </Form.Item>
@@ -1014,18 +1123,19 @@ export default function AtpParamsPage() {
           ) : null}
 
           {watchSource === "constant" ? (
-            <Form.Item label="字面量" name={["binding_json", "value"]} rules={[{ required: true, message: "请输入字面量" }]}>
-              <Input placeholder="如 0.0055" />
+            <Form.Item
+              label="字面量"
+              name={["binding_json", "value"]}
+              tooltip="固定常量，如 0.0055"
+              rules={[{ required: true, message: "请输入字面量" }]}
+            >
+              <Input placeholder="请输入字面量" />
             </Form.Item>
           ) : null}
 
-          <Form.Item label="说明" name="description">
-            <Input.TextArea rows={2} placeholder="参数用途 / 单位说明 / 来源（可选）" />
+          <Form.Item label="说明" name="description" tooltip="参数用途 / 单位说明 / 来源（可选）">
+            <Input.TextArea rows={2} placeholder="请输入说明" />
           </Form.Item>
-
-          {watchSource === "script" && (watchDeps ?? []).length === 0 ? (
-            <Alert type="warning" showIcon message="尚未声明依赖参数：脚本只能引用输入框外的上下文键（如 shield_h / h_u / voltage），否则保存校验会拦截。" style={{ marginBottom: 12 }} />
-          ) : null}
 
           <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
             <Button disabled={saving} onClick={() => setEditOpen(false)}>
