@@ -5,7 +5,7 @@
 // 二进制/不存在由后端分类（text / binary / not-found），前端按类型提示。
 
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Descriptions, Spin, Typography } from "antd";
+import { Alert, Button, Spin, Typography } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
@@ -151,23 +151,12 @@ export function AtpFileContentViewer({ assetId, relativePath, name }: AtpFileCon
   const showMore = hasMore && !contentQuery.isFetching;
 
   return (
-    <div>
-      <Descriptions
-        bordered
-        size="small"
-        column={3}
-        items={[
-          { key: "name", label: "文件名", children: data.name || name || "-" },
-          { key: "size", label: "文件大小", children: formatSize(data.size) },
-          { key: "mime", label: "MIME", children: data.mime_type || "-" },
-        ]}
-      />
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          marginTop: 16,
           marginBottom: 8,
         }}
       >
@@ -184,7 +173,8 @@ export function AtpFileContentViewer({ assetId, relativePath, name }: AtpFileCon
         onScroll={handleScroll}
         className="task-log-viewer-scroll"
         style={{
-          maxHeight: 480,
+          flex: 1,
+          minHeight: 0,
           overflow: "auto",
           padding: 16,
           backgroundColor: "#0f172a",
@@ -195,6 +185,7 @@ export function AtpFileContentViewer({ assetId, relativePath, name }: AtpFileCon
           wordBreak: "normal",
           borderRadius: 4,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          margin: 0,
         }}
       >
         {loadedLines.length === 0 ? "（空文件）" : loadedLines.join("\n")}

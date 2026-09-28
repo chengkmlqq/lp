@@ -201,6 +201,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
         title={`文件内容：${previewFile?.name ?? ""}`}
         width={800}
         destroyOnHidden
+        styles={{ body: { height: "75vh", overflow: "hidden", display: "flex", flexDirection: "column", padding: 16 } }}
         onClose={() => setPreviewFile(null)}
       >
         {previewFile ? (
