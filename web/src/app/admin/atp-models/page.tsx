@@ -228,6 +228,31 @@ function toAtpTreeDataNode(node: AtpTreeMapNode): DataNode {
   };
 }
 
+// 懒加载版 DataNode：不带 children（点击展开时由 loadData 从参照树注入），
+// 参照树中无子节点（该路径已到最深维度）的节点标记 isLeaf 隐藏展开箭头。
+function toLazyAtpTreeDataNode(node: AtpTreeMapNode): DataNode {
+  return {
+    key: node.key,
+    title: (
+      <span className="admin-atp-models-tree-node">
+        <span className="admin-atp-models-tree-node-title">{node.label}</span>
+        <span className="admin-atp-models-tree-node-count">{node.count}</span>
+      </span>
+    ),
+    ...(node.children.size === 0 ? { isLeaf: true } : {}),
+  };
+}
+
+// 在完整参照树中按 key 定位节点（key 形如 "vl:220kV|tw:猫头塔|sc:平原|ar:A"）
+function findAtpTreeNode(nodes: AtpTreeMapNode[], key: string): AtpTreeMapNode | null {
+  for (const node of nodes) {
+    if (node.key === key) return node;
+    const found = findAtpTreeNode(Array.from(node.children.values()), key);
+    if (found) return found;
+  }
+  return null;
+}
+
 // 树 key（如 "vl:220kV|tw:猫头塔|sc:平原|ar:A"）→ 维度过滤条件
 function parseAtpTreeKey(key: string): AtpTreePathFilter | null {
   if (!key || key === "all") return null;
@@ -632,10 +657,69 @@ export default function AtpModelsPage() {
   }, []);
 
   // ===== 左侧维度树与表格过滤（数据源：全量资产） =====
+  // 树默认不展开，用户点击展开时才从参照树注入该节点的子节点（懒加载）。
+  // 搜索（treeFilterKeyword 非空）时切回完整过滤树并全展开，保证命中结果可见。
+  const isTreeSearching = treeFilterKeyword.trim().length > 0;
+  const [expandedTreeKeys, setExpandedTreeKeys] = useState<React.Key[]>([]);
+  // 已通过 loadData 注入过子节点的缓存：key → 子节点（DataNode[]）
+  const [loadedTreeChildren, setLoadedTreeChildren] = useState<Record<string, DataNode[]>>({});
+
+  // 完整参照树：懒加载时按 key 从中取子节点（数据源不变，仅渲染渐进）
+  const fullTreeNodes = useMemo(() => buildAtpTreeNodes(allAssets), [allAssets]);
+
+  // antd loadData：节点无 children（非叶子）时点击展开触发，从参照树取下一层注入。
+  // 数据全量在前端，这里只做按需注入 + 记录，无网络请求。
+  const onLoadTreeData = useCallback(
+    (node: { key: React.Key }): Promise<void> => {
+      const key = String(node.key);
+      const mapNode = findAtpTreeNode(fullTreeNodes, key);
+      if (mapNode && mapNode.children.size > 0) {
+        const children = sortAtpTreeNodes(Array.from(mapNode.children.values())).map(toLazyAtpTreeDataNode);
+        setLoadedTreeChildren((previous) => ({ ...previous, [key]: children }));
+      }
+      return Promise.resolve();
+    },
+    [fullTreeNodes],
+  );
+
   const treeData = useMemo(() => {
-    const nodes = filterAtpTreeNodes(buildAtpTreeNodes(allAssets), treeFilterKeyword);
-    return sortAtpTreeNodes(nodes).map(toAtpTreeDataNode);
-  }, [allAssets, treeFilterKeyword]);
+    if (isTreeSearching) {
+      // 搜索模式：完整过滤树（节点自带全部子节点），配合 expandedKeys 全展开
+      const nodes = filterAtpTreeNodes(fullTreeNodes, treeFilterKeyword);
+      return sortAtpTreeNodes(nodes).map(toAtpTreeDataNode);
+    }
+    // 懒加载模式：已通过 loadData 注入子节点的路径展开，其余仅渲染当前层
+    const injectLoaded = (dataNode: DataNode): DataNode => {
+      const loaded = loadedTreeChildren[String(dataNode.key)];
+      if (loaded && loaded.length > 0) {
+        return { ...dataNode, children: loaded.map(injectLoaded) };
+      }
+      return dataNode;
+    };
+    return sortAtpTreeNodes(fullTreeNodes).map((node) => injectLoaded(toLazyAtpTreeDataNode(node)));
+  }, [fullTreeNodes, isTreeSearching, treeFilterKeyword, loadedTreeChildren]);
+
+  // 搜索态：自动全展开匹配路径；退出搜索：恢复默认折叠（懒加载首层）
+  useEffect(() => {
+    if (!isTreeSearching) {
+      setExpandedTreeKeys([]);
+      return;
+    }
+    const collectExpandable = (nodes: AtpTreeMapNode[], acc: React.Key[]): React.Key[] => {
+      for (const node of nodes) {
+        if (node.children.size > 0) {
+          acc.push(node.key);
+          collectExpandable(Array.from(node.children.values()), acc);
+        }
+      }
+      return acc;
+    };
+    setExpandedTreeKeys(collectExpandable(filterAtpTreeNodes(fullTreeNodes, treeFilterKeyword), []));
+  }, [isTreeSearching, fullTreeNodes, treeFilterKeyword]);
+
+  const handleTreeExpand = useCallback((keys: React.Key[]) => {
+    setExpandedTreeKeys(keys);
+  }, []);
 
   const activeFilter = useMemo(() => parseAtpTreeKey(selectedTreeKey), [selectedTreeKey]);
 
@@ -1054,11 +1138,13 @@ export default function AtpModelsPage() {
                             <Tree
                               showLine
                               blockNode
-                              defaultExpandAll
+                              expandedKeys={expandedTreeKeys}
+                              loadData={onLoadTreeData}
                               selectedKeys={[selectedTreeKey]}
                               treeData={[
                                 {
                                   key: "all",
+                                  isLeaf: true,
                                   title: (
                                     <span className="admin-atp-models-tree-node">
                                       <span className="admin-atp-models-tree-node-title">全部模型</span>
@@ -1068,6 +1154,7 @@ export default function AtpModelsPage() {
                                 } as DataNode,
                                 ...treeData,
                               ]}
+                              onExpand={handleTreeExpand}
                               onSelect={handleTreeSelect}
                             />
                           ) : (
