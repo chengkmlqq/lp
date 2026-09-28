@@ -9,6 +9,7 @@ import {
   App,
   Button,
   Card,
+  Col,
   Drawer,
   Dropdown,
   Empty,
@@ -17,6 +18,7 @@ import {
   InputNumber,
   Modal,
   Pagination,
+  Row,
   Segmented,
   Select,
   Space,
@@ -85,7 +87,6 @@ type TemplateDetail = {
   updated_by: string | null;
 };
 
-type DefaultRow = { key: string; name: string; value: string };
 type ResolvedSlot = { slot: string; value: string; source: string; inherited: boolean };
 type PreviewResponse = { chain: string[]; tower_kind: string | null; slots: ResolvedSlot[]; diff: ResolvedSlot[] };
 
@@ -222,7 +223,6 @@ export default function AtpParamTemplatesPage() {
   const [editing, setEditing] = useState(false);
   const [editingForChild, setEditingForChild] = useState(false);
   const [slotRows, setSlotRows] = useState<SlotRow[]>([]);
-  const [defaultRows, setDefaultRows] = useState<DefaultRow[]>([]);
   const [form] = Form.useForm();
   // 参数注册表 code（槽位「参数引用」模式用）
   const [paramCodes, setParamCodes] = useState<string[]>([]);
@@ -438,7 +438,6 @@ export default function AtpParamTemplatesPage() {
     form.resetFields();
     form.setFieldsValue({ priority: 100, mode: "merge", fallback_enabled: true });
     setSlotRows([]);
-    setDefaultRows([]);
     setEditing(true);
   };
 
@@ -468,13 +467,6 @@ export default function AtpParamTemplatesPage() {
           param: spec.param ?? undefined,
         })),
       );
-      setDefaultRows(
-        Object.entries(detail.defaults ?? {}).map(([name, value]) => ({
-          key: name,
-          name,
-          value: String(value),
-        })),
-      );
     }
     if (inherited) {
       form.setFieldsValue({ fallback_enabled: true, priority: 100 });
@@ -495,15 +487,10 @@ export default function AtpParamTemplatesPage() {
         if (row.when) spec.when = row.when;
         slots[row.slot] = spec;
       });
-      const defaults: Record<string, number | string> = {};
-      defaultRows.forEach((row) => {
-        const name = row.name.trim();
-        const raw = row.value.trim();
-        if (!name || !raw) return;
-        const numeric = Number(raw);
-        defaults[name] = Number.isFinite(numeric) && /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(raw) ? numeric : raw;
-      });
-      const payload = { ...values, slots, defaults };
+      // 「测试默认参数集」UI 已下线：不再提交 defaults 键 ——
+      // 后端 update_template 是 `if "defaults" in payload` 才写入，故历史
+      // defaults_json 原样保留，「无杆塔测试」路径仍可读取既有默认值。
+      const payload = { ...values, slots };
       const url = detail && !editingForChild ? `/api/v1/atp/param-templates/${detail.id}` : "/api/v1/atp/param-templates";
       const method = detail && !editingForChild ? "PUT" : "POST";
       const response = await fetchWithAuth(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -885,7 +872,6 @@ export default function AtpParamTemplatesPage() {
                   </Form>
                 </div>
 
-                <Spin spinning={loading}>
                 {filteredRows.length === 0 && !loading ? (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的模板节点。" style={{ padding: 40 }} />
                 ) : viewMode === "card" ? (
@@ -914,25 +900,30 @@ export default function AtpParamTemplatesPage() {
                             />
                           ))}
                       </div>
-                      {filteredRows.length > 0 ? (
-                        <div className="admin-atp-params-pagination">
-                          <Pagination
-                            current={pagination.current}
-                            pageSize={pagination.pageSize}
-                            total={filteredRows.length}
-                            onChange={(page, pageSize) => setPagination({ current: page, pageSize })}
-                            showSizeChanger
-                            showTotal={(total) => `共 ${total} 条`}
-                          />
-                        </div>
-                      ) : null}
                     </div>
+                    {loading ? (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color-mix(in_srgb,var(--ant-color-bg-layout)_60%,transparent)]">
+                        <Spin />
+                      </div>
+                    ) : null}
+                    {filteredRows.length > 0 ? (
+                      <div className="admin-power-lines-pagination">
+                        <Pagination
+                          current={pagination.current}
+                          pageSize={pagination.pageSize}
+                          total={filteredRows.length}
+                          onChange={(page, pageSize) => setPagination({ current: page, pageSize })}
+                          showSizeChanger
+                          showTotal={(total) => `共 ${total} 条`}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <div
                     ref={tableScrollAnchorRef}
-                    className="admin-menus-table-anchor"
-                    style={{ "--admin-menus-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
+                    className="admin-atp-models-table-view"
+                    style={{ "--admin-atp-models-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
                   >
                     <Table<TemplateRow>
                       rowKey="key"
@@ -946,11 +937,12 @@ export default function AtpParamTemplatesPage() {
                         current: pagination.current,
                         pageSize: pagination.pageSize,
                         total: Math.max(filteredRows.length, 1),
+                        hideOnSinglePage: false,
                         showSizeChanger: true,
                         pageSizeOptions: [10, 20, 50, 100],
                         showTotal: () => `共 ${filteredRows.length} 条`,
-                        hideOnSinglePage: false,
-                        style: { marginBottom: 0 },
+                        // 与卡片视图独立分页组件尺寸一致（default=32px，不随 Table size=small 缩到 24px）
+                        size: "default",
                         onChange: (page, pageSize) => {
                           setPagination({ current: page, pageSize });
                         },
@@ -961,7 +953,6 @@ export default function AtpParamTemplatesPage() {
                     />
                   </div>
                 )}
-                </Spin>
               </div>
             ),
           },
@@ -1021,24 +1012,10 @@ export default function AtpParamTemplatesPage() {
                 }))}
               />
               <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
-                {detail.defined_defaults ?? 0} 个测试默认值；更新于 {detail.updated_at ? new Date(detail.updated_at).toLocaleString() : "-"}
+                更新于 {detail.updated_at ? new Date(detail.updated_at).toLocaleString() : "-"}
                 {detail.updated_by ? ` · ${detail.updated_by}` : ""}
               </Text>
             </Card>
-            {detail.defaults && Object.keys(detail.defaults).length > 0 ? (
-              <Card size="small" title="测试默认值">
-                <Table
-                  size="small"
-                  rowKey="name"
-                  pagination={false}
-                  dataSource={Object.entries(detail.defaults).map(([name, value]) => ({ key: name, name, value: String(value) }))}
-                  columns={[
-                    { title: "变量名", dataIndex: "name", width: 200 },
-                    { title: "默认值", dataIndex: "value" },
-                  ]}
-                />
-              </Card>
-            ) : null}
           </Space>
         )}
       </Modal>
@@ -1128,56 +1105,67 @@ export default function AtpParamTemplatesPage() {
         okText="保存并生效"
       >
         <Form form={form} layout="vertical">
-          <Space wrap>
-            <Form.Item name="name" label="名称" rules={[{ required: true }]} style={{ minWidth: 260 }}>
-              <Input placeholder="如：猫头型 · 220kV" />
-            </Form.Item>
-            <Form.Item name="tower_type" label="杆塔类型">
-              <Select
-                style={{ width: 190 }}
-                allowClear
-                options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
-              />
-            </Form.Item>
-            <Form.Item name="voltage_level" label="电压等级">
-              <Select style={{ width: 130 }} allowClear options={(meta?.voltages ?? []).map((item) => ({ value: item, label: `${item}kV` }))} />
-            </Form.Item>
-            <Form.Item name="circuit_count" label="回路数量">
-              <Select style={{ width: 120 }} allowClear options={[1, 2, 4].map((item) => ({ value: item, label: `${item} 回` }))} />
-            </Form.Item>
-            <Form.Item name="scene_type" label="场景">
-              <Select style={{ width: 140 }} allowClear options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: item.label }))} />
-            </Form.Item>
-            <Form.Item name="arrester_config" label="避雷器组合">
-              <Select
-                style={{ width: 170 }}
-                allowClear
-                options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: item.label }))}
-              />
-            </Form.Item>
-            <Form.Item name="priority" label="优先级" initialValue={100}>
-              <InputNumber style={{ width: 100 }} min={0} max={9999} />
-            </Form.Item>
-            <Form.Item name="mode" label="合并方式" initialValue="merge">
-              <Select
-                style={{ width: 140 }}
-                options={[
-                  { value: "merge", label: "逐槽位合并" },
-                  { value: "replace", label: "整块替换" },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item name="fallback_to" label="wine 回退到">
-              <Select
-                style={{ width: 160 }}
-                allowClear
-                options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
-              />
-            </Form.Item>
-            <Form.Item name="fallback_enabled" label="启用回退" valuePropName="checked" initialValue={true}>
-              <Switch />
-            </Form.Item>
-          </Space>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="name" label="名称" rules={[{ required: true }]} tooltip="模板名称，如：猫头型 · 220kV">
+                <Input placeholder="如：猫头型 · 220kV" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="tower_type" label="杆塔类型" tooltip="匹配条件；留空 = 通配所有塔型">
+                <Select
+                  allowClear
+                  placeholder="选择杆塔类型"
+                  options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="voltage_level" label="电压等级" tooltip="匹配条件；留空 = 通配所有电压等级">
+                <Select allowClear placeholder="选择电压等级" options={(meta?.voltages ?? []).map((item) => ({ value: item, label: `${item}kV` }))} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="circuit_count" label="回路数量" tooltip="匹配条件；留空 = 通配">
+                <Select allowClear placeholder="选择回路数量" options={[1, 2, 4].map((item) => ({ value: item, label: `${item} 回` }))} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="scene_type" label="场景" tooltip="匹配条件；留空 = 通配">
+                <Select allowClear placeholder="选择场景" options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: item.label }))} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="arrester_config" label="避雷器组合" tooltip="匹配条件；留空 = 通配">
+                <Select allowClear placeholder="选择避雷器组合" options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: item.label }))} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="priority" label="优先级" initialValue={100} tooltip="数字越小越优先；条件越细的模板优先级更高，此值用于同级兜底排序">
+                <InputNumber style={{ width: "100%" }} min={0} max={9999} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="mode" label="合并方式" initialValue="merge" tooltip="逐槽位合并：只覆盖填了的槽位，未填继承上层；整块替换：整套槽位用自己的">
+                <Select
+                  options={[
+                    { value: "merge", label: "逐槽位合并" },
+                    { value: "replace", label: "整块替换" },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="fallback_to" label="wine 回退到" tooltip="槽位公式算不出来时回退到哪个塔型的模板继续算；留空 = 不回退">
+                <Select allowClear placeholder="选择回退塔型" options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="fallback_enabled" label="启用回退" valuePropName="checked" initialValue={true} tooltip="回退行为的总开关">
+                <Switch />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
 
         <Alert
@@ -1324,86 +1312,6 @@ export default function AtpParamTemplatesPage() {
           )}
         />
 
-        <Alert
-          type="info"
-          showIcon
-          style={{ margin: "14px 0 10px" }}
-          message="测试默认参数集（无杆塔测试用）"
-          description={
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              这些是「上下文变量」的默认值：ATP 模型测试时可以不给杆塔数据，直接用它们算出全套 $PARAMETER 参数（对齐 C# —— 引擎只吃一串参数，不需要杆塔）。
-              <br />
-              只补上下文里没有的值（有真实杆塔数据时以真实值优先）；未提供默认值的变量会让对应槽位报「未解析」，测试会拒绝执行，而不是静默算成 1. 这种无物理意义的占位值。
-            </Text>
-          }
-        />
-        <Table
-          size="small"
-          rowKey="key"
-          pagination={false}
-          dataSource={defaultRows}
-          columns={[
-            {
-              title: "变量名",
-              dataIndex: "name",
-              width: 190,
-              render: (value: string, row: DefaultRow) => (
-                <Select
-                  showSearch
-                  style={{ width: 180 }}
-                  value={value || undefined}
-                  placeholder="如 h_u / shield_h"
-                  options={(meta?.variable_names ?? []).map((item) => ({ value: item, label: item }))}
-                  onChange={(next) => setDefaultRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, name: next, key: next } : item)))}
-                  popupRender={(menu) => (
-                    <>
-                      {menu}
-                      <Input
-                        size="small"
-                        style={{ marginTop: 6 }}
-                        placeholder="不在列表里？直接输入变量名"
-                        onPressEnter={(event) => {
-                          const typed = (event.target as HTMLInputElement).value.trim();
-                          if (!typed) return;
-                          setDefaultRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, name: typed, key: typed } : item)));
-                        }}
-                      />
-                    </>
-                  )}
-                />
-              ),
-            },
-            {
-              title: "默认值",
-              dataIndex: "value",
-              render: (value: string, row: DefaultRow) => (
-                <Input
-                  value={value}
-                  placeholder="如 65.5"
-                  onChange={(event) => setDefaultRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, value: event.target.value } : item)))}
-                />
-              ),
-            },
-            {
-              title: "",
-              width: 60,
-              render: (_: unknown, row: DefaultRow) => (
-                <Button type="link" danger size="small" onClick={() => setDefaultRows((rows) => rows.filter((item) => item.key !== row.key))}>
-                  删除
-                </Button>
-              ),
-            },
-          ]}
-          footer={() => (
-            <Button
-              size="small"
-              icon={<PlusOutlined />}
-              onClick={() => setDefaultRows((rows) => [...rows, { key: `new-${rows.length}-${Date.now()}`, name: "", value: "" }])}
-            >
-              添加默认值
-            </Button>
-          )}
-        />
       </Modal>
     </div>
   );

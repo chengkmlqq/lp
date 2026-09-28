@@ -42,6 +42,7 @@ import {
   CodeOutlined,
   DeleteOutlined,
   EditOutlined,
+  ExperimentOutlined,
   EyeOutlined,
   FunctionOutlined,
   LinkOutlined,
@@ -88,6 +89,43 @@ type FieldsResponse = {
   transform_options: string[];
   source_options: { value: string; label: string }[];
   script_functions: string[];
+};
+
+// ── 试算（按真实杆塔上下文）相关类型 ──────────────────────────────────────
+type LineOption = {
+  id: string;
+  name: string;
+  code?: string | null;
+  voltage_kv?: number | null;
+  tower_count?: number;
+};
+
+type TowerOption = {
+  id: string;
+  tower_no: string;
+  seq_no?: number;
+  tower_type?: string | null;
+  tower_model?: string | null;
+  altitude_m?: number | null;
+  ground_resistance_ohm?: number | null;
+};
+
+type ResolvedParam = {
+  code: string;
+  name: string;
+  unit?: string | null;
+  source_type: string;
+  value: unknown;
+};
+
+type TowerPreviewResult = {
+  tower_id: string;
+  tower_no: string | null;
+  tower_type: string | null;
+  line_name: string | null;
+  ok: boolean;
+  error: string | null;
+  items: ResolvedParam[];
 };
 
 const SOURCE_TYPE_LABEL: Record<SourceType, string> = {
@@ -348,6 +386,82 @@ export default function AtpParamsPage() {
   const [form] = Form.useForm();
   const isMobile = useMobileDetection();
 
+  // ── 试算（按真实杆塔上下文）：选线路 → 勾选杆塔 → 批量解析参数 ──────────
+  const [trialOpen, setTrialOpen] = useState(false);
+  const [trialLines, setTrialLines] = useState<LineOption[]>([]);
+  const [trialLineId, setTrialLineId] = useState<string | undefined>(undefined);
+  const [trialTowers, setTrialTowers] = useState<TowerOption[]>([]);
+  const [trialTowersLoading, setTrialTowersLoading] = useState(false);
+  const [trialSelected, setTrialSelected] = useState<string[]>([]);
+  const [trialRunning, setTrialRunning] = useState(false);
+  const [trialResults, setTrialResults] = useState<TowerPreviewResult[]>([]);
+  const [trialResultOpen, setTrialResultOpen] = useState(false);
+
+  /** 打开试算弹窗：加载线路列表（缓存复用）。 */
+  const openTrial = useCallback(async () => {
+    setTrialOpen(true);
+    try {
+      if (trialLines.length === 0) {
+        const response = await fetchWithAuth("/api/v1/lines?limit=1000");
+        if (response.ok) {
+          const data: { items: LineOption[] } = await response.json();
+          setTrialLines(data.items ?? []);
+        }
+      }
+    } catch {
+      // 线路列表加载失败不阻塞弹窗（可手动重选）
+    }
+  }, [fetchWithAuth, trialLines.length]);
+
+  /** 切换线路：加载该线路杆塔并重置勾选。 */
+  const handleTrialLineChange = useCallback(
+    async (lineId: string) => {
+      setTrialLineId(lineId);
+      setTrialSelected([]);
+      setTrialTowers([]);
+      if (!lineId) return;
+      setTrialTowersLoading(true);
+      try {
+        const response = await fetchWithAuth(
+          `/api/v1/lines/${lineId}/towers?limit=1000`
+        );
+        if (!response.ok) throw new Error(await readApiError(response));
+        const data: { items: TowerOption[] } = await response.json();
+        setTrialTowers(data.items ?? []);
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : "加载杆塔失败");
+      } finally {
+        setTrialTowersLoading(false);
+      }
+    },
+    [fetchWithAuth, message]
+  );
+
+  /** 确认试算：批量按真实杆塔上下文解析参数，结果用抽屉展示。 */
+  const runTrial = useCallback(async () => {
+    if (!trialSelected.length) {
+      message.warning("请先勾选至少一根杆塔");
+      return;
+    }
+    setTrialRunning(true);
+    try {
+      const response = await fetchWithAuth("/api/v1/atp/param-definitions/resolve-preview-by-towers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tower_ids: trialSelected }),
+      });
+      if (!response.ok) throw new Error(await readApiError(response));
+      const data: { results: TowerPreviewResult[] } = await response.json();
+      setTrialResults(data.results ?? []);
+      setTrialOpen(false);
+      setTrialResultOpen(true);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "试算失败");
+    } finally {
+      setTrialRunning(false);
+    }
+  }, [fetchWithAuth, message, trialSelected]);
+
   const loadList = useCallback(async () => {
     setLoading(true);
     try {
@@ -597,6 +711,9 @@ export default function AtpParamsPage() {
         className="admin-atp-params-tabs"
         tabBarExtraContent={
           <Space size={8}>
+            <Button icon={<ExperimentOutlined />} onClick={() => void openTrial()}>
+              试算
+            </Button>
             {canManage ? (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => openEdit(null)}>
                 新建参数
@@ -716,6 +833,8 @@ export default function AtpParamsPage() {
                 pageSize: pagination.pageSize,
                 showSizeChanger: true,
                 showTotal: (total) => `共 ${total} 条`,
+                // 与卡片视图独立分页组件尺寸一致（不随 Table size=small 缩到 24px）
+                size: "default",
                 onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
               }}
               scroll={{ x: 900, y: tableScrollY }}
@@ -729,8 +848,14 @@ export default function AtpParamsPage() {
     ]}>
     </Tabs>
 
-      {/* 详情抽屉 */}
-      <Drawer title={`参数详情 · ${detail?.code ?? ""}`} open={detailOpen} onClose={() => setDetailOpen(false)} width={520}>
+      {/* 详情弹窗（统一弹窗展示，与新建/编辑一致） */}
+      <Modal
+        title={`参数详情 · ${detail?.code ?? ""}`}
+        open={detailOpen}
+        onCancel={() => setDetailOpen(false)}
+        width={520}
+        footer={<Button onClick={() => setDetailOpen(false)}>关闭</Button>}
+      >
         {detail ? (
           <Space direction="vertical" size={12} style={{ width: "100%" }}>
             <Alert
@@ -779,7 +904,7 @@ export default function AtpParamsPage() {
             />
           </Space>
         ) : null}
-      </Drawer>
+      </Modal>
 
       {/* 新建/编辑弹窗（参照防雷计算任务新建：Modal + 表单内按钮） */}
       <Modal
@@ -942,6 +1067,149 @@ export default function AtpParamsPage() {
           </Space>
         </Form>
       </Modal>
+
+      {/* 试算弹窗：选线路 → 勾选杆塔 → 确认后按真实杆塔上下文解析参数 */}
+      <Modal
+        title="参数试算（按真实杆塔上下文）"
+        open={trialOpen}
+        onCancel={() => setTrialOpen(false)}
+        width={720}
+        footer={
+          <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
+            <Button disabled={trialRunning} onClick={() => setTrialOpen(false)}>
+              取消
+            </Button>
+            <Button
+              type="primary"
+              loading={trialRunning}
+              disabled={trialSelected.length === 0}
+              onClick={() => void runTrial()}
+            >
+              确认试算（已选 {trialSelected.length} 座）
+            </Button>
+          </Space>
+        }
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <Alert
+            type="info"
+            showIcon
+            message="按选中杆塔的真实台账数据解析全部注册表参数（与计算执行链路同一组装口径）"
+          />
+          <Form layout="vertical">
+            <Form.Item label="线路" style={{ marginBottom: 8 }}>
+              <Select
+                showSearch
+                placeholder="选择线路"
+                value={trialLineId}
+                loading={trialTowersLoading}
+                onChange={(value) => void handleTrialLineChange(String(value))}
+                optionFilterProp="label"
+                options={trialLines.map((line) => ({
+                  value: line.id,
+                  label: `${line.name}${line.voltage_kv ? `（${line.voltage_kv}kV）` : ""}`,
+                }))}
+              />
+            </Form.Item>
+          </Form>
+          <Spin spinning={trialTowersLoading}>
+            <Table
+              rowKey="id"
+              size="small"
+              dataSource={trialTowers}
+              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 座杆塔`, size: "default" }}
+              locale={{ emptyText: trialLineId ? "该线路暂无杆塔" : "请先选择线路" }}
+              rowSelection={{
+                selectedRowKeys: trialSelected,
+                onChange: (keys) => setTrialSelected(keys.map(String)),
+              }}
+              columns={[
+                { title: "塔号", dataIndex: "tower_no", width: 100 },
+                { title: "塔型", dataIndex: "tower_type", width: 110, render: (value: string | null) => value || "-" },
+                { title: "杆塔模型", dataIndex: "tower_model", render: (value: string | null) => value || "-" },
+                {
+                  title: "海拔(m)",
+                  dataIndex: "altitude_m",
+                  width: 90,
+                  render: (value: number | null) => (value == null ? "-" : String(value)),
+                },
+                {
+                  title: "接地电阻(Ω)",
+                  dataIndex: "ground_resistance_ohm",
+                  width: 110,
+                  render: (value: number | null) => (value == null ? "-" : String(value)),
+                },
+              ]}
+            />
+          </Spin>
+        </Space>
+      </Modal>
+
+      {/* 试算结果抽屉：按塔分组展示参数解析值 */}
+      <Drawer
+        title={`参数试算结果（${trialResults.length} 座杆塔）`}
+        open={trialResultOpen}
+        onClose={() => setTrialResultOpen(false)}
+        width={720}
+      >
+        {trialResults.length === 0 ? (
+          <Empty description="暂无试算结果" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        ) : (
+          <Tabs
+            type="card"
+            size="small"
+            items={trialResults.map((result) => ({
+              key: result.tower_id,
+              label: `${result.tower_no ?? "未知塔号"}${result.tower_type ? `（${result.tower_type}）` : ""}`,
+              children: result.ok ? (
+                <Table
+                  rowKey="code"
+                  size="small"
+                  dataSource={result.items}
+                  pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `共 ${total} 个参数` }}
+                  columns={[
+                    {
+                      title: "参数 code",
+                      dataIndex: "code",
+                      width: 150,
+                      render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
+                    },
+                    { title: "名称", dataIndex: "name", width: 160 },
+                    {
+                      title: "来源",
+                      dataIndex: "source_type",
+                      width: 120,
+                      render: (value: string) => (
+                        <Tag color={SOURCE_TYPE_COLOR[value as SourceType] ?? "default"}>
+                          {SOURCE_TYPE_LABEL[value as SourceType] ?? value}
+                        </Tag>
+                      ),
+                    },
+                    {
+                      title: "试算值",
+                      dataIndex: "value",
+                      render: (value: unknown) => <Typography.Text strong>{formatValue(value)}</Typography.Text>,
+                    },
+                    {
+                      title: "单位",
+                      dataIndex: "unit",
+                      width: 80,
+                      render: (value: string | null) => value || "-",
+                    },
+                  ]}
+                />
+              ) : (
+                <Alert
+                  type="error"
+                  showIcon
+                  message={`试算失败：${result.error ?? "未知错误"}`}
+                  description="该杆塔缺少必要的台账/profile 数据（如未导入塔属性），请先补齐后再试算。"
+                />
+              ),
+            }))}
+          />
+        )}
+      </Drawer>
     </div>
   );
 }
