@@ -769,6 +769,203 @@ def list_assets(
     )
 
 
+# 左侧维度树：电压等级 → 杆塔类型 → 场景 → 避雷器组合（与前端 ATP_TREE_LEVELS 一致）
+_ATP_TREE_LEVELS: tuple[tuple[str, str, str], ...] = (
+    ("vl", "voltage_level", "voltage_level"),
+    ("tw", "tower_type", "tower_type"),
+    ("sc", "scene_type", "scenario"),
+    ("ar", "arrester_config", "arrester_combination"),
+)
+
+
+def _sort_tree(nodes: list[dict[str, Any]]) -> None:
+    """按 label 排序（中文 locale 语义：与前端 sortAtpTreeNodes 一致），并递归子节点。"""
+    nodes.sort(key=lambda item: (item.get("label") or "", item.get("code") or ""))
+    for node in nodes:
+        children = node.get("children")
+        if isinstance(children, list) and children:
+            _sort_tree(children)
+
+
+def list_asset_tree_children(
+    db: Session,
+    *,
+    path: str | None = None,
+    keyword: str | None = None,
+) -> list[dict[str, Any]]:
+    """维度树懒加载：给定父路径（如 "vl:110|tw:guxing"），返回该路径下一层维度的去重节点。
+
+    - path 为空 → 第一层（电压等级）
+    - keyword 非空 → 树内搜索：返回过滤后的嵌套树（保留命中节点及其全部后代），
+      与前端旧 filterAtpTreeNodes 语义一致（命中节点保留全部后代、未命中中间节点保留命中子分支）
+    - 逐段解析路径，过滤出该路径下的资产，按下一层维度聚合（去重 code + 计数）
+    - 每个节点带 has_children（该值下是否存在更深维度资产）供前端标记叶子
+    - label 从 DimensionItem 解析（dimension_type 见 _ATP_TREE_LEVELS 第三元），缺失回落 code
+    """
+    # 树内搜索：查匹配资产 → 构建完整路径树 → 过滤保留命中分支 → 嵌套序列化
+    if keyword and keyword.strip():
+        kw = keyword.strip().lower()
+        like = f"%{kw}%"
+        assets = db.execute(
+            select(AtpAsset).where(
+                or_(
+                    AtpAsset.code.ilike(like),
+                    AtpAsset.name.ilike(like),
+                    AtpAsset.description.ilike(like),
+                )
+            )
+        ).scalars().all()
+
+        # 构建完整路径树（与前端 buildAtpTreeNodes 同构）
+        nodes: dict[str, dict[str, Any]] = {}
+        for asset in assets:
+            parent_key = ""
+            for prefix, field, _dim_type in _ATP_TREE_LEVELS:
+                code = getattr(asset, field)
+                if not code or not str(code).strip():
+                    break
+                code_str = str(code).strip()
+                key = f"{parent_key}|{prefix}:{code_str}" if parent_key else f"{prefix}:{code_str}"
+                node = nodes.setdefault(
+                    key,
+                    {"key": key, "code": code_str, "label": code_str, "count": 0, "children": {}},
+                )
+                node["count"] += 1
+                # 挂到父节点 children（search 模式需要完整父子关系做过滤）
+                if parent_key and parent_key in nodes:
+                    nodes[parent_key]["children"][key] = node
+                parent_key = key
+
+        # 批量解析 label
+        all_codes: dict[str, str] = {}
+        for prefix, field, dim_type in _ATP_TREE_LEVELS:
+            level_codes = [node["code"] for node in nodes.values() if node["key"].split("|")[-1].startswith(f"{prefix}:")]
+            if not level_codes:
+                continue
+            dim_rows = db.execute(
+                select(DimensionItem.code, DimensionItem.name).where(
+                    DimensionItem.dimension_type == dim_type,
+                    DimensionItem.code.in_(level_codes),
+                )
+            ).all()
+            for code, name in dim_rows:
+                all_codes[code] = name
+        for node in nodes.values():
+            node["label"] = all_codes.get(node["code"], node["code"])
+
+        # 过滤：命中节点保留全部后代；未命中中间节点保留命中子分支
+        def filter_node(key: str) -> dict[str, Any] | None:
+            node = nodes[key]
+            label = (node["label"] or "").lower()
+            code = (node["code"] or "").lower()
+            self_match = kw in label or kw in code
+            kept_children: list[dict[str, Any]] = []
+            for child_key, child in node["children"].items():
+                kept = filter_node(child_key)
+                if kept is not None:
+                    kept_children.append(kept)
+            if not self_match and not kept_children:
+                return None
+            return {
+                "key": node["key"],
+                "code": node["code"],
+                "label": node["label"],
+                "count": node["count"],
+                "has_children": len(kept_children) > 0,
+                "children": kept_children,
+            }
+
+        roots = [filter_node(key) for key in nodes if "|" not in key]
+        result = [r for r in roots if r is not None]
+        _sort_tree(result)
+        return result
+
+    level_index = 0
+    filters: dict[str, str] = {}
+    if path:
+        for segment in path.split("|"):
+            prefix, _, code = segment.partition(":")
+            if not prefix or not code:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid tree path: {path}")
+            level = next((item for item in _ATP_TREE_LEVELS if item[0] == prefix), None)
+            if level is None or level_index >= len(_ATP_TREE_LEVELS):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid tree path: {path}")
+            field = level[1]
+            if code != "*":
+                filters[field] = code
+            level_index += 1
+
+    if level_index >= len(_ATP_TREE_LEVELS):
+        # 已到最深维度：无下一层
+        return []
+
+    next_field, next_dimension_type = _ATP_TREE_LEVELS[level_index][1], _ATP_TREE_LEVELS[level_index][2]
+    attr = getattr(AtpAsset, next_field)
+
+    stmt = (
+        select(attr, func.count())
+        .select_from(AtpAsset)
+        .where(attr.isnot(None))
+        .group_by(attr)
+    )
+    for field, code in filters.items():
+        stmt = stmt.where(getattr(AtpAsset, field) == code)
+
+    rows = db.execute(stmt).all()
+    if not rows:
+        return []
+
+    # 批量解析 label：dimension_type + code → name
+    codes = [str(row[0]) for row in rows]
+    label_map: dict[str, str] = {}
+    if codes:
+        dim_rows = db.execute(
+            select(DimensionItem.code, DimensionItem.name).where(
+                DimensionItem.dimension_type == next_dimension_type,
+                DimensionItem.code.in_(codes),
+            )
+        ).all()
+        label_map = {code: name for code, name in dim_rows}
+
+    # has_children：该值下是否存在更深维度资产
+    deeper_attr = None
+    if level_index + 1 < len(_ATP_TREE_LEVELS):
+        deeper_attr = getattr(AtpAsset, _ATP_TREE_LEVELS[level_index + 1][1])
+
+    result: list[dict[str, Any]] = []
+    for code, count in rows:
+        code_str = str(code)
+        # 计数修正：当前层 group_by 已按此值聚合，count 即该路径下资产数
+        key_prefix = f"{_ATP_TREE_LEVELS[level_index][0]}:{code_str}"
+        if path:
+            full_key = f"{path}|{key_prefix}"
+        else:
+            full_key = key_prefix
+
+        has_children = False
+        if deeper_attr is not None:
+            deeper_stmt = select(func.count()).select_from(AtpAsset).where(
+                getattr(AtpAsset, next_field) == code_str,
+                deeper_attr.isnot(None),
+            )
+            for field, code_filter in filters.items():
+                deeper_stmt = deeper_stmt.where(getattr(AtpAsset, field) == code_filter)
+            has_children = int(db.scalar(deeper_stmt) or 0) > 0
+
+        result.append(
+            {
+                "key": full_key,
+                "code": code_str,
+                "label": label_map.get(code_str, code_str),
+                "count": int(count),
+                "has_children": has_children,
+            }
+        )
+
+    result.sort(key=lambda item: (item["label"] or ""))
+    return result
+
+
 def get_asset_by_id(db: Session, asset_id: str) -> AtpAsset | None:
     return db.execute(select(AtpAsset).where(AtpAsset.id == asset_id)).scalar_one_or_none()
 

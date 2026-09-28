@@ -41,6 +41,21 @@ class AtpAssetListResponse(BaseModel):
     total: int
 
 
+class AtpAssetTreeChild(BaseModel):
+    """维度树懒加载节点：一层维度下的一个去重值（电压/塔型/场景/避雷器组合）。"""
+
+    key: str  # 完整路径 key，如 "vl:110|tw:鼓型塔"（点击展开时回传）
+    code: str  # 该层维度值（原始 code，如 "guxing"）
+    label: str  # 展示名（维度项中文名，缺失回落 code）
+    count: int  # 该路径下资产数
+    has_children: bool  # 是否还有下一层（非最后一维且有更深维度资产）
+    children: list["AtpAssetTreeChild"] = Field(default_factory=list)  # 搜索模式嵌套树（懒加载模式为空）
+
+
+class AtpAssetTreeChildrenResponse(BaseModel):
+    items: list[AtpAssetTreeChild]
+
+
 class AtpAssetDetail(AtpAssetSummary):
     pass
 

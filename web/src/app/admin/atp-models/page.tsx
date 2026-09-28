@@ -18,13 +18,24 @@ import {
   Spin,
   Table,
   Tabs,
+  Tooltip,
   Tree,
   Typography,
   Upload,
   type CardProps,
   type MenuProps,
 } from "antd";
-import { CheckCircleOutlined, DeleteOutlined, EditOutlined, InboxOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  CheckCircleOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  ExperimentOutlined,
+  EyeOutlined,
+  InboxOutlined,
+  MoreOutlined,
+  PlusOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent, type RefAttributes } from "react";
@@ -135,125 +146,6 @@ const ATP_TREE_LEVELS = [
 
 type AtpTreePathFilter = Partial<Record<AtpDimensionField, string>>;
 
-type AtpTreeMapNode = {
-  key: string;
-  code: string;
-  label: string;
-  count: number;
-  children: Map<string, AtpTreeMapNode>;
-};
-
-function assetDimensionLabel(asset: AtpAssetSummary, field: AtpDimensionField): string | null {
-  let label: string | null | undefined;
-  switch (field) {
-    case "voltage_level":
-      label = asset.voltage_level_label;
-      break;
-    case "tower_type":
-      label = asset.tower_type_label;
-      break;
-    case "scene_type":
-      label = asset.scene_type_label;
-      break;
-    case "arrester_config":
-      label = asset.arrester_config_label;
-      break;
-  }
-  const trimmed = label?.trim();
-  if (trimmed) return trimmed;
-  const code = asset[field];
-  return code && code.trim() ? code : null;
-}
-
-// 从资产数据聚合真实存在的四层组合路径（维度为 null 的资产挂在其可达的最深节点）
-function buildAtpTreeNodes(assets: AtpAssetSummary[]): AtpTreeMapNode[] {
-  const root = new Map<string, AtpTreeMapNode>();
-  for (const asset of assets) {
-    let parent = root;
-    let pathKey = "";
-    for (const level of ATP_TREE_LEVELS) {
-      const code = asset[level.field];
-      if (!code || !code.trim()) break;
-      pathKey = pathKey ? `${pathKey}|${level.prefix}:${code}` : `${level.prefix}:${code}`;
-      let node = parent.get(pathKey);
-      if (!node) {
-        node = {
-          key: pathKey,
-          code,
-          label: assetDimensionLabel(asset, level.field) ?? code,
-          count: 0,
-          children: new Map(),
-        };
-        parent.set(pathKey, node);
-      }
-      node.count += 1;
-      parent = node.children;
-    }
-  }
-  return Array.from(root.values());
-}
-
-// 树内搜索：命中节点保留其全部后代，未命中的中间节点保留命中的子分支
-function filterAtpTreeNodes(nodes: AtpTreeMapNode[], keyword: string): AtpTreeMapNode[] {
-  const kw = keyword.trim().toLowerCase();
-  if (!kw) return nodes;
-  const result: AtpTreeMapNode[] = [];
-  for (const node of nodes) {
-    const selfMatch = node.label.toLowerCase().includes(kw) || node.code.toLowerCase().includes(kw);
-    if (selfMatch) {
-      result.push(node);
-    } else {
-      const keptChildren = filterAtpTreeNodes(Array.from(node.children.values()), keyword);
-      if (keptChildren.length > 0) {
-        result.push({ ...node, children: new Map(keptChildren.map((child) => [child.key, child])) });
-      }
-    }
-  }
-  return result;
-}
-
-function sortAtpTreeNodes(nodes: AtpTreeMapNode[]): AtpTreeMapNode[] {
-  return [...nodes].sort((a, b) => a.label.localeCompare(b.label, "zh-CN"));
-}
-
-function toAtpTreeDataNode(node: AtpTreeMapNode): DataNode {
-  return {
-    key: node.key,
-    title: (
-      <span className="admin-atp-models-tree-node">
-        <span className="admin-atp-models-tree-node-title">{node.label}</span>
-        <span className="admin-atp-models-tree-node-count">{node.count}</span>
-      </span>
-    ),
-    children: sortAtpTreeNodes(Array.from(node.children.values())).map(toAtpTreeDataNode),
-  };
-}
-
-// 懒加载版 DataNode：不带 children（点击展开时由 loadData 从参照树注入），
-// 参照树中无子节点（该路径已到最深维度）的节点标记 isLeaf 隐藏展开箭头。
-function toLazyAtpTreeDataNode(node: AtpTreeMapNode): DataNode {
-  return {
-    key: node.key,
-    title: (
-      <span className="admin-atp-models-tree-node">
-        <span className="admin-atp-models-tree-node-title">{node.label}</span>
-        <span className="admin-atp-models-tree-node-count">{node.count}</span>
-      </span>
-    ),
-    ...(node.children.size === 0 ? { isLeaf: true } : {}),
-  };
-}
-
-// 在完整参照树中按 key 定位节点（key 形如 "vl:220kV|tw:猫头塔|sc:平原|ar:A"）
-function findAtpTreeNode(nodes: AtpTreeMapNode[], key: string): AtpTreeMapNode | null {
-  for (const node of nodes) {
-    if (node.key === key) return node;
-    const found = findAtpTreeNode(Array.from(node.children.values()), key);
-    if (found) return found;
-  }
-  return null;
-}
-
 // 树 key（如 "vl:220kV|tw:猫头塔|sc:平原|ar:A"）→ 维度过滤条件
 function parseAtpTreeKey(key: string): AtpTreePathFilter | null {
   if (!key || key === "all") return null;
@@ -296,9 +188,9 @@ export default function AtpModelsPage() {
   const [uploadError, setUploadError] = useState("");
 
   const isMobile = useMobileDetection();
-  // 视图模式：桌面默认表格（列表），移动端默认卡片；用户手动切换后以手动选择为准（参考菜单管理页）
+  // 视图模式：默认卡片视图；用户手动切换后以手动选择为准（参考菜单管理页）
   const [viewModeOverride, setViewModeOverride] = useState<"card" | "list" | null>(null);
-  const viewMode = viewModeOverride ?? (isMobile ? "card" : "list");
+  const viewMode = viewModeOverride ?? "card";
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   // 左侧维度树：选中树节点 key（"all" 表示全部），配合 treeFilterKeyword 搜索
   const [selectedTreeKey, setSelectedTreeKey] = useState<string>("all");
@@ -657,39 +549,94 @@ export default function AtpModelsPage() {
     setPagination((previous) => ({ ...previous, current: 1 }));
   }, []);
 
-  // ===== 左侧维度树与表格过滤（数据源：全量资产） =====
-  // 树默认不展开，用户点击展开时才从参照树注入该节点的子节点（懒加载）。
-  // 搜索（treeFilterKeyword 非空）时切回完整过滤树并全展开，保证命中结果可见。
+  // ===== 左侧维度树（后台接口懒加载：点击展开才请求下一层） =====
+  // 数据源：GET /api/v1/atp/assets/tree/children?path=<父路径>，path 空 = 第一层；
+  // 搜索（treeFilterKeyword 非空）时带 keyword 返回过滤嵌套树并全展开。
   const isTreeSearching = treeFilterKeyword.trim().length > 0;
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<React.Key[]>([]);
+
+  // 维度树子节点定义（后端返回结构）
+  interface TreeChildNode {
+    key: string;
+    code: string;
+    label: string;
+    count: number;
+    has_children: boolean;
+    children?: TreeChildNode[];
+  }
+
+  const treeChildToDataNode = (item: TreeChildNode): DataNode => ({
+    key: item.key,
+    title: (
+      <span className="admin-atp-models-tree-node">
+        <span className="admin-atp-models-tree-node-title">{item.label}</span>
+        <span className="admin-atp-models-tree-node-count">{item.count}</span>
+      </span>
+    ),
+    ...(item.has_children || (item.children?.length ?? 0) > 0 ? {} : { isLeaf: true }),
+    ...(item.children?.length ? { children: item.children.map(treeChildToDataNode) } : {}),
+  });
+
+  // 第一层（电压等级）：进入页面即拉取
+  const rootTreeQuery = useQuery({
+    queryKey: ["atp-assets-tree", "root"],
+    enabled: Boolean(user && canRead && !isTreeSearching),
+    queryFn: async () => {
+      const response = await fetchWithAuth("/api/v1/atp/assets/tree/children");
+      if (!response.ok) throw new Error(await readApiError(response));
+      const payload = (await response.json()) as { items: TreeChildNode[] };
+      return payload.items.map(treeChildToDataNode);
+    },
+  });
+
+  // 搜索模式：返回过滤后的嵌套树
+  const searchTreeQuery = useQuery({
+    queryKey: ["atp-assets-tree", "search", treeFilterKeyword.trim()],
+    enabled: Boolean(user && canRead && isTreeSearching),
+    queryFn: async () => {
+      const params = new URLSearchParams({ keyword: treeFilterKeyword.trim() });
+      const response = await fetchWithAuth(`/api/v1/atp/assets/tree/children?${params.toString()}`);
+      if (!response.ok) throw new Error(await readApiError(response));
+      const payload = (await response.json()) as { items: TreeChildNode[] };
+      return payload.items.map(treeChildToDataNode);
+    },
+  });
+
+  async function awaitResponseError(response: Response): Promise<string> {
+    try {
+      return await readApiError(response);
+    } catch {
+      return `请求失败（${response.status}）`;
+    }
+  }
+
+  // antd loadData：点击展开节点时向后端请求该路径的下一层子节点
+  const onLoadTreeData = useCallback(
+    async (node: { key: React.Key }): Promise<void> => {
+      const key = String(node.key);
+      const params = new URLSearchParams({ path: key });
+      try {
+        const response = await fetchWithAuth(`/api/v1/atp/assets/tree/children?${params.toString()}`);
+        if (!response.ok) throw new Error(await awaitResponseError(response));
+        const payload = (await response.json()) as { items: TreeChildNode[] };
+        const children = payload.items.map(treeChildToDataNode);
+        setLoadedTreeChildren((previous) => ({ ...previous, [key]: children }));
+      } catch {
+        // 静默失败：保持折叠，下次点击重试
+      }
+    },
+    [fetchWithAuth],
+  );
+
   // 已通过 loadData 注入过子节点的缓存：key → 子节点（DataNode[]）
   const [loadedTreeChildren, setLoadedTreeChildren] = useState<Record<string, DataNode[]>>({});
 
-  // 完整参照树：懒加载时按 key 从中取子节点（数据源不变，仅渲染渐进）
-  const fullTreeNodes = useMemo(() => buildAtpTreeNodes(allAssets), [allAssets]);
-
-  // antd loadData：节点无 children（非叶子）时点击展开触发，从参照树取下一层注入。
-  // 数据全量在前端，这里只做按需注入 + 记录，无网络请求。
-  const onLoadTreeData = useCallback(
-    (node: { key: React.Key }): Promise<void> => {
-      const key = String(node.key);
-      const mapNode = findAtpTreeNode(fullTreeNodes, key);
-      if (mapNode && mapNode.children.size > 0) {
-        const children = sortAtpTreeNodes(Array.from(mapNode.children.values())).map(toLazyAtpTreeDataNode);
-        setLoadedTreeChildren((previous) => ({ ...previous, [key]: children }));
-      }
-      return Promise.resolve();
-    },
-    [fullTreeNodes],
-  );
-
   const treeData = useMemo(() => {
     if (isTreeSearching) {
-      // 搜索模式：完整过滤树（节点自带全部子节点），配合 expandedKeys 全展开
-      const nodes = filterAtpTreeNodes(fullTreeNodes, treeFilterKeyword);
-      return sortAtpTreeNodes(nodes).map(toAtpTreeDataNode);
+      // 搜索模式：后端返回过滤后的嵌套树
+      return searchTreeQuery.data ?? [];
     }
-    // 懒加载模式：已通过 loadData 注入子节点的路径展开，其余仅渲染当前层
+    // 懒加载模式：第一层（来自接口）+ 已注入的子节点
     const injectLoaded = (dataNode: DataNode): DataNode => {
       const loaded = loadedTreeChildren[String(dataNode.key)];
       if (loaded && loaded.length > 0) {
@@ -697,8 +644,8 @@ export default function AtpModelsPage() {
       }
       return dataNode;
     };
-    return sortAtpTreeNodes(fullTreeNodes).map((node) => injectLoaded(toLazyAtpTreeDataNode(node)));
-  }, [fullTreeNodes, isTreeSearching, treeFilterKeyword, loadedTreeChildren]);
+    return (rootTreeQuery.data ?? []).map(injectLoaded);
+  }, [isTreeSearching, searchTreeQuery.data, rootTreeQuery.data, loadedTreeChildren]);
 
   // 搜索态：自动全展开匹配路径；退出搜索：恢复默认折叠（懒加载首层）
   useEffect(() => {
@@ -706,17 +653,17 @@ export default function AtpModelsPage() {
       setExpandedTreeKeys([]);
       return;
     }
-    const collectExpandable = (nodes: AtpTreeMapNode[], acc: React.Key[]): React.Key[] => {
+    const collectExpandable = (nodes: DataNode[], acc: React.Key[]): React.Key[] => {
       for (const node of nodes) {
-        if (node.children.size > 0) {
+        if (node.children && node.children.length > 0) {
           acc.push(node.key);
-          collectExpandable(Array.from(node.children.values()), acc);
+          collectExpandable(node.children, acc);
         }
       }
       return acc;
     };
-    setExpandedTreeKeys(collectExpandable(filterAtpTreeNodes(fullTreeNodes, treeFilterKeyword), []));
-  }, [isTreeSearching, fullTreeNodes, treeFilterKeyword]);
+    setExpandedTreeKeys(collectExpandable(searchTreeQuery.data ?? [], []));
+  }, [isTreeSearching, searchTreeQuery.data]);
 
   const handleTreeExpand = useCallback((keys: React.Key[]) => {
     setExpandedTreeKeys(keys);
@@ -954,31 +901,31 @@ export default function AtpModelsPage() {
       {
         title: "电压等级",
         dataIndex: "voltage_level",
-        width: 120,
+        width: 140,
         render: (value: string | null) => formatDimensionValue(value, "voltage_level"),
       },
       {
         title: "塔型",
         dataIndex: "tower_type",
-        width: 120,
+        width: 140,
         render: (value: string | null) => formatDimensionValue(value, "tower_type"),
       },
       {
         title: "场景",
         dataIndex: "scene_type",
-        width: 120,
+        width: 140,
         render: (value: string | null) => formatDimensionValue(value, "scene_type"),
       },
       {
         title: "避雷器组合",
         dataIndex: "arrester_config",
-        width: 120,
+        width: 140,
         render: (value: string | null) => formatDimensionValue(value, "arrester_config"),
       },
       {
         title: "更新时间",
         dataIndex: "update_date",
-        width: 170,
+        width: 190,
         render: (value: string) => formatDateTime(value),
       },
       {
@@ -986,7 +933,7 @@ export default function AtpModelsPage() {
         key: "actions",
         fixed: "right",
       align: "right" as const,
-      width: 180,
+      width: 130,
         render: (_, item) => {
           const deleteLoading = deleteMutation.isPending;
           const rowBusy = deleteLoading;
@@ -1033,18 +980,14 @@ export default function AtpModelsPage() {
 
           return (
             <Space size={4}>
-              <Button size="small" onClick={() => openDetailById(item.id)}>
-                详情
-              </Button>
-              <Button
-                size="small"
-                disabled={!canTest}
-                onClick={() => openTestDrawer(item)}
-              >
-                测试
-              </Button>
+              <Tooltip title="详情">
+                <Button size="small" type="text" icon={<EyeOutlined />} onClick={() => openDetailById(item.id)} />
+              </Tooltip>
+              <Tooltip title="测试">
+                <Button size="small" type="text" icon={<ExperimentOutlined />} disabled={!canTest} onClick={() => openTestDrawer(item)} />
+              </Tooltip>
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button size="small" icon={<MoreOutlined />} />
+                <Button size="small" type="text" icon={<MoreOutlined />} />
               </Dropdown>
             </Space>
           );
@@ -1251,7 +1194,7 @@ export default function AtpModelsPage() {
                               setPagination({ current: page, pageSize });
                             },
                           }}
-                          scroll={{ x: 1200, y: tableScrollY }}
+                          scroll={{ x: 900, y: tableScrollY }}
                         />
                       </div>
                     ) : (

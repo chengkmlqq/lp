@@ -18,6 +18,8 @@ from ...schemas.atp_asset import (
     AtpAssetRunListResponse,
     AtpAssetRunRequest,
     AtpAssetTestRunRequest,
+    AtpAssetTreeChild,
+    AtpAssetTreeChildrenResponse,
     AtpAssetUpdateRequest,
     AtpEngineStatusResponse,
 )
@@ -29,6 +31,7 @@ from ...services.atp_asset_service import (
     get_run_detail,
     list_asset_files,
     list_assets,
+    list_asset_tree_children,
     list_runs,
     read_asset_file_content,
     serialize_asset,
@@ -75,6 +78,20 @@ def get_atp_asset_list(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/assets/tree/children", response_model=AtpAssetTreeChildrenResponse)
+def get_atp_asset_tree_children(
+    path: str | None = Query(default=None, description="父路径，如 vl:110|tw:guxing；空 = 第一层电压等级"),
+    keyword: str | None = Query(default=None, description="树内搜索：返回过滤后的嵌套树（保留命中节点及其全部后代）"),
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetTreeChildrenResponse:
+    children = [
+        AtpAssetTreeChild(**item)
+        for item in list_asset_tree_children(db, path=path, keyword=keyword)
+    ]
+    return AtpAssetTreeChildrenResponse(items=children)
 
 
 @router.post("/assets", response_model=AtpAssetDetail)
