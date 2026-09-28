@@ -42,7 +42,6 @@ import {
   CodeOutlined,
   DeleteOutlined,
   EditOutlined,
-  ExperimentOutlined,
   EyeOutlined,
   FunctionOutlined,
   LinkOutlined,
@@ -91,17 +90,6 @@ type FieldsResponse = {
   script_functions: string[];
 };
 
-type TestScriptResponse = {
-  ok: boolean;
-  value: unknown;
-  errors: string[];
-  referenced: string[];
-};
-
-type PreviewResponse = {
-  items: { code: string; name: string; unit: string | null; source_type: string; value: unknown }[];
-};
-
 const SOURCE_TYPE_LABEL: Record<SourceType, string> = {
   line_binding: "线路导入绑定",
   script: "计算脚本",
@@ -133,15 +121,15 @@ function formatValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
-/** 绑定 / 脚本摘要（表格列与卡片共用）。 */
-function renderSourceSummary(record: DefinitionItem) {
+/** 绑定 / 脚本摘要（表格列与卡片共用；showIcon=false 时去掉前置图标，卡片用）。 */
+function renderSourceSummary(record: DefinitionItem, showIcon = true) {
   if (record.source_type === "line_binding") {
     const binding = record.binding_json as { source?: string; path?: string };
     const label = `${binding.source ?? ""}.${binding.path ?? ""}`;
     return (
       <Tooltip title={binding.path ?? ""}>
         <Space size={4} style={{ minWidth: 0 }}>
-          <LinkOutlined style={{ color: "#1677ff" }} />
+          {showIcon ? <LinkOutlined style={{ color: "#1677ff" }} /> : null}
           <Text style={{ fontSize: 12, maxWidth: 200 }} ellipsis={{ tooltip: label }}>
             {label}
           </Text>
@@ -152,7 +140,7 @@ function renderSourceSummary(record: DefinitionItem) {
   if (record.source_type === "script") {
     return (
       <Space size={4} style={{ minWidth: 0 }}>
-        <CodeOutlined style={{ color: "#722ed1" }} />
+        {showIcon ? <CodeOutlined style={{ color: "#722ed1" }} /> : null}
         <Text
           style={{ fontSize: 12, maxWidth: 200 }}
           ellipsis={{ tooltip: record.script_code ?? "" }}
@@ -169,14 +157,13 @@ function renderSourceSummary(record: DefinitionItem) {
 interface DefinitionCardProps {
   item: DefinitionItem;
   canManage: boolean;
-  onTest: (item: DefinitionItem) => void;
   onEdit: (item: DefinitionItem) => void;
   onDetail: (item: DefinitionItem) => void;
   onDelete: (item: DefinitionItem) => void;
 }
 
 /** 参数定义卡片（严格参照线路管理 <PowerLineCard> 结构）。 */
-function DefinitionCard({ item, canManage, onTest, onEdit, onDetail, onDelete }: DefinitionCardProps) {
+function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: DefinitionCardProps) {
   const sourceColor = SOURCE_TYPE_COLOR[item.source_type];
   const sourceLabel = SOURCE_TYPE_LABEL[item.source_type];
   return (
@@ -218,7 +205,7 @@ function DefinitionCard({ item, canManage, onTest, onEdit, onDetail, onDelete }:
           ) : item.source_type === "script" ? (
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>脚本内容：</Typography.Text>
           ) : null}
-          {renderSourceSummary(item)}
+          {renderSourceSummary(item, false)}
         </div>
         {item.description ? (
           <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis={{ tooltip: item.description }}>
@@ -230,30 +217,15 @@ function DefinitionCard({ item, canManage, onTest, onEdit, onDetail, onDelete }:
       <div className="admin-atp-params-card-actions admin-atp-models-card-actions flex items-center justify-end gap-1 px-4 py-2">
         {canManage ? (
           <Space size={4}>
-            {item.source_type === "script" ? (
-              <Tooltip title="试算（脚本）">
-                <Button size="small" type="text" icon={<ExperimentOutlined />} onClick={(event) => { event.stopPropagation(); onTest(item); }} />
-              </Tooltip>
-            ) : null}
+            <Tooltip title="详情">
+              <Button size="small" type="text" icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); onDetail(item); }} />
+            </Tooltip>
             <Tooltip title="编辑">
               <Button size="small" type="text" icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); onEdit(item); }} />
             </Tooltip>
             <Dropdown
               menu={{
                 items: [
-                  {
-                    key: "detail",
-                    label: (
-                      <Space size={4}>
-                        <EyeOutlined />
-                        <span>详情</span>
-                      </Space>
-                    ),
-                    onClick: (event) => {
-                      event.domEvent.stopPropagation();
-                      onDetail(item);
-                    },
-                  },
                   {
                     key: "delete",
                     label: (
@@ -370,17 +342,10 @@ export default function AtpParamsPage() {
 
   const [detail, setDetail] = useState<DefinitionItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [preview, setPreview] = useState<PreviewResponse | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-
   const [editing, setEditing] = useState<DefinitionItem | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
-  const [scriptTest, setScriptTest] = useState<TestScriptResponse | null>(null);
-  const [scriptTesting, setScriptTesting] = useState(false);
-
   const isMobile = useMobileDetection();
 
   const loadList = useCallback(async () => {
@@ -425,7 +390,6 @@ export default function AtpParamsPage() {
 
   const openEdit = (item: DefinitionItem | null) => {
     setEditing(item);
-    setScriptTest(null);
     if (item) {
       form.setFieldsValue({
         code: item.code,
@@ -455,58 +419,6 @@ export default function AtpParamsPage() {
   };
 
   const watchSource = Form.useWatch("source_type", form);
-
-  const runScriptTest = async () => {
-    const script = String(form.getFieldValue("script_code") ?? "");
-    const deps = (form.getFieldValue("deps_json") ?? []) as string[];
-    if (!script.trim()) {
-      message.warning("请先填写脚本内容");
-      return;
-    }
-    setScriptTesting(true);
-    setScriptTest(null);
-    try {
-      const response = await fetchWithAuth("/api/v1/atp/param-definitions/test-script", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          script_code: script,
-          deps_json: deps,
-          profile: {
-            tower_kind: "ganzi",
-            shield_wire_height_m: 73.5,
-            insulator_length_m: 5945,
-            call_height_m: 42.0,
-            current_type: 1,
-            angle_deg: 10.0,
-            geometry_layers_json: {
-              I: {
-                phase_height_m: { upper: 65.5, middle: 53.0, lower: 42.0 },
-                phase_spacing_m: { upper: 12.0, middle: 12.0, lower: 12.0 },
-              },
-              lightning_wire: { left_mid_distance_m: 12.4, right_mid_distance_m: 12.4, height_m: 73.5 },
-            },
-          },
-          base_tower: {
-            tower_type: "ganzi",
-            line_voltage_kv: 220.0,
-            ground_resistance_ohm: 10.0,
-            circuit_geometry_json: {
-              tower_height_m: 42.0,
-              lightning_wire: { left_mid_distance_m: 12.4, right_mid_distance_m: 12.4, height_m: 73.5 },
-            },
-          },
-          execution_options: { binary_search_current_ka: 146.0, tower_kind: "ganzi" },
-        }),
-      });
-      if (!response.ok) throw new Error(await readApiError(response));
-      setScriptTest((await response.json()) as TestScriptResponse);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : "脚测试算失败");
-    } finally {
-      setScriptTesting(false);
-    }
-  };
 
   const saveDefinition = async () => {
     setSaving(true);
@@ -573,52 +485,6 @@ export default function AtpParamsPage() {
         }
       },
     });
-  };
-
-  const openPreview = async () => {
-    setPreviewOpen(true);
-    setPreview(null);
-    setPreviewLoading(true);
-    try {
-      const response = await fetchWithAuth("/api/v1/atp/param-definitions/resolve-preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          codes: [],
-          profile: {
-            tower_kind: "ganzi",
-            shield_wire_height_m: 73.5,
-            insulator_length_m: 5945,
-            call_height_m: 42.0,
-            current_type: 1,
-            angle_deg: 10.0,
-            geometry_layers_json: {
-              I: {
-                phase_height_m: { upper: 65.5, middle: 53.0, lower: 42.0 },
-                phase_spacing_m: { upper: 12.0, middle: 12.0, lower: 12.0 },
-              },
-              lightning_wire: { left_mid_distance_m: 12.4, right_mid_distance_m: 12.4, height_m: 73.5 },
-            },
-          },
-          base_tower: {
-            tower_type: "ganzi",
-            line_voltage_kv: 220.0,
-            ground_resistance_ohm: 10.0,
-            circuit_geometry_json: {
-              tower_height_m: 42.0,
-              lightning_wire: { left_mid_distance_m: 12.4, right_mid_distance_m: 12.4, height_m: 73.5 },
-            },
-          },
-          execution_options: { binary_search_current_ka: 146.0, tower_kind: "ganzi" },
-        }),
-      });
-      if (!response.ok) throw new Error(await readApiError(response));
-      setPreview((await response.json()) as PreviewResponse);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : "预览解析失败");
-    } finally {
-      setPreviewLoading(false);
-    }
   };
 
   const depsOptions = (list ?? [])
@@ -689,27 +555,15 @@ export default function AtpParamsPage() {
       align: "right",
       render: (_, record) => (
         <Space size={4}>
-          {record.source_type === "script" ? (
-            <Tooltip title="试算（脚本）">
-              <Button size="small" type="text" icon={<ExperimentOutlined />} onClick={() => openEdit(record)} />
-            </Tooltip>
-          ) : null}
+          <Tooltip title="详情">
+            <Button size="small" type="text" icon={<EyeOutlined />} onClick={() => openDetail(record)} />
+          </Tooltip>
           <Tooltip title="编辑">
             <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEdit(record)} />
           </Tooltip>
           <Dropdown
             menu={{
               items: [
-                {
-                  key: "detail",
-                  label: (
-                    <Space size={4}>
-                      <EyeOutlined />
-                      <span>详情</span>
-                    </Space>
-                  ),
-                  onClick: () => openDetail(record),
-                },
                 {
                   key: "delete",
                   label: (
@@ -743,11 +597,6 @@ export default function AtpParamsPage() {
         className="admin-atp-params-tabs"
         tabBarExtraContent={
           <Space size={8}>
-            <Tooltip title="用样例杆塔上下文解析全部参数（与参数模板试算同口径）">
-              <Button icon={<ExperimentOutlined />} onClick={() => void openPreview()}>
-                试算
-              </Button>
-            </Tooltip>
             {canManage ? (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => openEdit(null)}>
                 新建参数
@@ -828,7 +677,6 @@ export default function AtpParamsPage() {
                       key={item.id}
                       item={item}
                       canManage={canManage}
-                      onTest={openEdit}
                       onEdit={openEdit}
                       onDetail={openDetail}
                       onDelete={removeDefinition}
@@ -931,35 +779,6 @@ export default function AtpParamsPage() {
             />
           </Space>
         ) : null}
-      </Drawer>
-
-      {/* 试算抽屉：全参数解析预览 */}
-      <Drawer title="参数试算（样例杆塔 220kV/ganzi）" open={previewOpen} onClose={() => setPreviewOpen(false)} width={560}>
-        <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Alert
-            type="info"
-            showIcon
-            message="样例上下文来自参数模板页同口径：shield_h=73.5 / insul_mm=5945 / h_u=65.5 / lw=12.4 / 220kV / 146kA"
-          />
-          <Spin spinning={previewLoading}>
-            {preview ? (
-              <Table
-                rowKey="code"
-                size="small"
-                pagination={{ pageSize: 15, showSizeChanger: false }}
-                dataSource={preview.items}
-                columns={[
-                  { title: "参数", dataIndex: "code", width: 140, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
-                  { title: "名称", dataIndex: "name", width: 130 },
-                  { title: "来源", dataIndex: "source_type", width: 110, render: (v: string) => <Tag color={SOURCE_TYPE_COLOR[v as SourceType]}>{(SOURCE_TYPE_LABEL as Record<string, string>)[v] ?? v}</Tag> },
-                  { title: "值", dataIndex: "value", render: (v: unknown) => <Typography.Text strong>{formatValue(v)}</Typography.Text> },
-                ]}
-              />
-            ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="点击上方「试算」执行解析" />
-            )}
-          </Spin>
-        </Space>
       </Drawer>
 
       {/* 新建/编辑弹窗（参照防雷计算任务新建：Modal + 表单内按钮） */}
@@ -1095,30 +914,6 @@ export default function AtpParamsPage() {
                   style={{ fontFamily: "monospace", fontSize: 12 }}
                 />
               </Form.Item>
-              <Space size={8} style={{ marginBottom: 12 }}>
-                <Button icon={<ExperimentOutlined />} loading={scriptTesting} onClick={() => void runScriptTest()}>
-                  试算
-                </Button>
-                {scriptTest ? (
-                  scriptTest.ok ? (
-                    <Alert
-                      type="success"
-                      showIcon
-                      style={{ flex: 1 }}
-                      message={`试算结果：${formatValue(scriptTest.value)}`}
-                      description={`引用变量：${scriptTest.referenced.length ? scriptTest.referenced.join(", ") : "（无）"}`}
-                    />
-                  ) : (
-                    <Alert
-                      type="error"
-                      showIcon
-                      style={{ flex: 1 }}
-                      message="试算失败"
-                      description={scriptTest.errors.join("；")}
-                    />
-                  )
-                ) : null}
-              </Space>
             </>
           ) : null}
 
