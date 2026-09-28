@@ -5,7 +5,7 @@
 // 二进制/不存在由后端分类（text / binary / not-found），前端按类型提示。
 
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Spin, Typography } from "antd";
+import { Alert, Button, Spin } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
@@ -152,22 +152,6 @@ export function AtpFileContentViewer({ assetId, relativePath, name }: AtpFileCon
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 8,
-        }}
-      >
-        <Typography.Title level={5} style={{ fontSize: 14, margin: 0 }}>
-          文件内容
-        </Typography.Title>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          已加载 {loadedLines.length} / {totalLines > 0 ? totalLines : "?"} 行
-          {hasMore ? "（滚动加载更多）" : "（已全部加载）"}
-        </Typography.Text>
-      </div>
       <pre
         ref={scrollRef}
         onScroll={handleScroll}
