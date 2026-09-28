@@ -1168,21 +1168,6 @@ export default function AtpParamTemplatesPage() {
           </Row>
         </Form>
 
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 10 }}
-          message="只填写需要覆盖的槽位；未填写的槽位自动继承上层。表达式可用变量与函数见下方示例。"
-          description={
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              变量：ground_r / insul_m / shield_h / tower_h / lw_l / lw_r / h_u / h_m / h_l / sp_u / sp_m / sp_l / voltage / current_ka / head_ms / tail_ms / wave_type
-              ；四回路：c1_u…c4_l、c1_sp_u…c4_sp_l
-              <br />
-              函数：abs(x) / sqrt(x) / min / max / round(x,n) / clamp(x,lo) / v(35,66,110,220,330,500,750,1000)
-            </Text>
-          }
-        />
-
         <Table
           size="small"
           rowKey="key"
