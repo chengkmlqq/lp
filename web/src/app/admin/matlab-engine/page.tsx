@@ -810,7 +810,7 @@ export default function AdminMatlabEnginePage() {
     baseColumns.push({
       title: "操作",
       key: "actions",
-      width: 200,
+      width: 150,
       fixed: "right",
       align: "right" as const,
       render: (_, record) => {
@@ -1228,7 +1228,7 @@ export default function AdminMatlabEnginePage() {
                               setPagination({ current: page, pageSize });
                             },
                           }}
-                          scroll={{ x: 1080, y: tableScrollY }}
+                          scroll={{ x: 770, y: tableScrollY }}
                           locale={{
                             emptyText: (
                               <Empty

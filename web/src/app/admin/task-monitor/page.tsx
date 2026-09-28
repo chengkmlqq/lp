@@ -239,7 +239,7 @@ export default function AdminTaskMonitorPage() {
         title: "任务 ID",
         dataIndex: "task_id",
         key: "task_id",
-        width: 260,
+        width: 286,
         ellipsis: { showTitle: false },
         render: (value: string) => (
           <Text copyable style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
@@ -251,21 +251,21 @@ export default function AdminTaskMonitorPage() {
         title: "任务名称",
         dataIndex: "name",
         key: "name",
-        width: 220,
+        width: 242,
         render: (value: string) => getTaskDisplayName(value),
       },
       {
         title: "状态",
         dataIndex: "state",
         key: "state",
-        width: 110,
+        width: 121,
         render: (value: string) => renderTaskStateTag(value),
       },
       {
         title: "开始时间",
         dataIndex: "started_at",
         key: "started_at",
-        width: 180,
+        width: 198,
         render: (value: string | null) => (
           <span style={{ whiteSpace: 'nowrap' }}>{formatDateTime(value)}</span>
         ),
@@ -274,7 +274,7 @@ export default function AdminTaskMonitorPage() {
         title: "完成时间",
         dataIndex: "finished_at",
         key: "finished_at",
-        width: 180,
+        width: 198,
         render: (value: string | null) => (
           <span style={{ whiteSpace: 'nowrap' }}>{formatDateTime(value)}</span>
         ),
@@ -283,7 +283,7 @@ export default function AdminTaskMonitorPage() {
         title: "运行时长",
         dataIndex: "runtime_seconds",
         key: "runtime_seconds",
-        width: 110,
+        width: 121,
         render: (value: number | null) => formatTaskMonitorDuration(value),
       },
       {
@@ -738,7 +738,7 @@ export default function AdminTaskMonitorPage() {
                   />
                 ),
               }}
-              scroll={{ x: 1600, y: tableScrollY }}
+              scroll={{ x: 1190, y: tableScrollY }}
             />
           </div>
         ) : (

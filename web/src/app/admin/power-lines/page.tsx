@@ -841,28 +841,28 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
       title: "线路名称",
       dataIndex: "name",
       key: "name",
-      width: 160,
+      width: 288,
       ellipsis: { showTitle: true },
     },
     {
       title: "电压等级",
       dataIndex: "voltage_kv",
       key: "voltage_kv",
-      width: 110,
+      width: 198,
       render: (value: number | null) => `${value ?? "-"} kV`,
     },
     {
       title: "杆塔总数",
       dataIndex: "tower_count",
       key: "tower_count",
-      width: 100,
+      width: 180,
       align: "right" as const,
     },
     {
       title: "估算长度",
       dataIndex: "estimated_length_km",
       key: "estimated_length_km",
-      width: 120,
+      width: 216,
       render: (value: number | null) =>
         value != null && value > 0 ? `${value.toFixed(2)} km` : "-",
     },
@@ -870,13 +870,13 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
       title: "更新时间",
       dataIndex: "update_date",
       key: "update_date",
-      width: 160,
+      width: 288,
       render: (value: string) => formatDateTime(value),
     },
     {
       title: "操作",
       key: "actions",
-      width: 180,
+      width: 150,
       fixed: "right",
       align: "right" as const,
       render: (_, line) => {
@@ -938,7 +938,7 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
         pageSizeOptions: [6, 12, 24, 48],
         showTotal: (total) => `共 ${total} 条`,
       }}
-      scroll={{ x: 1080, y: scrollY }}
+      scroll={{ x: 800, y: scrollY }}
       tableLayout="fixed"
     />
   );

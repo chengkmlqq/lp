@@ -524,7 +524,7 @@ export default function AtpParamTemplatesPage() {
   }, [templateRows, tableKeyword, levelFilter]);
 
   const slotColumns: ColumnsType<SlotRow> = [
-    { title: "槽位", dataIndex: "slot", width: 130, render: (v) => <Text code>{v}</Text> },
+    { title: "槽位", dataIndex: "slot", width: 250, render: (v) => <Text code>{v}</Text> },
     {
       title: "表达式 / 值 / 参数",
       dataIndex: "expr",
@@ -636,7 +636,7 @@ export default function AtpParamTemplatesPage() {
     {
       title: "覆盖路径",
       dataIndex: "pathLabel",
-      width: 260,
+      width: 649,
       render: (v: string) => <Text type="secondary" style={{ fontSize: 12 }}>{v}</Text>,
     },
     {
@@ -655,7 +655,7 @@ export default function AtpParamTemplatesPage() {
     {
       title: "状态",
       key: "status",
-      width: 100,
+      width: 250,
       render: (_v, row) => {
         if (!row.node.has_template) return <Tag>继承</Tag>;
         // 模板启用状态以 detail 为准;表格里统一显示「本级/继承」+ 槽位
@@ -667,7 +667,7 @@ export default function AtpParamTemplatesPage() {
       key: "actions",
       fixed: "right",
       align: "right" as const,
-      width: 200,
+      width: 150,
       render: (_v, row) => {
         const hasRule = Boolean(row.node.rule_id);
         const editTemplate = () => {

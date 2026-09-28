@@ -151,13 +151,15 @@ class AtpAssetRunSummary(BaseModel):
     stderr_size: int = 0
     create_date: datetime
     create_user: str | None = None
+    # 测试运行的结果摘要（requested_stages / stages 判据 / compare.params_source 等）：
+    # 用于列表进度条回显与参数来源列；详情接口同样返回
+    result_summary_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class AtpAssetRunDetail(AtpAssetRunSummary):
     stdout_text: str | None = None
     stderr_text: str | None = None
     output_manifest_json: dict[str, Any] = Field(default_factory=dict)
-    result_summary_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class AtpAssetRunListResponse(BaseModel):
@@ -208,6 +210,9 @@ class AtpAssetTestRunRequest(BaseModel):
     tower_no: str | None = None
     voltage_kv: int | None = None
     scene: str | None = None
+    # 从线路杆塔选择：由后端按塔组装 base_tower/profile（与「参数试算」同口径），
+    # 优先级高于显式传入的 base_tower/profile
+    line_tower_id: str | None = None
     base_tower: dict[str, Any] = Field(default_factory=dict)
     profile: dict[str, Any] = Field(default_factory=dict)
     execution_options: dict[str, Any] = Field(default_factory=dict)

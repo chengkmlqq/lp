@@ -664,6 +664,7 @@ def serialize_run(item: AtpAssetRun) -> AtpAssetRunSummary:
         stderr_size=len(stderr_text),
         create_date=item.create_date,
         create_user=item.create_user,
+        result_summary_json=item.result_summary_json or {},
     )
 
 

@@ -298,6 +298,36 @@ def execute_test_run_job(
         if run is None or run.status in {"success", "failed"}:
             return
         payload = AtpAssetTestRunRequest.model_validate(payload_data)
+        # 从线路杆塔选择（line_tower_id）：后端按塔组装 base_tower/profile，
+        # 口径与「ATP 参数试算」preview_resolve_by_towers 完全一致（快照同款组装函数）。
+        if payload.line_tower_id:
+            from .fl_analysis_service import (  # noqa: PLC0415
+                _build_base_tower_json,
+                _build_profile_json,
+            )
+            from .line_service import get_line_tower_by_id  # noqa: PLC0415
+
+            tower = get_line_tower_by_id(db, payload.line_tower_id)
+            if tower is None:
+                _mark_run_failed(
+                    db, run=run, actor_user_id=actor_user_id,
+                    reason=f"线路杆塔不存在：{payload.line_tower_id}",
+                )
+                return
+            assembled_profile = _build_profile_json(tower.profile, tower)
+            if not assembled_profile:
+                _mark_run_failed(
+                    db, run=run, actor_user_id=actor_user_id,
+                    reason=f"杆塔 {tower.tower_no} 无 profile 数据（未导入塔属性），无法按线路杆塔测试",
+                )
+                return
+            payload.base_tower = _build_base_tower_json(tower, tower.line)
+            payload.profile = assembled_profile
+            if not payload.tower_kind:
+                payload.tower_kind = tower.tower_type
+            if payload.voltage_kv is None and tower.line is not None:
+                payload.voltage_kv = tower.line.voltage_kv
+            payload.params_source = "tower"
         stages = _normalize_stages(payload.stages)
 
         run.status = "running"

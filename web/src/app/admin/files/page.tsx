@@ -704,7 +704,7 @@ export default function AdminFilesPage() {
         key: "actions",
         fixed: "right",
       align: "right" as const,
-      width: 200,
+      width: 150,
         render: (_value, item) => {
           const menuItems: MenuProps["items"] = [
             {
@@ -904,7 +904,7 @@ export default function AdminFilesPage() {
               }}
               loading={filesQuery.isLoading || filesQuery.isFetching}
               size="middle"
-              scroll={{ x: 1100, y: tableScrollY }}
+              scroll={{ x: 690, y: tableScrollY }}
               locale={{
                 emptyText: (
                   <Empty

@@ -357,7 +357,7 @@ export default function AdminScheduledTasksPage() {
         key: "actions",
         fixed: "right",
       align: "right" as const,
-      width: 180,
+      width: 150,
         render: (_, record) => (
           <Space size="small">
             <Button size="small" onClick={() => startEdit(record)}>
@@ -537,7 +537,7 @@ export default function AdminScheduledTasksPage() {
                     loading={listQuery.isFetching}
                     dataSource={items}
                     columns={columns}
-                    scroll={{ x: 1480, y: tableScrollY }}
+                    scroll={{ x: 1330, y: tableScrollY }}
                     pagination={{
                       current: tablePagination.current,
                       pageSize: tablePagination.pageSize,

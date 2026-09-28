@@ -396,6 +396,22 @@ export default function AtpParamsPage() {
   const [trialRunning, setTrialRunning] = useState(false);
   const [trialResults, setTrialResults] = useState<TowerPreviewResult[]>([]);
   const [trialResultOpen, setTrialResultOpen] = useState(false);
+  // 结果抽屉：关键字过滤（按参数 code / 名称 / 值，跨塔共享）+ 当前塔 + 每塔分页状态
+  const [trialResultKeyword, setTrialResultKeyword] = useState("");
+  const [trialResultActiveTab, setTrialResultActiveTab] = useState<string | undefined>(undefined);
+  const [trialResultPages, setTrialResultPages] = useState<Record<string, { current: number; pageSize: number }>>({});
+
+  /** 关键字过滤：按 code / 名称 / 试算值匹配。 */
+  const filterTrialItems = (items: ResolvedParam[], keyword: string): ResolvedParam[] => {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return items;
+    return items.filter(
+      (item) =>
+        item.code.toLowerCase().includes(kw) ||
+        (item.name ?? "").toLowerCase().includes(kw) ||
+        formatValue(item.value).toLowerCase().includes(kw),
+    );
+  };
 
   /** 打开试算弹窗：加载线路列表（缓存复用）。 */
   const openTrial = useCallback(async () => {
@@ -453,6 +469,9 @@ export default function AtpParamsPage() {
       if (!response.ok) throw new Error(await readApiError(response));
       const data: { results: TowerPreviewResult[] } = await response.json();
       setTrialResults(data.results ?? []);
+      setTrialResultKeyword("");
+      setTrialResultPages({});
+      setTrialResultActiveTab(data.results?.[0]?.tower_id);
       setTrialOpen(false);
       setTrialResultOpen(true);
     } catch (error) {
@@ -623,14 +642,14 @@ export default function AtpParamsPage() {
     {
       title: "参数 code",
       dataIndex: "code",
-      width: 150,
+      width: 221,
       fixed: "left",
       render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
     {
       title: "名称",
       dataIndex: "name",
-      width: 160,
+      width: 235,
       render: (value: string, record) => (
         <Space size={4}>
           <Text>{value}</Text>
@@ -641,7 +660,7 @@ export default function AtpParamsPage() {
     {
       title: "来源类型",
       dataIndex: "source_type",
-      width: 130,
+      width: 191,
       render: (value: SourceType) => (
         <Tag color={SOURCE_TYPE_COLOR[value]}>{SOURCE_TYPE_LABEL[value]}</Tag>
       ),
@@ -649,13 +668,13 @@ export default function AtpParamsPage() {
     {
       title: "绑定 / 脚本",
       dataIndex: "source_type",
-      width: 260,
+      width: 383,
       render: (_, record) => renderSourceSummary(record),
     },
     {
       title: "状态",
       dataIndex: "enabled",
-      width: 80,
+      width: 118,
       render: (value: boolean) => (value ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>),
     },
   ];
@@ -837,7 +856,7 @@ export default function AtpParamsPage() {
                 size: "default",
                 onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
               }}
-              scroll={{ x: 900, y: tableScrollY }}
+              scroll={{ x: 780, y: tableScrollY }}
             />
           </div>
         )}
@@ -1091,11 +1110,6 @@ export default function AtpParamsPage() {
         }
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Alert
-            type="info"
-            showIcon
-            message="按选中杆塔的真实台账数据解析全部注册表参数（与计算执行链路同一组装口径）"
-          />
           <Form layout="vertical">
             <Form.Item label="线路" style={{ marginBottom: 8 }}>
               <Select
@@ -1145,69 +1159,123 @@ export default function AtpParamsPage() {
         </Space>
       </Modal>
 
-      {/* 试算结果抽屉：按塔分组展示参数解析值 */}
+      {/* 试算结果抽屉：按塔分组展示参数解析值（过滤条固定顶部、表格区滚动、分页固定右下角） */}
       <Drawer
         title={`参数试算结果（${trialResults.length} 座杆塔）`}
         open={trialResultOpen}
         onClose={() => setTrialResultOpen(false)}
         width={720}
+        styles={{ body: { display: "flex", flexDirection: "column", paddingBottom: 0, overflow: "hidden" } }}
       >
         {trialResults.length === 0 ? (
           <Empty description="暂无试算结果" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
-          <Tabs
-            type="card"
-            size="small"
-            items={trialResults.map((result) => ({
-              key: result.tower_id,
-              label: `${result.tower_no ?? "未知塔号"}${result.tower_type ? `（${result.tower_type}）` : ""}`,
-              children: result.ok ? (
-                <Table
-                  rowKey="code"
-                  size="small"
-                  dataSource={result.items}
-                  pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `共 ${total} 个参数` }}
-                  columns={[
-                    {
-                      title: "参数 code",
-                      dataIndex: "code",
-                      width: 150,
-                      render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
-                    },
-                    { title: "名称", dataIndex: "name", width: 160 },
-                    {
-                      title: "来源",
-                      dataIndex: "source_type",
-                      width: 120,
-                      render: (value: string) => (
-                        <Tag color={SOURCE_TYPE_COLOR[value as SourceType] ?? "default"}>
-                          {SOURCE_TYPE_LABEL[value as SourceType] ?? value}
-                        </Tag>
-                      ),
-                    },
-                    {
-                      title: "试算值",
-                      dataIndex: "value",
-                      render: (value: unknown) => <Typography.Text strong>{formatValue(value)}</Typography.Text>,
-                    },
-                    {
-                      title: "单位",
-                      dataIndex: "unit",
-                      width: 80,
-                      render: (value: string | null) => value || "-",
-                    },
-                  ]}
-                />
-              ) : (
-                <Alert
-                  type="error"
-                  showIcon
-                  message={`试算失败：${result.error ?? "未知错误"}`}
-                  description="该杆塔缺少必要的台账/profile 数据（如未导入塔属性），请先补齐后再试算。"
-                />
-              ),
-            }))}
-          />
+          <>
+            {/* 顶部固定：关键字过滤表单 */}
+            <div style={{ flex: "none", paddingBottom: 12 }}>
+              <Input
+                allowClear
+                prefix={<SearchOutlined />}
+                placeholder="按参数 code / 名称 / 值过滤"
+                value={trialResultKeyword}
+                onChange={(event) => {
+                  setTrialResultKeyword(event.target.value);
+                  setTrialResultPages({}); // 关键字变化回到第 1 页
+                }}
+                style={{ width: 300 }}
+              />
+            </div>
+
+            {/* 中间滚动区：塔 tabs + 当前塔参数表（分页在底部，表格不内部分页） */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingRight: 4 }}>
+              <Tabs
+                type="card"
+                size="small"
+                activeKey={trialResultActiveTab}
+                onChange={(key) => setTrialResultActiveTab(key)}
+                items={trialResults.map((result) => ({
+                  key: result.tower_id,
+                  label: `${result.tower_no ?? "未知塔号"}${result.tower_type ? `（${result.tower_type}）` : ""}`,
+                  children: result.ok ? (
+                    <Table
+                      rowKey="code"
+                      size="small"
+                      dataSource={filterTrialItems(result.items ?? [], trialResultKeyword)}
+                      pagination={false}
+                      columns={[
+                        {
+                          title: "参数 code",
+                          dataIndex: "code",
+                          width: 150,
+                          render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
+                        },
+                        { title: "名称", dataIndex: "name", width: 160 },
+                        {
+                          title: "来源",
+                          dataIndex: "source_type",
+                          width: 120,
+                          render: (value: string) => (
+                            <Tag color={SOURCE_TYPE_COLOR[value as SourceType] ?? "default"}>
+                              {SOURCE_TYPE_LABEL[value as SourceType] ?? value}
+                            </Tag>
+                          ),
+                        },
+                        {
+                          title: "试算值",
+                          dataIndex: "value",
+                          render: (value: unknown) => <Typography.Text strong>{formatValue(value)}</Typography.Text>,
+                        },
+                        {
+                          title: "单位",
+                          dataIndex: "unit",
+                          width: 80,
+                          render: (value: string | null) => value || "-",
+                        },
+                      ]}
+                    />
+                  ) : (
+                    <Alert
+                      type="error"
+                      showIcon
+                      message={`试算失败：${result.error ?? "未知错误"}`}
+                      description="该杆塔缺少必要的台账/profile 数据（如未导入塔属性），请先补齐后再试算。"
+                    />
+                  ),
+                }))}
+              />
+            </div>
+
+            {/* 底部固定：分页右下角（作用于当前激活塔，过滤后总数） */}
+            {(() => {
+              const active = trialResults.find((r) => r.tower_id === trialResultActiveTab);
+              if (!active) return null;
+              const total = active.ok ? filterTrialItems(active.items ?? [], trialResultKeyword).length : 0;
+              const page = trialResultPages[active.tower_id] ?? { current: 1, pageSize: 20 };
+              return (
+                <div
+                  style={{
+                    flex: "none",
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    alignItems: "center",
+                    padding: "10px 0 12px",
+                  }}
+                >
+                  <Pagination
+                    size="small"
+                    current={page.current}
+                    pageSize={page.pageSize}
+                    total={total}
+                    showSizeChanger
+                    showTotal={(t) => `共 ${t} 个参数`}
+                    onChange={(current, pageSize) =>
+                      setTrialResultPages((prev) => ({ ...prev, [active.tower_id]: { current, pageSize } }))
+                    }
+                  />
+                </div>
+              );
+            })()}
+          </>
         )}
       </Drawer>
     </div>

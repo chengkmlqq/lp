@@ -585,33 +585,33 @@ export default function AdminFaultAnalysisPage() {
       {
         title: "任务名称",
         dataIndex: "title",
-        width: 200,
+        width: 303,
         ellipsis: true,
         render: (value: string) => formatNullable(value),
       },
       {
         title: "线路名称",
         dataIndex: "line_name",
-        width: 160,
+        width: 243,
         ellipsis: true,
         render: (value: string) => formatNullable(value),
       },
       {
         title: "故障时刻",
         dataIndex: "fault_time",
-        width: 170,
+        width: 258,
         render: (value: string) => formatDateTime(value),
       },
       {
         title: "故障项",
         dataIndex: "fault_phase",
-        width: 120,
+        width: 182,
         render: (value: string) => formatNullable(value),
       },
       {
         title: "重合闸情况",
         dataIndex: "reclosure_status",
-        width: 120,
+        width: 182,
         render: (value: string) => {
           if (!value) return "-";
           return RECLOSURE_LABELS[value] ?? formatNullable(value);
@@ -620,7 +620,7 @@ export default function AdminFaultAnalysisPage() {
       {
         title: "操作",
         key: "actions",
-        width: 180,
+        width: 130,
         fixed: "right",
       align: "right" as const,
       render: (_: unknown, row) => {
@@ -780,7 +780,7 @@ export default function AdminFaultAnalysisPage() {
                             setPagination({ current: page, pageSize });
                           },
                         }}
-                        scroll={{ x: 1200, y: tableScrollY }}
+                        scroll={{ x: 900, y: tableScrollY }}
                         locale={{
                           emptyText: (
                             <Empty

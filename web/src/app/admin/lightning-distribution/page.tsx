@@ -874,7 +874,7 @@ export default function AdminLightningDistributionPage() {
       {
         title: "操作",
         key: "actions",
-        width: 200,
+        width: 150,
         fixed: "right",
       align: "right" as const,
       render: (_: unknown, row) => {

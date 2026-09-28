@@ -1249,6 +1249,8 @@ export type AtpAssetTestRunRequest = {
   tower_no?: string | null;
   voltage_kv?: number | null;
   scene?: string | null;
+  /** 从线路杆塔选择：后端按塔组装 base_tower/profile（与「参数试算」同口径） */
+  line_tower_id?: string | null;
   base_tower?: Record<string, unknown>;
   profile?: Record<string, unknown>;
   execution_options?: Record<string, unknown>;
@@ -1256,6 +1258,7 @@ export type AtpAssetTestRunRequest = {
   current_ka?: number | null;
   timeout_seconds?: number | null;
   dry_run?: boolean;
+  allow_incomplete_defaults?: boolean;
 };
 
 export type AtpAssetRunSummary = {
@@ -1282,6 +1285,7 @@ export type AtpAssetRunSummary = {
   stderr_size: number;
   create_date: string;
   create_user: string | null;
+  result_summary_json?: Record<string, unknown>;
 };
 
 export type AtpAssetRunDetail = AtpAssetRunSummary & {

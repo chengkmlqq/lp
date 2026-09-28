@@ -43,7 +43,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
 import { AtpModelDetailTab } from "@/components/atp-models/atp-model-detail-tab";
-import { AtpModelTestDrawer } from "@/components/atp-models/atp-model-test-drawer";
+import { AtpModelTestTab } from "@/components/atp-models/atp-model-test-tab";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -199,8 +199,8 @@ export default function AtpModelsPage() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(240);
   const containerRef = useRef<HTMLDivElement>(null);
   const isResizing = useRef(false);
-  // 模型测试抽屉：从操作列打开，以当前模型为上下文
-  const [testAsset, setTestAsset] = useState<AtpAssetSummary | null>(null);
+  // 模型测试页内 Tab：从操作列打开，以当前模型为上下文（参照详情 Tab）
+  const [testTabs, setTestTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
   const [detailTabs, setDetailTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>("list");
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -901,8 +901,23 @@ export default function AtpModelsPage() {
     }
   }, [assetItems, openDetail]);
 
-  const openTestDrawer = useCallback((asset: AtpAssetSummary) => {
-    setTestAsset(asset);
+  /** 从操作列打开模型测试 Tab（同一模型已开则直接切过去）。 */
+  const openTestTab = useCallback((asset: AtpAssetSummary) => {
+    const key = `test-${asset.id}`;
+    setTestTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: <span className="admin-atp-models-tab-title">模型测试 - {asset.name || asset.id}</span>,
+          assetId: asset.id,
+        },
+      ];
+    });
+    setActiveTabKey(key);
   }, []);
 
   const columns = useMemo<ColumnsType<AtpAssetSummary>>(
@@ -993,7 +1008,7 @@ export default function AtpModelsPage() {
                 <Button size="small" type="text" icon={<EyeOutlined />} onClick={() => openDetailById(item.id)} />
               </Tooltip>
               <Tooltip title="测试">
-                <Button size="small" type="text" icon={<ExperimentOutlined />} disabled={!canTest} onClick={() => openTestDrawer(item)} />
+                <Button size="small" type="text" icon={<ExperimentOutlined />} disabled={!canTest} onClick={() => openTestTab(item)} />
               </Tooltip>
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" type="text" icon={<MoreOutlined />} />
@@ -1003,7 +1018,7 @@ export default function AtpModelsPage() {
         },
       },
     ],
-    [canManage, canTest, deleteMutation, formatDimensionValue, openDetailById, openEditModal, openTestDrawer],
+    [canManage, canTest, deleteMutation, formatDimensionValue, openDetailById, openEditModal, openTestTab],
   );
 
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
@@ -1012,6 +1027,17 @@ export default function AtpModelsPage() {
     }
     const key = String(targetKey);
     setDetailTabs((previous) => {
+      const removedIndex = previous.findIndex((tab) => tab.key === key);
+      const next = previous.filter((tab) => tab.key !== key);
+      setActiveTabKey((current) => {
+        if (current !== key) {
+          return current;
+        }
+        return next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? "list";
+      });
+      return next;
+    });
+    setTestTabs((previous) => {
       const removedIndex = previous.findIndex((tab) => tab.key === key);
       const next = previous.filter((tab) => tab.key !== key);
       setActiveTabKey((current) => {
@@ -1231,7 +1257,7 @@ export default function AtpModelsPage() {
                                   onView={(asset) => openDetail(asset)}
                                   onEdit={(asset) => openEditModal(asset)}
                                   onDelete={(id) => deleteMutation.mutate(id)}
-                                  onTest={(asset) => openTestDrawer(asset)}
+                                  onTest={(asset) => openTestTab(asset)}
                                   dimensionLabelMap={dimensionLabelMap}
                                 />
                               </Spin>
@@ -1264,6 +1290,16 @@ export default function AtpModelsPage() {
             closable: true,
             children: (
               <AtpModelDetailTab
+                assetId={tab.assetId}
+              />
+            ),
+          })),
+          ...testTabs.map((tab) => ({
+            key: tab.key,
+            label: tab.label,
+            closable: true,
+            children: (
+              <AtpModelTestTab
                 assetId={tab.assetId}
               />
             ),
@@ -1468,12 +1504,6 @@ export default function AtpModelsPage() {
           </div>
         </Form>
       </Modal>
-
-      <AtpModelTestDrawer
-        asset={testAsset}
-        open={Boolean(testAsset)}
-        onClose={() => setTestAsset(null)}
-      />
     </div>
   );
 }
