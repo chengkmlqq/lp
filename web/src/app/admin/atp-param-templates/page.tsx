@@ -1223,6 +1223,42 @@ export default function AtpParamTemplatesPage() {
               ),
             },
             {
+              title: "引用参数",
+              key: "edit_ref_params",
+              width: 190,
+              render: (_, row: SlotRow) => {
+                // 从表达式（或已选参数引用）里按词边界匹配注册表参数 code
+                const source = row.param || row.expr || "";
+                if (!source) return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+                const refs = Object.values(paramSources).filter((ref) => {
+                  if (!ref.code) return false;
+                  const re = new RegExp(`\\b${ref.code}\\b`);
+                  return re.test(source);
+                });
+                if (refs.length === 0) return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+                return (
+                  <Space size={4} wrap>
+                    {refs.map((ref) => (
+                      <Tooltip
+                        key={ref.code}
+                        title={
+                          ref.source_type === "line_binding"
+                            ? `线路导入绑定：${ref.via}`
+                            : ref.source_type === "script"
+                              ? `${ref.name}（脚本计算：${ref.via}）`
+                              : `字面量：${ref.via}`
+                        }
+                      >
+                        <Tag color={ref.source_type === "line_binding" ? "geekblue" : "purple"} style={{ marginInlineEnd: 0 }}>
+                          {ref.code}
+                        </Tag>
+                      </Tooltip>
+                    ))}
+                  </Space>
+                );
+              },
+            },
+            {
               title: "格式",
               dataIndex: "fmt",
               width: 90,
