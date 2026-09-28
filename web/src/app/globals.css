@@ -4291,7 +4291,7 @@ body {
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 24px;
+  padding: 12px;
 }
 
 /* LP-249: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
@@ -4389,14 +4389,18 @@ body {
 }
 
 .admin-elevation-card-view-content {
+  display: flex;
   min-height: 0;
   flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 0;
 }
 
 .admin-elevation-card-view-state {
   display: flex;
-  min-height: 240px;
+  min-height: 180px;
   flex: 1;
   align-items: center;
   justify-content: center;

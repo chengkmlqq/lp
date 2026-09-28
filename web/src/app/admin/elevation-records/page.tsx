@@ -1083,7 +1083,7 @@ export default function ElevationRecordsPage() {
                     ) : (
                       <>
                         <div className="admin-elevation-card-view-content">
-                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          <div className="grid min-h-0 flex-1 content-start gap-3 md:grid-cols-2 xl:grid-cols-4">
                             {records.map((recordItem) => (
                               renderRecordCard(recordItem)
                             ))}
