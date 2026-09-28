@@ -114,10 +114,11 @@ type ParamSourceMap = Record<string, SlotParamRef>;
 
 const { Text, Title } = Typography;
 
-// 右表高度自适应视口(参照菜单管理页 updateTableScrollY 口径)
+// 右表高度自适应视口（严格照搬 power-lines 口径：可滚动容器 padding-box 底边推导）
 const TEMPLATE_TABLE_MIN_SCROLL_Y = 180;
-const TEMPLATE_TABLE_VIEWPORT_GAP = 40;
-const TEMPLATE_TABLE_FALLBACK_RESERVE = 220;
+const TEMPLATE_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
+const TEMPLATE_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
+const TEMPLATE_TABLE_BOTTOM_GAP = 8;
 
 /** 树节点平铺成「模板行」(含祖先链,用于树点击过滤)。 */
 type TemplateRow = {
@@ -784,54 +785,59 @@ export default function AtpParamTemplatesPage() {
     },
   ];
 
-  // 参照菜单管理页:根据筛选栏/表格顶部位置计算滚动区高度,
-  // 避免固定 320px 在不同窗口下出现底部留白或双滚动条。
+  // 列表视图动态表体高度（严格照搬 power-lines 口径：按列表面板 padding-box 底边推导，自适应窗口）
   const updateTableScrollY = useCallback(() => {
-    if (typeof window === "undefined") return;
-    const anchor = tableScrollAnchorRef.current;
-    if (!anchor) return;
-
-    const anchorTop = anchor.getBoundingClientRect().top;
-    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
-    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
-
-    let nextHeight = Math.floor(window.innerHeight - anchorTop - TEMPLATE_TABLE_FALLBACK_RESERVE);
-    if (tableWrapper) {
-      const wrapperRect = tableWrapper.getBoundingClientRect();
-      const bodyHeight = tableBody?.getBoundingClientRect().height ?? TEMPLATE_TABLE_MIN_SCROLL_Y;
-      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
-      const topGap = Math.max(0, wrapperRect.top - anchorTop);
-      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - TEMPLATE_TABLE_VIEWPORT_GAP);
+    if (typeof window === "undefined") {
+      return TEMPLATE_TABLE_MIN_SCROLL_Y;
     }
-
-    const clampedHeight = Math.max(TEMPLATE_TABLE_MIN_SCROLL_Y, nextHeight);
-    setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
+    const anchor = tableScrollAnchorRef.current;
+    if (!anchor) {
+      return TEMPLATE_TABLE_MIN_SCROLL_Y;
+    }
+    // 口径与 power-lines 一致：不用 anchor 自身高度反推（会被 min-height 撑大 → 正反馈），
+    // 不用 window.innerHeight（漏底部 padding → 多余纵向滚动条）。
+    const anchorTop = anchor.getBoundingClientRect().top;
+    const pane = anchor.closest<HTMLElement>(".admin-atp-params-list-pane");
+    const container = pane ?? document.documentElement;
+    const containerRect = container.getBoundingClientRect();
+    const containerPadBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
+    const header = anchor.querySelector<HTMLElement>(".ant-table-header");
+    const paginationEl = anchor.querySelector<HTMLElement>(".ant-table-pagination");
+    const headerHeight = header?.getBoundingClientRect().height ?? TEMPLATE_TABLE_ESTIMATED_HEADER_HEIGHT;
+    const paginationHeight =
+      paginationEl?.getBoundingClientRect().height ?? TEMPLATE_TABLE_ESTIMATED_PAGINATION_HEIGHT;
+    const available = containerRect.bottom - containerPadBottom - anchorTop - TEMPLATE_TABLE_BOTTOM_GAP;
+    const nextHeight = Math.floor(available - headerHeight - paginationHeight - 16 - 4);
+    return Math.max(TEMPLATE_TABLE_MIN_SCROLL_Y, nextHeight);
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.requestAnimationFrame(updateTableScrollY);
-  }, [filteredRows.length, hasTableFilter, levelFilter, loading, tableKeyword, updateTableScrollY]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") {
+      return;
+    }
     const onViewportChange = () => {
-      window.requestAnimationFrame(updateTableScrollY);
+      window.requestAnimationFrame(() => {
+        setTableScrollY(updateTableScrollY());
+      });
     };
     window.addEventListener("resize", onViewportChange);
-    return () => window.removeEventListener("resize", onViewportChange);
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+    };
   }, [updateTableScrollY]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || typeof ResizeObserver === "undefined") return;
-    const anchor = tableScrollAnchorRef.current;
-    if (!anchor) return;
-    const resizeObserver = new ResizeObserver(() => {
-      window.requestAnimationFrame(updateTableScrollY);
+    if (typeof window === "undefined") {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      setTableScrollY(updateTableScrollY());
     });
-    resizeObserver.observe(anchor);
-    return () => resizeObserver.disconnect();
-  }, [updateTableScrollY]);
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+    // 列表视图挂载（viewMode 切换）与数据/分页变化时重算
+  }, [updateTableScrollY, viewMode, filteredRows.length, loading, pagination.current, pagination.pageSize]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
