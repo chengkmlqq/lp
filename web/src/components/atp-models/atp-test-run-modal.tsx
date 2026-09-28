@@ -12,11 +12,13 @@ import {
   App,
   Button,
   Checkbox,
+  Col,
   Form,
   Input,
   InputNumber,
   Modal,
   Radio,
+  Row,
   Select,
   Space,
   Spin,
@@ -234,61 +236,61 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
           message="测试按 ① 物化 → ② 几何（DAT→LIB）→ ③ 单次 ATP 依次执行，依赖段自动补齐"
         />
 
-        <Space size={16} wrap>
-          <Space size={8}>
-            <Typography.Text>测试段</Typography.Text>
-            <Checkbox.Group
-              value={stages}
-              onChange={(values) => setStages(values as AtpAssetTestStage[])}
-              options={[
-                { value: "materialize", label: "① 物化" },
-                { value: "geometry", label: "② 几何" },
-                { value: "simulate", label: "③ 单次ATP" },
-              ]}
-            />
-          </Space>
-        </Space>
-
-        <Space size={16} wrap>
-          <Space size={8}>
-            <Typography.Text>固定雷电流</Typography.Text>
-            <Space.Compact>
-              <InputNumber
-                value={currentKa}
-                min={0.1}
-                onChange={(value) => setCurrentKa(typeof value === "number" ? value : 31)}
-                style={{ width: 100 }}
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item label="测试段" style={{ marginBottom: 8 }}>
+              <Checkbox.Group
+                value={stages}
+                onChange={(values) => setStages(values as AtpAssetTestStage[])}
+                options={[
+                  { value: "materialize", label: "① 物化" },
+                  { value: "geometry", label: "② 几何" },
+                  { value: "simulate", label: "③ 单次ATP" },
+                ]}
               />
-              <Button disabled style={{ pointerEvents: "none" }}>
-                kA
-              </Button>
-            </Space.Compact>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              与 C# 侧必须同值
-            </Typography.Text>
-          </Space>
-          <Space size={8}>
-            <Typography.Text>试跑</Typography.Text>
-            <Switch checked={dryRun} onChange={setDryRun} />
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              只列命令不执行
-            </Typography.Text>
-          </Space>
-        </Space>
-
-        <Space size={8} wrap>
-          <Typography.Text>参数来源</Typography.Text>
-          <Radio.Group
-            value={paramsSource}
-            onChange={(event) => setParamsSource(event.target.value as ParamsSource)}
-            options={[
-              { value: "template", label: "参数模板默认值" },
-              { value: "tower", label: "手工杆塔数据" },
-              { value: "line-tower", label: "从线路杆塔选择" },
-            ]}
-            optionType="button"
-          />
-        </Space>
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item label="固定雷电流" style={{ marginBottom: 8 }}>
+              <Space.Compact>
+                <InputNumber
+                  value={currentKa}
+                  min={0.1}
+                  onChange={(value) => setCurrentKa(typeof value === "number" ? value : 31)}
+                  style={{ width: 100 }}
+                />
+                <Button disabled style={{ pointerEvents: "none" }}>
+                  kA
+                </Button>
+              </Space.Compact>
+              <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+                与 C# 侧必须同值
+              </Typography.Text>
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item label="试跑" style={{ marginBottom: 8 }}>
+              <Switch checked={dryRun} onChange={setDryRun} />
+              <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+                只列命令不执行
+              </Typography.Text>
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item label="参数来源" style={{ marginBottom: 8 }}>
+              <Radio.Group
+                value={paramsSource}
+                onChange={(event) => setParamsSource(event.target.value as ParamsSource)}
+                options={[
+                  { value: "template", label: "参数模板默认值" },
+                  { value: "tower", label: "手工杆塔数据" },
+                  { value: "line-tower", label: "从线路杆塔选择" },
+                ]}
+                optionType="button"
+              />
+            </Form.Item>
+          </Col>
+        </Row>
 
         {paramsSource === "line-tower" ? (
           <Space direction="vertical" size={8} style={{ width: "100%" }}>
@@ -305,7 +307,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
                   value={lineId}
                   onChange={(value) => void handleLineChange(String(value))}
                   optionFilterProp="label"
-                  onDropdownVisibleChange={async (visible) => {
+                  onOpenChange={async (visible) => {
                     if (visible && !linesLoaded) {
                       try {
                         const response = await fetchWithAuth("/api/v1/lines?limit=1000");
@@ -353,37 +355,49 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
           </Space>
         ) : (
           <Space direction="vertical" size={8} style={{ width: "100%" }}>
-            <Space wrap size={8}>
-              <Input
-                addonBefore="塔型"
-                value={towerKind}
-                placeholder="如 d220maotou"
-                onChange={(event) => setTowerKind(event.target.value)}
-                style={{ width: 260 }}
-              />
-              <Input
-                addonBefore="场景"
-                value={scene}
-                placeholder="如 fanji"
-                onChange={(event) => setScene(event.target.value)}
-                style={{ width: 220 }}
-              />
-            </Space>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="塔型" style={{ marginBottom: 8 }}>
+                  <Input
+                    value={towerKind}
+                    placeholder="如 d220maotou"
+                    onChange={(event) => setTowerKind(event.target.value)}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="场景" style={{ marginBottom: 8 }}>
+                  <Input
+                    value={scene}
+                    placeholder="如 fanji"
+                    onChange={(event) => setScene(event.target.value)}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
             {paramsSource === "tower" ? (
-              <>
-                <Input.TextArea
-                  rows={4}
-                  value={baseTowerText}
-                  onChange={(event) => setBaseTowerText(event.target.value)}
-                  placeholder='base_tower（JSON 对象），如 {"line_voltage_kv":220,"ground_resistance":7}'
-                />
-                <Input.TextArea
-                  rows={3}
-                  value={profileText}
-                  onChange={(event) => setProfileText(event.target.value)}
-                  placeholder='profile（JSON 对象），如 {"insulator_length_mm":2491.5}'
-                />
-              </>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label="base_tower（JSON）" style={{ marginBottom: 8 }}>
+                    <Input.TextArea
+                      rows={4}
+                      value={baseTowerText}
+                      onChange={(event) => setBaseTowerText(event.target.value)}
+                      placeholder='如 {"line_voltage_kv":220,"ground_resistance":7}'
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label="profile（JSON）" style={{ marginBottom: 8 }}>
+                    <Input.TextArea
+                      rows={4}
+                      value={profileText}
+                      onChange={(event) => setProfileText(event.target.value)}
+                      placeholder='如 {"insulator_length_mm":2491.5}'
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
             ) : (
               <Space size={8}>
                 <Typography.Text>模板默认值不完整时仍继续</Typography.Text>

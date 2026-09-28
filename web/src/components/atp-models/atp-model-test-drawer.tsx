@@ -362,20 +362,24 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                     children: (
                       <Space direction="vertical" size={8} style={{ width: "100%" }}>
                         <Space wrap size={8}>
-                          <Input
-                            addonBefore="塔型"
-                            value={towerKind}
-                            placeholder="如 d220maotou"
-                            onChange={(event) => setTowerKind(event.target.value)}
-                            style={{ width: 260 }}
-                          />
-                          <Input
-                            addonBefore="场景"
-                            value={scene}
-                            placeholder="如 fanji"
-                            onChange={(event) => setScene(event.target.value)}
-                            style={{ width: 220 }}
-                          />
+                          <Space.Compact style={{ width: 260 }}>
+                            <Button disabled style={{ pointerEvents: "none", fontWeight: 400 }}>塔型</Button>
+                            <Input
+                              value={towerKind}
+                              placeholder="如 d220maotou"
+                              onChange={(event) => setTowerKind(event.target.value)}
+                              style={{ width: "calc(100% - 64px)" }}
+                            />
+                          </Space.Compact>
+                          <Space.Compact style={{ width: 220 }}>
+                            <Button disabled style={{ pointerEvents: "none", fontWeight: 400 }}>场景</Button>
+                            <Input
+                              value={scene}
+                              placeholder="如 fanji"
+                              onChange={(event) => setScene(event.target.value)}
+                              style={{ width: "calc(100% - 64px)" }}
+                            />
+                          </Space.Compact>
                         </Space>
                         {paramsSource === "tower" ? (
                           <>

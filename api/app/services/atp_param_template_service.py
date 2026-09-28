@@ -384,6 +384,7 @@ def build_tree(db: Session, *, keyword: str | None = None) -> dict[str, Any]:
                 "label": _tower_label(tower_type),
                 "node_type": "rule" if base is not None else "group",
                 "dimension": "tower_type",
+                "dimensions": _node_dimensions(base),
                 "rule_id": base.id if base is not None else None,
                 "has_template": base is not None,
                 "defined_slots": len((base.slots_json or {})) if base is not None else 0,
@@ -405,6 +406,13 @@ def build_tree(db: Session, *, keyword: str | None = None) -> dict[str, Any]:
             "label": "全部电压" if voltage == "*" else f"{voltage}kV",
             "node_type": "group",
             "dimension": "voltage_level",
+            "dimensions": {
+                "tower_type": None,
+                "voltage_level": None if voltage == "*" else voltage,
+                "circuit_count": None,
+                "scene_type": None,
+                "arrester_config": None,
+            },
             "rule_id": None,
             "has_template": bool(loose_rows),
             "defined_slots": sum(len(row.slots_json or {}) for row in loose_rows),
@@ -421,6 +429,13 @@ def build_tree(db: Session, *, keyword: str | None = None) -> dict[str, Any]:
         "label": "全局参数模板",
         "node_type": "global",
         "dimension": None,
+        "dimensions": {
+            "tower_type": None,
+            "voltage_level": None,
+            "circuit_count": None,
+            "scene_type": None,
+            "arrester_config": None,
+        },
         "rule_id": None,
         "has_template": bool(global_count),
         "defined_slots": len(global_count),
@@ -439,6 +454,25 @@ def _finer_dimensions(row: AtpParamTemplate) -> list[str]:
         for key in DIMENSION_KEYS
         if key not in ("tower_type", "voltage_level") and getattr(row, key, None) not in (None, "")
     ]
+
+
+def _node_dimensions(row: AtpParamTemplate | None) -> dict[str, Any]:
+    """规则/塔型节点的匹配维度摘要（前端卡片展示用；值为 None 表示通配）。"""
+    if row is None:
+        return {
+            "tower_type": None,
+            "voltage_level": None,
+            "circuit_count": None,
+            "scene_type": None,
+            "arrester_config": None,
+        }
+    return {
+        "tower_type": row.tower_type,
+        "voltage_level": row.voltage_level,
+        "circuit_count": row.circuit_count,
+        "scene_type": row.scene_type,
+        "arrester_config": row.arrester_config,
+    }
 
 
 def _tower_label(tower_type: str) -> str:
@@ -461,6 +495,7 @@ def _rule_node(row: AtpParamTemplate, *, effective_slots: int) -> dict[str, Any]
         "label": row.name + ("" if row.enabled else "（停用）"),
         "node_type": "rule",
         "dimension": dims[-1] if dims else None,
+        "dimensions": _node_dimensions(row),
         "rule_id": row.id,
         "has_template": True,
         "defined_slots": len(row.slots_json or {}),

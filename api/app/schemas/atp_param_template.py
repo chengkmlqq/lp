@@ -83,6 +83,8 @@ class TreeNode(BaseModel):
     label: str
     node_type: Literal["global", "group", "rule"]
     dimension: str | None = None
+    # 匹配维度摘要（值 null/缺省 = 通配）；卡片视图展示用
+    dimensions: dict[str, Any] | None = None
     rule_id: str | None = None
     has_template: bool = False
     defined_slots: int = 0

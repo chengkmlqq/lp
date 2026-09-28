@@ -769,7 +769,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 12px;
 }
 
 .admin-menus-sider-menu .ant-tree {
@@ -1251,7 +1251,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 12px;
 }
 
 .admin-documents-sider-menu .ant-tree {
@@ -2867,7 +2867,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 12px;
 }
 
 .admin-system-params-sider-menu .ant-tree {
@@ -3823,7 +3823,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 12px;
 }
 
 .admin-atp-models-sider-menu .ant-tree {
