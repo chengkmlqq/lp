@@ -151,6 +151,8 @@ class AtpAssetRunSummary(BaseModel):
     stderr_size: int = 0
     create_date: datetime
     create_user: str | None = None
+    # 操作人可读名（username 映射），前端「操作人」列展示；无则回落 create_user
+    create_user_name: str | None = None
     # 测试运行的结果摘要（requested_stages / stages 判据 / compare.params_source 等）：
     # 用于列表进度条回显与参数来源列；详情接口同样返回
     result_summary_json: dict[str, Any] = Field(default_factory=dict)

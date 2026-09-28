@@ -26,6 +26,7 @@ from ..models.atp_asset import AtpAsset, AtpAssetRun
 from ..models.base import utcnow
 from ..models.file_storage import FileStorageMount
 from ..models.dimension_item import DimensionItem
+from ..models.user import User
 from ..schemas.atp_asset import (
     AtpAssetCreateRequest,
     AtpAssetDetail,
@@ -637,7 +638,11 @@ def serialize_asset(
     )
 
 
-def serialize_run(item: AtpAssetRun) -> AtpAssetRunSummary:
+def serialize_run(
+    item: AtpAssetRun,
+    *,
+    create_user_name: str | None = None,
+) -> AtpAssetRunSummary:
     stdout_text = item.stdout_text or ""
     stderr_text = item.stderr_text or ""
     return AtpAssetRunSummary(
@@ -664,18 +669,22 @@ def serialize_run(item: AtpAssetRun) -> AtpAssetRunSummary:
         stderr_size=len(stderr_text),
         create_date=item.create_date,
         create_user=item.create_user,
+        create_user_name=create_user_name,
         result_summary_json=item.result_summary_json or {},
     )
 
 
-def serialize_run_detail(item: AtpAssetRun) -> AtpAssetRunDetail:
-    summary = serialize_run(item)
+def serialize_run_detail(
+    item: AtpAssetRun,
+    *,
+    create_user_name: str | None = None,
+) -> AtpAssetRunDetail:
+    summary = serialize_run(item, create_user_name=create_user_name)
     return AtpAssetRunDetail(
         **summary.model_dump(),
         stdout_text=item.stdout_text,
         stderr_text=item.stderr_text,
         output_manifest_json=item.output_manifest_json or {},
-        result_summary_json=item.result_summary_json or {},
     )
 
 
@@ -1472,7 +1481,19 @@ def list_runs(
         stmt.order_by(AtpAssetRun.create_date.desc(), AtpAssetRun.id.desc()).offset(offset).limit(limit)
     ).scalars().all()
     total = int(db.scalar(total_stmt) or 0)
-    return AtpAssetRunListResponse(items=[serialize_run(item) for item in items], total=total)
+    # 批量解析操作人 username（一次查询避免 N+1），供前端「操作人」列显示可读名
+    user_ids = {item.create_user for item in items if item.create_user}
+    create_user_names: dict[str, str] = {}
+    if user_ids:
+        user_rows = db.execute(select(User.id, User.username).where(User.id.in_(list(user_ids)))).all()
+        create_user_names = {str(row[0]): str(row[1]) for row in user_rows}
+    return AtpAssetRunListResponse(
+        items=[
+            serialize_run(item, create_user_name=create_user_names.get(item.create_user))
+            for item in items
+        ],
+        total=total,
+    )
 
 
 def get_run_by_id(db: Session, run_id: str) -> AtpAssetRun | None:
@@ -1487,7 +1508,15 @@ def get_run_detail(db: Session, *, run_id: str) -> AtpAssetRunDetail:
     item = get_run_by_id(db, run_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
-    return serialize_run_detail(item)
+    create_user_name = _resolve_create_user_name(db, item.create_user)
+    return serialize_run_detail(item, create_user_name=create_user_name)
+
+
+def _resolve_create_user_name(db: Session, user_id: str | None) -> str | None:
+    """批量查询 User.username 作为操作人可读名（与 elevation_service 同款做法，避免 N+1）。"""
+    if not user_id:
+        return None
+    return db.scalar(select(User.username).where(User.id == user_id))
 
 
 def execute_asset_run_job(*, run_id: str, payload_data: dict[str, Any], actor_user_id: str | None) -> None:

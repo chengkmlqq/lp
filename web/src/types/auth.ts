@@ -1284,9 +1284,10 @@ export type AtpAssetRunSummary = {
   stdout_size: number;
   stderr_size: number;
   create_date: string;
-  create_user: string | null;
-  result_summary_json?: Record<string, unknown>;
-};
+    create_user: string | null;
+    create_user_name?: string | null;
+    result_summary_json?: Record<string, unknown>;
+  };
 
 export type AtpAssetRunDetail = AtpAssetRunSummary & {
   stdout_text: string | null;

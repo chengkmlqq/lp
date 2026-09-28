@@ -85,7 +85,8 @@ function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("zh-CN", { hour12: false });
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 /** 运行进度：requested_stages 中已完成（ok/failed）段占比；排队中 0。 */
@@ -285,7 +286,12 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
         title: "操作人",
         dataIndex: "create_user",
         width: 110,
-        render: (value: string | null) => value || "-",
+        render: (_: unknown, record) => {
+          const userName =
+            (record as AtpAssetRunSummary & { create_user_name?: string | null }).create_user_name ||
+            record.create_user;
+          return userName || "-";
+        },
       },
       {
         title: "操作",
