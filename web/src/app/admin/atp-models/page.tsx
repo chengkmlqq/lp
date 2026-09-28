@@ -41,6 +41,7 @@ import type { DataNode } from "antd/es/tree";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent, type RefAttributes } from "react";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { AtpBatchTestDrawer } from "@/components/atp-models/atp-batch-test-drawer";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
 import { AtpModelDetailTab } from "@/components/atp-models/atp-model-detail-tab";
 import { AtpModelTestTab } from "@/components/atp-models/atp-model-test-tab";
@@ -202,6 +203,8 @@ export default function AtpModelsPage() {
   // 模型测试页内 Tab：从操作列打开，以当前模型为上下文（参照详情 Tab）
   const [testTabs, setTestTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
   const [detailTabs, setDetailTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
+  // 批量测试抽屉
+  const [batchTestOpen, setBatchTestOpen] = useState(false);
   const [activeTabKey, setActiveTabKey] = useState<string>("list");
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(ATP_TABLE_MIN_SCROLL_Y);
@@ -1076,11 +1079,27 @@ export default function AtpModelsPage() {
         onEdit={handleTabsEdit}
         className="admin-atp-models-tabs"
         tabBarExtraContent={
-          canManage ? (
-            <Button type="primary" disabled={!canManage} onClick={openCreateModal} icon={<PlusOutlined />}>
-               新建模型
-             </Button>
-          ) : null
+          <Space size={8}>
+            {canManage ? (
+              <Button
+                type="primary"
+                disabled={!canManage}
+                onClick={openCreateModal}
+                icon={<PlusOutlined />}
+              >
+                新建模型
+              </Button>
+            ) : null}
+            {canTest ? (
+              <Button
+                icon={<ExperimentOutlined />}
+                onClick={() => setBatchTestOpen(true)}
+                disabled={allAssets.length === 0}
+              >
+                批量测试
+              </Button>
+            ) : null}
+          </Space>
         }
         items={[
           {
@@ -1306,6 +1325,12 @@ export default function AtpModelsPage() {
           })),
         ]}
         />
+
+      <AtpBatchTestDrawer
+        open={batchTestOpen}
+        assets={allAssets}
+        onClose={() => setBatchTestOpen(false)}
+      />
 
       <Modal
         title="新建 ATP 模型"

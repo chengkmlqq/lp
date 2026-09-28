@@ -1301,6 +1301,47 @@ export type AtpAssetRunListResponse = {
   total: number;
 };
 
+/** 批量测试:单个资产运行摘要 */
+export type AtpBatchTestRunItem = {
+  run_id: string;
+  asset_id: string;
+  asset_code: string;
+  asset_name: string;
+  voltage_level: string | null;
+  tower_type: string | null;
+  scene_type: string | null;
+  arrester_config: string | null;
+  status: AtpAssetRunStatus;
+  duration_ms: number | null;
+  error_message: string | null;
+  result_summary_json: Record<string, unknown>;
+};
+
+/** 批量测试:总体进度与报告 */
+export type AtpBatchTestRunSummary = {
+  batch_id: string;
+  total: number;
+  pending: number;
+  running: number;
+  success: number;
+  failed: number;
+  errors?: { asset_id: string; code: string; error: string }[];
+  report: {
+    groups: {
+      group: string;
+      total: number;
+      success: number;
+      failed: number;
+      pass_rate: number;
+      flashover_count_distribution: Record<string, number>;
+    }[];
+    overall_pass_rate: number;
+    flashover_count_distribution: Record<string, number>;
+    failure_reasons_top: { reason: string; count: number }[];
+  };
+  items: AtpBatchTestRunItem[];
+};
+
 export type LightningPolarity = "positive" | "negative" | "mixed" | "unknown";
 
 export type LightningAmplitudeRecord = {

@@ -46,12 +46,12 @@ from uuid import uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..core.config import get_settings
 from ..models.atp_asset import AtpAsset, AtpAssetRun
 from ..models.base import utcnow
-from ..schemas.atp_asset import AtpAssetRunDetail, AtpAssetTestRunRequest
+from ..schemas.atp_asset import AtpAssetRunDetail, AtpAssetTestRunRequest, AtpBatchTestRunRequest
 from .atp_asset_service import _decode_text_file as _decode_artifact_text
 
 logger = logging.getLogger(__name__)
@@ -209,6 +209,7 @@ def create_test_run(
     asset_id: str,
     payload: AtpAssetTestRunRequest,
     actor_user_id: str | None,
+    batch_id: str | None = None,
 ) -> AtpAssetRunDetail:
     from .atp_asset_service import get_asset_by_id, get_run_by_id, serialize_run_detail
 
@@ -229,6 +230,7 @@ def create_test_run(
             "kind": "atp_asset_test",
             "requested_stages": stages,
             "stages": {},
+            **({"batch_id": batch_id} if batch_id else {}),
         },
         create_user=actor_user_id,
         update_user=actor_user_id,
@@ -405,6 +407,7 @@ def execute_test_run_job(
                 "dry_run": True,
                 "requested_stages": stages,
                 "stages": {},
+                **(_batch_id_keep(run)),
             }
             run.update_user = actor_user_id
             run.update_date = utcnow()
@@ -470,6 +473,7 @@ def execute_test_run_job(
             "failed_stage": failed_stage,
             "stages": stage_results,
             "compare": compare_payload,
+            **(_batch_id_keep(run)),
         }
         run.update_user = actor_user_id
         run.update_date = utcnow()
@@ -1553,4 +1557,206 @@ def parse_test_run_waveform(
         "sample_count": total,
         "downsampled_count": len(time_vals),
         "file_size": len(data),
+    }
+
+
+# ─────────────────────── 批量测试（batch-test-runs） ───────────────────────
+# 复用单模型 create_test_run；batch_id 写入 result_summary_json.batch_id
+# （JSON 列天然可查，无需迁移 SQL）。批量查询按 batch_id 过滤 atp_asset_run。
+
+_BATCH_ID_PREFIX = "batch"
+
+
+def _batch_id_keep(run: AtpAssetRun) -> dict[str, Any]:
+    """worker 整体替换 result_summary_json 时保留既有 batch_id(批量标记)。
+
+    批量测试在 create 阶段把 batch_id 写入 result_summary_json;worker 执行
+    完成/失败时整体重建该 JSON,若不保留则批量查询按 batch_id 过滤会丢 run。
+    """
+    old = run.result_summary_json or {}
+    bid = old.get("batch_id")
+    return {"batch_id": bid} if bid else {}
+
+
+def create_batch_test_runs(
+    db: Session,
+    *,
+    asset_ids: list[str],
+    payload: AtpBatchTestRunRequest,
+    actor_user_id: str | None,
+) -> dict[str, Any]:
+    """为多个资产各发起一次测试，返回 batch_id 与各 run 摘要。"""
+    from .atp_asset_service import get_asset_by_id, get_run_by_id, serialize_run_detail
+
+    # 先整体校验资产存在性(避免部分成功后才发现某个资产无效)
+    assets = {}
+    for asset_id in asset_ids:
+        asset = get_asset_by_id(db, asset_id)
+        if asset is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"ATP 资产不存在: {asset_id}"
+            )
+        assets[asset_id] = asset
+
+    batch_id = f"{_BATCH_ID_PREFIX}-{uuid4().hex[:16]}"
+    # 单测请求(公共参数)
+    single_payload = AtpAssetTestRunRequest(
+        stages=payload.stages,
+        tower_kind=payload.tower_kind,
+        tower_no=payload.tower_no,
+        voltage_kv=payload.voltage_kv,
+        scene=payload.scene,
+        line_tower_id=payload.line_tower_id,
+        base_tower=payload.base_tower,
+        profile=payload.profile,
+        execution_options=payload.execution_options,
+        params_raw=payload.params_raw,
+        current_ka=payload.current_ka,
+        timeout_seconds=payload.timeout_seconds,
+        dry_run=payload.dry_run,
+        params_source=payload.params_source,
+        allow_incomplete_defaults=payload.allow_incomplete_defaults,
+    )
+
+    items: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for asset_id in asset_ids:
+        asset = assets[asset_id]
+        try:
+            run_detail = create_test_run(
+                db,
+                asset_id=asset_id,
+                payload=single_payload,
+                actor_user_id=actor_user_id,
+                batch_id=batch_id,
+            )
+            items.append({
+                "run_id": run_detail.id,
+                "asset_id": asset_id,
+                "asset_code": asset.code,
+                "asset_name": asset.name,
+                "voltage_level": asset.voltage_level,
+                "tower_type": asset.tower_type,
+                "scene_type": asset.scene_type,
+                "arrester_config": asset.arrester_config,
+                "status": run_detail.status,
+                "duration_ms": run_detail.duration_ms,
+                "error_message": run_detail.error_message,
+                "result_summary_json": run_detail.result_summary_json,
+            })
+        except HTTPException as exc:
+            errors.append({"asset_id": asset_id, "code": asset.code, "error": str(exc.detail)})
+        except Exception as exc:  # noqa: BLE001 - 单个资产失败不阻断整批
+            errors.append({"asset_id": asset_id, "code": asset.code, "error": str(exc)})
+
+    return {
+        "batch_id": batch_id,
+        "total": len(asset_ids),
+        "pending": len(items),
+        "running": 0,
+        "success": 0,
+        "failed": len(errors),
+        "report": {},
+        "items": items,
+        "errors": errors,
+    }
+
+
+def get_batch_test_runs(db: Session, *, batch_id: str) -> dict[str, Any]:
+    """按 batch_id 聚合批量测试进度与报告。"""
+    stmt = (
+        select(AtpAssetRun)
+        .options(joinedload(AtpAssetRun.asset))
+        .where(AtpAssetRun.result_summary_json["batch_id"].as_string() == batch_id)
+        .order_by(AtpAssetRun.create_date.asc())
+    )
+    runs = db.execute(stmt).scalars().all()
+
+    total = len(runs)
+    counts = {"pending": 0, "running": 0, "success": 0, "failed": 0}
+    items: list[dict[str, Any]] = []
+    for run in runs:
+        status = run.status or "pending"
+        counts[status if status in counts else "failed"] += 1
+        asset = run.asset
+        items.append({
+            "run_id": run.id,
+            "asset_id": run.asset_id,
+            "asset_code": asset.code if asset else run.asset_id,
+            "asset_name": asset.name if asset else run.asset_id,
+            "voltage_level": asset.voltage_level if asset else None,
+            "tower_type": asset.tower_type if asset else None,
+            "scene_type": asset.scene_type if asset else None,
+            "arrester_config": asset.arrester_config if asset else None,
+            "status": status,
+            "duration_ms": run.duration_ms,
+            "error_message": run.error_message,
+            "result_summary_json": run.result_summary_json or {},
+        })
+
+    # 总体报告:按 电压/塔型/场景/配置 分组的通过率 + 闪络相数
+    report = _build_batch_report(items)
+    return {
+        "batch_id": batch_id,
+        "total": total,
+        **counts,
+        "report": report,
+        "items": items,
+    }
+
+
+def _build_batch_report(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """生成批量测试总体报告(分组通过率 + 闪络相数分布 + 失败原因 TOP)。"""
+    from collections import Counter, defaultdict
+
+    groups: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"total": 0, "success": 0, "failed": 0, "flashover_counts": Counter()}
+    )
+    failure_reasons: Counter = Counter()
+    flashover_total = Counter()
+
+    for it in items:
+        key = " / ".join(
+            str(it.get(k) or "-")
+            for k in ("voltage_level", "tower_type", "scene_type", "arrester_config")
+        )
+        g = groups[key]
+        g["total"] += 1
+        status = it.get("status")
+        if status == "success":
+            g["success"] += 1
+        elif status == "failed":
+            g["failed"] += 1
+            reason = (it.get("error_message") or "未知错误").splitlines()[0][:120]
+            failure_reasons[reason] += 1
+        # 闪络相数(从 simulate 段指标取)
+        summary = it.get("result_summary_json") or {}
+        stages = summary.get("stages") or {}
+        sim = stages.get("simulate") if isinstance(stages, dict) else None
+        if isinstance(sim, dict):
+            metrics = sim.get("metrics") or {}
+            fc = metrics.get("flashover_count")
+            if fc is not None:
+                flashover_total[fc] += 1
+                g["flashover_counts"][fc] += 1
+
+    group_report = []
+    for key, g in sorted(groups.items()):
+        total = g["total"]
+        group_report.append({
+            "group": key,
+            "total": total,
+            "success": g["success"],
+            "failed": g["failed"],
+            "pass_rate": round(g["success"] / total * 100, 1) if total else 0,
+            "flashover_count_distribution": {str(k): v for k, v in sorted(g["flashover_counts"].items())},
+        })
+
+    return {
+        "groups": group_report,
+        "overall_pass_rate": round(
+            sum(g["success"] for g in groups.values()) / len(items) * 100, 1
+        ) if items else 0,
+        "flashover_count_distribution": {str(k): v for k, v in sorted(flashover_total.items())},
+        "failure_reasons_top": [{"reason": r, "count": c} for r, c in failure_reasons.most_common(10)],
     }

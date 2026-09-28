@@ -21,6 +21,8 @@ from ...schemas.atp_asset import (
     AtpAssetTreeChild,
     AtpAssetTreeChildrenResponse,
     AtpAssetUpdateRequest,
+    AtpBatchTestRunRequest,
+    AtpBatchTestRunSummary,
     AtpEngineStatusResponse,
 )
 from ...services.atp_asset_service import (
@@ -40,6 +42,8 @@ from ...services.atp_asset_service import (
 )
 from ...services.atp_asset_test_service import (
     create_test_run,
+    create_batch_test_runs,
+    get_batch_test_runs,
     parse_test_run_waveform,
     read_artifact_zip,
     read_compare_json,
@@ -246,6 +250,33 @@ def list_atp_asset_test_runs_endpoint(
 ) -> AtpAssetRunListResponse:
     """该资产的运行记录（测试运行与生产运行共用 atp_asset_run 表，按时间倒序）。"""
     return list_runs(db, asset_id=asset_id, limit=limit, offset=offset)
+
+
+@router.post("/batch-test-runs", response_model=AtpBatchTestRunSummary)
+def create_atp_batch_test_runs_endpoint(
+    payload: AtpBatchTestRunRequest,
+    current_user: CurrentUser = Depends(require_any_permission("atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpBatchTestRunSummary:
+    """批量测试：对多个资产发起测试，返回 batch_id 供轮询汇总。"""
+    data = create_batch_test_runs(
+        db,
+        asset_ids=payload.asset_ids,
+        payload=payload,
+        actor_user_id=current_user.user.id,
+    )
+    return AtpBatchTestRunSummary(**data)
+
+
+@router.get("/batch-test-runs/{batch_id}", response_model=AtpBatchTestRunSummary)
+def get_atp_batch_test_runs_endpoint(
+    batch_id: str,
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpBatchTestRunSummary:
+    """批量测试进度与总体报告。"""
+    data = get_batch_test_runs(db, batch_id=batch_id)
+    return AtpBatchTestRunSummary(**data)
 
 
 @router.get("/test-runs/{run_id}/compare")

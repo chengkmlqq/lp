@@ -226,3 +226,58 @@ class AtpAssetTestRunRequest(BaseModel):
     params_source: AtpAssetTestParamsSource = "template"
     # 模板默认值不完整时是否仍继续（默认 False → 显式报错，禁止静默算无意义结果）
     allow_incomplete_defaults: bool = False
+
+
+class AtpBatchTestRunRequest(BaseModel):
+    """ATP 资产「批量测试」请求：同一组测试参数应用到多个资产。"""
+
+    asset_ids: list[str] = Field(min_length=1, max_length=200)
+    # 公共测试参数（与单测 AtpAssetTestRunRequest 同语义）
+    stages: list[AtpAssetTestStage] = Field(
+        default_factory=lambda: ["materialize", "geometry", "simulate"]
+    )
+    tower_kind: str | None = None
+    tower_no: str | None = None
+    voltage_kv: int | None = None
+    scene: str | None = None
+    line_tower_id: str | None = None
+    base_tower: dict[str, Any] = Field(default_factory=dict)
+    profile: dict[str, Any] = Field(default_factory=dict)
+    execution_options: dict[str, Any] = Field(default_factory=dict)
+    params_raw: str | None = None
+    current_ka: float | None = Field(default=31.0, gt=0)
+    timeout_seconds: int | None = Field(default=600, ge=1)
+    dry_run: bool = False
+    params_source: AtpAssetTestParamsSource = "template"
+    allow_incomplete_defaults: bool = False
+
+
+class AtpBatchTestRunItem(BaseModel):
+    """批量测试中单个资产的运行摘要（含资产维度信息，便于报告分组）。"""
+
+    run_id: str
+    asset_id: str
+    asset_code: str
+    asset_name: str
+    voltage_level: str | None = None
+    tower_type: str | None = None
+    scene_type: str | None = None
+    arrester_config: str | None = None
+    status: AtpAssetRunStatus
+    duration_ms: int | None = None
+    error_message: str | None = None
+    result_summary_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class AtpBatchTestRunSummary(BaseModel):
+    """批量测试的总体进度与报告。"""
+
+    batch_id: str
+    total: int
+    pending: int = 0
+    running: int = 0
+    success: int = 0
+    failed: int = 0
+    # 总报告：按电压/塔型/场景分组的通过率与闪络相数等
+    report: dict[str, Any] = Field(default_factory=dict)
+    items: list[AtpBatchTestRunItem] = Field(default_factory=list)
