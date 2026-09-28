@@ -610,10 +610,20 @@ export default function AtpModelsPage() {
     }
   }
 
-  // antd loadData：点击展开节点时向后端请求该路径的下一层子节点
+  // 已通过 loadData 注入过子节点的缓存：key → 子节点（DataNode[]）
+  const [loadedTreeChildren, setLoadedTreeChildren] = useState<Record<string, DataNode[]>>({});
+  // 加载中/已加载去重：避免 antd loadData + 受控 expandedKeys + StrictMode 触发同 key 重复请求
+  const treeLoadInFlightRef = useRef<Set<string>>(new Set());
+
+  // antd loadData：点击展开节点时向后端请求该路径的下一层子节点（同 key 去重）
   const onLoadTreeData = useCallback(
     async (node: { key: React.Key }): Promise<void> => {
       const key = String(node.key);
+      // 已加载过（缓存里有子节点）：不重复请求
+      if (loadedTreeChildren[key] !== undefined) return;
+      // 并发去重：同 key 请求在途时跳过（antd loadData + StrictMode 可能双触发）
+      if (treeLoadInFlightRef.current.has(key)) return;
+      treeLoadInFlightRef.current.add(key);
       const params = new URLSearchParams({ path: key });
       try {
         const response = await fetchWithAuth(`/api/v1/atp/assets/tree/children?${params.toString()}`);
@@ -623,13 +633,12 @@ export default function AtpModelsPage() {
         setLoadedTreeChildren((previous) => ({ ...previous, [key]: children }));
       } catch {
         // 静默失败：保持折叠，下次点击重试
+      } finally {
+        treeLoadInFlightRef.current.delete(key);
       }
     },
-    [fetchWithAuth],
+    [fetchWithAuth, loadedTreeChildren],
   );
-
-  // 已通过 loadData 注入过子节点的缓存：key → 子节点（DataNode[]）
-  const [loadedTreeChildren, setLoadedTreeChildren] = useState<Record<string, DataNode[]>>({});
 
   const treeData = useMemo(() => {
     if (isTreeSearching) {
