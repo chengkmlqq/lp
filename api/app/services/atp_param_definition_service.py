@@ -380,6 +380,67 @@ def preview_resolve(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     return {"items": items}
 
 
+def preview_resolve_by_towers(
+    db: Session,
+    tower_ids: list[str],
+    execution_options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """按真实杆塔上下文试算参数注册表（方案 1+3：批量塔，口径与执行链路一致）。
+
+    每个塔复用快照组装口径：
+      base_tower = fl_analysis_service._build_base_tower_json(tower, tower.line)
+      profile    = fl_analysis_service._build_profile_json(tower.profile, tower)
+    再调 preview_resolve（与样例上下文试算同一解析函数）。
+
+    塔数据缺失/解析失败 → 该塔返回 error 字段，不整批 500（对齐「不具备条件抛错」）。
+    """
+    from app.models.line_tower import LineTower
+    from app.services.fl_analysis_service import (  # noqa: PLC0415
+        _build_base_tower_json,
+        _build_profile_json,
+    )
+
+    options = dict(execution_options or {})
+    results: list[dict[str, Any]] = []
+    for tower_id in tower_ids:
+        tower = db.get(LineTower, tower_id)
+        entry: dict[str, Any] = {
+            "tower_id": tower_id,
+            "tower_no": tower.tower_no if tower else None,
+            "tower_type": tower.tower_type if tower else None,
+            "line_name": tower.line.name if tower and tower.line else None,
+            "ok": False,
+            "error": None,
+            "items": [],
+        }
+        if tower is None:
+            entry["error"] = "杆塔不存在"
+            results.append(entry)
+            continue
+        try:
+            base_tower = _build_base_tower_json(tower, tower.line)
+            profile = _build_profile_json(tower.profile, tower)
+            if not profile:
+                entry["error"] = "杆塔无 profile 数据（未导入塔属性）"
+                results.append(entry)
+                continue
+            preview = preview_resolve(
+                db,
+                {
+                    "base_tower": base_tower,
+                    "profile": profile,
+                    "execution_options": options,
+                    "codes": [],
+                },
+            )
+            entry["ok"] = True
+            entry["items"] = preview.get("items") or []
+        except Exception as exc:  # noqa: BLE001 - 单塔失败不阻断整批
+            entry["error"] = str(exc)
+        results.append(entry)
+    return {"results": results}
+
+
 __all__ = [
     "DefinitionServiceError",
     "create_definition",
@@ -388,6 +449,7 @@ __all__ = [
     "get_definition",
     "list_definitions",
     "preview_resolve",
+    "preview_resolve_by_towers",
     "serialize_definition",
     "test_script",
     "update_definition",

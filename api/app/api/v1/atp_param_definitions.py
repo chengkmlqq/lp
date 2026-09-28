@@ -12,6 +12,8 @@ from ...schemas.atp_param_definition import (
     DefinitionSummary,
     DefinitionUpsertRequest,
     FieldsResponse,
+    ResolvePreviewByTowersRequest,
+    ResolvePreviewByTowersResponse,
     ResolvePreviewRequest,
     ResolvePreviewResponse,
     TestScriptRequest,
@@ -25,6 +27,7 @@ from ...services.atp_param_definition_service import (
     get_definition,
     list_definitions,
     preview_resolve,
+    preview_resolve_by_towers,
     serialize_definition,
     test_script,
     update_definition,
@@ -72,6 +75,23 @@ def post_resolve_preview(
     except (DefinitionError, DefinitionServiceError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return ResolvePreviewResponse(**result)
+
+
+@router.post("/resolve-preview-by-towers", response_model=ResolvePreviewByTowersResponse)
+def post_resolve_preview_by_towers(
+    payload: ResolvePreviewByTowersRequest,
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(_guard("read")),
+) -> ResolvePreviewByTowersResponse:
+    try:
+        result = preview_resolve_by_towers(
+            db,
+            tower_ids=payload.tower_ids,
+            execution_options=payload.execution_options,
+        )
+    except (DefinitionError, DefinitionServiceError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return ResolvePreviewByTowersResponse(**result)
 
 
 @router.get("", response_model=DefinitionListResponse)

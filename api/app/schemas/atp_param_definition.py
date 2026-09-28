@@ -116,3 +116,22 @@ class ResolvedParam(BaseModel):
 
 class ResolvePreviewResponse(BaseModel):
     items: list[ResolvedParam] = Field(default_factory=list)
+
+
+class ResolvePreviewByTowersRequest(BaseModel):
+    tower_ids: list[str] = Field(min_length=1)
+    execution_options: dict[str, Any] = Field(default_factory=dict)
+
+
+class TowerPreviewResult(BaseModel):
+    tower_id: str
+    tower_no: str | None = None
+    tower_type: str | None = None
+    line_name: str | None = None
+    ok: bool = False
+    error: str | None = None
+    items: list[ResolvedParam] = Field(default_factory=list)
+
+
+class ResolvePreviewByTowersResponse(BaseModel):
+    results: list[TowerPreviewResult] = Field(default_factory=list)
