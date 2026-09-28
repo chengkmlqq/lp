@@ -52,6 +52,7 @@ from ..core.config import get_settings
 from ..models.atp_asset import AtpAsset, AtpAssetRun
 from ..models.base import utcnow
 from ..schemas.atp_asset import AtpAssetRunDetail, AtpAssetTestRunRequest
+from .atp_asset_service import _decode_text_file as _decode_artifact_text
 
 logger = logging.getLogger(__name__)
 
@@ -1399,10 +1400,8 @@ def read_test_run_file_content(
     if not candidates:
         return {"content_type": "not-found", "content": "", "preview_lines": [], "size": 0}
     raw = candidates[0].read_bytes()
-    try:
-        # LIS/LOG 是文本但可能夹带个别非 UTF-8 字节(引擎输出),用 replace 兜底
-        text = raw.decode("utf-8", errors="replace")
-    except Exception:
+    text = _decode_artifact_text(raw)
+    if text is None:
         return {
             "content_type": "binary",
             "content": "",

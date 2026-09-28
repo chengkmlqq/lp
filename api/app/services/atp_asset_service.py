@@ -74,6 +74,27 @@ _DAT_MODEL_NAMES: tuple[str, ...] = ("long", "short", "dahao", "xiaohao")
 _ENTRY_ATP_FILE = "work.atp"
 
 
+def _decode_text_file(raw: bytes) -> str | None:
+    """尝试把文件字节解码为文本；无法解码时返回 None（调用方按 binary 处理）。
+
+    - ATP 引擎产出的文本（work.atp / work.lis 等）含 GBK 中文注释（如「采用周期」），
+      strict UTF-8 会误判为二进制；故依次尝试 UTF-8 → GBK。
+    - 真二进制（如 work.pl4 波形）含大量 NUL 字节，即使恰好按 GBK 双字节
+      拆通也会被 NUL 占比检查拦下，避免乱码当文本展示。
+    """
+    if not raw:
+        return ""
+    # 二进制嗅探：NUL 字节占比 ≥ 0.1%（或至少 4 个）视为二进制，不再尝试解码
+    if raw.count(b"\x00") * 1000 >= max(4, len(raw) * 0.001 * 1000):
+        return None
+    for encoding in ("utf-8", "gbk"):
+        try:
+            return raw.decode(encoding, errors="strict")
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return None
+
+
 @dataclass(slots=True)
 class StorageTree:
     files: list[StorageObject]
@@ -1078,9 +1099,8 @@ def read_asset_file_content(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     raw = result.content
-    try:
-        text = raw.decode("utf-8", errors="strict")
-    except UnicodeDecodeError:
+    text = _decode_text_file(raw)
+    if text is None:
         return AtpAssetFileContentResponse(
             asset_id=asset_id,
             relative_path=relative_path,
