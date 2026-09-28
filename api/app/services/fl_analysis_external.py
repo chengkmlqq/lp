@@ -1390,6 +1390,29 @@ def execute_external_waveform_tower_analysis(
             job=job, snapshot=snapshot, resolved_job=resolved_job,
         )
 
+    # ── 按 C# 规则写回 14XXSS 三相电角度（对齐 C# :1906-1916）──
+    # 缺口修复（2026-09-28）：主链路此前完全不写相角 → 主任务相角 = 资产模板原值
+    # （0/-120/-240 或 -90/-210/-330），而 C# 每次运行都改写为 电角度−90/−210/−330；
+    # 110/220/500/750kV 模板原值 0/-120/-240 与 C# 改写值差 90°（1/4 工频周期），
+    # 足以翻转闪络相。模型测试链路（atp_asset_test_service）早已按此规则改写，此处补齐。
+    # angle_deg 缺失时照 C# 语义用 0.0（无条件改写；模板已是 −90/−210/−330 时值不变，幂等）。
+    from .atp_work_atp_slots import rewrite_electric_angle as _rewrite_electric_angle
+
+    _angle_raw = (snapshot.profile_json or {}).get("angle_deg")
+    if _angle_raw is None:
+        _angle_raw = (snapshot.base_tower_json or {}).get("angle_deg")
+    _angle_val = _optional_float(_angle_raw) if _angle_raw is not None else None
+    rendered_text, _angle_changed = _rewrite_electric_angle(
+        rendered_text, 0.0 if _angle_val is None else _angle_val
+    )
+    if _angle_changed:
+        logger.info(
+            "[ATP] 14XXSS 电角度已按 C# 规则改写：A=%.1f B=%.1f C=%.1f",
+            _angle_val - 90.0 if _angle_val is not None else -90.0,
+            _angle_val - 210.0 if _angle_val is not None else -210.0,
+            _angle_val - 330.0 if _angle_val is not None else -330.0,
+        )
+
     run_dir = _prepare_run_directory(
         job=job, snapshot=snapshot, resolved_job=resolved_job,
         subdir=str(execution_options.get("_run_subdir") or ""),
