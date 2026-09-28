@@ -51,6 +51,14 @@ type TreeNodeData = {
   label: string;
   node_type: "global" | "group" | "rule";
   dimension: string | null;
+  // 匹配维度摘要（值 null = 通配）；卡片视图展示用
+  dimensions?: {
+    tower_type?: string | null;
+    voltage_level?: string | null;
+    circuit_count?: number | null;
+    scene_type?: string | null;
+    arrester_config?: string | null;
+  };
   rule_id: string | null;
   has_template: boolean;
   defined_slots: number;
@@ -141,9 +149,23 @@ interface TemplateCardProps {
   onDelete: () => void;
 }
 
+const TOWER_TYPE_LABEL: Record<string, string> = {
+  ganzi: "干字型",
+  guxing: "鼓型",
+  jiubei: "酒杯型",
+  maotou: "猫头型",
+  menxing: "门型",
+  shangzi: "上字型",
+  sihuita: "四回路型",
+};
+
 /** 参数模板卡片（参照 ATP 计算参数管理页 DefinitionCard 结构）。 */
 function TemplateCard({ row, canManage, onDetail, onEdit, onPreview, onDerive, onDelete }: TemplateCardProps) {
   const hasRule = Boolean(row.node.rule_id);
+  const dims = row.node.dimensions;
+  const towerText = dims?.tower_type
+    ? (TOWER_TYPE_LABEL[dims.tower_type] ?? dims.tower_type)
+    : "全部";
   const moreItems: MenuProps["items"] = [
     { key: "preview", label: "试算", icon: <ExperimentOutlined />, disabled: !hasRule, onClick: onPreview },
     ...(canManage
@@ -172,9 +194,31 @@ function TemplateCard({ row, canManage, onDetail, onEdit, onPreview, onDerive, o
 
       <div className="flex flex-col gap-2 px-4 py-3" style={{ minHeight: 120 }}>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>覆盖路径：</Typography.Text>
-          <Text type="secondary" style={{ fontSize: 12 }} ellipsis={{ tooltip: row.pathLabel }}>
-            {row.pathLabel}
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>杆塔类型：</Typography.Text>
+          <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: towerText }}>
+            {towerText}
+          </Text>
+        </div>
+        <div className="admin-atp-params-card-field admin-atp-models-card-field">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>电压等级：</Typography.Text>
+          <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.voltage_level ?? "全部" }}>
+            {dims?.voltage_level ? `${dims.voltage_level}kV` : "全部"}
+          </Text>
+        </div>
+        <div className="admin-atp-params-card-field admin-atp-models-card-field">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>回路数量：</Typography.Text>
+          <Text style={{ fontSize: 12 }}>{dims?.circuit_count != null ? `${dims.circuit_count} 回` : "全部"}</Text>
+        </div>
+        <div className="admin-atp-params-card-field admin-atp-models-card-field">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>场景：</Typography.Text>
+          <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.scene_type ?? "全部" }}>
+            {dims?.scene_type ?? "全部"}
+          </Text>
+        </div>
+        <div className="admin-atp-params-card-field admin-atp-models-card-field">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>避雷器组合：</Typography.Text>
+          <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.arrester_config ?? "全部" }}>
+            {dims?.arrester_config ?? "全部"}
           </Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
