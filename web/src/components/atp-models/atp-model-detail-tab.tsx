@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Descriptions, Empty, Modal, Space, Spin, Table, Typography } from "antd";
+import { Alert, Button, Descriptions, Drawer, Empty, Modal, Space, Spin, Table, Typography } from "antd";
 import { useMemo, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
@@ -174,7 +174,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
                           setPreviewFile({ path: row.path, name: row.name });
                         }}
                       >
-                        在线查看
+                        查看
                       </Button>
                     </Space>
                   ) : (
@@ -196,17 +196,17 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
         {datDetail ? <AtpDatDetailView assetId={assetId} relativePath={datDetail.path} /> : null}
       </Modal>
 
-      <Modal
+      <Drawer
         open={Boolean(previewFile)}
         title={`文件内容：${previewFile?.name ?? ""}`}
-        width={900}
-        footer={null}
-        onCancel={() => setPreviewFile(null)}
+        width={800}
+        destroyOnHidden
+        onClose={() => setPreviewFile(null)}
       >
         {previewFile ? (
           <AtpFileContentViewer assetId={assetId} relativePath={previewFile.path} name={previewFile.name} />
         ) : null}
-      </Modal>
+      </Drawer>
     </div>
   );
 }

@@ -182,16 +182,17 @@ export function AtpFileContentViewer({ assetId, relativePath, name }: AtpFileCon
       <pre
         ref={scrollRef}
         onScroll={handleScroll}
+        className="task-log-viewer-scroll"
         style={{
           maxHeight: 480,
           overflow: "auto",
-          background: "#fafafa",
-          padding: 12,
+          padding: 16,
+          backgroundColor: "#0f172a",
+          color: "#e2e8f0",
           fontSize: 12,
-          lineHeight: 1.5,
+          lineHeight: "18px",
           whiteSpace: "pre",
           wordBreak: "normal",
-          border: "1px solid #f0f0f0",
           borderRadius: 4,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
         }}
