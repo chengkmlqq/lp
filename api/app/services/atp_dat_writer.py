@@ -121,6 +121,27 @@ def _conductor_line_offset(lines: list[str]) -> int:
     return 7
 
 
+def _count_conductor_lines(lines: list[str]) -> int:
+    """统计 .dat 的实际导体行数（METRIC 之后 → BLANK CARD ENDING CONDUCTOR 之前）。
+
+    ⚠️ 2026-09-29（sihuitano 无避雷线四回塔修复）：槽位表假定 14 导体
+    （12 相 + 2 避雷线），但「无避雷线」变体的 .dat 只有 12 导体。
+    按实际导体行数截断槽位，避免避雷线槽位污染频率卡区域。
+    """
+    seen = 0
+    in_metric = False
+    for ln in lines:
+        up = ln.strip().upper()
+        if up == "METRIC":
+            in_metric = True
+            continue
+        if in_metric and "ENDING CONDUCTOR" in up:
+            break
+        if in_metric and ln.strip():
+            seen += 1
+    return seen
+
+
 def _span_block(lines: list[str]) -> list[int]:
     """返回「频率卡」块的 0-based 行号列表（导体卡结束 → 频率卡结束之间）。"""
     start = end = None
@@ -161,6 +182,15 @@ def rewrite_dat_text(text: str, section: str, values: dict[str, float], *,
     lines = [ln.rstrip("\r") for ln in parts[0::2]]
 
     conductor_offset = _conductor_line_offset(lines)
+    # ⚠️ 2026-09-29 修复（sihuitano 无避雷线四回塔）：
+    # 槽位表 <sihuita> 假定 14 导体（12 相 + 2 避雷线），但「无避雷线」变体
+    # （sihuitano 等资产）的 .dat 只有 12 导体。旧实现把避雷线槽位
+    # （导体 13/14）写到频率卡区域 → ATP `fmt: read unexpected character` rc=3。
+    # 现按 dat 实际导体行数截断：只写导体号 ≤ 实际数的槽位，
+    # 超出的（避雷线）槽位跳过 —— 对 14 导体资产行为不变（无 no-op）。
+    actual_conductor_lines = _count_conductor_lines(lines)
+    if actual_conductor_lines:
+        slots = [(name, s) for name, s in slots if s.conductor <= actual_conductor_lines]
 
     missing = sorted({n for n, s in slots if not s.is_span and n not in values})
     if missing:
