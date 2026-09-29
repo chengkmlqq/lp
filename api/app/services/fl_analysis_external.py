@@ -1922,9 +1922,10 @@ def _build_template_context(
     }
 
 
-# 匹配 $INCLUDE 卡里的绝对路径 D:\ATP\<scene相对段>\<file>.lib，捕获 .lib 文件名。
-# ⚠️ 正则以 D:\ATP\ 开头、非逗号路径、到 .lib 前；捕获项=文件名（重建短私有路径用）。
-_INCLUDE_PATH_RE = re.compile(r"D:\\ATP\\[^,]+?\\?([A-Za-z0-9_]+\.lib)")
+# 匹配 $INCLUDE/$INSERT 卡里的绝对路径 D:\ATP\<scene相对段>\<file>.lib / .pch，捕获文件名。
+# ⚠️ ⚠️ 2026-09-29 修复：原正则只捕获 .lib，$INSERT 引用的 .pch（无避雷线变体）不匹配
+# → 路径保持 C# 本地 → ATP 打不开 → simulate time-step=0。改为 (?:lib|pch)。
+_INCLUDE_PATH_RE = re.compile(r"D:\\ATP\\[^,]+?\\?([A-Za-z0-9_]+\.(?:lib|pch))")
 
 
 def _use_private_engine_dir() -> bool:
