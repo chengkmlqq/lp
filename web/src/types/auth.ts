@@ -1340,6 +1340,19 @@ export type AtpBatchTestRunSummary = {
     failure_reasons_top: { reason: string; count: number }[];
   };
   items: AtpBatchTestRunItem[];
+  /** 历史列表辅助字段(单批聚合视图) */
+  create_date?: string | null;
+  update_date?: string | null;
+  pass_rate?: number | null;
+  done?: number | null;
+  status?: string | null;
+  create_user?: string | null;
+};
+
+/** 批量测试历史记录列表(每批一条聚合) */
+export type AtpBatchTestRunListResponse = {
+  total: number;
+  items: AtpBatchTestRunSummary[];
 };
 
 export type LightningPolarity = "positive" | "negative" | "mixed" | "unknown";

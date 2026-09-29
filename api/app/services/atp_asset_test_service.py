@@ -45,7 +45,7 @@ from typing import Any, Iterable
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from ..core.config import get_settings
@@ -1839,3 +1839,175 @@ def _build_batch_report(items: list[dict[str, Any]]) -> dict[str, Any]:
         "flashover_count_distribution": {str(k): v for k, v in sorted(flashover_total.items())},
         "failure_reasons_top": [{"reason": r, "count": c} for r, c in failure_reasons.most_common(10)],
     }
+
+
+# -------------------------------------------------------------------------------------
+# 批量测试历史记录 + 报告下载(2026-09-29 新增,配合前端「批量测试记录」动态选项卡)
+# -------------------------------------------------------------------------------------
+
+_BATCH_HISTORY_BY_BATCH_STMT = (
+    select(
+        AtpAssetRun.result_summary_json["batch_id"].as_string().label("batch_id"),
+        func.count().label("total"),
+        func.sum(case((AtpAssetRun.status == "success", 1), else_=0)).label("success"),
+        func.sum(case((AtpAssetRun.status == "failed", 1), else_=0)).label("failed"),
+        func.min(AtpAssetRun.create_date).label("create_date"),
+        func.max(AtpAssetRun.create_date).label("update_date"),
+    )
+    .where(AtpAssetRun.result_summary_json["batch_id"].as_string() != "")
+    .group_by("batch_id")
+)
+
+
+def list_batch_test_runs(
+    db: Session, *, limit: int = 50, offset: int = 0, keyword: str | None = None
+) -> dict[str, Any]:
+    """批量测试历史记录:按 batch_id 聚合,每批一条(总量/成功/失败/时间),倒序。"""
+    base = _BATCH_HISTORY_BY_BATCH_STMT
+    if keyword:
+        kw = f"%{keyword.strip()}%"
+        base = base.where(
+            or_(
+                AtpAssetRun.result_summary_json["batch_id"].as_string().ilike(kw),
+                AtpAssetRun.create_user.ilike(kw),
+            )
+        )
+    total_stmt = select(func.count()).select_from(base.subquery())
+    total = db.execute(total_stmt).scalar() or 0
+
+    rows = db.execute(base.order_by("update_date").offset(offset).limit(limit)).all()
+
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        batch_id = row.batch_id
+        # 每批挑一个 run 拿发起人/状态字段(聚合查询无法带 create_user)
+        probe = db.execute(
+            select(AtpAssetRun)
+            .where(AtpAssetRun.result_summary_json["batch_id"].as_string() == batch_id)
+            .order_by(AtpAssetRun.create_date.asc())
+            .limit(1)
+        ).scalar_one_or_none()
+        done = (row.success or 0) + (row.failed or 0)
+        total_n = row.total or 0
+        items.append({
+            "batch_id": batch_id,
+            "total": total_n,
+            "success": row.success or 0,
+            "failed": row.failed or 0,
+            "pending": max(0, total_n - done),
+            "running": 0,
+            "done": done,
+            "pass_rate": round((row.success or 0) / total_n * 100, 1) if total_n else 0,
+            "status": "success" if done >= total_n and total_n > 0 and (row.failed or 0) == 0
+                       else ("failed" if done >= total_n and total_n > 0 else "running"),
+            "create_date": row.create_date.isoformat() if row.create_date else None,
+            "update_date": row.update_date.isoformat() if row.update_date else None,
+            "create_user": probe.create_user if probe else None,
+        })
+
+    return {"total": total, "items": items}
+
+
+def build_batch_report_zip(
+    db: Session, *, batch_id: str
+) -> tuple[bytes, str]:
+    """生成批量测试报告包:report.xlsx(多 Sheet) + detail.csv + report.json 打包 zip。
+
+    返回 (zip 字节, 文件名)。Excel 用 openpyxl(依赖已在容器内),失败时回退纯 JSON zip。
+    """
+    import io
+    import zipfile
+
+    summary = get_batch_test_runs(db, batch_id=batch_id)
+    report = summary.get("report") or {}
+    items = summary.get("items") or []
+    failed = summary.get("failed", 0)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # 1. Excel 报告(多 Sheet)
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Alignment, Font
+
+            wb = Workbook()
+            # Sheet1 汇总
+            ws = wb.active
+            ws.title = "汇总"
+            ws.append(["批量测试报告", ""])
+            ws.append(["批次号", summary.get("batch_id", "")])
+            ws.append(["总数", summary.get("total", 0)])
+            ws.append(["成功", summary.get("success", 0)])
+            ws.append(["失败", summary.get("failed", 0)])
+            ws.append(["通过率(%)", report.get("overall_pass_rate", 0)])
+            ws.append(["发起时间", summary.get("create_date") or "-"])
+            ws.append(["完成时间", summary.get("update_date") or "-"])
+            for cell in ws[1]:
+                cell.font = Font(bold=True, size=14)
+            # Sheet2 分组
+            ws2 = wb.create_sheet("分组通过率")
+            ws2.append(["分组", "总数", "成功", "失败", "通过率(%)", "闪络相数分布"])
+            for g in report.get("groups", []):
+                ws2.append([
+                    g.get("group"), g.get("total"), g.get("success"), g.get("failed"),
+                    g.get("pass_rate"), str(g.get("flashover_count_distribution") or {}),
+                ])
+            # Sheet3 失败原因
+            ws3 = wb.create_sheet("失败原因TOP")
+            ws3.append(["失败原因", "数量"])
+            for r in report.get("failure_reasons_top", []):
+                ws3.append([r.get("reason"), r.get("count")])
+            # Sheet4 明细
+            ws4 = wb.create_sheet("明细")
+            ws4.append(["资产编码", "资产名称", "电压", "塔型", "场景", "配置", "状态", "耗时(ms)", "错误信息"])
+            for it in items:
+                ws4.append([
+                    it.get("asset_code"), it.get("asset_name"),
+                    it.get("voltage_level") or "", it.get("tower_type") or "",
+                    it.get("scene_type") or "", it.get("arrester_config") or "",
+                    it.get("status"), it.get("duration_ms"),
+                    (it.get("error_message") or "")[:200],
+                ])
+            for sheet in (ws2, ws3, ws4):
+                for row in sheet.iter_rows():
+                    for cell in row:
+                        cell.alignment = Alignment(vertical="top", wrap_text=True)
+            zf.writestr("report.xlsx", _wb_to_bytes(wb))
+        except Exception:
+            # openpyxl 不可用时报告 JSON 兜底
+            zf.writestr("report.json", json.dumps(report, ensure_ascii=False, indent=2))
+        # 2. 明细 CSV
+        import csv
+        csv_buf = io.StringIO()
+        writer = csv.writer(csv_buf)
+        writer.writerow(["资产编码", "资产名称", "电压", "塔型", "场景", "配置", "状态", "耗时(ms)", "错误信息"])
+        for it in items:
+            writer.writerow([
+                it.get("asset_code"), it.get("asset_name"),
+                it.get("voltage_level") or "", it.get("tower_type") or "",
+                it.get("scene_type") or "", it.get("arrester_config") or "",
+                it.get("status"), it.get("duration_ms"),
+                (it.get("error_message") or "")[:200],
+            ])
+        zf.writestr("detail.csv", csv_buf.getvalue().encode("utf-8"))
+        # 3. 报告 JSON
+        zf.writestr("report.json", json.dumps(report, ensure_ascii=False, indent=2))
+        # 4. 失败明细(有失败时)
+        if failed and items:
+            fail_items = [it for it in items if it.get("status") == "failed"]
+            zf.writestr(
+                "failed_detail.json",
+                json.dumps(fail_items, ensure_ascii=False, indent=2, default=str),
+            )
+
+    fname = f"atp-batch-report-{batch_id.replace('/', '_')}.zip"
+    return buf.getvalue(), fname
+
+
+def _wb_to_bytes(wb) -> bytes:
+    """openpyxl Workbook → bytes(在容器内直接可用,避免污染模块导入)。"""
+    import io
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    return bio.getvalue()

@@ -21,6 +21,7 @@ from ...schemas.atp_asset import (
     AtpAssetTreeChild,
     AtpAssetTreeChildrenResponse,
     AtpAssetUpdateRequest,
+    AtpBatchTestRunListResponse,
     AtpBatchTestRunRequest,
     AtpBatchTestRunSummary,
     AtpEngineStatusResponse,
@@ -41,9 +42,11 @@ from ...services.atp_asset_service import (
     update_asset,
 )
 from ...services.atp_asset_test_service import (
+    build_batch_report_zip,
     create_test_run,
     create_batch_test_runs,
     get_batch_test_runs,
+    list_batch_test_runs,
     parse_test_run_waveform,
     read_artifact_zip,
     read_compare_json,
@@ -252,6 +255,19 @@ def list_atp_asset_test_runs_endpoint(
     return list_runs(db, asset_id=asset_id, limit=limit, offset=offset)
 
 
+@router.get("/batch-test-runs", response_model=AtpBatchTestRunListResponse)
+def list_atp_batch_test_runs_endpoint(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    keyword: str | None = Query(default=None, description="批次号/发起人模糊搜索"),
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpBatchTestRunListResponse:
+    """批量测试历史记录列表(按 batch_id 聚合,每批一条)。"""
+    data = list_batch_test_runs(db, limit=limit, offset=offset, keyword=keyword)
+    return AtpBatchTestRunListResponse(**data)
+
+
 @router.post("/batch-test-runs", response_model=AtpBatchTestRunSummary)
 def create_atp_batch_test_runs_endpoint(
     payload: AtpBatchTestRunRequest,
@@ -277,6 +293,25 @@ def get_atp_batch_test_runs_endpoint(
     """批量测试进度与总体报告。"""
     data = get_batch_test_runs(db, batch_id=batch_id)
     return AtpBatchTestRunSummary(**data)
+
+
+@router.get("/batch-test-runs/{batch_id}/report")
+def download_atp_batch_test_report(
+    batch_id: str,
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+):
+    """下载批量测试报告包(report.xlsx + detail.csv + report.json 的 zip)。"""
+    import io
+
+    from fastapi.responses import StreamingResponse
+
+    data, filename = build_batch_report_zip(db, batch_id=batch_id)
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/test-runs/{run_id}/compare")

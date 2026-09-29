@@ -41,7 +41,7 @@ import type { DataNode } from "antd/es/tree";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent, type RefAttributes } from "react";
 
 import { AdminPageLoading } from "@/components/admin-page-loading";
-import { AtpBatchTestDrawer } from "@/components/atp-models/atp-batch-test-drawer";
+import { AtpBatchHistoryTab } from "@/components/atp-models/atp-batch-history-tab";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
 import { AtpModelDetailTab } from "@/components/atp-models/atp-model-detail-tab";
 import { AtpModelTestTab } from "@/components/atp-models/atp-model-test-tab";
@@ -203,8 +203,8 @@ export default function AtpModelsPage() {
   // 模型测试页内 Tab：从操作列打开，以当前模型为上下文（参照详情 Tab）
   const [testTabs, setTestTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
   const [detailTabs, setDetailTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
-  // 批量测试抽屉
-  const [batchTestOpen, setBatchTestOpen] = useState(false);
+  // 批量测试历史记录 Tab(页内动态选项卡,2026-09-29 改造)
+  const [batchTabs, setBatchTabs] = useState<{ key: string; label: React.ReactNode }[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>("list");
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(ATP_TABLE_MIN_SCROLL_Y);
@@ -923,6 +923,24 @@ export default function AtpModelsPage() {
     setActiveTabKey(key);
   }, []);
 
+  /** 打开「批量测试记录」历史 Tab(同一 Tab 已开则直接切过去)。 */
+  const openBatchTab = useCallback(() => {
+    const key = "batch-history";
+    setBatchTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          key,
+          label: <span className="admin-atp-models-tab-title">批量测试记录</span>,
+        },
+      ];
+    });
+    setActiveTabKey(key);
+  }, []);
+
   const columns = useMemo<ColumnsType<AtpAssetSummary>>(
     () => [
       {
@@ -1051,6 +1069,17 @@ export default function AtpModelsPage() {
       });
       return next;
     });
+    setBatchTabs((previous) => {
+      const removedIndex = previous.findIndex((tab) => tab.key === key);
+      const next = previous.filter((tab) => tab.key !== key);
+      setActiveTabKey((current) => {
+        if (current !== key) {
+          return current;
+        }
+        return next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? "list";
+      });
+      return next;
+    });
   }, []);
 
   if (initializing) {
@@ -1093,7 +1122,7 @@ export default function AtpModelsPage() {
             {canTest ? (
               <Button
                 icon={<ExperimentOutlined />}
-                onClick={() => setBatchTestOpen(true)}
+                onClick={openBatchTab}
                 disabled={allAssets.length === 0}
               >
                 批量测试
@@ -1323,14 +1352,16 @@ export default function AtpModelsPage() {
               />
             ),
           })),
+          ...batchTabs.map((tab) => ({
+            key: tab.key,
+            label: tab.label,
+            closable: true,
+            children: (
+              <AtpBatchHistoryTab assets={allAssets} />
+            ),
+          })),
         ]}
         />
-
-      <AtpBatchTestDrawer
-        open={batchTestOpen}
-        assets={allAssets}
-        onClose={() => setBatchTestOpen(false)}
-      />
 
       <Modal
         title="新建 ATP 模型"

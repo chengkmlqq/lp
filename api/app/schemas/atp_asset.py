@@ -281,3 +281,17 @@ class AtpBatchTestRunSummary(BaseModel):
     # 总报告：按电压/塔型/场景分组的通过率与闪络相数等
     report: dict[str, Any] = Field(default_factory=dict)
     items: list[AtpBatchTestRunItem] = Field(default_factory=list)
+    # 历史列表辅助字段(单批聚合视图;单批查询时可为空)
+    create_date: str | None = None
+    update_date: str | None = None
+    pass_rate: float | None = None
+    done: int | None = None
+    status: str | None = None
+    create_user: str | None = None
+
+
+class AtpBatchTestRunListResponse(BaseModel):
+    """批量测试历史记录列表(每批一条聚合)。"""
+
+    total: int = 0
+    items: list[AtpBatchTestRunSummary] = Field(default_factory=list)

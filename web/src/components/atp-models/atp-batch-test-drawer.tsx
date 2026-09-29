@@ -1,29 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  Button,
-  Card,
-  Checkbox,
-  Drawer,
-  Form,
-  Input,
-  InputNumber,
-  Progress,
-  Select,
-  Space,
-  Spin,
-  Statistic,
-  Table,
-  Tag,
-  Typography,
-} from "antd";
-import { ExperimentOutlined, RocketOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Checkbox, Drawer, Form, Input, InputNumber, Progress, Select, Space, Spin, Statistic, Table, Tag, Typography, message } from "antd";
+import { DownloadOutlined, ExperimentOutlined, RocketOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
 import { useAuth } from "@/components/auth-provider";
-import { getJson, postJson, readApiError } from "@/lib/api";
+import { fetchWithAuth, getJson, postJson, readApiError } from "@/lib/api";
 import type { AtpAssetRunStatus, AtpAssetSummary, AtpBatchTestRunItem, AtpBatchTestRunSummary } from "@/types/auth";
 
 const STAGES = [
@@ -42,11 +25,13 @@ const STATUS_TAG: Record<string, { color: string; text: string }> = {
 interface AtpBatchTestDrawerProps {
   open: boolean;
   assets: AtpAssetSummary[];
+  /** 非空:直接进入该批次的进度/报告视图(从历史记录「查看」进入) */
+  initialBatchId?: string | null;
   onClose: () => void;
 }
 
 /** 批量测试抽屉:勾选资产 → 公共参数 → 下发 → 进度看板 + 总体报告 */
-export function AtpBatchTestDrawer({ open, assets, onClose }: AtpBatchTestDrawerProps) {
+export function AtpBatchTestDrawer({ open, assets, initialBatchId = null, onClose }: AtpBatchTestDrawerProps) {
   const { user } = useAuth();
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [volFilter, setVolFilter] = useState<string>("");
@@ -87,6 +72,12 @@ export function AtpBatchTestDrawer({ open, assets, onClose }: AtpBatchTestDrawer
   // 重置(打开时)
   useEffect(() => {
     if (open) {
+      if (initialBatchId) {
+        // 历史记录「查看」:直接加载该批次进度/报告
+        setBatch({ batch_id: initialBatchId, total: 0, pending: 0, running: 0, success: 0, failed: 0, report: { groups: [], overall_pass_rate: 0, flashover_count_distribution: {}, failure_reasons_top: [] }, items: [] });
+        setPolling(true);
+        return;
+      }
       setSelectedKeys(new Set());
       setVolFilter("");
       setTwFilter("");
@@ -97,7 +88,7 @@ export function AtpBatchTestDrawer({ open, assets, onClose }: AtpBatchTestDrawer
       setSubmitError("");
       setPolling(false);
     }
-  }, [open]);
+  }, [open, initialBatchId]);
 
   // 批量轮询
   useEffect(() => {
@@ -141,6 +132,28 @@ export function AtpBatchTestDrawer({ open, assets, onClose }: AtpBatchTestDrawer
       setSubmitting(false);
     }
   };
+
+  /** 下载批量测试报告包(report.xlsx + detail.csv + report.json zip) */
+  const downloadReport = async (batchId: string) => {
+    try {
+      const response = await fetchWithAuth(`/api/v1/atp/batch-test-runs/${batchId}/report`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `atp-batch-report-${batchId.replace(/[/\\]/g, "_")}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "报告下载失败");
+    }
+  };
+
 
   const done = batch ? batch.success + batch.failed : 0;
   const progress = batch ? (batch.total > 0 ? Math.round((done / batch.total) * 100) : 0) : 0;
@@ -215,6 +228,10 @@ export function AtpBatchTestDrawer({ open, assets, onClose }: AtpBatchTestDrawer
       extra={
         batch && !finished ? (
           <Typography.Text type="secondary">轮询中…</Typography.Text>
+        ) : batch ? (
+          <Button size="small" icon={<DownloadOutlined />} onClick={() => void downloadReport(batch.batch_id)}>
+            下载报告
+          </Button>
         ) : null
       }
     >
