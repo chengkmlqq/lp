@@ -1099,7 +1099,12 @@ class _TestContext:
         # 阶段不应跑 LCC —— 旧实现无条件跑，内嵌模板的 .dat 被当作 LCC 输入，
         # 而 .pch 数据起点是数字节点名（-1IN_001）→ pch_to_lib 解析失败报错。
         # 判断：渲染后的 work.atp 是否引用 .lib（$INCLUDE 行，或 BRANCH 区 IN_ 节点）。
-        rendered_text = getattr(self, "rendered_text", None) or ""
+        # ⚠️ rendered_text 只在 stage_materialize 填充；若 geometry 单独跑（stages 不含
+        # materialize）时它为空，**不能**据此判定为「内嵌」——空串必须先渲染一次，
+        # 否则所有资产都被误判为内嵌而跳过 LCC（2026-09-29 回归：36 全量 0% 通过）。
+        rendered_text = getattr(self, "rendered_text", "") or ""
+        if not rendered_text:
+            rendered_text = self.rewrite_includes(self.render())
         include_lines = [
             ln for ln in rendered_text.splitlines()
             if "$INCLUDE" in ln.upper()
