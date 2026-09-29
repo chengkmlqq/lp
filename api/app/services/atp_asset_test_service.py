@@ -627,10 +627,35 @@ class _TestContext:
             h_l = self._synth_number("h_l")
             if h_u is not None and h_m is not None and h_l is not None:
                 entry["phase_height_m"] = {"upper": h_u, "middle": h_m, "lower": h_l}
-            base_tower["circuit_geometry_json"] = {
-                k: {kk: (dict(vv) if isinstance(vv, dict) else vv) for kk, vv in entry.items()}
-                for k in ("I", "II", "III", "IV")
-            }
+            # ⚠️ 2026-09-29 修复（sihuitano 无避雷线四回塔 LCC 失败根因）：
+            # 旧实现把 I 回几何（entry）复制到 I~IV 全部回路 —— 四回导体坐标重合
+            # （都取 I 回的 -12/65.5 等），但 12 导体是「4 回路 × 3 相」，每回路
+            # 应有自己的几何。实测后果：long.dat 导体 7-12（III/IV 回）高度全=65.5/53/42
+            # （I 回值），LCC 判定导体几何重合 → 不产出 .pch。
+            # 修复：I 回用 sp_*/h_*（与旧行为一致），II/III/IV 回用各自的 c2/c3/c4 默认值
+            # （_common.json defaults 已补 c1~c4，与 _synthetic_case 同口径）。
+            circuits_json: dict[str, Any] = {}
+            for idx, cid in enumerate(("I", "II", "III", "IV")):
+                if idx == 0:
+                    circuits_json[cid] = {
+                        kk: (dict(vv) if isinstance(vv, dict) else vv) for kk, vv in entry.items()
+                    }
+                    continue
+                c_sp_u = self._synth_number(f"c{idx + 1}_sp_u", f"c{idx + 1}_sp_m", f"c{idx + 1}_sp_l", "sp_u")
+                c_sp_m = self._synth_number(f"c{idx + 1}_sp_m", "sp_m")
+                c_sp_l = self._synth_number(f"c{idx + 1}_sp_l", "sp_l")
+                c_h_u = self._synth_number(f"c{idx + 1}_u", "h_u")
+                c_h_m = self._synth_number(f"c{idx + 1}_m", "h_m")
+                c_h_l = self._synth_number(f"c{idx + 1}_l", "h_l")
+                c_entry: dict[str, Any] = {
+                    "phase_spacing_m": {"upper": c_sp_u, "middle": c_sp_m, "lower": c_sp_l},
+                }
+                if c_h_u is not None and c_h_m is not None and c_h_l is not None:
+                    c_entry["phase_height_m"] = {"upper": c_h_u, "middle": c_h_m, "lower": c_h_l}
+                circuits_json[cid] = {
+                    kk: (dict(vv) if isinstance(vv, dict) else vv) for kk, vv in c_entry.items()
+                }
+            base_tower["circuit_geometry_json"] = circuits_json
             synth["circuit_geometry_json"] = entry
 
         if synth:
@@ -1067,6 +1092,40 @@ class _TestContext:
         verdicts: list[dict[str, Any]] = []
         log_lines: list[str] = []
         dat_names = ("long", "short", "dahao", "xiaohao")
+
+        # ⚠️ 2026-09-29 修复（内嵌模板 shangzino 等）：
+        # work.atp 不引用 .lib（无 $INCLUDE / 无 IN_ 节点）时，模型几何是**内嵌在
+        # BRANCH 卡**的（模板自身带导体几何，不依赖 LCC 生成的 .lib），此时 geometry
+        # 阶段不应跑 LCC —— 旧实现无条件跑，内嵌模板的 .dat 被当作 LCC 输入，
+        # 而 .pch 数据起点是数字节点名（-1IN_001）→ pch_to_lib 解析失败报错。
+        # 判断：渲染后的 work.atp 是否引用 .lib（$INCLUDE 行，或 BRANCH 区 IN_ 节点）。
+        rendered_text = getattr(self, "rendered_text", None) or ""
+        include_lines = [
+            ln for ln in rendered_text.splitlines()
+            if "$INCLUDE" in ln.upper()
+        ]
+        references_lib = bool(include_lines) or "IN_" in rendered_text or ".lib" in rendered_text
+        if not references_lib:
+            # 内嵌模板：不跑 LCC，保留模板自带产物；判据标注「无需重生成」
+            log_lines.append("work.atp 无 $INCLUDE / IN_ 节点引用（内嵌几何模板），跳过 LCC 重生成")
+            for name in dat_names:
+                for suffix in ("dat", "pch", "lib", "lis"):
+                    path = self.engine_dir / f"{name}.{suffix}"
+                    if path.is_file():
+                        verdicts.append(_verdict(
+                            f"lib_{name}",
+                            True,
+                            f"内嵌模板无需重生成，保留模板 {name}.{suffix}",
+                        ))
+            verdicts.append(_verdict("geometry_skipped", True, "内嵌几何模板，跳过 LCC"))
+            return {
+                "stage": "geometry",
+                "status": "passed",
+                "verdicts": verdicts,
+                "artifacts": {},
+                "metrics": {"referenced_lib": False, "skipped": True},
+                "log": "\n".join(log_lines),
+            }
 
         before = {
             name: _sha256_file(self.engine_dir / f"{name}.lib") for name in dat_names

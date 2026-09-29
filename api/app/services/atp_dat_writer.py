@@ -427,7 +427,12 @@ def build_values(section: str, **ctx) -> dict[str, float]:
 # C# BuildLib_FromPch() 的判据是「行首 '-'」或「第 3 字符起 'IN___'」的**并集** ⇒ 放宽为可选 '-'。
 # 安全性（实测 42 个资产 .pch）：非 sihuita 塔型（110/220/500 的 guxing/ganzi/jiubei）dash 数 == 并集数
 # （5 或 8），本改动对它们是 no-op；仅 sihuita（14 导体）dash=9 / 并集=14，正是要修的场景。
-_BRANCH_HEAD = re.compile(r"^-?\d+(IN___[A-Z]+)(OUT__[A-Z]+)")
+# ⚠️ 2026-09-29 修复：兼容两种 .pch 节点名格式（实测 36 资产）
+#   · 字母版（14 导体 sihuita 等）：-1IN___AOUT__A（IN___A / OUT__A）
+#   · 数字版（3 导体 shangzino 无避雷线等）：-1IN_001OUT001（IN_001 / OUT001）
+# 旧正则只认字母版 → 数字版 .pch 找不到分支头 → 「pch 中找不到数据起点」。
+# 统一模式：-<分支号>IN_<节点名>OUT<节点名>（6 字符，见上）
+_BRANCH_HEAD = re.compile(r"^-?\d+(IN_+[A-Z0-9]+?)(OUT[A-Z0-9_]+)")
 
 
 def _pack_header(card: str, values: list[int]) -> str:
@@ -479,7 +484,11 @@ def pch_to_lib(pch_text: str) -> str:
       KEND: 每分支 (8, 14)  ← 节点名止列（6 字符）
     """
     lines = pch_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    di = next((i for i, x in enumerate(lines) if x.startswith("-1IN___")), None)
+    # ⚠️ 2026-09-29 修复：数据起点兼容数字/字母节点名（-1IN_001 / -1IN___A）
+    di = next(
+        (i for i, x in enumerate(lines) if _BRANCH_HEAD.match(x)),
+        None,
+    )
     if di is None:
         raise ValueError("pch 中找不到数据起点 (-1IN___ ...)")
     data = lines[di:]
