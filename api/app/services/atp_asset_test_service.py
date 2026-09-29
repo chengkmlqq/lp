@@ -1105,14 +1105,29 @@ class _TestContext:
         rendered_text = getattr(self, "rendered_text", "") or ""
         if not rendered_text:
             rendered_text = self.rewrite_includes(self.render())
+        # ⚠️ 2026-09-29 修复（无避雷线变体 ganzino/guxingno/... 根因）：这些资产的
+        # work.atp 用 `$INSERT, ...\short1.pch` 引用几何（**不是** $INCLUDE/.lib），
+        # 旧判定只认 $INCLUDE/IN_/.lib → 把 $INSERT 资产误判为「内嵌」而跳过 LCC
+        # → 引擎目录没有 .pch → simulate 时 ATP 读 $INSERT 打不开文件 → Halt。
+        # 现在 $INSERT 也算「引用外部几何」，必须跑 LCC 生成 .pch。
         include_lines = [
             ln for ln in rendered_text.splitlines()
             if "$INCLUDE" in ln.upper()
         ]
-        references_lib = bool(include_lines) or "IN_" in rendered_text or ".lib" in rendered_text
+        insert_lines = [
+            ln for ln in rendered_text.splitlines()
+            if "$INSERT" in ln.upper()
+        ]
+        references_lib = (
+            bool(include_lines)
+            or bool(insert_lines)
+            or "IN_" in rendered_text
+            or ".lib" in rendered_text
+            or ".pch" in rendered_text.lower()
+        )
         if not references_lib:
             # 内嵌模板：不跑 LCC，保留模板自带产物；判据标注「无需重生成」
-            log_lines.append("work.atp 无 $INCLUDE / IN_ 节点引用（内嵌几何模板），跳过 LCC 重生成")
+            log_lines.append("work.atp 无 $INCLUDE / $INSERT / IN_ 节点引用（内嵌几何模板），跳过 LCC 重生成")
             for name in dat_names:
                 for suffix in ("dat", "pch", "lib", "lis"):
                     path = self.engine_dir / f"{name}.{suffix}"

@@ -2008,7 +2008,18 @@ def _rewrite_includes(
     for raw_line in rendered_text.splitlines(keepends=True):
         line = raw_line.rstrip("\r\n")
         ending = raw_line[len(line):]
-        if line.strip().upper().startswith("$INCLUDE") and ".lib" in line:
+        # ⚠️ 2026-09-29 修复（无避雷线变体 ganzino/guxingno/... 全失败根因）：
+        # 这些资产的 work.atp 用 `$INSERT, D:\ATP\...\short1.pch` 引用几何，
+        # 而旧实现只重写 `$INCLUDE ... .lib` → $INSERT 保持 C# Windows 本地路径，
+        # ATP 在 Wine 下打不开 → `Failure to connect disk file in CIMAGE. Halt.`
+        # → time-step loop = 0 → simulate 判 work.pl4 0 字节失败。
+        # 这里与 $INCLUDE 同口径重写 $INSERT 的 D:\ATP\ 前缀（文件名原样保留）。
+        if line.strip().upper().startswith("$INSERT") and ".pch" in line.lower():
+            new_line = _INCLUDE_PATH_RE.sub(
+                lambda m: priv_win + m.group(1), line
+            )
+            out_lines.append(new_line + ending)
+        elif line.strip().upper().startswith("$INCLUDE") and ".lib" in line:
             new_line = _INCLUDE_PATH_RE.sub(
                 lambda m: priv_win + m.group(1), line
             )

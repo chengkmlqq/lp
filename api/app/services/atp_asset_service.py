@@ -65,12 +65,19 @@ VALID_RUN_STATUS = {"pending", "running", "success", "failed"}
 LOG_MAX_CHARS = 200_000
 ATP_ASSET_FILES_ROOT = "/atp-assets"
 
-# ATP 模型包上传白名单：只接受 .atp（仿真入口）与 .dat（几何/LCC 源）。
-# .lib/.pch/.lis/.pl4/.log 等是 ATP 运行产物，由 geometry/simulate 阶段现场生成，不允许上传
+# ATP 模型包上传白名单：接受 .atp（仿真入口）、.dat（几何/LCC 源）、.pch。
+# .pch 分两类：
+#   ① 标准名 short.pch/long.pch/... —— geometry 每轮重算覆盖，上传无兜底价值
+#   ② 序号名 short1.pch/long3.pch/... —— 「无避雷线变体」(ganzino/guxingno/...)
+#      work.atp 用 `$INSERT` 按网络分段引用的几何（8 段各不相同，实测 md5 全异），
+#      LP 的 geometry 只生成 4 个标准名，无法覆盖序号 pch → 必须随包上传，
+#      否则 simulate 时 ATP 读 $INSERT 找不到文件 → Halt → time-step loop=0。
+#     （2026-09-29 实测：ganzino 全量 80 个因此失败）
+# .lib/.lis/.pl4/.log 等仍是运行产物，由 geometry/simulate 现场生成，不允许上传
 # （2026-09-26 实测：geometry 每轮按当轮参数重算覆盖 .lib，上传的 .lib 无兜底价值；
 # 删 .lib 后系统可从 .dat 自动重生成并跑通）。
 # ⚠️ 若未来接入带 egm 引擎的资产包（egm 子目录 + .exe），需在此放开对应扩展名。
-_ALLOWED_ATP_MODEL_EXTENSIONS: tuple[str, ...] = (".atp", ".dat")
+_ALLOWED_ATP_MODEL_EXTENSIONS: tuple[str, ...] = (".atp", ".dat", ".pch")
 _DAT_MODEL_NAMES: tuple[str, ...] = ("long", "short", "dahao", "xiaohao")
 _ENTRY_ATP_FILE = "work.atp"
 
