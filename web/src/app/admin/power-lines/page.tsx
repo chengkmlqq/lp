@@ -876,9 +876,8 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
     {
       title: "操作",
       key: "actions",
-      width: 150,
+      width: 170,
       fixed: "right",
-      align: "right" as const,
       render: (_, line) => {
         const menuItems: MenuProps["items"] = [
           {
@@ -938,7 +937,7 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
         pageSizeOptions: [6, 12, 24, 48],
         showTotal: (total) => `共 ${total} 条`,
       }}
-      scroll={{ x: 800, y: scrollY }}
+      scroll={{ x: 820, y: scrollY }}
       tableLayout="fixed"
     />
   );

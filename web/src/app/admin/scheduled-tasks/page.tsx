@@ -356,7 +356,6 @@ export default function AdminScheduledTasksPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-      align: "right" as const,
       width: 150,
         render: (_, record) => (
           <Space size="small">

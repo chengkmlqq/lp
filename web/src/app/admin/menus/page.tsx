@@ -648,7 +648,6 @@ export default function AdminMenusPage() {
       title: "操作",
       key: "actions",
       fixed: "right",
-      align: "right" as const,
       width: 180,
       render: (_, record) => {
         const updatingLoading = updatingStatusMenuId === record.id;

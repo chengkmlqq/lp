@@ -949,7 +949,6 @@ export default function AdminSystemParamsPage() {
         key: "actions",
         width: 180,
         fixed: "right",
-      align: "right" as const,
       render: (_, record) => {
           const deleteLoading = deletingId === record.id;
           const statusLoading = updatingStatusId === record.id;

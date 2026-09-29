@@ -711,7 +711,6 @@ export default function AtpParamTemplatesPage() {
       title: "操作",
       key: "actions",
       fixed: "right",
-      align: "right" as const,
       width: 150,
       render: (_v, row) => {
         const hasRule = Boolean(row.node.rule_id);

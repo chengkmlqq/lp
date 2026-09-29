@@ -675,7 +675,6 @@ export default function AdminLightningRetrofitPage() {
         title: "操作",
         key: "operation",
         width: 160,
-        align: "center" as const,
         render: (_value, job) => (
           <Space size="small">
             <Button size="small" onClick={() => handleViewDetail(job)}>
@@ -978,7 +977,6 @@ export default function AdminLightningRetrofitPage() {
         title: "操作",
         key: "operation",
         width: 140,
-        align: "center" as const,
         render: (_value, row) => (
           <Button
             size="small"

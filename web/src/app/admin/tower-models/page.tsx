@@ -629,7 +629,6 @@ export default function AdminTowerModelsPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-      align: "right" as const,
       width: 180,
         render: (_: unknown, row) => {
           const rowBusy = isDeletingModel || isSavingModel || isUploadingImage;

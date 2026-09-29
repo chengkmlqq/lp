@@ -876,7 +876,6 @@ export default function AdminLightningDistributionPage() {
         key: "actions",
         width: 150,
         fixed: "right",
-      align: "right" as const,
       render: (_: unknown, row) => {
           // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/回填），其余操作收进 ⋯ 三点下拉（与雷电流幅值统计页一致）
           const moreMenuItems: MenuProps["items"] = [
@@ -1749,7 +1748,6 @@ function BackfillRecordsView({
         key: "actions",
         width: 200,
         fixed: "right",
-      align: "right" as const,
       render: (_: unknown, row: LightningDensityBackfillTaskSummary) => {
           const busy = row.status === "pending" || row.status === "processing";
           return (

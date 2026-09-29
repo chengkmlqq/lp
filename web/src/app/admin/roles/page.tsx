@@ -655,7 +655,6 @@ export default function AdminRolesPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-      align: "right" as const,
       width: 260,
         render: (_, role) => {
           const isDeleting = deletingRoleId === role.id;

@@ -971,7 +971,6 @@ export default function AdminLightningCurrentsPage() {
         key: "actions",
         width: 200,
         fixed: "right",
-      align: "right" as const,
       render: (_: unknown, row) => {
           // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/回填），其余操作收进 ⋯ 三点下拉
           const moreMenuItems: MenuProps["items"] = [

@@ -685,7 +685,6 @@ export default function AtpParamsPage() {
       key: "actions",
       width: 150,
       fixed: "right",
-      align: "right",
       render: (_, record) => (
         <Space size={4}>
           <Tooltip title="详情">
