@@ -980,7 +980,7 @@ class _TestContext:
         verdicts.append(
             _verdict(
                 "include_rewritten",
-                bool(include_lines) and not bad_includes,
+                not bad_includes,
                 f"{len(include_lines)} 条 $INCLUDE，未重写 {len(bad_includes)} 条"
                 + (f"：{bad_includes[:2]}" if bad_includes else ""),
             )

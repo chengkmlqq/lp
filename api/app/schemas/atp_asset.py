@@ -231,7 +231,7 @@ class AtpAssetTestRunRequest(BaseModel):
 class AtpBatchTestRunRequest(BaseModel):
     """ATP 资产「批量测试」请求：同一组测试参数应用到多个资产。"""
 
-    asset_ids: list[str] = Field(min_length=1, max_length=200)
+    asset_ids: list[str] = Field(min_length=1, max_length=500)
     # 公共测试参数（与单测 AtpAssetTestRunRequest 同语义）
     stages: list[AtpAssetTestStage] = Field(
         default_factory=lambda: ["materialize", "geometry", "simulate"]
