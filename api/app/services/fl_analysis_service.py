@@ -1484,13 +1484,23 @@ def execute_job(job_id: str) -> None:
         legacy_external_job = None
         stdout_chunks: list[str] = []
         stderr_chunks: list[str] = []
-        if waveform_job_type in {"normal", "tongtiao"}:
+        # ⚠️ 2026-09-29 修复：措施推荐(mitigation)任务也必须解析外部 ATP 资产。
+        # 原条件只放行 normal/tongtiao → mitigation 永远 has_external=False →
+        # 状态机每轮走规程法重算(861 行兜底)，与 C# AllCall_CS(101) ATP 重算不一致。
+        if waveform_job_type in {"normal", "tongtiao"} or job.job_type == "mitigation":
             _method_fanji = str(execution_options.get("fanji_naleishuiping_method") or "").strip().lower()
             _method_raoji = str(execution_options.get("raoji_naleishuiping_method") or "").strip().lower()
             # 方法选项选了 atp（反击或绕击任一）→ 自动启用 external ATP 路径（LP-xxx 自动选资产，
             # 对齐 C# 桌面版：不要求用户在页面选资产，按线路/杆塔参数自动匹配模板）。
             # 显式 external_adapter 仍优先（老任务/脚本直传兼容）。
-            if job.external_adapter in {"atp", "wine"} or _method_fanji == "atp" or _method_raoji == "atp":
+            # ⚠️ mitigation(措施推荐)：对齐 C# MyCanShu_2/3 每轮 AllCall_CS(101) ATP 重算，
+            # 无条件走 ATP 解析（有资产就解析，无资产抛错，绝不静默规程法）。
+            if (
+                job.job_type == "mitigation"
+                or job.external_adapter in {"atp", "wine"}
+                or _method_fanji == "atp"
+                or _method_raoji == "atp"
+            ):
                 try:
                     external_job = resolve_external_waveform_job(
                         db,
