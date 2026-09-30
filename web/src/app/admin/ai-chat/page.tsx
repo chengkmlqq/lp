@@ -351,7 +351,7 @@ export default function AiChatPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <Card
         className="admin-ai-chat-page-card"
-        bordered={false}
+        variant="borderless"
         styles={{ body: { padding: 0 } }}
       >
         <div style={{ display: "flex", minHeight: 0, flex: 1 }}>

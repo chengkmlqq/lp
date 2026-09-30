@@ -348,7 +348,7 @@ export default function DocsViewPage() {
             {documentLoading ? (
               skeletonContent
             ) : selectedDocument ? (
-              <AntCard className="admin-docs-view-document-card" bordered={false}>
+              <AntCard className="admin-docs-view-document-card" variant="borderless">
                 <div className="admin-docs-view-document-header">
                   <Title level={2} style={{ marginBottom: 8 }}>
                     {selectedDocument.title}
