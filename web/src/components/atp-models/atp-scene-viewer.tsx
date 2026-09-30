@@ -98,6 +98,59 @@ const KIND_LABELS: Record<string, string> = {
   other: "其他",
 };
 
+// ───────────────────────── 元件形状构建（按 kind 绘制不同 3D 符号） ─────────────────────────
+
+function nodeMaterial(color: number): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.15 });
+}
+
+/**
+ * 按元件类型构建 3D 符号（拓扑布局不变，仅节点形状区分类型）：
+ *   source   电源：圆柱体 + 顶部锥体（电池/电源符号）
+ *   switch   开关：立方体 + 两侧触点柱
+ *   include  线路段：短圆柱（导线段）
+ *   line     线路端口：圆环
+ *   internal 内部节点：小球（弱化，结构噪声）
+ *   other    未知：深灰小球
+ * 返回 Object3D（可能是 Group），每个子 mesh 允许被射线拾取。
+ */
+function buildNodeShape(kind: string, color: number): THREE.Object3D {
+  switch (kind) {
+    case "source": {
+      const group = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.1, 14), nodeMaterial(color));
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.52, 0.62, 14), nodeMaterial(color));
+      cap.position.y = 0.86;
+      group.add(body, cap);
+      return group;
+    }
+    case "switch": {
+      const group = new THREE.Group();
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.85, 0.85), nodeMaterial(color));
+      const contactMaterial = new THREE.MeshStandardMaterial({ color: 0xd6d6d6, roughness: 0.3, metalness: 0.6 });
+      const postGeometry = new THREE.CylinderGeometry(0.13, 0.13, 0.55, 8);
+      const post1 = new THREE.Mesh(postGeometry, contactMaterial);
+      post1.position.set(0.5, 0.25, 0);
+      const post2 = new THREE.Mesh(postGeometry, contactMaterial);
+      post2.position.set(-0.5, 0.25, 0);
+      group.add(box, post1, post2);
+      return group;
+    }
+    case "include": {
+      return new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 1.5, 12), nodeMaterial(color));
+    }
+    case "line": {
+      return new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.15, 8, 18), nodeMaterial(color));
+    }
+    default: {
+      return new THREE.Mesh(
+        new THREE.SphereGeometry(kind === "internal" ? 0.4 : 0.5, 16, 16),
+        nodeMaterial(color),
+      );
+    }
+  }
+}
+
 // ───────────────────────── 力导向布局（三维 Fruchterman-Reingold） ─────────────────────────
 
 interface CoulombNode {
@@ -307,20 +360,38 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
     directional.position.set(20, 30, 25);
     threeScene.add(directional);
 
-    // 节点球体
-    const nodeMeshes = new Map<string, THREE.Mesh>();
-    const sphereGeometry = new THREE.SphereGeometry(0.55, 20, 20);
+    // 节点：按 kind 绘制元件符号（Group/Mesh），子 mesh 全部登记供射线拾取
+    const nodeObjects = new Map<string, THREE.Object3D>();
+    const nodeMeshes: THREE.Mesh[] = [];
+    const markNodeId = (object: THREE.Object3D, nodeId: string) => {
+      if ((object as THREE.Mesh).isMesh) {
+        object.userData.nodeId = nodeId;
+        nodeMeshes.push(object as THREE.Mesh);
+      }
+      for (const child of object.children) {
+        markNodeId(child, nodeId);
+      }
+    };
     for (const node of scene.nodes) {
       const pos = positionById.get(node.id);
       if (!pos) continue;
       const color = KIND_COLORS[node.kind] ?? KIND_COLORS.other;
-      const material = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.15 });
-      const mesh = new THREE.Mesh(sphereGeometry, material);
-      mesh.position.set(pos.x, pos.y, pos.z);
-      mesh.userData.nodeId = node.id;
-      threeScene.add(mesh);
-      nodeMeshes.set(node.id, mesh);
+      const object = buildNodeShape(node.kind, color);
+      object.position.set(pos.x, pos.y, pos.z);
+      markNodeId(object, node.id);
+      threeScene.add(object);
+      nodeObjects.set(node.id, object);
     }
+
+    // 元件符号高亮（按 nodeId 改所有子 mesh 的自发光）
+    const setNodeEmissive = (nodeId: string | null, hexColor: number) => {
+      if (!nodeId) return;
+      for (const mesh of nodeMeshes) {
+        if (mesh.userData.nodeId === nodeId) {
+          (mesh.material as THREE.MeshStandardMaterial).emissive = new THREE.Color(hexColor);
+        }
+      }
+    };
 
     // 支路/开关连线
     const lineMaterial = new THREE.LineBasicMaterial({ color: 0x4a6b8a, transparent: true, opacity: 0.55 });
@@ -363,14 +434,13 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2(1, 1); // 初始在画布外
     let hoveredNodeId: string | null = null;
-    const highlightMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
 
     const pickNode = (clientX: number, clientY: number): string | null => {
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
-      const hits = raycaster.intersectObjects([...nodeMeshes.values()], false);
+      const hits = raycaster.intersectObjects(nodeMeshes, false);
       return hits.length > 0 ? ((hits[0].object.userData.nodeId as string) ?? null) : null;
     };
 
@@ -378,20 +448,10 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
       const id = pickNode(event.clientX, event.clientY);
       if (id !== hoveredNodeId) {
         // 恢复上一个高亮
-        if (hoveredNodeId) {
-          const prev = nodeMeshes.get(hoveredNodeId);
-          if (prev) {
-            const mat = prev.material as THREE.MeshStandardMaterial;
-            mat.emissive = new THREE.Color(0x000000);
-          }
-        }
+        setNodeEmissive(hoveredNodeId, 0x000000);
         hoveredNodeId = id;
         if (id) {
-          const mesh = nodeMeshes.get(id);
-          if (mesh) {
-            const mat = mesh.material as THREE.MeshStandardMaterial;
-            mat.emissive = new THREE.Color(0x3377ff);
-          }
+          setNodeEmissive(id, 0x3377ff);
         }
         setHovered(id);
       }
@@ -451,11 +511,26 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       renderer.domElement.removeEventListener("click", onClick);
       controls.dispose();
-      for (const mesh of nodeMeshes.values()) {
-        mesh.geometry.dispose();
-        (mesh.material as THREE.Material).dispose();
+      const disposeObject = (object: THREE.Object3D) => {
+        const mesh = object as THREE.Mesh;
+        if (mesh.geometry) {
+          mesh.geometry.dispose();
+        }
+        const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(material)) {
+          for (const item of material) item.dispose();
+        } else if (material) {
+          material.dispose();
+        }
+        for (const child of object.children) {
+          disposeObject(child);
+        }
+      };
+      for (const object of nodeObjects.values()) {
+        disposeObject(object);
       }
-      sphereGeometry.dispose();
+      nodeObjects.clear();
+      nodeMeshes.length = 0;
       lineMaterial.dispose();
       includeLineMaterial.dispose();
       grid.dispose();
@@ -463,7 +538,6 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
       if (renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
       }
-      highlightMaterialCache.clear();
     };
   }, [sceneQuery.data, assetId]);
 
@@ -514,7 +588,7 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
                 {label}
               </span>
             ))}
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>拖拽旋转 · 滚轮缩放 · 点击节点查看详情</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>形状=元件类型（⚡电源 · ▦开关 · ‖线路段 · ◎端口 · ●内部节点）· 拖拽旋转 · 滚轮缩放 · 点击节点查看详情</Typography.Text>
           </div>
 
           {scene.warnings.length > 0 ? (
