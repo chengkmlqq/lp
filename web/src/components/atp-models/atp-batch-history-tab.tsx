@@ -33,7 +33,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, readApiError } from "@/lib/api";
-import type { AtpAssetSummary, AtpBatchTestRunListResponse, AtpBatchTestRunSummary } from "@/types/auth";
+import type { AtpBatchTestRunListResponse, AtpBatchTestRunSummary } from "@/types/auth";
 import { AtpBatchTestDrawer } from "@/components/atp-models/atp-batch-test-drawer";
 
 const BATCH_TABLE_MIN_SCROLL_Y = 280;
@@ -56,7 +56,7 @@ export function formatDateTime(value: string | null | undefined): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-export function AtpBatchHistoryTab({ assets }: { assets: AtpAssetSummary[] }) {
+export function AtpBatchHistoryTab() {
   const { user } = useAuth();
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -325,7 +325,6 @@ export function AtpBatchHistoryTab({ assets }: { assets: AtpAssetSummary[] }) {
       {/* 发起 / 查看抽屉 */}
       <AtpBatchTestDrawer
         open={launchOpen}
-        assets={assets}
         initialBatchId={viewBatchId}
         onClose={() => {
           setLaunchOpen(false);

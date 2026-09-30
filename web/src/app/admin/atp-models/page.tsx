@@ -137,6 +137,9 @@ const ATP_TABLE_ESTIMATED_HEADER_HEIGHT = 56;
 const ATP_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
 const ATP_TABLE_BOTTOM_GAP = 8;
 
+// 空列表固定引用：避免 `?? []` 每次 render 生成新数组导致 useMemo 依赖抖动
+const EMPTY_ASSET_ITEMS: AtpAssetSummary[] = [];
+
 // ===== 左侧维度树：电压等级 → 杆塔类型 → 雷击方式(场景) → 避雷器组合 =====
 const ATP_TREE_LEVELS = [
   { field: "voltage_level", prefix: "vl" },
@@ -161,15 +164,6 @@ function parseAtpTreeKey(key: string): AtpTreePathFilter | null {
     filter[level.field] = code;
   }
   return Object.keys(filter).length > 0 ? filter : null;
-}
-
-function matchAtpTreeFilter(asset: AtpAssetSummary, filter: AtpTreePathFilter | null): boolean {
-  if (!filter) return true;
-  return ATP_TREE_LEVELS.every((level) => {
-    const wanted = filter[level.field];
-    if (!wanted) return true;
-    return asset[level.field] === wanted;
-  });
 }
 
 export default function AtpModelsPage() {
@@ -216,32 +210,8 @@ export default function AtpModelsPage() {
   const canTest = hasPermission("atp.run") || hasPermission("atp.manage");
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
 
-  // 全量资产：一次拉齐（分页循环，接口 limit 上限 200）供左侧树聚合与右侧表格客户端过滤。
-  // /atp/assets 接口不支持 arrester_config 过滤参数，纯前端过滤可保证四个维度行为一致。
-  const allAssetsQuery = useQuery({
-    queryKey: ["atp-assets-all"],
-    enabled: Boolean(user && canRead),
-    queryFn: async () => {
-      const PAGE = 200;
-      const items: AtpAssetSummary[] = [];
-      for (let offset = 0; offset < PAGE * 50; offset += PAGE) {
-        const response = await fetchWithAuth(`/api/v1/atp/assets?limit=${PAGE}&offset=${offset}`);
-        if (!response.ok) {
-          throw new Error(await readApiError(response));
-        }
-        const payload = (await response.json()) as AtpAssetListResponse;
-        items.push(...payload.items);
-        if (items.length >= payload.total) {
-          break;
-        }
-      }
-      return items;
-    },
-    placeholderData: (previousData) => previousData,
-  });
-
-  // 用 useMemo 固定引用：避免 `?? []` 每次 render 生成新数组导致下挂 useMemo 依赖抖动
-  const allAssets = useMemo(() => allAssetsQuery.data ?? [], [allAssetsQuery.data]);
+  // 表格数据源 = 服务端分页 + 服务端过滤（见下方 assetsQuery，需在 activeFilter 之后定义）。
+  // 不再全量拉资产到浏览器：分页 / 搜索 / 维度过滤任一变化 → queryKey 变化自动重新请求当前页。
 
   // 左侧面板拖动（参考菜单管理页）
   const handleResizeStart = useCallback((e: ReactMouseEvent) => {
@@ -323,7 +293,7 @@ export default function AtpModelsPage() {
       return createdAsset;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["atp-assets-all"] });
+      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
       setSuccess("模型已创建并上传文件");
       setError(null);
       setModalOpen(false);
@@ -347,7 +317,7 @@ export default function AtpModelsPage() {
       }
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["atp-assets-all"] });
+      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
       setSuccess("模型已删除");
       setError(null);
     },
@@ -383,7 +353,7 @@ export default function AtpModelsPage() {
       return (await response.json()) as AtpAssetSummary;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["atp-assets-all"] });
+      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
       setSuccess("模型信息已更新");
       setError(null);
       setEditModalOpen(false);
@@ -542,7 +512,7 @@ export default function AtpModelsPage() {
   };
 
   const handleSearch = useCallback(() => {
-    // 数据已全量在客户端：仅提交关键词并回到第 1 页，无需额外接口请求
+    // 服务端过滤：提交关键词回到第 1 页，queryKey 变化自动重新请求
     setSearchKeyword(keywordInput);
     setPagination((previous) => ({ ...previous, current: 1 }));
   }, [keywordInput]);
@@ -683,21 +653,58 @@ export default function AtpModelsPage() {
 
   const activeFilter = useMemo(() => parseAtpTreeKey(selectedTreeKey), [selectedTreeKey]);
 
-  const filteredAssets = useMemo(() => {
-    const kw = searchKeyword.trim().toLowerCase();
-    return allAssets.filter((asset) => {
-      if (!matchAtpTreeFilter(asset, activeFilter)) return false;
-      if (kw && !`${asset.code} ${asset.name} ${asset.description}`.toLowerCase().includes(kw)) return false;
-      return true;
-    });
-  }, [allAssets, activeFilter, searchKeyword]);
+  // 表格数据源：服务端分页 + 服务端过滤（keyword → keyword 参数；树选择 → 4 个维度参数）。
+  // 不再全量拉资产到浏览器：分页 / 搜索 / 维度过滤任一变化 → queryKey 变化自动重新请求当前页。
+  const assetsQuery = useQuery({
+    queryKey: [
+      "atp-assets",
+      {
+        current: paginationCurrent,
+        pageSize: paginationPageSize,
+        keyword: searchKeyword.trim(),
+        filter: activeFilter ?? null,
+      },
+    ],
+    enabled: Boolean(user && canRead),
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("limit", String(paginationPageSize));
+      params.set("offset", String((paginationCurrent - 1) * paginationPageSize));
+      if (searchKeyword.trim()) params.set("keyword", searchKeyword.trim());
+      if (activeFilter) {
+        if (activeFilter.voltage_level) params.set("voltage_level", activeFilter.voltage_level);
+        if (activeFilter.tower_type) params.set("tower_type", activeFilter.tower_type);
+        if (activeFilter.scene_type) params.set("scene_type", activeFilter.scene_type);
+        if (activeFilter.arrester_config) params.set("arrester_config", activeFilter.arrester_config);
+      }
+      const response = await fetchWithAuth(`/api/v1/atp/assets?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as AtpAssetListResponse;
+    },
+    placeholderData: (previousData) => previousData,
+  });
 
-  const filteredTotal = filteredAssets.length;
+  // 全库资产总数：树「全部」节点计数 + 「批量测试」按钮可用性（一次轻量请求只取 total）
+  const totalQuery = useQuery({
+    queryKey: ["atp-assets", "total"],
+    enabled: Boolean(user && canRead),
+    queryFn: async () => {
+      const response = await fetchWithAuth("/api/v1/atp/assets?limit=1");
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const payload = (await response.json()) as AtpAssetListResponse;
+      return payload.total;
+    },
+  });
 
-  const assetItems = useMemo(() => {
-    const start = (paginationCurrent - 1) * paginationPageSize;
-    return filteredAssets.slice(start, start + paginationPageSize);
-  }, [filteredAssets, paginationCurrent, paginationPageSize]);
+  const assetItems = useMemo(
+    () => assetsQuery.data?.items ?? EMPTY_ASSET_ITEMS,
+    [assetsQuery.data],
+  );
+  const assetTotal = assetsQuery.data?.total ?? 0;
 
   // ===== 维度管理数据源（替代硬编码 DEFAULT_* 常量）=====
   // 1. 获取维度类型树（types/tree），解析出四个类型 id
@@ -790,8 +797,7 @@ export default function AtpModelsPage() {
   const sceneTypeOptions = dimensionOptionMap.scene_type;
   const arresterConfigOptions = dimensionOptionMap.arrester_config;
 
-  const assetTotal = filteredTotal;
-  const queryError = useMemo<ApiError | null>(() => allAssetsQuery.error instanceof Error ? new ApiError(allAssetsQuery.error.message) : null, [allAssetsQuery.error]);
+  const queryError = useMemo<ApiError | null>(() => assetsQuery.error instanceof Error ? new ApiError(assetsQuery.error.message) : null, [assetsQuery.error]);
   const apiError = error || queryError;
 
   useToastFeedback({
@@ -837,7 +843,7 @@ export default function AtpModelsPage() {
       return;
     }
     window.requestAnimationFrame(updateTableScrollHeight);
-  }, [allAssetsQuery.error, allAssetsQuery.isFetching, assetItems.length, updateTableScrollHeight, viewMode]);
+  }, [assetsQuery.error, assetsQuery.isFetching, assetItems.length, updateTableScrollHeight, viewMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1122,7 +1128,7 @@ export default function AtpModelsPage() {
               <Button
                 icon={<ExperimentOutlined />}
                 onClick={openBatchTab}
-                disabled={allAssets.length === 0}
+                disabled={(totalQuery.data ?? 0) === 0}
               >
                 批量测试
               </Button>
@@ -1156,7 +1162,7 @@ export default function AtpModelsPage() {
                           />
                         </div>
                         <div className="admin-atp-models-sider-menu">
-                          {allAssetsQuery.isLoading ? (
+                          {rootTreeQuery.isLoading ? (
                             <div style={{ textAlign: "center", padding: "24px" }}>
                               <Spin />
                             </div>
@@ -1174,7 +1180,7 @@ export default function AtpModelsPage() {
                                   title: (
                                     <span className="admin-atp-models-tree-node">
                                       <span className="admin-atp-models-tree-node-title">全部模型</span>
-                                      <span className="admin-atp-models-tree-node-count">{allAssets.length}</span>
+                                      <span className="admin-atp-models-tree-node-count">{totalQuery.data ?? 0}</span>
                                     </span>
                                   ),
                                 } as DataNode,
@@ -1252,7 +1258,7 @@ export default function AtpModelsPage() {
                           rowKey="id"
                           // 列表始终渲染：查询进行中仅叠加 antd Table 自带居中遮罩，保留现有行，
                           // 接口返回后再更新，避免查询开始时清空表格
-                          loading={allAssetsQuery.isFetching}
+                          loading={assetsQuery.isFetching}
                           columns={columns}
                           dataSource={assetItems}
                           tableLayout="fixed"
@@ -1284,7 +1290,7 @@ export default function AtpModelsPage() {
                         {assetItems.length === 0 ? (
                           // 无数据可展示且请求进行中（首载）：整区居中加载指示；
                           // 有卡片时由下方 Spin 遮罩保留现有卡片，接口返回后再更新，避免查询时闪空
-                          allAssetsQuery.isLoading ? (
+                          assetsQuery.isLoading ? (
                             <div className="flex w-full flex-1 items-center justify-center">
                               <Spin />
                             </div>
@@ -1295,7 +1301,7 @@ export default function AtpModelsPage() {
                           <>
                             <div className="admin-atp-models-card-scroll">
                               {/* 查询/刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
-                              <Spin spinning={allAssetsQuery.isFetching}>
+                              <Spin spinning={assetsQuery.isFetching}>
                                 <AtpModelCardList
                                   assets={assetItems}
                                   canManage={canManage}
@@ -1356,7 +1362,7 @@ export default function AtpModelsPage() {
             label: tab.label,
             closable: true,
             children: (
-              <AtpBatchHistoryTab assets={allAssets} />
+              <AtpBatchHistoryTab />
             ),
           })),
         ]}

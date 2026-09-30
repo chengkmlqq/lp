@@ -71,6 +71,7 @@ def get_atp_asset_list(
     voltage_level: str | None = Query(default=None),
     tower_type: str | None = Query(default=None),
     scene_type: str | None = Query(default=None),
+    arrester_config: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
@@ -83,6 +84,7 @@ def get_atp_asset_list(
         voltage_level=voltage_level,
         tower_type=tower_type,
         scene_type=scene_type,
+        arrester_config=arrester_config,
         limit=limit,
         offset=offset,
     )

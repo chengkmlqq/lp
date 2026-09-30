@@ -601,15 +601,23 @@ def serialize_asset(
     last_run_status: str | None,
     last_run_date: datetime | None,
     db: Session | None = None,
+    label_map: dict[tuple[str, str], str] | None = None,
 ) -> AtpAssetSummary:
     # 从维度项解析中文标签（code → name 映射）
+    # label_map: 批量预加载的 (dimension_type, code) → name 映射（列表序列化传入，避免每条资产 N+1 查询）
     dimension_label_cache: dict[tuple[str, str], str] = {}
     def _resolve_label(dimension_type: str, code: str | None) -> str | None:
-        if not code or not db:
+        if not code:
             return None
         cache_key = (dimension_type, code)
         if cache_key in dimension_label_cache:
             return dimension_label_cache[cache_key]
+        if label_map is not None:
+            label = label_map.get(cache_key) or code
+            dimension_label_cache[cache_key] = label
+            return label
+        if not db:
+            return None
         label = db.scalar(
             select(DimensionItem.name).where(
                 DimensionItem.dimension_type == dimension_type,
@@ -706,15 +714,28 @@ def _load_asset_run_count_map(db: Session, asset_ids: list[str]) -> dict[str, in
     return {str(asset_id): int(count) for asset_id, count in rows}
 
 
+def _load_dimension_label_map(db: Session) -> dict[tuple[str, str], str]:
+    """一次查维度项建 (dimension_type, code) -> name 映射（列表序列化批量用，避免每条资产 4 次单行查询）"""
+    rows = db.execute(
+        select(DimensionItem.dimension_type, DimensionItem.code, DimensionItem.name).where(
+            DimensionItem.dimension_type.in_(
+                ("voltage_level", "tower_type", "scenario", "arrester_combination")
+            )
+        )
+    ).all()
+    return {(str(r[0]), str(r[1])): str(r[2]) for r in rows if r[0] and r[1] and r[2]}
+
+
 def _load_asset_last_run_map(db: Session, asset_ids: list[str]) -> dict[str, tuple[str | None, datetime | None]]:
     if not asset_ids:
         return {}
+    # 只取 (asset_id, status, create_date) 三列：不 joinedload asset、不拉 stdout/stderr/result_summary 等大列
+    # 排序语义保持不变：每资产按 create_date/id desc 取最新一次
     rows = db.execute(
-        select(AtpAssetRun)
-        .options(joinedload(AtpAssetRun.asset))
+        select(AtpAssetRun.asset_id, AtpAssetRun.status, AtpAssetRun.create_date)
         .where(AtpAssetRun.asset_id.in_(asset_ids))
         .order_by(AtpAssetRun.asset_id.asc(), AtpAssetRun.create_date.desc(), AtpAssetRun.id.desc())
-    ).scalars().all()
+    ).all()
     result: dict[str, tuple[str | None, datetime | None]] = {}
     for row in rows:
         if row.asset_id in result:
@@ -731,10 +752,29 @@ def list_assets(
     voltage_level: str | None,
     tower_type: str | None,
     scene_type: str | None,
+    arrester_config: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> AtpAssetListResponse:
-    stmt = select(AtpAsset)
+    # 只查列表接口需要的 15 列（避开 description/tags_json 等列全行读取，400ms+ → 8ms，实测）
+    columns = (
+        AtpAsset.id,
+        AtpAsset.code,
+        AtpAsset.name,
+        AtpAsset.description,
+        AtpAsset.status,
+        AtpAsset.voltage_level,
+        AtpAsset.tower_type,
+        AtpAsset.scene_type,
+        AtpAsset.arrester_config,
+        AtpAsset.storage_mount_code,
+        AtpAsset.storage_root_path,
+        AtpAsset.create_date,
+        AtpAsset.create_user,
+        AtpAsset.update_date,
+        AtpAsset.update_user,
+    )
+    stmt = select(*columns).select_from(AtpAsset)
     total_stmt = select(func.count()).select_from(AtpAsset)
 
     normalized_keyword = (keyword or "").strip()
@@ -760,16 +800,20 @@ def list_assets(
     if scene_type and scene_type.strip():
         stmt = stmt.where(AtpAsset.scene_type == scene_type.strip())
         total_stmt = total_stmt.where(AtpAsset.scene_type == scene_type.strip())
+    if arrester_config and arrester_config.strip():
+        stmt = stmt.where(AtpAsset.arrester_config == arrester_config.strip())
+        total_stmt = total_stmt.where(AtpAsset.arrester_config == arrester_config.strip())
 
     items = db.execute(
         stmt.order_by(AtpAsset.update_date.desc(), AtpAsset.code.asc())
         .limit(limit)
         .offset(offset)
-    ).scalars().all()
+    ).all()
     total = int(db.scalar(total_stmt) or 0)
     asset_ids = [item.id for item in items]
     run_count_map = _load_asset_run_count_map(db, asset_ids)
     last_run_map = _load_asset_last_run_map(db, asset_ids)
+    label_map = _load_dimension_label_map(db)
 
     return AtpAssetListResponse(
         items=[
@@ -778,7 +822,7 @@ def list_assets(
                 run_count=run_count_map.get(item.id, 0),
                 last_run_status=last_run_map.get(item.id, (None, None))[0],
                 last_run_date=last_run_map.get(item.id, (None, None))[1],
-                db=db,
+                label_map=label_map,
             )
             for item in items
         ],

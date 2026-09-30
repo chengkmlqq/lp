@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Checkbox, Drawer, Form, Input, InputNumber, Progress, Select, Space, Spin, Statistic, Table, Tag, Typography, message } from "antd";
 import { DownloadOutlined, ExperimentOutlined, RocketOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, getJson, postJson, readApiError } from "@/lib/api";
-import type { AtpAssetRunStatus, AtpAssetSummary, AtpBatchTestRunItem, AtpBatchTestRunSummary } from "@/types/auth";
+import type { AtpAssetListResponse, AtpAssetRunStatus, AtpAssetSummary, AtpBatchTestRunItem, AtpBatchTestRunSummary } from "@/types/auth";
 
 const STAGES = [
   { value: "materialize", label: "① 物化 + 引擎文件" },
@@ -24,14 +25,13 @@ const STATUS_TAG: Record<string, { color: string; text: string }> = {
 
 interface AtpBatchTestDrawerProps {
   open: boolean;
-  assets: AtpAssetSummary[];
   /** 非空:直接进入该批次的进度/报告视图(从历史记录「查看」进入) */
   initialBatchId?: string | null;
   onClose: () => void;
 }
 
 /** 批量测试抽屉:勾选资产 → 公共参数 → 下发 → 进度看板 + 总体报告 */
-export function AtpBatchTestDrawer({ open, assets, initialBatchId = null, onClose }: AtpBatchTestDrawerProps) {
+export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: AtpBatchTestDrawerProps) {
   const { user } = useAuth();
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [volFilter, setVolFilter] = useState<string>("");
@@ -43,6 +43,37 @@ export function AtpBatchTestDrawer({ open, assets, initialBatchId = null, onClos
   const [batch, setBatch] = useState<AtpBatchTestRunSummary | null>(null);
   const [polling, setPolling] = useState(false);
   const [submitError, setSubmitError] = useState("");
+
+  // 资产全量(勾选用)：仅在抽屉打开且非「历史查看」时按需并行拉取，避免页面首屏全量加载
+  const assetsQuery = useQuery({
+    queryKey: ["atp-assets-all-lazy"],
+    enabled: open && !initialBatchId,
+    queryFn: async () => {
+      const PAGE = 200;
+      const first = await fetchWithAuth(`/api/v1/atp/assets?limit=${PAGE}&offset=0`);
+      if (!first.ok) {
+        throw new Error(await readApiError(first));
+      }
+      const firstPayload = (await first.json()) as AtpAssetListResponse;
+      const items = [...firstPayload.items];
+      const pages = Math.ceil(firstPayload.total / PAGE);
+      if (pages > 1) {
+        const rest = await Promise.all(
+          Array.from({ length: pages - 1 }, (_, i) =>
+            fetchWithAuth(`/api/v1/atp/assets?limit=${PAGE}&offset=${(i + 1) * PAGE}`).then(async (response) => {
+              if (!response.ok) {
+                throw new Error(await readApiError(response));
+              }
+              return ((await response.json()) as AtpAssetListResponse).items;
+            }),
+          ),
+        );
+        items.push(...rest.flat());
+      }
+      return items;
+    },
+  });
+  const assets = useMemo(() => assetsQuery.data ?? [], [assetsQuery.data]);
 
   // 维度过滤
   const volOptions = useMemo(
