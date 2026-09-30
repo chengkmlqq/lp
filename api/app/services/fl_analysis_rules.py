@@ -327,6 +327,8 @@ def grade_mitigation_snapshot_payload(
         "recommendation_result": recommendation_result,
         "non_construction": non_construction,
         "inputs": current["inputs"],
+        # ⚠️ 2026-09-30 新增：逐轮计算过程（页面「优化过程」时间线展示用）
+        "mitigation_process": machine.get("process_steps") or [],
     }
 
 
@@ -2201,6 +2203,8 @@ def _csharp_mitigation_machine(
     # 非检线 Step1 记忆（C# mNew_JYZCD_Step1 / mNew_JDDZ_Step1）
     step1_insulator: float | None = None
     step1_ground: float | None = None
+    # ⚠️ 2026-09-30 新增：逐轮计算过程记录（页面「优化过程」时间线展示用）
+    process_steps: list[dict[str, Any]] = []
 
     max_turns = _CSHARP_STATE_S8 + 2
 
@@ -2216,6 +2220,21 @@ def _csharp_mitigation_machine(
         grade_jyz = grades["insulator_grade"]
         grade_jddz = grades["ground_grade"]
         grade_bjh = grades["protection_grade"]
+
+        # 本轮过程记录（先记分级与拟改参数，重算结果在下方补写）
+        _step_record: dict[str, Any] = {
+            "step": turns,
+            "state": _csharp_state_name(state),
+            "grades": {
+                "insulator": grade_jyz,
+                "ground": grade_jddz,
+                "protection": grade_bjh,
+            },
+            "changes": [],
+            "recomputed": None,
+            "decision": "",
+        }
+        process_steps.append(_step_record)
 
         if non_construction:
             result = _csharp_step_feijianxian(
@@ -2248,10 +2267,35 @@ def _csharp_mitigation_machine(
         changed = result["changed"]
         state = result["next_state"]
         if result.get("new_insulator_mm") is not None:
+            # 逐轮过程：记录实际参数改动（旧值 → 新值）
+            if abs(result["new_insulator_mm"] - new_insulator_mm) > 1e-9:
+                _step_record["changes"].append({
+                    "param": "insulator_mm",
+                    "label": "绝缘子串长度",
+                    "old": round(new_insulator_mm, 2),
+                    "new": round(result["new_insulator_mm"], 2),
+                    "unit": "mm",
+                })
             new_insulator_mm = result["new_insulator_mm"]
         if result.get("new_ground_ohm") is not None:
+            if abs(result["new_ground_ohm"] - new_ground_ohm) > 1e-9:
+                _step_record["changes"].append({
+                    "param": "ground_ohm",
+                    "label": "接地电阻",
+                    "old": round(new_ground_ohm, 2),
+                    "new": round(result["new_ground_ohm"], 2),
+                    "unit": "Ω",
+                })
             new_ground_ohm = result["new_ground_ohm"]
         if result.get("new_protection_angle") is not None:
+            if abs(result["new_protection_angle"] - new_protection_angle) > 1e-9:
+                _step_record["changes"].append({
+                    "param": "protection_angle",
+                    "label": "保护角",
+                    "old": round(new_protection_angle, 2),
+                    "new": round(result["new_protection_angle"], 2),
+                    "unit": "°",
+                })
             new_protection_angle = result["new_protection_angle"]
         if result.get("step1_insulator") is not None:
             step1_insulator = result["step1_insulator"]
@@ -2264,8 +2308,10 @@ def _csharp_mitigation_machine(
         terminal_state = _CSHARP_FEIJIANXIAN_TERMINAL if non_construction else _CSHARP_STATE_S5
         if state == terminal_state:
             reached_arrester = True
+            _step_record["decision"] = "走完所有调参状态，追加补装避雷器"
             break
         if changed == 0:
+            _step_record["decision"] = "本档参数已无变化可改进，停止"
             break
 
         # ── 用新参数重算（对齐 C# 每轮 AllCall_CS(101) 重算跳闸率/风险）──────
@@ -2286,7 +2332,15 @@ def _csharp_mitigation_machine(
             )
         # 改造后风险已降到 ≤2（不再高风险）→ 停止迭代（C# 语义：该塔不再进下一轮调参）
         recomputed_grade = _as_int(recomputed.get("risk_grade"))
+        # 逐轮过程：记录本轮 ATP/规程法重算结果
+        _step_record["recomputed"] = {
+            "risk_level": recomputed.get("risk_level"),
+            "risk_grade": recomputed_grade,
+            "counterstrike_trip_rate": _rounded_value(recomputed.get("counterstrike_trip_rate")),
+            "shielding_trip_rate": _rounded_value(recomputed.get("shielding_trip_rate")),
+        }
         if recomputed_grade is not None and recomputed_grade <= 2:
+            _step_record["decision"] = "重算后风险已降至 2 级以内（达标），停止调参"
             break
         fj_tzl = _as_float(recomputed.get("counterstrike_trip_rate")) or fj_tzl
         rj_tzl = _as_float(recomputed.get("shielding_trip_rate")) or rj_tzl
@@ -2358,7 +2412,26 @@ def _csharp_mitigation_machine(
         "new_insulator_mm": round(new_insulator_mm, 2),
         "new_ground_ohm": round(new_ground_ohm, 2),
         "new_protection_angle_deg": round(new_protection_angle, 2),
+        # ⚠️ 2026-09-30 新增：逐轮计算过程（页面「优化过程」时间线）
+        "process_steps": process_steps,
     }
+
+
+def _csharp_state_name(state: int) -> str:
+    """C# 状态编号 → 可读名称（页面过程时间线展示用）。"""
+    mapping = {
+        _CSHARP_STATE_INIT: "初始",
+        _CSHARP_STATE_S1: "第1档调参",
+        _CSHARP_STATE_S2: "第2档调参",
+        _CSHARP_STATE_S201: "接地专项",
+        _CSHARP_STATE_S3: "第3档调参",
+        _CSHARP_STATE_S4: "终态判定",
+        _CSHARP_STATE_S5: "终态",
+        _CSHARP_STATE_S6: "调保护角",
+        _CSHARP_STATE_S7: "调保护角2",
+        _CSHARP_STATE_S8: "非建线终态",
+    }
+    return mapping.get(state, f"S{state}")
 
 
 def _csharp_step_normal(

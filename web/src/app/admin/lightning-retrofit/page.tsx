@@ -26,6 +26,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Timeline,
   Tooltip,
   Typography,
 } from "antd";
@@ -1200,6 +1201,8 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  // 优化过程弹窗：展示状态机逐轮计算过程（2026-09-30）
+  const [processRow, setProcessRow] = useState<FlAnalysisTowerResultSummary | null>(null);
 
   const loadJob = useCallback(async () => {
     const response = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${jobId}`);
@@ -1322,6 +1325,27 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
         return "-";
       },
     },
+    {
+      title: "优化过程",
+      key: "process",
+      width: 100,
+      render: (_value, row) => {
+        const steps = (row.result_json ?? {}).mitigation_process;
+        if (!Array.isArray(steps) || steps.length === 0) {
+          return <Typography.Text type="secondary">-</Typography.Text>;
+        }
+        return (
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0 }}
+            onClick={() => setProcessRow(row)}
+          >
+            查看过程
+          </Button>
+        );
+      },
+    },
   ];
 
   return (
@@ -1369,6 +1393,103 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
           导出结果
         </Button>
       </div>
+
+      {/* 优化过程弹窗：状态机逐轮计算过程（2026-09-30） */}
+      <Modal
+        title={processRow ? `优化过程 - ${processRow.tower_no || processRow.tower_id}` : "优化过程"}
+        open={processRow !== null}
+        onCancel={() => setProcessRow(null)}
+        footer={<Button onClick={() => setProcessRow(null)}>关闭</Button>}
+        width={760}
+      >
+        {processRow ? (
+          <ProcessTimeline row={processRow} />
+        ) : null}
+      </Modal>
     </div>
+  );
+}
+
+/** 措施推荐状态机逐轮过程时间线（后端 result_json.mitigation_process） */
+function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
+  const result = (row.result_json ?? {}) as Record<string, unknown>;
+  const steps = Array.isArray(result.mitigation_process) ? result.mitigation_process : [];
+  if (steps.length === 0) {
+    return (
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description="该杆塔无逐轮过程记录（历史任务未保存，重新生成任务后即可查看）。"
+      />
+    );
+  }
+  const colorForRisk = (level: string | null | undefined) => {
+    if (level === "high") return "red";
+    if (level === "medium") return "orange";
+    return "green";
+  };
+  const lastStep = steps[steps.length - 1] as Record<string, unknown>;
+  return (
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <Alert
+        type="info"
+        showIcon
+        message={`共 ${steps.length} 轮调参`}
+        description={`从「从轻到重试改参数，每轮用 ATP 重算验证」到${(lastStep.decision as string) || "完成"}；最终风险：${
+          typeof result.expected_risk_level === "string" ? result.expected_risk_level : "-"
+        }`}
+      />
+      <Timeline
+        items={(steps as Record<string, unknown>[]).map((step) => {
+          const changes = Array.isArray(step.changes) ? (step.changes as Record<string, unknown>[]) : [];
+          const recomputed = step.recomputed as Record<string, unknown> | null | undefined;
+          const decision = typeof step.decision === "string" && step.decision ? String(step.decision) : "继续下一轮加重措施";
+          const grades = (step.grades as Record<string, unknown>) || {};
+          const riskLevel = typeof recomputed?.risk_level === "string" ? String(recomputed.risk_level) : null;
+          return {
+            color: riskLevel ? colorForRisk(riskLevel) : "blue",
+            children: (
+              <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                <Space wrap>
+                  <Typography.Text strong>第 {String(step.step)} 轮</Typography.Text>
+                  <Tag color="blue">{String(step.state ?? "-")}</Tag>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    分级：绝缘{String(grades.insulator ?? "-")} / 接地{String(grades.ground ?? "-")} / 保护角{String(grades.protection ?? "-")}
+                  </Typography.Text>
+                </Space>
+                {changes.length > 0 ? (
+                  <Typography.Text>
+                    改动：
+                    {changes.map((c, i) => (
+                      <Tag key={i} color="purple" style={{ marginLeft: 4 }}>
+                        {String(c.label ?? "")} {String(c.old ?? "")} → {String(c.new ?? "")} {String(c.unit ?? "")}
+                      </Tag>
+                    ))}
+                  </Typography.Text>
+                ) : (
+                  <Typography.Text type="secondary">本轮无参数改动</Typography.Text>
+                )}
+                {recomputed ? (
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    ATP 重算：风险等级
+                    {riskLevel ? (
+                      <Tag color={colorForRisk(riskLevel)} style={{ marginLeft: 4 }}>{riskLevel}</Tag>
+                    ) : (
+                      <Tag style={{ marginLeft: 4 }}>-</Tag>
+                    )}
+                    {typeof recomputed.counterstrike_trip_rate === "number" ? `，反击跳闸率 ${Number(recomputed.counterstrike_trip_rate).toFixed(4)}` : ""}
+                    {typeof recomputed.shielding_trip_rate === "number" ? `，绕击跳闸率 ${Number(recomputed.shielding_trip_rate).toFixed(4)}` : ""}
+                  </Typography.Text>
+                ) : (
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>本轮未重算（直接进入终态判定）</Typography.Text>
+                )}
+                <Typography.Text style={{ fontSize: 12, color: decision.includes("补装避雷器") ? "#cf1322" : "#1677ff" }}>
+                  ▸ {decision}
+                </Typography.Text>
+              </Space>
+            ),
+          };
+        })}
+      />
+    </Space>
   );
 }
