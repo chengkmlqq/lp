@@ -6350,9 +6350,21 @@ body {
   gap: 12px;
 }
 
-/* LP-297: 卡片容器的 grid 外包装，用 flex 保持滚动区域灵活 */
-.admin-power-lines-card-scroll > .grid {
+/* 悬浮阴影留白（卡片视图统一修复，2026-09-30 覆盖全部卡片双视图页）：
+   card-scroll 是 overflow-y:auto 容器，会裁剪超出 padding-box 的内容；
+   antd Card hoverable 的 box-shadow 最大一层 0 5px 12px 4px 最淡边缘向上溢出 11px，
+   第一行卡片紧贴容器上边界时阴影顶部被切平（末行同理）。
+   故卡片网格上下各留 12px 内边距。
+   atp-models / fault-analysis 的 grid 在 ant-spin-container 包装内（card-scroll 直接子是 Spin），
+   用后代选择器；其余页面 grid 是 card-scroll 直接子，用子选择器。 */
+.admin-power-lines-card-scroll > .grid,
+.admin-atp-params-card-scroll > .grid,
+.admin-lightning-events-card-scroll > .grid,
+.admin-lightning-distribution-card-scroll > .grid,
+.admin-atp-models-card-scroll .grid,
+.admin-fault-analysis-card-scroll .grid {
   flex: 0 0 auto;
+  padding: 12px 0;
 }
 
 /* LP-301: 线路卡片配色对齐 worker 监控页卡片（主色渐变背景、主色混合边框、柔和阴影、头部主色淡背景） */
@@ -6386,6 +6398,29 @@ body {
 
 .admin-power-lines-line-card > .ant-card-body {
   padding: 0;
+}
+
+/* 悬浮无白线（卡片视图统一修复，2026-09-30 覆盖全部卡片双视图页）：
+   antd hoverable 悬浮时会把 1px 边框设为 transparent（实测 borderTopColor 由浅紫变
+   rgba(0,0,0,0)），露出卡片背后空隙带的底色 → 卡片顶部一条 1px 白线。
+   悬浮时保持与常态一致的边框色（亮色 26% / 深色 35%，均与各卡片非悬浮边框公式一致），
+   阴影仍由 antd hoverable 提供。fault-analysis 选中态用主色边框（.selected），悬浮不覆盖。 */
+.admin-power-lines-line-card.ant-card-hoverable:hover,
+.admin-atp-models-card.ant-card-hoverable:hover,
+.admin-atp-params-card.ant-card-hoverable:hover,
+.admin-lightning-events-card.ant-card-hoverable:hover,
+.admin-lightning-distribution-event-card.ant-card-hoverable:hover,
+.admin-fault-analysis-card.ant-card-hoverable:not(.selected):hover {
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary)) !important;
+}
+
+:root[data-fquiz-theme="dark"] .admin-power-lines-line-card.ant-card-hoverable:hover,
+:root[data-fquiz-theme="dark"] .admin-atp-models-card.ant-card-hoverable:hover,
+:root[data-fquiz-theme="dark"] .admin-atp-params-card.ant-card-hoverable:hover,
+:root[data-fquiz-theme="dark"] .admin-lightning-events-card.ant-card-hoverable:hover,
+:root[data-fquiz-theme="dark"] .admin-lightning-distribution-event-card.ant-card-hoverable:hover,
+:root[data-fquiz-theme="dark"] .admin-fault-analysis-card.ant-card-hoverable:not(.selected):hover {
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
 }
 
 /* LP-297: 表格视图容器 */

@@ -241,7 +241,9 @@ export function LightningCurrentBackfillHistoryTable({
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logTaskId, setLogTaskId] = useState<string | null>(null);
   const [logTitle, setLogTitle] = useState("任务执行日志");
-  // 幅值模式：筛选关键词
+  // 幅值模式：筛选关键词（draft 为输入框实时值，keyword 为已生效查询词，
+  // 输入过程不触发请求，点「查询」/回车才把 draft 落进查询路径）
+  const [keywordDraft, setKeywordDraft] = useState("");
   const [keyword, setKeyword] = useState("");
   // 线路回填：本页内发起（外层列表只负责跳到本页）。
   // 进度不再由本组件另行跟踪 —— 列表本身即以回填任务为准，每行自带 status/progress，
@@ -787,8 +789,11 @@ export function LightningCurrentBackfillHistoryTable({
   const task = detailData?.task;
 
   const handleSearch = useCallback(() => {
+    // 输入框当前值落为「已生效」关键词后，与分页一起构成新 queryKey：
+    // 输入过程不查询，只有点「查询」/回车才把输入值带进请求路径。
+    setKeyword(keywordDraft.trim());
     setPagination((prev) => ({ ...prev, current: 1 }));
-  }, []);
+  }, [keywordDraft]);
 
   const tableDataSource = isAmplitudeMode
     ? amplitudeLinesQuery.data?.items ?? []
@@ -814,8 +819,8 @@ export function LightningCurrentBackfillHistoryTable({
                 allowClear
                 placeholder="按线路编号/名称筛选"
                 style={{ width: 240 }}
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
+                value={keywordDraft}
+                onChange={(event) => setKeywordDraft(event.target.value)}
                 onPressEnter={handleSearch}
               />
             </Form.Item>

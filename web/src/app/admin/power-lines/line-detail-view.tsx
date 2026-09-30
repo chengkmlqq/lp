@@ -70,6 +70,8 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
   const [lineDetail, setLineDetail] = useState<{ code: string; name: string } | null>(null);
   const [lineLoading, setLineLoading] = useState(true);
   const [towerKeyword, setTowerKeyword] = useState("");
+  // 已生效的查询关键词：仅在点击「查询」/回车时同步，输入过程不触发接口请求
+  const [appliedTowerKeyword, setAppliedTowerKeyword] = useState("");
   const [towerTypeFilter, setTowerTypeFilter] = useState("");
   const [towerPagination, setTowerPagination] = useState({ current: 1, pageSize: TOWER_TABLE_DEFAULT_PAGE_SIZE });
   // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
@@ -138,15 +140,15 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     const params = new URLSearchParams();
     params.set("limit", String(TOWER_TABLE_DEFAULT_PAGE_SIZE));
     params.set("offset", String((towerPagination.current - 1) * towerPagination.pageSize));
-    if (towerKeyword.trim()) {
-      params.set("keyword", towerKeyword.trim());
+    if (appliedTowerKeyword.trim()) {
+      params.set("keyword", appliedTowerKeyword.trim());
     }
     if (towerTypeFilter) {
       params.set("tower_type", towerTypeFilter);
     }
     const query = params.toString();
     return `/api/v1/lines/${lineId}/towers${query ? `?${query}` : ""}`;
-  }, [lineId, towerKeyword, towerTypeFilter, towerPagination]);
+  }, [lineId, appliedTowerKeyword, towerTypeFilter, towerPagination]);
 
   const towersQuery = useQuery({
     queryKey: [towerListPath, searchNonce],
@@ -177,6 +179,9 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
   const towers = useMemo(() => towersQuery.data?.items ?? [], [towersQuery.data?.items]);
 
   const handleSearch = () => {
+    // 输入框当前值同步为「已生效」关键词后，与分页/nonce 一起构成新 queryKey：
+    // 输入过程不查询，只有点「查询」/回车才把输入值落进请求路径。
+    setAppliedTowerKeyword(towerKeyword.trim());
     // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
     // 保证即便关键词/塔型/分页均未变化（目标 key 若已被 react-query 缓存会短路不发请求）
     // 也会产生新 key 重新拉取；同时回到第 1 页。
@@ -673,6 +678,11 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
           <div className="flex w-full flex-1 items-center justify-center">
             <Spin />
           </div>
+        ) : towers.length === 0 ? (
+          // 空结果：不渲染表格，参考线路管理列表页空态（Empty 占位）
+          <div className="flex w-full flex-1 items-center justify-center">
+            <Empty description="暂无杆塔数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          </div>
         ) : (
           <Table<LineTowerSummary>
             rowKey={(row) => row.id}
@@ -683,21 +693,21 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
             scroll={{ x: 1400, y: tableScrollY }}
           />
         )}
-        {/* LP: antd Table 内置分页在 total=0（空表格）时整体不渲染（InternalTable.js
-            `!mergedPagination?.total` 硬编码），故改用独立 Pagination 常驻显示，
-            空数据时右下角分页条不消失。样式与列表视图 .admin-power-lines-pagination 一致。 */}
-        <div className="admin-power-line-detail-pagination">
-          <Pagination
-            current={towerPagination.current}
-            pageSize={towerPagination.pageSize}
-            total={towersQuery.data?.total ?? 0}
-            showSizeChanger
-            showTotal={(total) => `共 ${total} 条`}
-            onChange={(page, pageSize) => {
-              setTowerPagination({ current: page, pageSize });
-            }}
-          />
-        </div>
+        {/* LP: 分页仅在表格有数据（total>0）时展示；空结果时不显示分页条 */}
+        {(towersQuery.data?.total ?? 0) > 0 ? (
+          <div className="admin-power-line-detail-pagination">
+            <Pagination
+              current={towerPagination.current}
+              pageSize={towerPagination.pageSize}
+              total={towersQuery.data?.total ?? 0}
+              showSizeChanger
+              showTotal={(total) => `共 ${total} 条`}
+              onChange={(page, pageSize) => {
+                setTowerPagination({ current: page, pageSize });
+              }}
+            />
+          </div>
+        ) : null}
       </div>
 
       <Modal
