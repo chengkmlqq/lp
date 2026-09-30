@@ -356,6 +356,9 @@ def build_legacy_menu_tree(
         if not allowed_menu_ids:
             return []
         rows = [row for row in rows if row["menu_id"] in allowed_menu_ids]
+        # 2026-09-30 修复：子菜单被授权但父目录未授权时自动补父目录（仅作容器，
+        # 不授权兄弟菜单），否则子菜单会挂到根目录下。与 modern _fill_ancestor_directories 一致。
+        rows = _fill_legacy_ancestors(rows, db)
 
     # Keep only enabled menus for menu tree response.
     rows = [row for row in rows if _is_menu_enabled(row.get("state"))]
@@ -404,6 +407,36 @@ def _sort_menu_tree(nodes: list[dict[str, Any]]) -> None:
         children = node.get("children")
         if isinstance(children, list):
             _sort_menu_tree(children)
+
+
+def _fill_legacy_ancestors(rows: list[dict[str, Any]], db: Session) -> list[dict[str, Any]]:
+    """把授权子菜单的父目录链补进 rows（仅作容器，不授权兄弟菜单）。
+
+    rows 来自 _load_legacy_menus（含 menu_id/parent_id/state/menu_name），
+    补入的父目录同样带齐字段，供后续节点组装与排序使用。
+    """
+    if not rows:
+        return rows
+    by_id = {str(row["menu_id"]): row for row in rows}
+    # 全量目录表（含未授权目录），用于查父
+    all_rows = _load_legacy_menus(db)
+    all_by_id = {str(row["menu_id"]): row for row in all_rows}
+    changed = True
+    while changed:
+        changed = False
+        for row in list(rows):
+            parent_id = str(row.get("parent_id") or "")
+            if not parent_id or parent_id in by_id:
+                continue
+            parent = all_by_id.get(parent_id)
+            if not parent or not _is_menu_enabled(parent.get("state")):
+                continue
+            if str(parent.get("menu_name") or "").strip() in DISABLED_MENU_CODES:
+                continue
+            rows.append(parent)
+            by_id[parent_id] = parent
+            changed = True
+    return rows
 
 
 def _load_legacy_roles(db: Session, user_id: str) -> list[tuple[str, str | None, str | None]]:

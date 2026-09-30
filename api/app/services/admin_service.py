@@ -465,8 +465,37 @@ def build_menu_tree(db: Session, *, role_codes: set[str] | None = None) -> list[
     if role_codes is not None and "admin" not in role_codes:
         allowed_ids = _get_allowed_menu_ids(db, role_codes)
         menus = [menu for menu in menus if menu.id in allowed_ids]
+        # 2026-09-30 修复：子菜单被授权但父目录未授权时，自动补父目录（仅作容器，
+        # 不额外授权其兄弟菜单），否则 _to_tree 会把子菜单挂到根目录下。
+        menus = _fill_ancestor_directories(db, menus)
+        menus.sort(key=lambda menu: (menu.sort_order, menu.id))
 
     return _to_tree(menus)
+
+
+def _fill_ancestor_directories(db: Session, menus: list[Menu]) -> list[Menu]:
+    """把授权子菜单的父目录链补进列表（仅作容器，不授权兄弟菜单）。
+
+    迭代直到无新增：每个菜单若 parent_id 指向一个目录，且该目录不在当前集合，
+    则查库补入。已 disabled/removed 的父目录不补（本来就不该显示）。
+    """
+    if not menus:
+        return menus
+    by_id = {menu.id: menu for menu in menus}
+    changed = True
+    while changed:
+        changed = False
+        for menu in list(menus):
+            parent_id = menu.parent_id
+            if not parent_id or parent_id in by_id:
+                continue
+            parent = db.get(Menu, parent_id)
+            if not parent or parent.status != "enabled" or not parent.visible or _is_removed_menu_code(parent.code):
+                continue
+            menus.append(parent)
+            by_id[parent_id] = parent
+            changed = True
+    return menus
 
 
 def list_role_menu_ids(db: Session, role_id: int) -> list[int] | None:
