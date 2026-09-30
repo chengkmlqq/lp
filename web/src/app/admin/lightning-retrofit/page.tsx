@@ -62,10 +62,11 @@ const TABLE_BOTTOM_GAP = 8;
 
 const LIST_TAB_KEY = "jobs";
 const WORK_TAB_KEY = "work";
-const TASK_MODE_REASON = "reason";
+// ⚠️ 2026-09-30 成因分析已并入「防雷计算」详情（result-table「原因分析」列），
+// 本页（防雷改造）不再保留成因分析模式，仅保留改造措施推荐。
 const TASK_MODE_MEASURE = "measure";
 const TASK_MODE_NONNEW = "measure_nonnew";
-type TaskMode = typeof TASK_MODE_REASON | typeof TASK_MODE_MEASURE | typeof TASK_MODE_NONNEW;
+type TaskMode = typeof TASK_MODE_MEASURE | typeof TASK_MODE_NONNEW;
 
 type DetailTabItem = {
   key: string;
@@ -100,7 +101,7 @@ export default function AdminLightningRetrofitPage() {
   // 点任务「查看详情」在当前页 append 动态详情 tab（不跳转页面），可关闭
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
-  const [taskMode, setTaskMode] = useState<TaskMode>(TASK_MODE_REASON);
+  const [taskMode, setTaskMode] = useState<TaskMode>(TASK_MODE_MEASURE);
 
   // ── 任务列表（Tab1）────────────────────────────────────────────
   const [keywordInput, setKeywordInput] = useState("");
@@ -111,13 +112,6 @@ export default function AdminLightningRetrofitPage() {
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
-
-  // ── 成因分析（Tab2 / reason）────────────────────────────────────
-  const [lines, setLines] = useState<FlAnalysisJobSummary[]>([]);
-  const [loadingLines, setLoadingLines] = useState(false);
-  const [lineId, setLineId] = useState<string>("");
-  const [detailVisible, setDetailVisible] = useState(false);
-  const [selectedRow, setSelectedRow] = useState<FlAnalysisTowerResultSummary | null>(null);
 
   // ── 措施推荐（Tab2 / measure*）─────────────────────────────────
   const [baseJobs, setBaseJobs] = useState<FlAnalysisJobSummary[]>([]);
@@ -215,41 +209,7 @@ export default function AdminLightningRetrofitPage() {
     [detailTabs, activeTabKey],
   );
 
-  // ── 成因分析数据（Tab2 / reason）───────────────────────────────
-  const loadLines = useCallback(async () => {
-    setLoadingLines(true);
-    try {
-      const response = await fetchWithAuth("/api/v1/fl-analysis/jobs?limit=200");
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      const data = (await response.json()) as { items: FlAnalysisJobSummary[] };
-      const seen = new Set<string>();
-      const distinctLines: FlAnalysisJobSummary[] = [];
-      for (const item of data.items) {
-        const key = item.line_id || item.id;
-        if (!key || seen.has(key)) {
-          continue;
-        }
-        seen.add(key);
-        distinctLines.push(item);
-      }
-      setLines(distinctLines);
-    } catch (error) {
-      setLines([]);
-    } finally {
-      setLoadingLines(false);
-    }
-  }, [fetchWithAuth]);
-
-  useEffect(() => {
-    if (!user || !canRead) {
-      return;
-    }
-    void loadLines();
-  }, [user, canRead, loadLines]);
-
-  // 从任务列表 ?jobId= 跳转：预选线路（成因分析模式）
+  // 从任务列表 ?jobId= 跳转：直接打开该任务详情动态 tab（不跳转）
   useEffect(() => {
     if (!user || !canRead) {
       return;
@@ -279,50 +239,6 @@ export default function AdminLightningRetrofitPage() {
       cancelled = true;
     };
   }, [user, canRead, fetchWithAuth]);
-
-  const highRiskQueryPath = useMemo(() => {
-    if (!lineId) {
-      return null;
-    }
-    const params = new URLSearchParams();
-    params.set("limit", String(paginationPageSize));
-    params.set("offset", String((paginationCurrent - 1) * paginationPageSize));
-    return `/api/v1/lightning-retrofit/high-risk-reason?line_id=${lineId}${params.toString() ? `&${params.toString()}` : ""}`;
-  }, [lineId, paginationCurrent, paginationPageSize]);
-
-  const highRiskQuery = useQuery({
-    queryKey: ["/admin/lightning-retrofit/high-risk-reason", lineId, paginationCurrent, paginationPageSize],
-    enabled: !!user && canRead && Boolean(lineId),
-    queryFn: async () => {
-      const response = await fetchWithAuth(highRiskQueryPath as string);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as {
-        items: FlAnalysisTowerResultSummary[];
-        total: number;
-      };
-    },
-  });
-
-  const riskRows = useMemo(() => highRiskQuery.data?.items ?? [], [highRiskQuery.data?.items]);
-  const riskTotal = highRiskQuery.data?.total ?? 0;
-
-  const handleExport = () => {
-    const headers = "塔号,风险等级,原因类型,状态\n";
-    const rows = riskRows
-      .map((row) => `${row.tower_no},${row.risk_level ?? "-"},${readReasonType(row)},${row.status}`)
-      .join("\n");
-    const blob = new Blob([headers + rows], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "高风险原因分析.csv";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
 
   // ── 措施推荐数据（Tab2 / measure*）─────────────────────────────
   const loadBaseJobs = useCallback(async () => {
@@ -497,7 +413,7 @@ export default function AdminLightningRetrofitPage() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [updateTableScrollHeight, jobs.length, riskRows.length, towerRows.length, viewMode, activeTabKey]);
+  }, [updateTableScrollHeight, jobs.length, towerRows.length, viewMode, activeTabKey]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof ResizeObserver === "undefined" || viewMode !== "list") {
@@ -549,7 +465,6 @@ export default function AdminLightningRetrofitPage() {
   }
 
   const taskModeOptions = [
-    { label: "高杆塔成因分析", value: TASK_MODE_REASON },
     { label: "改造措施推荐", value: TASK_MODE_MEASURE },
     { label: "措施推荐（非建线）", value: TASK_MODE_NONNEW },
   ];
@@ -558,7 +473,6 @@ export default function AdminLightningRetrofitPage() {
     setTaskMode(value);
     setErrorMessage("");
     setSelectedBaseJobId("");
-    setLineId("");
     setJobName("");
     setTowerRows([]);
     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -584,7 +498,7 @@ export default function AdminLightningRetrofitPage() {
             },
             {
               key: WORK_TAB_KEY,
-              label: <span className="admin-power-lines-tab-title">成因分析与措施推荐</span>,
+              label: <span className="admin-power-lines-tab-title">改造措施推荐</span>,
               closable: false,
               children: renderWorkPane(),
             },
@@ -592,32 +506,6 @@ export default function AdminLightningRetrofitPage() {
           ]}
         />
       </div>
-
-      {/* 成因分析：杆塔详情弹窗 */}
-      <Modal
-        title="杆塔详情"
-        open={detailVisible}
-        onCancel={() => setDetailVisible(false)}
-        footer={<Button onClick={() => setDetailVisible(false)}>关闭</Button>}
-        width={720}
-      >
-        {selectedRow ? (
-          <Space direction="vertical" size={12} className="flex w-full">
-            <Alert
-              type="warning"
-              showIcon
-              message={`高风险杆塔：${selectedRow.tower_no || selectedRow.tower_id}`}
-              description={`风险等级：${selectedRow.risk_level ?? "-"}；状态：${selectedRow.status}`}
-            />
-            <Typography.Text>原因详情：</Typography.Text>
-            <Typography.Text type="secondary">
-              {typeof selectedRow.result_json?.cause_analysis === "string"
-                ? selectedRow.result_json.cause_analysis
-                : JSON.stringify(selectedRow.result_json ?? {}, null, 2)}
-            </Typography.Text>
-          </Space>
-        ) : null}
-      </Modal>
     </>
   );
 
@@ -864,7 +752,7 @@ export default function AdminLightningRetrofitPage() {
     );
   }
 
-  // ── Tab2：成因分析与措施推荐 ────────────────────────────────────
+  // ── Tab2：改造措施推荐（成因分析已并入防雷计算详情，2026-09-30）──
   function renderWorkPane() {
     const isMeasureMode = taskMode === TASK_MODE_MEASURE || taskMode === TASK_MODE_NONNEW;
     const isNonNew = taskMode === TASK_MODE_NONNEW;
@@ -880,52 +768,27 @@ export default function AdminLightningRetrofitPage() {
                 options={taskModeOptions}
               />
             </Form.Item>
-            {taskMode === TASK_MODE_REASON ? (
-              <Form.Item label="线路" style={{ marginBottom: 0 }}>
-                <Select
-                  value={lineId}
-                  onChange={(next) => {
-                    setLineId(next);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                  }}
-                  loading={loadingLines}
-                  placeholder="选择线路"
-                  style={{ width: 320 }}
-                  options={lines.map((line) => ({
-                    value: line.line_id || line.id,
-                    label: line.line_name || line.line_code || "-",
-                  }))}
-                  showSearch
-                  optionFilterProp="label"
-                />
-              </Form.Item>
-            ) : (
-              <Form.Item label="前置任务" style={{ marginBottom: 0 }}>
-                <Select
-                  value={selectedBaseJobId}
-                  onChange={handleBaseJobChange}
-                  loading={loadingJobs}
-                  placeholder="选择前置任务"
-                  style={{ width: 320 }}
-                  options={baseJobs.map((job) => ({
-                    value: job.id,
-                    label: `${job.job_name || job.line_name || job.line_code || "-"}（${formatJobType(job.job_type)}）`,
-                  }))}
-                  showSearch
-                  optionFilterProp="label"
-                />
-              </Form.Item>
-            )}
+            <Form.Item label="前置任务" style={{ marginBottom: 0 }}>
+              <Select
+                value={selectedBaseJobId}
+                onChange={handleBaseJobChange}
+                loading={loadingJobs}
+                placeholder="选择前置任务"
+                style={{ width: 320 }}
+                options={baseJobs.map((job) => ({
+                  value: job.id,
+                  label: `${job.job_name || job.line_name || job.line_code || "-"}（${formatJobType(job.job_type)}）`,
+                }))}
+                showSearch
+                optionFilterProp="label"
+              />
+            </Form.Item>
             <Form.Item style={{ marginBottom: 0 }}>
               <Button
                 htmlType="button"
                 icon={<ArrowUpOutlined />}
                 onClick={() => {
-                  if (taskMode === TASK_MODE_REASON) {
-                    void loadLines();
-                  } else {
-                    void loadBaseJobs();
-                  }
+                  void loadBaseJobs();
                 }}
                 className="admin-search-btn"
               >
@@ -939,107 +802,8 @@ export default function AdminLightningRetrofitPage() {
           <Alert type="error" showIcon message={errorMessage} style={{ marginBottom: 12 }} />
         )}
 
-        {taskMode === TASK_MODE_REASON ? renderReasonPane() : renderMeasurePane(isNonNew)}
+        {renderMeasurePane(isNonNew)}
       </div>
-    );
-  }
-
-  // 成因分析：高风险杆塔分档明细（只读）
-  function renderReasonPane() {
-    const columns: ColumnsType<FlAnalysisTowerResultSummary> = [
-      {
-        title: "塔号",
-        dataIndex: "tower_no",
-        key: "tower_no",
-        width: 120,
-        render: (value) => value || "-",
-      },
-      {
-        title: "风险等级",
-        dataIndex: "risk_level",
-        key: "risk_level",
-        width: 120,
-        render: (value) => <Tag color={riskColor(value)}>{value ?? "-"}</Tag>,
-      },
-      {
-        title: "原因类型",
-        key: "reason_type",
-        width: 180,
-        render: (_value, row) => readReasonType(row),
-      },
-      {
-        title: "状态",
-        dataIndex: "status",
-        key: "status",
-        width: 120,
-        render: (value) => <span style={{ color: statusColor(value) }}>{value}</span>,
-      },
-      {
-        title: "操作",
-        key: "operation",
-        width: 140,
-        render: (_value, row) => (
-          <Button
-            size="small"
-            onClick={() => {
-              setSelectedRow(row);
-              setDetailVisible(true);
-            }}
-          >
-            查看详情
-          </Button>
-        ),
-      },
-    ];
-
-    return (
-      <>
-        {highRiskQuery.error && (
-          <Alert
-            type="error"
-            showIcon
-            message={highRiskQuery.error instanceof Error ? highRiskQuery.error.message : "加载失败"}
-          />
-        )}
-        {!lineId ? (
-          <Empty description="请先选择线路" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        ) : (
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-power-lines-table-view"
-            style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<FlAnalysisTowerResultSummary>
-              rowKey="id"
-              columns={columns}
-              dataSource={riskRows}
-              loading={highRiskQuery.isFetching}
-              tableLayout="fixed"
-              pagination={{
-                current: pagination.current,
-                pageSize: pagination.pageSize,
-                total: riskTotal,
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: (totalCount) => `共 ${totalCount} 条`,
-                hideOnSinglePage: false,
-                onChange: (page, pageSize) => {
-                  setPagination({ current: page, pageSize });
-                },
-              }}
-              scroll={{ x: 1000, y: tableScrollY }}
-              locale={{
-                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无高风险杆塔" />,
-              }}
-            />
-          </div>
-        )}
-        <div className="flex justify-end">
-          <Button onClick={handleExport} disabled={!lineId || riskRows.length === 0}>
-            导出报告
-          </Button>
-        </div>
-      </>
     );
   }
 
@@ -1167,18 +931,6 @@ function retrofitJobBadgeStatus(
   if (value === "failed" || value === "blocked") return "error";
   if (value === "running" || value === "queued") return "processing";
   return "default";
-}
-
-function readReasonType(row: FlAnalysisTowerResultSummary): string {
-  const value = row.result_json?.reason_type;
-  if (typeof value === "string") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.join("、");
-  }
-  const summary = row.summary_text;
-  return typeof summary === "string" && summary.trim().length > 0 ? summary : "-";
 }
 
 function isHighRisk(riskLevel: string | null | undefined): boolean {

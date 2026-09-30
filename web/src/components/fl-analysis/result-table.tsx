@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
-import { Alert, Button, Empty, Spin, Table, Tag } from "antd";
+import { Alert, Button, Empty, Spin, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type {
@@ -84,6 +84,21 @@ export function ResultTable({
         render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
       });
     }
+
+    // ⚠️ 2026-09-30 成因分析并入防雷计算详情：读 result_json.cause_analysis
+    resultColumns.push({
+      title: "原因分析",
+      key: "cause_analysis",
+      width: 260,
+      ellipsis: { showTitle: true },
+      render: (_value, row) => {
+        const cause = readObject(row.result_json).cause_analysis;
+        if (typeof cause === "string" && cause.trim()) {
+          return <Typography.Text style={{ fontSize: 12 }}>{cause}</Typography.Text>;
+        }
+        return <Typography.Text type="secondary">-</Typography.Text>;
+      },
+    });
 
     if (selectedWaveformJobType === "normal" || selectedWaveformJobType === "tongtiao") {
       resultColumns.push(
