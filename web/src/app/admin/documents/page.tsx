@@ -175,7 +175,7 @@ export default function AdminDocumentsPage() {
 
   const documentsPath = `/api/v1/documents?${documentsQueryParams}`;
 
-  const { data: documentsData, isLoading: documentsLoading } = useQuery({
+  const { data: documentsData, isLoading: documentsLoading, isFetching: documentsFetching } = useQuery({
     queryKey: [documentsPath],
     queryFn: async () => {
       const response = await fetchWithAuth(documentsPath);
@@ -922,7 +922,7 @@ export default function AdminDocumentsPage() {
                         setAllLoadedDocuments([]);
                         void queryClient.refetchQueries({ queryKey: ["/api/v1/documents"] });
                       }}
-                      className="admin-search-btn"
+                      className="admin-search-btn" loading={documentsFetching}
                     >
                       查询
                     </Button>
@@ -976,7 +976,7 @@ export default function AdminDocumentsPage() {
                         setAllLoadedDocuments([]);
                         void queryClient.refetchQueries({ queryKey: ["/api/v1/documents"] });
                       }}
-                      className="admin-search-btn"
+                      className="admin-search-btn" loading={documentsFetching}
                     >
                       查询
                     </Button>

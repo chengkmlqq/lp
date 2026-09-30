@@ -1279,7 +1279,7 @@ export default function AdminUsersPage() {
                       htmlType="button"
                       icon={<SearchOutlined />}
                       onClick={handleSearch}
-                      className="admin-search-btn"
+                      className="admin-search-btn" loading={usersQuery.isFetching}
                     >
                       查询
                     </Button>
@@ -1324,7 +1324,7 @@ export default function AdminUsersPage() {
                       htmlType="button"
                       icon={<SearchOutlined />}
                       onClick={handleSearch}
-                      className="admin-search-btn"
+                      className="admin-search-btn" loading={usersQuery.isFetching}
                     >
                       查询
                     </Button>

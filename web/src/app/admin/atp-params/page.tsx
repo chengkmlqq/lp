@@ -780,7 +780,7 @@ export default function AtpParamsPage() {
                         htmlType="button"
                         icon={<SearchOutlined />}
                         onClick={handleSearch}
-                        className="admin-search-btn"
+                         loading={loading}className="admin-search-btn"
                       >
                         查询
                       </Button>

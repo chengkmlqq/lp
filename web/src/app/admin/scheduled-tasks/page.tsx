@@ -518,7 +518,7 @@ export default function AdminScheduledTasksPage() {
                         htmlType="button"
                         icon={<SearchOutlined />}
                         onClick={handleSearch}
-                        className="admin-search-btn"
+                        className="admin-search-btn" loading={listQuery.isFetching}
                       >
                         查询
                       </Button>

@@ -275,7 +275,7 @@ export default function ElevationRecordsPage() {
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
 
   // Fetch file records
-  const { data: recordsData, isLoading } = useQuery<FileRecordListResponse>({
+  const { data: recordsData, isLoading, isFetching: recordsFetching } = useQuery<FileRecordListResponse>({
     queryKey: ["elevation-records", searchKeyword, pagination.current, pagination.pageSize],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -1011,7 +1011,7 @@ export default function ElevationRecordsPage() {
                           setPagination((prev) => ({ ...prev, current: 1 }));
                           void queryClient.refetchQueries({ queryKey: ["elevation-records"] });
                         }}
-                        className="admin-search-btn"
+                         loading={recordsFetching}className="admin-search-btn"
                       >
                         查询
                       </Button>

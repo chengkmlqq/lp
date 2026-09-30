@@ -997,7 +997,7 @@ export default function AdminRolesPage() {
                         <Button
                           icon={<SearchOutlined />}
                           onClick={handleSearch}
-                          className="admin-search-btn"
+                          className="admin-search-btn" loading={rolesQuery.isFetching}
                         >
                           查询
                         </Button>
@@ -1021,7 +1021,7 @@ export default function AdminRolesPage() {
                           htmlType="button"
                           icon={<SearchOutlined />}
                           onClick={handleSearch}
-                          className="admin-search-btn"
+                          className="admin-search-btn" loading={rolesQuery.isFetching}
                         >
                           查询
                         </Button>

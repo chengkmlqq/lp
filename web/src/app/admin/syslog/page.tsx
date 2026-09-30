@@ -519,7 +519,7 @@ export default function AdminSyslogPage() {
             htmlType="button"
             icon={<SearchOutlined />}
             onClick={handleSearch}
-            className="admin-search-btn"
+            className="admin-search-btn" loading={logsQuery.isFetching}
           >
             查询
           </Button>

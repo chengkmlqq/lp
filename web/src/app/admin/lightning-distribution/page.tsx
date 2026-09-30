@@ -1186,7 +1186,7 @@ export default function AdminLightningDistributionPage() {
                       />
                     </Form.Item>
                     <Form.Item style={{ marginBottom: 0 }}>
-                      <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
+                      <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn" loading={distributionsQuery.isFetching}>
                         查询
                       </Button>
                     </Form.Item>
@@ -1816,7 +1816,7 @@ function BackfillRecordsView({
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Space size={4}>
-              <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
+              <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn" loading={linkedLinesQuery.isFetching}>
                 查询
               </Button>
               {canManage && (
@@ -2031,7 +2031,7 @@ function TowerNgDrawer({
               />
             </Form.Item>
             <Form.Item style={{ marginBottom: 0 }}>
-              <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
+              <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn" loading={towersQuery.isFetching}>
                 查询
               </Button>
             </Form.Item>

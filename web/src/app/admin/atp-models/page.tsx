@@ -1220,7 +1220,7 @@ export default function AtpModelsPage() {
                             htmlType="button"
                             icon={<SearchOutlined />}
                             onClick={handleSearch}
-                            className="admin-search-btn"
+                            className="admin-search-btn" loading={assetsQuery.isFetching}
                           >
                             查询
                           </Button>

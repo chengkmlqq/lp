@@ -658,7 +658,7 @@ export default function AdminTaskMonitorPage() {
                   htmlType="button"
                   icon={<SearchOutlined />}
                   onClick={handleSearch}
-                  className="admin-search-btn"
+                  className="admin-search-btn" loading={overviewQuery.isFetching}
                 >
                   查询
                 </Button>
@@ -686,7 +686,7 @@ export default function AdminTaskMonitorPage() {
                   htmlType="button"
                   icon={<SearchOutlined />}
                   onClick={handleSearch}
-                  className="admin-search-btn"
+                  className="admin-search-btn" loading={cardQuery.isFetching}
                 >
                   查询
                 </Button>

@@ -33,7 +33,6 @@ import {
   GlobalOutlined,
   MoreOutlined,
   PlusOutlined,
-  ReloadOutlined,
   SearchOutlined,
   SwapOutlined,
   ThunderboltOutlined,
@@ -149,6 +148,9 @@ export default function AdminPowerLinesPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const [lineModalOpen, setLineModalOpen] = useState(false);
+  // 查询计数：每次点击「查询」自增并作为 queryKey 一部分强制触发接口；连点防堆叠由
+  // 查询按钮 loading 承担（在途期间按钮禁用），而不是靠缓存短路跳过请求
+  const [searchNonce, setSearchNonce] = useState(0);
   const [editingLine, setEditingLine] = useState<LineSummary | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -224,7 +226,7 @@ export default function AdminPowerLinesPage() {
     return `/api/v1/lines${query ? `?${query}` : ""}`;
   }, [keyword, paginationCurrent, paginationPageSize]);
   const linesQuery = useQuery({
-    queryKey: [lineListPath],
+    queryKey: [lineListPath, searchNonce],
     enabled: !!user && canRead,
     queryFn: async () => {
       const response = await fetchWithAuth(lineListPath);
@@ -291,14 +293,11 @@ export default function AdminPowerLinesPage() {
   }, [updateTableScrollHeight, viewMode, lines.length]);
 
   const handleSearch = () => {
-    // 仅当关键词或分页确实变化时才提交查询；条件未变重复点击不再重复请求
-    // （需要强制刷新时点工具条「刷新」按钮）
-    const nextKeyword = keywordInput.trim();
-    const keywordChanged = nextKeyword !== keyword;
-    const pageChanged = paginationCurrent !== 1;
-    if (!keywordChanged && !pageChanged) return;
-    setKeyword(nextKeyword);
+    // 每次点击「查询」都触发一次接口请求（searchNonce 变化 → 新 queryKey）；
+    // 连点防堆叠由查询按钮 loading 承担：在途期间按钮禁用，结果返回后才恢复可点
+    setKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
+    setSearchNonce((n) => n + 1);
   };
   const saveLineMutation = useMutation({
     mutationFn: async (values: LineFormValues) => {
@@ -509,19 +508,10 @@ export default function AdminPowerLinesPage() {
                         htmlType="button"
                         icon={<SearchOutlined />}
                         onClick={handleSearch}
+                        loading={linesQuery.isFetching}
                         className="admin-search-btn"
                       >
                         查询
-                      </Button>
-                    </Form.Item>
-                    <Form.Item style={{ marginBottom: 0 }}>
-                      <Button
-                        htmlType="button"
-                        icon={<ReloadOutlined />}
-                        onClick={() => void queryClient.refetchQueries({ queryKey: [lineListPath] })}
-                        loading={linesQuery.isRefetching}
-                      >
-                        刷新
                       </Button>
                     </Form.Item>
                   </Form>

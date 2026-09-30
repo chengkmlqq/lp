@@ -892,7 +892,7 @@ export default function AtpParamTemplatesPage() {
                     </Form.Item>
 
                     <Form.Item style={{ marginBottom: 0 }}>
-                      <Button htmlType="button" icon={<SearchOutlined />} onClick={() => handleTableSearch()} className="admin-search-btn">
+                      <Button htmlType="button" icon={<SearchOutlined />} onClick={() => handleTableSearch()}  loading={loading}className="admin-search-btn">
                         查询
                       </Button>
                     </Form.Item>

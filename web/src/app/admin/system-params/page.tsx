@@ -1239,7 +1239,7 @@ export default function AdminSystemParamsPage() {
                   htmlType="button"
                   icon={<SearchOutlined />}
                   onClick={handleQuery}
-                  className="admin-search-btn"
+                  className="admin-search-btn" loading={listQuery.isFetching}
                 >
                   查询
                 </Button>

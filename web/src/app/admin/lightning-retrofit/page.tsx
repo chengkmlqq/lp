@@ -462,7 +462,7 @@ export default function AdminLightningRetrofitPage() {
                 htmlType="button"
                 icon={<SearchOutlined />}
                 onClick={handleSearch}
-                className="admin-search-btn"
+                className="admin-search-btn" loading={jobsQuery.isFetching}
               >
                 查询
               </Button>

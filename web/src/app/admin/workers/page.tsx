@@ -500,7 +500,7 @@ export default function AdminWorkersPage() {
                         htmlType="button"
                         icon={<SearchOutlined />}
                         onClick={handleWorkerSearch}
-                        className="admin-search-btn"
+                        className="admin-search-btn" loading={workerTasksQuery.isFetching}
                       >
                         查询
                       </Button>

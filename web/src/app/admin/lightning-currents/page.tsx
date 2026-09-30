@@ -1120,7 +1120,7 @@ export default function AdminLightningCurrentsPage() {
                       />
                     </Form.Item>
                     <Form.Item style={{ marginBottom: 0 }}>
-                      <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn">
+                      <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn" loading={recordsQuery.isFetching}>
                         查询
                       </Button>
                     </Form.Item>

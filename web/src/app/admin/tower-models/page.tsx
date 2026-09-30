@@ -952,7 +952,7 @@ export default function AdminTowerModelsPage() {
                     setAllLoadedModels([]);
                     void queryClient.refetchQueries({ queryKey: [listPath] });
                   }}
-                  className="admin-search-btn"
+                  className="admin-search-btn" loading={towerModelsQuery.isFetching}
                 >
                   查询
                 </Button>
@@ -1004,7 +1004,7 @@ export default function AdminTowerModelsPage() {
                     setAllLoadedModels([]);
                     void queryClient.refetchQueries({ queryKey: [listPath] });
                   }}
-                  className="admin-search-btn"
+                  className="admin-search-btn" loading={towerModelsQuery.isFetching}
                 >
                   查询
                 </Button>
