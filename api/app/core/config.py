@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     # wine=沿用 rjtzl_egm*.exe。native 只覆盖已用黄金样本对拍验证的（电压,塔型程序）组合，
     # 未覆盖组合会明确抛错（不会静默降级）。
     egm_engine_mode: Literal["native", "wine"] = "native"
-    atp_engine_executable: str = "ATP/tpbig.exe"
+    atp_engine_executable: str = "ATP/mytpbig.exe"
     atp_storage_root: str = "./data/wine/atp-models"
     atp_engine_workdir: str = "runs"
     atp_engine_default_timeout_seconds: int = 1800
@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     # 这些调用单次可达数分钟且 capture_output 期间无输出，心跳日志让前端能看出"仍在计算"。
     atp_run_heartbeat_seconds: float = 20.0
     atp_legacy_root: str = "./data/wine/ATP"
-    atp_tpbig_executable: str = "ATP/tpbig.exe"
+    atp_tpbig_executable: str = "ATP/mytpbig.exe"
     atp_rjtzl_executable: str = "ATP/rjtzl.exe"
     atp_template_root: str = "./data/wine/ATP/templates"
     atp_run_root: str = "./data/wine/atp-runs"

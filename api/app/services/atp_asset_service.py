@@ -1465,7 +1465,7 @@ def _infer_asset_file_role(asset: AtpAsset, relative_path: str, is_dir: bool) ->
         return "atp"
     if lower.endswith(".py"):
         return "script"
-    if lower.endswith(("tpbig.exe", "rjtzl.exe")):
+    if lower.endswith(("tpbig.exe", "mytpbig.exe", "rjtzl.exe")):
         return "executable"
     if lower.endswith((".doc", ".docx", ".txt", ".md", ".pdf")):
         return "doc"
