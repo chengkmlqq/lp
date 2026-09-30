@@ -757,10 +757,10 @@ export default function AtpParamTemplatesPage() {
         if (!canManage) {
           return (
             <Space wrap size={4}>
-              <Button size="small" icon={<EyeOutlined />} disabled={!hasRule} onClick={() => void openDetailDrawer(row)}>
+              <Button size="small" disabled={!hasRule} onClick={() => void openDetailDrawer(row)}>
                 详情
               </Button>
-              <Button size="small" icon={<ExperimentOutlined />} disabled={!hasRule} onClick={() => void openPreviewDrawer(row)}>
+              <Button size="small" disabled={!hasRule} onClick={() => void openPreviewDrawer(row)}>
                 试算
               </Button>
             </Space>
@@ -769,10 +769,10 @@ export default function AtpParamTemplatesPage() {
 
         return (
           <Space wrap size={4}>
-            <Button size="small" icon={<EyeOutlined />} disabled={!hasRule} onClick={() => void openDetailDrawer(row)}>
+            <Button size="small" disabled={!hasRule} onClick={() => void openDetailDrawer(row)}>
               详情
             </Button>
-            <Button size="small" icon={<EditOutlined />} disabled={!hasRule} onClick={() => void editTemplate()}>
+            <Button size="small" disabled={!hasRule} onClick={() => void editTemplate()}>
               编辑
             </Button>
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>

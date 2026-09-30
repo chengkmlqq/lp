@@ -31,6 +31,10 @@ interface AtpModelDetailTabProps {
   assetId: string;
 }
 
+// 「场景拓扑预览」显示开关：按用户要求屏蔽该区块（拓扑图暂不可用/不展示）。
+// 组件 AtpSceneViewer 及其接口调用均保留，将此常量改回 true 即可恢复显示。
+const SHOW_SCENE_TOPOLOGY_PREVIEW = false;
+
 export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const [datDetail, setDatDetail] = useState<{ path: string; name: string } | null>(null);
@@ -129,9 +133,11 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
         </div>
       ) : null}
 
-      <div style={{ marginTop: 16 }}>
-        <AtpSceneViewer assetId={assetId} />
-      </div>
+      {SHOW_SCENE_TOPOLOGY_PREVIEW ? (
+        <div style={{ marginTop: 16 }}>
+          <AtpSceneViewer assetId={assetId} />
+        </div>
+      ) : null}
 
       <div>
         <Typography.Title level={5}>文件列表 ({files.length})</Typography.Title>

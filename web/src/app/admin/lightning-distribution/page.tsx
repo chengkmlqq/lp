@@ -1348,7 +1348,7 @@ function ImportModal({
       destroyOnHidden
     >
       <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={initialValues}>
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3">
           <Form.Item name="city" label="城市">
             <Select
               showSearch

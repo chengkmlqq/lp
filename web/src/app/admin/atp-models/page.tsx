@@ -18,7 +18,6 @@ import {
   Spin,
   Table,
   Tabs,
-  Tooltip,
   Tree,
   Typography,
   Upload,
@@ -30,7 +29,6 @@ import {
   DeleteOutlined,
   EditOutlined,
   ExperimentOutlined,
-  EyeOutlined,
   InboxOutlined,
   MoreOutlined,
   PlusOutlined,
@@ -983,7 +981,7 @@ export default function AtpModelsPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-      width: 130,
+        width: 150,
         render: (_, item) => {
           const deleteLoading = deleteMutation.isPending;
           const rowBusy = deleteLoading;
@@ -1030,14 +1028,14 @@ export default function AtpModelsPage() {
 
           return (
             <Space size={4}>
-              <Tooltip title="详情">
-                <Button size="small" type="text" icon={<EyeOutlined />} onClick={() => openDetailById(item.id)} />
-              </Tooltip>
-              <Tooltip title="测试">
-                <Button size="small" type="text" icon={<ExperimentOutlined />} disabled={!canTest} onClick={() => openTestTab(item)} />
-              </Tooltip>
+              <Button size="small" onClick={() => openDetailById(item.id)}>
+                详情
+              </Button>
+              <Button size="small" disabled={!canTest} onClick={() => openTestTab(item)}>
+                测试
+              </Button>
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button size="small" type="text" icon={<MoreOutlined />} />
+                <Button size="small" type="text" icon={<MoreOutlined />} aria-label="更多操作" />
               </Dropdown>
             </Space>
           );
