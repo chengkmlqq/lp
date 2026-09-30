@@ -950,17 +950,27 @@ def list_role_menu_ids(db: Session, role_id: str) -> list[str] | None:
 
 
 def replace_role_menus(db: Session, role_id: str, menu_ids: list[str], *, actor_user_id: str | None) -> RolePublic | None:
-    role_exists = db.scalar(text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
+    # ⚠️ 2026-09-30 修复：原硬编码查 user_role(legacy 表)，modern 库(roles 表)直接 500
+    role_source = "legacy" if _legacy_role_table_exists(db) else "modern"
+    if role_source == "legacy":
+        role_exists = db.scalar(text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
+    else:
+        role_exists = db.scalar(
+            text("SELECT id FROM roles WHERE id::text = :id OR code = :id"),
+            {"id": role_id},
+        )
     if not role_exists:
         return None
     current_role = get_role_by_id(db, role_id)
     normalized_menu_ids = sorted(set(menu_id.strip() for menu_id in menu_ids if menu_id.strip()))
-    if not _menu_ids_exist(db, normalized_menu_ids):
+    if not _menu_ids_exist(db, normalized_menu_ids, role_source=role_source):
         return None
 
     impacted_user_ids = _get_role_user_ids(db, role_id)
     try:
-        _replace_role_menus_internal(db, role_id, normalized_menu_ids)
+        # ⚠️ 2026-09-30 修复：internal 默认 legacy 分支(写 role_menu_rela)，modern 库
+        # 不传 role_source 会查不存在的表 → SQLAlchemyError → 400
+        _replace_role_menus_internal(db, role_id, normalized_menu_ids, role_source=role_source)
         write_audit_log(
             db,
             action="role.menus.replace",
