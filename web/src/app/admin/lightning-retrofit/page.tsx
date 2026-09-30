@@ -52,21 +52,19 @@ import type {
   FlAnalysisTowerResultSummary,
 } from "@/types/auth";
 import { readApiError } from "@/lib/api";
-import { formatDateTime, riskColor } from "@/components/fl-analysis/types";
+import { formatDateTime, riskColor, runningProgressPercent } from "@/components/fl-analysis/types";
 import { statusColor } from "@/components/fl-analysis/types";
+import { RetrofitCreateModal } from "@/components/fl-analysis/retrofit-create-modal";
 
 const TABLE_MIN_SCROLL_Y = 180;
 const TABLE_HEADER_HEIGHT = 56;
 const TABLE_PAGINATION_HEIGHT = 64;
 const TABLE_BOTTOM_GAP = 8;
 
+// ⚠️ 2026-09-30 页面重构(参考 fl-analysis 页):只保留「防雷改造」任务列表单 Tab，
+// 「改造」入口改为 tabBarExtraContent 按钮 → 弹窗(选前置计算任务+勾选高风险塔+提交)。
+// 成因分析已并入「防雷计算」详情（result-table「原因分析」列）。
 const LIST_TAB_KEY = "jobs";
-const WORK_TAB_KEY = "work";
-// ⚠️ 2026-09-30 成因分析已并入「防雷计算」详情（result-table「原因分析」列），
-// 本页（防雷改造）不再保留成因分析模式，仅保留改造措施推荐。
-const TASK_MODE_MEASURE = "measure";
-const TASK_MODE_NONNEW = "measure_nonnew";
-type TaskMode = typeof TASK_MODE_MEASURE | typeof TASK_MODE_NONNEW;
 
 type DetailTabItem = {
   key: string;
@@ -79,15 +77,6 @@ type RetrofitTaskItem = FlAnalysisJobSummary & {
   retrofit_type?: string | null;
 };
 
-type TowerSelectionRow = {
-  id: string;
-  tower_id: string;
-  tower_no: string | null;
-  risk_level: string | null;
-  status: string | null;
-  include: boolean;
-};
-
 export default function AdminLightningRetrofitPage() {
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const [messageApi, contextHolder] = message.useMessage();
@@ -97,11 +86,9 @@ export default function AdminLightningRetrofitPage() {
   const canManage = hasPermission("line.manage") || hasPermission("tower.manage");
 
   // ── Tab / 任务类型 ──────────────────────────────────────────────
-  // 动态选项卡（严格参照线路管理）：固定「任务列表」+「成因分析与措施推荐」，
-  // 点任务「查看详情」在当前页 append 动态详情 tab（不跳转页面），可关闭
+  // 动态选项卡：固定「防雷改造任务」列表，点任务「查看详情」在当前页 append 动态详情 tab（不跳转页面），可关闭
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
-  const [taskMode, setTaskMode] = useState<TaskMode>(TASK_MODE_MEASURE);
 
   // ── 任务列表（Tab1）────────────────────────────────────────────
   const [keywordInput, setKeywordInput] = useState("");
@@ -113,19 +100,8 @@ export default function AdminLightningRetrofitPage() {
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
-  // ── 措施推荐（Tab2 / measure*）─────────────────────────────────
-  const [baseJobs, setBaseJobs] = useState<FlAnalysisJobSummary[]>([]);
-  const [loadingJobs, setLoadingJobs] = useState(false);
-  const [selectedBaseJobId, setSelectedBaseJobId] = useState<string>("");
-  const [towerRows, setTowerRows] = useState<TowerSelectionRow[]>([]);
-  const [jobName, setJobName] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-
-  const selectedBaseJob = useMemo(
-    () => baseJobs.find((job) => job.id === selectedBaseJobId) ?? null,
-    [baseJobs, selectedBaseJobId],
-  );
+  // ── 改造弹窗（2026-09-30：仿 fl-analysis「新建任务」入口）──────
+  const [retrofitOpen, setRetrofitOpen] = useState(false);
 
   // ── 任务列表查询（Tab1）────────────────────────────────────────
   const jobsListPath = useMemo(() => {
@@ -240,135 +216,8 @@ export default function AdminLightningRetrofitPage() {
     };
   }, [user, canRead, fetchWithAuth]);
 
-  // ── 措施推荐数据（Tab2 / measure*）─────────────────────────────
-  const loadBaseJobs = useCallback(async () => {
-    setLoadingJobs(true);
-    try {
-      const response = await fetchWithAuth("/api/v1/fl-analysis/jobs?limit=200");
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      const data = (await response.json()) as { items: FlAnalysisJobSummary[] };
-      const matched = data.items.filter((item) => item.job_type === "normal" || item.job_type === "tongtiao");
-      setBaseJobs(matched);
-    } catch (error) {
-      setBaseJobs([]);
-    } finally {
-      setLoadingJobs(false);
-    }
-  }, [fetchWithAuth]);
-
-  useEffect(() => {
-    void loadBaseJobs();
-  }, [loadBaseJobs]);
-
-  const towerQueryPath = useMemo(() => {
-    if (!selectedBaseJobId) return null;
-    const params = new URLSearchParams();
-    params.set("limit", String(paginationPageSize));
-    params.set("offset", String((paginationCurrent - 1) * paginationPageSize));
-    return `/api/v1/fl-analysis/jobs/${selectedBaseJobId}/results?${params.toString()}`;
-  }, [selectedBaseJobId, paginationCurrent, paginationPageSize]);
-
-  const towerQuery = useQuery({
-    queryKey: ["/api/v1/fl-analysis/jobs", selectedBaseJobId, "results", paginationCurrent, paginationPageSize],
-    enabled: !!user && canRead && Boolean(selectedBaseJobId),
-    queryFn: async () => {
-      const response = await fetchWithAuth(towerQueryPath as string);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as {
-        items: FlAnalysisTowerResultSummary[];
-        total: number;
-      };
-    },
-  });
-
-  const computedTowerRows = useMemo(() => {
-    const items = towerQuery.data?.items ?? [];
-    return items.map((row) => ({
-      id: row.id,
-      tower_id: row.tower_id,
-      tower_no: row.tower_no,
-      risk_level: row.risk_level,
-      status: row.status,
-      include: isHighRisk(row.risk_level),
-    }));
-  }, [towerQuery.data?.items]);
-
-  useEffect(() => {
-    setTowerRows(computedTowerRows);
-  }, [computedTowerRows]);
-
-  const towerTotal = towerQuery.data?.total ?? 0;
-
-  const toggleTowerInclude = (rowId: string) => {
-    setTowerRows((previous) =>
-      previous.map((row) => (row.id === rowId ? { ...row, include: !row.include } : row)),
-    );
-  };
-
-  const handleBaseJobChange = (nextJobId: string) => {
-    setSelectedBaseJobId(nextJobId);
-    setPagination((prev) => ({ ...prev, current: 1 }));
-    setErrorMessage("");
-  };
-
-  const handleCreateJob = async () => {
-    if (!selectedBaseJob) {
-      setErrorMessage("请先选择前置任务");
-      return;
-    }
-    const selectedTowers = towerRows.filter((row) => row.include);
-    if (selectedTowers.length === 0) {
-      setErrorMessage("请至少包含一个杆塔");
-      return;
-    }
-    setCreating(true);
-    setErrorMessage("");
-    try {
-      const isNonNew = taskMode === TASK_MODE_NONNEW;
-      const payload = {
-        line_id: selectedBaseJob.line_id,
-        job_name:
-          jobName.trim() ||
-          `${selectedBaseJob.job_name || selectedBaseJob.line_name || selectedBaseJob.line_code || "防雷任务"}-${isNonNew ? "措施推荐(非建线)" : "措施推荐"}`,
-        job_type: "mitigation",
-        execution_options_json: {
-          non_construction: isNonNew,
-          source_job_id: selectedBaseJob.id,
-          selected_tower_ids: selectedTowers.map((row) => row.tower_id),
-        },
-      };
-      const createResponse = await fetchWithAuth("/api/v1/fl-analysis/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!createResponse.ok) {
-        throw new Error(await readApiError(createResponse));
-      }
-      const created = (await createResponse.json()) as { job: FlAnalysisJobSummary };
-      const startResponse = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${created.job.id}/start`, {
-        method: "POST",
-      });
-      if (!startResponse.ok) {
-        throw new Error(await readApiError(startResponse));
-      }
-      messageApi.success(`措施推荐任务已创建并启动：${created.job.job_name || created.job.id}`);
-      setJobName("");
-      setSelectedBaseJobId("");
-      await Promise.all([loadBaseJobs(), invalidateMeasureQueries()]);
-      // 切回任务列表看新任务
-      setActiveTabKey(LIST_TAB_KEY);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "措施推荐任务创建失败");
-    } finally {
-      setCreating(false);
-    }
-  };
-
+  // ⚠️ 2026-09-30：措施推荐任务创建逻辑已整体迁至 RetrofitCreateModal 弹窗组件
+  // （选前置计算任务 → 勾选高风险塔 → 创建并启动），本页只保留任务列表 + 详情动态 Tab。
   const invalidateMeasureQueries = useCallback(async () => {
     await queryClient.invalidateQueries({
       predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0]?.startsWith?.("/api/v1/fl-analysis/jobs"),
@@ -413,7 +262,7 @@ export default function AdminLightningRetrofitPage() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [updateTableScrollHeight, jobs.length, towerRows.length, viewMode, activeTabKey]);
+  }, [updateTableScrollHeight, jobs.length, viewMode, activeTabKey]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof ResizeObserver === "undefined" || viewMode !== "list") {
@@ -464,20 +313,6 @@ export default function AdminLightningRetrofitPage() {
     );
   }
 
-  const taskModeOptions = [
-    { label: "改造措施推荐", value: TASK_MODE_MEASURE },
-    { label: "措施推荐（非建线）", value: TASK_MODE_NONNEW },
-  ];
-
-  const handleTaskModeChange = (value: TaskMode) => {
-    setTaskMode(value);
-    setErrorMessage("");
-    setSelectedBaseJobId("");
-    setJobName("");
-    setTowerRows([]);
-    setPagination((prev) => ({ ...prev, current: 1 }));
-  };
-
   return (
     <>
       {contextHolder}
@@ -489,23 +324,35 @@ export default function AdminLightningRetrofitPage() {
           onChange={setActiveTabKey}
           onEdit={handleTabsEdit}
           className="admin-power-lines-tabs"
+          tabBarExtraContent={
+            <Space>
+              {canManage ? (
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setRetrofitOpen(true)}>
+                  改造
+                </Button>
+              ) : null}
+            </Space>
+          }
           items={[
             {
               key: LIST_TAB_KEY,
-              label: <span className="admin-power-lines-tab-title">任务列表</span>,
+              label: <span className="admin-power-lines-tab-title">防雷改造任务</span>,
               closable: false,
               children: renderJobsPane(),
-            },
-            {
-              key: WORK_TAB_KEY,
-              label: <span className="admin-power-lines-tab-title">改造措施推荐</span>,
-              closable: false,
-              children: renderWorkPane(),
             },
             ...detailTabs,
           ]}
         />
       </div>
+
+      {/* 改造弹窗：选前置防雷计算任务 → 勾选高风险杆塔 → 创建并启动措施任务 */}
+      <RetrofitCreateModal
+        open={retrofitOpen}
+        onClose={() => setRetrofitOpen(false)}
+        onCreated={() => {
+          void invalidateMeasureQueries();
+        }}
+      />
     </>
   );
 
@@ -536,8 +383,20 @@ export default function AdminLightningRetrofitPage() {
         title: "状态",
         dataIndex: "status",
         key: "status",
-        width: 100,
-        render: (value) => <span style={{ color: statusColor(value) }}>{value}</span>,
+        width: 140,
+        render: (value, job) => (
+          <Space direction="vertical" size={2} style={{ width: "100%" }}>
+            <span style={{ color: statusColor(value) }}>{value}</span>
+            {value === "running" ? (
+              <Progress
+                percent={runningProgressPercent(job)}
+                size="small"
+                strokeColor="var(--accent-9)"
+                trailColor="var(--ant-color-border-secondary)"
+              />
+            ) : null}
+          </Space>
+        ),
       },
       {
         title: "创建时间",
@@ -698,6 +557,17 @@ export default function AdminLightningRetrofitPage() {
                               创建：{formatDateTime(job.create_date)}
                             </Typography.Text>
                           </div>
+                          {job.status === "running" ? (
+                            <div className="flex items-center gap-2">
+                              <Progress
+                                percent={runningProgressPercent(job)}
+                                size="small"
+                                style={{ flex: 1 }}
+                                strokeColor="var(--accent-9)"
+                                trailColor="var(--ant-color-border-secondary)"
+                              />
+                            </div>
+                          ) : null}
                         </div>
                         <div className="admin-power-lines-line-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
                           <div />
@@ -752,159 +622,6 @@ export default function AdminLightningRetrofitPage() {
     );
   }
 
-  // ── Tab2：改造措施推荐（成因分析已并入防雷计算详情，2026-09-30）──
-  function renderWorkPane() {
-    const isMeasureMode = taskMode === TASK_MODE_MEASURE || taskMode === TASK_MODE_NONNEW;
-    const isNonNew = taskMode === TASK_MODE_NONNEW;
-
-    return (
-      <div className="admin-power-lines-list-pane">
-        <div className="admin-filter-bar">
-          <Form layout="inline">
-            <Form.Item label="任务类型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
-              <Segmented
-                value={taskMode}
-                onChange={(value) => handleTaskModeChange(value as TaskMode)}
-                options={taskModeOptions}
-              />
-            </Form.Item>
-            <Form.Item label="前置任务" style={{ marginBottom: 0 }}>
-              <Select
-                value={selectedBaseJobId}
-                onChange={handleBaseJobChange}
-                loading={loadingJobs}
-                placeholder="选择前置任务"
-                style={{ width: 320 }}
-                options={baseJobs.map((job) => ({
-                  value: job.id,
-                  label: `${job.job_name || job.line_name || job.line_code || "-"}（${formatJobType(job.job_type)}）`,
-                }))}
-                showSearch
-                optionFilterProp="label"
-              />
-            </Form.Item>
-            <Form.Item style={{ marginBottom: 0 }}>
-              <Button
-                htmlType="button"
-                icon={<ArrowUpOutlined />}
-                onClick={() => {
-                  void loadBaseJobs();
-                }}
-                className="admin-search-btn"
-              >
-                刷新
-              </Button>
-            </Form.Item>
-          </Form>
-        </div>
-
-        {errorMessage && (
-          <Alert type="error" showIcon message={errorMessage} style={{ marginBottom: 12 }} />
-        )}
-
-        {renderMeasurePane(isNonNew)}
-      </div>
-    );
-  }
-
-  // 措施推荐 / 非建线：勾选高风险塔 → 生成任务
-  function renderMeasurePane(isNonNew: boolean) {
-    const columns: ColumnsType<TowerSelectionRow> = [
-      {
-        title: "包含",
-        key: "include",
-        width: 80,
-        align: "center" as const,
-        render: (_value, row) => (
-          <Checkbox checked={row.include} onChange={() => toggleTowerInclude(row.id)} />
-        ),
-      },
-      {
-        title: "塔号",
-        dataIndex: "tower_no",
-        key: "tower_no",
-        width: 120,
-        render: (value) => value || "-",
-      },
-      {
-        title: "风险等级",
-        dataIndex: "risk_level",
-        key: "risk_level",
-        width: 120,
-        render: (value) => <Tag color={riskColor(value)}>{value ?? "-"}</Tag>,
-      },
-      {
-        title: "状态",
-        dataIndex: "status",
-        key: "status",
-        width: 120,
-        render: (value) => <span style={{ color: statusColor(value) }}>{value}</span>,
-      },
-    ];
-
-    return (
-      <>
-        {selectedBaseJob ? (
-          <Alert
-            type="info"
-            showIcon
-            message="已选择前置任务"
-            description={`${selectedBaseJob.job_name || selectedBaseJob.line_name || selectedBaseJob.line_code || "-"} / 杆塔总数：${selectedBaseJob.total_tower_count}`}
-          />
-        ) : null}
-        {!selectedBaseJobId ? (
-          <Empty description="请先选择前置任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        ) : (
-          <div
-            ref={tableScrollAnchorRef}
-            className="admin-power-lines-table-view"
-            style={{ "--admin-power-lines-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
-          >
-            <Table<TowerSelectionRow>
-              rowKey="id"
-              columns={columns}
-              dataSource={towerRows}
-              loading={towerQuery.isFetching}
-              tableLayout="fixed"
-              pagination={{
-                current: pagination.current,
-                pageSize: pagination.pageSize,
-                total: towerTotal,
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: (totalCount) => `共 ${totalCount} 条`,
-                hideOnSinglePage: false,
-                onChange: (page, pageSize) => {
-                  setPagination({ current: page, pageSize });
-                },
-              }}
-              scroll={{ x: 800, y: tableScrollY }}
-              locale={{
-                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无杆塔结果" />,
-              }}
-            />
-          </div>
-        )}
-        <div className="flex flex-col gap-2">
-          <Input
-            value={jobName}
-            onChange={(event) => setJobName(event.target.value)}
-            placeholder="任务名称"
-          />
-          <div className="flex flex-wrap gap-3">
-            <Button
-              type="primary"
-              onClick={() => void handleCreateJob()}
-              loading={creating}
-              disabled={!selectedBaseJobId || towerRows.length === 0}
-            >
-              {isNonNew ? "生成措施推荐（非建线）" : "生成措施推荐"}
-            </Button>
-          </div>
-        </div>
-      </>
-    );
-  }
 }
 
 // ── helpers ──────────────────────────────────────────────────────
@@ -933,16 +650,7 @@ function retrofitJobBadgeStatus(
   return "default";
 }
 
-function isHighRisk(riskLevel: string | null | undefined): boolean {
-  if (!riskLevel) {
-    return false;
-  }
-  if (riskLevel === "high") {
-    return true;
-  }
-  const numeric = Number(riskLevel);
-  return Number.isFinite(numeric) && numeric > 2;
-}
+// ⚠️ 2026-09-30：isHighRisk 判定逻辑已迁入 RetrofitCreateModal（弹窗默认勾选高风险塔）
 
 // ── 动态详情 Tab 内容：防雷改造任务详情（信息 + 塔结果）────────────
 function RetrofitJobDetail({ jobId }: { jobId: string }) {
