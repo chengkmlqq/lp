@@ -33,6 +33,7 @@ import {
   GlobalOutlined,
   MoreOutlined,
   PlusOutlined,
+  ReloadOutlined,
   SearchOutlined,
   SwapOutlined,
   ThunderboltOutlined,
@@ -147,9 +148,6 @@ export default function AdminPowerLinesPage() {
   const [keyword, setKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
-  // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
-  // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
-  const [searchNonce, setSearchNonce] = useState(0);
   const [lineModalOpen, setLineModalOpen] = useState(false);
   const [editingLine, setEditingLine] = useState<LineSummary | null>(null);
   const [error, setError] = useState("");
@@ -226,7 +224,7 @@ export default function AdminPowerLinesPage() {
     return `/api/v1/lines${query ? `?${query}` : ""}`;
   }, [keyword, paginationCurrent, paginationPageSize]);
   const linesQuery = useQuery({
-    queryKey: [lineListPath, searchNonce],
+    queryKey: [lineListPath],
     enabled: !!user && canRead,
     queryFn: async () => {
       const response = await fetchWithAuth(lineListPath);
@@ -235,7 +233,7 @@ export default function AdminPowerLinesPage() {
       }
       return (await response.json()) as LineListResponse;
     },
-    // 查询键随 searchNonce 变化：保留上一份数据作占位，避免每次点击查询时列表闪空
+    // 分页变化时保留上一份数据作占位，避免切换分页时列表闪空
     placeholderData: (previousData) => previousData,
   });
   const lineError = linesQuery.error instanceof Error ? linesQuery.error.message : "";
@@ -293,13 +291,14 @@ export default function AdminPowerLinesPage() {
   }, [updateTableScrollHeight, viewMode, lines.length]);
 
   const handleSearch = () => {
-    // 每次点击「查询」都强制触发一次接口请求：
-    // searchNonce 作为 queryKey 的一部分自增，保证即便关键词/分页均未变化（旧实现只对
-    // 这种情况 refetchQueries，且目标 key 若已被 react-query 缓存会短路不发请求）也会
-    // 产生新 key 重新拉取；关键词/分页照常提交并回到第 1 页。
-    setKeyword(keywordInput);
+    // 仅当关键词或分页确实变化时才提交查询；条件未变重复点击不再重复请求
+    // （需要强制刷新时点工具条「刷新」按钮）
+    const nextKeyword = keywordInput.trim();
+    const keywordChanged = nextKeyword !== keyword;
+    const pageChanged = paginationCurrent !== 1;
+    if (!keywordChanged && !pageChanged) return;
+    setKeyword(nextKeyword);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    setSearchNonce((n) => n + 1);
   };
   const saveLineMutation = useMutation({
     mutationFn: async (values: LineFormValues) => {
@@ -513,6 +512,16 @@ export default function AdminPowerLinesPage() {
                         className="admin-search-btn"
                       >
                         查询
+                      </Button>
+                    </Form.Item>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Button
+                        htmlType="button"
+                        icon={<ReloadOutlined />}
+                        onClick={() => void queryClient.refetchQueries({ queryKey: [lineListPath] })}
+                        loading={linesQuery.isRefetching}
+                      >
+                        刷新
                       </Button>
                     </Form.Item>
                   </Form>
