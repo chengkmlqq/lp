@@ -14,6 +14,7 @@ import {
   Form,
   Input,
   Modal,
+  Pagination,
   Progress,
   Select,
   Space,
@@ -472,20 +473,25 @@ export default function AdminPowerLineTowersPage() {
             columns={towerColumns}
             dataSource={towers}
             loading={towersQuery.isFetching}
-            pagination={{
-              current: towerPagination.current,
-              pageSize: towerPagination.pageSize,
-              total: towersQuery.data?.total ?? 0,
-              showSizeChanger: true,
-              showTotal: (total) => `共 ${total} 条`,
-              hideOnSinglePage: false,
-              onChange: (page, pageSize) => {
-                setTowerPagination({ current: page, pageSize });
-              },
-            }}
+            pagination={false}
             scroll={{ x: 1400 }}
           />
         )}
+        {/* LP: antd Table 内置分页在 total=0（空表格）时整体不渲染（InternalTable.js
+            `!mergedPagination?.total` 硬编码），故改用独立 Pagination 常驻显示，
+            空数据时右下角分页条不消失。样式与列表视图 .admin-power-lines-pagination 一致。 */}
+        <div className="admin-power-line-detail-pagination">
+          <Pagination
+            current={towerPagination.current}
+            pageSize={towerPagination.pageSize}
+            total={towersQuery.data?.total ?? 0}
+            showSizeChanger
+            showTotal={(total) => `共 ${total} 条`}
+            onChange={(page, pageSize) => {
+              setTowerPagination({ current: page, pageSize });
+            }}
+          />
+        </div>
       </div>
 
       <Modal

@@ -6726,6 +6726,17 @@ body {
   min-height: var(--admin-power-line-detail-table-body-min-height, 180px);
 }
 
+/* LP: 线路详情页杆塔表格分页常驻（antd 内置分页在 total=0 时不渲染，
+   故用独立 Pagination 组件）；样式对齐列表视图 .admin-power-lines-pagination */
+.admin-power-line-detail-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 8px;
+  flex-shrink: 0;
+}
+
 /* LP-297: 详情视图内容区增加 10px padding；LP-301: 改为 flex 纵向布局，
    上方基本信息 Card + 下方地图/杆塔列表 Tabs 撑满可用高度 */
 .admin-power-lines-detail-view {
