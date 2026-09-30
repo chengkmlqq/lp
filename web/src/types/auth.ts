@@ -137,7 +137,7 @@ export type SystemParamRuntimeResponse = {
   items: SystemParamRuntimeItem[];
 };
 
-export type SystemMessageType = "info" | "warning" | "error" | "success";
+export type SystemMessageType = "info" | "warning" | "error" | "success" | "task_done";
 
 export type SystemMessageSummary = {
   id: string;

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
@@ -9,6 +10,8 @@ from ..schemas.system_message import SystemMessageCreateRequest, SystemMessageTy
 
 if TYPE_CHECKING:
     from ..schemas.system_message import SystemMessagePublic
+
+logger = logging.getLogger(__name__)
 
 
 def create_system_message(
@@ -25,6 +28,81 @@ def create_system_message(
     db.add(message)
     db.commit()
     db.refresh(message)
+    return message
+
+
+def notify_task_done(
+    *,
+    user_id: str | None,
+    task_type: str,
+    task_name: str,
+    status: str = "success",
+    detail: str | None = None,
+) -> SystemMessage | None:
+    """计类任务完成通知（2026-09-30）。
+
+    单独事务：独立开 session 落库 + 推送，与宿主任务状态写入互不影响
+    （宿主事务失败回滚时，通知已独立发出——按产品需求「成功失败都发」，
+    通知失败也不影响任务本身）。
+
+    status 传 'success' 表示成功；其它值（failed/error/cancelled 等）按失败文案。
+    """
+    from ..core.database import SessionLocal
+
+    if not user_id:
+        return None
+    title = f"{task_type}任务{'已完成' if status == 'success' else '未完成'}"
+    content = (
+        f"「{task_name}」已成功完成。"
+        if status == "success"
+        else f"「{task_name}」执行{status}。{detail or ''}"
+    )
+    try:
+        db = SessionLocal()
+        try:
+            message = SystemMessage(
+                title=title,
+                content=content.strip(),
+                message_type="task_done",
+                target_user_id=user_id,
+            )
+            db.add(message)
+            db.commit()
+            db.refresh(message)
+        finally:
+            db.close()
+    except Exception:  # 通知失败不阻断任务本身
+        logger.warning("任务完成通知落库失败: user=%s task=%s", user_id, task_name, exc_info=True)
+        return None
+
+    # WebSocket 实时推送（目标用户所有连接）——用独立线程跑 async,
+    # 兼容 celery worker 无事件循环的场景；推送失败不影响通知落库。
+    def _push() -> None:
+        try:
+            import asyncio
+            import uuid
+            from .push_service import publish_to_user
+            from ..models.base import utcnow
+            from ..schemas.ws import WsEventEnvelope, WsEventMeta
+
+            async def _run() -> None:
+                event = WsEventEnvelope(
+                    id=f"evt_{uuid.uuid4().hex}",
+                    topic="user.messages",
+                    name="message.created",
+                    timestamp=utcnow(),
+                    payload={"message_id": str(message.id), "message_type": message.message_type},
+                    meta=WsEventMeta(dedupe_key=f"msg:{message.id}", requires_refetch=["/api/v1/system-messages/me"]),
+                )
+                await publish_to_user(user_id, event)
+
+            asyncio.run(_run())
+        except Exception:
+            logger.warning("任务完成通知 WS 推送失败: user=%s", user_id, exc_info=True)
+
+    import threading
+
+    threading.Thread(target=_push, daemon=True).start()
     return message
 
 

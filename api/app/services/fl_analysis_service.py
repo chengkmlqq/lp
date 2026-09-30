@@ -1768,6 +1768,11 @@ def _finish_rule_based_run(
         "adapter_status": adapter_status,
         "external_adapter": job.external_adapter,
     }
+
+    # 2026-09-30：任务完成通知（单独事务+WS推送，失败不影响任务本身）。
+    # 取消的任务不发成功通知。
+    if not cancelled:
+        _notify_job_done(job, status="success")
     job.finished_at = now
     job.update_date = now
     db.commit()
@@ -1820,6 +1825,9 @@ def _mark_run_failed(
     if cancelled:
         return
 
+    # 2026-09-30：任务失败通知（单独事务+WS推送；取消不发失败通知）。
+    _notify_job_done(job, status="failed", detail=(error_message or "")[:200])
+
     _publish_change(
         "fl_analysis.job.failed",
         {"action": "job_failed", "job_id": job.id, "line_id": job.line_id, "run_id": run.id},
@@ -1843,9 +1851,38 @@ def _mark_job_failed_without_run(db: Session, *, job_id: str, error_message: str
     if cancelled:
         return
 
+    # 2026-09-30：任务失败通知（单独事务+WS推送；取消不发失败通知）。
+    _notify_job_done(job, status="failed", detail=(error_message or "")[:200])
+
     _publish_change(
         "fl_analysis.job.failed",
         {"action": "job_failed", "job_id": job.id, "line_id": job.line_id},
+    )
+
+
+def _notify_job_done(job: FlAnalysisJob, *, status: str, detail: str | None = None) -> None:
+    """防雷计算/防雷改造任务完成通知（2026-09-30）。
+
+    单独事务 + WS 实时推送；通知失败不阻断任务本身。
+    job.create_user 为空（历史数据/系统任务）时跳过。
+    """
+    if not job.create_user:
+        return
+    from .system_message_service import notify_task_done
+
+    task_type = {
+        "normal": "防雷计算",
+        "tongtiao": "同跳计算",
+        "mitigation": "防雷改造措施",
+        "scenario": "改造复核",
+        "report": "报告生成",
+    }.get(job.job_type, "防雷计算")
+    notify_task_done(
+        user_id=job.create_user,
+        task_type=task_type,
+        task_name=job.job_name or job.id,
+        status=status,
+        detail=detail,
     )
 
 

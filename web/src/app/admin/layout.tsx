@@ -360,6 +360,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
   }, [loadUnreadCount, user]);
 
+  // 2026-09-30：任务完成通知（WS 实时推送）——收到新消息立即刷新铃铛角标与列表
+  useTopicSubscription("user.messages", useCallback(() => {
+    if (user) {
+      void loadUnreadCount();
+      void loadMessages();
+    }
+  }, [user, loadUnreadCount, loadMessages]));
+
   // Reset avatar error state when user changes
   useEffect(() => {
     setAvatarError(false);

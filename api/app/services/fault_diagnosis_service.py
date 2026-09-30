@@ -1165,6 +1165,25 @@ def map_result_to_record(
     }
 
 
+def _notify_fault_done(item: FaultAnalysis, *, status: str, detail: str | None = None) -> None:
+    """故障分析完成通知（2026-09-30）。
+
+    单独事务 + WS 实时推送；通知失败不阻断判别本身。
+    item.create_user 为空（历史数据）时跳过。
+    """
+    if not item.create_user:
+        return
+    from .system_message_service import notify_task_done
+
+    notify_task_done(
+        user_id=item.create_user,
+        task_type="故障判别",
+        task_name=item.title or item.id,
+        status=status,
+        detail=detail,
+    )
+
+
 def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
     """执行一次完整判别并回填记录字段。供 Celery 任务调用。"""
     item = get_analysis_by_id(db, analysis_id)
@@ -1271,6 +1290,7 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
         item.update_date = utcnow()
         item.update_user = "system"
         db.commit()
+        _notify_fault_done(item, status="success")
         return mapped["result_json"]
     except Exception as exc:
         item.status = "failed"
@@ -1279,6 +1299,7 @@ def run_fault_diagnosis(db: Session, analysis_id: str) -> dict[str, Any]:
         item.update_date = utcnow()
         item.update_user = "system"
         db.commit()
+        _notify_fault_done(item, status="failed", detail=str(exc)[:200])
         raise
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
@@ -1432,6 +1453,7 @@ def run_fault_diagnosis_with_progress(
             progress_callback(85, "processing")
         if step_callback:
             step_callback("结果回填完成")
+        _notify_fault_done(item, status="success")
 
         return mapped["result_json"]
     except Exception as exc:
@@ -1442,6 +1464,7 @@ def run_fault_diagnosis_with_progress(
         item.update_date = utcnow()
         item.update_user = "system"
         db.commit()
+        _notify_fault_done(item, status="failed", detail=str(exc)[:200])
         if progress_callback:
             progress_callback(0, "failed")
         raise
