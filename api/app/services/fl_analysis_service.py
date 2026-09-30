@@ -307,6 +307,7 @@ def list_jobs(
     *,
     line_id: str | None,
     status_filter: str | None,
+    job_types: list[str] | None = None,
     keyword: str | None = None,
     limit: int = 50,
     offset: int = 0,
@@ -320,6 +321,12 @@ def list_jobs(
     if status_filter:
         stmt = stmt.where(FlAnalysisJob.status == status_filter)
         total_stmt = total_stmt.where(FlAnalysisJob.status == status_filter)
+    # 2026-09-30：防雷改造页只列改造类任务（mitigation/scenario/report），
+    # 防雷计算任务（normal/tongtiao）只在改造弹窗里作为前置任务下拉出现。
+    normalized_types = [item for item in (job_types or []) if item]
+    if normalized_types:
+        stmt = stmt.where(FlAnalysisJob.job_type.in_(normalized_types))
+        total_stmt = total_stmt.where(FlAnalysisJob.job_type.in_(normalized_types))
 
     normalized = (keyword or "").strip()
     if normalized:

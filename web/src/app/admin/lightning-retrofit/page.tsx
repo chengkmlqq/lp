@@ -108,6 +108,9 @@ export default function AdminLightningRetrofitPage() {
     const params = new URLSearchParams();
     params.set("limit", String(paginationPageSize));
     params.set("offset", String((paginationCurrent - 1) * paginationPageSize));
+    // 2026-09-30：防雷改造页只列改造类任务；防雷计算任务(normal/tongtiao)
+    // 只在「改造」弹窗里作为前置任务下拉出现。
+    params.set("job_types", "mitigation,scenario,report");
     if (keyword.trim()) {
       params.set("keyword", keyword.trim());
     }

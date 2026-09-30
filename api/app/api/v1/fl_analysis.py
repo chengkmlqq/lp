@@ -67,13 +67,16 @@ def put_professional_tower_profile(
 def get_fl_analysis_jobs(
     line_id: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
+    # 2026-09-30：多值过滤（逗号分隔），防雷改造页传 mitigation,scenario,report
+    job_types: str | None = Query(default=None, alias="job_types"),
     keyword: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
     db: Session = Depends(get_db),
 ) -> FlAnalysisJobListResponse:
-    return list_jobs(db, line_id=line_id, status_filter=status_filter, keyword=keyword, limit=limit, offset=offset)
+    type_list = [item.strip() for item in (job_types or "").split(",") if item.strip()]
+    return list_jobs(db, line_id=line_id, status_filter=status_filter, job_types=type_list or None, keyword=keyword, limit=limit, offset=offset)
 
 
 @router.get("/jobs/{job_id}", response_model=FlAnalysisJobDetail)
