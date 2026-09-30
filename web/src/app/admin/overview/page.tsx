@@ -1,80 +1,85 @@
 "use client";
 
-import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import type { ComponentType, RefAttributes } from "react";
-import {
-  Alert,
-  Card,
-  Col,
-  Row,
-  Space,
-  Spin,
-  Statistic,
-  Tag,
-  Typography,
-  type CardProps,
-} from "antd";
+// 系统总览 —— 可配置仪表盘
+// 布局（卡片/排序/宽度/标题）按用户配置渲染（GET/PUT /api/v1/admin/overview/config）；
+// 数据来自 GET /api/v1/admin/overview。无配置时回落默认布局（资产统计 + 任务总览）。
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Alert, Button, Col, Empty, Row, Space, Spin, Typography, message } from "antd";
+import { useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
+import { OverviewConfigModal } from "@/components/overview/overview-config-modal";
+import {
+  OverviewWidgetCard,
+  type OverviewData,
+  type OverviewWidget,
+} from "@/components/overview/overview-widget-card";
 
 const { Text, Title } = Typography;
-const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
-
-type AssetStatItem = {
-  key: string;
-  label: string;
-  count: number;
-  route: string | null;
-};
-
-type TaskStateBucket = {
-  key: string;
-  label: string;
-  count: number;
-};
-
-type OverviewTasksSummary = {
-  total: number;
-  queue_pending_total: number;
-  scheduled_tasks: number;
-  state_buckets: TaskStateBucket[];
-};
-
-type SystemOverviewResponse = {
-  generated_at: string;
-  assets: AssetStatItem[];
-  tasks: OverviewTasksSummary;
-};
 
 const OVERVIEW_QUERY_KEY = ["/api/v1/admin/overview"] as const;
+const OVERVIEW_CONFIG_QUERY_KEY = ["/api/v1/admin/overview/config"] as const;
 
-const STATE_COLORS: Record<string, string> = {
-  SUCCESS: "green",
-  FAILURE: "red",
-  STARTED: "processing",
-  PENDING: "default",
-  RECEIVED: "default",
-  RETRY: "orange",
-  REVOKED: "default",
-};
+// 与后端 overview_config_service.default_widgets() 保持一致（恢复默认用）。
+const DEFAULT_WIDGETS: OverviewWidget[] = [
+  { type: "asset_stats", title: "系统资产统计", span: 24, props: {} },
+  { type: "task_summary", title: "任务总览", span: 24, props: {} },
+];
 
 export default function AdminOverviewPage() {
   const { fetchWithAuth } = useAuth();
+  const queryClient = useQueryClient();
+  const [configOpen, setConfigOpen] = useState(false);
+  const [messageApi, contextHolder] = message.useMessage();
 
   const overviewQuery = useQuery({
-    queryKey: OVERVIEW_QUERY_KEY,
+    queryKey: [...OVERVIEW_QUERY_KEY],
     queryFn: async () => {
       const response = await fetchWithAuth("/api/v1/admin/overview");
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      return (await response.json()) as SystemOverviewResponse;
+      return (await response.json()) as OverviewData;
     },
   });
 
-  if (overviewQuery.isLoading) {
+  const configQuery = useQuery({
+    queryKey: [...OVERVIEW_CONFIG_QUERY_KEY],
+    enabled: Boolean(overviewQuery.data),
+    queryFn: async () => {
+      const response = await fetchWithAuth("/api/v1/admin/overview/config");
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as { widgets: OverviewWidget[] };
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (widgets: OverviewWidget[]) => {
+      const response = await fetchWithAuth("/api/v1/admin/overview/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ widgets }),
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as { widgets: OverviewWidget[] };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData([...OVERVIEW_CONFIG_QUERY_KEY], data);
+      setConfigOpen(false);
+      void messageApi.success("总览布局已保存");
+    },
+    onError: (error) => {
+      void messageApi.error(`保存失败：${error instanceof Error ? error.message : "未知错误"}`);
+    },
+  });
+
+  if (overviewQuery.isLoading || (configQuery.isLoading && !configQuery.data)) {
     return (
       <div className="flex min-h-[300px] items-center justify-center">
         <Spin size="large" />
@@ -93,90 +98,48 @@ export default function AdminOverviewPage() {
     );
   }
 
-  const { assets, tasks } = overviewQuery.data;
+  const overview = overviewQuery.data;
+  const widgets = configQuery.data?.widgets ?? DEFAULT_WIDGETS;
 
   return (
     <div className="flex flex-col gap-4">
+      {contextHolder}
       <div className="flex items-baseline justify-between">
         <Title level={4} style={{ marginBottom: 0 }}>
           系统总览
         </Title>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          更新时间：{new Date(overviewQuery.data.generated_at).toLocaleString("zh-CN")}
-        </Text>
+        <Space>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            更新时间：{new Date(overview.generated_at).toLocaleString("zh-CN")}
+          </Text>
+          <Button size="small" onClick={() => setConfigOpen(true)}>
+            配置布局
+          </Button>
+        </Space>
       </div>
 
-      <AntCard title="系统资产统计" size="small">
+      {widgets.length === 0 ? (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未配置卡片，点击「配置布局」添加" />
+      ) : (
         <Row gutter={[16, 16]}>
-          {assets.map((item) => {
-            const card = (
-              <Statistic
-                title={item.label}
-                value={item.count}
-                valueStyle={{ fontSize: 22 }}
-              />
-            );
-            return (
-              <Col key={item.key} xs={12} sm={8} md={6} lg={4}>
-                {item.route ? (
-                  <Link
-                    href={item.route}
-                    className="block !text-inherit no-underline"
-                    prefetch={false}
-                  >
-                    <div className="rounded-lg border border-solid border-[var(--ant-color-border-secondary)] p-3 transition-colors hover:bg-[var(--ant-color-fill-tertiary)]">
-                      {card}
-                    </div>
-                  </Link>
-                ) : (
-                  <div className="rounded-lg border border-solid border-[var(--ant-color-border-secondary)] p-3">
-                    {card}
-                  </div>
-                )}
-              </Col>
-            );
-          })}
+          {widgets.map((widget, index) => (
+            <Col key={`${widget.type}-${index}`} xs={24} sm={widget.span >= 12 ? 24 : widget.span} md={widget.span}>
+              <OverviewWidgetCard widget={widget} data={overview} />
+            </Col>
+          ))}
         </Row>
-      </AntCard>
+      )}
 
-      <AntCard
-        title="任务总览"
-        size="small"
-        extra={
-          <Link href="/admin/task-monitor" prefetch={false}>
-            前往任务监控
-          </Link>
-        }
-      >
-        <Row gutter={[16, 16]}>
-          <Col xs={12} sm={8} md={4}>
-            <Statistic title="历史任务总数" value={tasks.total} />
-          </Col>
-          <Col xs={12} sm={8} md={4}>
-            <Statistic title="队列积压任务数" value={tasks.queue_pending_total} />
-          </Col>
-          <Col xs={12} sm={8} md={4}>
-            <Statistic title="定时任务数" value={tasks.scheduled_tasks} />
-          </Col>
-        </Row>
-
-        <div className="mt-4">
-          <Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
-            任务状态分布
-          </Text>
-          {tasks.state_buckets.length === 0 ? (
-            <Text type="secondary">暂无任务历史记录</Text>
-          ) : (
-            <Space wrap size={[8, 8]}>
-              {tasks.state_buckets.map((bucket) => (
-                <Tag key={bucket.key} color={STATE_COLORS[bucket.key] ?? "default"}>
-                  {bucket.label} · {bucket.count}
-                </Tag>
-              ))}
-            </Space>
-          )}
-        </div>
-      </AntCard>
+      <OverviewConfigModal
+        key={configOpen ? "config-open" : "config-closed"}
+        open={configOpen}
+        widgets={widgets}
+        assets={overview.assets}
+        saving={saveMutation.isPending}
+        onCancel={() => setConfigOpen(false)}
+        onSave={(nextWidgets) => saveMutation.mutate(nextWidgets)}
+        onReset={() => saveMutation.mutate(DEFAULT_WIDGETS)}
+      />
     </div>
   );
 }
