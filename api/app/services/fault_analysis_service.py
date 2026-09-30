@@ -115,11 +115,18 @@ def list_analyses(
     *,
     keyword: str | None = None,
     status_filter: str | None = None,
+    owner_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> FaultAnalysisListResponse:
     stmt = select(FaultAnalysis)
     total_stmt = select(func.count()).select_from(FaultAnalysis)
+
+    # 2026-09-30：用户级数据隔离——owner_id 非空时只列该用户提交的记录
+    # （admin 在 API 层传 None=全量；普通用户传自己 → 只看自己提交的）
+    if owner_id:
+        stmt = stmt.where(FaultAnalysis.create_user == owner_id)
+        total_stmt = total_stmt.where(FaultAnalysis.create_user == owner_id)
 
     if keyword:
         pattern = f"%{keyword}%"

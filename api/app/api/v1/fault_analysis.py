@@ -58,6 +58,22 @@ router = APIRouter(
     dependencies=[Depends(require_enabled_menu_route)],
 )
 
+
+def _fault_visible_owner(current_user: CurrentUser) -> str | None:
+    """用户级数据隔离：admin 返回 None(全量可见)；普通用户返回自己 user.id(只可见自己提交的记录)。"""
+    if "admin" in current_user.role_codes:
+        return None
+    return current_user.user.id
+
+
+def _assert_fault_visible(item: FaultAnalysis, current_user: CurrentUser) -> None:
+    """记录归属校验：admin 或创建人可看；其余 404(不泄露存在性)。"""
+    if "admin" in current_user.role_codes:
+        return
+    if item.create_user and item.create_user == current_user.user.id:
+        return
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="故障分析记录不存在")
+
 # 各类判别输入文件允许的扩展名（LP-378：移除自动归类后，按独立上传组件逐一校验）。
 # 与前端各上传卡片的 accept 保持一致，后端 validate_upload 为最终底线。
 UPLOAD_ALLOWED_EXTS: dict[str, set[str]] = {
@@ -78,21 +94,24 @@ def get_fault_analyses(
     status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
     db: Session = Depends(get_db),
 ) -> FaultAnalysisListResponse:
-    return list_analyses(db, keyword=keyword, status_filter=status, limit=limit, offset=offset)
+    # 2026-09-30：用户级隔离——admin 全量，普通用户只看自己提交的记录
+    owner_id = _fault_visible_owner(current_user)
+    return list_analyses(db, keyword=keyword, status_filter=status, owner_id=owner_id, limit=limit, offset=offset)
 
 
 @router.get("/{analysis_id}", response_model=FaultAnalysisDetail)
 def get_fault_analysis_detail(
     analysis_id: str,
-    _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
     db: Session = Depends(get_db),
 ) -> FaultAnalysisDetail:
     item = get_analysis_by_id(db, analysis_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="故障分析记录不存在")
+    _assert_fault_visible(item, current_user)
     return serialize_detail(item)
 
 
@@ -312,6 +331,10 @@ def update_fault_analysis(
     current_user: CurrentUser = Depends(require_any_permission("fault.create", "line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> FaultAnalysisDetail:
+    item = get_analysis_by_id(db, analysis_id)
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="故障分析记录不存在")
+    _assert_fault_visible(item, current_user)
     result = update_analysis(db, analysis_id, payload, actor=current_user.user)
     return result.analysis
 
@@ -319,9 +342,13 @@ def update_fault_analysis(
 @router.delete("/{analysis_id}")
 def delete_fault_analysis(
     analysis_id: str,
-    _: CurrentUser = Depends(require_any_permission("fault.delete", "line.manage", "tower.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("fault.delete", "line.manage", "tower.manage")),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
+    item = get_analysis_by_id(db, analysis_id)
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="故障分析记录不存在")
+    _assert_fault_visible(item, current_user)
     delete_analysis(db, analysis_id)
     return {"message": "故障分析记录已删除"}
 
@@ -329,13 +356,14 @@ def delete_fault_analysis(
 @router.get("/{analysis_id}/report", response_model=None)
 def download_fault_analysis_report(
     analysis_id: str,
-    _: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
+    current_user: CurrentUser = Depends(require_any_permission("line.read", "line.manage")),
     db: Session = Depends(get_db),
 ) -> object:
     """下载判别成功后生成的 Word 正式报告（LP-343）。"""
     item = get_analysis_by_id(db, analysis_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="故障分析记录不存在")
+    _assert_fault_visible(item, current_user)
     if not item.result_json or not item.result_json.get("diagnosis"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该记录尚未完成判别，无法生成报告")
     artifact_key = ((item.result_json or {}).get("artifacts") or {}).get("report_docx")

@@ -308,6 +308,7 @@ def list_jobs(
     line_id: str | None,
     status_filter: str | None,
     job_types: list[str] | None = None,
+    owner_id: str | None = None,
     keyword: str | None = None,
     limit: int = 50,
     offset: int = 0,
@@ -321,6 +322,11 @@ def list_jobs(
     if status_filter:
         stmt = stmt.where(FlAnalysisJob.status == status_filter)
         total_stmt = total_stmt.where(FlAnalysisJob.status == status_filter)
+    # 2026-09-30：用户级数据隔离——owner_id 非空时只列该用户提交的任务
+    # （admin 在 API 层传 None=全量；普通用户传自己 → 只看自己提交的）
+    if owner_id:
+        stmt = stmt.where(FlAnalysisJob.create_user == owner_id)
+        total_stmt = total_stmt.where(FlAnalysisJob.create_user == owner_id)
     # 2026-09-30：防雷改造页只列改造类任务（mitigation/scenario/report），
     # 防雷计算任务（normal/tongtiao）只在改造弹窗里作为前置任务下拉出现。
     normalized_types = [item for item in (job_types or []) if item]
