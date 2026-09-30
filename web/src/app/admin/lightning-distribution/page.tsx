@@ -211,7 +211,7 @@ function DistributionImagePane({
   if (query.isError) {
     return (
       <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="密度图加载失败">
-        <Button size="small" onClick={() => query.refetch()}>
+        <Button size="small" onClick={() => query.refetch()} loading={query.isFetching}>
           重新加载
         </Button>
       </Empty>

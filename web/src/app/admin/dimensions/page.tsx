@@ -99,6 +99,7 @@ export default function AdminDimensionsPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [tableScrollY, setTableScrollY] = useState(DIMENSIONS_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const viewMode: "table" | "card" = isMobile ? "card" : "table";
@@ -502,6 +503,10 @@ export default function AdminDimensionsPage() {
       if (!response.ok) throw new Error(await readApiError(response));
       return is_enabled;
     },
+    onMutate: ({ item }) => {
+      setUpdatingId(item.id);
+      setSuccess("");
+    },
     onSuccess: async (enabled) => {
       setSuccess(enabled ? "维度项已启用" : "维度项已禁用");
       await refreshList();
@@ -510,6 +515,7 @@ export default function AdminDimensionsPage() {
       setSuccess("");
       setError(candidate instanceof Error ? candidate.message : "更新维度项状态失败");
     },
+    onSettled: () => setUpdatingId(null),
   });
 
   const toggleDimensionStatus = useCallback((item: DimensionItem) => {
@@ -724,7 +730,8 @@ export default function AdminDimensionsPage() {
         fixed: "right",
       render: (_, record) => {
           const deleteLoading = deletingId === record.id;
-          const rowBusy = deleteLoading;
+          const statusLoading = updatingId === record.id;
+          const rowBusy = deleteLoading || statusLoading;
           const moreMenuItems: MenuProps["items"] = [
             {
               key: "toggle-status",
