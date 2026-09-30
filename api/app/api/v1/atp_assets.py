@@ -30,6 +30,7 @@ from ...services.atp_asset_service import (
     create_asset,
     delete_asset,
     get_asset_by_id,
+    get_asset_scene,
     get_engine_status,
     get_run_detail,
     list_asset_files,
@@ -136,6 +137,20 @@ def upload_atp_asset_files_endpoint(
         actor_user_id=current_user.user.id,
     )
     return AtpAssetDetail(**updated.model_dump())
+
+
+@router.get("/assets/{asset_id}/scene")
+def get_atp_asset_scene_endpoint(
+    asset_id: str,
+    entry_file: str = Query(default="work.atp", description="入口 .atp 相对路径，默认 work.atp"),
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """解析资产入口 .atp 为 3D 场景 JSON（schema ``lp.atp.scene/1``）。
+
+    前端 Three.js 拓扑图数据源：节点/支路/开关/电源/参数/INCLUDE 块。
+    """
+    return get_asset_scene(db, asset_id=asset_id, entry_file=entry_file)
 
 
 @router.get("/assets/{asset_id}/files", response_model=AtpAssetFileListResponse)

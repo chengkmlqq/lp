@@ -1741,3 +1741,54 @@ def _publish_change(event_name: str, payload: dict[str, Any]) -> None:
             dedupe_key=f"atp-asset:{event_name}:{payload.get('asset_id', '-')}",
         )
     )
+
+
+# ─────────────────────── ATP 场景解析（3D 可视化数据源） ───────────────────────
+# 2026-09-30 新增：把 .atp 入口文件解析成「节点-支路」场景 JSON，
+# 供前端 Three.js 绘制电路拓扑（见 services/atp_scene_service.py 与
+# web 端 atp-scene-viewer.tsx）。纯离线解析，不依赖引擎。
+
+from .atp_scene_service import parse_atp_scene  # noqa: E402
+
+
+def get_asset_scene(db: Session, *, asset_id: str, entry_file: str = _ENTRY_ATP_FILE) -> dict[str, Any]:
+    """读取资产目录下的 .atp 入口文件并解析为场景 JSON。
+
+    - entry_file 默认 work.atp（上传校验已保证资产必有入口 .atp）；
+      也可传其他 .atp 相对路径（如 .runs/<id>/work.atp 产物）。
+    - 防越权：与 read_asset_file_content 同款路径白名单校验。
+    - 解析不抛异常：任何段解析失败只会出现在 warnings 里（尽力而为策略）。
+    - .atp 文件缺失或不可解码时返回 404（与文件读取语义一致）。
+    """
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    storage_mount_code, storage_root_path = _resolve_asset_file_location(db, asset)
+    mount = _resolve_mount(db, storage_mount_code)
+    driver = _build_driver_or_400(mount)
+
+    normalized_relative = _normalize_relative_path(entry_file)
+    if normalized_relative is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file path")
+    normalized_root = normalize_virtual_path(storage_root_path).rstrip("/")
+    target = join_virtual_path(normalized_root, normalized_relative)
+    if not target.startswith(f"{normalized_root}/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
+
+    try:
+        result = driver.read_file(target)
+    except StoragePathNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"ATP entry file not found: {entry_file}",
+        ) from None
+    except StorageDriverError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    text = _decode_text_file(result.content if hasattr(result, "content") else b"")
+    if text is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"ATP entry file is not text: {entry_file}",
+        )
+    return parse_atp_scene(text, source_file=normalized_relative)

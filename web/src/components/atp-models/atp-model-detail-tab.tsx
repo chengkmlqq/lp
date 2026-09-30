@@ -9,6 +9,7 @@ import { readApiError } from "@/lib/api";
 import type { AtpAssetSummary, AtpAssetFileListResponse } from "@/types/auth";
 import { AtpDatDetailView } from "./atp-dat-detail-view";
 import { AtpFileContentViewer } from "./atp-file-content-viewer";
+import { AtpSceneViewer } from "./atp-scene-viewer";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -127,6 +128,10 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
           />
         </div>
       ) : null}
+
+      <div style={{ marginTop: 16 }}>
+        <AtpSceneViewer assetId={assetId} />
+      </div>
 
       <div>
         <Typography.Title level={5}>文件列表 ({files.length})</Typography.Title>
