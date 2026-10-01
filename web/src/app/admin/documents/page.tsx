@@ -13,6 +13,7 @@ import {
   InputNumber,
   Modal,
   Row,
+  Segmented,
   Select,
   Skeleton,
   Space,
@@ -98,7 +99,8 @@ export default function AdminDocumentsPage() {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<"draft" | "published" | undefined>(undefined);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
-  const viewMode: "table" | "card" = isMobile ? "card" : "table";
+  const [viewModeOverride, setViewModeOverride] = useState<"card" | "table" | null>(null);
+  const viewMode: "table" | "card" = viewModeOverride ?? (isMobile ? "card" : "table");
   const [cardViewPage, setCardViewPage] = useState(1);
   const [allLoadedDocuments, setAllLoadedDocuments] = useState<Document[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -928,6 +930,21 @@ export default function AdminDocumentsPage() {
                     </Button>
                   </Form.Item>
                 </Form>
+                <div className="flex items-center">
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => {
+                      setViewModeOverride(value as "card" | "table");
+                      setPagination((prev) => ({ ...prev, current: 1 }));
+                      setCardViewPage(1);
+                      setAllLoadedDocuments([]);
+                    }}
+                    options={[
+                      { label: "卡片视图", value: "card" },
+                      { label: "列表视图", value: "table" },
+                    ]}
+                  />
+                </div>
               </div>
             ) : (
               <div className="admin-filter-bar">
@@ -982,6 +999,21 @@ export default function AdminDocumentsPage() {
                     </Button>
                   </Form.Item>
                 </Form>
+                <div className="flex items-center">
+                  <Segmented
+                    value={viewMode}
+                    onChange={(value) => {
+                      setViewModeOverride(value as "card" | "table");
+                      setPagination((prev) => ({ ...prev, current: 1 }));
+                      setCardViewPage(1);
+                      setAllLoadedDocuments([]);
+                    }}
+                    options={[
+                      { label: "卡片视图", value: "card" },
+                      { label: "列表视图", value: "table" },
+                    ]}
+                  />
+                </div>
               </div>
             )}
 

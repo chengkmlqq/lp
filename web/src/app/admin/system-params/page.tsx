@@ -14,6 +14,7 @@ import {
   Input,
   Modal,
   Row,
+  Segmented,
   Select,
   Skeleton,
   Spin,
@@ -131,7 +132,8 @@ export default function AdminSystemParamsPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [tableScrollY, setTableScrollY] = useState(PARAM_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
-  const viewMode: "table" | "card" = isMobile ? "card" : "table";
+  const [viewModeOverride, setViewModeOverride] = useState<"card" | "table" | null>(null);
+  const viewMode: "table" | "card" = viewModeOverride ?? (isMobile ? "card" : "table");
   const [cardViewPage, setCardViewPage] = useState(1);
   const [allLoadedParams, setAllLoadedParams] = useState<SystemParamSummary[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -1245,6 +1247,21 @@ export default function AdminSystemParamsPage() {
                 </Button>
               </Form.Item>
             </Form>
+            <div className="flex items-center">
+              <Segmented
+                value={viewMode}
+                onChange={(value) => {
+                  setViewModeOverride(value as "card" | "table");
+                  setPagination((prev) => ({ ...prev, current: 1 }));
+                  setCardViewPage(1);
+                  setAllLoadedParams([]);
+                }}
+                options={[
+                  { label: "卡片视图", value: "card" },
+                  { label: "列表视图", value: "table" },
+                ]}
+              />
+            </div>
           </div>
 
           {viewMode === "table" ? (
