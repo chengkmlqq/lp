@@ -29,6 +29,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+# 2026-10-01：PIP_INDEX_URL 可传参（本机/CI 离线构建用国内源，防 pip 下载超时整轮构建失败）
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
 
