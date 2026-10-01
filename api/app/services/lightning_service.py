@@ -81,12 +81,12 @@ def recommend_radius_km(voltage_kv: int | None) -> float:
     """
     根据线路电压等级推荐地闪密度计算的缓冲区半径。
 
-    参考规则（来自参考工程FormDiShanMiDu.cs）：
-    - 35/66/110kV → 2.0 km
-    - 220/330kV → 3.0 km
-    - 500/750/800/1000kV → 5.0 km
-    - ±500/±800直流 → 5.0 km
-    - 默认（未知或无电压等级） → 2.0 km
+    参考规则（来自参考工程FormDiShanMiDu.cs / banjin1/2/3.exe）：
+    - 35/66/110kV → 1.0 km（banjin1: group_size=2, radius=1）
+    - 220/330kV → 2.0 km（banjin2: group_size=3, radius=2）
+    - 500/750/800/1000kV → 3.0 km（banjin3: group_size=5, radius=3）
+    - ±500/±800直流 → 3.0 km
+    - 默认（未知或无电压等级） → 1.0 km
 
     Args:
         voltage_kv: 线路电压等级（kV）
@@ -95,16 +95,16 @@ def recommend_radius_km(voltage_kv: int | None) -> float:
         推荐的缓冲区半径（km）
     """
     if voltage_kv is None:
-        return 2.0
+        return 1.0
 
     if voltage_kv in (35, 66, 110):
-        return 2.0
+        return 1.0
     elif voltage_kv in (220, 330):
-        return 3.0
-    elif voltage_kv in (500, 750, 800, 1000):
-        return 5.0
-    else:
         return 2.0
+    elif voltage_kv in (500, 750, 800, 1000):
+        return 3.0
+    else:
+        return 1.0
 
 @dataclass
 class ParsedSeries:
@@ -2474,51 +2474,84 @@ def _execute_line_lightning_density_backfill(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未找到可用于地闪密度计算的雷击分布数据")
 
     now = utcnow()
-    area_km2 = math.pi * (actual_radius_km ** 2)
     updated_tower_count = 0
-    missing_geo_count = 0
+    missing_geo_count = len(towers) - len(geo_towers)
     density_values: list[float] = []
     source_years = payload.years if payload.years is not None else float(dist.data_years or 1.0)
     warnings: list[str] = []
 
-    for tower in towers:
-        if tower.longitude is None or tower.latitude is None:
-            missing_geo_count += 1
+    # ── C# 口径（2026-10-01 对齐 banjin1/2/3.exe）─────────────
+    # 每 N 座相邻塔一组（N=2/3/5）取组中心 → 组中心画 radius 圆并集 →
+    # 相邻组中心中垂线切分 → 组内所有塔共享该组 Ng（不再逐塔画圆）。
+    v = int(line.voltage_kv) if line.voltage_kv else 0
+    if v <= 110:
+        group_size = 2
+    elif v <= 330:
+        group_size = 3
+    else:
+        group_size = 5
+
+    groups = []
+    group_tower_lists: list[list[LineTower]] = []
+    for gi in range(0, len(geo_towers), group_size):
+        chunk = geo_towers[gi:gi + group_size]
+        groups.append({
+            "group_id": gi // group_size,
+            "center_lat": sum(float(t.latitude) for t in chunk) / len(chunk),
+            "center_lon": sum(float(t.longitude) for t in chunk) / len(chunk),
+        })
+        group_tower_lists.append(chunk)
+
+    from ..services import lightning_statistics as _ls
+
+    cells = _ls.compute_csharp_group_cells(groups, actual_radius_km)
+    cell_by_id = {int(c["group_id"]): c for c in cells}
+
+    # 落雷 point-in-polygon 计数（分区互斥：一条落雷只属一个组，同 C#）
+    strike_counts: dict[int, int] = {int(c["group_id"]): 0 for c in cells}
+    from shapely.geometry import Point as _SPoint
+
+    for row in candidate_rows:
+        if row["latitude"] is None or row["longitude"] is None:
             continue
-
-        strike_count = 0
-        for row in candidate_rows:
-            if row["longitude"] is None or row["latitude"] is None:
+        pt = _SPoint(float(row["longitude"]), float(row["latitude"]))
+        for c in cells:
+            poly = c.get("_poly")
+            if poly is None or poly.is_empty:
                 continue
-            distance_km = _haversine_km(
-                float(tower.latitude),
-                float(tower.longitude),
-                float(row["latitude"]),
-                float(row["longitude"]),
-            )
-            if distance_km > actual_radius_km:
-                continue
-            strike_count += 1
+            if poly.contains(pt):
+                strike_counts[int(c["group_id"])] += 1
+                break
 
+    for gi, g in enumerate(groups):
+        gid = int(g["group_id"])
+        cell = cell_by_id.get(gid)
+        area_km2 = float(cell["area_km2"]) if cell else 0.0
+        strike_count = strike_counts.get(gid, 0)
         tower_years = max(source_years, 1e-6)
-        density = strike_count / (area_km2 * tower_years) if strike_count > 0 else 0.0
-        tower.lightning_density = round(density, 6)
-        tower.update_date = now
-        tower.update_user = actor_user_id
-        raw_extra = dict(tower.raw_extra_json or {})
-        raw_extra["lightning_density"] = {
-            "line_id": line.id,
-            "line_code": line.code,
-            "radius_km": actual_radius_km,
-            "data_years": round(tower_years, 6),
-            "strike_count": strike_count,
-            "region_id": _normalize_str(payload.region_id),
-            "prepared_at": now.isoformat(),
-            "source_distribution_id": dist.id,
-        }
-        tower.raw_extra_json = raw_extra
-        density_values.append(float(tower.lightning_density))
-        updated_tower_count += 1
+        density = strike_count / (max(area_km2, 1e-9) * tower_years) if strike_count > 0 else 0.0
+        density_rounded = round(density, 6)
+        for tower in group_tower_lists[gi]:
+            tower.lightning_density = density_rounded
+            tower.update_date = now
+            tower.update_user = actor_user_id
+            raw_extra = dict(tower.raw_extra_json or {})
+            raw_extra["lightning_density"] = {
+                "line_id": line.id,
+                "line_code": line.code,
+                "radius_km": actual_radius_km,
+                "group_size": group_size,
+                "group_id": gid,
+                "area_km2": round(area_km2, 6),
+                "data_years": round(tower_years, 6),
+                "strike_count": strike_count,
+                "region_id": _normalize_str(payload.region_id),
+                "prepared_at": now.isoformat(),
+                "source_distribution_id": dist.id,
+            }
+            tower.raw_extra_json = raw_extra
+            density_values.append(density_rounded)
+            updated_tower_count += 1
 
     if missing_geo_count > 0:
         warnings.append(f"{missing_geo_count} 座杆塔缺少经纬度，未能回填地闪密度")
@@ -2548,24 +2581,7 @@ def _execute_line_lightning_density_backfill(
     try:
         from ..services import lightning_statistics as _ls
 
-        # 按电压等级分组（与桌面版 banjin group_size 一致）
-        v = int(line.voltage_kv) if line.voltage_kv else 0
-        if v <= 110:
-            group_size = 2
-        elif v <= 330:
-            group_size = 3
-        else:
-            group_size = 5
-
-        groups = []
-        for gi in range(0, len(geo_towers), group_size):
-            chunk = geo_towers[gi:gi + group_size]
-            groups.append({
-                "group_id": gi // group_size,
-                "center_lat": sum(float(t.latitude) for t in chunk) / len(chunk),
-                "center_lon": sum(float(t.longitude) for t in chunk) / len(chunk),
-            })
-
+        # 分组已在回填段构造（C# 口径 group_size 2/3/5），直接复用
         strikes_for_render = [
             {"lat": float(row["latitude"]), "lon": float(row["longitude"])}
             for row in candidate_rows

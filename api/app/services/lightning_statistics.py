@@ -691,6 +691,149 @@ def _lp_haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
     return 2 * 6371.0 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+def _make_perp_bisector_lonlat(
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+    ext_len_deg: float,
+):
+    """过 p1p2 中点、垂直于 p1p2 的直线段（两端各延伸 ext_len_deg）。
+
+    对齐 C# banjin 的 make_perp_bisector_deg（中垂线）；原实现按
+    `length * bisector_factor / 2` 延伸并设长度上限（factor=30），
+    此处直接延伸到分组中心包围盒之外——保证切分线必然穿透所有分组圆，
+    切分结果与「足够长的中垂线」数学等价。
+    """
+    from shapely.geometry import LineString
+
+    (x1, y1), (x2, y2) = p1, p2
+    mx = (x1 + x2) / 2.0
+    my = (y1 + y2) / 2.0
+    dx = x2 - x1
+    dy = y2 - y1
+    length = math.hypot(dx, dy)
+    if length < 1e-12:
+        return None
+    ux = -dy / length
+    uy = dx / length
+    return LineString([
+        (mx - ux * ext_len_deg, my - uy * ext_len_deg),
+        (mx + ux * ext_len_deg, my + uy * ext_len_deg),
+    ])
+
+
+def compute_csharp_group_cells(
+    groups: list[dict[str, Any]],
+    radius_km: float,
+) -> list[dict[str, Any]]:
+    """C# 桌面端口径的分组地闪密度分区（严格对齐 banjin1/2/3.exe）。
+
+    流程（与反编译源码 gen_groups_and_polygons 一致）：
+      1. 每个分组以其中心为圆心、半径 radius_km 画圆（buffer resolution=128）
+      2. unary_union 合并所有圆
+      3. 依次用「相邻分组中心的中垂线」split 合并面
+      4. 每个切片按 centroid 归属最近的分组中心
+      5. 同组切片 unary_union 合并 → 面积 area_km2 = abs(area_deg2) * 12321
+
+    返回 [{"group_id", "center_lat", "center_lon", "area_km2",
+           "polygon": [(lon, lat), ...], "_poly": shapely 几何}, ...]
+    （`_poly` 仅供内存内落雷 point-in-polygon 计数，不参与序列化）
+    """
+    from shapely.geometry import Point
+    from shapely.ops import unary_union
+
+    if not groups:
+        return []
+
+    radius_deg = radius_km / 111.0  # C# km_to_deg：1 度 ≈ 111 km
+    centers = [(float(g["center_lon"]), float(g["center_lat"])) for g in groups]
+    buffers = [
+        Point(lon, lat).buffer(radius_deg, resolution=128)
+        for lon, lat in centers
+    ]
+    union_poly = unary_union(buffers)
+    if union_poly.is_empty:
+        return [
+            {
+                "group_id": g["group_id"],
+                "center_lat": float(g["center_lat"]),
+                "center_lon": float(g["center_lon"]),
+                "area_km2": 0.0,
+                "polygon": [],
+                "_poly": None,
+            }
+            for g in groups
+        ]
+
+    # 中垂线延伸长度：分组中心包围盒对角线 + 2 倍半径，再乘 2 保证切穿
+    xs = [c[0] for c in centers]
+    ys = [c[1] for c in centers]
+    span = math.hypot(max(xs) - min(xs), max(ys) - min(ys)) + 2 * radius_deg
+    ext_len = span * 2.0
+
+    pieces: list[Any] = [union_poly]
+    for i in range(len(centers) - 1):
+        bl = _make_perp_bisector_lonlat(centers[i], centers[i + 1], ext_len)
+        if bl is None:
+            continue
+        new_pieces: list[Any] = []
+        for poly in pieces:
+            if poly.is_empty:
+                continue
+            if poly.intersects(bl):
+                try:
+                    from shapely.ops import split
+
+                    new_pieces.extend(list(split(poly, bl).geoms))
+                    continue
+                except Exception:
+                    pass  # 退化情形（切分失败）→ 保留原片
+            new_pieces.append(poly)
+        pieces = new_pieces
+
+    assigned: dict[int, list[Any]] = {int(g["group_id"]): [] for g in groups}
+    for piece in pieces:
+        if piece.is_empty or piece.area < 1e-15:
+            continue
+        cent = piece.centroid
+        nearest = min(
+            range(len(groups)),
+            key=lambda gi: math.hypot(cent.x - centers[gi][0], cent.y - centers[gi][1]),
+        )
+        assigned[int(groups[nearest]["group_id"])].append(piece)
+
+    cells: list[dict[str, Any]] = []
+    for gi, g in enumerate(groups):
+        gid = int(g["group_id"])
+        parts = assigned[gid]
+        if not parts:
+            cells.append({
+                "group_id": gid,
+                "center_lat": float(g["center_lat"]),
+                "center_lon": float(g["center_lon"]),
+                "area_km2": 0.0,
+                "polygon": [],
+                "_poly": None,
+            })
+            continue
+        merged = unary_union(parts)
+        area_km2 = abs(float(merged.area)) * 12321.0
+        coords: list[list[list[float]]] = []
+        if merged.geom_type == "Polygon":
+            coords.append([[float(x), float(y)] for x, y in merged.exterior.coords])
+        elif merged.geom_type == "MultiPolygon":
+            for part in merged.geoms:
+                coords.append([[float(x), float(y)] for x, y in part.exterior.coords])
+        cells.append({
+            "group_id": gid,
+            "center_lat": float(g["center_lat"]),
+            "center_lon": float(g["center_lon"]),
+            "area_km2": area_km2,
+            "polygon": coords,
+            "_poly": merged,
+        })
+    return cells
+
+
 def compute_lp_voronoi_cells(
     groups: list[dict[str, Any]],
     radius_km: float,
