@@ -57,6 +57,7 @@ const MESSAGE_TYPE_LABELS: Record<SystemMessageType, string> = {
   success: "成功",
   warning: "警告",
   error: "错误",
+  task_done: "任务完成",
 };
 
 const MESSAGE_TYPE_COLORS: Record<SystemMessageType, string> = {
@@ -64,6 +65,7 @@ const MESSAGE_TYPE_COLORS: Record<SystemMessageType, string> = {
   success: "green",
   warning: "orange",
   error: "red",
+  task_done: "purple",
 };
 
 const SAFE_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);

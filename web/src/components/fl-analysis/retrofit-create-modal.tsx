@@ -1,16 +1,23 @@
 "use client";
 
 /**
- * 防雷改造 - 新建措施推荐任务弹窗（2026-09-30 页面重构）。
+ * 防雷改造 - 新建措施推荐任务弹窗（2026-09-30 页面重构；2026-10-01 表单收窄 + 前置任务下拉全量展示）。
  *
  * 参照 fl-analysis 的「新建任务/MitigationModal」形态：
  * 选择前置防雷计算任务(normal/tongtiao) → 自动加载其中高风险杆塔 →
  * 勾选杆塔 + 填任务名 + 非建线选项 → 创建并启动措施推荐(mitigation)任务。
  * 任务列表进度通过 WebSocket 主题回调由页面刷新。
+ *
+ * 2026-10-01 调整：
+ * - Modal 宽度 1080 → 880（表单收窄）
+ * - 任务名称移到表单第一项
+ * - 前置任务下拉：展示全部已完成(normal/tongtiao)任务，无中高风险杆塔的
+ *   置灰 + 标注「无中高风险杆塔」（参照 lightning-distribution 线路选择模式），
+ *   有中高风险的显示计数；判断依据 result_summary_json.risk_counts{high,medium}（后端结果汇总已有）
+ * - 「非建线模式」Checkbox → Select（否/是）
  */
 
-import { Alert, Checkbox, Empty, Form, Input, Modal, Select, Space, Table, Tag, Typography, message } from "antd";
-import type { FormInstance } from "antd";
+import { Alert, Empty, Form, Input, Modal, Select, Space, Table, Tag, Typography, message } from "antd";
 import { useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
@@ -45,6 +52,16 @@ function isHighRisk(riskLevel: string | null | undefined): boolean {
   return Number.isFinite(numeric) && numeric > 2;
 }
 
+/** 从任务结果汇总读中高风险杆塔数（risk_counts.high + medium）。 */
+function readRiskCounts(job: FlAnalysisJobSummary): { high: number; medium: number } {
+  const summary = readObject(job.result_summary_json);
+  const counts = readObject(summary.risk_counts);
+  return {
+    high: Number(counts.high ?? 0),
+    medium: Number(counts.medium ?? 0),
+  };
+}
+
 type RetrofitFormValues = {
   job_name: string;
   non_construction: boolean;
@@ -62,23 +79,31 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // 前置任务：分页拉全已完成的普通计算 / 同跳计算（有结果可作为风险来源）
   const loadBaseJobs = useCallback(async () => {
     if (!user) {
       return;
     }
     setLoadingJobs(true);
     try {
-      const response = await fetchWithAuth("/api/v1/fl-analysis/jobs?limit=200");
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
+      const jobs: FlAnalysisJobSummary[] = [];
+      let offset = 0;
+      for (;;) {
+        const response = await fetchWithAuth(
+          `/api/v1/fl-analysis/jobs?limit=200&offset=${offset}&job_types=normal,tongtiao&status=success`,
+        );
+        if (!response.ok) {
+          throw new Error(await readApiError(response));
+        }
+        const data = (await response.json()) as { items: FlAnalysisJobSummary[] };
+        const pageItems = data.items ?? [];
+        jobs.push(...pageItems);
+        if (pageItems.length < 200) {
+          break;
+        }
+        offset += 200;
       }
-      const data = (await response.json()) as { items: FlAnalysisJobSummary[] };
-      // 前置任务：普通计算 / 同跳计算（有结果可作为风险来源）
-      setBaseJobs(
-        (data.items ?? []).filter(
-          (job) => job.job_type === "normal" || job.job_type === "tongtiao",
-        ),
-      );
+      setBaseJobs(jobs);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "前置任务加载失败");
     } finally {
@@ -183,11 +208,36 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
 
   const selectedBaseJob = baseJobs.find((job) => job.id === selectedBaseJobId) ?? null;
 
+  // 下拉选项：全部前置任务都在，无中高风险杆塔的置灰 + 标注提示
+  const baseJobOptions = baseJobs.map((job) => {
+    const { high, medium } = readRiskCounts(job);
+    const hasRisk = high + medium > 0;
+    const name = `${job.job_name || job.line_name || job.line_code || "-"}（${formatJobType(job.job_type)}）`;
+    return {
+      value: job.id,
+      label: (
+        <Space size={6} style={{ width: "100%", justifyContent: "space-between" }}>
+          <span>{name}</span>
+          {hasRisk ? (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {high + medium} 座中高风险塔
+            </Typography.Text>
+          ) : (
+            <Tag color="warning" style={{ marginInlineEnd: 0 }}>
+              无中高风险杆塔
+            </Tag>
+          )}
+        </Space>
+      ),
+      disabled: !hasRisk,
+    };
+  });
+
   return (
     <Modal
       title="新建改造（措施推荐）任务"
       open={open}
-      width={1080}
+      width={880}
       confirmLoading={submitting}
       okText="创建并启动改造任务"
       onCancel={() => {
@@ -210,6 +260,13 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
           <Alert type="error" showIcon message={errorMessage} />
         ) : null}
         <Form<RetrofitFormValues> form={form} layout="vertical" initialValues={{ non_construction: false }}>
+          <Form.Item
+            name="job_name"
+            label="任务名称"
+            rules={[{ required: true, message: "请输入任务名称" }]}
+          >
+            <Input placeholder="措施推荐任务名称" />
+          </Form.Item>
           <Form.Item label="前置防雷计算任务" required>
             <Select
               value={selectedBaseJobId}
@@ -220,21 +277,16 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
               placeholder="选择已完成的风险计算任务"
               showSearch
               optionFilterProp="label"
-              options={baseJobs.map((job) => ({
-                value: job.id,
-                label: `${job.job_name || job.line_name || job.line_code || "-"}（${formatJobType(job.job_type)}）`,
-              }))}
+              options={baseJobOptions}
             />
           </Form.Item>
-          <Form.Item
-            name="job_name"
-            label="任务名称"
-            rules={[{ required: true, message: "请输入任务名称" }]}
-          >
-            <Input placeholder="措施推荐任务名称" />
-          </Form.Item>
-          <Form.Item name="non_construction" valuePropName="checked">
-            <Checkbox>按“非建线”模式生成措施推荐（线路未建成规划阶段，可优化保护角）</Checkbox>
+          <Form.Item name="non_construction" label="非建线模式">
+            <Select
+              options={[
+                { value: false, label: "否（建线）" },
+                { value: true, label: "是（非建线）" },
+              ]}
+            />
           </Form.Item>
         </Form>
 
@@ -268,11 +320,11 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
                 },
               }}
               columns={[
-                { title: "杆塔号", dataIndex: "tower_no", width: 120 },
+                { title: "杆塔号", dataIndex: "tower_no", width: 110 },
                 {
                   title: "风险等级",
                   dataIndex: "risk_level",
-                  width: 120,
+                  width: 110,
                   render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
                 },
                 {
@@ -287,7 +339,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
                 },
               ]}
               dataSource={rows}
-              scroll={{ x: 1000 }}
+              scroll={{ x: 760 }}
             />
           </>
         )}
