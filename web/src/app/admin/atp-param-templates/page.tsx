@@ -1190,7 +1190,7 @@ export default function AtpParamTemplatesPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="priority" label="优先级" initialValue={100} tooltip="数字越小越优先；条件越细的模板优先级更高，此值用于同级兜底排序">
+              <Form.Item name="priority" label="优先级" initialValue={100} tooltip="数字越小越优先；条件越细的模板优先级更高，此值用于同级兜底排序" rules={[{ type: "number", min: 0, max: 10000, message: "优先级须在 0~10000 之间" }]}>
                 <InputNumber style={{ width: "100%" }} min={0} max={9999} />
               </Form.Item>
             </Col>

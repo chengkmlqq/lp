@@ -1349,7 +1349,7 @@ function ImportModal({
     >
       <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={initialValues}>
         <div className="grid gap-3">
-          <Form.Item name="city" label="城市">
+          <Form.Item name="city" label="城市" rules={[{ max: 128, message: "城市最多 128 个字符" }]}>
             <Select
               showSearch
               allowClear
@@ -1371,7 +1371,7 @@ function ImportModal({
               }))}
             />
           </Form.Item>
-          <Form.Item name="region_id" label="地点">
+          <Form.Item name="region_id" label="地点" rules={[{ max: 64, message: "地点最多 64 个字符" }]}>
             <Input placeholder="例如 XX变电站、XX区域（闪电事件发生地点）" />
           </Form.Item>
           <Form.Item name="event_year" label="数据年份">
@@ -1384,7 +1384,7 @@ function ImportModal({
           >
             <InputNumber style={{ width: "100%" }} min={0.1} max={100} step={1} placeholder="留空自动推断" />
           </Form.Item>
-          <Form.Item name="notes" label="数据说明">
+          <Form.Item name="notes" label="数据说明" rules={[{ max: 2000, message: "数据说明最多 2000 个字符" }]}>
             <Input placeholder="可填写数据来源、采集说明等" />
           </Form.Item>
         </div>

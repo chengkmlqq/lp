@@ -1251,10 +1251,10 @@ export default function AdminLightningCurrentsPage() {
                 }))}
               />
             </Form.Item>
-            <Form.Item name="location_tag" label="采样地点">
+            <Form.Item name="location_tag" label="采样地点" rules={[{ max: 255, message: "采样地点最多 255 个字符" }]}>
               <Input placeholder="例如 XX变电站、XX区域" />
             </Form.Item>
-            <Form.Item name="sample_interval_us" label="采样间隔(us)">
+            <Form.Item name="sample_interval_us" label="采样间隔(us)" rules={[{ type: "number", min: 0.000001, message: "采样间隔必须大于 0" }]}>
               <InputNumber style={{ width: "100%" }} min={0.000001} precision={6} />
             </Form.Item>
             <Form.Item name="event_time" label="采样时间">
@@ -1478,10 +1478,10 @@ export default function AdminLightningCurrentsPage() {
                 }))}
               />
             </Form.Item>
-            <Form.Item name="location_tag" label="采样地点">
+            <Form.Item name="location_tag" label="采样地点" rules={[{ max: 255, message: "采样地点最多 255 个字符" }]}>
               <Input placeholder="例如 XX变电站、XX区域" />
             </Form.Item>
-            <Form.Item name="sample_interval_us" label="采样间隔(us)">
+            <Form.Item name="sample_interval_us" label="采样间隔(us)" rules={[{ type: "number", min: 0.000001, message: "采样间隔必须大于 0" }]}>
               <InputNumber style={{ width: "100%" }} min={0.000001} precision={6} />
             </Form.Item>
             <Form.Item name="event_time" label="采样时间">

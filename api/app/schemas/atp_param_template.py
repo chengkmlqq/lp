@@ -31,7 +31,7 @@ class TemplateSummary(BaseModel):
     scene_type: str | None = None
     arrester_config: str | None = None
     structure_kind: str | None = None
-    priority: int = 100
+    priority: int = Field(default=100, ge=0, le=10_000)
     mode: str = "merge"
     enabled: bool = True
     fallback_to: str | None = None
@@ -68,7 +68,7 @@ class TemplateUpsertRequest(BaseModel):
     scene_type: str | None = Field(default=None, max_length=32)
     arrester_config: str | None = Field(default=None, max_length=64)
     structure_kind: str | None = Field(default=None, max_length=32)
-    priority: int = 100
+    priority: int = Field(default=100, ge=0, le=10_000)
     mode: Literal["merge", "replace"] = "merge"
     enabled: bool = True
     fallback_to: str | None = Field(default=None, max_length=64)

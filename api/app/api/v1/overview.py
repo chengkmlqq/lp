@@ -31,7 +31,7 @@ def get_overview_config_endpoint(
     db: Session = Depends(get_db),
 ) -> OverviewConfigResponse:
     """读取当前用户的系统总览卡片配置（无配置时返回默认布局）。"""
-    return get_overview_config(db, user_id=user.user_id)
+    return get_overview_config(db, user_id=user.user.id)
 
 
 @router.put("/config", response_model=OverviewConfigResponse)
@@ -41,4 +41,4 @@ def put_overview_config_endpoint(
     db: Session = Depends(get_db),
 ) -> OverviewConfigResponse:
     """保存当前用户的系统总览卡片配置（全量覆盖，返回清洗后的结果）。"""
-    return save_overview_config(db, user_id=user.user_id, payload=payload)
+    return save_overview_config(db, user_id=user.user.id, payload=payload)
