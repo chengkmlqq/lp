@@ -63,6 +63,8 @@ def create_dimension_item_endpoint(
     current_user: CurrentUser = Depends(require_permission("dimension.manage")),
     db: Session = Depends(get_db),
 ) -> DimensionItemSummary:
+    if not payload.dimension_type and not payload.type_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="维度类型（dimension_type 或 type_id）不能为空")
     created = create_dimension_item(db, payload, actor=current_user.user)
     if not created:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="维度项编码已存在或父节点不存在")

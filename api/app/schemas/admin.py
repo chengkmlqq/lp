@@ -66,7 +66,7 @@ class MenuListResponse(BaseModel):
 class MenuCreateRequest(BaseModel):
     code: str = Field(min_length=2, max_length=128)
     name: str = Field(min_length=2, max_length=128)
-    path: str | None = Field(default=None, max_length=255)
+    path: str | None = Field(default=None, max_length=255, pattern=r"^\/[\w\-\/]*$")
     icon: str | None = Field(default=None, max_length=64)
     parent_id: str | None = None
     type: str = Field(default="menu")
@@ -80,7 +80,7 @@ class MenuCreateRequest(BaseModel):
 
 class MenuUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=128)
-    path: str | None = Field(default=None, max_length=255)
+    path: str | None = Field(default=None, max_length=255, pattern=r"^\/[\w\-\/]*$")
     icon: str | None = Field(default=None, max_length=64)
     parent_id: str | None = None
     type: str | None = Field(default=None)

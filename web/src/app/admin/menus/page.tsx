@@ -1216,7 +1216,7 @@ export default function AdminMenusPage() {
             </Col>
 
             <Col xs={24} md={12}>
-              <Form.Item label="路由路径" name="path">
+              <Form.Item label="路由路径" name="path" rules={[{ pattern: /^\/[\w\-\/]*$/, message: "路径需以 / 开头且仅含字母/数字/中划线/斜杠（不允许空格、分号、..）" }]}>
                 <Input placeholder="/admin/example" />
               </Form.Item>
             </Col>
