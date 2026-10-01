@@ -224,7 +224,7 @@ def create_test_run(
         status="pending",
         engine_mode=str(getattr(settings, "atp_engine_mode", "wine") or "wine"),
         runner_kind="atp",
-        timeout_seconds=int(payload.timeout_seconds or 600),
+        timeout_seconds=int(payload.timeout_seconds or settings.atp_engine_default_timeout_seconds),
         result_summary_json={
             "schema": COMPARE_SCHEMA,
             "kind": "atp_asset_test",
@@ -1172,7 +1172,7 @@ class _TestContext:
                 relative=False,
             ),
             env=env,
-            timeout_seconds=int(self.payload.timeout_seconds or 600),
+            timeout_seconds=int(self.payload.timeout_seconds or getattr(get_settings(), "atp_engine_default_timeout_seconds", 1800)),
         )
         log_lines.append(f"几何重生成处理文件：{processed}")
 
@@ -1267,7 +1267,7 @@ class _TestContext:
                 command,
                 cwd=str(self.run_dir),
                 env=env,
-                timeout=int(self.payload.timeout_seconds or 600),
+                timeout=int(self.payload.timeout_seconds or getattr(get_settings(), "atp_engine_default_timeout_seconds", 1800)),
                 label=f"ATP 模型测试 {self.asset.code} 单次仿真",
             )
             self.last_exit_code = int(result.returncode)
