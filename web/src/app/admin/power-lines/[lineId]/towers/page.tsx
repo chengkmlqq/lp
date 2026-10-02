@@ -21,7 +21,6 @@ import {
   Spin,
   Table,
   Tabs,
-  Tag,
   Typography,
   Upload,
 } from "antd";
@@ -39,6 +38,7 @@ import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { getApiBaseUrl, readApiError } from "@/lib/api";
+import { RiskLevelTag } from "@/lib/risk-level";
 import type {
   LineTowerImportResponse,
   LineTowerListResponse,
@@ -356,20 +356,8 @@ export default function AdminPowerLineTowersPage() {
     {
       title: "风险等级",
       dataIndex: "risk_level",
-      width: 100,
-      render: (value: string | null) => {
-        if (!value) return "-";
-        const riskLevel = value.trim();
-        let color = "default";
-        if (riskLevel === "1") {
-          color = "green";
-        } else if (riskLevel === "2") {
-          color = "orange";
-        } else if (riskLevel === "3") {
-          color = "red";
-        }
-        return <Tag color={color}>{value}</Tag>;
-      },
+      width: 110,
+      render: (value: string | null) => <RiskLevelTag value={value} />,
     },
     {
       title: "操作",
@@ -626,7 +614,7 @@ export default function AdminPowerLineTowersPage() {
                         <Descriptions.Item label="杆塔模型">{tower.tower_model ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label="塔型">{tower.tower_type ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label="线路电压等级">{tower.voltage_kv != null ? `${tower.voltage_kv} kV` : "-"}</Descriptions.Item>
-                        <Descriptions.Item label="风险等级">{tower.risk_level ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="风险等级"><RiskLevelTag value={tower.risk_level} /></Descriptions.Item>
                         <Descriptions.Item label="经度">{tower.longitude != null ? tower.longitude : "-"}</Descriptions.Item>
                         <Descriptions.Item label="纬度">{tower.latitude != null ? tower.latitude : "-"}</Descriptions.Item>
                         <Descriptions.Item label="海拔(m)">{tower.altitude_m ?? "-"}</Descriptions.Item>
@@ -680,7 +668,7 @@ export default function AdminPowerLineTowersPage() {
                         <Descriptions.Item label="绕击耐雷水平(kA)">{detail.lightning_result.shielding_withstand_ka ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label="绕击跳闸率">{detail.lightning_result.shielding_trip_rate ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label="电角度(°)">{detail.lightning_result.angle_deg ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label="风险等级">{detail.lightning_result.risk_level ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="风险等级"><RiskLevelTag value={detail.lightning_result.risk_level} /></Descriptions.Item>
                         <Descriptions.Item label="雷电流幅值 a(kA)">{detail.lightning_result.current_a_ka ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label="雷电流幅值 b(kA)">{detail.lightning_result.current_b_ka ?? "-"}</Descriptions.Item>
                       </Descriptions>
