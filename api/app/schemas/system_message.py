@@ -17,6 +17,7 @@ class SystemMessagePublic(BaseModel):
     is_read: bool
     created_at: datetime
     read_at: datetime | None
+    link_url: str | None = None
 
 
 class SystemMessageListResponse(BaseModel):

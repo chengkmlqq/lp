@@ -958,6 +958,23 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
+def _ensure_system_message_link_url_column_compatibility() -> None:
+    """2026-10-02：system_messages.link_url（消息点击跳转目标）。"""
+    if not database_url.startswith("postgresql"):
+        return
+    schema = settings.resolved_db_schema
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        if not inspector.has_table("system_messages", schema=schema):
+            return
+        columns = {c["name"] for c in inspector.get_columns("system_messages", schema=schema)}
+        if "link_url" not in columns:
+            connection.execute(
+                text("ALTER TABLE system_messages ADD COLUMN IF NOT EXISTS link_url VARCHAR(255)"),
+            )
+            logger.info("system_messages.link_url column added")
+
+
 def init_db() -> None:
     # Import models so metadata includes every table before create_all.
     from ..models import (
@@ -1008,4 +1025,5 @@ def init_db() -> None:
     _ensure_fault_analysis_upload_files_column_compatibility()
     _ensure_fault_analysis_progress_column_compatibility()
     _ensure_fault_analysis_task_id_column_compatibility()
+    _ensure_system_message_link_url_column_compatibility()
     Base.metadata.create_all(bind=engine)

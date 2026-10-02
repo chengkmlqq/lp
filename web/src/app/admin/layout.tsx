@@ -1,6 +1,16 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+// 2026-10-02：消息触发时间格式统一 YYYY-MM-DD HH:mm:ss（横杠分隔，不用斜杠）
+function formatMessageTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
 import { usePathname } from "next/navigation";
@@ -332,7 +342,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         return;
       }
       const data = (await response.json()) as SystemMessageListResponse;
-      setMessages(data.items || []);
+      // 2026-10-02：已读消息从铃铛列表移除（管理页 /admin/system-messages 保留全部历史）
+      setMessages((data.items || []).filter((item) => !item.is_read));
       setUnreadMessageCount(data.unread_count || 0);
     } catch (error) {
       console.error("Failed to load messages:", error);
@@ -517,23 +528,25 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                         <List.Item
                           key={item.id}
                           style={{
-                            opacity: item.is_read ? 0.6 : 1,
-                            backgroundColor: item.is_read ? "transparent" : "var(--ant-color-bg-container-active)",
+                            backgroundColor: "var(--ant-color-bg-container-active)",
+                            cursor: item.link_url ? "pointer" : "default",
                           }}
-                          actions={
-                            !item.is_read
-                              ? [
-                                  <Button
-                                    key="mark-read"
-                                    type="link"
-                                    size="small"
-                                    onClick={() => markAsRead([item.id])}
-                                  >
-                                    标记已读
-                                  </Button>,
-                                ]
-                              : undefined
-                          }
+                          actions={[
+                            <Button
+                              key="mark-read"
+                              type="link"
+                              size="small"
+                              onClick={() => markAsRead([item.id])}
+                            >
+                              标记已读
+                            </Button>,
+                          ]}
+                          onClick={() => {
+                            if (item.link_url) {
+                              markAsRead([item.id]);
+                              window.location.href = item.link_url;
+                            }
+                          }}
                         >
                           <List.Item.Meta
                             title={
@@ -542,9 +555,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                                 <Tag color={
                                   item.message_type === "error" ? "red" :
                                   item.message_type === "warning" ? "orange" :
-                                  item.message_type === "success" ? "green" : "blue"
+                                  item.message_type === "success" ? "green" :
+                                  item.message_type === "task_done" ? "purple" : "blue"
                                 }>
-                                  {item.message_type}
+                                  {{
+                                    task_done: "任务完成",
+                                    error: "错误",
+                                    warning: "警告",
+                                    success: "成功",
+                                    info: "信息",
+                                  }[item.message_type] ?? item.message_type}
                                 </Tag>
                               </Space>
                             }
@@ -552,7 +572,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                               <Space direction="vertical" size={4} style={{ width: "100%" }}>
                                 <Typography.Text>{item.content}</Typography.Text>
                                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                  {new Date(item.created_at).toLocaleString("zh-CN")}
+                                  {formatMessageTime(item.created_at)}
                                 </Typography.Text>
                               </Space>
                             }

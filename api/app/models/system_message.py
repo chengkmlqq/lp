@@ -47,3 +47,9 @@ class SystemMessage(Base):
         DateTime(timezone=False),
         nullable=True,
     )
+    # 2026-10-02：消息点击跳转目标（如 /admin/fl-analysis?job_id=xxx）
+    link_url: Mapped[str | None] = mapped_column(
+        "link_url",
+        String(255),
+        nullable=True,
+    )

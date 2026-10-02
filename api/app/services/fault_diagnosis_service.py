@@ -1181,6 +1181,7 @@ def _notify_fault_done(item: FaultAnalysis, *, status: str, detail: str | None =
         task_name=item.title or item.id,
         status=status,
         detail=detail,
+        link_url=f"/admin/fault-analysis?analysis_id={item.id}",
     )
 
 

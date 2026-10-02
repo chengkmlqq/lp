@@ -1883,6 +1883,7 @@ def _notify_job_done(job: FlAnalysisJob, *, status: str, detail: str | None = No
         task_name=job.job_name or job.id,
         status=status,
         detail=detail,
+        link_url=f"/admin/fl-analysis?job_id={job.id}",
     )
 
 

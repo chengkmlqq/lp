@@ -292,7 +292,9 @@ function formatDateTime(value: string | null): string {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return date.toLocaleString("zh-CN");
+  // 2026-10-02：统一 YYYY-MM-DD HH:mm:ss（横杠分隔，不用斜杠）
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 const MESSAGES_TABLE_MIN_SCROLL_Y = 180;

@@ -38,6 +38,7 @@ def notify_task_done(
     task_name: str,
     status: str = "success",
     detail: str | None = None,
+    link_url: str | None = None,
 ) -> SystemMessage | None:
     """计类任务完成通知（2026-09-30）。
 
@@ -65,6 +66,7 @@ def notify_task_done(
                 content=content.strip(),
                 message_type="task_done",
                 target_user_id=user_id,
+                link_url=link_url,
             )
             db.add(message)
             db.commit()

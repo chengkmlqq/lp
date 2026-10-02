@@ -148,6 +148,7 @@ export type SystemMessageSummary = {
   is_read: boolean;
   created_at: string;
   read_at: string | null;
+  link_url?: string | null;
 };
 
 export type SystemMessageListResponse = {

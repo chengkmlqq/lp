@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
@@ -435,6 +436,34 @@ export default function AdminFlAnalysisPage() {
     });
     setActiveTabKey(tabKey);
   }, []);
+
+  // 2026-10-02：系统消息点击直达——/admin/fl-analysis?job_id=xxx 自动打开该任务详情 Tab
+  const searchParams = useSearchParams();
+  const jobIdFromUrl = searchParams.get("job_id");
+  useEffect(() => {
+    if (!jobIdFromUrl || !fetchWithAuth) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetchWithAuth(`/api/v1/fl-analysis/jobs/${jobIdFromUrl}`);
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as { job?: FlAnalysisJobSummary } & FlAnalysisJobSummary;
+        const job = data.job ?? (data as FlAnalysisJobSummary);
+        if (!cancelled && job?.id) {
+          openJobDetail(job);
+        }
+      } catch (error) {
+        console.error("Failed to open job detail from URL:", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobIdFromUrl, openJobDetail, fetchWithAuth]);
 
   const handleDetailTabsEdit = useCallback((targetKey: string | ReactMouseEvent | ReactKeyboardEvent, action: "add" | "remove") => {
     if (action !== "remove") {

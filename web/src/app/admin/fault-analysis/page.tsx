@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -560,6 +561,20 @@ export default function AdminFaultAnalysisPage() {
     });
     setActiveTabKey(tabKey);
   }, []);
+
+  // 2026-10-02：系统消息点击直达——/admin/fault-analysis?analysis_id=xxx 自动打开对应详情 Tab
+  const searchParams = useSearchParams();
+  const analysisIdFromUrl = searchParams.get("analysis_id");
+  useEffect(() => {
+    if (!analysisIdFromUrl) {
+      return;
+    }
+    if (detailTabs.some((tab) => tab.key.startsWith(analysisIdFromUrl))) {
+      setActiveTabKey(detailTabs.find((tab) => tab.key.startsWith(analysisIdFromUrl))?.key ?? analysisIdFromUrl);
+      return;
+    }
+    openDetail({ id: analysisIdFromUrl });
+  }, [analysisIdFromUrl, openDetail, detailTabs]);
 
   // 关闭 Tab：移除对应 tab，关闭的是当前激活 Tab 时按相邻回退规则切换 activeKey
   //（优先左邻，其次最左，兜底回列表主 Tab），与地闪密度统计/防雷分析页一致。
