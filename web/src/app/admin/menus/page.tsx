@@ -27,7 +27,7 @@ import {
   type CardProps,
   type MenuProps,
 } from "antd";
-import { FolderOutlined, MoreOutlined, EditOutlined, SearchOutlined } from "@ant-design/icons";
+import { FolderOutlined, MoreOutlined, EditOutlined, SearchOutlined, PoweroffOutlined, CheckOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
 import Link from "next/link";
@@ -658,35 +658,36 @@ export default function AdminMenusPage() {
 
         const moreMenuItems: MenuProps["items"] = [
           {
-            key: "toggle-status",
-            label: record.status === "enabled" ? "禁用" : "启用",
+            key: "delete",
+            label: "删除",
+            danger: true,
             disabled: menuBusy,
-            onClick: () => void updateMenuStatus(record),
+            onClick: () => {
+              Modal.confirm({
+                title: `确认删除菜单 ${record.name}（${record.code}）？`,
+                okText: "删除",
+                cancelText: "取消",
+                okButtonProps: { danger: true, loading: deleteLoading },
+                onOk: () => deleteMenuMutation.mutate(record.id),
+              });
+            },
           },
         ];
 
         return (
-          <Space wrap>
+          <Space size="small" style={{ whiteSpace: "nowrap" }}>
             <Button size="small" disabled={menuBusy} onClick={() => startEdit(record)}>
               编辑
             </Button>
 
-            <Button danger size="small" loading={deleteLoading} disabled={menuBusy}
-              onClick={() => {
-                Modal.confirm({
-                  title: `确认删除菜单 ${record.name}（${record.code}）？`,
-                  okText: "删除",
-                  cancelText: "取消",
-                  okButtonProps: { danger: true, loading: deleteLoading },
-                  onOk: () => deleteMenuMutation.mutate(record.id),
-                });
-              }}
+            <Button size="small" loading={updatingLoading} disabled={menuBusy}
+              onClick={() => void updateMenuStatus(record)}
             >
-              删除
+              {record.status === "enabled" ? "禁用" : "启用"}
             </Button>
 
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button size="small" loading={updatingLoading} disabled={menuBusy} icon={<MoreOutlined />} />
+              <Button size="small" loading={deleteLoading} disabled={menuBusy} icon={<MoreOutlined />} />
             </Dropdown>
           </Space>
         );
@@ -701,31 +702,22 @@ export default function AdminMenusPage() {
 
     const moreMenuItems: MenuProps["items"] = [
       {
-        key: "delete",
-        label: "删除",
-        danger: true,
-        disabled: menuBusy || !canManage,
-        onClick: (info) => {
-          info.domEvent?.stopPropagation();
-          Modal.confirm({
-            title: `确认删除菜单 ${menuItem.name}（${menuItem.code}）？`,
-            okText: "删除",
-            cancelText: "取消",
-            okButtonProps: { danger: true },
-            onOk: () => deleteMenuMutation.mutate(menuItem.id),
-          });
-        },
-      },
-      {
-        key: "toggle-status",
-        label: menuItem.status === "enabled" ? "禁用" : "启用",
-        disabled: menuBusy || !canManage,
-        onClick: (info) => {
-          info.domEvent?.stopPropagation();
-          void updateMenuStatus(menuItem);
-        },
-      },
-    ];
+              key: "delete",
+              label: "删除",
+              danger: true,
+              disabled: menuBusy || !canManage,
+              onClick: (info) => {
+                info.domEvent?.stopPropagation();
+                Modal.confirm({
+                  title: `确认删除菜单 ${menuItem.name}（${menuItem.code}）？`,
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true },
+                  onOk: () => deleteMenuMutation.mutate(menuItem.id),
+                });
+              },
+            },
+          ];
 
     return (
       <AntCard
@@ -770,17 +762,30 @@ export default function AdminMenusPage() {
             {canManage ? (
               <>
                 <Tooltip title="编辑">
-                  <Button
-                    type="text"
-                    size="small"
-                    disabled={menuBusy}
-                    icon={<EditOutlined />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      startEdit(menuItem);
-                    }}
-                  />
-                </Tooltip>
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    disabled={menuBusy}
+                                    icon={<EditOutlined />}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      startEdit(menuItem);
+                                    }}
+                                  />
+                                </Tooltip>
+                                <Tooltip title={menuItem.status === "enabled" ? "禁用" : "启用"}>
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    loading={updatingLoading}
+                                    disabled={menuBusy}
+                                    icon={menuItem.status === "enabled" ? <PoweroffOutlined /> : <CheckOutlined />}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void updateMenuStatus(menuItem);
+                                    }}
+                                  />
+                                </Tooltip>
                 <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                   <Tooltip title="更多">
                     <Button
