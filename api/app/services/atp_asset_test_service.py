@@ -458,7 +458,17 @@ def execute_test_run_job(
         run.finished_at = utcnow()
         run.status = "failed" if failed_stage else "success"
         if failed_stage and not run.error_message:
-            run.error_message = f"测试阶段失败：{failed_stage}"
+            # 2026-10-03：带上首个失败 verdict 的详情（ATP Halt 行/产物缺失原因等），
+            # 避免只报「测试阶段失败：simulate」需要再去翻 stdout 定位
+            detail = ""
+            failed_result = stage_results.get(failed_stage) or {}
+            for item in failed_result.get("verdicts") or []:
+                if not item.get("ok") and item.get("detail"):
+                    detail = str(item["detail"]).strip()
+                    break
+            run.error_message = (
+                f"测试阶段失败：{failed_stage}" + (f"（{detail[:300]}）" if detail else "")
+            )
         run.output_manifest_json = {
             "artifact_zip": str(artifact_zip) if artifact_zip else None,
             "compare_json": str(compare_path),
