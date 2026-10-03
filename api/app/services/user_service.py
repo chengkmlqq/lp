@@ -74,7 +74,13 @@ def list_users(
         stmt = stmt.where(*conditions)
     stmt = stmt.offset(offset).limit(limit)
     users = db.execute(stmt).unique().scalars().all()
-    return UserListResponse(items=[serialize_user(user) for user in users], total=total)
+    # 2026-10-02 性能：批量解析全部用户权限（一次 IN 查询角色，替代逐用户
+    # serialize_user → get_user_authorization 的 O(N×7) 次查询）
+    from .legacy_authz_service import get_user_authorizations_batch
+
+    authz_map = get_user_authorizations_batch(db, [user.id for user in users])
+    items = [_serialize_user_with_authz(user, authz_map.get(user.id)) for user in users]
+    return UserListResponse(items=items, total=total)
 
 
 def get_user_by_id(db: Session, user_id: str) -> User | None:
@@ -460,6 +466,25 @@ def set_user_roles(
             )
         )
     return serialize_user(updated)
+
+
+def _serialize_user_with_authz(user: User, authz: UserAuthorization | None) -> UserPublic:
+    """带预解析权限的用户序列化（list_users 批量场景，避免逐用户再次查询）。"""
+    if authz is None:
+        return serialize_user(user)
+    avatar_url = f"/api/v1/users/{user.id}/avatar" if user.avatar_path else None
+    return UserPublic(
+        id=user.id,
+        email=user.email or "",
+        username=user.username,
+        status=normalize_user_status(user.status),
+        role_codes=sorted(authz.role_codes),
+        permission_codes=sorted(authz.permission_codes),
+        created_at=user.created_at or utcnow(),
+        updated_at=user.updated_at,
+        last_login_at=user.last_login_at,
+        avatar_url=avatar_url,
+    )
 
 
 def serialize_user(user: User | None) -> UserPublic:

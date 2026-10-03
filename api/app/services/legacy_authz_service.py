@@ -252,7 +252,76 @@ def get_user_authorization(db: Session, user_id: str) -> UserAuthorization:
     if not role_rows:
         # Fallback for non-legacy tables.
         role_rows = _load_modern_roles(db, user_id)
+    return _build_authorization(db, user_id, role_rows)
 
+
+def get_user_authorizations_batch(db: Session, user_ids: list[str]) -> dict[str, UserAuthorization]:
+    """批量解析多个用户的角色/权限（2026-10-02 性能优化）。
+
+    ``serialize_user`` 逐用户走 ``get_user_authorization`` 时，每个用户约 4-7 次
+    DB 查询（表存在性探测 + 角色 + 权限），用户列表页 N 个用户线性放大
+    （实测 4 用户 /users 列表 390-640ms）。本函数一次 IN 查询全部角色，
+    表探测经 ``_legacy_table_exists`` 会话缓存后仅首次探测，权限加载沿用
+    已 IN 优化的菜单关联查询，将总查询数从 O(N×7) 降到 O(1 + N×2)。
+    """
+    user_ids = list(dict.fromkeys(uid for uid in (user_ids or []) if uid))
+    if not user_ids:
+        return {}
+
+    role_rows_map: dict[str, list[tuple[str, str | None, str | None]]] = {uid: [] for uid in user_ids}
+    legacy_ok = _legacy_table_exists(db, "user_role_rela") and _legacy_table_exists(db, "user_role")
+    if legacy_ok:
+        stmt = text(
+            """
+            SELECT urr.user_id AS user_id, ur.id AS role_id, ur.name AS role_name, ur.state AS role_state
+            FROM user_role_rela urr
+            JOIN user_role ur ON ur.id = urr.role_id
+            WHERE urr.user_id IN :user_ids
+            """
+        ).bindparams(bindparam("user_ids", expanding=True))
+        try:
+            rows = db.execute(stmt, {"user_ids": user_ids}).mappings().all()
+        except SQLAlchemyError:
+            _rollback_safely(db)
+            rows = []
+        for row in rows:
+            uid = str(row.get("user_id") or "")
+            if uid in role_rows_map:
+                role_rows_map[uid].append((row.get("role_id"), row.get("role_name"), row.get("role_state")))
+    else:
+        # Fallback: 现代表 User.roles 批量 joinedload
+        try:
+            from sqlalchemy import select
+            from sqlalchemy.orm import joinedload
+
+            from ..models.rbac import Role as _Role  # noqa: F401
+            from ..models.user import User
+
+            users = db.execute(
+                select(User).options(joinedload(User.roles)).where(User.id.in_(user_ids))
+            ).unique().scalars().all()
+        except SQLAlchemyError:
+            _rollback_safely(db)
+            users = []
+        for user in users:
+            role_rows_map.setdefault(user.id, []).extend(
+                (
+                    str(getattr(role, "code", None) or getattr(role, "id", "")),
+                    getattr(role, "name", None),
+                    getattr(role, "state", "ENABLED"),
+                )
+                for role in user.roles
+            )
+
+    return {uid: _build_authorization(db, uid, role_rows_map.get(uid, [])) for uid in user_ids}
+
+
+def _build_authorization(
+    db: Session,
+    user_id: str,
+    role_rows: list[tuple[str, str | None, str | None]],
+) -> UserAuthorization:
+    """由角色行构造 UserAuthorization（get_user_authorization 与批量版共用）。"""
     enabled_roles: list[tuple[str, str | None]] = []
     for role_id, role_name, role_state in role_rows:
         normalized_id = (role_id or "").strip()
@@ -660,12 +729,20 @@ def _rollback_safely(db: Session) -> None:
 
 
 def _legacy_table_exists(db: Session, table_name: str) -> bool:
+    # 2026-10-02 性能：表存在性在单请求/单任务内不变，结果缓存到 db.info（每请求新会话，
+    # 会话内缓存安全）。此前 serialize_user 逐用户调用时每次重复 to_regclass（4 用户列表
+    # 即 8-12 次探测），是 /users 列表 400ms 级延迟的主要来源。
+    cache = db.info.setdefault("_authz_table_cache", {})
+    if table_name in cache:
+        return cache[table_name]
     try:
         result = db.scalar(text("SELECT to_regclass(:table_name)"), {"table_name": f"public.{table_name}"})
     except SQLAlchemyError:
         _rollback_safely(db)
+        cache[table_name] = False
         return False
-    return result is not None
+    cache[table_name] = result is not None
+    return cache[table_name]
 
 
 def _is_role_enabled(raw_state: str) -> bool:
