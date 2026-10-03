@@ -52,7 +52,7 @@ import type {
   FlAnalysisTowerResultSummary,
 } from "@/types/auth";
 import { readApiError } from "@/lib/api";
-import { formatDateTime, riskColor, runningProgressPercent } from "@/components/fl-analysis/types";
+import { formatDateTime, formatJobStatus, riskColor, runningProgressPercent } from "@/components/fl-analysis/types";
 import { statusColor } from "@/components/fl-analysis/types";
 import { RetrofitCreateModal } from "@/components/fl-analysis/retrofit-create-modal";
 
@@ -389,7 +389,7 @@ export default function AdminLightningRetrofitPage() {
         width: 140,
         render: (value, job) => (
           <Space direction="vertical" size={2} style={{ width: "100%" }}>
-            <span style={{ color: statusColor(value) }}>{value}</span>
+            <span style={{ color: statusColor(value) }}>{formatJobStatus(value)}</span>
             {value === "running" ? (
               <Progress
                 percent={runningProgressPercent(job)}
@@ -429,7 +429,7 @@ export default function AdminLightningRetrofitPage() {
         render: (_value, job) => (
           <Space size="small">
             <Button size="small" onClick={() => handleViewDetail(job)}>
-              查看详情
+              详情
             </Button>
             <Button
               size="small"
@@ -546,7 +546,7 @@ export default function AdminLightningRetrofitPage() {
                           </Typography.Text>
                           <div className="flex flex-shrink-0 items-center gap-2">
                             <Badge status={retrofitJobBadgeStatus(job.status)} />
-                            <Typography.Text type="secondary" className="text-xs">{job.status}</Typography.Text>
+                            <Typography.Text type="secondary" className="text-xs">{formatJobStatus(job.status)}</Typography.Text>
                           </div>
                         </div>
                         <div className="flex flex-col gap-2 px-4 py-3">
@@ -554,6 +554,11 @@ export default function AdminLightningRetrofitPage() {
                             <Typography.Text type="secondary" className="text-xs truncate">
                               {job.line_name || job.line_code || "-"}
                             </Typography.Text>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Tag color={readMitigationMode(job) ? "orange" : "blue"} className="text-xs">
+                              {formatJobType(job.job_type, readMitigationMode(job))}
+                            </Tag>
                           </div>
                           <div className="flex items-center gap-2">
                             <Typography.Text type="secondary" className="text-xs">
