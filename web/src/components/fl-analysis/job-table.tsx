@@ -124,6 +124,7 @@ export function JobTable({
             key: "operation",
             width: 200,
             align: "center" as const,
+            fixed: "right" as const,
             render: (_value: unknown, job: FlAnalysisJobSummary) => {
               const menuItems: MenuProps["items"] = [];
               if (onCancelJob && isJobCancellable(job)) {
