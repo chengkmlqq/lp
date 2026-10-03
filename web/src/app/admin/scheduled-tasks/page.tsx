@@ -98,6 +98,9 @@ function renderTaskType(value: ScheduledTaskSummary["task_type"]) {
   if (value === "syslog_cleanup") {
     return "系统日志清理";
   }
+  if (value === "fl_run_cleanup") {
+    return "防雷计算产物清理";
+  }
   return value;
 }
 
@@ -611,7 +614,7 @@ export default function AdminScheduledTasksPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <Form.Item
                 name="retain_days"
-                label="日志保留天数"
+                label="数据保留天数"
                 rules={[{ required: true, message: "请输入日志保留天数" }]}
               >
                 <InputNumber min={1} max={3650} className="w-full" disabled />

@@ -9,7 +9,7 @@ from .auth import UserPublic
 
 
 ScheduledTaskStatus = Literal["idle", "queued", "running", "success", "failed", "disabled"]
-ScheduledTaskType = Literal["syslog_cleanup"]
+ScheduledTaskType = Literal["syslog_cleanup", "fl_run_cleanup"]
 
 
 class ScheduledTaskSummary(BaseModel):

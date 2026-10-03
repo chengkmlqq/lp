@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from celery.schedules import crontab, crontab_parser
@@ -26,7 +29,8 @@ from .user_service import serialize_user
 
 SCHEDULED_TASK_TOPIC = "admin.scheduled-tasks"
 SYSLOG_CLEANUP_TASK_KEY = "syslog.cleanup.default"
-SUPPORTED_TASK_TYPES = {"syslog_cleanup"}
+FL_RUN_CLEANUP_TASK_KEY = "fl.run.cleanup.default"
+SUPPORTED_TASK_TYPES = {"syslog_cleanup", "fl_run_cleanup"}
 CRON_FIELD_LIMITS: tuple[tuple[int, int], ...] = (
     (60, 0),
     (24, 0),
@@ -258,21 +262,33 @@ def run_scheduled_task_now(
 
 
 def seed_default_scheduled_tasks(db: Session) -> None:
-    if get_scheduled_task_by_key(db, SYSLOG_CLEANUP_TASK_KEY):
-        return
+    if not get_scheduled_task_by_key(db, SYSLOG_CLEANUP_TASK_KEY):
+        retain_days = get_settings().audit_log_retain_days
+        payload = ScheduledTaskCreateRequest(
+            task_key=SYSLOG_CLEANUP_TASK_KEY,
+            name="系统日志定时清理",
+            task_type="syslog_cleanup",
+            description="按保留天数自动清理历史系统日志，避免审计表持续膨胀。",
+            cron_expression="0 3 * * *",
+            timezone=get_settings().celery_timezone,
+            retain_days=retain_days,
+            enabled=retain_days > 0,
+        )
+        create_scheduled_task(db, payload, actor_user_id=None)
 
-    retain_days = get_settings().audit_log_retain_days
-    payload = ScheduledTaskCreateRequest(
-        task_key=SYSLOG_CLEANUP_TASK_KEY,
-        name="系统日志定时清理",
-        task_type="syslog_cleanup",
-        description="按保留天数自动清理历史系统日志，避免审计表持续膨胀。",
-        cron_expression="0 3 * * *",
-        timezone=get_settings().celery_timezone,
-        retain_days=retain_days,
-        enabled=retain_days > 0,
-    )
-    create_scheduled_task(db, payload, actor_user_id=None)
+    # 2026-10-02：防雷计算任务产物（atp-models/runs/fl-analysis）按保留天数清理
+    if not get_scheduled_task_by_key(db, FL_RUN_CLEANUP_TASK_KEY):
+        payload = ScheduledTaskCreateRequest(
+            task_key=FL_RUN_CLEANUP_TASK_KEY,
+            name="防雷计算产物定时清理",
+            task_type="fl_run_cleanup",
+            description="按保留天数自动清理防雷计算任务产物目录（work.atp/dum*.bin 等中间文件），数值结果存库不受影响。",
+            cron_expression="0 4 * * *",
+            timezone=get_settings().celery_timezone,
+            retain_days=30,
+            enabled=True,
+        )
+        create_scheduled_task(db, payload, actor_user_id=None)
 
 
 def dispatch_due_scheduled_tasks(*, actor_user_id: str = "system") -> dict[str, int]:
@@ -439,6 +455,40 @@ def _execute_scheduled_task_with_session(
         raise
 
 
+def cleanup_expired_fl_analysis_runs(*, retain_days: int, dry_run: bool = False) -> dict[str, int | str]:
+    """删除超过保留期的 fl-analysis 任务产物目录（atp-models/runs/fl-analysis/{job_id}）。
+
+    每次防雷计算任务会物化 work.atp/dum*.bin/work.pl4 等产物到
+    ``atp_storage_root/runs/fl-analysis/{job_id}/{snap}``，历史产物永久保留会持续堆积
+    （实测可到 GB 级）。本函数按目录 mtime 清理超过保留期的 job 目录；
+    数值结果（risk_level/跳闸率等）存 DB 不受影响，仅删除中间产物。
+    """
+    from ..core.config import get_settings
+
+    settings = get_settings()
+    runs_root = Path(settings.atp_storage_root) / "runs" / "fl-analysis"
+    if not runs_root.is_dir():
+        return {"deleted_count": 0, "scanned": 0, "retain_days": retain_days, "dry_run": int(dry_run)}
+
+    now = time.time()
+    cutoff_ts = now - max(retain_days, 1) * 86400.0
+    deleted = 0
+    scanned = 0
+    for job_dir in runs_root.iterdir():
+        if not job_dir.is_dir():
+            continue
+        scanned += 1
+        try:
+            mtime = job_dir.stat().st_mtime
+        except OSError:
+            continue
+        if mtime < cutoff_ts:
+            if not dry_run:
+                shutil.rmtree(job_dir, ignore_errors=True)
+            deleted += 1
+    return {"deleted_count": deleted, "scanned": scanned, "retain_days": retain_days, "dry_run": int(dry_run)}
+
+
 def _run_task_handler(db: Session, item: ScheduledTask) -> ScheduledTaskExecutionResult:
     if item.task_type == "syslog_cleanup":
         if item.retain_days <= 0:
@@ -451,6 +501,17 @@ def _run_task_handler(db: Session, item: ScheduledTask) -> ScheduledTaskExecutio
         return ScheduledTaskExecutionResult(
             detail=f"已清理 {deleted_count} 条系统日志",
             payload={"deleted_count": deleted_count, "retain_days": item.retain_days},
+        )
+    if item.task_type == "fl_run_cleanup":
+        if item.retain_days <= 0:
+            return ScheduledTaskExecutionResult(
+                detail="保留天数为 0（永久保留），跳过清理",
+                payload={"deleted_count": 0, "retain_days": item.retain_days},
+            )
+        result = cleanup_expired_fl_analysis_runs(retain_days=item.retain_days)
+        return ScheduledTaskExecutionResult(
+            detail=f"已清理 {result['deleted_count']} 个任务产物目录",
+            payload=result,
         )
     raise ValueError(f"unsupported scheduled task type: {item.task_type}")
 
