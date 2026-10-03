@@ -1165,13 +1165,13 @@ export default function AdminRolesPage() {
                   <Input placeholder="运营管理员" />
                 </Form.Item>
               </Col>
-              <Col xs={24}>
-                <Typography.Text type="secondary">
-                  {editingRole
-                    ? "菜单与操作权限请在「分配权限」中单独设置，此处只修改角色名称。"
-                    : "新角色默认无任何权限，创建后请在「分配权限」中授予菜单与操作权限。"}
-                </Typography.Text>
-              </Col>
+              {!editingRole && (
+                <Col xs={24}>
+                  <Typography.Text type="secondary">
+                    新角色默认无任何权限，创建后请在「分配权限」中授予菜单与操作权限。
+                  </Typography.Text>
+                </Col>
+              )}
             </Row>
           </Form>
         </Modal>
