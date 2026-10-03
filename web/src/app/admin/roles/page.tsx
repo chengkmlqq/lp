@@ -23,7 +23,7 @@ import {
   type CardProps,
   type MenuProps,
 } from "antd";
-import { EditOutlined, KeyOutlined, MoreOutlined, SearchOutlined } from "@ant-design/icons";
+import { EditOutlined, KeyOutlined, MoreOutlined, QuestionCircleOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { CSSProperties, ComponentType, RefAttributes } from "react";
 
@@ -1198,9 +1198,15 @@ export default function AdminRolesPage() {
             preserve={false}
           >
             <Form.Item
-              label="菜单与操作权限"
               name="menu_ids"
-              extra="勾选菜单即授予页面查看权限；展开菜单可勾选查看/管理/运行等操作权限（按钮级）。"
+              label={
+                <span>
+                  菜单与操作权限{" "}
+                  <Tooltip title="勾选菜单即授予页面查看权限；展开菜单可勾选查看/管理/运行等操作权限（按钮级）。">
+                    <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
+                  </Tooltip>
+                </span>
+              }
             >
               <TreeSelect
                 allowClear
