@@ -23,7 +23,7 @@ import {
   type CardProps,
   type MenuProps,
 } from "antd";
-import { EditOutlined, KeyOutlined, MoreOutlined, QuestionCircleOutlined, SearchOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, KeyOutlined, MoreOutlined, QuestionCircleOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { CSSProperties, ComponentType, RefAttributes } from "react";
 
@@ -655,14 +655,40 @@ export default function AdminRolesPage() {
         title: "操作",
         key: "actions",
         fixed: "right",
-      width: 260,
+        width: 170,
         render: (_, role) => {
           const isDeleting = deletingRoleId === role.id;
           const isSaving = savingRoleId === role.id;
           const rowBusy = isDeleting || isSaving || createRoleMutation.isPending || updateRoleMutation.isPending;
 
+          // 操作列按线路管理页（power-lines）模式：最多 2 个按钮直接展示，
+          // 多余的收进「⋯」三点下拉（删除为破坏性操作，放下拉并标红）。
+          const overflowItems: MenuProps["items"] = [
+            {
+              key: "delete",
+              label: (
+                <Space size={4}>
+                  <DeleteOutlined />
+                  <span>删除</span>
+                </Space>
+              ),
+              danger: true,
+              disabled: rowBusy,
+              onClick: () => {
+                Modal.confirm({
+                  title: `确认删除角色 ${role.code} 吗？`,
+                  content: "删除后无法恢复，请谨慎操作。",
+                  okText: "删除",
+                  cancelText: "取消",
+                  okButtonProps: { danger: true, loading: isDeleting },
+                  onOk: () => deleteRoleMutation.mutate(role.id),
+                });
+              },
+            },
+          ];
+
           return (
-            <Space wrap>
+            <Space size={4}>
               <Button
                 size="small"
                 disabled={rowBusy}
@@ -675,26 +701,11 @@ export default function AdminRolesPage() {
                 disabled={rowBusy}
                 onClick={() => startEditPermissions(role)}
               >
-                分配权限
+                权限
               </Button>
-              <Button
-                danger
-                size="small"
-                loading={isDeleting}
-                disabled={rowBusy}
-                onClick={() => {
-                  Modal.confirm({
-                    title: `确认删除角色 ${role.code} 吗？`,
-                    content: "删除后无法恢复，请谨慎操作。",
-                    okText: "删除",
-                    cancelText: "取消",
-                    okButtonProps: { danger: true, loading: isDeleting },
-                    onOk: () => deleteRoleMutation.mutate(role.id),
-                  });
-                }}
-              >
-                删除
-              </Button>
+              <Dropdown menu={{ items: overflowItems }} trigger={["click"]}>
+                <Button size="small" icon={<MoreOutlined />} />
+              </Dropdown>
             </Space>
           );
         },
