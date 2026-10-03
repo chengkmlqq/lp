@@ -13,7 +13,6 @@ import {
   Dropdown,
   Drawer,
   Empty,
-  FloatButton,
   Form,
   Input,
   Modal,
@@ -804,13 +803,6 @@ export function LightningCurrentBackfillHistoryTable({
 
   return (
     <div className="admin-lightning-backfill-pane">
-      {/* 2026-09-27：悬浮组件始终固定在右下角（普通 FloatButton 无滚动阈值，始终显示） */}
-      <FloatButton
-        icon={<MoreOutlined rotate={-90} />}
-        tooltip="回到顶部"
-        style={{ right: 32, bottom: 32 }}
-        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-      />
       {isAmplitudeMode && (
         <div className="admin-filter-bar">
           <Form layout="inline" onFinish={handleSearch}>
