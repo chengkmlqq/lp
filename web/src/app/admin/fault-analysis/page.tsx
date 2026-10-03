@@ -635,7 +635,7 @@ export default function AdminFaultAnalysisPage() {
       {
         title: "操作",
         key: "actions",
-        width: 130,
+        width: 190,
         fixed: "right",
       render: (_: unknown, row) => {
           // 详情/日志平铺为按钮直接展示；删除收进 ⋯ 三点下拉（日志不设权限/task_id 门控，始终可点）
@@ -652,7 +652,7 @@ export default function AdminFaultAnalysisPage() {
               : []),
           ];
           return (
-            <Space wrap>
+            <Space size="small" style={{ whiteSpace: "nowrap" }}>
               <Button size="small" onClick={() => openDetail(row)}>
                 详情
               </Button>
