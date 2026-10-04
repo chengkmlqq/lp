@@ -34,10 +34,13 @@ import type { ColumnsType } from "antd/es/table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpOutlined,
+  ApartmentOutlined,
+  ClockCircleOutlined,
   DeleteOutlined,
   EyeOutlined,
   PlusOutlined,
   SearchOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
@@ -552,16 +555,20 @@ export default function AdminLightningRetrofitPage() {
                         </div>
                         <div className="flex flex-col gap-2 px-4 py-3">
                           <div className="flex items-center gap-2">
+                            <ApartmentOutlined className="text-xs text-gray-500" />
                             <Typography.Text type="secondary" className="text-xs truncate">
-                              {job.line_name || job.line_code || "-"}
+                              线路：{job.line_name || job.line_code || "-"}
                             </Typography.Text>
                           </div>
                           <div className="flex items-center gap-2">
+                            <ThunderboltOutlined className="text-xs text-gray-500" />
+                            <Typography.Text type="secondary" className="text-xs">类型：</Typography.Text>
                             <Tag color={readMitigationMode(job) ? "orange" : "blue"} className="text-xs">
                               {formatJobType(job.job_type, readMitigationMode(job))}
                             </Tag>
                           </div>
                           <div className="flex items-center gap-2">
+                            <ClockCircleOutlined className="text-xs text-gray-500" />
                             <Typography.Text type="secondary" className="text-xs">
                               创建：{formatDateTime(job.create_date)}
                             </Typography.Text>
