@@ -104,18 +104,10 @@ export default function AdminOverviewPage() {
   return (
     <div className="flex flex-col gap-4">
       {contextHolder}
-      <div className="flex items-baseline justify-between">
-        <Title level={4} style={{ marginBottom: 0 }}>
-          系统总览
-        </Title>
-        <Space>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            更新时间：{new Date(overview.generated_at).toLocaleString("zh-CN")}
-          </Text>
-          <Button size="small" onClick={() => setConfigOpen(true)}>
-            配置布局
-          </Button>
-        </Space>
+      <div className="flex justify-end">
+        <Button size="small" onClick={() => setConfigOpen(true)}>
+          配置布局
+        </Button>
       </div>
 
       {widgets.length === 0 ? (
