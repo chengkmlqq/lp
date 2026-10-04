@@ -1274,7 +1274,7 @@ export default function AdminUsersPage() {
                     />
                   </Form.Item>
 
-                  <Form.Item style={{ marginBottom: 0 }}>
+                  <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
                     <Button
                       htmlType="button"
                       icon={<SearchOutlined />}
@@ -1319,7 +1319,7 @@ export default function AdminUsersPage() {
                     />
                   </Form.Item>
     
-                  <Form.Item style={{ marginBottom: 0 }}>
+                  <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
                     <Button
                       htmlType="button"
                       icon={<SearchOutlined />}

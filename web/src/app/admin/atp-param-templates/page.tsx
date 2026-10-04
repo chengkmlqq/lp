@@ -891,14 +891,14 @@ export default function AtpParamTemplatesPage() {
                       />
                     </Form.Item>
 
-                    <Form.Item style={{ marginBottom: 0 }}>
+                    <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
                       <Button htmlType="button" icon={<SearchOutlined />} onClick={() => handleTableSearch()}  loading={loading}className="admin-search-btn">
                         查询
                       </Button>
                     </Form.Item>
 
                     {hasTableFilter ? (
-                      <Form.Item style={{ marginBottom: 0 }}>
+                      <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
                         <Button htmlType="button" onClick={() => clearFilters()}>
                           清除筛选
                         </Button>
