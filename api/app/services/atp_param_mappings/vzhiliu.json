@@ -1,0 +1,52 @@
+{
+  "marker": "vzhiliu",
+  "tower_type": "vzhiliu",
+  "name": "直流V型接线",
+  "priority": 100,
+  "slots": {
+    "RELE01": {
+      "expr": "tower_h",
+      "fmt": 2
+    },
+    "RELE02": {
+      "expr": "RELE01 * 1.5",
+      "fmt": 2
+    },
+    "RELE03": {
+      "expr": "abs(shield_h - tower_h)",
+      "fmt": 2
+    },
+    "RELE04": {
+      "expr": "RELE03 * 1.5",
+      "fmt": 2
+    },
+    "RELE05": {
+      "expr": "lw_r",
+      "fmt": 2
+    },
+    "RELE06": {
+      "expr": "lw_l",
+      "fmt": 2
+    },
+    "RELE07": {
+      "expr": "sp_l",
+      "fmt": 2
+    },
+    "RELE08": {
+      "expr": "sp_u",
+      "fmt": 2
+    },
+    "HG________": {
+      "expr": "abs(shield_h - 5)",
+      "fmt": 2
+    },
+    "HC1_______": {
+      "expr": "abs(h_u - insul_m - 5)",
+      "fmt": 2
+    },
+    "HC2_______": {
+      "expr": "abs(h_l - insul_m - 5)",
+      "fmt": 2
+    }
+  }
+}

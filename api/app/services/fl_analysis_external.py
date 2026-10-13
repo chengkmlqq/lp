@@ -833,6 +833,32 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
         # REHC4/5/6 = III 上/中/下相平均高度（C# 2967-2987）
         for name, h in (("REHC4_____", hu[2]), ("REHC5_____", hm[2]), ("REHC6_____", hl[2])):
             p[name] = fmt(abs(h - insul_m - vadj([10.0 / 3.0, 0.0, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0])) if (h is not None and insul_m is not None) else None, 2)
+    elif tower_kind in ("zhiliu", "vzhiliu"):
+        # === 直流型塔（zhiliu / vzhiliu，C# :3559-3693，两分支公式完全一致）===
+        # 直流 2 相：左相 = 物理 upper（left_h/left_spacing）、右相 = 物理 lower（right_h/right_spacing）
+        # 输入（C# zhiliuIDin03-12）：接地电阻/左避雷线中距/右避雷线中距/避雷线高度/
+        #   绝缘子串长mm/杆塔呼高/左相导线中距/右相导线中距/左相导线高度/右相导线高度
+        # RELE01 第一节主材长度 = 杆塔呼高（C# :3591）
+        p["RELE01"] = fmt(tower_h, 2)
+        # RELE02 一点五倍RELE01 = 呼高 × 1.5（C# :3593-3594）
+        p["RELE02"] = fmt(tower_h * 1.5 if tower_h is not None else None, 2)
+        # RELE03 第二节主材长度 = |避雷线高度 − 呼高|（C# :3596-3597）
+        rel03 = abs(shield_h - tower_h) if (shield_h is not None and tower_h is not None) else None
+        p["RELE03"] = fmt(rel03, 2)
+        # RELE04 一点五倍RELE03 = 第二节主材 × 1.5（C# :3599-3600）
+        p["RELE04"] = fmt(rel03 * 1.5 if rel03 is not None else None, 2)
+        # RELE05/06 右/左避雷线中距（C# :3602-3604，直取）
+        p["RELE05"] = fmt(mid_r, 2)
+        p["RELE06"] = fmt(mid_l, 2)
+        # RELE07/08 右/左相导线中距（C# :3606-3608，直取；右=lower、左=upper）
+        p["RELE07"] = fmt(right_spacing, 2)
+        p["RELE08"] = fmt(left_spacing, 2)
+        # HG________ 避雷线平均高度 = |避雷线高度 − 5|（C# :3610-3611）
+        p["HG________"] = fmt(abs(shield_h - 5) if shield_h is not None else None, 2)
+        # HC1_______ 左相平均高度 = |左相高度 − 绝缘子串长 − 5|（C# :3613-3614）
+        p["HC1_______"] = fmt(abs(left_h - insul_m - 5) if (left_h is not None and insul_m is not None) else None, 2)
+        # HC2_______ 右相平均高度 = |右相高度 − 绝缘子串长 − 5|（C# :3616-3617）
+        p["HC2_______"] = fmt(abs(right_h - insul_m - 5) if (right_h is not None and insul_m is not None) else None, 2)
     else:
         # === ganzi 干字型塔（C# 1936-2100）===
         # RELE01 第一节主材 = 左相高度（C# 1937）
