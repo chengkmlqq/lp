@@ -3,6 +3,10 @@
 --       支持从粗到细的覆盖链（L0 全局 → L2 塔型 → L3 电压/回路/场景/避雷器 …），页面可视化维护。
 -- 幂等：CREATE TABLE IF NOT EXISTS + 种子按唯一维度键 ON CONFLICT DO UPDATE。
 -- 维度列可空 = 通配（不参与匹配）；specificity 由应用层按非空维度个数计算。
+--
+-- ⚠️ 注意：本文件下部的种子 INSERT 已废弃（DEPRECATED 2026-10-19），
+--    权威种子 = api/app/services/atp_param_mappings/*.json + seed 脚本
+--    （详见下方种子段注释）。建表语句仍有效。
 
 CREATE TABLE IF NOT EXISTS atp_param_template (
     id                varchar(36) PRIMARY KEY,
@@ -48,7 +52,21 @@ CREATE TABLE IF NOT EXISTS atp_param_global (
     updated_by  varchar(64)
 );
 
--- ============================ 种子（与 api/app/services/atp_param_mappings/*.json 一致） ============================
+-- ============================ 种子 INSERT（已废弃，勿依赖） ============================
+-- ⚠️ DEPRECATED (2026-10-19 核实)：以下种子 INSERT 是早期版本，已与权威数据不一致：
+--   · 11 个模板中 9 个 slots_json 与 JSON 源不同（RELE*/REHC*/REHG 表达式已迭代）；
+--   · guxing 还保留了过时的 fallback_to='ganzi' / fallback_enabled=false
+--     （guxing 现已独立计算，不再回退 ganzi；见 golden test 的 guxing 语义锚定）。
+-- 直接跑本段会把旧参数写进新库 → 拿本文件建库后，模板参数可能是过期的。
+--
+-- 权威种子 = api/app/services/atp_param_mappings/*.json（数据源，已提交 git）
+-- 灌库方式 = seed 脚本（幂等，按 marker+name upsert）：
+--   sudo docker cp <repo>/scripts/seed_atp_templates.py lp-api-1:/tmp/
+--   sudo docker exec lp-api-1 sh -c 'cd /app && PYTHONPATH=/app python3 /tmp/seed_atp_templates.py'
+-- 若需要建表+种子一体，请把本段按 JSON 重新生成，勿手工沿用下面的旧值。
+--
+-- 以下语句保留仅作历史参考，勿在新库依赖。
+-- ------------------------------------------------------------------------------------------
 INSERT INTO atp_param_template (id, name, marker, tower_type, voltage_level, circuit_count, scene_type, arrester_config, structure_kind, priority, mode, enabled, fallback_to, fallback_enabled, slots_json, updated_by)
 VALUES ('ganzi', '干字（默认分支）', 'ganzi', 'ganzi', NULL, NULL, NULL, NULL, NULL, 100, 'merge', true, NULL, true, '{"RELE01": {"expr": "h_u", "fmt": 1}, "RELE02": {"expr": "h_u * 1.5", "fmt": 1}, "RELE03": {"expr": "abs(sp_u)", "fmt": 1}, "RELE04": {"expr": "abs(sp_l)", "fmt": 1}, "RELE05": {"expr": "clamp(abs(h_m - h_u), 1.5)", "fmt": 2}, "RELE06": {"expr": "RELE05 * 1.5", "fmt": 2}, "RELE07": {"expr": "clamp(abs(shield_h - h_m), 1.5)", "fmt": 2}, "RELE08": {"expr": "RELE07 * 1.5", "fmt": 2}, "RELE09": {"expr": "abs(lw_l_eff)", "fmt": 2}, "RELE10": {"expr": "abs(lw_r_eff)", "fmt": 2}, "REHG______": {"expr": "abs(shield_h - v(2.0, 1.2, 2.0, 10.0 / 3.0, 10.0 / 3.0, 8.0, 10.0 / 3.0, 0.0))", "fmt": 1}, "REHC1_____": {"expr": "abs(h_u - insul_m - v(10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 6.0, 14.0 / 3.0, 0.0))", "fmt": 1}, "REHC2_____": {"expr": "abs(h_m - insul_m - v(10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 6.0, 14.0 / 3.0, 0.0))", "fmt": 1}, "REHC3_____": {"expr": "abs(h_l - insul_m - v(10.0 / 3.0, 1.5, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 6.0, 14.0 / 3.0, 0.0))", "fmt": 1}}'::jsonb, 'migration')
 ON CONFLICT (COALESCE(tower_type, ''), COALESCE(voltage_level, ''), COALESCE(circuit_count::text, ''), COALESCE(scene_type, ''), COALESCE(arrester_config, ''), COALESCE(structure_kind, ''))
