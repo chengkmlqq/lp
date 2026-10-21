@@ -210,6 +210,7 @@ def create_test_run(
     payload: AtpAssetTestRunRequest,
     actor_user_id: str | None,
     batch_id: str | None = None,
+    extra_meta: dict[str, Any] | None = None,
 ) -> AtpAssetRunDetail:
     from .atp_asset_service import get_asset_by_id, get_run_by_id, serialize_run_detail
 
@@ -230,6 +231,7 @@ def create_test_run(
             "kind": "atp_asset_test",
             "requested_stages": stages,
             "stages": {},
+            **(extra_meta or {}),
             **({"batch_id": batch_id} if batch_id else {}),
         },
         create_user=actor_user_id,
@@ -1657,14 +1659,21 @@ _BATCH_ID_PREFIX = "batch"
 
 
 def _batch_id_keep(run: AtpAssetRun) -> dict[str, Any]:
-    """worker 整体替换 result_summary_json 时保留既有 batch_id(批量标记)。
+    """worker 整体替换 result_summary_json 时保留既有批量标记。
 
     批量测试在 create 阶段把 batch_id 写入 result_summary_json;worker 执行
     完成/失败时整体重建该 JSON,若不保留则批量查询按 batch_id 过滤会丢 run。
+    测试集执行时还会带 test_set_id/test_set_run_id/test_set_case_id/job_kind,
+    同样需要跨 worker 重建保留,否则测试集聚合/回归对比会丢用例归属。
     """
     old = run.result_summary_json or {}
-    bid = old.get("batch_id")
-    return {"batch_id": bid} if bid else {}
+    from ..models.atp_test_set import TEST_SET_RUN_META_KEYS
+
+    kept: dict[str, Any] = {}
+    for key in TEST_SET_RUN_META_KEYS:
+        if old.get(key):
+            kept[key] = old[key]
+    return kept
 
 
 def create_batch_test_runs(

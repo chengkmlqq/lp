@@ -6,6 +6,7 @@ from .v1.ai_chat import router as ai_chat_router
 from .v1.atp_assets import router as atp_assets_router
 from .v1.atp_param_definitions import router as atp_param_definitions_router
 from .v1.atp_param_templates import router as atp_param_templates_router
+from .v1.atp_test_sets import router as atp_test_sets_router
 from .v1.auth import router as auth_router
 from .v1.avatar import router as avatar_router
 from .v1.dimension_types import router as dimension_types_router
@@ -45,6 +46,7 @@ v1_router.include_router(ai_chat_router)
 v1_router.include_router(atp_assets_router)
 v1_router.include_router(atp_param_definitions_router)
 v1_router.include_router(atp_param_templates_router)
+v1_router.include_router(atp_test_sets_router)
 v1_router.include_router(dimensions_router)
 v1_router.include_router(dimension_types_router)
 v1_router.include_router(documents_router)

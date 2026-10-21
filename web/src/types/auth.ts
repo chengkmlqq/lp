@@ -1356,6 +1356,140 @@ export type AtpBatchTestRunListResponse = {
   items: AtpBatchTestRunSummary[];
 };
 
+/** 测试集:列表项摘要 */
+export type AtpTestSetSummary = {
+  id: string;
+  name: string;
+  description: string;
+  status: "enabled" | "disabled";
+  tags_json: string[];
+  case_count: number;
+  enabled_case_count: number;
+  last_run: { run_id: string; status: string; create_date: string; total_cases: number } | null;
+  create_date: string;
+  create_user: string | null;
+  update_date: string;
+  update_user: string | null;
+};
+
+export type AtpTestSetListResponse = {
+  items: AtpTestSetSummary[];
+  total: number;
+};
+
+/** 测试集:用例 */
+export type AtpTestSetCase = {
+  id: string;
+  set_id: string;
+  asset_id: string;
+  asset_code: string;
+  asset_name: string;
+  voltage_level: string | null;
+  tower_type: string | null;
+  scene_type: string | null;
+  arrester_config: string | null;
+  job_kind: "normal" | "tongtiao";
+  name: string;
+  description: string;
+  params_json: Record<string, unknown>;
+  expected_json: Record<string, unknown>;
+  enabled: boolean;
+  sort_order: number;
+  create_date: string;
+  update_date: string;
+};
+
+export type AtpTestSetCaseListResponse = {
+  items: AtpTestSetCase[];
+  total: number;
+};
+
+/** 测试集:执行批次(运行历史列表项/详情) */
+export type AtpTestSetRunItem = {
+  run_id: string | null;
+  case_id: string;
+  case_name: string;
+  asset_id: string;
+  asset_code: string;
+  asset_name: string;
+  voltage_level: string | null;
+  tower_type: string | null;
+  scene_type: string | null;
+  arrester_config: string | null;
+  job_kind: "normal" | "tongtiao";
+  status: string;
+  duration_ms: number | null;
+  error_message: string | null;
+  flashover_count: number | null;
+  flashover_phases: string[];
+  current_ka: number | null;
+  result_summary_json: Record<string, unknown>;
+  previous: {
+    run_id: string;
+    status: string;
+    flashover_count: number | null;
+    flashover_phases: string[];
+  } | null;
+};
+
+export type AtpTestSetRunSummary = {
+  run_id: string;
+  set_id: string;
+  set_name: string;
+  status: "pending" | "running" | "success" | "failed";
+  batch_marker: string | null;
+  total_cases: number;
+  counts: { pending: number; running: number; success: number; failed: number };
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  error_message: string | null;
+  create_user: string | null;
+  create_date: string;
+  update_date: string | null;
+  report: {
+    overall_pass_rate: number;
+    counts: Record<string, number>;
+    groups: {
+      group: string;
+      total: number;
+      success: number;
+      failed: number;
+      pass_rate: number;
+      flashover_count_distribution: Record<string, number>;
+    }[];
+    failure_reasons_top: { reason: string; count: number }[];
+    regression: {
+      counts: {
+        first_run: number;
+        unchanged: number;
+        changed: number;
+        regressed: number;
+        improved: number;
+        flashover_changed: number;
+      };
+    };
+  } | null;
+  items: AtpTestSetRunItem[];
+  has_previous_run: boolean;
+};
+
+export type AtpTestSetRunListResponse = {
+  total: number;
+  items: AtpTestSetRunSummary[];
+};
+
+export type AtpTestSetExecuteResponse = {
+  run_id: string;
+  set_id: string;
+  batch_marker: string;
+  status: string;
+  total_cases: number;
+  launched: number;
+  skipped: number;
+  errors: { case_id: string; error: string }[];
+};
+
 export type LightningPolarity = "positive" | "negative" | "mixed" | "unknown";
 
 export type LightningAmplitudeRecord = {
