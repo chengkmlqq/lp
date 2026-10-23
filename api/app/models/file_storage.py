@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..core.database import Base
+from ..core.database import Base, DIALECT_IS_MYSQL
 from .base import utcnow
 
 if TYPE_CHECKING:
@@ -73,18 +73,41 @@ class FileStorageMount(Base):
 
 class FileIndexEntry(Base):
     __tablename__ = "file_index_entries"
-    __table_args__ = (
-        UniqueConstraint("mount_id", "path", name="uq_file_index_mount_path"),
-        Index("idx_file_index_mount_parent_name", "mount_id", "parent_path", "name"),
-    )
+
+    if DIALECT_IS_MYSQL:
+        # MySQL 索引长度限制 3072B（utf8mb4）：VARCHAR(2048) 无法建普通索引/唯一索引，
+        # 使用 191 前缀索引；UNIQUE(mount_id,path) 前缀唯一索引 MySQL 不支持，MySQL 下省略
+        # （应用层仍按 mount_id+path 查询，功能不受影响）。
+        __table_args__ = (
+            Index(
+                "idx_file_index_mount_parent_name",
+                "mount_id",
+                "parent_path",
+                "name",
+                mysql_length={"parent_path": 191},
+            ),
+        )
+    else:
+        __table_args__ = (
+            UniqueConstraint("mount_id", "path", name="uq_file_index_mount_path"),
+            Index("idx_file_index_mount_parent_name", "mount_id", "parent_path", "name"),
+        )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     mount_id: Mapped[int] = mapped_column(
         ForeignKey("file_storage_mounts.id", ondelete="CASCADE"),
         index=True,
     )
-    path: Mapped[str] = mapped_column(String(2048), index=True)
-    parent_path: Mapped[str] = mapped_column(String(2048), index=True)
+    path: Mapped[str] = mapped_column(
+        String(2048),
+        index=True,
+        index_kwargs={"mysql_length": 191},
+    )
+    parent_path: Mapped[str] = mapped_column(
+        String(2048),
+        index=True,
+        index_kwargs={"mysql_length": 191},
+    )
     name: Mapped[str] = mapped_column(String(255), index=True)
     is_dir: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     size: Mapped[int] = mapped_column(BigInteger, default=0)

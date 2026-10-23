@@ -32,7 +32,12 @@ class AtpAsset(Base):
     scene_type: Mapped[str | None] = mapped_column(String(32))
     arrester_config: Mapped[str | None] = mapped_column(String(64))
     storage_mount_code: Mapped[str | None] = mapped_column(String(64), index=True)
-    storage_root_path: Mapped[str | None] = mapped_column(String(2048), index=True)
+    storage_root_path: Mapped[str | None] = mapped_column(
+        String(2048),
+        index=True,
+        # MySQL 索引长度限制 3072B（utf8mb4）：2048*4=8192 超限，用 191 前缀索引
+        index_kwargs={"mysql_length": 191},
+    )
     tags_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)
