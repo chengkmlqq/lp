@@ -7,6 +7,8 @@ import { Alert, Button, Card, Checkbox, Input, Space, Typography } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { withBasePath } from "@/lib/base-path";
+import { useI18n } from "@/lib/i18n";
+import { LangSwitcher } from "@/components/lang-switcher";
 import type { MenuTreeItem } from "@/types/auth";
 
 const LOGIN_REMEMBER_KEY = "login.remember";
@@ -34,6 +36,7 @@ function findFirstMenuPath(items: MenuTreeItem[]): string | null {
 export default function LoginPage() {
   const router = useRouter();
   const { user, initializing, login, fetchWithAuth } = useAuth();
+  const { t, lang, setLang } = useI18n();
 
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
@@ -103,7 +106,7 @@ export default function LoginPage() {
 
       setPassword("");
     } catch (submitError) {
-      const message = submitError instanceof Error ? submitError.message : "未知错误";
+      const message = submitError instanceof Error ? submitError.message : t("未知错误");
       setError(message);
     } finally {
       setBusy(false);
@@ -113,7 +116,7 @@ export default function LoginPage() {
   if (initializing) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center px-6 py-20">
-        <Typography.Text type="secondary">正在初始化会话...</Typography.Text>
+        <Typography.Text type="secondary">{t("正在初始化会话")}...</Typography.Text>
       </main>
     );
   }
@@ -121,7 +124,7 @@ export default function LoginPage() {
   if (user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center px-6 py-20">
-        <Typography.Text type="secondary">正在跳转到控制台...</Typography.Text>
+        <Typography.Text type="secondary">{t("正在跳转到控制台")}...</Typography.Text>
       </main>
     );
   }
@@ -133,7 +136,7 @@ export default function LoginPage() {
           <div className="flex justify-center">
             <img
               src={withBasePath("/favicon.ico")}
-              alt="高压电塔图标"
+              alt={t("高压电塔图标")}
               width={72}
               height={72}
               className="h-[72px] w-[72px]"
@@ -141,7 +144,7 @@ export default function LoginPage() {
           </div>
 
           <Typography.Title level={3} className="!mb-0 !text-center">
-            防雷计算
+            {t("防雷计算")}
           </Typography.Title>
 
           <form className="space-y-4" onSubmit={handleSubmit}>
@@ -149,7 +152,7 @@ export default function LoginPage() {
               size="large"
               value={userId}
               prefix={<IdcardOutlined />}
-              placeholder="用户 ID"
+              placeholder={t("用户 ID")}
               onChange={(event: ChangeEvent<HTMLInputElement>) => setUserId(event.currentTarget.value)}
               autoComplete="username"
               required
@@ -159,7 +162,7 @@ export default function LoginPage() {
               size="large"
               value={password}
               prefix={<LockOutlined />}
-              placeholder="密码"
+              placeholder={t("密码")}
               onChange={(event: ChangeEvent<HTMLInputElement>) => setPassword(event.currentTarget.value)}
               autoComplete="current-password"
               minLength={1}
@@ -172,12 +175,13 @@ export default function LoginPage() {
                 checked={rememberPassword}
                 onChange={(event) => setRememberPassword(event.target.checked)}
               >
-                记住密码
+                {t("记住密码")}
               </Checkbox>
+              <LangSwitcher lang={lang} onChange={setLang} compact />
             </div>
 
             <Button block size="large" type="primary" htmlType="submit" loading={busy}>
-              登录
+              {t("登录")}
             </Button>
           </form>
 

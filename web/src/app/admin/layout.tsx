@@ -49,6 +49,8 @@ import {
 } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
+import { LangSwitcher } from "@/components/lang-switcher";
+import { useI18n } from "@/lib/i18n";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { readApiError, getApiBaseUrl } from "@/lib/api";
 import { normalizeAppRoutePath } from "@/lib/app-route-path";
@@ -127,10 +129,20 @@ function resolveMenuIcon(icon: string | null): ReactNode {
   return null;
 }
 
-function buildMenuItems(items: MenuTreeItem[]): AntdMenuItems {
+function buildMenuItems(
+  items: MenuTreeItem[],
+  menuLabel: (code: string | null | undefined, zhName: string) => string,
+): AntdMenuItems {
   return items.map((item) => {
-    const children = buildMenuItems(item.children);
-    const label = item.path ? <Link href={item.path} prefetch={false}>{item.name}</Link> : item.name;
+    const children = buildMenuItems(item.children, menuLabel);
+    const displayName = menuLabel(item.code || item.id, item.name);
+    const label = item.path ? (
+      <Link href={item.path} prefetch={false}>
+        {displayName}
+      </Link>
+    ) : (
+      displayName
+    );
     const icon = resolveMenuIcon(item.icon);
 
     if (children.length > 0) {
@@ -199,6 +211,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const isDesktop = screens.md === true;
   const queryClient = useQueryClient();
   const { user, initializing, fetchWithAuth, logout } = useAuth();
+  const { t, lang, setLang, menuLabel } = useI18n();
   const {
     themePrimaryMode,
     setThemePrimaryMode,
@@ -242,7 +255,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }, [queryClient, user]));
 
   const menuTree = menusQuery.data ?? emptyMenuTree;
-  const menuItems = useMemo(() => buildMenuItems(menuTree), [menuTree]);
+  const menuItems = useMemo(() => buildMenuItems(menuTree, menuLabel), [menuTree, menuLabel]);
   const firstMenuPath = useMemo(() => findFirstMenuPath(menuTree), [menuTree]);
   const activeMenuState = useMemo(() => findActiveMenuState(menuTree, pathname), [menuTree, pathname]);
   const routeAllowed = useMemo(() => {
@@ -267,23 +280,23 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       {
         key: "auto",
         icon: <SyncOutlined />,
-        label: "跟随系统",
+        label: t("跟随系统"),
         extra: themePrimaryMode === "auto" ? themeBadge : null,
       },
       {
         key: "light",
         icon: <SunOutlined />,
-        label: "浅色主题",
+        label: t("浅色主题"),
         extra: themePrimaryMode === "light" ? themeBadge : null,
       },
       {
         key: "dark",
         icon: <MoonOutlined />,
-        label: "暗黑主题",
+        label: t("暗黑主题"),
         extra: themePrimaryMode === "dark" ? themeBadge : null,
       },
     ],
-    [themeBadge, themePrimaryMode],
+    [t, themeBadge, themePrimaryMode],
   );
 
   const accountMenuItems = useMemo<NonNullable<MenuProps["items"]>>(
@@ -295,7 +308,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         label: (
           <Space direction="vertical" size={0}>
             <Typography.Text strong>{user?.username}</Typography.Text>
-            <Typography.Text type="secondary">角色：{user?.role_codes.join(", ") || "-"}</Typography.Text>
+            <Typography.Text type="secondary">
+              {t("角色")}: {user?.role_codes.join(", ") || "-"}
+            </Typography.Text>
           </Space>
         ),
       },
@@ -304,10 +319,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         key: "logout",
         danger: true,
         icon: <LogoutOutlined />,
-        label: "退出登录",
+        label: t("退出登录"),
       },
     ],
-    [user?.role_codes, user?.username],
+    [t, user?.role_codes, user?.username],
   );
 
   const onThemeMenuClick = useCallback(
@@ -486,18 +501,20 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             className="h-[22px] w-[22px]"
           />
           <Typography.Text strong style={{ marginBottom: 0 }}>
-            防雷计算
+            {t("防雷计算")}
           </Typography.Text>
         </Link>
 
         <Space style={{ marginLeft: "auto" }}>
+          <LangSwitcher lang={lang} onChange={setLang} compact />
+
           <Dropdown
             menu={{ items: themeMenuItems, onClick: onThemeMenuClick }}
             arrow={{ pointAtCenter: true }}
             placement="bottomRight"
             trigger={["click"]}
           >
-            <Tooltip title="主题">
+            <Tooltip title={t("主题")}>
               <Button icon={<ThemeIcon />} type="text" />
             </Tooltip>
           </Dropdown>
@@ -559,11 +576,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                                   item.message_type === "task_done" ? "purple" : "blue"
                                 }>
                                   {{
-                                    task_done: "任务完成",
-                                    error: "错误",
-                                    warning: "警告",
-                                    success: "成功",
-                                    info: "信息",
+                                    task_done: t("任务完成"),
+                                    error: t("错误"),
+                                    warning: t("警告"),
+                                    success: t("成功"),
+                                    info: t("信息"),
                                   }[item.message_type] ?? item.message_type}
                                 </Tag>
                               </Space>

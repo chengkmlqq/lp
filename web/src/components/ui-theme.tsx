@@ -17,9 +17,9 @@ import {
   theme as antdTheme,
   type ThemeConfig,
 } from "antd";
-import zhCN from "antd/locale/zh_CN";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { useI18n } from "@/lib/i18n";
 
 export function cn(...inputs: Array<string | undefined | false | null>) {
   return twMerge(clsx(inputs));
@@ -498,6 +498,7 @@ export function Theme({
     };
   }, [happyWorkMode, isDark]);
 
+  const { antdLocale } = useI18n();
   const themeConfig = useMemo<ThemeConfig>(
     () => ({
       algorithm: themeAlgorithm,
@@ -551,7 +552,7 @@ export function Theme({
         isDark,
       }}
     >
-      <ConfigProvider locale={zhCN} theme={themeConfig}>
+      <ConfigProvider locale={antdLocale} theme={themeConfig}>
         <AntApp
           message={{
             top: 24,

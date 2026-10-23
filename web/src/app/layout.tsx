@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { I18nProvider } from "@/lib/i18n";
 import { Theme } from "@/components/ui-theme";
 
 import { AntdReact19Compat } from "@/components/antd-react19-compat";
@@ -23,17 +24,19 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full">
-        <Theme accentColor="electric" grayColor="slate" radius="medium" scaling="100%">
-          <div className="flex min-h-full flex-col">
-            <AntdReact19Compat />
-            <ChunkLoadRecovery />
-            <AppQueryProvider>
-              <AuthProvider>
-                <WSProvider>{children}</WSProvider>
-              </AuthProvider>
-            </AppQueryProvider>
-          </div>
-        </Theme>
+        <I18nProvider>
+          <Theme accentColor="electric" grayColor="slate" radius="medium" scaling="100%">
+            <div className="flex min-h-full flex-col">
+              <AntdReact19Compat />
+              <ChunkLoadRecovery />
+              <AppQueryProvider>
+                <AuthProvider>
+                  <WSProvider>{children}</WSProvider>
+                </AuthProvider>
+              </AppQueryProvider>
+            </div>
+          </Theme>
+        </I18nProvider>
       </body>
     </html>
   );
