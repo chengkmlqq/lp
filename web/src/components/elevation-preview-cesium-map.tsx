@@ -3,6 +3,7 @@
 import { Alert, Empty, Spin } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { getApiBaseUrl } from "@/lib/api";
 import { withBasePath } from "@/lib/base-path";
 import { createCesiumViewer, formatCesiumInitError } from "@/lib/cesium-viewer";
@@ -77,6 +78,7 @@ export function ElevationPreviewCesiumMap({
   loading = false,
   height = 520,
 }: ElevationPreviewCesiumMapProps) {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<import("cesium").Viewer | null>(null);
   const cesiumRef = useRef<CesiumNamespace | null>(null);
@@ -409,9 +411,9 @@ export function ElevationPreviewCesiumMap({
           },
           description: `
             <div style="line-height:1.7;">
-              <div><strong>经度：</strong>${point.longitude.toFixed(6)}</div>
-              <div><strong>纬度：</strong>${point.latitude.toFixed(6)}</div>
-              <div><strong>高程(m)：</strong>${point.altitude_m.toFixed(3)}</div>
+              <div><strong>{t("经度：")}</strong>${point.longitude.toFixed(6)}</div>
+              <div><strong>{t("纬度：")}</strong>${point.latitude.toFixed(6)}</div>
+              <div><strong>{t("高程(m)：")}</strong>${point.altitude_m.toFixed(3)}</div>
             </div>
           `,
         });
@@ -448,8 +450,8 @@ export function ElevationPreviewCesiumMap({
         },
         description: `
           <div style="line-height:1.7;">
-            <div><strong>数据集：</strong>${dataset?.name ?? "-"}</div>
-            <div><strong>范围：</strong>${terrainBounds.west.toFixed(4)}, ${terrainBounds.south.toFixed(4)} ~ ${terrainBounds.east.toFixed(4)}, ${terrainBounds.north.toFixed(4)}</div>
+            <div><strong>{t("数据集：")}</strong>${dataset?.name ?? "-"}</div>
+            <div><strong>{t("范围：")}</strong>${terrainBounds.west.toFixed(4)}, ${terrainBounds.south.toFixed(4)} ~ ${terrainBounds.east.toFixed(4)}, ${terrainBounds.north.toFixed(4)}</div>
           </div>
         `,
       });
@@ -609,7 +611,7 @@ export function ElevationPreviewCesiumMap({
   }
 
   if (safePoints.length === 0 && !loading) {
-    return <Empty description="暂无可展示的高程预览点。" />;
+    return <Empty description={t("暂无可展示的高程预览点。")} />;
   }
 
   return (

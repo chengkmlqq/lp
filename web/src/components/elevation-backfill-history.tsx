@@ -18,6 +18,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { SearchOutlined } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import type {
@@ -51,26 +52,26 @@ function formatDateTime(iso: string | null | undefined): string {
 
 function renderStatus(status: string) {
   if (status === "success") {
-    return <Tag color="green">成功</Tag>;
+    return <Tag color="green">{"成功"}</Tag>;
   }
   if (status === "running") {
-    return <Tag color="blue">处理中</Tag>;
+    return <Tag color="blue">{"处理中"}</Tag>;
   }
   if (status === "pending") {
-    return <Tag color="orange">待处理</Tag>;
+    return <Tag color="orange">{"待处理"}</Tag>;
   }
   if (status === "failed") {
-    return <Tag color="red">失败</Tag>;
+    return <Tag color="red">{"失败"}</Tag>;
   }
   return <Tag>{status}</Tag>;
 }
 
 function renderMode(mode: string) {
   if (mode === "fill_null_only") {
-    return <Tag color="default">仅填空</Tag>;
+    return <Tag color="default">{"仅填空"}</Tag>;
   }
   if (mode === "overwrite_all") {
-    return <Tag color="purple">全部覆盖</Tag>;
+    return <Tag color="purple">{"全部覆盖"}</Tag>;
   }
   return <Tag>{mode}</Tag>;
 }
@@ -91,16 +92,16 @@ function formatCoordinate(value: number | null | undefined): string {
 
 function renderTowerAction(action: ElevationApplyJobTowerAction) {
   if (action === "updated") {
-    return <Tag color="green">已更新</Tag>;
+    return <Tag color="green">{"已更新"}</Tag>;
   }
   if (action === "skipped") {
-    return <Tag color="default">已跳过</Tag>;
+    return <Tag color="default">{"已跳过"}</Tag>;
   }
   if (action === "missing_geo") {
-    return <Tag color="orange">缺坐标</Tag>;
+    return <Tag color="orange">{"缺坐标"}</Tag>;
   }
   if (action === "unmatched") {
-    return <Tag color="red">未命中</Tag>;
+    return <Tag color="red">{"未命中"}</Tag>;
   }
   return <Tag>{action}</Tag>;
 }
@@ -108,6 +109,7 @@ function renderTowerAction(action: ElevationApplyJobTowerAction) {
 export function ElevationBackfillHistoryTable({
   recordId,
 }: ElevationBackfillHistoryTableProps) {
+  const { t } = useI18n();
   const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
@@ -258,77 +260,77 @@ export function ElevationBackfillHistoryTable({
   const towerColumns = useMemo<ColumnsType<ElevationApplyJobTowerDetail>>(
     () => [
       {
-        title: "序号",
+        title: t("序号"),
         dataIndex: "seq_no",
         key: "seq_no",
         width: 60,
         render: (value: number | null) => value ?? "-",
       },
       {
-        title: "杆塔编号",
+        title: t("杆塔编号"),
         dataIndex: "tower_no",
         key: "tower_no",
         width: 120,
         render: (value: string | null, row) => value || row.tower_id || "-",
       },
       {
-        title: "经度",
+        title: t("经度"),
         dataIndex: "longitude",
         key: "longitude",
         width: 110,
         render: (value: number | null) => formatCoordinate(value),
       },
       {
-        title: "纬度",
+        title: t("纬度"),
         dataIndex: "latitude",
         key: "latitude",
         width: 110,
         render: (value: number | null) => formatCoordinate(value),
       },
       {
-        title: "回填结果",
+        title: t("回填结果"),
         dataIndex: "action",
         key: "action",
         width: 90,
         render: (value: ElevationApplyJobTowerAction) => renderTowerAction(value),
       },
       {
-        title: "回填前海拔(m)",
+        title: t("回填前海拔(m)"),
         dataIndex: "altitude_before_m",
         key: "altitude_before_m",
         width: 110,
         render: (value: number | null) => formatNumber(value, 3),
       },
       {
-        title: "回填后海拔(m)",
+        title: t("回填后海拔(m)"),
         dataIndex: "altitude_after_m",
         key: "altitude_after_m",
         width: 110,
         render: (value: number | null) => formatNumber(value, 3),
       },
       {
-        title: "回填前倾角1(°)",
+        title: t("回填前倾角1(°)"),
         dataIndex: "slope_1_before",
         key: "slope_1_before",
         width: 110,
         render: (value: number | null) => formatNumber(value, 3),
       },
       {
-        title: "回填后倾角1(°)",
+        title: t("回填后倾角1(°)"),
         dataIndex: "slope_1_after",
         key: "slope_1_after",
         width: 110,
         render: (value: number | null) => formatNumber(value, 3),
       },
       {
-        title: "回填前倾角2(°)",
+        title: t("回填前倾角2(°)"),
         dataIndex: "slope_2_before",
         key: "slope_2_before",
         width: 110,
         render: (value: number | null) => formatNumber(value, 3),
       },
       {
-        title: "回填后倾角2(°)",
+        title: t("回填后倾角2(°)"),
         dataIndex: "slope_2_after",
         key: "slope_2_after",
         width: 110,
@@ -341,63 +343,63 @@ export function ElevationBackfillHistoryTable({
   const columns = useMemo<ColumnsType<ElevationApplyJobSummary>>(
     () => [
       {
-        title: "线路名称",
+        title: t("线路名称"),
         dataIndex: "line_name",
         width: 180,
         ellipsis: { showTitle: true },
         render: (value: string | null) => value || "-",
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "status",
         width: 100,
         render: (value: string) => renderStatus(value),
       },
       {
-        title: "回填时间",
+        title: t("回填时间"),
         dataIndex: "create_date",
         width: 170,
         render: (value: string) => formatDateTime(value),
       },
       {
-        title: "总杆塔",
+        title: t("总杆塔"),
         dataIndex: "total_tower_count",
         width: 90,
         render: (value: number) => value ?? 0,
       },
       {
-        title: "更新杆塔",
+        title: t("更新杆塔"),
         dataIndex: "updated_tower_count",
         width: 100,
         render: (value: number) => value ?? 0,
       },
       {
-        title: "跳过",
+        title: t("跳过"),
         dataIndex: "skipped_tower_count",
         width: 80,
         render: (value: number) => value ?? 0,
       },
       {
-        title: "缺坐标",
+        title: t("缺坐标"),
         dataIndex: "missing_geo_count",
         width: 80,
         render: (value: number) => value ?? 0,
       },
       {
-        title: "未命中",
+        title: t("未命中"),
         dataIndex: "unmatched_count",
         width: 80,
         render: (value: number) => value ?? 0,
       },
       {
-        title: "操作人",
+        title: t("操作人"),
         dataIndex: "create_user",
         width: 140,
         ellipsis: true,
         render: (value: string | null, row: ElevationApplyJobSummary) => row.create_user_name || value || "-",
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 90,
         render: (_: unknown, row) => (
@@ -423,7 +425,7 @@ export function ElevationBackfillHistoryTable({
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="请先登录后再访问回填记录。"
+        description={t("请先登录后再访问回填记录。")}
       />
     );
   }
@@ -432,7 +434,7 @@ export function ElevationBackfillHistoryTable({
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="暂无权限查看回填记录。"
+        description={t("暂无权限查看回填记录。")}
       />
     );
   }
@@ -442,10 +444,10 @@ export function ElevationBackfillHistoryTable({
       {/* 线路名称过滤 + 查询（点击查询后走后端 keyword 过滤） */}
       <div className="admin-filter-bar">
         <Form layout="inline" onFinish={handleSearch}>
-          <Form.Item label="线路名称" style={{ marginBottom: 0 }}>
+          <Form.Item label={t("线路名称")} style={{ marginBottom: 0 }}>
             <Input
               allowClear
-              placeholder="输入线路名称/编号"
+              placeholder={t("输入线路名称/编号")}
               style={{ width: 280 }}
               value={keywordDraft}
               onChange={(event) => setKeywordDraft(event.target.value)}
@@ -490,7 +492,7 @@ export function ElevationBackfillHistoryTable({
             emptyText: (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="暂无回填记录。"
+                description={t("暂无回填记录。")}
               />
             ),
           }}
@@ -510,44 +512,44 @@ export function ElevationBackfillHistoryTable({
         {detailJob && (
           <Space direction="vertical" size={16} style={{ width: "100%" }}>
             <Descriptions bordered size="small" column={3}>
-              <Descriptions.Item label="线路">
+              <Descriptions.Item label={t("线路")}>
                 {[detailJob.line_code, detailJob.line_name].filter(Boolean).join(" ") || "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="回填时间">
+              <Descriptions.Item label={t("回填时间")}>
                 {formatDateTime(detailJob.create_date)}
               </Descriptions.Item>
-              <Descriptions.Item label="完成时间">
+              <Descriptions.Item label={t("完成时间")}>
                 {formatDateTime(detailJob.finished_at)}
               </Descriptions.Item>
-              <Descriptions.Item label="模式">
+              <Descriptions.Item label={t("模式")}>
                 {renderMode(detailJob.mode)}
               </Descriptions.Item>
-              <Descriptions.Item label="状态">
+              <Descriptions.Item label={t("状态")}>
                 {renderStatus(detailJob.status)}
               </Descriptions.Item>
-              <Descriptions.Item label="操作人">
+              <Descriptions.Item label={t("操作人")}>
                 {detailJob.create_user_name || detailJob.create_user || "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="总杆塔">
+              <Descriptions.Item label={t("总杆塔")}>
                 {detailJob.total_tower_count ?? 0}
               </Descriptions.Item>
-              <Descriptions.Item label="更新杆塔">
+              <Descriptions.Item label={t("更新杆塔")}>
                 {detailJob.updated_tower_count ?? 0}
               </Descriptions.Item>
-              <Descriptions.Item label="跳过">
+              <Descriptions.Item label={t("跳过")}>
                 {detailJob.skipped_tower_count ?? 0}
               </Descriptions.Item>
-              <Descriptions.Item label="缺坐标">
+              <Descriptions.Item label={t("缺坐标")}>
                 {detailJob.missing_geo_count ?? 0}
               </Descriptions.Item>
-              <Descriptions.Item label="未命中">
+              <Descriptions.Item label={t("未命中")}>
                 {detailJob.unmatched_count ?? 0}
               </Descriptions.Item>
-              <Descriptions.Item label="任务ID">
+              <Descriptions.Item label={t("任务ID")}>
                 {detailJob.task_id || "-"}
               </Descriptions.Item>
               {detailJob.error_message && (
-                <Descriptions.Item label="错误/警告" span={3}>
+                <Descriptions.Item label={t("错误/警告")} span={3}>
                   <Typography.Text type={detailJob.status === "failed" ? "danger" : "warning"}>
                     {detailJob.error_message}
                   </Typography.Text>

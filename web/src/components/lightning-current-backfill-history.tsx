@@ -26,6 +26,7 @@ import {
 } from "antd";
 import type { MenuProps } from "antd";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { MoreOutlined } from "@ant-design/icons";
 import { AdminPageLoading } from "@/components/admin-page-loading";
@@ -204,9 +205,9 @@ function formatNumber(value: number | null | undefined, digits = 3): string {
 
 function renderAction(action: string) {
   if (action === "created") {
-    return <Tag color="blue">新建</Tag>;
+    return <Tag color="blue">{"新建"}</Tag>;
   }
-  return <Tag color="orange">更新</Tag>;
+  return <Tag color="orange">{"更新"}</Tag>;
 }
 
 function renderDelta(value: number | null | undefined) {
@@ -225,6 +226,7 @@ function renderDelta(value: number | null | undefined) {
 export function LightningCurrentBackfillHistoryTable({
   amplitudeId,
 }: LightningCurrentBackfillHistoryTableProps) {
+  const { t } = useI18n();
   const { user, initializing, hasPermission, fetchWithAuth } = useAuth();
   const { message: messageApi, modal: modalApi } = App.useApp();
   const queryClient = useQueryClient();
@@ -431,7 +433,7 @@ export function LightningCurrentBackfillHistoryTable({
           };
           const taskId = payload.backfill_task_id || payload.task_id || "";
           if (!taskId) {
-            return { lineId: targetLineId, ok: false, message: "接口未返回回填任务 ID" };
+            return { lineId: targetLineId, ok: false, message: t("接口未返回回填任务 ID") };
           }
           return { lineId: targetLineId, ok: true, taskId };
         }),
@@ -554,7 +556,7 @@ export function LightningCurrentBackfillHistoryTable({
     () => [
       // 2026-09-27：去掉「线路编号」列，线路名称后增加「杆塔数量」列
       {
-        title: "线路名称",
+        title: t("线路名称"),
         dataIndex: "line_name",
         width: 200,
         ellipsis: { showTitle: true },
@@ -562,33 +564,33 @@ export function LightningCurrentBackfillHistoryTable({
           value || row.line_code || "-",
       },
       {
-        title: "电压(kV)",
+        title: t("电压(kV)"),
         dataIndex: "voltage_kv",
         width: 110,
         render: (value: number | null) => (value == null ? "-" : value),
       },
       {
-        title: "杆塔数量",
+        title: t("杆塔数量"),
         key: "tower_count",
         width: 100,
         align: "center" as const,
         render: (_: unknown, row) => row.tower_count ?? 0,
       },
       {
-        title: "回填时间",
+        title: t("回填时间"),
         dataIndex: "prepared_at",
         width: 170,
         render: (value: string | null) => formatDateTime(value),
       },
       {
-        title: "回填状态",
+        title: t("回填状态"),
         key: "progress",
         width: 160,
         render: (_: unknown, row) =>
           renderBackfillProgressCell(row.status, row.progress, row.error_message),
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 150,
         fixed: "right",
@@ -599,7 +601,7 @@ export function LightningCurrentBackfillHistoryTable({
               ? [
                   {
                     key: "log",
-                    label: "日志",
+                    label: t("日志"),
                     onClick: () => openLogViewer(row.task_id, row.line_name || row.line_code || "未知线路"),
                   },
                 ]
@@ -608,15 +610,15 @@ export function LightningCurrentBackfillHistoryTable({
               ? [
                   {
                     key: "delete",
-                    label: "删除",
+                    label: t("删除"),
                     danger: true,
                     disabled: deleteBackfillMutation.isPending,
                     onClick: () => {
                       modalApi.confirm({
-                        title: "删除回填记录",
+                        title: t("删除回填记录"),
                         content: `确认删除线路「${row.line_name || row.line_code || "-"}」的回填记录吗？该操作仅删除记录，已写入塔的幅值数据不回滚。`,
-                        okText: "删除",
-                        cancelText: "取消",
+                        okText: t("删除"),
+                        cancelText: t("取消"),
                         okButtonProps: { danger: true },
                         onOk: async () => {
                           if (row.task_id) {
@@ -658,52 +660,52 @@ export function LightningCurrentBackfillHistoryTable({
   const taskColumns = useMemo<ColumnsType<LightningCurrentBackfillTaskSummary>>(
     () => [
       {
-        title: "回填时间",
+        title: t("回填时间"),
         dataIndex: "prepared_at",
         width: 170,
         render: (value: string) => formatDateTime(value),
       },
       {
-        title: "线路名称",
+        title: t("线路名称"),
         dataIndex: "line_name",
         width: 200,
         ellipsis: { showTitle: true },
         render: (value: string | null) => value || "-",
       },
       {
-        title: "回填状态",
+        title: t("回填状态"),
         key: "progress",
         width: 160,
         render: (_: unknown, row: LightningCurrentBackfillTaskSummary) =>
           renderBackfillProgressCell(row.status, row.progress, row.error_message),
       },
       {
-        title: "幅值a (kA)",
+        title: t("幅值a (kA)"),
         dataIndex: "current_a",
         width: 110,
         render: (value: number | null) => formatNumber(value, 3),
       },
       {
-        title: "幅值b (kA)",
+        title: t("幅值b (kA)"),
         dataIndex: "current_b",
         width: 110,
         render: (value: number | null) => formatNumber(value, 3),
       },
       {
-        title: "更新杆塔数",
+        title: t("更新杆塔数"),
         dataIndex: "updated_tower_count",
         width: 110,
         render: (value: number) => value ?? 0,
       },
       {
-        title: "操作人",
+        title: t("操作人"),
         dataIndex: "prepared_by",
         width: 120,
         ellipsis: true,
         render: (value: string | null) => value || "-",
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 170,
         fixed: "right",
@@ -730,49 +732,49 @@ export function LightningCurrentBackfillHistoryTable({
   const towerColumns = useMemo<ColumnsType<LightningCurrentBackfillTowerDetail>>(
     () => [
       {
-        title: "塔号",
+        title: t("塔号"),
         dataIndex: "tower_no",
         width: 120,
         render: (value: string | null, row) => value || row.tower_id || "-",
       },
       {
-        title: "操作",
+        title: t("操作"),
         dataIndex: "action",
         width: 80,
         render: (value: string) => renderAction(value),
       },
       {
-        title: "回填前幅值a",
+        title: t("回填前幅值a"),
         dataIndex: "previous_current_a",
         width: 110,
         render: (value: number | null) => formatNumber(value, 3),
       },
       {
-        title: "回填后幅值a",
+        title: t("回填后幅值a"),
         dataIndex: "current_a",
         width: 110,
         render: (value: number | null) => formatNumber(value, 3),
       },
       {
-        title: "变化量a",
+        title: t("变化量a"),
         dataIndex: "delta_a",
         width: 100,
         render: (value: number | null) => renderDelta(value),
       },
       {
-        title: "回填前幅值b",
+        title: t("回填前幅值b"),
         dataIndex: "previous_current_b",
         width: 110,
         render: (value: number | null) => formatNumber(value, 3),
       },
       {
-        title: "回填后幅值b",
+        title: t("回填后幅值b"),
         dataIndex: "current_b",
         width: 110,
         render: (value: number | null) => formatNumber(value, 3),
       },
       {
-        title: "变化量b",
+        title: t("变化量b"),
         dataIndex: "delta_b",
         width: 100,
         render: (value: number | null) => renderDelta(value),
@@ -806,10 +808,10 @@ export function LightningCurrentBackfillHistoryTable({
       {isAmplitudeMode && (
         <div className="admin-filter-bar">
           <Form layout="inline" onFinish={handleSearch}>
-            <Form.Item label="线路" style={{ marginBottom: 0 }}>
+            <Form.Item label={t("线路")} style={{ marginBottom: 0 }}>
               <Input
                 allowClear
-                placeholder="按线路编号/名称筛选"
+                placeholder={t("按线路编号/名称筛选")}
                 style={{ width: 240 }}
                 value={keywordDraft}
                 onChange={(event) => setKeywordDraft(event.target.value)}
@@ -835,12 +837,12 @@ export function LightningCurrentBackfillHistoryTable({
       {!isAmplitudeMode && (
         <div className="admin-filter-bar">
           <Form layout="inline" onFinish={handleSearch}>
-            <Form.Item label="线路">
+            <Form.Item label={t("线路")}>
               <Select
                 allowClear
                 showSearch
                 optionFilterProp="label"
-                placeholder="选择线路"
+                placeholder={t("选择线路")}
                 style={{ width: 240 }}
                 value={lineId ?? undefined}
                 onChange={(value: string | undefined) => {
@@ -853,7 +855,7 @@ export function LightningCurrentBackfillHistoryTable({
                 }))}
               />
             </Form.Item>
-            <Form.Item label="回填时间">
+            <Form.Item label={t("回填时间")}>
               <DatePicker.RangePicker
                 allowClear
                 value={dateRange ?? undefined}
@@ -923,7 +925,7 @@ export function LightningCurrentBackfillHistoryTable({
 
       {/* 回填：在本页（回填记录详情）选择线路并提交；确认后进度在表格上方实时展示 */}
       <Modal
-        title="回填线路"
+        title={t("回填线路")}
         open={backfillModalOpen}
         onCancel={() => {
           setBackfillModalOpen(false);
@@ -934,7 +936,7 @@ export function LightningCurrentBackfillHistoryTable({
             backfillMutation.mutate(backfillLineIds);
           }
         }}
-        okText="确认回填"
+        okText={t("确认回填")}
         okButtonProps={{
           disabled: backfillLineIds.length === 0,
           loading: backfillMutation.isPending,
@@ -947,7 +949,7 @@ export function LightningCurrentBackfillHistoryTable({
           style={{ width: "100%" }}
           showSearch
           optionFilterProp="label"
-          placeholder="搜索并选择线路（可多选）"
+          placeholder={t("搜索并选择线路（可多选）")}
           value={backfillLineIds}
           onChange={(value: string[]) => setBackfillLineIds(value)}
           loading={backfillCandidatesQuery.isFetching}
@@ -988,38 +990,38 @@ export function LightningCurrentBackfillHistoryTable({
           ) : task ? (
             <Space direction="vertical" size={16} className="w-full">
               <Descriptions bordered size="small" column={2}>
-                <Descriptions.Item label="线路">
+                <Descriptions.Item label={t("线路")}>
                   {task.line_name || "-"}
                 </Descriptions.Item>
-                <Descriptions.Item label="回填时间">
+                <Descriptions.Item label={t("回填时间")}>
                   {formatDateTime(task.prepared_at)}
                 </Descriptions.Item>
-                <Descriptions.Item label="操作人">
+                <Descriptions.Item label={t("操作人")}>
                   {task.prepared_by || "-"}
                 </Descriptions.Item>
-                <Descriptions.Item label="采样数">
+                <Descriptions.Item label={t("采样数")}>
                   {task.sampled_event_count}
                 </Descriptions.Item>
-                <Descriptions.Item label="幅值a (kA)">
+                <Descriptions.Item label={t("幅值a (kA)")}>
                   {formatNumber(task.current_a, 3)}
                 </Descriptions.Item>
-                <Descriptions.Item label="幅值b (kA)">
+                <Descriptions.Item label={t("幅值b (kA)")}>
                   {formatNumber(task.current_b, 3)}
                 </Descriptions.Item>
-                <Descriptions.Item label="峰值max (kA)">
+                <Descriptions.Item label={t("峰值max (kA)")}>
                   {formatNumber(task.peak_max, 3)}
                 </Descriptions.Item>
-                <Descriptions.Item label="峰值min (kA)">
+                <Descriptions.Item label={t("峰值min (kA)")}>
                   {formatNumber(task.peak_min, 3)}
                 </Descriptions.Item>
-                <Descriptions.Item label="更新杆塔数">
+                <Descriptions.Item label={t("更新杆塔数")}>
                   {task.updated_tower_count}
                 </Descriptions.Item>
-                <Descriptions.Item label="新建杆塔数">
+                <Descriptions.Item label={t("新建杆塔数")}>
                   {task.created_profile_count}
                 </Descriptions.Item>
                 {task.warnings.length > 0 && (
-                  <Descriptions.Item label="警告" span={2}>
+                  <Descriptions.Item label={t("警告")} span={2}>
                     <Space direction="vertical" size={2}>
                       {task.warnings.map((warn, index) => (
                         <Typography.Text key={index} type="warning">
@@ -1032,7 +1034,7 @@ export function LightningCurrentBackfillHistoryTable({
               </Descriptions>
 
               <div>
-                <Typography.Title level={5}>杆塔回填明细</Typography.Title>
+                <Typography.Title level={5}>{t("杆塔回填明细")}</Typography.Title>
                 <Table<LightningCurrentBackfillTowerDetail>
                   rowKey="tower_id"
                   columns={towerColumns}
@@ -1046,7 +1048,7 @@ export function LightningCurrentBackfillHistoryTable({
                     emptyText: (
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="暂无杆塔明细。"
+                        description={t("暂无杆塔明细。")}
                       />
                     ),
                   }}
@@ -1056,7 +1058,7 @@ export function LightningCurrentBackfillHistoryTable({
           ) : (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="加载失败或任务不存在"
+              description={t("加载失败或任务不存在")}
             />
           )}
       </Drawer>

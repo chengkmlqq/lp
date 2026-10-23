@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { isChunkLoadError, reloadOnceOnChunkError } from "@/lib/chunk-error";
 
 type GlobalErrorProps = {
@@ -10,6 +11,7 @@ type GlobalErrorProps = {
 };
 
 export default function GlobalError({ error, reset }: GlobalErrorProps) {
+  const { t } = useI18n();
   useEffect(() => {
     reloadOnceOnChunkError(error);
   }, [error]);
@@ -43,7 +45,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             padding: 24,
           }}
         >
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>应用暂时不可用</h1>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{t("应用暂时不可用")}</h1>
           <p style={{ margin: "12px 0 0", lineHeight: 1.6, color: "var(--fquiz-theme-text-secondary, var(--ant-color-text-secondary))" }}>
             {chunkError
               ? "检测到静态资源版本不一致，正在尝试自动刷新页面。"

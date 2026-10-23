@@ -6,6 +6,7 @@ import { Button, Card, Form, Input, Space, Typography } from "antd";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { PowerLineCesiumMap } from "@/components/power-line-cesium-map";
 import { useAuth } from "@/components/auth-provider";
@@ -22,6 +23,7 @@ type PowerLineMapPanelProps = {
 };
 
 export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProps) {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canLineRead = hasPermission("line.read") || hasPermission("line.manage");
   // 与后端 /lines/{id}/towers 契约一致：具备 line.read/line.manage 亦可读取杆塔
@@ -85,9 +87,9 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">请先登录后再访问地图页面。</Typography.Text>
+          <Typography.Text type="secondary">{t("请先登录后再访问地图页面。")}</Typography.Text>
           <Button>
-            <Link href="/">返回首页</Link>
+            <Link href="/">{t("返回首页")}</Link>
           </Button>
         </Space>
       </Card>
@@ -97,9 +99,9 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">你没有访问该页面的权限（需要 `tower.read` 或 `line.read`）。</Typography.Text>
+          <Typography.Text type="secondary">{t("你没有访问该页面的权限（需要 `tower.read` 或 `line.read`）。")}</Typography.Text>
           <Button>
-            <Link href="/admin/power-lines">返回线路列表</Link>
+            <Link href="/admin/power-lines">{t("返回线路列表")}</Link>
           </Button>
         </Space>
       </Card>
@@ -111,21 +113,21 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
       {/* 顶部：与线路详情页一致的表单过滤（上下结构） */}
       <div className="admin-filter-bar">
         <Form layout="inline" className="flex flex-wrap items-center gap-2">
-          <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+          <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
             <Input
               value={keyword}
               allowClear
               onChange={(event) => setKeyword(event.target.value)}
-              placeholder="按塔号/模型筛选"
+              placeholder={t("按塔号/模型筛选")}
               onPressEnter={applyFilters}
             />
           </Form.Item>
-          <Form.Item label="塔型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+          <Form.Item label={t("塔型")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
             <Input
               value={towerType}
               allowClear
               onChange={(event) => setTowerType(event.target.value)}
-              placeholder="塔型编码（如 d500shangzi）"
+              placeholder={t("塔型编码（如 d500shangzi）")}
               onPressEnter={applyFilters}
             />
           </Form.Item>
@@ -135,7 +137,7 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
             </Button>
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
-            <Button onClick={resetFilters}>重置</Button>
+            <Button onClick={resetFilters}>{t("重置")}</Button>
           </Form.Item>
           <Typography.Text type="secondary" className="text-xs">
             当前加载 {towers.length} 基（上限 {TOWER_MAP_QUERY_LIMIT}）

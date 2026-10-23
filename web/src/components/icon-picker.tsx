@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Select, Typography } from "antd";
+import { useI18n } from "@/lib/i18n";
 import { ICON_CATEGORIES, resolveIcon } from "@/lib/icon-registry";
 
 type IconPickerProps = {
@@ -14,6 +15,7 @@ type IconPickerProps = {
  * 支持搜索（图标名/中文标签）与清除。
  */
 export function IconPicker({ value, onChange }: IconPickerProps) {
+  const { t } = useI18n();
   const groupedOptions = useMemo(() => {
     return ICON_CATEGORIES.map((cat) => ({
       label: cat.label,
@@ -41,7 +43,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
     <Select
       allowClear
       showSearch
-      placeholder="选择图标"
+      placeholder={t("选择图标")}
       value={value || undefined}
       onChange={(next) => onChange?.(next ?? "")}
       options={groupedOptions}

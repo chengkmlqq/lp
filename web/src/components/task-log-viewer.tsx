@@ -331,7 +331,7 @@ export function TaskLogViewerDrawer({
           })()
         )}
         {streaming && !status && (
-          <div className="task-log-streaming-indicator" role="status" aria-label="任务运行中">
+          <div className="task-log-streaming-indicator" role="status" aria-label={"任务运行中"}>
             <span className="task-log-dot" />
             <span className="task-log-dot" />
             <span className="task-log-dot" />

@@ -4,6 +4,7 @@ import { AimOutlined, MinusOutlined, PlusOutlined } from "@ant-design/icons";
 import { Alert, Button, Checkbox, Empty, Segmented, Space, Spin, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { getApiBaseUrl } from "@/lib/api";
 import { withBasePath } from "@/lib/base-path";
 import { createCesiumViewer, formatCesiumInitError } from "@/lib/cesium-viewer";
@@ -126,6 +127,7 @@ export function PowerLineCesiumMap({
   fillHeight = false,
   onRouteLengthChange,
 }: PowerLineCesiumMapProps) {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<import("cesium").Viewer | null>(null);
   const cesiumRef = useRef<CesiumNamespace | null>(null);
@@ -553,15 +555,15 @@ export function PowerLineCesiumMap({
           : undefined,
           description: `
           <div style="line-height:1.7;">
-            <div><strong>塔号：</strong>${tower.towerNo}</div>
-            <div><strong>序号：</strong>${tower.seqNo}</div>
-            <div><strong>坐标：</strong>${tower.longitude.toFixed(6)}, ${tower.latitude.toFixed(6)}</div>
-            <div><strong>海拔：</strong>${tower.altitudeM.toFixed(2)} m</div>
-            <div><strong>地形：</strong>${tower.terrain ?? "-"}</div>
-            <div><strong>风险等级：</strong>${tower.riskLevel ?? "-"}</div>
-            <div><strong>高程采样：</strong>${tower.elevationPrepared ? "已回填" : "未回填"}</div>
-            <div><strong>来源数据集：</strong>${tower.elevationDatasetCode ?? "-"}</div>
-            <div><strong>采样方式：</strong>${tower.elevationSampleMethod ?? "-"}</div>
+            <div><strong>{t("塔号：")}</strong>${tower.towerNo}</div>
+            <div><strong>{t("序号：")}</strong>${tower.seqNo}</div>
+            <div><strong>{t("坐标：")}</strong>${tower.longitude.toFixed(6)}, ${tower.latitude.toFixed(6)}</div>
+            <div><strong>{t("海拔：")}</strong>${tower.altitudeM.toFixed(2)} m</div>
+            <div><strong>{t("地形：")}</strong>${tower.terrain ?? "-"}</div>
+            <div><strong>{t("风险等级：")}</strong>${tower.riskLevel ?? "-"}</div>
+            <div><strong>{t("高程采样：")}</strong>${tower.elevationPrepared ? "已回填" : "未回填"}</div>
+            <div><strong>{t("来源数据集：")}</strong>${tower.elevationDatasetCode ?? "-"}</div>
+            <div><strong>{t("采样方式：")}</strong>${tower.elevationSampleMethod ?? "-"}</div>
           </div>
         `,
       });
@@ -602,8 +604,8 @@ export function PowerLineCesiumMap({
       ) : null}
       {initError ? (
         <Space>
-          <Alert type="error" showIcon message="走向图加载失败" description={initError} />
-          <Button onClick={handleRetry}>重试</Button>
+          <Alert type="error" showIcon message={t("走向图加载失败")} description={initError} />
+          <Button onClick={handleRetry}>{t("重试")}</Button>
         </Space>
       ) : null}
 
@@ -617,8 +619,8 @@ export function PowerLineCesiumMap({
             size="small"
             shape="circle"
             icon={<PlusOutlined />}
-            aria-label="放大"
-            title="放大"
+            aria-label={t("放大")}
+            title={t("放大")}
             onClick={zoomInRoute}
             disabled={controlsDisabled}
           />
@@ -626,8 +628,8 @@ export function PowerLineCesiumMap({
             size="small"
             shape="circle"
             icon={<MinusOutlined />}
-            aria-label="缩小"
-            title="缩小"
+            aria-label={t("缩小")}
+            title={t("缩小")}
             onClick={zoomOutRoute}
             disabled={controlsDisabled}
           />
@@ -635,8 +637,8 @@ export function PowerLineCesiumMap({
             size="small"
             shape="circle"
             icon={<AimOutlined />}
-            aria-label="居中重置"
-            title="居中重置"
+            aria-label={t("居中重置")}
+            title={t("居中重置")}
             onClick={focusRoute}
             disabled={controlsDisabled}
           />
@@ -647,10 +649,10 @@ export function PowerLineCesiumMap({
         {/* 显示控制（按风险着色 / 显示塔号 / 矢量·影像·地形）——靠右侧 */}
         <div className="absolute right-3 top-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-700/80 bg-slate-950/70 px-2.5 py-1.5 shadow-lg backdrop-blur-sm">
           <Checkbox checked={colorByRisk} onChange={(event) => setColorByRisk(event.target.checked)}>
-            <span className="text-xs text-slate-200">按风险着色</span>
+            <span className="text-xs text-slate-200">{t("按风险着色")}</span>
           </Checkbox>
           <Checkbox checked={showLabels} onChange={(event) => setShowLabels(event.target.checked)}>
-            <span className="text-xs text-slate-200">显示塔号</span>
+            <span className="text-xs text-slate-200">{t("显示塔号")}</span>
           </Checkbox>
           <Segmented
             size="small"

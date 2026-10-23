@@ -2,6 +2,7 @@
 
 // 系统总览 —— 配置弹窗：增删卡片、排序、调宽度、编辑标题与卡片专属参数。
 
+import { useI18n } from "@/lib/i18n";
 import {
   Button,
   Checkbox,
@@ -60,6 +61,7 @@ export function OverviewConfigModal({
   onSave,
   onReset,
 }: OverviewConfigModalProps) {
+  const { t } = useI18n();
   // 草稿状态：惰性初始化自当前配置。
   // 打开时同步由父组件通过 key 重挂载实现（见 page.tsx：<OverviewConfigModal key={...}>），
   // React 19 lint 不允许在 effect 内同步 setState。
@@ -108,15 +110,15 @@ export function OverviewConfigModal({
   return (
     <Modal
       open={open}
-      title="配置系统总览"
+      title={t("配置系统总览")}
       width={720}
       onCancel={onCancel}
       footer={
         <Space>
-          <Popconfirm title="恢复为默认布局？" onConfirm={onReset} okText="恢复" cancelText="取消">
-            <Button>恢复默认</Button>
+          <Popconfirm title={t("恢复为默认布局？")} onConfirm={onReset} okText={t("恢复")} cancelText={t("取消")}>
+            <Button>{t("恢复默认")}</Button>
           </Popconfirm>
-          <Button onClick={onCancel}>取消</Button>
+          <Button onClick={onCancel}>{t("取消")}</Button>
           <Button type="primary" loading={saving} onClick={() => onSave(draft)}>
             保存布局
           </Button>
@@ -142,7 +144,7 @@ export function OverviewConfigModal({
       </Divider>
 
       {draft.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未添加卡片，从上方卡片库选择" />
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("尚未添加卡片，从上方卡片库选择")} />
       ) : (
         <div className="flex flex-col gap-3">
           {draft.map((widget, index) => (
@@ -174,7 +176,7 @@ export function OverviewConfigModal({
                   options={SPAN_OPTIONS}
                   onChange={(span) => patchWidget(index, { span })}
                 />
-                <Popconfirm title="删除该卡片？" onConfirm={() => removeAt(index)} okText="删除" cancelText="取消">
+                <Popconfirm title={t("删除该卡片？")} onConfirm={() => removeAt(index)} okText={t("删除")} cancelText={t("取消")}>
                   <Button size="small" danger>
                     删除
                   </Button>
@@ -198,7 +200,7 @@ export function OverviewConfigModal({
                       <Input
                         size="small"
                         style={{ width: 140 }}
-                        placeholder="名称（如 ATP模型）"
+                        placeholder={t("名称（如 ATP模型）")}
                         value={link.label}
                         onChange={(event) => {
                           const links = quickLinksOf(widget).map((item, i) =>

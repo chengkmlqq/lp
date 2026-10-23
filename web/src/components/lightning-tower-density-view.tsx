@@ -216,7 +216,7 @@ export function TowerDensityView({
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="该分布尚未回填任何线路"
+        description={"该分布尚未回填任何线路"}
       />
     );
   }
@@ -224,13 +224,13 @@ export function TowerDensityView({
   return (
     <Space direction="vertical" size={16} className="w-full">
       <Space wrap size={8}>
-        <Typography.Text type="secondary">线路</Typography.Text>
+        <Typography.Text type="secondary">{"线路"}</Typography.Text>
         <Select
           style={{ minWidth: 240 }}
           value={effectiveSelectedLineId}
           options={lineOptions}
           onChange={setSelectedLineId}
-          placeholder="选择线路"
+          placeholder={"选择线路"}
         />
         {selectedLine && (
           <Typography.Text type="secondary">
@@ -258,7 +258,7 @@ export function TowerDensityView({
           emptyText: (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="该线路暂无杆塔数据"
+              description={"该线路暂无杆塔数据"}
             />
           ),
         }}

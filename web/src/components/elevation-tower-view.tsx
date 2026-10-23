@@ -168,7 +168,7 @@ export function ElevationTowerView({
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="该高程文件尚未回填任何线路"
+        description={"该高程文件尚未回填任何线路"}
         style={{ padding: "48px 0" }}
       />
     );
@@ -177,7 +177,7 @@ export function ElevationTowerView({
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <Typography.Text strong>线路：</Typography.Text>
+        <Typography.Text strong>{"线路："}</Typography.Text>
         <Select
           style={{ width: 320 }}
           showSearch
@@ -200,7 +200,7 @@ export function ElevationTowerView({
           emptyText: (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="该线路暂无杆塔数据"
+              description={"该线路暂无杆塔数据"}
             />
           ),
         }}

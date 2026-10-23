@@ -5,6 +5,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { readApiError } from "@/lib/api";
 import type {
   LineSummary,
@@ -166,9 +167,9 @@ export function LightningTowerView({
           row.current_type === "line_prepared" &&
           (row.current_a != null || row.current_b != null);
         if (backfilled || (prep && prep.sampled_event_count > 0)) {
-          return <TagLightning color="blue">已回填</TagLightning>;
+          return <TagLightning color="blue">{"已回填"}</TagLightning>;
         }
-        return <TagLightning color="default">未回填</TagLightning>;
+        return <TagLightning color="default">{"未回填"}</TagLightning>;
       },
     },
   ];
@@ -187,15 +188,15 @@ export function LightningTowerView({
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       {line ? (
         <Descriptions size="small" column={4} bordered>
-          <Descriptions.Item label="线路编号">{line.code || "-"}</Descriptions.Item>
-          <Descriptions.Item label="线路名称">{line.name || "-"}</Descriptions.Item>
-          <Descriptions.Item label="电压(kV)">
+          <Descriptions.Item label={"线路编号"}>{line.code || "-"}</Descriptions.Item>
+          <Descriptions.Item label={"线路名称"}>{line.name || "-"}</Descriptions.Item>
+          <Descriptions.Item label={"电压(kV)"}>
             {line.voltage_kv ?? "-"}
           </Descriptions.Item>
-          <Descriptions.Item label="杆塔数">{line.tower_count}</Descriptions.Item>
+          <Descriptions.Item label={"杆塔数"}>{line.tower_count}</Descriptions.Item>
         </Descriptions>
       ) : (
-        <Typography.Text type="secondary">线路信息加载失败</Typography.Text>
+        <Typography.Text type="secondary">{"线路信息加载失败"}</Typography.Text>
       )}
       <Table<LineTowerSummary>
         rowKey="id"
@@ -210,7 +211,7 @@ export function LightningTowerView({
           emptyText: (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="该线路暂无杆塔数据"
+              description={"该线路暂无杆塔数据"}
             />
           ),
         }}

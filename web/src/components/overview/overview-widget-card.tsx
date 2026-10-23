@@ -4,6 +4,7 @@
 // 卡片类型与后端 overview_config_service.WIDGET_TYPES 一一对应；
 // 数据全部来自 GET /api/v1/admin/overview（前端按配置过滤/拼装，不再新增后端统计接口）。
 
+import { useI18n } from "@/lib/i18n";
 import Link from "next/link";
 import { Card, Col, Row, Statistic, Tag, Typography } from "antd";
 
@@ -69,6 +70,7 @@ export function widgetDefaultTitle(type: OverviewWidgetType): string {
 }
 
 function AssetStatsCard({ widget, data }: { widget: OverviewWidget; data: OverviewData }) {
+  const { t } = useI18n();
   const selectedKeys = Array.isArray(widget.props.asset_keys)
     ? (widget.props.asset_keys as string[])
     : data.assets.map((item) => item.key);
@@ -94,7 +96,7 @@ function AssetStatsCard({ widget, data }: { widget: OverviewWidget; data: Overvi
           </Col>
         );
       })}
-      {items.length === 0 ? <Text type="secondary">未选择任何资产类别</Text> : null}
+      {items.length === 0 ? <Text type="secondary">{t("未选择任何资产类别")}</Text> : null}
     </Row>
   );
 }
@@ -103,13 +105,13 @@ function TaskSummaryCard({ data }: { data: OverviewData }) {
   return (
     <Row gutter={[16, 16]}>
       <Col xs={12} sm={8} md={4}>
-        <Statistic title="历史任务总数" value={data.tasks.total} />
+        <Statistic title={"历史任务总数"} value={data.tasks.total} />
       </Col>
       <Col xs={12} sm={8} md={4}>
-        <Statistic title="队列积压任务数" value={data.tasks.queue_pending_total} />
+        <Statistic title={"队列积压任务数"} value={data.tasks.queue_pending_total} />
       </Col>
       <Col xs={12} sm={8} md={4}>
-        <Statistic title="定时任务数" value={data.tasks.scheduled_tasks} />
+        <Statistic title={"定时任务数"} value={data.tasks.scheduled_tasks} />
       </Col>
     </Row>
   );
@@ -117,7 +119,7 @@ function TaskSummaryCard({ data }: { data: OverviewData }) {
 
 function TaskStatesCard({ data }: { data: OverviewData }) {
   if (data.tasks.state_buckets.length === 0) {
-    return <Text type="secondary">暂无任务历史记录</Text>;
+    return <Text type="secondary">{"暂无任务历史记录"}</Text>;
   }
   return (
     <div className="flex flex-wrap gap-2">
@@ -138,7 +140,7 @@ interface QuickLinkItem {
 function QuickLinksCard({ widget }: { widget: OverviewWidget }) {
   const links = (Array.isArray(widget.props.links) ? widget.props.links : []) as QuickLinkItem[];
   if (links.length === 0) {
-    return <Text type="secondary">尚未配置快捷入口</Text>;
+    return <Text type="secondary">{"尚未配置快捷入口"}</Text>;
   }
   return (
     <div className="flex flex-wrap gap-2">
@@ -160,6 +162,7 @@ function QuickLinksCard({ widget }: { widget: OverviewWidget }) {
 
 /** 渲染单张配置卡片；未知类型返回 null（前端兜底，不白屏）。 */
 export function OverviewWidgetCard({ widget, data }: { widget: OverviewWidget; data: OverviewData }) {
+  const { t } = useI18n();
   const title = widget.title?.trim() || widgetDefaultTitle(widget.type);
   let body: ReactNode = null;
   switch (widget.type) {
