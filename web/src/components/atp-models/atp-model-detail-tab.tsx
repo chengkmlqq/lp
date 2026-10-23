@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Descriptions, Drawer, Empty, Modal, Space, Spin, Table, Typography } from "antd";
 import { useMemo, useState } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import type { AtpAssetSummary, AtpAssetFileListResponse } from "@/types/auth";
@@ -36,6 +37,7 @@ interface AtpModelDetailTabProps {
 const SHOW_SCENE_TOPOLOGY_PREVIEW = false;
 
 export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const [datDetail, setDatDetail] = useState<{ path: string; name: string } | null>(null);
   // 通用文件在线查看：所有非目录文件均可打开（dat 另有结构化「查看详情」）
@@ -94,11 +96,11 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
   }
 
   if (!user) {
-    return <Alert type="warning" showIcon message="请先登录后查看 ATP 模型详情。" />;
+    return <Alert type="warning" showIcon message={t("请先登录后查看 ATP 模型详情。")} />;
   }
 
   if (!canRead) {
-    return <Alert type="error" showIcon message="当前账号缺少 ATP 模型读取权限（需要 atp.read / atp.run / atp.manage）。" />;
+    return <Alert type="error" showIcon message={t("当前账号缺少 ATP 模型读取权限（需要 atp.read / atp.run / atp.manage）。")} />;
   }
 
   return (
@@ -108,26 +110,26 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
           <Spin />
         </div>
       ) : assetQuery.isError ? (
-        <Alert type="error" showIcon message="加载 ATP 模型失败" description={assetQuery.error instanceof Error ? assetQuery.error.message : ""} />
+        <Alert type="error" showIcon message={t("加载 ATP 模型失败")} description={assetQuery.error instanceof Error ? assetQuery.error.message : ""} />
       ) : asset ? (
         <div>
-          <Typography.Title level={5}>基本信息</Typography.Title>
+          <Typography.Title level={5}>{t("基本信息")}</Typography.Title>
           <Descriptions
             bordered
             size="small"
             column={2}
             className="admin-atp-models-meta-table"
             items={[
-              { key: "code", label: "编码", children: asset.code },
-              { key: "name", label: "名称", children: asset.name },
-              { key: "voltage", label: "电压等级", children: asset.voltage_level || "-" },
-              { key: "tower", label: "塔型", children: asset.tower_type || "-" },
-              { key: "scene", label: "场景", children: asset.scene_type || "-" },
-              { key: "arrester", label: "避雷器组合", children: asset.arrester_config || "-" },
-              { key: "run_count", label: "运行次数", children: asset.run_count },
-              { key: "last_run", label: "最近运行", children: asset.last_run_status ? `${asset.last_run_status} · ${formatDateTime(asset.last_run_date)}` : "-" },
-              { key: "storage", label: "存储挂载", children: asset.storage_mount_code || "-" },
-              { key: "create_date", label: "创建时间", children: formatDateTime(asset.create_date) },
+              { key: "code", label: t("编码"), children: asset.code },
+              { key: "name", label: t("名称"), children: asset.name },
+              { key: "voltage", label: t("电压等级"), children: asset.voltage_level || "-" },
+              { key: "tower", label: t("塔型"), children: asset.tower_type || "-" },
+              { key: "scene", label: t("场景"), children: asset.scene_type || "-" },
+              { key: "arrester", label: t("避雷器组合"), children: asset.arrester_config || "-" },
+              { key: "run_count", label: t("运行次数"), children: asset.run_count },
+              { key: "last_run", label: t("最近运行"), children: asset.last_run_status ? `${asset.last_run_status} · ${formatDateTime(asset.last_run_date)}` : "-" },
+              { key: "storage", label: t("存储挂载"), children: asset.storage_mount_code || "-" },
+              { key: "create_date", label: t("创建时间"), children: formatDateTime(asset.create_date) },
             ]}
           />
         </div>
@@ -143,7 +145,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
         <Typography.Title level={5}>文件列表 ({files.length})</Typography.Title>
         {files.length === 0 && !filesQuery.isLoading ? (
           <div style={{ padding: "24px 0" }}>
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无文件" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无文件")} />
           </div>
         ) : (
           <Table
@@ -153,11 +155,11 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
             pagination={false}
             className="admin-atp-models-files-table"
             columns={[
-              { title: "文件名", dataIndex: "name", key: "name" },
-              { title: "文件大小", dataIndex: "size", key: "size", width: 120, render: (v: number | "-") => formatSize(v) },
-              { title: "更新时间", dataIndex: "modified", key: "modified", width: 180, render: (v: string | "-") => (v === "-" ? "-" : formatDateTime(v)) },
+              { title: t("文件名"), dataIndex: "name", key: "name" },
+              { title: t("文件大小"), dataIndex: "size", key: "size", width: 120, render: (v: number | "-") => formatSize(v) },
+              { title: t("更新时间"), dataIndex: "modified", key: "modified", width: 180, render: (v: string | "-") => (v === "-" ? "-" : formatDateTime(v)) },
               {
-                title: "操作",
+                title: t("操作"),
                 key: "operation",
                 width: 170,
                 align: "right" as const,

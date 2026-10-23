@@ -6,6 +6,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { FormInstance } from "antd";
 import { useQuery } from "@tanstack/react-query";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import { readLinePreparation } from "@/lib/line-preparation";
@@ -94,6 +95,7 @@ export function CreateJobForm({
   onCancel,
   onSubmit,
 }: CreateJobFormProps) {
+  const { t } = useI18n();
   const { user, fetchWithAuth } = useAuth();
   const [prevOpen, setPrevOpen] = useState(open);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -165,14 +167,14 @@ export function CreateJobForm({
   // 的 11 列严格对齐（列名、列序、复合值分隔符）。
   const towerColumns: ColumnsType<LineTowerSummary> = [
     {
-      title: "塔号",
+      title: t("塔号"),
       dataIndex: "tower_no",
       width: 120,
       render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
-    { title: "杆塔模型", dataIndex: "tower_model", width: 150, render: (value: string | null) => value || "-" },
+    { title: t("杆塔模型"), dataIndex: "tower_model", width: 150, render: (value: string | null) => value || "-" },
     {
-      title: "地理坐标°",
+      title: t("地理坐标°"),
       key: "geo",
       // 经纬度拼成「经度|纬度」较长，加宽并禁止换行（避免两行显示）
       width: 210,
@@ -180,43 +182,43 @@ export function CreateJobForm({
       render: (_: unknown, row: LineTowerSummary) => joinPair(row.longitude, row.latitude, "|"),
     },
     {
-      title: "档距",
+      title: t("档距"),
       key: "span",
       width: 130,
       render: (_: unknown, row: LineTowerSummary) => joinPair(row.span_small_m, row.span_large_m, ","),
     },
     {
-      title: "海拔高度m",
+      title: t("海拔高度m"),
       dataIndex: "altitude_m",
       width: 110,
       render: (value: number | null) => value ?? "-",
     },
-    { title: "地形", dataIndex: "terrain", width: 90, render: (value: string | null) => value || "-" },
+    { title: t("地形"), dataIndex: "terrain", width: 90, render: (value: string | null) => value || "-" },
     {
-      title: "接地电阻Ω",
+      title: t("接地电阻Ω"),
       dataIndex: "ground_resistance_ohm",
       width: 110,
       render: (value: number | null) => value ?? "-",
     },
     {
-      title: "地闪密度 次/(km^2*年)",
+      title: t("地闪密度 次/(km^2*年)"),
       dataIndex: "lightning_density",
       width: 170,
       render: (value: number | null) => value ?? "-",
     },
     {
-      title: "雷电流",
+      title: t("雷电流"),
       key: "current",
       width: 120,
       render: (_: unknown, row: LineTowerSummary) => joinPair(row.current_a, row.current_b, ","),
     },
     {
-      title: "倾角",
+      title: t("倾角"),
       key: "slope",
       width: 110,
       render: (_: unknown, row: LineTowerSummary) => joinPair(row.slope_1, row.slope_2, ","),
     },
-    { title: "塔型", dataIndex: "tower_type", width: 110, render: (value: string | null) => value || "-" },
+    { title: t("塔型"), dataIndex: "tower_type", width: 110, render: (value: string | null) => value || "-" },
   ];
 
   return (
@@ -229,9 +231,9 @@ export function CreateJobForm({
       {/* 单页面表单：基础信息 + 计算方法 双列；高级参数默认折叠 */}
       <div className="fl-create-form-scroll">
         <div className="fl-create-form-block">
-          <div className="fl-create-form-block-title">任务信息</div>
+          <div className="fl-create-form-block-title">{t("任务信息")}</div>
           <div className="fl-create-form-grid">
-            <Form.Item className="fl-span-2" name="job_name" label="任务名" rules={[{ required: true, message: "请输入任务名" }]}>
+            <Form.Item className="fl-span-2" name="job_name" label={t("任务名")} rules={[{ required: true, message: t("请输入任务名") }]}>
             <Input
               placeholder={selectedLine
                 ? `${selectedLine.name || selectedLine.code}-${formatJobType(selectedJobType)}`
@@ -239,7 +241,7 @@ export function CreateJobForm({
             />
           </Form.Item>
 
-          <Form.Item name="job_type" label="任务类型" rules={[{ required: true, message: "请选择任务类型" }]}>
+          <Form.Item name="job_type" label={t("任务类型")} rules={[{ required: true, message: t("请选择任务类型") }]}>
             <Select
               loading={dimensionsLoading}
               options={jobTypeOptions}
@@ -248,13 +250,13 @@ export function CreateJobForm({
 
           <Form.Item
             name="line_id"
-            label="线路"
-            rules={[{ required: true, message: "请选择线路" }]}
+            label={t("线路")}
+            rules={[{ required: true, message: t("请选择线路") }]}
           >
             <Select
               showSearch
               optionFilterProp="label"
-              placeholder="选择线路"
+              placeholder={t("选择线路")}
               loading={linesLoading}
               options={lines.map((item) => {
                 const preparation = readLinePreparation(item);
@@ -301,27 +303,27 @@ export function CreateJobForm({
             「包含杆塔」由杆塔列表勾选体现，因此同跳下整栏不渲染（避免空标题）。 */}
         {showNormalBlock ? (
           <div className="fl-create-form-block">
-            <div className="fl-create-form-block-title">计算方法</div>
+            <div className="fl-create-form-block-title">{t("计算方法")}</div>
             <div className="fl-create-form-grid">
-              <Form.Item name="fanji_naleishuiping_method" label="反击耐雷水平计算方法" rules={[{ required: true, message: "请选择反击耐雷水平计算方法" }]}>
+              <Form.Item name="fanji_naleishuiping_method" label={t("反击耐雷水平计算方法")} rules={[{ required: true, message: t("请选择反击耐雷水平计算方法") }]}>
                 <Select
                   loading={dimensionsLoading}
                   options={fanjiNaleishuipingMethodOptions}
                 />
               </Form.Item>
-              <Form.Item name="raoji_naleishuiping_method" label="绕击耐雷水平计算方法" rules={[{ required: true, message: "请选择绕击耐雷水平计算方法" }]}>
+              <Form.Item name="raoji_naleishuiping_method" label={t("绕击耐雷水平计算方法")} rules={[{ required: true, message: t("请选择绕击耐雷水平计算方法") }]}>
                 <Select
                   loading={dimensionsLoading}
                   options={raojiNaleishuipingMethodOptions}
                 />
               </Form.Item>
-              <Form.Item name="fanji_tzl_method" label="反击跳闸率计算方法" rules={[{ required: true, message: "请选择反击跳闸率计算方法" }]}>
+              <Form.Item name="fanji_tzl_method" label={t("反击跳闸率计算方法")} rules={[{ required: true, message: t("请选择反击跳闸率计算方法") }]}>
                 <Select
                   loading={dimensionsLoading}
                   options={fanjiTzlMethodOptions}
                 />
               </Form.Item>
-              <Form.Item name="raoji_tzl_method" label="绕击跳闸率计算方法" rules={[{ required: true, message: "请选择绕击跳闸率计算方法" }]}>
+              <Form.Item name="raoji_tzl_method" label={t("绕击跳闸率计算方法")} rules={[{ required: true, message: t("请选择绕击跳闸率计算方法") }]}>
                 <Select
                   loading={dimensionsLoading}
                   options={raojiTzlMethodOptions}
@@ -350,7 +352,7 @@ export function CreateJobForm({
         ) : null}
 
         <div className="fl-create-form-block">
-          <div className="fl-create-form-block-title">杆塔列表</div>
+          <div className="fl-create-form-block-title">{t("杆塔列表")}</div>
           {selectedLineId ? (
             <>
               {/* 注册 selected_tower_ids 字段（受控 rowSelection 的 form 存储） */}
@@ -362,7 +364,7 @@ export function CreateJobForm({
                   <Alert
                     type="error"
                     showIcon
-                    message="杆塔列表加载失败"
+                    message={t("杆塔列表加载失败")}
                     description={towersQuery.error instanceof Error ? towersQuery.error.message : "未知错误"}
                   />
                 ) : (
@@ -388,7 +390,7 @@ export function CreateJobForm({
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-2">
-        <Button onClick={() => setAdvancedOpen(true)}>高级参数</Button>
+        <Button onClick={() => setAdvancedOpen(true)}>{t("高级参数")}</Button>
         <div className="flex items-center gap-2">
           <Button onClick={onCancel} disabled={submitting}>
             取消
@@ -401,7 +403,7 @@ export function CreateJobForm({
 
       {/* 高级参数：独立弹窗展示（不在新建表单中平铺） */}
       <Modal
-        title="高级参数"
+        title={t("高级参数")}
         open={advancedOpen}
         onCancel={() => setAdvancedOpen(false)}
         width={720}
@@ -415,61 +417,61 @@ export function CreateJobForm({
       >
         <div className="fl-create-form-grid">
           {/* 是否海拔修正 / 感应电压公式：按需求提到高级参数弹窗最上方展示 */}
-          <Form.Item name="altitude_correction" label="是否海拔修正">
+          <Form.Item name="altitude_correction" label={t("是否海拔修正")}>
             <Select
               loading={dimensionsLoading}
               options={altitudeCorrectionOptions}
             />
           </Form.Item>
-          <Form.Item name="induced_voltage_formula" label="感应电压公式">
+          <Form.Item name="induced_voltage_formula" label={t("感应电压公式")}>
             <Select
               options={[
-                { value: "formula1", label: "公式1" },
-                { value: "formula2", label: "公式2" },
+                { value: "formula1", label: t("公式1") },
+                { value: "formula2", label: t("公式2") },
               ]}
             />
           </Form.Item>
-          <Form.Item name="current_waveform" label="雷电流波形">
+          <Form.Item name="current_waveform" label={t("雷电流波形")}>
             <Select
               loading={dimensionsLoading}
               options={currentWaveformOptions}
             />
           </Form.Item>
-          <Form.Item name="flashover_method" label="绝缘子闪络判据">
+          <Form.Item name="flashover_method" label={t("绝缘子闪络判据")}>
             <Select
               loading={dimensionsLoading}
               options={flashoverMethodOptions}
             />
           </Form.Item>
           {/* 波头时间：Min/Max/步长 一行（对齐 C# 高级设置 Form_GJSZ_PuTongJiSuan） */}
-          <Form.Item label="波头时间(μs)">
+          <Form.Item label={t("波头时间(μs)")}>
             <div className="flex items-center gap-2">
-              <span className="text-gray-500 text-sm whitespace-nowrap">最小</span>
+              <span className="text-gray-500 text-sm whitespace-nowrap">{t("最小")}</span>
               <Form.Item name="head_time_min_us" noStyle>
                 <InputNumber min={0.1} step={0.1} precision={2} className="w-24" />
               </Form.Item>
-              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">最大</span>
+              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">{t("最大")}</span>
               <Form.Item name="head_time_max_us" noStyle>
                 <InputNumber min={0.1} step={0.1} precision={2} className="w-24" />
               </Form.Item>
-              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">步长</span>
+              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">{t("步长")}</span>
               <Form.Item name="head_time_step_us" noStyle>
                 <InputNumber min={0.05} step={0.05} precision={2} className="w-24" />
               </Form.Item>
             </div>
           </Form.Item>
           {/* 波尾时间：Min/Max/步长 一行（对齐 C# 高级设置） */}
-          <Form.Item label="波尾时间(μs)">
+          <Form.Item label={t("波尾时间(μs)")}>
             <div className="flex items-center gap-2">
-              <span className="text-gray-500 text-sm whitespace-nowrap">最小</span>
+              <span className="text-gray-500 text-sm whitespace-nowrap">{t("最小")}</span>
               <Form.Item name="tail_time_min_us" noStyle>
                 <InputNumber min={1} step={1} precision={2} className="w-24" />
               </Form.Item>
-              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">最大</span>
+              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">{t("最大")}</span>
               <Form.Item name="tail_time_max_us" noStyle>
                 <InputNumber min={1} step={1} precision={2} className="w-24" />
               </Form.Item>
-              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">步长</span>
+              <span className="text-gray-500 text-sm whitespace-nowrap ml-2">{t("步长")}</span>
               <Form.Item name="tail_time_step_us" noStyle>
                 <InputNumber min={0.5} step={0.5} precision={2} className="w-24" />
               </Form.Item>

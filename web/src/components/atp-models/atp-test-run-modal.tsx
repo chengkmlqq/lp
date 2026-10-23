@@ -28,6 +28,7 @@ import {
 } from "antd";
 import { RocketOutlined } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { postJson, readApiError } from "@/lib/api";
 import type {
@@ -78,6 +79,7 @@ function parseJsonObject(text: string, label: string): Record<string, unknown> |
 }
 
 export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunModalProps) {
+  const { t } = useI18n();
   const { message } = App.useApp();
   const { fetchWithAuth } = useAuth();
 
@@ -233,25 +235,25 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
         <Alert
           type="info"
           showIcon
-          message="测试按 ① 物化 → ② 几何（DAT→LIB）→ ③ 单次 ATP 依次执行，依赖段自动补齐"
+          message={t("测试按 ① 物化 → ② 几何（DAT→LIB）→ ③ 单次 ATP 依次执行，依赖段自动补齐")}
         />
 
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Item label="测试段" style={{ marginBottom: 8 }}>
+            <Form.Item label={t("测试段")} style={{ marginBottom: 8 }}>
               <Checkbox.Group
                 value={stages}
                 onChange={(values) => setStages(values as AtpAssetTestStage[])}
                 options={[
-                  { value: "materialize", label: "① 物化" },
-                  { value: "geometry", label: "② 几何" },
-                  { value: "simulate", label: "③ 单次ATP" },
+                  { value: "materialize", label: t("① 物化") },
+                  { value: "geometry", label: t("② 几何") },
+                  { value: "simulate", label: t("③ 单次ATP") },
                 ]}
               />
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item label="固定雷电流" style={{ marginBottom: 8 }}>
+            <Form.Item label={t("固定雷电流")} style={{ marginBottom: 8 }}>
               <Space.Compact>
                 <InputNumber
                   value={currentKa}
@@ -269,7 +271,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item label="试跑" style={{ marginBottom: 8 }}>
+            <Form.Item label={t("试跑")} style={{ marginBottom: 8 }}>
               <Switch checked={dryRun} onChange={setDryRun} />
               <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
                 只列命令不执行
@@ -277,14 +279,14 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item label="参数来源" style={{ marginBottom: 8 }}>
+            <Form.Item label={t("参数来源")} style={{ marginBottom: 8 }}>
               <Radio.Group
                 value={paramsSource}
                 onChange={(event) => setParamsSource(event.target.value as ParamsSource)}
                 options={[
-                  { value: "template", label: "参数模板默认值" },
-                  { value: "tower", label: "手工杆塔数据" },
-                  { value: "line-tower", label: "从线路杆塔选择" },
+                  { value: "template", label: t("参数模板默认值") },
+                  { value: "tower", label: t("手工杆塔数据") },
+                  { value: "line-tower", label: t("从线路杆塔选择") },
                 ]}
                 optionType="button"
               />
@@ -297,13 +299,13 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
             <Alert
               type="warning"
               showIcon
-              message="按选中杆塔的真实台账数据测试（与「ATP 参数试算」同口径，后端按塔组装上下文）"
+              message={t("按选中杆塔的真实台账数据测试（与「ATP 参数试算」同口径，后端按塔组装上下文）")}
             />
             <Form layout="vertical">
-              <Form.Item label="线路" style={{ marginBottom: 8 }}>
+              <Form.Item label={t("线路")} style={{ marginBottom: 8 }}>
                 <Select
                   showSearch
-                  placeholder="选择线路"
+                  placeholder={t("选择线路")}
                   value={lineId}
                   onChange={(value) => void handleLineChange(String(value))}
                   optionFilterProp="label"
@@ -340,11 +342,11 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
                   onChange: (keys) => setSelectedTowerIds(keys.map(String)),
                 }}
                 columns={[
-                  { title: "塔号", dataIndex: "tower_no", width: 110 },
-                  { title: "塔型", dataIndex: "tower_type", width: 120, render: (value: string | null) => value || "-" },
-                  { title: "杆塔模型", dataIndex: "tower_model", render: (value: string | null) => value || "-" },
+                  { title: t("塔号"), dataIndex: "tower_no", width: 110 },
+                  { title: t("塔型"), dataIndex: "tower_type", width: 120, render: (value: string | null) => value || "-" },
+                  { title: t("杆塔模型"), dataIndex: "tower_model", render: (value: string | null) => value || "-" },
                   {
-                    title: "海拔(m)",
+                    title: t("海拔(m)"),
                     dataIndex: "altitude_m",
                     width: 90,
                     render: (value: number | null) => (value == null ? "-" : String(value)),
@@ -357,19 +359,19 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
           <Space direction="vertical" size={8} style={{ width: "100%" }}>
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item label="塔型" style={{ marginBottom: 8 }}>
+                <Form.Item label={t("塔型")} style={{ marginBottom: 8 }}>
                   <Input
                     value={towerKind}
-                    placeholder="如 d220maotou"
+                    placeholder={t("如 d220maotou")}
                     onChange={(event) => setTowerKind(event.target.value)}
                   />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item label="场景" style={{ marginBottom: 8 }}>
+                <Form.Item label={t("场景")} style={{ marginBottom: 8 }}>
                   <Input
                     value={scene}
-                    placeholder="如 fanji"
+                    placeholder={t("如 fanji")}
                     onChange={(event) => setScene(event.target.value)}
                   />
                 </Form.Item>
@@ -400,7 +402,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
               </Row>
             ) : (
               <Space size={8}>
-                <Typography.Text>模板默认值不完整时仍继续</Typography.Text>
+                <Typography.Text>{t("模板默认值不完整时仍继续")}</Typography.Text>
                 <Switch checked={allowIncomplete} onChange={setAllowIncomplete} />
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   默认关闭：缺默认值会直接报错并列出缺哪些变量
@@ -410,7 +412,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
             <Input
               value={paramsRaw}
               onChange={(event) => setParamsRaw(event.target.value)}
-              placeholder="C# javaParams 原始串（原样进 compare.json，供对拍）"
+              placeholder={t("C# javaParams 原始串（原样进 compare.json，供对拍）")}
             />
           </Space>
         )}

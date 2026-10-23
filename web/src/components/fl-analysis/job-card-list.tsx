@@ -13,6 +13,7 @@ import {
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
+import { useI18n } from "@/lib/i18n";
 import { Card } from "@/components/ui-antd";
 import type { FlAnalysisJobSummary } from "@/types/auth";
 
@@ -80,6 +81,7 @@ function isJobLocked(job: FlAnalysisJobSummary) {
  *  与列表视图共用 types.runningProgressPercent，避免各视图口径分叉。 */
 
 export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLogs, onOpenLog, onOpenDetail }: JobCardListProps) {
+  const { t } = useI18n();
   if (jobs.length === 0) {
     // 无数据可展示时（首载/无结果）：用居中加载指示；其余情况保留现有数据，仅在刷新时叠加遮罩
     if (loading) {
@@ -89,7 +91,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
         </div>
       );
     }
-    return <Empty description="暂无防雷分析任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+    return <Empty description={t("暂无防雷分析任务")} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
   return (
@@ -104,7 +106,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
           if (onOpenDetail) {
             actions.push({
               key: "result",
-              tooltip: "查看结果",
+              tooltip: t("查看结果"),
               icon: <BarChartOutlined />,
               disabled: isJobDetailLocked(job),
               onClick: (event) => {
@@ -116,7 +118,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
         if (canReadLogs && onOpenLog) {
           actions.push({
             key: "log",
-            tooltip: "查看日志",
+            tooltip: t("查看日志"),
             icon: <FileTextOutlined />,
             disabled: !job.task_id,
             onClick: (event) => {
@@ -128,7 +130,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
         if (onCancelJob && isJobCancellable(job)) {
           actions.push({
             key: "cancel",
-            tooltip: "取消任务",
+            tooltip: t("取消任务"),
             icon: <StopOutlined />,
             onClick: (event) => {
               event.stopPropagation();
@@ -138,7 +140,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
         }
         actions.push({
           key: "delete",
-          tooltip: "删除",
+          tooltip: t("删除"),
           icon: <DeleteOutlined />,
           danger: true,
           disabled: isJobLocked(job),
@@ -271,7 +273,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                       }}
                       trigger={["click"]}
                     >
-                      <Tooltip title="更多">
+                      <Tooltip title={t("更多")}>
                         <Button
                           type="text"
                           size="small"

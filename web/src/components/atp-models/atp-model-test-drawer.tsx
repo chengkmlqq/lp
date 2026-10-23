@@ -30,6 +30,7 @@ import {
   RocketOutlined,
 } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { getJson, postJson, readApiError } from "@/lib/api";
 import type {
@@ -112,10 +113,10 @@ function readStageResult(
 }
 
 function statusTag(status: string | null | undefined) {
-  if (status === "success") return <Tag color="green">成功</Tag>;
-  if (status === "failed") return <Tag color="red">失败</Tag>;
-  if (status === "running") return <Tag color="blue">运行中</Tag>;
-  if (status === "pending") return <Tag>排队中</Tag>;
+  if (status === "success") return <Tag color="green">{t("成功")}</Tag>;
+  if (status === "failed") return <Tag color="red">{t("失败")}</Tag>;
+  if (status === "running") return <Tag color="blue">{t("运行中")}</Tag>;
+  if (status === "pending") return <Tag>{t("排队中")}</Tag>;
   return <Tag>{status || "-"}</Tag>;
 }
 
@@ -151,6 +152,7 @@ interface AtpModelTestDrawerProps {
 }
 
 export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerProps) {
+  const { t } = useI18n();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const canRun = hasPermission("atp.run") || hasPermission("atp.manage");
 
@@ -313,7 +315,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
             <Space direction="vertical" size={12} style={{ width: "100%" }}>
               <Space wrap size={16}>
                 <Space size={8}>
-                  <Typography.Text>固定雷电流</Typography.Text>
+                  <Typography.Text>{t("固定雷电流")}</Typography.Text>
                   <InputNumber
                     min={0.1}
                     step={1}
@@ -327,7 +329,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                   </Typography.Text>
                 </Space>
                 <Space size={8}>
-                  <Typography.Text>试跑</Typography.Text>
+                  <Typography.Text>{t("试跑")}</Typography.Text>
                   <Switch checked={dryRun} onChange={setDryRun} />
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     只列命令不执行
@@ -337,13 +339,13 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
 
               <Space size={16} wrap>
                 <Space size={8}>
-                  <Typography.Text>参数来源</Typography.Text>
+                  <Typography.Text>{t("参数来源")}</Typography.Text>
                   <Radio.Group
                     value={paramsSource}
                     onChange={(event) => setParamsSource(event.target.value as "template" | "tower")}
                     options={[
-                      { value: "template", label: "参数模板默认值（无需杆塔）" },
-                      { value: "tower", label: "手工杆塔数据" },
+                      { value: "template", label: t("参数模板默认值（无需杆塔）") },
+                      { value: "tower", label: t("手工杆塔数据") },
                     ]}
                     optionType="button"
                   />
@@ -363,19 +365,19 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                       <Space direction="vertical" size={8} style={{ width: "100%" }}>
                         <Space wrap size={8}>
                           <Space.Compact style={{ width: 260 }}>
-                            <Button disabled style={{ pointerEvents: "none", fontWeight: 400 }}>塔型</Button>
+                            <Button disabled style={{ pointerEvents: "none", fontWeight: 400 }}>{t("塔型")}</Button>
                             <Input
                               value={towerKind}
-                              placeholder="如 d220maotou"
+                              placeholder={t("如 d220maotou")}
                               onChange={(event) => setTowerKind(event.target.value)}
                               style={{ width: "calc(100% - 64px)" }}
                             />
                           </Space.Compact>
                           <Space.Compact style={{ width: 220 }}>
-                            <Button disabled style={{ pointerEvents: "none", fontWeight: 400 }}>场景</Button>
+                            <Button disabled style={{ pointerEvents: "none", fontWeight: 400 }}>{t("场景")}</Button>
                             <Input
                               value={scene}
-                              placeholder="如 fanji"
+                              placeholder={t("如 fanji")}
                               onChange={(event) => setScene(event.target.value)}
                               style={{ width: "calc(100% - 64px)" }}
                             />
@@ -398,7 +400,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                           </>
                         ) : (
                           <Space size={8}>
-                            <Typography.Text>模板默认值不完整时仍继续</Typography.Text>
+                            <Typography.Text>{t("模板默认值不完整时仍继续")}</Typography.Text>
                             <Switch checked={allowIncomplete} onChange={setAllowIncomplete} />
                             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                               默认关闭：缺默认值会直接报错并列出缺哪些变量（避免算出无意义结果）
@@ -408,7 +410,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                         <Input
                           value={paramsRaw}
                           onChange={(event) => setParamsRaw(event.target.value)}
-                          placeholder="C# javaParams 原始串（原样进 compare.json，供对拍）"
+                          placeholder={t("C# javaParams 原始串（原样进 compare.json，供对拍）")}
                         />
                       </Space>
                     ),
@@ -426,7 +428,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                 >
                   全部执行
                 </Button>
-                <Tooltip title="从头按 ①→②→③ 依次跑完整测试；依赖段会自动补齐">
+                <Tooltip title={t("从头按 ①→②→③ 依次跑完整测试；依赖段会自动补齐")}>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     仅跑某一段时，前置段会自动补跑（产物必须先存在）。
                   </Typography.Text>
@@ -439,7 +441,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
           {activeRun ? (
             <Card size="small">
               <Space size={8} wrap>
-                <Typography.Text strong>当前测试</Typography.Text>
+                <Typography.Text strong>{t("当前测试")}</Typography.Text>
                 {statusTag(activeRun.status)}
                 <Typography.Text type="secondary">
                   用时{" "}
@@ -448,7 +450,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                     : "-"}
                 </Typography.Text>
                 <Typography.Text type="secondary">run {activeRun.id.slice(0, 8)}</Typography.Text>
-                {summary.dry_run ? <Tag color="orange">试跑</Tag> : null}
+                {summary.dry_run ? <Tag color="orange">{t("试跑")}</Tag> : null}
               </Space>
               {compareParamsSource ? (
                 <div style={{ marginTop: 6 }}>
@@ -471,12 +473,12 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                   style={{ marginTop: 8 }}
                   type="error"
                   showIcon
-                  message="测试未通过"
+                  message={t("测试未通过")}
                   description={activeRun.error_message}
                 />
               ) : null}
               {running ? (
-                <Alert style={{ marginTop: 8 }} type="info" showIcon message="正在执行，结果会自动刷新…" />
+                <Alert style={{ marginTop: 8 }} type="info" showIcon message={t("正在执行，结果会自动刷新…")} />
               ) : null}
               {activeRun ? (
                 <Space style={{ marginTop: 10 }}>
@@ -527,23 +529,23 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
           </Space>
 
           {/* 历史记录 */}
-          <Card size="small" title="历史记录">
+          <Card size="small" title={t("历史记录")}>
             <Table<AtpAssetRunSummary>
               rowKey="id"
               size="small"
               loading={historyQuery.isLoading}
               dataSource={historyQuery.data?.items ?? []}
               pagination={false}
-              locale={{ emptyText: "暂无测试记录" }}
+              locale={{ emptyText: t("暂无测试记录") }}
               onRow={(record) => ({
                 onClick: () => setActiveRunId(record.id),
                 style: { cursor: "pointer" },
               })}
               columns={[
-                { title: "时间", dataIndex: "create_date", width: 180, render: (value: string) => formatDateTime(value) },
-                { title: "状态", dataIndex: "status", width: 100, render: (value: string) => statusTag(value) },
+                { title: t("时间"), dataIndex: "create_date", width: 180, render: (value: string) => formatDateTime(value) },
+                { title: t("状态"), dataIndex: "status", width: 100, render: (value: string) => statusTag(value) },
                 {
-                  title: "结果",
+                  title: t("结果"),
                   key: "result",
                   render: (_: unknown, record: AtpAssetRunSummary) =>
                     record.error_message ? (
@@ -555,12 +557,12 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                     ),
                 },
                 {
-                  title: "耗时",
+                  title: t("耗时"),
                   dataIndex: "duration_ms",
                   width: 100,
                   render: (value: number | null) => (value != null ? `${(value / 1000).toFixed(1)}s` : "-"),
                 },
-                { title: "操作人", dataIndex: "create_user", width: 120, render: (value: string | null) => value || "-" },
+                { title: t("操作人"), dataIndex: "create_user", width: 120, render: (value: string | null) => value || "-" },
               ]}
             />
           </Card>
@@ -569,7 +571,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
         <Alert
           type="info"
           showIcon
-          message="当前账号缺少测试权限（需要 atp.run 或 atp.manage），无法发起测试。"
+          message={t("当前账号缺少测试权限（需要 atp.run 或 atp.manage），无法发起测试。")}
         />
       ) : null}
       {activeRunId ? (
@@ -608,14 +610,14 @@ function StageCard({
       title={
         <Space size={8}>
           <ExperimentOutlined style={{ color: meta.tagColor === "gold" ? "var(--orange-9)" : undefined }} />
-          <Typography.Text strong>{meta.label}</Typography.Text>
+          <Typography.Text strong>{t(meta.label)}</Typography.Text>
           {result ? (
             result.status === "ok" ? (
-              <Tag color="green">通过</Tag>
+              <Tag color="green">{t("通过")}</Tag>
             ) : result.status === "failed" ? (
-              <Tag color="red">未通过</Tag>
+              <Tag color="red">{t("未通过")}</Tag>
             ) : (
-              <Tag>跳过</Tag>
+              <Tag>{t("跳过")}</Tag>
             )
           ) : null}
         </Space>
@@ -635,7 +637,7 @@ function StageCard({
     >
       <Space direction="vertical" size={8} style={{ width: "100%" }}>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {meta.hint}
+          {t(meta.hint)}
         </Typography.Text>
         {runStatus && result ? (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -651,7 +653,7 @@ function StageCard({
         ) : null}
         {result ? <StageDetail result={result} runId={runId} /> : null}
         {!result && !running ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该段尚未运行，点击「测试该段」发起" />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("该段尚未运行，点击「测试该段」发起")} />
         ) : null}
       </Space>
     </Card>
@@ -659,6 +661,7 @@ function StageCard({
 }
 
 function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId: string | null }) {
+  const { t } = useI18n();
   const [viewPath, setViewPath] = useState<string | null>(null);
   const [viewWave, setViewWave] = useState(false);
   const artifactRows = Object.values(result.artifacts ?? {}).map((item) => ({
@@ -677,8 +680,8 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
     const flashoverPhases = m.flashover_phases;
     if (flashoverCount === undefined) return null;
     return [
-      { key: "flashover_count", label: "闪络相数", value: String(flashoverCount) },
-      { key: "flashover_phases", label: "闪络相位", value: Array.isArray(flashoverPhases) ? flashoverPhases.join(", ") : String(flashoverPhases ?? "-") },
+      { key: "flashover_count", label: t("闪络相数"), value: String(flashoverCount) },
+      { key: "flashover_phases", label: t("闪络相位"), value: Array.isArray(flashoverPhases) ? flashoverPhases.join(", ") : String(flashoverPhases ?? "-") },
     ];
   }, [result.metrics]);
 
@@ -691,7 +694,7 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
         dataSource={result.verdicts ?? []}
         columns={[
           {
-            title: "判据",
+            title: t("判据"),
             dataIndex: "name",
             width: 260,
             render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
@@ -701,9 +704,9 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
             dataIndex: "ok",
             width: 70,
             render: (value: boolean) =>
-              value ? <Tag color="green">通过</Tag> : <Tag color="red">未通过</Tag>,
+              value ? <Tag color="green">{t("通过")}</Tag> : <Tag color="red">{t("未通过")}</Tag>,
           },
-          { title: "说明", dataIndex: "detail", render: (value: string) => value || "-" },
+          { title: t("说明"), dataIndex: "detail", render: (value: string) => value || "-" },
         ]}
       />
       {flashoverRows ? (
@@ -713,9 +716,9 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
           pagination={false}
           dataSource={flashoverRows}
           columns={[
-            { title: "指标", dataIndex: "label", width: 140 },
+            { title: t("指标"), dataIndex: "label", width: 140 },
             {
-              title: "值",
+              title: t("值"),
               dataIndex: "value",
               render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
             },
@@ -738,8 +741,8 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
             pagination={false}
             dataSource={artifactRows}
             columns={[
-              { title: "产物", dataIndex: "path" },
-              { title: "大小", dataIndex: "bytes", width: 100 },
+              { title: t("产物"), dataIndex: "path" },
+              { title: t("大小"), dataIndex: "bytes", width: 100 },
               {
                 title: "sha256",
                 dataIndex: "sha256",
@@ -750,7 +753,7 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
                 ),
               },
               {
-                title: "查看",
+                title: t("查看"),
                 key: "view",
                 width: 90,
                 render: (_value, row: { path: string }) => {
@@ -827,6 +830,7 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
   );
 }
 
+  const { t } = useI18n();
 function WaveformModalContent({ runId, path }: { runId: string; path: string }) {
   const { user, fetchWithAuth } = useAuth();
   const waveformQuery = useQuery({
@@ -851,7 +855,7 @@ function WaveformModalContent({ runId, path }: { runId: string; path: string }) 
       <Alert
         type="error"
         showIcon
-        message="波形解析失败"
+        message={t("波形解析失败")}
         description={waveformQuery.error instanceof Error ? waveformQuery.error.message : ""}
       />
     );

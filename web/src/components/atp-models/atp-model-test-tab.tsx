@@ -33,6 +33,7 @@ import {
   EyeOutlined,
 } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { getJson, readApiError } from "@/lib/api";
 import type {
@@ -74,10 +75,10 @@ function readSummary(run: AtpAssetRunDetail | undefined): TestResultSummary {
 }
 
 function statusTag(status: string | null | undefined) {
-  if (status === "success") return <Tag color="green">成功</Tag>;
-  if (status === "failed") return <Tag color="red">失败</Tag>;
-  if (status === "running") return <Tag color="blue">运行中</Tag>;
-  if (status === "pending") return <Tag>排队中</Tag>;
+  if (status === "success") return <Tag color="green">{t("成功")}</Tag>;
+  if (status === "failed") return <Tag color="red">{t("失败")}</Tag>;
+  if (status === "running") return <Tag color="blue">{t("运行中")}</Tag>;
+  if (status === "pending") return <Tag>{t("排队中")}</Tag>;
   return <Tag>{status || "-"}</Tag>;
 }
 
@@ -109,6 +110,7 @@ type AtpModelTestTabProps = {
 };
 
 export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
+  const { t } = useI18n();
   const { message } = App.useApp();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const canRun = hasPermission("atp.run") || hasPermission("atp.manage");
@@ -218,13 +220,13 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
   const columns = useMemo<ColumnsType<AtpAssetRunSummary>>(
     () => [
       {
-        title: "测试时间",
+        title: t("测试时间"),
         dataIndex: "create_date",
         width: 170,
         render: (value: string) => formatDateTime(value),
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "status",
         width: 150,
         render: (value: string, record) =>
@@ -249,7 +251,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
           ),
       },
       {
-        title: "测试段",
+        title: t("测试段"),
         key: "stages",
         width: 150,
         render: (_: unknown, record) => {
@@ -259,31 +261,31 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
         },
       },
       {
-        title: "参数来源",
+        title: t("参数来源"),
         key: "params_source",
         width: 140,
         render: (_: unknown, record) => {
           const summary = record.result_summary_json as TestResultSummary | undefined;
           const source = summary?.compare?.params_source;
           return source === "template" ? (
-            <Tag>模板默认值</Tag>
+            <Tag>{t("模板默认值")}</Tag>
           ) : source === "tower" ? (
-            <Tag color="purple">手工杆塔</Tag>
+            <Tag color="purple">{t("手工杆塔")}</Tag>
           ) : source === "line-tower" ? (
-            <Tag color="geekblue">线路杆塔</Tag>
+            <Tag color="geekblue">{t("线路杆塔")}</Tag>
           ) : (
             "-"
           );
         },
       },
       {
-        title: "耗时",
+        title: t("耗时"),
         dataIndex: "duration_ms",
         width: 90,
         render: (value: number | null) => (value != null ? `${(value / 1000).toFixed(1)}s` : "-"),
       },
       {
-        title: "操作人",
+        title: t("操作人"),
         dataIndex: "create_user",
         width: 110,
         render: (_: unknown, record) => {
@@ -294,7 +296,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
         },
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 100,
         fixed: "right",
@@ -345,7 +347,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
             loading={runsQuery.isLoading}
             columns={columns}
             pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
-            locale={{ emptyText: "暂无测试记录，点击右上角「测试」发起" }}
+            locale={{ emptyText: t("暂无测试记录，点击右上角「测试」发起") }}
             scroll={{ x: 900 }}
           />
         </Spin>
@@ -372,7 +374,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
           <Space direction="vertical" size={12} style={{ width: "100%" }}>
             <Space size={8} wrap>
               {statusTag(detail.status)}
-              {detailSummary.dry_run ? <Tag color="orange">试跑</Tag> : null}
+              {detailSummary.dry_run ? <Tag color="orange">{t("试跑")}</Tag> : null}
               <Typography.Text type="secondary">
                 用时{" "}
                 {detail.duration_ms != null ? `${(detail.duration_ms / 1000).toFixed(1)}s` : "-"}
@@ -395,10 +397,10 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
             ) : null}
 
             {detail.error_message ? (
-              <Alert type="error" showIcon message="测试失败" description={detail.error_message} />
+              <Alert type="error" showIcon message={t("测试失败")} description={detail.error_message} />
             ) : null}
             {detailRunning ? (
-              <Alert type="info" showIcon message="正在执行，结果会自动刷新…" />
+              <Alert type="info" showIcon message={t("正在执行，结果会自动刷新…")} />
             ) : null}
 
             <Space>
@@ -423,13 +425,13 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
                   key: stage,
                   label: STAGE_LABEL[stage] ?? stage,
                   children: !result ? (
-                    <Typography.Text type="secondary">未执行</Typography.Text>
+                    <Typography.Text type="secondary">{t("未执行")}</Typography.Text>
                   ) : result.status === "ok" ? (
-                    <Tag color="green">通过</Tag>
+                    <Tag color="green">{t("通过")}</Tag>
                   ) : result.status === "failed" ? (
-                    <Tag color="red">未通过</Tag>
+                    <Tag color="red">{t("未通过")}</Tag>
                   ) : (
-                    <Tag>跳过</Tag>
+                    <Tag>{t("跳过")}</Tag>
                   ),
                 };
               })}
@@ -446,11 +448,11 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
                     <Space size={8}>
                       <Typography.Text strong>{STAGE_LABEL[stage]}</Typography.Text>
                       {result.status === "ok" ? (
-                        <Tag color="green">通过</Tag>
+                        <Tag color="green">{t("通过")}</Tag>
                       ) : result.status === "failed" ? (
-                        <Tag color="red">未通过</Tag>
+                        <Tag color="red">{t("未通过")}</Tag>
                       ) : (
-                        <Tag>跳过</Tag>
+                        <Tag>{t("跳过")}</Tag>
                       )}
                     </Space>
                   }
@@ -465,7 +467,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
             <Spin />
           </div>
         ) : (
-          <Empty description="暂无详情" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description={t("暂无详情")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
         )}
       </Drawer>
 
@@ -478,6 +480,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
 
 /** 单段产物/判据/日志展示（复用原测试抽屉 StageDetail 的展示能力）。 */
 function StageDetailBody({ result, runId }: { result: AtpAssetTestStageResult; runId: string | null }) {
+  const { t } = useI18n();
   const [viewPath, setViewPath] = useState<string | null>(null);
   const [viewWave, setViewWave] = useState(false);
   const artifactRows = Object.values(result.artifacts ?? {}).map((item) => ({
@@ -491,10 +494,10 @@ function StageDetailBody({ result, runId }: { result: AtpAssetTestStageResult; r
     const flashoverCount = m.flashover_count;
     if (flashoverCount === undefined) return null;
     return [
-      { key: "flashover_count", label: "闪络相数", value: String(flashoverCount) },
+      { key: "flashover_count", label: t("闪络相数"), value: String(flashoverCount) },
       {
         key: "flashover_phases",
-        label: "闪络相位",
+        label: t("闪络相位"),
         value: Array.isArray(m.flashover_phases) ? m.flashover_phases.join(", ") : String(m.flashover_phases ?? "-"),
       },
     ];
@@ -508,14 +511,14 @@ function StageDetailBody({ result, runId }: { result: AtpAssetTestStageResult; r
         pagination={false}
         dataSource={result.verdicts ?? []}
         columns={[
-          { title: "判据", dataIndex: "name", width: 260, render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
+          { title: t("判据"), dataIndex: "name", width: 260, render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
           {
             title: "",
             dataIndex: "ok",
             width: 70,
-            render: (value: boolean) => (value ? <Tag color="green">通过</Tag> : <Tag color="red">未通过</Tag>),
+            render: (value: boolean) => (value ? <Tag color="green">{t("通过")}</Tag> : <Tag color="red">{t("未通过")}</Tag>),
           },
-          { title: "说明", dataIndex: "detail", render: (value: string) => value || "-" },
+          { title: t("说明"), dataIndex: "detail", render: (value: string) => value || "-" },
         ]}
       />
       {flashoverRows ? (
@@ -525,8 +528,8 @@ function StageDetailBody({ result, runId }: { result: AtpAssetTestStageResult; r
           pagination={false}
           dataSource={flashoverRows}
           columns={[
-            { title: "指标", dataIndex: "label", width: 140 },
-            { title: "值", dataIndex: "value", render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
+            { title: t("指标"), dataIndex: "label", width: 140 },
+            { title: t("值"), dataIndex: "value", render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
           ]}
         />
       ) : null}
@@ -541,10 +544,10 @@ function StageDetailBody({ result, runId }: { result: AtpAssetTestStageResult; r
             pagination={false}
             dataSource={artifactRows}
             columns={[
-              { title: "产物", dataIndex: "path" },
-              { title: "大小", dataIndex: "bytes", width: 100, render: (value: number) => `${value}B` },
+              { title: t("产物"), dataIndex: "path" },
+              { title: t("大小"), dataIndex: "bytes", width: 100, render: (value: number) => `${value}B` },
               {
-                title: "查看",
+                title: t("查看"),
                 key: "view",
                 width: 90,
                 render: (_value, row: { path: string }) => {
@@ -621,6 +624,7 @@ function StageDetailBody({ result, runId }: { result: AtpAssetTestStageResult; r
   );
 }
 
+  const { t } = useI18n();
 function WaveformModalContentInner({ runId }: { runId: string }) {
   const { user, fetchWithAuth } = useAuth();
   const waveformQuery = useQuery({
@@ -644,7 +648,7 @@ function WaveformModalContentInner({ runId }: { runId: string }) {
       <Alert
         type="error"
         showIcon
-        message="波形解析失败"
+        message={t("波形解析失败")}
         description={waveformQuery.error instanceof Error ? waveformQuery.error.message : ""}
       />
     );

@@ -385,7 +385,7 @@ export function AtpTestSetDetailDrawer({
             <Typography.Text ellipsis={{ tooltip: value || row.id }} style={{ maxWidth: 140 }}>
               {value || row.id}
             </Typography.Text>
-            {!row.enabled ? <Tag>已禁用</Tag> : null}
+            {!row.enabled ? <Tag>{"已禁用"}</Tag> : null}
           </Space>
         ),
       },
@@ -395,9 +395,9 @@ export function AtpTestSetDetailDrawer({
         width: 90,
         render: (value: string) =>
           value === "tongtiao" ? (
-            <Tag color="purple">同跳计算</Tag>
+            <Tag color="purple">{"同跳计算"}</Tag>
           ) : (
-            <Tag color="blue">普通计算</Tag>
+            <Tag color="blue">{"普通计算"}</Tag>
           ),
       },
       {
@@ -485,9 +485,9 @@ export function AtpTestSetDetailDrawer({
                   编辑
                 </Button>
                 <Popconfirm
-                  title="删除该用例？"
-                  okText="删除"
-                  cancelText="取消"
+                  title={"删除该用例？"}
+                  okText={"删除"}
+                  cancelText={"取消"}
                   okButtonProps={{ danger: true }}
                   onConfirm={() => deleteCaseMutation.mutate(row.id)}
                 >
@@ -523,11 +523,11 @@ export function AtpTestSetDetailDrawer({
         width: 100,
         render: (value: string) =>
           value === "running" || value === "pending" ? (
-            <Tag color="processing">运行中</Tag>
+            <Tag color="processing">{"运行中"}</Tag>
           ) : value === "success" ? (
-            <Tag color="green">成功</Tag>
+            <Tag color="green">{"成功"}</Tag>
           ) : (
-            <Tag color="red">有失败</Tag>
+            <Tag color="red">{"有失败"}</Tag>
           ),
       },
       {
@@ -623,7 +623,7 @@ export function AtpTestSetDetailDrawer({
             <Space size={8}>
               <span>{set.name}</span>
               <Tag>{set.case_count} 用例</Tag>
-              {set.status === "disabled" ? <Tag>已停用</Tag> : null}
+              {set.status === "disabled" ? <Tag>{"已停用"}</Tag> : null}
             </Space>
           ) : (
             "测试集"
@@ -755,7 +755,7 @@ export function AtpTestSetDetailDrawer({
                         emptyText: (
                           <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description="暂无用例。点击「新增用例」为测试集添加模型与计算类型的测试用例。"
+                            description={"暂无用例。点击「新增用例」为测试集添加模型与计算类型的测试用例。"}
                           />
                         ),
                       }}
@@ -783,7 +783,7 @@ export function AtpTestSetDetailDrawer({
                       emptyText: (
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="暂无执行记录。点击「执行测试集」发起一次批量仿真测试。"
+                          description={"暂无执行记录。点击「执行测试集」发起一次批量仿真测试。"}
                         />
                       ),
                     }}
@@ -804,7 +804,7 @@ export function AtpTestSetDetailDrawer({
         confirmLoading={saveCaseMutation.isPending}
         destroyOnHidden
         okText={saveCaseMutation.isPending ? "提交中..." : editingCase ? "保存" : "添加"}
-        cancelText="取消"
+        cancelText={"取消"}
         width={720}
       >
         <Form
@@ -816,17 +816,17 @@ export function AtpTestSetDetailDrawer({
           <div className="grid gap-x-4 md:grid-cols-2">
             <Form.Item
               name="job_kind"
-              label="计算类型"
+              label={"计算类型"}
               rules={[{ required: true, message: "请选择计算类型" }]}
             >
               <Select options={JOB_KIND_OPTIONS} />
             </Form.Item>
-            <Form.Item name="name" label="用例名称">
-              <Input placeholder="如：普通计算-110kV-反击-酒杯塔（可空）" maxLength={255} />
+            <Form.Item name="name" label={"用例名称"}>
+              <Input placeholder={"如：普通计算-110kV-反击-酒杯塔（可空）"} maxLength={255} />
             </Form.Item>
             <Form.Item
               name="asset_id"
-              label="ATP 模型"
+              label={"ATP 模型"}
               rules={[{ required: true, message: "请选择模型" }]}
               className="md:col-span-2"
             >
@@ -835,23 +835,23 @@ export function AtpTestSetDetailDrawer({
                 filterOption={false}
                 onSearch={setAssetKeyword}
                 loading={assetsQuery.isFetching}
-                placeholder="搜索并选择模型（输入编码/名称过滤）"
+                placeholder={"搜索并选择模型（输入编码/名称过滤）"}
                 options={(assetsQuery.data?.items ?? []).map((asset) => ({
                   value: asset.id,
                   label: `${asset.code} · ${[asset.voltage_level, asset.tower_type, asset.scene_type, asset.arrester_config].filter(Boolean).join("/") || "无维度"}`,
                 }))}
               />
             </Form.Item>
-            <Form.Item name="current_ka" label="雷电流(kA)">
-              <InputNumber min={0.1} max={500} step={0.5} style={{ width: "100%" }} placeholder="默认 31" />
+            <Form.Item name="current_ka" label={"雷电流(kA)"}>
+              <InputNumber min={0.1} max={500} step={0.5} style={{ width: "100%" }} placeholder={"默认 31"} />
             </Form.Item>
-            <Form.Item name="scene" label="场景">
-              <Input placeholder="如 fanji / raoji1（可空，用默认）" />
+            <Form.Item name="scene" label={"场景"}>
+              <Input placeholder={"如 fanji / raoji1（可空，用默认）"} />
             </Form.Item>
-            <Form.Item name="stages" label="测试阶段" className="md:col-span-1">
-              <Input placeholder="materialize,geometry,simulate（留空=全部）" />
+            <Form.Item name="stages" label={"测试阶段"} className="md:col-span-1">
+              <Input placeholder={"materialize,geometry,simulate（留空=全部）"} />
             </Form.Item>
-            <Form.Item name="expected_extra" label="预期结果(JSON，可选)" className="md:col-span-2">
+            <Form.Item name="expected_extra" label={"预期结果(JSON，可选)"} className="md:col-span-2">
               <Input.TextArea
                 rows={2}
                 placeholder='如 {"flashover_count": 2}（回归断言；可空）'
@@ -859,14 +859,14 @@ export function AtpTestSetDetailDrawer({
             </Form.Item>
             <Form.Item
               name="params_extra"
-              label="测试参数(JSON 高级，可选)"
+              label={"测试参数(JSON 高级，可选)"}
               className="md:col-span-2"
               extra='如 {"params_source":"tower","execution_options":{"method_raoji":"egm"}}'
             >
-              <Input.TextArea rows={2} placeholder='留空则只用上面的常用字段' />
+              <Input.TextArea rows={2} placeholder={"留空则只用上面的常用字段"} />
             </Form.Item>
             <Form.Item name="enabled" valuePropName="checked" style={{ marginBottom: 0 }}>
-              <Checkbox defaultChecked>启用该用例（执行时默认包含）</Checkbox>
+              <Checkbox defaultChecked>{"启用该用例（执行时默认包含）"}</Checkbox>
             </Form.Item>
           </div>
         </Form>

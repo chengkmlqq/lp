@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Spin } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 
@@ -42,6 +43,7 @@ function formatSize(bytes: number): string {
 }
 
 export function AtpFileContentViewer({ assetId, relativePath, name }: AtpFileContentViewerProps) {
+  const { t } = useI18n();
   const { user, fetchWithAuth } = useAuth();
   const [loadedLines, setLoadedLines] = useState<string[]>([]);
   const [totalLines, setTotalLines] = useState(0);
@@ -124,7 +126,7 @@ export function AtpFileContentViewer({ assetId, relativePath, name }: AtpFileCon
       <Alert
         type="error"
         showIcon
-        message="读取文件失败"
+        message={t("读取文件失败")}
         description={contentQuery.error instanceof Error ? contentQuery.error.message : ""}
       />
     );
@@ -138,14 +140,14 @@ export function AtpFileContentViewer({ assetId, relativePath, name }: AtpFileCon
       <Alert
         type="warning"
         showIcon
-        message="该文件是二进制格式，无法在线预览文本内容。"
+        message={t("该文件是二进制格式，无法在线预览文本内容。")}
         description={`${data.name || name}（${formatSize(data.size)}）${data.mime_type ? `，MIME：${data.mime_type}` : ""}。如需查看可下载后使用本地工具打开。`}
       />
     );
   }
 
   if (data.content_type === "not-found") {
-    return <Alert type="warning" showIcon message="文件不存在或已被移除。" />;
+    return <Alert type="warning" showIcon message={t("文件不存在或已被移除。")} />;
   }
 
   const showMore = hasMore && !contentQuery.isFetching;

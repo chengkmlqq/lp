@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 
@@ -307,6 +308,7 @@ interface SelectedNodeDetail {
 }
 
 export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<SelectedNodeDetail | null>(null);
@@ -546,23 +548,23 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
   }
 
   if (!user) {
-    return <Alert type="warning" showIcon message="请先登录后查看 ATP 模型场景。" />;
+    return <Alert type="warning" showIcon message={t("请先登录后查看 ATP 模型场景。")} />;
   }
 
   if (!canRead) {
-    return <Alert type="error" showIcon message="当前账号缺少 ATP 模型读取权限（需要 atp.read / atp.run / atp.manage）。" />;
+    return <Alert type="error" showIcon message={t("当前账号缺少 ATP 模型读取权限（需要 atp.read / atp.run / atp.manage）。")} />;
   }
 
   const scene = sceneQuery.data;
 
   const statsItems = scene
     ? [
-        { key: "nodes", label: "节点", children: scene.stats.node_count },
-        { key: "branches", label: "支路", children: scene.stats.branch_count },
-        { key: "switches", label: "开关", children: scene.stats.switch_count },
-        { key: "sources", label: "电源", children: scene.stats.source_count },
-        { key: "includes", label: "线路段", children: scene.stats.include_count },
-        { key: "params", label: "参数", children: scene.stats.param_count },
+        { key: "nodes", label: t("节点"), children: scene.stats.node_count },
+        { key: "branches", label: t("支路"), children: scene.stats.branch_count },
+        { key: "switches", label: t("开关"), children: scene.stats.switch_count },
+        { key: "sources", label: t("电源"), children: scene.stats.source_count },
+        { key: "includes", label: t("线路段"), children: scene.stats.include_count },
+        { key: "params", label: t("参数"), children: scene.stats.param_count },
       ]
     : [];
 
@@ -576,7 +578,7 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
       {sceneQuery.isLoading ? (
         <div style={{ textAlign: "center", padding: "40px 0" }}><Spin /></div>
       ) : sceneQuery.isError ? (
-        <Alert type="error" showIcon message="加载场景失败" description={sceneQuery.error instanceof Error ? sceneQuery.error.message : ""} />
+        <Alert type="error" showIcon message={t("加载场景失败")} description={sceneQuery.error instanceof Error ? sceneQuery.error.message : ""} />
       ) : scene && scene.nodes.length > 0 ? (
         <>
           <Descriptions size="small" column={6} style={{ marginBottom: 8 }} items={statsItems} />
@@ -588,7 +590,7 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
                 {label}
               </span>
             ))}
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>形状=元件类型（⚡电源 · ▦开关 · ‖线路段 · ◎端口 · ●内部节点）· 拖拽旋转 · 滚轮缩放 · 点击节点查看详情</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("形状=元件类型（⚡电源 · ▦开关 · ‖线路段 · ◎端口 · ●内部节点）· 拖拽旋转 · 滚轮缩放 · 点击节点查看详情")}</Typography.Text>
           </div>
 
           {scene.warnings.length > 0 ? (
@@ -646,7 +648,7 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
                 />
               ) : null}
               {selected.branches.length === 0 && selected.switches.length === 0 && selected.sources.length === 0 && selected.includes.length === 0 ? (
-                <Typography.Text type="secondary">该节点没有直接相连的元件。</Typography.Text>
+                <Typography.Text type="secondary">{t("该节点没有直接相连的元件。")}</Typography.Text>
               ) : null}
             </div>
           ) : null}
@@ -674,7 +676,7 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
           ) : null}
         </>
       ) : scene && scene.nodes.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该模型无可绘制的拓扑（.atp 解析结果为空）" />
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("该模型无可绘制的拓扑（.atp 解析结果为空）")} />
       ) : null}
     </div>
   );

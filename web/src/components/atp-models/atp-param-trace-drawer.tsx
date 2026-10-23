@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Alert, Descriptions, Drawer, Spin, Table, Tag, Typography } from "antd";
 import { useMemo } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 
@@ -56,6 +57,7 @@ const KIND_COLOR: Record<SourceKind, string> = {
 };
 
 function ParamsTraceBody({ runId }: { runId: string }) {
+  const { t } = useI18n();
   const { user, fetchWithAuth } = useAuth();
 
   const compareQuery = useQuery({
@@ -101,7 +103,7 @@ function ParamsTraceBody({ runId }: { runId: string }) {
       <Alert
         type="error"
         showIcon
-        message="读取参数溯源失败"
+        message={t("读取参数溯源失败")}
         description={compareQuery.error instanceof Error ? compareQuery.error.message : ""}
       />
     );
@@ -129,23 +131,23 @@ function ParamsTraceBody({ runId }: { runId: string }) {
         items={[
           {
             key: "source",
-            label: "参数来源",
+            label: t("参数来源"),
             children:
               paramSource === "tower" ? (
-                <Tag color="purple">手工杆塔数据（base_tower / profile）</Tag>
+                <Tag color="purple">{t("手工杆塔数据（base_tower / profile）")}</Tag>
               ) : (
-                <Tag color="blue">参数模板默认值（无杆塔）</Tag>
+                <Tag color="blue">{t("参数模板默认值（无杆塔）")}</Tag>
               ),
           },
           {
             key: "tower",
-            label: "命中塔型",
+            label: t("命中塔型"),
             children: diag?.tower_kind ? <Tag>{diag.tower_kind}</Tag> : "-",
           },
           {
             key: "unresolved",
-            label: "未解析槽位",
-            children: unresolvedCount > 0 ? <Tag color="red">{unresolvedCount} 个</Tag> : <Tag color="green">无</Tag>,
+            label: t("未解析槽位"),
+            children: unresolvedCount > 0 ? <Tag color="red">{unresolvedCount} 个</Tag> : <Tag color="green">{t("无")}</Tag>,
           },
         ]}
       />
@@ -170,20 +172,20 @@ function ParamsTraceBody({ runId }: { runId: string }) {
         scroll={{ y: 380 }}
         dataSource={rows}
         columns={[
-          { title: "槽位", dataIndex: "slot", width: 130, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
+          { title: t("槽位"), dataIndex: "slot", width: 130, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
           {
-            title: "值",
+            title: t("值"),
             dataIndex: "value",
             width: 130,
             render: (v: string) => <Typography.Text strong>{v}</Typography.Text>,
           },
           {
-            title: "来源分类",
+            title: t("来源分类"),
             dataIndex: "kind",
             width: 110,
             render: (kind: SourceKind, row: { kindLabel: string }) => <Tag color={KIND_COLOR[kind]}>{row.kindLabel}</Tag>,
           },
-          { title: "原始来源", dataIndex: "sourceText", render: (v: string) => <Typography.Text type="secondary" style={{ fontSize: 12 }}>{v}</Typography.Text> },
+          { title: t("原始来源"), dataIndex: "sourceText", render: (v: string) => <Typography.Text type="secondary" style={{ fontSize: 12 }}>{v}</Typography.Text> },
         ]}
       />
 
@@ -233,6 +235,7 @@ function ParamsTraceBody({ runId }: { runId: string }) {
 }
 
 export function AtpParamTraceDrawer({ runId, open, onClose }: AtpParamTraceDrawerProps) {
+  const { t } = useI18n();
   return (
     <Drawer open={open} title={`参数溯源：run ${runId.slice(0, 8)}`} width={760} onClose={onClose} destroyOnClose>
       <ParamsTraceBody runId={runId} />

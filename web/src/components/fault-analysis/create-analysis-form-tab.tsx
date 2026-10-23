@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Form, Spin, Alert, message } from "antd";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { CreateAnalysisFormAdvanced } from "@/components/fault-analysis/create-analysis-form-advanced";
 import { readApiError } from "@/lib/api";
@@ -37,6 +38,7 @@ export function CreateAnalysisFormTab({
   onLoadError,
   open,
 }: CreateAnalysisFormTabProps) {
+  const { t } = useI18n();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [form] = Form.useForm<CreateFaultAnalysisFormValues>();
   const [loading, setLoading] = useState(mode === "edit");
@@ -162,7 +164,7 @@ export function CreateAnalysisFormTab({
       <Alert
         type="error"
         showIcon
-        message="加载失败"
+        message={t("加载失败")}
         description={loadError}
       />
     );

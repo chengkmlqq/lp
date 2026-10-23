@@ -1,4 +1,5 @@
 "use client";
+import { useI18n } from "@/lib/i18n";
 
 import { Alert, Button, Descriptions, Divider, Empty, Space, Spin, Tag } from "antd";
 
@@ -87,6 +88,7 @@ export function JobDetailPanel({
   onOpenReport,
   onDownloadReport,
 }: JobDetailPanelProps) {
+  const { t } = useI18n();
   const { labelMap } = useFlDimensionOptions();
 
   if (loading) {
@@ -108,7 +110,7 @@ export function JobDetailPanel({
   }
 
   if (!selectedJobDetail || !selectedJob) {
-    return <Empty description="暂无任务详情" />;
+    return <Empty description={t("暂无任务详情")} />;
   }
 
   const selectedJobExecutionOptions = readObject(selectedJobDetail.execution_options_json);
@@ -181,75 +183,75 @@ export function JobDetailPanel({
   return (
     <Space direction="vertical" size={16} className="flex w-full">
       <section className="fl-create-form-block">
-        <div className="fl-create-form-block-title">任务信息</div>
+        <div className="fl-create-form-block-title">{t("任务信息")}</div>
         <Descriptions bordered size="small" column={2}>
-        <Descriptions.Item label="任务名称">{selectedJobDetail.job_name || "-"}</Descriptions.Item>
-        <Descriptions.Item label="任务状态">
+        <Descriptions.Item label={t("任务名称")}>{selectedJobDetail.job_name || "-"}</Descriptions.Item>
+        <Descriptions.Item label={t("任务状态")}>
           <Tag color={statusColor(selectedJobDetail.status)}>{JOB_STATUS_TEXT[selectedJobDetail.status] ?? selectedJobDetail.status}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="线路">{selectedJobDetail.line_name || selectedJobDetail.line_code || "-"}</Descriptions.Item>
-        <Descriptions.Item label="任务类型">{formatJobType(selectedJobDetail.job_type, mitigationMode(selectedJobDetail))}</Descriptions.Item>
-        <Descriptions.Item label="结果杆塔数">{selectedJobDetail.result_tower_count}</Descriptions.Item>
-        <Descriptions.Item label="完成时间">{formatFinishedAt(selectedJobDetail.finished_at)}</Descriptions.Item>
+        <Descriptions.Item label={t("线路")}>{selectedJobDetail.line_name || selectedJobDetail.line_code || "-"}</Descriptions.Item>
+        <Descriptions.Item label={t("任务类型")}>{formatJobType(selectedJobDetail.job_type, mitigationMode(selectedJobDetail))}</Descriptions.Item>
+        <Descriptions.Item label={t("结果杆塔数")}>{selectedJobDetail.result_tower_count}</Descriptions.Item>
+        <Descriptions.Item label={t("完成时间")}>{formatFinishedAt(selectedJobDetail.finished_at)}</Descriptions.Item>
         {selectedJobDetail.job_type === "mitigation" ? (
           <>
-            <Descriptions.Item label="前驱风险任务">{sourceJobId || "-"}</Descriptions.Item>
-            <Descriptions.Item label="选塔数">{String(selectedTowerCount(selectedJobDetail) || "-")}</Descriptions.Item>
-            <Descriptions.Item label="模式">{mitigationMode(selectedJobDetail) ? "非建线" : "常规建线"}</Descriptions.Item>
-            <Descriptions.Item label="需装避雷器数">
+            <Descriptions.Item label={t("前驱风险任务")}>{sourceJobId || "-"}</Descriptions.Item>
+            <Descriptions.Item label={t("选塔数")}>{String(selectedTowerCount(selectedJobDetail) || "-")}</Descriptions.Item>
+            <Descriptions.Item label={t("模式")}>{mitigationMode(selectedJobDetail) ? "非建线" : "常规建线"}</Descriptions.Item>
+            <Descriptions.Item label={t("需装避雷器数")}>
               {String(readObject(selectedJobDetail.result_summary_json).arrester_required_count ?? "-")}
             </Descriptions.Item>
           </>
         ) : selectedJobDetail.job_type === "scenario" ? (
           <>
-            <Descriptions.Item label="前驱措施任务">{sourceJobId || "-"}</Descriptions.Item>
-            <Descriptions.Item label="选塔数">{String(selectedTowerCount(selectedJobDetail) || "-")}</Descriptions.Item>
-            <Descriptions.Item label="复用计算口径">
+            <Descriptions.Item label={t("前驱措施任务")}>{sourceJobId || "-"}</Descriptions.Item>
+            <Descriptions.Item label={t("选塔数")}>{String(selectedTowerCount(selectedJobDetail) || "-")}</Descriptions.Item>
+            <Descriptions.Item label={t("复用计算口径")}>
               {scenarioBaseJobType ? formatJobType(scenarioBaseJobType) : "-"}
             </Descriptions.Item>
-            <Descriptions.Item label="基线计算任务">{scenarioBaseJobName || "-"}</Descriptions.Item>
+            <Descriptions.Item label={t("基线计算任务")}>{scenarioBaseJobName || "-"}</Descriptions.Item>
           </>
         ) : selectedJobDetail.job_type === "report" ? (
           <>
-            <Descriptions.Item label="报告来源">
+            <Descriptions.Item label={t("报告来源")}>
               {reportSourceJobType ? formatJobType(reportSourceJobType) : "-"}
               {reportSourceJobName ? ` / ${reportSourceJobName}` : ""}
             </Descriptions.Item>
-            <Descriptions.Item label="选塔数">
+            <Descriptions.Item label={t("选塔数")}>
               {String(readObject(selectedJobDetail.result_summary_json).selected_tower_count ?? "-")}
             </Descriptions.Item>
-            <Descriptions.Item label="关联措施任务">{reportMitigationJobName || "未关联"}</Descriptions.Item>
-            <Descriptions.Item label="关联复算任务">{reportScenarioJobName || "未关联"}</Descriptions.Item>
-            <Descriptions.Item label="文档名" span={2}>{reportDocumentName || "-"}</Descriptions.Item>
+            <Descriptions.Item label={t("关联措施任务")}>{reportMitigationJobName || "未关联"}</Descriptions.Item>
+            <Descriptions.Item label={t("关联复算任务")}>{reportScenarioJobName || "未关联"}</Descriptions.Item>
+            <Descriptions.Item label={t("文档名")} span={2}>{reportDocumentName || "-"}</Descriptions.Item>
           </>
         ) : null}
-                <Descriptions.Item label="风险计数" span={2}>{formatRiskCounts(selectedJobDetail.result_summary_json?.risk_counts)}</Descriptions.Item>
+                <Descriptions.Item label={t("风险计数")} span={2}>{formatRiskCounts(selectedJobDetail.result_summary_json?.risk_counts)}</Descriptions.Item>
 </Descriptions>
       </section>
 
       {selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
         <section className="fl-create-form-block">
-          <div className="fl-create-form-block-title">计算方法</div>
+          <div className="fl-create-form-block-title">{t("计算方法")}</div>
           <Descriptions bordered size="small" column={2}>
-            <Descriptions.Item label="反击耐雷水平计算方法">{showMethod(readObject(selectedJobExecutionOptions).fanji_naleishuiping_method)}</Descriptions.Item>
-            <Descriptions.Item label="绕击耐雷水平计算方法">{showMethod(readObject(selectedJobExecutionOptions).raoji_naleishuiping_method)}</Descriptions.Item>
-            <Descriptions.Item label="反击跳闸率计算方法">{showMethod(readObject(selectedJobExecutionOptions).fanji_tzl_method)}</Descriptions.Item>
-            <Descriptions.Item label="绕击跳闸率计算方法">{showMethod(readObject(selectedJobExecutionOptions).raoji_tzl_method)}</Descriptions.Item>
-            <Descriptions.Item label="ATP模型">{formatAtpModel(selectedJobExternalModelName || selectedJobExternalModelCode)}</Descriptions.Item>
+            <Descriptions.Item label={t("反击耐雷水平计算方法")}>{showMethod(readObject(selectedJobExecutionOptions).fanji_naleishuiping_method)}</Descriptions.Item>
+            <Descriptions.Item label={t("绕击耐雷水平计算方法")}>{showMethod(readObject(selectedJobExecutionOptions).raoji_naleishuiping_method)}</Descriptions.Item>
+            <Descriptions.Item label={t("反击跳闸率计算方法")}>{showMethod(readObject(selectedJobExecutionOptions).fanji_tzl_method)}</Descriptions.Item>
+            <Descriptions.Item label={t("绕击跳闸率计算方法")}>{showMethod(readObject(selectedJobExecutionOptions).raoji_tzl_method)}</Descriptions.Item>
+            <Descriptions.Item label={t("ATP模型")}>{formatAtpModel(selectedJobExternalModelName || selectedJobExternalModelCode)}</Descriptions.Item>
           </Descriptions>
         </section>
       ) : null}
 
       {selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
         <section className="fl-create-form-block">
-          <div className="fl-create-form-block-title">高级参数</div>
+          <div className="fl-create-form-block-title">{t("高级参数")}</div>
           <Descriptions bordered size="small" column={2}>
-            <Descriptions.Item label="雷电流波形">{formatDimensionValue(selectedJobWorkflow?.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
-            <Descriptions.Item label="绝缘子闪络判据">{formatDimensionValue(selectedJobWorkflow?.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
-            <Descriptions.Item label="是否海拔修正">{formatDimensionValue(selectedJobWorkflow?.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
-            <Descriptions.Item label="感应电压公式">{formatInducedVoltageFormula(selectedJobWorkflow?.induced_voltage_formula)}</Descriptions.Item>
-            <Descriptions.Item label="波头范围">{formatRangeSummary(selectedJobWorkflow?.head_time_range_us)}</Descriptions.Item>
-            <Descriptions.Item label="波尾范围">{formatRangeSummary(selectedJobWorkflow?.tail_time_range_us)}</Descriptions.Item>
+            <Descriptions.Item label={t("雷电流波形")}>{formatDimensionValue(selectedJobWorkflow?.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
+            <Descriptions.Item label={t("绝缘子闪络判据")}>{formatDimensionValue(selectedJobWorkflow?.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
+            <Descriptions.Item label={t("是否海拔修正")}>{formatDimensionValue(selectedJobWorkflow?.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
+            <Descriptions.Item label={t("感应电压公式")}>{formatInducedVoltageFormula(selectedJobWorkflow?.induced_voltage_formula)}</Descriptions.Item>
+            <Descriptions.Item label={t("波头范围")}>{formatRangeSummary(selectedJobWorkflow?.head_time_range_us)}</Descriptions.Item>
+            <Descriptions.Item label={t("波尾范围")}>{formatRangeSummary(selectedJobWorkflow?.tail_time_range_us)}</Descriptions.Item>
           </Descriptions>
         </section>
       ) : null}

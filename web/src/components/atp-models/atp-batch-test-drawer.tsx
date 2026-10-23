@@ -6,6 +6,7 @@ import { Alert, Button, Card, Checkbox, Drawer, Form, Input, InputNumber, Progre
 import { DownloadOutlined, ExperimentOutlined, RocketOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, getJson, postJson, readApiError } from "@/lib/api";
 import type { AtpAssetListResponse, AtpAssetRunStatus, AtpAssetSummary, AtpBatchTestRunItem, AtpBatchTestRunSummary } from "@/types/auth";
@@ -32,6 +33,7 @@ interface AtpBatchTestDrawerProps {
 
 /** 批量测试抽屉:勾选资产 → 公共参数 → 下发 → 进度看板 + 总体报告 */
 export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: AtpBatchTestDrawerProps) {
+  const { t } = useI18n();
   const { user } = useAuth();
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [volFilter, setVolFilter] = useState<string>("");
@@ -192,7 +194,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
 
   const columns: ColumnsType<AtpBatchTestRunItem> = [
     {
-      title: "资产",
+      title: t("资产"),
       dataIndex: "asset_name",
       width: 220,
       render: (v, row) => (
@@ -206,12 +208,12 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
         </Space>
       ),
     },
-    { title: "电压", dataIndex: "voltage_level", width: 60, render: (v) => v ? `${v}kV` : "-" },
-    { title: "塔型", dataIndex: "tower_type", width: 110 },
-    { title: "场景", dataIndex: "scene_type", width: 80 },
-    { title: "配置", dataIndex: "arrester_config", width: 100 },
+    { title: t("电压"), dataIndex: "voltage_level", width: 60, render: (v) => v ? `${v}kV` : "-" },
+    { title: t("塔型"), dataIndex: "tower_type", width: 110 },
+    { title: t("场景"), dataIndex: "scene_type", width: 80 },
+    { title: t("配置"), dataIndex: "arrester_config", width: 100 },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 90,
       render: (v: AtpAssetRunStatus) => {
@@ -220,27 +222,27 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
       },
     },
     {
-      title: "耗时",
+      title: t("耗时"),
       dataIndex: "duration_ms",
       width: 80,
       render: (v: number | null) => (v != null ? `${(v / 1000).toFixed(1)}s` : "-"),
     },
-    { title: "错误", dataIndex: "error_message", render: (v: string | null) => v ? <Typography.Text type="danger" ellipsis style={{ maxWidth: 200 }}>{v}</Typography.Text> : "-" },
+    { title: t("错误"), dataIndex: "error_message", render: (v: string | null) => v ? <Typography.Text type="danger" ellipsis style={{ maxWidth: 200 }}>{v}</Typography.Text> : "-" },
   ];
 
   const groupColumns: ColumnsType<{ group: string; total: number; success: number; failed: number; pass_rate: number; flashover_count_distribution: Record<string, number> }> = [
-    { title: "分组(电压/塔型/场景/配置)", dataIndex: "group" },
-    { title: "总数", dataIndex: "total", width: 70 },
-    { title: "成功", dataIndex: "success", width: 70 },
-    { title: "失败", dataIndex: "failed", width: 70 },
+    { title: t("分组(电压/塔型/场景/配置)"), dataIndex: "group" },
+    { title: t("总数"), dataIndex: "total", width: 70 },
+    { title: t("成功"), dataIndex: "success", width: 70 },
+    { title: t("失败"), dataIndex: "failed", width: 70 },
     {
-      title: "通过率",
+      title: t("通过率"),
       dataIndex: "pass_rate",
       width: 100,
       render: (v: number) => <Typography.Text strong>{v}%</Typography.Text>,
     },
     {
-      title: "闪络相数分布",
+      title: t("闪络相数分布"),
       dataIndex: "flashover_count_distribution",
       render: (v: Record<string, number>) => {
         const entries = Object.entries(v ?? {});
@@ -251,14 +253,14 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
 
   return (
     <Drawer
-      title="ATP 模型批量测试"
+      title={t("ATP 模型批量测试")}
       open={open}
       onClose={onClose}
       width={1000}
       destroyOnHidden
       extra={
         batch && !finished ? (
-          <Typography.Text type="secondary">轮询中…</Typography.Text>
+          <Typography.Text type="secondary">{t("轮询中…")}</Typography.Text>
         ) : batch ? (
           <Button size="small" icon={<DownloadOutlined />} onClick={() => void downloadReport(batch.batch_id)}>
             下载报告
@@ -268,12 +270,12 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
     >
       {!batch ? (
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
-          <Card size="small" title="① 选择模型">
+          <Card size="small" title={t("① 选择模型")}>
             <Space direction="vertical" size={8} style={{ width: "100%" }}>
               <Space wrap>
                 <Select
                   allowClear
-                  placeholder="按电压过滤"
+                  placeholder={t("按电压过滤")}
                   style={{ width: 140 }}
                   value={volFilter || undefined}
                   onChange={(v) => setVolFilter(v ?? "")}
@@ -281,7 +283,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 />
                 <Select
                   allowClear
-                  placeholder="按塔型过滤"
+                  placeholder={t("按塔型过滤")}
                   style={{ width: 180 }}
                   value={twFilter || undefined}
                   onChange={(v) => setTwFilter(v ?? "")}
@@ -308,20 +310,20 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                   preserveSelectedRowKeys: true,
                 }}
                 columns={[
-                  { title: "资产", dataIndex: "name", ellipsis: true },
-                  { title: "电压", dataIndex: "voltage_level", width: 80, render: (v) => (v ? `${v}kV` : "-") },
-                  { title: "塔型", dataIndex: "tower_type", width: 110 },
-                  { title: "场景", dataIndex: "scene_type", width: 80 },
-                  { title: "配置", dataIndex: "arrester_config", width: 100 },
+                  { title: t("资产"), dataIndex: "name", ellipsis: true },
+                  { title: t("电压"), dataIndex: "voltage_level", width: 80, render: (v) => (v ? `${v}kV` : "-") },
+                  { title: t("塔型"), dataIndex: "tower_type", width: 110 },
+                  { title: t("场景"), dataIndex: "scene_type", width: 80 },
+                  { title: t("配置"), dataIndex: "arrester_config", width: 100 },
                 ]}
               />
             </Space>
           </Card>
 
-          <Card size="small" title="② 测试参数(公共)">
+          <Card size="small" title={t("② 测试参数(公共)")}>
             <Space direction="vertical" size={8} style={{ width: "100%" }}>
               <Space wrap>
-                <Form.Item label="测试阶段" style={{ marginBottom: 0 }}>
+                <Form.Item label={t("测试阶段")} style={{ marginBottom: 0 }}>
                   <Select
                     mode="multiple"
                     style={{ minWidth: 420 }}
@@ -330,17 +332,17 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                     options={STAGES}
                   />
                 </Form.Item>
-                <Form.Item label="固定雷电流(kA)" style={{ marginBottom: 0 }}>
+                <Form.Item label={t("固定雷电流(kA)")} style={{ marginBottom: 0 }}>
                   <InputNumber min={0.1} value={currentKa} onChange={(v) => setCurrentKa(Number(v ?? 31))} />
                 </Form.Item>
-                <Form.Item label="参数来源" style={{ marginBottom: 0 }}>
+                <Form.Item label={t("参数来源")} style={{ marginBottom: 0 }}>
                   <Select
                     style={{ width: 150 }}
                     value={paramsSource}
                     onChange={setParamsSource}
                     options={[
-                      { value: "template", label: "无杆塔(模板链)" },
-                      { value: "tower", label: "杆塔数据" },
+                      { value: "template", label: t("无杆塔(模板链)") },
+                      { value: "tower", label: t("杆塔数据") },
                     ]}
                   />
                 </Form.Item>
@@ -369,12 +371,12 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
             <Space direction="vertical" size={8} style={{ width: "100%" }}>
               <Progress percent={progress} status={finished ? "success" : "active"} />
               <Space size={24}>
-                <Statistic title="总数" value={batch.total} />
-                <Statistic title="排队" value={batch.pending} valueStyle={{ fontSize: 18 }} />
-                <Statistic title="运行中" value={batch.running} valueStyle={{ color: "#1677ff", fontSize: 18 }} />
-                <Statistic title="成功" value={batch.success} valueStyle={{ color: "#3f8600", fontSize: 18 }} />
-                <Statistic title="失败" value={batch.failed} valueStyle={{ color: "#cf1322", fontSize: 18 }} />
-                <Statistic title="总体通过率" value={`${batch.report.overall_pass_rate ?? 0}%`} valueStyle={{ fontSize: 18 }} />
+                <Statistic title={t("总数")} value={batch.total} />
+                <Statistic title={t("排队")} value={batch.pending} valueStyle={{ fontSize: 18 }} />
+                <Statistic title={t("运行中")} value={batch.running} valueStyle={{ color: "#1677ff", fontSize: 18 }} />
+                <Statistic title={t("成功")} value={batch.success} valueStyle={{ color: "#3f8600", fontSize: 18 }} />
+                <Statistic title={t("失败")} value={batch.failed} valueStyle={{ color: "#cf1322", fontSize: 18 }} />
+                <Statistic title={t("总体通过率")} value={`${batch.report.overall_pass_rate ?? 0}%`} valueStyle={{ fontSize: 18 }} />
               </Space>
               {(batch.errors ?? []).length > 0 ? (
                 <Alert
@@ -389,18 +391,18 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
 
           {finished ? (
             <>
-              <Card size="small" title="总体测试报告">
+              <Card size="small" title={t("总体测试报告")}>
                 <Space direction="vertical" size={12} style={{ width: "100%" }}>
                   <Space size={24}>
-                    <Statistic title="总模型数" value={batch.total} />
-                    <Statistic title="成功" value={batch.success} valueStyle={{ color: "#3f8600" }} />
-                    <Statistic title="失败" value={batch.failed} valueStyle={{ color: "#cf1322" }} />
-                    <Statistic title="通过率" value={`${batch.report.overall_pass_rate ?? 0}%`} />
+                    <Statistic title={t("总模型数")} value={batch.total} />
+                    <Statistic title={t("成功")} value={batch.success} valueStyle={{ color: "#3f8600" }} />
+                    <Statistic title={t("失败")} value={batch.failed} valueStyle={{ color: "#cf1322" }} />
+                    <Statistic title={t("通过率")} value={`${batch.report.overall_pass_rate ?? 0}%`} />
                   </Space>
                   {batch.report.flashover_count_distribution &&
                   Object.keys(batch.report.flashover_count_distribution).length > 0 ? (
                     <div>
-                      <Typography.Text strong>闪络相数分布: </Typography.Text>
+                      <Typography.Text strong>{t("闪络相数分布: ")}</Typography.Text>
                       {Object.entries(batch.report.flashover_count_distribution).map(([k, v]) => (
                         <Tag key={k} color="purple">{k}相 × {v}</Tag>
                       ))}
@@ -408,7 +410,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                   ) : null}
                   {batch.report.failure_reasons_top?.length > 0 ? (
                     <div>
-                      <Typography.Text strong>失败原因 TOP: </Typography.Text>
+                      <Typography.Text strong>{t("失败原因 TOP: ")}</Typography.Text>
                       {batch.report.failure_reasons_top.map((r) => (
                         <Tag key={r.reason} color="red">{r.reason}({r.count})</Tag>
                       ))}
@@ -417,7 +419,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 </Space>
               </Card>
 
-              <Card size="small" title="分组成绩">
+              <Card size="small" title={t("分组成绩")}>
                 <Table
                   size="small"
                   rowKey="group"
@@ -427,7 +429,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 />
               </Card>
 
-              <Card size="small" title="明细">
+              <Card size="small" title={t("明细")}>
                 <Table
                   size="small"
                   rowKey="run_id"
@@ -438,7 +440,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
               </Card>
             </>
           ) : (
-            <Card size="small" title="运行明细(实时)">
+            <Card size="small" title={t("运行明细(实时)")}>
               {batch.items.length === 0 ? (
                 <EmptyState />
               ) : (

@@ -1,6 +1,7 @@
 import { Badge, Button, Dropdown, Progress, Space, Tooltip, Typography, type MenuProps } from "antd";
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, FileTextOutlined, ThunderboltOutlined, DeploymentUnitOutlined, MoreOutlined, ApartmentOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { useI18n } from "@/lib/i18n";
 import { Card } from "@/components/ui-antd";
 import { RECLOSURE_LABELS } from "./types";
 import type { FaultAnalysis } from "./types";
@@ -34,6 +35,7 @@ const statusConfig = {
 };
 
 export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: AnalysisCardProps) {
+  const { t } = useI18n();
   const status = statusConfig[analysis.status];
   // 对齐雷电流幅值统计页：详情/分析日志平铺为两个图标按钮，其余操作收进 ⋯ 三点下拉
   const moreMenuItems: MenuProps["items"] = [
@@ -41,7 +43,7 @@ export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: An
       ? [
           {
             key: "delete",
-            label: "删除",
+            label: t("删除"),
             danger: true,
             onClick: (info) => {
               info.domEvent?.stopPropagation();
@@ -102,7 +104,7 @@ export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: An
             <div />
           )}
           <Space size="small" className="shrink-0">
-            <Tooltip title="详情">
+            <Tooltip title={t("详情")}>
               <Button
                 type="text"
                 size="small"
@@ -114,7 +116,7 @@ export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: An
               />
             </Tooltip>
             {onLog ? (
-              <Tooltip title="分析日志">
+              <Tooltip title={t("分析日志")}>
                 <Button
                   type="text"
                   size="small"
@@ -128,7 +130,7 @@ export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: An
             ) : null}
             {moreMenuItems.length > 0 ? (
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Tooltip title="更多">
+                <Tooltip title={t("更多")}>
                   <Button
                     type="text"
                     size="small"

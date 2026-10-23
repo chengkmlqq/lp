@@ -20,6 +20,7 @@
 import { Alert, Empty, Form, Input, Modal, Select, Space, Table, Tag, Typography, message } from "antd";
 import { useCallback, useEffect, useState } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import type {
@@ -68,6 +69,7 @@ type RetrofitFormValues = {
 };
 
 export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreateModalProps) {
+  const { t } = useI18n();
   const { user, fetchWithAuth } = useAuth();
   const [form] = Form.useForm<RetrofitFormValues>();
   const [baseJobs, setBaseJobs] = useState<FlAnalysisJobSummary[]>([]);
@@ -235,11 +237,11 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
 
   return (
     <Modal
-      title="新建改造（措施推荐）任务"
+      title={t("新建改造（措施推荐）任务")}
       open={open}
       width={880}
       confirmLoading={submitting}
-      okText="创建并启动改造任务"
+      okText={t("创建并启动改造任务")}
       onCancel={() => {
         if (submitting) {
           return;
@@ -254,7 +256,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
         <Alert
           type="info"
           showIcon
-          message="基于已完成的风险计算（普通/同跳）任务，为其中高风险杆塔生成改造措施推荐。"
+          message={t("基于已完成的风险计算（普通/同跳）任务，为其中高风险杆塔生成改造措施推荐。")}
         />
         {errorMessage ? (
           <Alert type="error" showIcon message={errorMessage} />
@@ -262,29 +264,29 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
         <Form<RetrofitFormValues> form={form} layout="vertical" initialValues={{ non_construction: false }}>
           <Form.Item
             name="job_name"
-            label="任务名称"
-            rules={[{ required: true, message: "请输入任务名称" }]}
+            label={t("任务名称")}
+            rules={[{ required: true, message: t("请输入任务名称") }]}
           >
-            <Input placeholder="措施推荐任务名称" />
+            <Input placeholder={t("措施推荐任务名称")} />
           </Form.Item>
-          <Form.Item label="前置防雷计算任务" required>
+          <Form.Item label={t("前置防雷计算任务")} required>
             <Select
               value={selectedBaseJobId}
               onChange={(next) => {
                 void handleBaseJobChange(next);
               }}
               loading={loadingJobs}
-              placeholder="选择已完成的风险计算任务"
+              placeholder={t("选择已完成的风险计算任务")}
               showSearch
               optionFilterProp="label"
               options={baseJobOptions}
             />
           </Form.Item>
-          <Form.Item name="non_construction" label="非建线模式">
+          <Form.Item name="non_construction" label={t("非建线模式")}>
             <Select
               options={[
-                { value: false, label: "否（建线）" },
-                { value: true, label: "是（非建线）" },
+                { value: false, label: t("否（建线）") },
+                { value: true, label: t("是（非建线）") },
               ]}
             />
           </Form.Item>
@@ -294,15 +296,15 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
           <Alert
             type="success"
             showIcon
-            message="已选择前置任务"
+            message={t("已选择前置任务")}
             description={`${selectedBaseJob.job_name || selectedBaseJob.line_name || selectedBaseJob.line_code || "-"} / 杆塔总数：${selectedBaseJob.total_tower_count}`}
           />
         ) : null}
 
         {!selectedBaseJobId ? (
-          <Empty description="请先选择前置防雷计算任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description={t("请先选择前置防雷计算任务")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : rows.length === 0 ? (
-          <Empty description="该任务暂无杆塔结果" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description={t("该任务暂无杆塔结果")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <>
             <Typography.Text type="secondary">
@@ -320,20 +322,20 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
                 },
               }}
               columns={[
-                { title: "杆塔号", dataIndex: "tower_no", width: 110 },
+                { title: t("杆塔号"), dataIndex: "tower_no", width: 110 },
                 {
-                  title: "风险等级",
+                  title: t("风险等级"),
                   dataIndex: "risk_level",
                   width: 110,
                   render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
                 },
                 {
-                  title: "高风险原因",
+                  title: t("高风险原因"),
                   key: "cause_analysis",
                   render: (_value, row) => readString(readObject(row.result_json), "cause_analysis"),
                 },
                 {
-                  title: "当前建议",
+                  title: t("当前建议"),
                   key: "mitigation_recommendation",
                   render: (_value, row) => readString(readObject(row.result_json), "mitigation_recommendation"),
                 },

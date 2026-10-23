@@ -5,6 +5,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { CreateFaultAnalysisFormValues } from "./types";
 import { TempFileUpload } from "./temp-file-upload";
 import type { FaultAnalysisTempFile } from "./types";
+import { useI18n } from "@/lib/i18n";
 import { generateWaveDataTemplate, generateLightningTemplate, generateWaveTemplate, generateOpticalTemplate } from "@/lib/excel-import-utils";
 import * as XLSX from "xlsx";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -67,6 +68,7 @@ function toReclosureCode(value: unknown): string | undefined {
 }
 
 export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit, submitText = "提交分析", submitting, open = false }: CreateAnalysisFormAdvancedProps) {
+  const { t } = useI18n();
   const { message: messageApi, modal: modalApi } = App.useApp();
   const { user, fetchWithAuth } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
@@ -117,23 +119,23 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
   // 线路杆塔列表列（参照防雷计算任务新建表单）
   const towerColumns: ColumnsType<LineTowerSummary> = [
-    { title: "序号", dataIndex: "seq_no", width: 70 },
+    { title: t("序号"), dataIndex: "seq_no", width: 70 },
     {
-      title: "塔号",
+      title: t("塔号"),
       dataIndex: "tower_no",
       width: 130,
       render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
-    { title: "塔型", dataIndex: "tower_type", width: 100, render: (value: string | null) => value || "-" },
-    { title: "模型", dataIndex: "tower_model", width: 160, render: (value: string | null) => value || "-" },
+    { title: t("塔型"), dataIndex: "tower_type", width: 100, render: (value: string | null) => value || "-" },
+    { title: t("模型"), dataIndex: "tower_model", width: 160, render: (value: string | null) => value || "-" },
     {
-      title: "接地电阻(Ω)",
+      title: t("接地电阻(Ω)"),
       dataIndex: "ground_resistance_ohm",
       width: 110,
       render: (value: number | null) => value ?? "-",
     },
     {
-      title: "地闪密度",
+      title: t("地闪密度"),
       dataIndex: "lightning_density",
       width: 100,
       render: (value: number | null) => value ?? "-",
@@ -319,11 +321,11 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
     kind: "wave_data" | "lightning_data" | "ledger_data" | "traveling_wave" | "optical_data";
     label: string;
   }> = [
-    { field: "wave_data_file", kind: "wave_data", label: "录波数据" },
-    { field: "lightning_data_file", kind: "lightning_data", label: "雷电定位数据" },
-    { field: "ledger_data_file", kind: "ledger_data", label: "判别台账" },
-    { field: "traveling_wave_file", kind: "traveling_wave", label: "分布式行波数据" },
-    { field: "optical_data_file", kind: "optical_data", label: "光学监控数据" },
+    { field: "wave_data_file", kind: "wave_data", label: t("录波数据") },
+    { field: "lightning_data_file", kind: "lightning_data", label: t("雷电定位数据") },
+    { field: "ledger_data_file", kind: "ledger_data", label: t("判别台账") },
+    { field: "traveling_wave_file", kind: "traveling_wave", label: t("分布式行波数据") },
+    { field: "optical_data_file", kind: "optical_data", label: t("光学监控数据") },
   ];
 
   // LP-420：提交前置内容校验汇总
@@ -373,10 +375,10 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
     if (pendingChecks.length > 0) {
       modalApi.confirm({
-        title: "部分文件尚未完成内容校验",
+        title: t("部分文件尚未完成内容校验"),
         content: `${pendingChecks.map((p) => p.label).join("、")} 仍有文件在解析中或尚未校验，确定要提交吗？`,
-        okText: "仍要提交",
-        cancelText: "等待校验",
+        okText: t("仍要提交"),
+        cancelText: t("等待校验"),
         onOk: () => onSubmit(values),
       });
       return;
@@ -384,7 +386,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
     if (allErrors.length > 0) {
       modalApi.confirm({
-        title: "以下文件存在格式错误，无法参与判别",
+        title: t("以下文件存在格式错误，无法参与判别"),
         content: (
           <div className="max-h-[300px] overflow-y-auto">
             {allErrors.map((err, i) => (
@@ -392,10 +394,10 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 {err}
               </div>
             ))}
-            <div className="mt-2 text-gray-500">请移除对应文件后重新提交。</div>
+            <div className="mt-2 text-gray-500">{t("请移除对应文件后重新提交。")}</div>
           </div>
         ),
-        okText: "我知道了",
+        okText: t("我知道了"),
         cancelButtonProps: { style: { display: "none" } },
         onOk: () => {},
       });
@@ -404,7 +406,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
     if (allWarnings.length > 0) {
       modalApi.confirm({
-        title: "部分文件疑似缺少字段",
+        title: t("部分文件疑似缺少字段"),
         content: (
           <div className="max-h-[300px] overflow-y-auto">
             {allWarnings.slice(0, 10).map((w, i) => (
@@ -413,11 +415,11 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               </div>
             ))}
             {allWarnings.length > 10 && <div className="mt-1 text-gray-500">...等共 {allWarnings.length} 条提示</div>}
-            <div className="mt-2 text-gray-500">仍要提交吗？</div>
+            <div className="mt-2 text-gray-500">{t("仍要提交吗？")}</div>
           </div>
         ),
-        okText: "仍要提交",
-        cancelText: "返回修改",
+        okText: t("仍要提交"),
+        cancelText: t("返回修改"),
         onOk: () => onSubmit(values),
       });
       return;
@@ -448,19 +450,19 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
           <div className="admin-fault-analysis-form-section">
             <div className="px-1">
               <Form.Item
-                label="任务名称"
+                label={t("任务名称")}
                 name="title"
-                rules={[{ required: true, message: "请输入任务名称" }]}
+                rules={[{ required: true, message: t("请输入任务名称") }]}
               >
-                <Input placeholder="例如：XX线路故障分析" maxLength={100} />
+                <Input placeholder={t("例如：XX线路故障分析")} maxLength={100} />
               </Form.Item>
               <Form.Item
-                label="故障线路"
+                label={t("故障线路")}
                 name="line_id"
-                rules={[{ required: true, message: "请选择故障线路" }]}
+                rules={[{ required: true, message: t("请选择故障线路") }]}
               >
                 <Select
-                  placeholder="请选择故障线路名称"
+                  placeholder={t("请选择故障线路名称")}
                   loading={linesLoading}
                   showSearch
                   optionFilterProp="children"
@@ -478,12 +480,12 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
         {/* 选中线路后展示该线路杆塔列表（参照防雷计算任务新建表单）；标题沿用上方表单项的 label 样式 */}
         {selectedLineId ? (
           <div className="px-1 mt-3">
-            <Form.Item label="线路杆塔">
+            <Form.Item label={t("线路杆塔")}>
               {towersQuery.isError ? (
                 <Alert
                   type="error"
                   showIcon
-                  message="杆塔列表加载失败"
+                  message={t("杆塔列表加载失败")}
                   description={towersQuery.error instanceof Error ? towersQuery.error.message : "未知错误"}
                 />
               ) : (
@@ -519,8 +521,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
           <div className="border border-[var(--gray-6)] rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-[var(--gray-2)] min-h-[160px]">
             <FileTextOutlined className="text-4xl text-[var(--ant-color-primary)]" />
             <div className="text-center">
-              <div className="font-semibold text-sm mb-1">录波数据</div>
-              <div className="text-xs text-gray-500 mb-3">支持 .txt/.json/.csv/.pdf/.xlsx，上传后自动识别并回填下方故障信息</div>
+              <div className="font-semibold text-sm mb-1">{t("录波数据")}</div>
+              <div className="text-xs text-gray-500 mb-3">{t("支持 .txt/.json/.csv/.pdf/.xlsx，上传后自动识别并回填下方故障信息")}</div>
             </div>
             <Form.Item name="wave_data_file" className="mb-0">
               <TempFileUpload
@@ -568,39 +570,39 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
           </div>
 
           <Form.Item
-            label="录波记录厂站"
+            label={t("录波记录厂站")}
             name="station_name"
-            rules={[{ required: true, message: "请输入录波记录厂站" }]}
+            rules={[{ required: true, message: t("请输入录波记录厂站") }]}
           >
-            <Input placeholder="广东河源500kV上寨变" />
+            <Input placeholder={t("广东河源500kV上寨变")} />
           </Form.Item>
 
           <Space.Compact className="w-full">
             <Form.Item
-              label="故障时刻"
+              label={t("故障时刻")}
               name="fault_time"
               className="flex-1 mb-0"
-              rules={[{ required: true, message: "请输入故障时刻" }]}
+              rules={[{ required: true, message: t("请输入故障时刻") }]}
             >
               <Input placeholder="2023-03-27 20:20:31.939" />
             </Form.Item>
             <div className="w-5" />
             <Form.Item
-              label="故障线路名称"
+              label={t("故障线路名称")}
               name="fault_line_name"
               className="flex-1 mb-0"
-              rules={[{ required: true, message: "请输入故障线路名称" }]}
+              rules={[{ required: true, message: t("请输入故障线路名称") }]}
             >
-              <Input placeholder="220kV 龙和线" />
+              <Input placeholder={t("220kV 龙和线")} />
             </Form.Item>
           </Space.Compact>
 
           <Space.Compact className="w-full">
             <Form.Item
-              label="故障相"
+              label={t("故障相")}
               name="fault_phase"
               className="flex-1 mb-0"
-              rules={[{ required: true, message: "请选择故障相" }]}
+              rules={[{ required: true, message: t("请选择故障相") }]}
             >
               <Select
                 placeholder="A/B/C/AN/BN/CN/AB/BC/AC/ABC/ABN/BCN/ACN"
@@ -623,7 +625,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
             </Form.Item>
             <div className="w-5" />
             <Form.Item
-              label="故障持续时间(ms)"
+              label={t("故障持续时间(ms)")}
               name="fault_duration"
               className="flex-1 mb-0"
               rules={[]}
@@ -634,29 +636,29 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
           <div className="grid grid-cols-3 gap-5">
             <Form.Item
-              label="重合闸情况"
+              label={t("重合闸情况")}
               name="reclosure_status"
               className="mb-0"
-              rules={[{ required: true, message: "请选择重合闸情况" }]}
+              rules={[{ required: true, message: t("请选择重合闸情况") }]}
             >
               <Select
-                placeholder="成功"
+                placeholder={t("成功")}
                 options={[
-                  { value: "success", label: "成功" },
-                  { value: "failed", label: "失败" },
-                  { value: "not_applicable", label: "不适用" },
+                  { value: "success", label: t("成功") },
+                  { value: "failed", label: t("失败") },
+                  { value: "not_applicable", label: t("不适用") },
                 ]}
               />
             </Form.Item>
             <Form.Item
-              label="故障相电压(V)"
+              label={t("故障相电压(V)")}
               name="fault_voltage"
               className="mb-0"
             >
               <Input type="number" placeholder="37.04" />
             </Form.Item>
             <Form.Item
-              label="故障相电流(A)"
+              label={t("故障相电流(A)")}
               name="fault_current"
               className="mb-0"
             >
@@ -666,21 +668,21 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
           <div className="grid grid-cols-3 gap-5">
             <Form.Item
-              label="最大零序电流(A)"
+              label={t("最大零序电流(A)")}
               name="max_zero_current"
               className="mb-0"
             >
               <Input type="number" placeholder="1.45" />
             </Form.Item>
             <Form.Item
-              label="零序补偿系数K"
+              label={t("零序补偿系数K")}
               name="zero_compensation"
               className="mb-0"
             >
               <Input type="number" placeholder="0.52" />
             </Form.Item>
             <Form.Item
-              label="故障电阻Rm(Ω)"
+              label={t("故障电阻Rm(Ω)")}
               name="fault_resistance"
               className="mb-0"
             >
@@ -690,21 +692,21 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
           <div className="grid grid-cols-3 gap-5">
             <Form.Item
-              label="线路总长度L(km)"
+              label={t("线路总长度L(km)")}
               name="line_length"
               className="mb-0"
             >
               <Input type="number" placeholder="89.77" />
             </Form.Item>
             <Form.Item
-              label="线路正序灵敏角(°)"
+              label={t("线路正序灵敏角(°)")}
               name="line_angle"
               className="mb-0"
             >
               <Input type="number" placeholder="85" />
             </Form.Item>
             <Form.Item
-              label="线路正序阻抗定值(Ω)"
+              label={t("线路正序阻抗定值(Ω)")}
               name="line_impedance"
               className="mb-0"
             >
@@ -714,31 +716,31 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
           <div className="grid grid-cols-3 gap-5">
             <Form.Item
-              label="雷电流幅值I(kA)"
+              label={t("雷电流幅值I(kA)")}
               name="lightning_current"
               className="mb-0"
             >
-              <Input placeholder="无/20.3kA" />
+              <Input placeholder={t("无/20.3kA")} />
             </Form.Item>
             <Form.Item
-              label="雷电定位经度(°)"
+              label={t("雷电定位经度(°)")}
               name="lightning_longitude"
               className="mb-0"
             >
-              <Input type="number" placeholder="无/114.50476" />
+              <Input type="number" placeholder={t("无/114.50476")} />
             </Form.Item>
             <Form.Item
-              label="雷电定位纬度(°)"
+              label={t("雷电定位纬度(°)")}
               name="lightning_latitude"
               className="mb-0"
             >
-              <Input type="number" placeholder="无/23.79996" />
+              <Input type="number" placeholder={t("无/23.79996")} />
             </Form.Item>
           </div>
 
           <Space.Compact className="w-full">
             <Form.Item
-              label="录波测距(km)"
+              label={t("录波测距(km)")}
               name="wave_distance"
               className="flex-1 mb-0"
             >
@@ -746,7 +748,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
             </Form.Item>
             <div className="w-5" />
             <Form.Item
-              label="行波测距(km)"
+              label={t("行波测距(km)")}
               name="traveling_wave_distance"
               className="flex-1 mb-0"
             >
@@ -756,15 +758,15 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
 
           <Space.Compact className="w-full">
             <Form.Item
-              label="光学接闪位置(绕击/反击/分叉)"
+              label={t("光学接闪位置(绕击/反击/分叉)")}
               name="optical_position"
               className="flex-1 mb-0"
             >
-              <Input placeholder="无/A/B/C/G/AB/BC/AC/AG/BG/CG/AN/BN/CN" />
+              <Input placeholder={t("无/A/B/C/G/AB/BC/AC/AG/BG/CG/AN/BN/CN")} />
             </Form.Item>
             <div className="w-5" />
             <Form.Item
-              label="光学设备安装位置"
+              label={t("光学设备安装位置")}
               name="optical_device_location"
               className="flex-1 mb-0"
             >
@@ -783,8 +785,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
             <div className="border border-[var(--gray-6)] rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-[var(--gray-2)] min-h-[160px]">
               <TableOutlined className="text-4xl text-[var(--ant-color-primary)]" />
               <div className="text-center">
-                <div className="font-semibold text-sm mb-1">雷电定位数据</div>
-                <div className="text-xs text-gray-500 mb-3">支持 .xls/.xlsx/.csv 格式</div>
+                <div className="font-semibold text-sm mb-1">{t("雷电定位数据")}</div>
+                <div className="text-xs text-gray-500 mb-3">{t("支持 .xls/.xlsx/.csv 格式")}</div>
               </div>
               <Form.Item name="lightning_data_file" className="mb-0">
                 <TempFileUpload
@@ -804,8 +806,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
             <div className="border border-[var(--gray-6)] rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-[var(--gray-2)] min-h-[160px]">
               <LineChartOutlined className="text-4xl text-[var(--ant-color-primary)]" />
               <div className="text-center">
-                <div className="font-semibold text-sm mb-1">分布式行波数据</div>
-                <div className="text-xs text-gray-500 mb-3">支持 .csv/.dat/.txt/.json 格式，可多选（A/B/C 三相）</div>
+                <div className="font-semibold text-sm mb-1">{t("分布式行波数据")}</div>
+                <div className="text-xs text-gray-500 mb-3">{t("支持 .csv/.dat/.txt/.json 格式，可多选（A/B/C 三相）")}</div>
               </div>
               <Form.Item name="traveling_wave_file" className="mb-0">
                 <TempFileUpload
@@ -826,8 +828,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
             <div className="border border-[var(--gray-6)] rounded-lg p-4 flex flex-col items-center justify-center gap-3 bg-[var(--gray-2)] min-h-[160px]">
               <CameraOutlined className="text-4xl text-[var(--ant-color-primary)]" />
               <div className="text-center">
-                <div className="font-semibold text-sm mb-1">光学监控数据</div>
-                <div className="text-xs text-gray-500 mb-3">支持图片或视频格式</div>
+                <div className="font-semibold text-sm mb-1">{t("光学监控数据")}</div>
+                <div className="text-xs text-gray-500 mb-3">{t("支持图片或视频格式")}</div>
               </div>
               <Form.Item name="optical_data_file" className="mb-0">
                 <TempFileUpload

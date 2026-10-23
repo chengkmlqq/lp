@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Alert, Descriptions, Spin, Table, Tag, Typography } from "antd";
 import { useMemo } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 
@@ -125,6 +126,7 @@ function findLogFeatures(lines: string[]): Array<{ lineNo: number; text: string;
 }
 
 export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
+  const { t } = useI18n();
   const { user, fetchWithAuth } = useAuth();
 
   const isLib = path.toLowerCase().endsWith(".lib");
@@ -173,7 +175,7 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
       <Alert
         type="error"
         showIcon
-        message="读取产物失败"
+        message={t("读取产物失败")}
         description={contentQuery.error instanceof Error ? contentQuery.error.message : ""}
       />
     );
@@ -182,10 +184,10 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
   const data = contentQuery.data;
   if (!data) return null;
   if (data.content_type === "binary") {
-    return <Alert type="warning" showIcon message="该产物是二进制格式，无法预览文本内容。" />;
+    return <Alert type="warning" showIcon message={t("该产物是二进制格式，无法预览文本内容。")} />;
   }
   if (data.content_type === "not-found") {
-    return <Alert type="warning" showIcon message="产物文件不存在。" />;
+    return <Alert type="warning" showIcon message={t("产物文件不存在。")} />;
   }
 
   const fullText = data.content || (data.preview_lines || []).join("\n");
@@ -197,11 +199,11 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
         size="small"
         column={3}
         items={[
-          { key: "path", label: "文件", children: path },
-          { key: "size", label: "大小", children: `${data.size} B` },
+          { key: "path", label: t("文件"), children: path },
+          { key: "size", label: t("大小"), children: `${data.size} B` },
           {
             key: "kind",
-            label: "类型",
+            label: t("类型"),
             children: isLib ? "线路模型库(.lib)" : isLog ? "ATP 运行日志" : "文本",
           },
         ]}
@@ -217,7 +219,7 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
             column={3}
             style={{ marginBottom: 8 }}
             items={[
-              { key: "branch", label: "分支数", children: String(libSummary.branchCount) },
+              { key: "branch", label: t("分支数"), children: String(libSummary.branchCount) },
               { key: "kard", label: "KARD", children: <Typography.Text code style={{ fontSize: 11 }}>{libSummary.kard[0]?.slice(0, 60) || "-"}</Typography.Text> },
               { key: "karg", label: "KARG", children: <Typography.Text code style={{ fontSize: 11 }}>{libSummary.karg[0]?.slice(0, 60) || "-"}</Typography.Text> },
             ]}
@@ -228,11 +230,11 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
             pagination={false}
             dataSource={libSummary.branches}
             columns={[
-              { title: "分支", dataIndex: "index", width: 70 },
-              { title: "节点(进)", dataIndex: "nodeIn" },
-              { title: "节点(出)", dataIndex: "nodeOut" },
+              { title: t("分支"), dataIndex: "index", width: 70 },
+              { title: t("节点(进)"), dataIndex: "nodeIn" },
+              { title: t("节点(出)"), dataIndex: "nodeOut" },
               {
-                title: "含义",
+                title: t("含义"),
                 render: (_v, row: LibBranch) => {
                   const inName = row.nodeIn.replace(/IN___/, "").replace(/OUT__.*/, "");
                   const m = inName.match(/^[A-Za-z0-9_]*?([A-Za-z])$/);
@@ -261,14 +263,14 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
               pagination={{ pageSize: 20, showSizeChanger: false }}
               dataSource={logFeatures}
               columns={[
-                { title: "行号", dataIndex: "lineNo", width: 70 },
+                { title: t("行号"), dataIndex: "lineNo", width: 70 },
                 {
-                  title: "特征",
+                  title: t("特征"),
                   dataIndex: "label",
                   width: 90,
                   render: (v: string, row: { color: string }) => <Tag color={row.color}>{v}</Tag>,
                 },
-                { title: "内容", dataIndex: "text" },
+                { title: t("内容"), dataIndex: "text" },
               ]}
             />
           )}
@@ -276,7 +278,7 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
       ) : null}
 
       <details style={{ marginTop: 12 }}>
-        <summary style={{ cursor: "pointer", color: "#888", fontSize: 12 }}>查看原始内容</summary>
+        <summary style={{ cursor: "pointer", color: "#888", fontSize: 12 }}>{t("查看原始内容")}</summary>
         <pre
           style={{
             marginTop: 8,

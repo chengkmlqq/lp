@@ -6,6 +6,7 @@ import type { MenuProps } from "antd";
 import { MoreOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
+import { useI18n } from "@/lib/i18n";
 import type { FlAnalysisJobSummary } from "@/types/auth";
 
 import {
@@ -54,9 +55,10 @@ export function JobTable({
   onOpenLog,
   onOpenDetail,
 }: JobTableProps) {
+  const { t } = useI18n();
   const columns = useMemo<ColumnsType<FlAnalysisJobSummary>>(() => [
     {
-      title: "任务名",
+      title: t("任务名"),
       dataIndex: "job_name",
       key: "job_name",
       width: 280,
@@ -64,34 +66,34 @@ export function JobTable({
       render: (value: string | null, job) => value || job.line_name || job.line_code || "-",
     },
     {
-      title: "线路",
+      title: t("线路"),
       key: "line",
       width: 200,
       ellipsis: true,
       render: (_value, job) => job.line_name || job.line_code || "-",
     },
     {
-      title: "任务类型",
+      title: t("任务类型"),
       key: "job_type",
       width: 150,
       render: (_value, job) => formatJobType(job.job_type, mitigationMode(job)),
     },
     {
-      title: "杆塔数",
+      title: t("杆塔数"),
       dataIndex: "total_tower_count",
       key: "total_tower_count",
       width: 90,
       align: "center" as const,
     },
     {
-      title: "结果数",
+      title: t("结果数"),
       dataIndex: "result_tower_count",
       key: "result_tower_count",
       width: 90,
       align: "center" as const,
     },
     {
-      title: "状态",
+      title: t("状态"),
       key: "status",
       width: 160,
       align: "center" as const,
@@ -104,14 +106,14 @@ export function JobTable({
         ),
     },
     {
-      title: "创建时间",
+      title: t("创建时间"),
       dataIndex: "create_date",
       key: "create_date",
       width: 170,
       render: (value: string | null) => formatDateTime(value),
     },
     {
-      title: "完成时间",
+      title: t("完成时间"),
       dataIndex: "finished_at",
       key: "finished_at",
       width: 170,
@@ -120,7 +122,7 @@ export function JobTable({
     ...(onDeleteJob
       ? [
           {
-            title: "操作",
+            title: t("操作"),
             key: "operation",
             width: 200,
             align: "center" as const,
@@ -130,14 +132,14 @@ export function JobTable({
               if (onCancelJob && isJobCancellable(job)) {
                 menuItems.push({
                   key: "cancel",
-                  label: "取消",
+                  label: t("取消"),
                   onClick: () => onCancelJob(job),
                 });
               }
               if (onDeleteJob) {
                 menuItems.push({
                   key: "delete",
-                  label: "删除",
+                  label: t("删除"),
                   danger: true,
                   disabled: isJobLocked(job),
                   onClick: () => onDeleteJob(job),
@@ -209,7 +211,7 @@ export function JobTable({
       }}
       scroll={{ x: 1520, y: scrollY }}
       locale={{
-        emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无防雷分析任务" />,
+        emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无防雷分析任务")} />,
       }}
     />
   );

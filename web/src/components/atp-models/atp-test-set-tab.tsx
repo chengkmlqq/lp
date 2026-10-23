@@ -32,6 +32,7 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, readApiError } from "@/lib/api";
 import type { AtpTestSetListResponse, AtpTestSetSummary } from "@/types/auth";
@@ -41,6 +42,7 @@ import { AtpTestSetDetailDrawer } from "@/components/atp-models/atp-test-set-det
 const TABLE_MIN_SCROLL_Y = 260;
 
 export function AtpTestSetTab() {
+  const { t } = useI18n();
   const { user, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [keywordDraft, setKeywordDraft] = useState("");
@@ -175,7 +177,7 @@ export function AtpTestSetTab() {
   const columns = useMemo<ColumnsType<AtpTestSetSummary>>(
     () => [
       {
-        title: "测试集名称",
+        title: t("测试集名称"),
         dataIndex: "name",
         width: 200,
         ellipsis: { showTitle: true },
@@ -191,14 +193,14 @@ export function AtpTestSetTab() {
         ),
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "status",
         width: 90,
         render: (value: string) =>
-          value === "disabled" ? <Tag>已停用</Tag> : <Tag color="green">启用中</Tag>,
+          value === "disabled" ? <Tag>{t("已停用")}</Tag> : <Tag color="green">{t("启用中")}</Tag>,
       },
       {
-        title: "用例",
+        title: t("用例"),
         key: "cases",
         width: 120,
         render: (_, row) => (
@@ -211,7 +213,7 @@ export function AtpTestSetTab() {
         ),
       },
       {
-        title: "最近执行",
+        title: t("最近执行"),
         key: "last_run",
         width: 180,
         render: (_, row) => {
@@ -232,20 +234,20 @@ export function AtpTestSetTab() {
         },
       },
       {
-        title: "描述",
+        title: t("描述"),
         dataIndex: "description",
         ellipsis: { showTitle: true },
         render: (value: string) => value || <Typography.Text type="secondary">-</Typography.Text>,
       },
       {
-        title: "创建人",
+        title: t("创建人"),
         dataIndex: "create_user",
         width: 100,
         ellipsis: true,
         render: (value: string | null) => value || "-",
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 200,
         fixed: "right" as const,
@@ -282,10 +284,10 @@ export function AtpTestSetTab() {
                   编辑
                 </Button>
                 <Popconfirm
-                  title="删除测试集？"
-                  description="将同时删除其全部用例与执行记录。"
-                  okText="删除"
-                  cancelText="取消"
+                  title={t("删除测试集？")}
+                  description={t("将同时删除其全部用例与执行记录。")}
+                  okText={t("删除")}
+                  cancelText={t("取消")}
                   okButtonProps={{ danger: true }}
                   onConfirm={() => deleteSetMutation.mutate(row.id)}
                 >
@@ -309,10 +311,10 @@ export function AtpTestSetTab() {
   );
 
   if (!user) {
-    return <Empty description="请先登录后再访问测试集管理。" />;
+    return <Empty description={t("请先登录后再访问测试集管理。")} />;
   }
   if (!canRead) {
-    return <Empty description="暂无权限查看测试集管理。" />;
+    return <Empty description={t("暂无权限查看测试集管理。")} />;
   }
 
   return (
@@ -320,10 +322,10 @@ export function AtpTestSetTab() {
       {/* 工具条 */}
       <div className="admin-filter-bar">
         <Form layout="inline" onFinish={handleSearch}>
-          <Form.Item label="名称/描述" style={{ marginBottom: 0 }}>
+          <Form.Item label={t("名称/描述")} style={{ marginBottom: 0 }}>
             <Input
               allowClear
-              placeholder="输入测试集名称/描述"
+              placeholder={t("输入测试集名称/描述")}
               style={{ width: 240 }}
               value={keywordDraft}
               onChange={(event) => setKeywordDraft(event.target.value)}
@@ -378,7 +380,7 @@ export function AtpTestSetTab() {
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description={
                   <Space direction="vertical" size={4}>
-                    <span>暂无测试集。</span>
+                    <span>{t("暂无测试集。")}</span>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                       创建测试集后，为其中模型添加「普通计算 / 同跳计算」用例，
                       模型或程序更新时一键批量回归仿真测试。
@@ -404,25 +406,25 @@ export function AtpTestSetTab() {
         confirmLoading={saveSetMutation.isPending}
         destroyOnHidden
         okText={saveSetMutation.isPending ? "提交中..." : editingSet ? "保存" : "创建"}
-        cancelText="取消"
+        cancelText={t("取消")}
       >
         <Form form={setForm} layout="vertical" onFinish={(values) => void saveSetMutation.mutateAsync(values)} autoComplete="off">
           <Form.Item
             name="name"
-            label="名称"
-            rules={[{ required: true, message: "请输入测试集名称" }]}
+            label={t("名称")}
+            rules={[{ required: true, message: t("请输入测试集名称") }]}
           >
-            <Input placeholder="如：220kV 回归测试集 / 同跳专项验证集" maxLength={255} />
+            <Input placeholder={t("如：220kV 回归测试集 / 同跳专项验证集")} maxLength={255} />
           </Form.Item>
-          <Form.Item name="status" label="状态">
+          <Form.Item name="status" label={t("状态")}>
             <Input.Group compact>
               <Typography.Text type="secondary" style={{ marginRight: 8 }}>
                 启用中（停用后仍可查看，不可执行）
               </Typography.Text>
             </Input.Group>
           </Form.Item>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea rows={3} placeholder="用途说明：如「酒杯塔模型更新后，批量验证普通计算与同跳计算无回归」" maxLength={8000} />
+          <Form.Item name="description" label={t("描述")}>
+            <Input.TextArea rows={3} placeholder={t("用途说明：如「酒杯塔模型更新后，批量验证普通计算与同跳计算无回归」")} maxLength={8000} />
           </Form.Item>
         </Form>
       </Modal>

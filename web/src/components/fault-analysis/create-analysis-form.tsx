@@ -1,3 +1,4 @@
+import { useI18n } from "@/lib/i18n";
 import { Form, Input, Select, FormInstance } from "antd";
 import type { CreateFaultAnalysisFormValues } from "./types";
 
@@ -17,6 +18,7 @@ const analysisTypes = [
 ];
 
 export function CreateAnalysisForm({ form, lines, linesLoading, onSubmit }: CreateAnalysisFormProps) {
+  const { t } = useI18n();
   return (
     <Form
       form={form}
@@ -27,23 +29,23 @@ export function CreateAnalysisForm({ form, lines, linesLoading, onSubmit }: Crea
       }}
     >
       <Form.Item
-        label="分析名称"
+        label={t("分析名称")}
         name="title"
         rules={[
-          { required: true, message: "请输入分析名称" },
-          { max: 100, message: "名称不能超过100个字符" },
+          { required: true, message: t("请输入分析名称") },
+          { max: 100, message: t("名称不能超过100个字符") },
         ]}
       >
-        <Input placeholder="例如：XX线路故障分析" />
+        <Input placeholder={t("例如：XX线路故障分析")} />
       </Form.Item>
 
       <Form.Item
-        label="线路"
+        label={t("线路")}
         name="line_id"
-        rules={[{ required: true, message: "请选择线路" }]}
+        rules={[{ required: true, message: t("请选择线路") }]}
       >
         <Select
-          placeholder="请选择线路"
+          placeholder={t("请选择线路")}
           loading={linesLoading}
           showSearch
           optionFilterProp="children"
@@ -58,23 +60,23 @@ export function CreateAnalysisForm({ form, lines, linesLoading, onSubmit }: Crea
       </Form.Item>
 
       <Form.Item
-        label="分析类型"
+        label={t("分析类型")}
         name="analysis_type"
-        rules={[{ required: true, message: "请选择分析类型" }]}
+        rules={[{ required: true, message: t("请选择分析类型") }]}
       >
         <Select
-          placeholder="请选择分析类型"
+          placeholder={t("请选择分析类型")}
           options={analysisTypes}
         />
       </Form.Item>
 
       <Form.Item
-        label="描述"
+        label={t("描述")}
         name="description"
-        rules={[{ max: 500, message: "描述不能超过500个字符" }]}
+        rules={[{ max: 500, message: t("描述不能超过500个字符") }]}
       >
         <Input.TextArea
-          placeholder="请输入分析描述（可选）"
+          placeholder={t("请输入分析描述（可选）")}
           rows={4}
         />
       </Form.Item>

@@ -1,4 +1,5 @@
 "use client";
+import { useI18n } from "@/lib/i18n";
 
 import { Alert, Empty, Form, Input, Modal, Select, Space, Table, Tag, Typography } from "antd";
 import type { FormInstance } from "antd";
@@ -43,13 +44,14 @@ export function ScenarioModal({
   onSubmit,
   onCancel,
 }: ScenarioModalProps) {
+  const { t } = useI18n();
   return (
     <Modal
       title={selectedJob ? `加装避雷器复算 - ${selectedJob.job_name || selectedJob.line_name || selectedJob.line_code}` : "加装避雷器复算"}
       open={open}
       width={1080}
       confirmLoading={submitting}
-      okText="创建并启动复算任务"
+      okText={t("创建并启动复算任务")}
       onCancel={() => {
         if (submitting) {
           return;
@@ -64,7 +66,7 @@ export function ScenarioModal({
         <Alert
           type="info"
           showIcon
-          message="源端迁移口径：仅允许从措施推荐结果中继续选择仍为中高风险的杆塔，并复用一次已完成的普通/同跳计算链路，执行“补装避雷器后”的独立复算。"
+          message={t("源端迁移口径：仅允许从措施推荐结果中继续选择仍为中高风险的杆塔，并复用一次已完成的普通/同跳计算链路，执行“补装避雷器后”的独立复算。")}
         />
         <Form<ScenarioFormValues>
           form={form}
@@ -73,18 +75,18 @@ export function ScenarioModal({
         >
           <Form.Item
             name="job_name"
-            label="任务名称"
-            rules={[{ required: true, message: "请输入任务名称" }]}
+            label={t("任务名称")}
+            rules={[{ required: true, message: t("请输入任务名称") }]}
           >
-            <Input placeholder="加装避雷器复算任务名称" />
+            <Input placeholder={t("加装避雷器复算任务名称")} />
           </Form.Item>
           <Form.Item
             name="base_job_id"
-            label="复用计算任务"
-            rules={[{ required: true, message: "请选择复用的普通计算或同跳计算任务" }]}
+            label={t("复用计算任务")}
+            rules={[{ required: true, message: t("请选择复用的普通计算或同跳计算任务") }]}
           >
             <Select
-              placeholder="选择已成功完成的普通计算或同跳计算任务"
+              placeholder={t("选择已成功完成的普通计算或同跳计算任务")}
               options={baseJobs.map((item) => ({
                 value: item.id,
                 label: `${item.job_name || item.line_name || item.line_code || item.id} / ${formatJobType(item.job_type)} / ${formatDateTime(item.finished_at)}`,
@@ -97,12 +99,12 @@ export function ScenarioModal({
           <Alert
             type="warning"
             showIcon
-            message="当前线路还没有可复用的普通计算或同跳计算成功任务。请先完成一次基线计算，再创建加装避雷器复算任务。"
+            message={t("当前线路还没有可复用的普通计算或同跳计算成功任务。请先完成一次基线计算，再创建加装避雷器复算任务。")}
           />
         ) : null}
 
         {rows.length === 0 ? (
-          <Empty description="当前措施任务没有仍需复算的中高风险杆塔" />
+          <Empty description={t("当前措施任务没有仍需复算的中高风险杆塔")} />
         ) : (
           <>
             <Typography.Text type="secondary">
@@ -119,20 +121,20 @@ export function ScenarioModal({
                 },
               }}
               columns={[
-                { title: "杆塔号", dataIndex: "tower_no", width: 120 },
+                { title: t("杆塔号"), dataIndex: "tower_no", width: 120 },
                 {
-                  title: "预期风险",
+                  title: t("预期风险"),
                   dataIndex: "risk_level",
                   width: 120,
                   render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
                 },
                 {
-                  title: "高风险原因",
+                  title: t("高风险原因"),
                   key: "cause_analysis",
                   render: (_value, row) => readString(readObject(row.result_json), "cause_analysis"),
                 },
                 {
-                  title: "当前动作",
+                  title: t("当前动作"),
                   key: "mitigation_recommendation",
                   render: (_value, row) => readString(readObject(row.result_json), "mitigation_recommendation"),
                 },

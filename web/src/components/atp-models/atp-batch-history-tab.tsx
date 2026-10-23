@@ -31,6 +31,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, readApiError } from "@/lib/api";
 import type { AtpBatchTestRunListResponse, AtpBatchTestRunSummary } from "@/types/auth";
@@ -57,6 +58,7 @@ export function formatDateTime(value: string | null | undefined): string {
 }
 
 export function AtpBatchHistoryTab() {
+  const { t } = useI18n();
   const { user } = useAuth();
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -154,7 +156,7 @@ export function AtpBatchHistoryTab() {
   const columns = useMemo<ColumnsType<AtpBatchTestRunSummary>>(
     () => [
       {
-        title: "批次号",
+        title: t("批次号"),
         dataIndex: "batch_id",
         width: 230,
         ellipsis: { showTitle: true },
@@ -165,7 +167,7 @@ export function AtpBatchHistoryTab() {
         ),
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "status",
         width: 110,
         render: (value: string | null, row) => {
@@ -174,7 +176,7 @@ export function AtpBatchHistoryTab() {
             const percent = row.total > 0 ? Math.round((done / row.total) * 100) : 0;
             return (
               <Space direction="vertical" size={0} style={{ width: 140 }}>
-                <Tag color="processing">运行中</Tag>
+                <Tag color="processing">{t("运行中")}</Tag>
                 <Progress percent={percent} size="small" strokeColor="#1677ff" />
               </Space>
             );
@@ -184,34 +186,34 @@ export function AtpBatchHistoryTab() {
         },
       },
       {
-        title: "发起时间",
+        title: t("发起时间"),
         dataIndex: "create_date",
         width: 165,
         render: (value: string | null) => formatDateTime(value),
       },
       {
-        title: "发起人",
+        title: t("发起人"),
         dataIndex: "create_user",
         width: 120,
         ellipsis: true,
         render: (value: string | null) => value || "-",
       },
-      { title: "总数", dataIndex: "total", width: 70, render: (v: number) => v ?? 0 },
+      { title: t("总数"), dataIndex: "total", width: 70, render: (v: number) => v ?? 0 },
       {
-        title: "成功",
+        title: t("成功"),
         dataIndex: "success",
         width: 70,
         render: (v: number) => <Typography.Text style={{ color: "#3f8600" }}>{v ?? 0}</Typography.Text>,
       },
       {
-        title: "失败",
+        title: t("失败"),
         dataIndex: "failed",
         width: 70,
         render: (v: number) =>
           (v ?? 0) > 0 ? <Typography.Text style={{ color: "#cf1322" }}>{v ?? 0}</Typography.Text> : (v ?? 0),
       },
       {
-        title: "通过率",
+        title: t("通过率"),
         dataIndex: "pass_rate",
         width: 90,
         render: (v: number | null) => (
@@ -219,7 +221,7 @@ export function AtpBatchHistoryTab() {
         ),
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 160,
         fixed: "right" as const,
@@ -251,10 +253,10 @@ export function AtpBatchHistoryTab() {
   );
 
   if (!user) {
-    return <Empty description="请先登录后再访问批量测试记录。" />;
+    return <Empty description={t("请先登录后再访问批量测试记录。")} />;
   }
   if (!canRead) {
-    return <Empty description="暂无权限查看批量测试记录。" />;
+    return <Empty description={t("暂无权限查看批量测试记录。")} />;
   }
 
   return (
@@ -262,10 +264,10 @@ export function AtpBatchHistoryTab() {
       {/* 工具条:搜索 + 批量测试 + 刷新 */}
       <div className="admin-filter-bar">
         <Form layout="inline" onFinish={handleSearch}>
-          <Form.Item label="批次号/发起人" style={{ marginBottom: 0 }}>
+          <Form.Item label={t("批次号/发起人")} style={{ marginBottom: 0 }}>
             <Input
               allowClear
-              placeholder="输入批次号/发起人"
+              placeholder={t("输入批次号/发起人")}
               style={{ width: 260 }}
               value={keywordDraft}
               onChange={(event) => setKeywordDraft(event.target.value)}
@@ -316,7 +318,7 @@ export function AtpBatchHistoryTab() {
           }}
           locale={{
             emptyText: (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无批量测试记录。" />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无批量测试记录。")} />
             ),
           }}
         />

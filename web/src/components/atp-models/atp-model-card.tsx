@@ -14,6 +14,7 @@ import {
 } from "@ant-design/icons";
 import { useCallback } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import type { AtpAssetStatus, AtpAssetSummary } from "@/types/auth";
 
 interface AtpModelCardProps {
@@ -57,6 +58,7 @@ function assetBadgeStatus(status: AtpAssetStatus): { badge: "success" | "process
 }
 
 export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, dimensionLabelMap }: AtpModelCardProps) {
+  const { t } = useI18n();
   const rowBusy = deleteLoading;
 
   const handleView = useCallback(() => {
@@ -73,10 +75,10 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
 
   const handleDelete = useCallback(() => {
     Modal.confirm({
-      title: "删除模型",
-      content: "这会同时删除其文件与运行记录。",
-      okText: "删除",
-      cancelText: "取消",
+      title: t("删除模型"),
+      content: t("这会同时删除其文件与运行记录。"),
+      okText: t("删除"),
+      cancelText: t("取消"),
       okButtonProps: { danger: true, loading: deleteLoading },
       onOk: () => onDelete(asset.id),
     });
@@ -141,7 +143,7 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
                 }}
               />
             </Tooltip>
-            <Tooltip title="详情">
+            <Tooltip title={t("详情")}>
               <Button
                 type="text"
                 size="small"
@@ -160,7 +162,7 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
                     label: (
                       <Space size={4}>
                         <EditOutlined />
-                        <span>编辑</span>
+                        <span>{t("编辑")}</span>
                       </Space>
                     ),
                     onClick: (event) => {
@@ -175,7 +177,7 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
                           label: (
                             <Space size={4}>
                               <DeleteOutlined />
-                              <span>删除</span>
+                              <span>{t("删除")}</span>
                             </Space>
                           ),
                           danger: true,
@@ -191,7 +193,7 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
               }}
               trigger={["click"]}
             >
-              <Tooltip title="更多">
+              <Tooltip title={t("更多")}>
                 <Button
                   type="text"
                   size="small"

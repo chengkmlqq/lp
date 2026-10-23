@@ -1,3 +1,4 @@
+import { useI18n } from "@/lib/i18n";
 import { Spin, Empty } from "antd";
 import { AnalysisCard } from "./analysis-card";
 import type { FaultAnalysis } from "./types";
@@ -12,6 +13,7 @@ interface AnalysisCardListProps {
 }
 
 export function AnalysisCardList({ analyses, selectedId, loading, onView, onDelete, onLog }: AnalysisCardListProps) {
+  const { t } = useI18n();
   if (analyses.length === 0) {
     // 无数据可展示时（首载/空结果）：全区域居中加载指示；
     // 有数据时保留现有卡片，查询/刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新
@@ -25,7 +27,7 @@ export function AnalysisCardList({ analyses, selectedId, loading, onView, onDele
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="暂无故障分析记录"
+        description={t("暂无故障分析记录")}
       />
     );
   }

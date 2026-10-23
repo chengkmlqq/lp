@@ -132,9 +132,9 @@ export function AtpTestSetRunDrawer({
         width: 90,
         render: (value: string) =>
           value === "tongtiao" ? (
-            <Tag color="purple">同跳计算</Tag>
+            <Tag color="purple">{"同跳计算"}</Tag>
           ) : (
-            <Tag color="blue">普通计算</Tag>
+            <Tag color="blue">{"普通计算"}</Tag>
           ),
       },
       {
@@ -196,10 +196,10 @@ export function AtpTestSetRunDrawer({
           const statusChanged = prev.status !== row.status;
           const flashoverChanged = prev.flashover_count !== row.flashover_count;
           if (!statusChanged && !flashoverChanged) {
-            return <Tag color="green">无变化</Tag>;
+            return <Tag color="green">{"无变化"}</Tag>;
           }
           if (prev.status === "success" && row.status !== "success") {
-            return <Tag color="red">回归失败</Tag>;
+            return <Tag color="red">{"回归失败"}</Tag>;
           }
           if (flashoverChanged) {
             return (
@@ -209,9 +209,9 @@ export function AtpTestSetRunDrawer({
             );
           }
           if (prev.status !== "success" && row.status === "success") {
-            return <Tag color="green">修复通过</Tag>;
+            return <Tag color="green">{"修复通过"}</Tag>;
           }
-          return <Tag color="orange">结果有变</Tag>;
+          return <Tag color="orange">{"结果有变"}</Tag>;
         },
       },
       {
@@ -236,7 +236,7 @@ export function AtpTestSetRunDrawer({
     <Drawer
       title={
         <Space>
-          <span>执行结果</span>
+          <span>{"执行结果"}</span>
           {data ? (
             <Tag color={STATUS_TAG[data.status]?.color ?? "default"}>
               {STATUS_TAG[data.status]?.text ?? data.status}
@@ -260,11 +260,11 @@ export function AtpTestSetRunDrawer({
         <Alert
           type="error"
           showIcon
-          message="加载执行结果失败"
+          message={"加载执行结果失败"}
           description={runQuery.error instanceof Error ? runQuery.error.message : ""}
         />
       ) : !data ? (
-        <div style={{ padding: 40, textAlign: "center" }}>加载中…</div>
+        <div style={{ padding: 40, textAlign: "center" }}>{"加载中…"}</div>
       ) : (
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           {/* 集合级摘要 */}
@@ -372,7 +372,7 @@ export function AtpTestSetRunDrawer({
               pagination={false}
               locale={{
                 emptyText: (
-                  <Typography.Text type="secondary">暂无用例结果（可能全部派发失败）。</Typography.Text>
+                  <Typography.Text type="secondary">{"暂无用例结果（可能全部派发失败）。"}</Typography.Text>
                 ),
               }}
             />

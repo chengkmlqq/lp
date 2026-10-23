@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Alert, Descriptions, Spin, Table, Typography } from "antd";
 import { useMemo } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 
@@ -99,6 +100,7 @@ function parseConductors(lines: string[]): { rows: ConductorRow[]; nodes: string
 }
 
 export function AtpDatDetailView({ assetId, relativePath }: AtpDatDetailProps) {
+  const { t } = useI18n();
   const { user, fetchWithAuth } = useAuth();
 
   const contentQuery = useQuery({
@@ -135,7 +137,7 @@ export function AtpDatDetailView({ assetId, relativePath }: AtpDatDetailProps) {
       <Alert
         type="error"
         showIcon
-        message="读取文件失败"
+        message={t("读取文件失败")}
         description={contentQuery.error instanceof Error ? contentQuery.error.message : ""}
       />
     );
@@ -144,10 +146,10 @@ export function AtpDatDetailView({ assetId, relativePath }: AtpDatDetailProps) {
   const data = contentQuery.data;
   if (!data) return null;
   if (data.content_type === "binary") {
-    return <Alert type="warning" showIcon message="该文件是二进制格式，无法预览文本内容。" />;
+    return <Alert type="warning" showIcon message={t("该文件是二进制格式，无法预览文本内容。")} />;
   }
   if (data.content_type === "not-found") {
-    return <Alert type="warning" showIcon message="文件不存在。" />;
+    return <Alert type="warning" showIcon message={t("文件不存在。")} />;
   }
 
   return (
@@ -157,14 +159,14 @@ export function AtpDatDetailView({ assetId, relativePath }: AtpDatDetailProps) {
         size="small"
         column={3}
         items={[
-          { key: "name", label: "文件名", children: data.name || "-" },
-          { key: "size", label: "文件大小", children: `${data.size} B` },
-          { key: "model", label: "线路模型", children: "JMARTI(频率相关) / LCC 线路常数" },
-          { key: "unit", label: "单位制", children: parsed?.metric ? "公制(METRIC)" : "-" },
-          { key: "conductor_count", label: "导体数", children: String(parsed?.rows.length ?? "-") },
+          { key: "name", label: t("文件名"), children: data.name || "-" },
+          { key: "size", label: t("文件大小"), children: `${data.size} B` },
+          { key: "model", label: t("线路模型"), children: "JMARTI(频率相关) / LCC 线路常数" },
+          { key: "unit", label: t("单位制"), children: parsed?.metric ? "公制(METRIC)" : "-" },
+          { key: "conductor_count", label: t("导体数"), children: String(parsed?.rows.length ?? "-") },
           {
             key: "ground_wire",
-            label: "避雷线",
+            label: t("避雷线"),
             children: String(parsed?.rows.filter((r) => r.kind === "避雷线").length ?? "-"),
           },
         ]}
@@ -178,18 +180,18 @@ export function AtpDatDetailView({ assetId, relativePath }: AtpDatDetailProps) {
         pagination={false}
         dataSource={parsed?.rows ?? []}
         columns={[
-          { title: "序号", dataIndex: "index", width: 60 },
-          { title: "节点", dataIndex: "node", width: 90 },
-          { title: "类型", dataIndex: "kind", width: 90 },
-          { title: "半径(m)", dataIndex: "radius", width: 100 },
-          { title: "单位电阻(Ω/km)", dataIndex: "resistance", width: 130 },
-          { title: "水平位置(m)", dataIndex: "x", width: 110 },
-          { title: "高度(m)", dataIndex: "y", width: 100 },
-          { title: "原始行", dataIndex: "raw", ellipsis: true },
+          { title: t("序号"), dataIndex: "index", width: 60 },
+          { title: t("节点"), dataIndex: "node", width: 90 },
+          { title: t("类型"), dataIndex: "kind", width: 90 },
+          { title: t("半径(m)"), dataIndex: "radius", width: 100 },
+          { title: t("单位电阻(Ω/km)"), dataIndex: "resistance", width: 130 },
+          { title: t("水平位置(m)"), dataIndex: "x", width: 110 },
+          { title: t("高度(m)"), dataIndex: "y", width: 100 },
+          { title: t("原始行"), dataIndex: "raw", ellipsis: true },
         ]}
       />
       <details style={{ marginTop: 12 }}>
-        <summary style={{ cursor: "pointer", color: "#888", fontSize: 12 }}>查看 dat 原始内容</summary>
+        <summary style={{ cursor: "pointer", color: "#888", fontSize: 12 }}>{t("查看 dat 原始内容")}</summary>
         <pre
           style={{
             marginTop: 8,

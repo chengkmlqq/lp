@@ -25,6 +25,7 @@ import {
   FileSearchOutlined,
 } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { readApiError } from "@/lib/api";
@@ -434,7 +435,7 @@ function buildComputationSteps(): ComputationStepDef[] {
           label: "匹配结果",
           get: (rj) => {
             const matched = rjValue(rj, "inputs.line_ledger.matched");
-            return matched == null ? "-" : (matched ? <Tag color="green">已匹配</Tag> : <Tag color="red">未匹配</Tag>);
+            return matched == null ? "-" : (matched ? <Tag color="green">{"已匹配"}</Tag> : <Tag color="red">{"未匹配"}</Tag>);
           },
         },
         { label: "匹配线路", get: (rj) => rjText(rj, "inputs.line_ledger.requested_line_name", "-") },
@@ -512,7 +513,7 @@ function buildComputationSteps(): ComputationStepDef[] {
           label: "是否可自动通过",
           get: (rj) => {
             const canPass = rjValue(rj, "overall_recommendation.can_auto_pass");
-            return canPass == null ? "-" : (canPass ? <Tag color="green">可以自动通过</Tag> : <Tag color="orange">建议人工复核</Tag>);
+            return canPass == null ? "-" : (canPass ? <Tag color="green">{"可以自动通过"}</Tag> : <Tag color="orange">{"建议人工复核"}</Tag>);
           },
         },
         {
@@ -951,6 +952,7 @@ function isWideField(field: { kind?: string; value?: unknown }): boolean {
 }
 
 function ProcessView({ computationSteps, resultJson }: ProcessViewProps) {
+  const { t } = useI18n();
   const viewModel = resultJson.view_model as ProcessViewModel | undefined;
   // 优先消费后端下发的 view_model（声明式 schema，前端不再硬编码 diagnosis 路径）；
   // 旧记录无 view_model 时回退到 buildComputationSteps 兜底。
@@ -1005,7 +1007,7 @@ function ProcessView({ computationSteps, resultJson }: ProcessViewProps) {
                     <Alert
                       type="warning"
                       showIcon
-                      message="输入警告"
+                      message={t("输入警告")}
                       description={(resultJson.input_warnings as string[]).join("；")}
                     />
                   ) : null}
@@ -1045,7 +1047,7 @@ function ProcessView({ computationSteps, resultJson }: ProcessViewProps) {
                 <Alert
                   type="warning"
                   showIcon
-                  message="输入警告"
+                  message={t("输入警告")}
                   description={(resultJson.input_warnings as string[]).join("；")}
                 />
               ) : null}
@@ -1061,7 +1063,7 @@ function ArtifactsView({ onDownload, downloadingArtifact, artifactTree }: Artifa
   return (
     <div className="py-4">
       {artifactTree.length === 0 ? (
-        <Alert type="info" showIcon message="该记录暂无产物清单。" />
+        <Alert type="info" showIcon message={"该记录暂无产物清单。"} />
       ) : (
         <Tree showLine defaultExpandAll treeData={artifactTree} />
       )}
@@ -1070,6 +1072,7 @@ function ArtifactsView({ onDownload, downloadingArtifact, artifactTree }: Artifa
 }
 
 export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog }: AnalysisDetailViewProps) {
+  const { t } = useI18n();
   const { message: messageApi } = App.useApp();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const [exporting, setExporting] = useState(false);
@@ -1138,7 +1141,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
       <Alert
         type="error"
         showIcon
-        message="加载失败"
+        message={t("加载失败")}
         description={
           detailQuery.error instanceof Error
             ? detailQuery.error.message
@@ -1151,7 +1154,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
   const detail = detailQuery.data;
 
   if (!detail) {
-    return <Alert type="info" showIcon message="未找到该故障分析记录" />;
+    return <Alert type="info" showIcon message={t("未找到该故障分析记录")} />;
   }
 
   const { sections, station, fault_datetime, fault_id } = buildSections(detail);
@@ -1192,9 +1195,9 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
             value={activeView}
             onChange={(value) => setActiveView(value as "report" | "process" | "artifacts")}
             options={[
-              { label: "报告", value: "report" },
-              { label: "计算过程", value: "process" },
-              { label: "产物", value: "artifacts" },
+              { label: t("报告"), value: "report" },
+              { label: t("计算过程"), value: "process" },
+              { label: t("产物"), value: "artifacts" },
             ]}
           />
         </div>
