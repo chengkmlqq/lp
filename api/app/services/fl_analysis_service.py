@@ -645,12 +645,13 @@ def _write_cancelled_status(
     失败时返回 False，由 worker 侧清理任务（进程已杀、锁必已释放）补写状态。
     """
     from sqlalchemy import text
+    from ..core.database import dialect_text
     from sqlalchemy.exc import OperationalError
 
     last_error: Exception | None = None
     for attempt in range(6):
         try:
-            db.execute(text("SET LOCAL lock_timeout = '2s'"))
+            db.execute(dialect_text("SET LOCAL lock_timeout = '2s'"))
             locked_job = get_job_by_id(db, job_id)
             if not locked_job:
                 db.rollback()

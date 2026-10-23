@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import bindparam, text
+from ..core.database import DIALECT_IS_MYSQL, dialect_text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -271,7 +272,7 @@ def get_user_authorizations_batch(db: Session, user_ids: list[str]) -> dict[str,
     role_rows_map: dict[str, list[tuple[str, str | None, str | None]]] = {uid: [] for uid in user_ids}
     legacy_ok = _legacy_table_exists(db, "user_role_rela") and _legacy_table_exists(db, "user_role")
     if legacy_ok:
-        stmt = text(
+        stmt = dialect_text(
             """
             SELECT urr.user_id AS user_id, ur.id AS role_id, ur.name AS role_name, ur.state AS role_state
             FROM user_role_rela urr
@@ -373,17 +374,26 @@ def _should_apply_default_user_role_fallback(db: Session) -> bool:
 
 def _legacy_user_role_relation_exists(db: Session) -> bool:
     try:
-        result = db.scalar(text("SELECT to_regclass('public.user_role_rela')"))
+        if DIALECT_IS_MYSQL:
+            # MySQL 无 to_regclass：查 information_schema 判定表存在
+            result = db.scalar(
+                text(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = DATABASE() AND table_name = 'user_role_rela'"
+                )
+            )
+        else:
+            result = db.scalar(text("SELECT to_regclass('public.user_role_rela')"))
     except SQLAlchemyError:
         _rollback_safely(db)
         return True
-    return result is not None
+    return bool(result)
 
 
 def _legacy_user_role_exists(db: Session) -> bool:
     try:
         result = db.scalar(
-            text(
+            dialect_text(
                 """
                 SELECT id
                 FROM user_role
@@ -511,7 +521,7 @@ def _fill_legacy_ancestors(rows: list[dict[str, Any]], db: Session) -> list[dict
 def _load_legacy_roles(db: Session, user_id: str) -> list[tuple[str, str | None, str | None]]:
     if not _legacy_table_exists(db, "user_role_rela") or not _legacy_table_exists(db, "user_role"):
         return []
-    stmt = text(
+    stmt = dialect_text(
         """
         SELECT ur.id AS role_id, ur.name AS role_name, ur.state AS role_state
         FROM user_role_rela urr
@@ -589,7 +599,7 @@ def _load_menu_link_rows(db: Session, role_ids: list[str]) -> list[dict[str, Any
     rows: list[dict[str, Any]] = []
     if _legacy_table_exists(db, "role_menu_rela"):
         # legacy 关联表：role_id 为角色码字符串，menu_id 存菜单 id::text 或 code
-        stmt = text(
+        stmt = dialect_text(
             """
             SELECT DISTINCT m.code AS menu_name, m.type AS menu_type, m.status AS state,
                    m.permission_code AS menu_descr
@@ -622,7 +632,7 @@ def _load_modern_menu_link_rows(db: Session, role_ids: list[str]) -> list[dict[s
         return []
     if not modern_role_ids:
         return []
-    stmt = text(
+    stmt = dialect_text(
         """
         SELECT DISTINCT m.code AS menu_name, m.type AS menu_type, m.status AS state,
                m.permission_code AS menu_descr
@@ -670,7 +680,7 @@ def _load_modern_permissions(db: Session, role_codes: set[str]) -> set[str]:
 def _load_legacy_menus(db: Session) -> list[dict[str, Any]]:
     if not _legacy_table_exists(db, "menu"):
         return []
-    stmt = text(
+    stmt = dialect_text(
         """
         SELECT
             m.id::text AS menu_id,
@@ -706,7 +716,7 @@ def _load_legacy_allowed_menu_ids(db: Session, role_codes: set[str]) -> set[str]
     if not _legacy_table_exists(db, "role_menu_rela"):
         return set()
 
-    stmt = text(
+    stmt = dialect_text(
         """
         SELECT DISTINCT menu_id
         FROM role_menu_rela
@@ -736,12 +746,25 @@ def _legacy_table_exists(db: Session, table_name: str) -> bool:
     if table_name in cache:
         return cache[table_name]
     try:
-        result = db.scalar(text("SELECT to_regclass(:table_name)"), {"table_name": f"public.{table_name}"})
+        if DIALECT_IS_MYSQL:
+            # MySQL 无 to_regclass：查 information_schema 判定表存在
+            result = db.scalar(
+                text(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = DATABASE() AND table_name = :table_name"
+                ),
+                {"table_name": table_name},
+            )
+        else:
+            result = db.scalar(
+                dialect_text("SELECT to_regclass(:table_name)"),
+                {"table_name": f"public.{table_name}"},
+            )
     except SQLAlchemyError:
         _rollback_safely(db)
         cache[table_name] = False
         return False
-    cache[table_name] = result is not None
+    cache[table_name] = bool(result)
     return cache[table_name]
 
 

@@ -1,5 +1,6 @@
 from collections.abc import Generator
 import logging
+import re
 from typing import Any
 
 from sqlalchemy import JSON, create_engine, inspect, text
@@ -19,6 +20,48 @@ logger = logging.getLogger(__name__)
 JsonColumn = JSON().with_variant(JSONB(), "postgresql")
 
 database_url = settings.resolved_database_url
+
+# 方言标识：MySQL 支持（LP mysql 化改造）。true 时各服务层对 PG 专属
+# SQL 语法（::cast / RETURNING / ON CONFLICT 等）走 MySQL 兼容分支。
+DIALECT_IS_MYSQL = database_url.startswith("mysql")
+
+
+def mysqlize_sql(sql: str) -> str:
+    """将 PG 方言 SQL 转换为 MySQL 兼容版本（legacy 管理服务专用）。
+
+    仅处理本项目实际出现的 PG 语法点：
+      - ``X::text`` → ``CAST(X AS CHAR)``
+      - ``CAST(x AS INTEGER)`` → ``CAST(x AS SIGNED)``
+      - ``INSERT ... ON CONFLICT DO NOTHING`` → ``INSERT IGNORE ...``（去除 ON CONFLICT 子句）
+      - ``INSERT ... RETURNING ...`` → ``INSERT``（RETURNING 子句裁剪；调用方在 MySQL 下
+        通过 lastrowid / LAST_INSERT_ID() 取值兜底）
+    """
+    if not sql:
+        return sql
+    # ON CONFLICT DO NOTHING → INSERT IGNORE
+    if re.search(r"(?i)\bON CONFLICT DO NOTHING\b", sql):
+        sql = re.sub(r"(?is)\s+ON CONFLICT DO NOTHING\s*$", "", sql)
+        sql = re.sub(r"(?i)^\s*INSERT\b", "INSERT IGNORE", sql)
+    # CAST(x AS INTEGER) → CAST(x AS SIGNED)
+    sql = re.sub(r"(?i)CAST\(([^()]*?)\s+AS\s+INTEGER\)", r"CAST(\1 AS SIGNED)", sql)
+    # X::text → CAST(X AS CHAR)（负向前瞻避免命中 :: 双冒号其它语义）
+    sql = re.sub(r"(?<![:.\w])([a-z_][a-z0-9_.]*)::text\b", r"CAST(\1 AS CHAR)", sql)
+    # INSERT ... RETURNING 子句裁剪（MySQL 无 RETURNING）
+    sql = re.sub(r"(?is)\s+RETURNING\b.*$", "", sql)
+    # SET LOCAL lock_timeout = 'Ns' → SET SESSION innodb_lock_wait_timeout = N（MySQL）
+    sql = re.sub(
+        r"(?is)SET\s+LOCAL\s+lock_timeout\s*=\s*'(\d+)s'\s*;?",
+        lambda m: f"SET SESSION innodb_lock_wait_timeout = {m.group(1)}",
+        sql,
+    )
+    return sql
+
+
+def dialect_text(sql: str):
+    """按方言构造 sqlalchemy.text：MySQL 下自动做 PG→MySQL SQL 转换。"""
+    if DIALECT_IS_MYSQL:
+        return text(mysqlize_sql(sql))
+    return text(sql)
 
 connect_args: dict[str, Any] = {}
 if database_url.startswith("sqlite"):

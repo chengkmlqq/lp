@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     api_cors_origin_regex: str | None = None
 
     database_url: str | None = None
+    db_dialect: Literal["postgresql", "mysql"] = "postgresql"
     db_host: str = "127.0.0.1"
     db_port: int = 5434
     db_name: str = "postgres"
@@ -199,6 +200,8 @@ class Settings(BaseSettings):
         password = quote_plus(self.db_password.strip())
         host = self.db_host.strip()
         database = self.db_name.strip()
+        if self.db_dialect == "mysql":
+            return f"mysql+pymysql://{username}:{password}@{host}:{self.db_port}/{database}?charset=utf8mb4"
         return f"postgresql+psycopg://{username}:{password}@{host}:{self.db_port}/{database}"
 
     @property

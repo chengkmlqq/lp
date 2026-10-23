@@ -204,14 +204,14 @@ def _ensure_cancelled_status(job_id: str) -> bool:
     from sqlalchemy import select, text
     from sqlalchemy.exc import OperationalError
 
-    from ..core.database import SessionLocal
+    from ..core.database import SessionLocal, dialect_text
     from ..models.base import utcnow
     from ..models.fl_analysis import FlAnalysisJob
 
     for attempt in range(6):
         db = SessionLocal()
         try:
-            db.execute(text("SET LOCAL lock_timeout = '3s'"))
+            db.execute(dialect_text("SET LOCAL lock_timeout = '3s'"))
             job = db.execute(select(FlAnalysisJob).where(FlAnalysisJob.id == job_id)).scalar_one_or_none()
             if job is None or job.status not in {"pending", "queued", "running"}:
                 return False

@@ -6,6 +6,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import bindparam, text
+from ..core.database import DIALECT_IS_MYSQL, dialect_text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -162,14 +163,14 @@ def get_role_by_id(db: Session, role_id: str) -> RolePublic | None:
     role_source = "legacy" if _legacy_role_table_exists(db) else "modern"
     if role_source == "legacy":
         rows = db.execute(
-            text("SELECT id, name FROM user_role WHERE id = :id"),
+            dialect_text("SELECT id, name FROM user_role WHERE id = :id"),
             {"id": role_id},
         ).mappings().all()
         role_code = role_id
         resolved_role_id = role_id
     else:
         rows = db.execute(
-            text(
+            dialect_text(
                 """
                 SELECT id::text AS id, code, name
                 FROM roles
@@ -210,9 +211,9 @@ def create_role(db: Session, payload: RoleCreateRequest, *, actor_user_id: str |
 
     # Check if role code already exists
     if role_source == "legacy":
-        existing = db.scalar(text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
+        existing = db.scalar(dialect_text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
     else:
-        existing = db.scalar(text("SELECT id FROM roles WHERE code = :code"), {"code": role_id})
+        existing = db.scalar(dialect_text("SELECT id FROM roles WHERE code = :code"), {"code": role_id})
 
     if existing:
         return None
@@ -225,7 +226,7 @@ def create_role(db: Session, payload: RoleCreateRequest, *, actor_user_id: str |
     try:
         if role_source == "legacy":
             db.execute(
-                text(
+                dialect_text(
                     """
                     INSERT INTO user_role (id, name, descr, state, create_date, update_date)
                     VALUES (:id, :name, :descr, 'ENABLED', :create_date, :update_date)
@@ -241,7 +242,7 @@ def create_role(db: Session, payload: RoleCreateRequest, *, actor_user_id: str |
             )
         else:
             db.execute(
-                text(
+                dialect_text(
                     """
                     INSERT INTO roles (code, name)
                     VALUES (:code, :name)
@@ -297,12 +298,12 @@ def update_role(db: Session, role_id: str, payload: RoleUpdateRequest, *, actor_
     resolved_role_id = role_id
     resolved_role_code = role_id
     if role_source == "legacy":
-        role_exists = db.scalar(text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
+        role_exists = db.scalar(dialect_text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
         if not role_exists:
             return None
     else:
         role_row = db.execute(
-            text(
+            dialect_text(
                 """
                 SELECT id::text AS id, code
                 FROM roles
@@ -330,7 +331,7 @@ def update_role(db: Session, role_id: str, payload: RoleUpdateRequest, *, actor_
                 changed_fields.append("name")
             if role_source == "legacy":
                 db.execute(
-                    text("UPDATE user_role SET name = :name, descr = :descr, update_date = :update_date WHERE id = :id"),
+                    dialect_text("UPDATE user_role SET name = :name, descr = :descr, update_date = :update_date WHERE id = :id"),
                     {
                         "id": resolved_role_id,
                         "name": role_name,
@@ -340,7 +341,7 @@ def update_role(db: Session, role_id: str, payload: RoleUpdateRequest, *, actor_
                 )
             else:
                 db.execute(
-                    text("UPDATE roles SET name = :name WHERE id::text = :id"),
+                    dialect_text("UPDATE roles SET name = :name WHERE id::text = :id"),
                     {
                         "id": resolved_role_id,
                         "name": role_name,
@@ -428,12 +429,12 @@ def delete_role(db: Session, role_id: str, *, actor_user_id: str | None) -> bool
     if role_source == "legacy":
         if role_id in PROTECTED_ROLE_IDS:
             return False
-        exists = db.scalar(text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
+        exists = db.scalar(dialect_text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
         if not exists:
             return False
     else:
         role_row = db.execute(
-            text(
+            dialect_text(
                 """
                 SELECT id::text AS id, code
                 FROM roles
@@ -465,15 +466,15 @@ def delete_role(db: Session, role_id: str, *, actor_user_id: str | None) -> bool
             output=json.dumps({"role_id": resolved_role_id, "role_code": resolved_role_code, "role_name": current_role.name if current_role else None}),
         )
         if role_source == "legacy":
-            db.execute(text("DELETE FROM role_menu_rela WHERE role_id = :role_id"), {"role_id": resolved_role_id})
+            db.execute(dialect_text("DELETE FROM role_menu_rela WHERE role_id = :role_id"), {"role_id": resolved_role_id})
             if has_user_role_relation:
-                db.execute(text("DELETE FROM user_role_rela WHERE role_id = :role_id"), {"role_id": resolved_role_id})
-            db.execute(text("DELETE FROM user_role WHERE id = :id"), {"id": resolved_role_id})
+                db.execute(dialect_text("DELETE FROM user_role_rela WHERE role_id = :role_id"), {"role_id": resolved_role_id})
+            db.execute(dialect_text("DELETE FROM user_role WHERE id = :id"), {"id": resolved_role_id})
         else:
-            db.execute(text("DELETE FROM role_menus WHERE role_id::text = :role_id"), {"role_id": resolved_role_id})
-            db.execute(text("DELETE FROM role_permissions WHERE role_id::text = :role_id"), {"role_id": resolved_role_id})
-            db.execute(text("DELETE FROM user_roles WHERE role_id::text = :role_id"), {"role_id": resolved_role_id})
-            db.execute(text("DELETE FROM roles WHERE id::text = :id"), {"id": resolved_role_id})
+            db.execute(dialect_text("DELETE FROM role_menus WHERE role_id::text = :role_id"), {"role_id": resolved_role_id})
+            db.execute(dialect_text("DELETE FROM role_permissions WHERE role_id::text = :role_id"), {"role_id": resolved_role_id})
+            db.execute(dialect_text("DELETE FROM user_roles WHERE role_id::text = :role_id"), {"role_id": resolved_role_id})
+            db.execute(dialect_text("DELETE FROM roles WHERE id::text = :id"), {"id": resolved_role_id})
         db.commit()
     except SQLAlchemyError:
         db.rollback()
@@ -589,7 +590,7 @@ def get_menu_by_id(db: Session, menu_id: str) -> MenuPublic | None:
     if not normalized_menu_id:
         return None
     row = db.execute(
-        text(
+        dialect_text(
             """
             SELECT id::text AS menu_id, code AS menu_name, name AS menu_label, type AS menu_type,
                    parent_id, path AS url, icon AS menu_icon, sort_order AS seq, status AS state,
@@ -616,20 +617,20 @@ def create_menu(db: Session, payload: MenuCreateRequest, *, actor_user_id: str |
     menu_name = payload.name.strip()
     if not menu_name:
         raise EmptyMenuNameError()
-    exists = db.scalar(text("SELECT id FROM menus WHERE code = :menu_name"), {"menu_name": menu_code})
+    exists = db.scalar(dialect_text("SELECT id FROM menus WHERE code = :menu_name"), {"menu_name": menu_code})
     if exists:
         raise DuplicateMenuCodeError(menu_code)
 
     parent_id = payload.parent_id.strip() if payload.parent_id else None
     if parent_id and parent_id == menu_code:
         raise SelfParentError()
-    if parent_id and not db.scalar(text("SELECT id FROM menus WHERE id::text = :menu_id OR code = :menu_id"), {"menu_id": parent_id}):
+    if parent_id and not db.scalar(dialect_text("SELECT id FROM menus WHERE id::text = :menu_id OR code = :menu_id"), {"menu_id": parent_id}):
         raise ParentNotFoundError(parent_id)
 
     menu_id = menu_code if len(menu_code) <= 32 else uuid4().hex
     try:
         result = db.execute(
-            text(
+            dialect_text(
                 """
                 INSERT INTO menus (
                     code, name, type, parent_id, path, icon, sort_order, status, permission_code,
@@ -658,7 +659,14 @@ def create_menu(db: Session, payload: MenuCreateRequest, *, actor_user_id: str |
             },
         )
         row = result.mappings().first()
-        menu_id = str(row["menu_id"]) if row else menu_code
+        if row:
+            menu_id = str(row["menu_id"])
+        elif DIALECT_IS_MYSQL:
+            # MySQL 无 RETURNING：用 LAST_INSERT_ID() 取自增主键
+            last_id = db.scalar(dialect_text("SELECT LAST_INSERT_ID() AS id"))
+            menu_id = str(last_id) if last_id else menu_code
+        else:
+            menu_id = menu_code
         write_audit_log(
             db,
             action="menu.create",
@@ -715,7 +723,7 @@ def update_menu(db: Session, menu_id: str, payload: MenuUpdateRequest, *, actor_
             normalized_parent = parent_id.strip()
             if normalized_parent == menu.id:
                 return None
-            parent_exists = db.scalar(text("SELECT id FROM menus WHERE id::text = :menu_id OR code = :menu_id"), {"menu_id": normalized_parent})
+            parent_exists = db.scalar(dialect_text("SELECT id FROM menus WHERE id::text = :menu_id OR code = :menu_id"), {"menu_id": normalized_parent})
             if not parent_exists:
                 return None
             next_parent_id = normalized_parent
@@ -742,7 +750,7 @@ def update_menu(db: Session, menu_id: str, payload: MenuUpdateRequest, *, actor_
     impacted_user_ids = _get_users_with_menu_access(db, menu.id)
     try:
         db.execute(
-            text(
+            dialect_text(
                 """
                 UPDATE menus
                 SET
@@ -828,7 +836,7 @@ def delete_menu(db: Session, menu_id: str, *, actor_user_id: str | None) -> bool
         if menu.code in PROTECTED_MENU_CODES:
             return False
 
-        child_exists = db.scalar(text("SELECT id FROM menus WHERE parent_id::text = :parent_id LIMIT 1"), {"parent_id": menu.id})
+        child_exists = db.scalar(dialect_text("SELECT id FROM menus WHERE parent_id::text = :parent_id LIMIT 1"), {"parent_id": menu.id})
         if child_exists:
             return False
 
@@ -846,8 +854,8 @@ def delete_menu(db: Session, menu_id: str, *, actor_user_id: str | None) -> bool
                 ),
                 output=json.dumps({"menu_id": menu.id, "menu_code": menu.code, "menu_name": menu.name}),
             )
-            db.execute(text("DELETE FROM role_menu_rela WHERE menu_id = :menu_id"), {"menu_id": menu.id})
-            db.execute(text("DELETE FROM menus WHERE id::text = :menu_id OR code = :menu_id"), {"menu_id": menu.id})
+            db.execute(dialect_text("DELETE FROM role_menu_rela WHERE menu_id = :menu_id"), {"menu_id": menu.id})
+            db.execute(dialect_text("DELETE FROM menus WHERE id::text = :menu_id OR code = :menu_id"), {"menu_id": menu.id})
             db.commit()
         except SQLAlchemyError:
             db.rollback()
@@ -857,7 +865,7 @@ def delete_menu(db: Session, menu_id: str, *, actor_user_id: str | None) -> bool
         deleted_menu_code = menu.code
     else:
         menu_row = db.execute(
-            text(
+            dialect_text(
                 """
                 SELECT id::text AS menu_id, code AS menu_code
                 FROM menus
@@ -875,7 +883,7 @@ def delete_menu(db: Session, menu_id: str, *, actor_user_id: str | None) -> bool
         if not resolved_menu_code or resolved_menu_code in PROTECTED_MENU_CODES:
             return False
 
-        child_exists = db.scalar(text("SELECT id::text FROM menus WHERE parent_id::text = :parent_id LIMIT 1"), {"parent_id": resolved_menu_id})
+        child_exists = db.scalar(dialect_text("SELECT id::text FROM menus WHERE parent_id::text = :parent_id LIMIT 1"), {"parent_id": resolved_menu_id})
         if child_exists:
             return False
 
@@ -891,8 +899,8 @@ def delete_menu(db: Session, menu_id: str, *, actor_user_id: str | None) -> bool
                 ),
                 output=json.dumps({"menu_id": resolved_menu_id, "menu_code": resolved_menu_code}),
             )
-            db.execute(text("DELETE FROM role_menus WHERE menu_id::text = :menu_id"), {"menu_id": resolved_menu_id})
-            db.execute(text("DELETE FROM menus WHERE id::text = :menu_id"), {"menu_id": resolved_menu_id})
+            db.execute(dialect_text("DELETE FROM role_menus WHERE menu_id::text = :menu_id"), {"menu_id": resolved_menu_id})
+            db.execute(dialect_text("DELETE FROM menus WHERE id::text = :menu_id"), {"menu_id": resolved_menu_id})
             db.commit()
         except SQLAlchemyError:
             db.rollback()
@@ -918,12 +926,12 @@ def list_role_menu_ids(db: Session, role_id: str) -> list[str] | None:
     role_source = "legacy" if _legacy_role_table_exists(db) else "modern"
     resolved_role_id = role_id
     if role_source == "legacy":
-        role_exists = db.scalar(text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
+        role_exists = db.scalar(dialect_text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
         if not role_exists:
             return None
     else:
         role_row = db.execute(
-            text(
+            dialect_text(
                 """
                 SELECT id::text AS id
                 FROM roles
@@ -937,7 +945,7 @@ def list_role_menu_ids(db: Session, role_id: str) -> list[str] | None:
             return None
         resolved_role_id = str(role_row["id"])
     rows = db.execute(
-        text(
+        dialect_text(
             "SELECT menu_id FROM role_menu_rela WHERE role_id = :role_id ORDER BY menu_id ASC"
             if role_source == "legacy"
             else "SELECT menu_id::text AS menu_id FROM role_menus WHERE role_id::text = :role_id ORDER BY menu_id ASC"
@@ -953,10 +961,10 @@ def replace_role_menus(db: Session, role_id: str, menu_ids: list[str], *, actor_
     # ⚠️ 2026-09-30 修复：原硬编码查 user_role(legacy 表)，modern 库(roles 表)直接 500
     role_source = "legacy" if _legacy_role_table_exists(db) else "modern"
     if role_source == "legacy":
-        role_exists = db.scalar(text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
+        role_exists = db.scalar(dialect_text("SELECT id FROM user_role WHERE id = :id"), {"id": role_id})
     else:
         role_exists = db.scalar(
-            text("SELECT id FROM roles WHERE id::text = :id OR code = :id"),
+            dialect_text("SELECT id FROM roles WHERE id::text = :id OR code = :id"),
             {"id": role_id},
         )
     if not role_exists:
@@ -1039,7 +1047,7 @@ def _load_role_menu_ids_map(db: Session, role_ids: list[str], *, role_source: st
     if not role_ids:
         return mapping
     if role_source == "legacy":
-        stmt = text(
+        stmt = dialect_text(
             """
             SELECT role_id, menu_id
             FROM role_menu_rela
@@ -1048,7 +1056,7 @@ def _load_role_menu_ids_map(db: Session, role_ids: list[str], *, role_source: st
             """
         )
     else:
-        stmt = text(
+        stmt = dialect_text(
             """
             SELECT role_id::text AS role_id, menu_id::text AS menu_id
             FROM role_menus
@@ -1069,7 +1077,7 @@ def _load_menus_map(db: Session, menu_ids: list[str], *, role_source: str = "leg
     if not menu_ids:
         return {}
     if role_source == "legacy":
-        stmt = text(
+        stmt = dialect_text(
             """
             SELECT id::text AS menu_id, code AS menu_name, type AS menu_type, status AS state,
                    permission_code AS menu_descr
@@ -1078,7 +1086,7 @@ def _load_menus_map(db: Session, menu_ids: list[str], *, role_source: str = "leg
             """
         )
     else:
-        stmt = text(
+        stmt = dialect_text(
             """
             SELECT id::text AS menu_id, code AS menu_name, type AS menu_type, status AS state,
                    permission_code AS menu_descr
@@ -1182,7 +1190,7 @@ def _load_role_page(
     query_params = {**params, "removed_menu_codes": tuple(REMOVED_MENU_CODES)} if trimmed_keyword else params
 
     def role_page_stmt(sql: str):
-        stmt = text(sql)
+        stmt = dialect_text(sql)
         if trimmed_keyword:
             return stmt.bindparams(bindparam("removed_menu_codes", expanding=True))
         return stmt
@@ -1216,7 +1224,7 @@ def _load_role_permission_codes_map(
     if not role_ids or role_source == "legacy":
         return mapping
     rows = db.execute(
-        text(
+        dialect_text(
             """
             SELECT rp.role_id::text AS role_id, p.code AS permission_code
             FROM role_permissions rp
@@ -1238,7 +1246,14 @@ def _load_role_permission_codes_map(
 
 def _legacy_role_table_exists(db: Session) -> bool:
     try:
-        return bool(db.scalar(text("SELECT to_regclass('public.user_role')")))
+        if DIALECT_IS_MYSQL:
+            return bool(db.scalar(
+                text(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = DATABASE() AND table_name = 'user_role'"
+                )
+            ))
+        return bool(db.scalar(dialect_text("SELECT to_regclass('public.user_role')")))
     except SQLAlchemyError:
         db.rollback()
         return False
@@ -1246,7 +1261,14 @@ def _legacy_role_table_exists(db: Session) -> bool:
 
 def _legacy_menu_table_exists(db: Session) -> bool:
     try:
-        return bool(db.scalar(text("SELECT to_regclass('public.menu')")))
+        if DIALECT_IS_MYSQL:
+            return bool(db.scalar(
+                text(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = DATABASE() AND table_name = 'menu'"
+                )
+            ))
+        return bool(db.scalar(dialect_text("SELECT to_regclass('public.menu')")))
     except SQLAlchemyError:
         db.rollback()
         return False
@@ -1284,12 +1306,12 @@ def _menu_ids_exist(db: Session, menu_ids: list[str], *, role_source: str = "leg
         return True
     if role_source == "legacy":
         rows = db.execute(
-            text("SELECT id::text AS menu_id, code AS menu_name FROM menus WHERE id::text IN :menu_ids OR code IN :menu_ids").bindparams(bindparam("menu_ids", expanding=True)),
+            dialect_text("SELECT id::text AS menu_id, code AS menu_name FROM menus WHERE id::text IN :menu_ids OR code IN :menu_ids").bindparams(bindparam("menu_ids", expanding=True)),
             {"menu_ids": menu_ids},
         ).mappings().all()
     else:
         rows = db.execute(
-            text(
+            dialect_text(
                 """
                 SELECT id::text AS menu_id, code AS menu_name
                 FROM menus
@@ -1308,13 +1330,13 @@ def _menu_ids_exist(db: Session, menu_ids: list[str], *, role_source: str = "leg
 
 def _replace_role_menus_internal(db: Session, role_id: str, menu_ids: list[str], *, role_source: str = "legacy") -> None:
     if role_source == "legacy":
-        db.execute(text("DELETE FROM role_menu_rela WHERE role_id = :role_id"), {"role_id": role_id})
+        db.execute(dialect_text("DELETE FROM role_menu_rela WHERE role_id = :role_id"), {"role_id": role_id})
     else:
-        db.execute(text("DELETE FROM role_menus WHERE role_id::text = :role_id"), {"role_id": role_id})
+        db.execute(dialect_text("DELETE FROM role_menus WHERE role_id::text = :role_id"), {"role_id": role_id})
     if not menu_ids:
         return
     if role_source == "legacy":
-        stmt = text(
+        stmt = dialect_text(
             """
             INSERT INTO role_menu_rela (rela_id, role_id, menu_id)
             VALUES (:rela_id, :role_id, :menu_id)
@@ -1330,7 +1352,7 @@ def _replace_role_menus_internal(db: Session, role_id: str, menu_ids: list[str],
                 },
             )
     else:
-        stmt = text(
+        stmt = dialect_text(
             """
             INSERT INTO role_menus (role_id, menu_id)
             VALUES (CAST(:role_id AS INTEGER), CAST(:menu_id AS INTEGER))
@@ -1348,7 +1370,14 @@ def _replace_role_menus_internal(db: Session, role_id: str, menu_ids: list[str],
 
 def _legacy_user_role_relation_exists(db: Session) -> bool:
     try:
-        return bool(db.scalar(text("SELECT to_regclass('public.user_role_rela')")))
+        if DIALECT_IS_MYSQL:
+            return bool(db.scalar(
+                text(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = DATABASE() AND table_name = 'user_role_rela'"
+                )
+            ))
+        return bool(db.scalar(dialect_text("SELECT to_regclass('public.user_role_rela')")))
     except SQLAlchemyError:
         db.rollback()
         return False
@@ -1369,7 +1398,7 @@ def _replace_role_permissions_internal(
     if not resolved_id.isdigit():
         try:
             row = db.execute(
-                text("SELECT id::text AS rid FROM roles WHERE code = :code LIMIT 1"),
+                dialect_text("SELECT id::text AS rid FROM roles WHERE code = :code LIMIT 1"),
                 {"code": resolved_id},
             ).mappings().first()
             if row:
@@ -1381,7 +1410,7 @@ def _replace_role_permissions_internal(
             raise
     try:
         db.execute(
-            text("DELETE FROM role_permissions WHERE role_id::text = :role_id"),
+            dialect_text("DELETE FROM role_permissions WHERE role_id::text = :role_id"),
             {"role_id": resolved_id},
         )
     except SQLAlchemyError:
@@ -1391,7 +1420,7 @@ def _replace_role_permissions_internal(
     if not normalized:
         return
     try:
-        stmt = text(
+        stmt = dialect_text(
             """
             INSERT INTO role_permissions (role_id, permission_id)
             SELECT CAST(:role_id AS INTEGER), p.id
@@ -1411,12 +1440,12 @@ def _get_role_user_ids(db: Session, role_id: str) -> list[str]:
     try:
         if _legacy_user_role_relation_exists(db):
             rows = db.execute(
-                text("SELECT user_id FROM user_role_rela WHERE role_id = :role_id"),
+                dialect_text("SELECT user_id FROM user_role_rela WHERE role_id = :role_id"),
                 {"role_id": role_id},
             ).all()
         else:
             rows = db.execute(
-                text("SELECT user_id FROM user_roles WHERE role_id::text = :role_id"),
+                dialect_text("SELECT user_id FROM user_roles WHERE role_id::text = :role_id"),
                 {"role_id": role_id},
             ).all()
     except SQLAlchemyError:
@@ -1429,7 +1458,7 @@ def _get_users_with_menu_access(db: Session, menu_id: str, *, role_source: str =
     try:
         if role_source == "legacy":
             rows = db.execute(
-                text(
+                dialect_text(
                     """
                     SELECT DISTINCT urr.user_id
                     FROM role_menu_rela rmr
@@ -1441,7 +1470,7 @@ def _get_users_with_menu_access(db: Session, menu_id: str, *, role_source: str =
             ).all()
         else:
             rows = db.execute(
-                text(
+                dialect_text(
                     """
                     SELECT DISTINCT ur.user_id
                     FROM role_menus rm
@@ -1475,7 +1504,7 @@ def _load_menus_rows(db: Session, keyword: str | None = None, status: str | None
 
     try:
         rows = db.execute(
-            text(
+            dialect_text(
                 f"""
                 SELECT id::text AS menu_id, code AS menu_name, name AS menu_label, type AS menu_type,
                        parent_id, path AS url, icon AS menu_icon, sort_order AS seq, status AS state,

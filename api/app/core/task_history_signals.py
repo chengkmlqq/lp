@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 
 from celery import signals
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.mysql import insert as mysql_insert
 
-from ..core.database import SessionLocal
+from ..core.database import DIALECT_IS_MYSQL, SessionLocal
 from ..core.task_log_capture import TaskLogCapture
 from ..models.base import utcnow
 from ..models.task_history import TaskHistory
@@ -94,11 +95,18 @@ def _upsert_task(
     }
     update_columns["update_date"] = utcnow()
 
-    insert_stmt = pg_insert(TaskHistory).values(**values)
-    insert_stmt = insert_stmt.on_conflict_do_update(
-        index_elements=[TaskHistory.task_id],
-        set_=update_columns,
-    )
+    insert_stmt = None
+    if DIALECT_IS_MYSQL:
+        # MySQL: INSERT ... ON DUPLICATE KEY UPDATE（task_id 为主键，冲突即更新）
+        insert_stmt = mysql_insert(TaskHistory).values(**values)
+        insert_stmt = insert_stmt.on_duplicate_key_update(**update_columns)
+    else:
+        # PostgreSQL: INSERT ... ON CONFLICT (task_id) DO UPDATE
+        insert_stmt = pg_insert(TaskHistory).values(**values)
+        insert_stmt = insert_stmt.on_conflict_do_update(
+            index_elements=[TaskHistory.task_id],
+            set_=update_columns,
+        )
 
     db = SessionLocal()
     try:
