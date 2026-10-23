@@ -51,6 +51,7 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -202,6 +203,7 @@ interface DefinitionCardProps {
 
 /** 参数定义卡片（严格参照线路管理 <PowerLineCard> 结构）。 */
 function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: DefinitionCardProps) {
+  const { t } = useI18n();
   const sourceColor = SOURCE_TYPE_COLOR[item.source_type];
   const sourceLabel = SOURCE_TYPE_LABEL[item.source_type];
   return (
@@ -220,16 +222,16 @@ function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: Definit
           <FunctionOutlined className="text-base text-gray-500" />
         )}
         <Typography.Text strong className="truncate flex-1">{item.name}</Typography.Text>
-        {item.enabled ? <Tag color="green" style={{ marginInlineEnd: 0 }}>启用</Tag> : <Tag style={{ marginInlineEnd: 0 }}>停用</Tag>}
+        {item.enabled ? <Tag color="green" style={{ marginInlineEnd: 0 }}>{t("启用")}</Tag> : <Tag style={{ marginInlineEnd: 0 }}>{t("停用")}</Tag>}
       </div>
 
       <div className="flex flex-col gap-2 px-4 py-3" style={{ minHeight: 120 }}>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>参数编码：</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("参数编码：")}</Typography.Text>
           <Typography.Text code style={{ fontSize: 12 }}>{item.code}</Typography.Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>参数来源：</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("参数来源：")}</Typography.Text>
           <Tag color={sourceColor} style={{ marginInlineEnd: 0 }}>{sourceLabel}</Tag>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
@@ -239,9 +241,9 @@ function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: Definit
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
           {item.source_type === "line_binding" ? (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>取数口径：</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("取数口径：")}</Typography.Text>
           ) : item.source_type === "script" ? (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>脚本内容：</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("脚本内容：")}</Typography.Text>
           ) : null}
           {renderSourceSummary(item, false)}
         </div>
@@ -255,10 +257,10 @@ function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: Definit
       <div className="admin-atp-params-card-actions admin-atp-models-card-actions flex items-center justify-end gap-1 px-4 py-2">
         {canManage ? (
           <Space size={4}>
-            <Tooltip title="详情">
+            <Tooltip title={t("详情")}>
               <Button size="small" type="text" icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); onDetail(item); }} />
             </Tooltip>
-            <Tooltip title="编辑">
+            <Tooltip title={t("编辑")}>
               <Button size="small" type="text" icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); onEdit(item); }} />
             </Tooltip>
             <Dropdown
@@ -269,7 +271,7 @@ function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: Definit
                     label: (
                       <Space size={4}>
                         <DeleteOutlined />
-                        <span>删除</span>
+                        <span>{t("删除")}</span>
                       </Space>
                     ),
                     danger: true,
@@ -282,7 +284,7 @@ function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: Definit
               }}
               trigger={["click"]}
             >
-              <Tooltip title="更多">
+              <Tooltip title={t("更多")}>
                 <Button
                   type="text"
                   size="small"
@@ -305,6 +307,7 @@ function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: Definit
 }
 
 export default function AtpParamsPage() {
+  const { t } = useI18n();
   const { message, modal } = App.useApp();
   const { fetchWithAuth, hasPermission } = useAuth();
   const canManage = hasPermission("atp.manage");
@@ -604,8 +607,8 @@ export default function AtpParamsPage() {
   const removeDefinition = (item: DefinitionItem) => {
     modal.confirm({
       title: `删除参数 ${item.code}？`,
-      content: "删除后参数模板若有引用将无法解析（保存时已拦截被引用的删除）。",
-      okText: "删除",
+      content: t("删除后参数模板若有引用将无法解析（保存时已拦截被引用的删除）。"),
+      okText: t("删除"),
       okButtonProps: { danger: true },
       async onOk() {
         try {
@@ -640,14 +643,14 @@ export default function AtpParamsPage() {
 
   const columns: ColumnsType<DefinitionItem> = [
     {
-      title: "参数 code",
+      title: t("参数 code"),
       dataIndex: "code",
       width: 221,
       fixed: "left",
       render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
     },
     {
-      title: "名称",
+      title: t("名称"),
       dataIndex: "name",
       width: 235,
       render: (value: string, record) => (
@@ -658,7 +661,7 @@ export default function AtpParamsPage() {
       ),
     },
     {
-      title: "来源类型",
+      title: t("来源类型"),
       dataIndex: "source_type",
       width: 191,
       render: (value: SourceType) => (
@@ -666,31 +669,31 @@ export default function AtpParamsPage() {
       ),
     },
     {
-      title: "绑定 / 脚本",
+      title: t("绑定 / 脚本"),
       dataIndex: "source_type",
       width: 383,
       render: (_, record) => renderSourceSummary(record),
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "enabled",
       width: 118,
-      render: (value: boolean) => (value ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>),
+      render: (value: boolean) => (value ? <Tag color="green">{t("启用")}</Tag> : <Tag>{t("停用")}</Tag>),
     },
   ];
 
   if (canManage) {
     columns.push({
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 150,
       fixed: "right",
       render: (_, record) => (
         <Space size={4}>
-          <Tooltip title="详情">
+          <Tooltip title={t("详情")}>
             <Button size="small" type="text" icon={<EyeOutlined />} onClick={() => openDetail(record)} />
           </Tooltip>
-          <Tooltip title="编辑">
+          <Tooltip title={t("编辑")}>
             <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEdit(record)} />
           </Tooltip>
           <Dropdown
@@ -701,7 +704,7 @@ export default function AtpParamsPage() {
                   label: (
                     <Space size={4}>
                       <DeleteOutlined />
-                      <span>删除</span>
+                      <span>{t("删除")}</span>
                     </Space>
                   ),
                   danger: true,
@@ -711,7 +714,7 @@ export default function AtpParamsPage() {
             }}
             trigger={["click"]}
           >
-            <Tooltip title="更多">
+            <Tooltip title={t("更多")}>
               <Button type="text" size="small" icon={<MoreOutlined />} />
             </Tooltip>
           </Dropdown>
@@ -752,26 +755,26 @@ export default function AtpParamsPage() {
               <div className="admin-atp-params-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
-                    <Form.Item label="参数名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("参数名称")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         allowClear
                         value={keywordInput}
                         onChange={(event) => setKeywordInput(event.target.value)}
-                        placeholder="按 code/名称筛选"
+                        placeholder={t("按 code/名称筛选")}
                         onPressEnter={handleSearch}
                       />
                     </Form.Item>
-                    <Form.Item label="来源类型" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("来源类型")} style={{ marginBottom: 0 }}>
                       <Select
                         allowClear
-                        placeholder="来源类型"
+                        placeholder={t("来源类型")}
                         value={filterSource}
                         onChange={(value) => setFilterSource(value as SourceType | undefined)}
                         style={{ width: 140 }}
                         options={[
-                          { value: "line_binding", label: "线路导入绑定" },
-                          { value: "script", label: "计算脚本" },
-                          { value: "constant", label: "字面量" },
+                          { value: "line_binding", label: t("线路导入绑定") },
+                          { value: "script", label: t("计算脚本") },
+                          { value: "constant", label: t("字面量") },
                         ]}
                       />
                     </Form.Item>
@@ -793,14 +796,14 @@ export default function AtpParamsPage() {
                       setPagination((prev) => ({ ...prev, current: 1 }));
                     }}
                     options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "list" },
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "list" },
                     ]}
                   />
                 </div>
                 <Spin spinning={loading}>
         {list.length === 0 && !loading ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无参数（可先执行「系统种子」或新建）" style={{ padding: 40 }} />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无参数（可先执行「系统种子」或新建）")} style={{ padding: 40 }} />
         ) : viewMode === "card" ? (
           <div className="relative flex min-h-0 flex-1 flex-col">
             <div className="admin-atp-params-card-scroll">
@@ -872,7 +875,7 @@ export default function AtpParamsPage() {
         open={detailOpen}
         onCancel={() => setDetailOpen(false)}
         width={520}
-        footer={<Button onClick={() => setDetailOpen(false)}>关闭</Button>}
+        footer={<Button onClick={() => setDetailOpen(false)}>{t("关闭")}</Button>}
       >
         {detail ? (
           <Space direction="vertical" size={12} style={{ width: "100%" }}>
@@ -908,16 +911,16 @@ export default function AtpParamsPage() {
               size="small"
               pagination={false}
               dataSource={[
-                { key: "code", label: "参数 code", value: detail.code },
-                { key: "unit", label: "单位", value: detail.unit ?? "-" },
-                { key: "data_type", label: "数据类型", value: DATA_TYPE_LABEL[detail.data_type] ?? detail.data_type },
-                { key: "deps", label: "依赖参数", value: detail.deps_json.length ? detail.deps_json.join(", ") : "-" },
-                { key: "enabled", label: "启用", value: detail.enabled ? "是" : "否" },
-                { key: "desc", label: "说明", value: detail.description ?? "-" },
+                { key: "code", label: t("参数 code"), value: detail.code },
+                { key: "unit", label: t("单位"), value: detail.unit ?? "-" },
+                { key: "data_type", label: t("数据类型"), value: DATA_TYPE_LABEL[detail.data_type] ?? detail.data_type },
+                { key: "deps", label: t("依赖参数"), value: detail.deps_json.length ? detail.deps_json.join(", ") : "-" },
+                { key: "enabled", label: t("启用"), value: detail.enabled ? "是" : "否" },
+                { key: "desc", label: t("说明"), value: detail.description ?? "-" },
               ]}
               columns={[
-                { title: "项", dataIndex: "label", width: 90 },
-                { title: "值", dataIndex: "value" },
+                { title: t("项"), dataIndex: "label", width: 90 },
+                { title: t("值"), dataIndex: "value" },
               ]}
             />
           </Space>
@@ -940,53 +943,53 @@ export default function AtpParamsPage() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                label="参数 code"
+                label={t("参数 code")}
                 name="code"
-                tooltip="字母/数字/下划线，如 h_u / coupling_k0"
-                rules={[{ required: true, pattern: /^[A-Za-z0-9_]+$/, message: "字母/数字/下划线" }]}
+                tooltip={t("字母/数字/下划线，如 h_u / coupling_k0")}
+                rules={[{ required: true, pattern: /^[A-Za-z0-9_]+$/, message: t("字母/数字/下划线") }]}
               >
-                <Input placeholder="请输入参数 code" disabled={!!editing} />
+                <Input placeholder={t("请输入参数 code")} disabled={!!editing} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="名称" name="name" tooltip="中文名，如 耦合系数 k0" rules={[{ required: true }]}>
-                <Input placeholder="请输入中文名称" />
+              <Form.Item label={t("名称")} name="name" tooltip={t("中文名，如 耦合系数 k0")} rules={[{ required: true }]}>
+                <Input placeholder={t("请输入中文名称")} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="参数来源" name="source_type" rules={[{ required: true }]}>
+              <Form.Item label={t("参数来源")} name="source_type" rules={[{ required: true }]}>
                 <Select
                   options={[
-                    { value: "line_binding", label: "线路导入绑定" },
-                    { value: "script", label: "计算脚本" },
-                    { value: "constant", label: "字面量" },
+                    { value: "line_binding", label: t("线路导入绑定") },
+                    { value: "script", label: t("计算脚本") },
+                    { value: "constant", label: t("字面量") },
                   ]}
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="单位" name="unit" tooltip="结果单位，如 m / kA">
-                <Input placeholder="请输入单位" />
+              <Form.Item label={t("单位")} name="unit" tooltip={t("结果单位，如 m / kA")}>
+                <Input placeholder={t("请输入单位")} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="数据类型" name="data_type" tooltip="数值 / 字符串 / 布尔">
+              <Form.Item label={t("数据类型")} name="data_type" tooltip={t("数值 / 字符串 / 布尔")}>
                 <Select
                   options={[
-                    { value: "number", label: "数值" },
-                    { value: "string", label: "字符串" },
-                    { value: "bool", label: "布尔" },
+                    { value: "number", label: t("数值") },
+                    { value: "string", label: t("字符串") },
+                    { value: "bool", label: t("布尔") },
                   ]}
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="排序" name="sort_order" tooltip="数字越小越靠前">
+              <Form.Item label={t("排序")} name="sort_order" tooltip={t("数字越小越靠前")}>
                 <InputNumber min={0} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="启用" name="enabled" valuePropName="checked" tooltip="关闭后模板解析将跳过该参数">
+              <Form.Item label={t("启用")} name="enabled" valuePropName="checked" tooltip={t("关闭后模板解析将跳过该参数")}>
                 <Switch />
               </Form.Item>
             </Col>
@@ -996,13 +999,13 @@ export default function AtpParamsPage() {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
-                  label="取数口径"
+                  label={t("取数口径")}
                   name={["binding_json", "path"]}
-                  tooltip="从来源域（杆塔主表 / 塔属性 / 任务执行选项）按点路径（a.b.c）抽取原始字段；按来源域分组展示，选中字段即确定来源"
+                  tooltip={t("从来源域（杆塔主表 / 塔属性 / 任务执行选项）按点路径（a.b.c）抽取原始字段；按来源域分组展示，选中字段即确定来源")}
                 >
                   <Select
                     allowClear
-                    placeholder="选择杆塔属性字段"
+                    placeholder={t("选择杆塔属性字段")}
                     showSearch
                     options={bindingFieldOptions}
                     onChange={(next) => {
@@ -1020,10 +1023,10 @@ export default function AtpParamsPage() {
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item label="单位换算" name={["binding_json", "transform"]} tooltip="取值后应用换算，如 毫米→米（>100 启发式）">
+                <Form.Item label={t("单位换算")} name={["binding_json", "transform"]} tooltip={t("取值后应用换算，如 毫米→米（>100 启发式）")}>
                   <Select
                     allowClear
-                    placeholder="无"
+                    placeholder={t("无")}
                     options={(fieldsMeta?.transform_options ?? []).map((value) => ({ value, label: value === "mm_to_m" ? "毫米→米（>100 启发式）" : value }))}
                   />
                 </Form.Item>
@@ -1034,26 +1037,26 @@ export default function AtpParamsPage() {
           {watchSource === "script" ? (
             <>
               <Form.Item
-                label="依赖参数"
+                label={t("依赖参数")}
                 name="deps_json"
-                tooltip="声明脚本依赖的参数（可从注册表选，也可用上下文键名）；依赖会先于脚本求值。未声明依赖时，脚本只能引用输入框外的上下文键（如 shield_h / h_u / voltage），否则保存校验会拦截"
+                tooltip={t("声明脚本依赖的参数（可从注册表选，也可用上下文键名）；依赖会先于脚本求值。未声明依赖时，脚本只能引用输入框外的上下文键（如 shield_h / h_u / voltage），否则保存校验会拦截")}
               >
                 <Select
                   mode="multiple"
                   allowClear
-                  placeholder="选择依赖参数"
+                  placeholder={t("选择依赖参数")}
                   options={depsOptions}
                 />
               </Form.Item>
               <Form.Item
-                label="脚本内容"
+                label={t("脚本内容")}
                 name="script_code"
-                tooltip="Python 沙箱：只允许纯数学函数（abs/sqrt/hypot/log/pow/exp/sin/cos/tan/clamp/v 等），禁止 import/IO/循环；最后变量 result 作为输出"
-                rules={[{ required: true, message: "请输入脚本" }]}
+                tooltip={t("Python 沙箱：只允许纯数学函数（abs/sqrt/hypot/log/pow/exp/sin/cos/tan/clamp/v 等），禁止 import/IO/循环；最后变量 result 作为输出")}
+                rules={[{ required: true, message: t("请输入脚本") }]}
               >
                 <Input.TextArea
                   rows={10}
-                  placeholder="请输入计算脚本"
+                  placeholder={t("请输入计算脚本")}
                   style={{ fontFamily: "monospace", fontSize: 12 }}
                 />
               </Form.Item>
@@ -1062,17 +1065,17 @@ export default function AtpParamsPage() {
 
           {watchSource === "constant" ? (
             <Form.Item
-              label="字面量"
+              label={t("字面量")}
               name={["binding_json", "value"]}
-              tooltip="固定常量，如 0.0055"
-              rules={[{ required: true, message: "请输入字面量" }]}
+              tooltip={t("固定常量，如 0.0055")}
+              rules={[{ required: true, message: t("请输入字面量") }]}
             >
-              <Input placeholder="请输入字面量" />
+              <Input placeholder={t("请输入字面量")} />
             </Form.Item>
           ) : null}
 
-          <Form.Item label="说明" name="description" tooltip="参数用途 / 单位说明 / 来源（可选）">
-            <Input.TextArea rows={2} placeholder="请输入说明" />
+          <Form.Item label={t("说明")} name="description" tooltip={t("参数用途 / 单位说明 / 来源（可选）")}>
+            <Input.TextArea rows={2} placeholder={t("请输入说明")} />
           </Form.Item>
 
           <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
@@ -1088,7 +1091,7 @@ export default function AtpParamsPage() {
 
       {/* 试算弹窗：选线路 → 勾选杆塔 → 确认后按真实杆塔上下文解析参数 */}
       <Modal
-        title="参数试算（按真实杆塔上下文）"
+        title={t("参数试算（按真实杆塔上下文）")}
         open={trialOpen}
         onCancel={() => setTrialOpen(false)}
         width={720}
@@ -1110,10 +1113,10 @@ export default function AtpParamsPage() {
       >
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Form layout="vertical">
-            <Form.Item label="线路" style={{ marginBottom: 8 }}>
+            <Form.Item label={t("线路")} style={{ marginBottom: 8 }}>
               <Select
                 showSearch
-                placeholder="选择线路"
+                placeholder={t("选择线路")}
                 value={trialLineId}
                 loading={trialTowersLoading}
                 onChange={(value) => void handleTrialLineChange(String(value))}
@@ -1137,17 +1140,17 @@ export default function AtpParamsPage() {
                 onChange: (keys) => setTrialSelected(keys.map(String)),
               }}
               columns={[
-                { title: "塔号", dataIndex: "tower_no", width: 100 },
-                { title: "塔型", dataIndex: "tower_type", width: 110, render: (value: string | null) => value || "-" },
-                { title: "杆塔模型", dataIndex: "tower_model", render: (value: string | null) => value || "-" },
+                { title: t("塔号"), dataIndex: "tower_no", width: 100 },
+                { title: t("塔型"), dataIndex: "tower_type", width: 110, render: (value: string | null) => value || "-" },
+                { title: t("杆塔模型"), dataIndex: "tower_model", render: (value: string | null) => value || "-" },
                 {
-                  title: "海拔(m)",
+                  title: t("海拔(m)"),
                   dataIndex: "altitude_m",
                   width: 90,
                   render: (value: number | null) => (value == null ? "-" : String(value)),
                 },
                 {
-                  title: "接地电阻(Ω)",
+                  title: t("接地电阻(Ω)"),
                   dataIndex: "ground_resistance_ohm",
                   width: 110,
                   render: (value: number | null) => (value == null ? "-" : String(value)),
@@ -1167,7 +1170,7 @@ export default function AtpParamsPage() {
         styles={{ body: { display: "flex", flexDirection: "column", paddingBottom: 0, overflow: "hidden" } }}
       >
         {trialResults.length === 0 ? (
-          <Empty description="暂无试算结果" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description={t("暂无试算结果")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <>
             {/* 顶部固定：关键字过滤表单 */}
@@ -1175,7 +1178,7 @@ export default function AtpParamsPage() {
               <Input
                 allowClear
                 prefix={<SearchOutlined />}
-                placeholder="按参数 code / 名称 / 值过滤"
+                placeholder={t("按参数 code / 名称 / 值过滤")}
                 value={trialResultKeyword}
                 onChange={(event) => {
                   setTrialResultKeyword(event.target.value);
@@ -1203,14 +1206,14 @@ export default function AtpParamsPage() {
                       pagination={false}
                       columns={[
                         {
-                          title: "参数 code",
+                          title: t("参数 code"),
                           dataIndex: "code",
                           width: 150,
                           render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
                         },
-                        { title: "名称", dataIndex: "name", width: 160 },
+                        { title: t("名称"), dataIndex: "name", width: 160 },
                         {
-                          title: "来源",
+                          title: t("来源"),
                           dataIndex: "source_type",
                           width: 120,
                           render: (value: string) => (
@@ -1220,12 +1223,12 @@ export default function AtpParamsPage() {
                           ),
                         },
                         {
-                          title: "试算值",
+                          title: t("试算值"),
                           dataIndex: "value",
                           render: (value: unknown) => <Typography.Text strong>{formatValue(value)}</Typography.Text>,
                         },
                         {
-                          title: "单位",
+                          title: t("单位"),
                           dataIndex: "unit",
                           width: 80,
                           render: (value: string | null) => value || "-",
@@ -1237,7 +1240,7 @@ export default function AtpParamsPage() {
                       type="error"
                       showIcon
                       message={`试算失败：${result.error ?? "未知错误"}`}
-                      description="该杆塔缺少必要的台账/profile 数据（如未导入塔属性），请先补齐后再试算。"
+                      description={t("该杆塔缺少必要的台账/profile 数据（如未导入塔属性），请先补齐后再试算。")}
                     />
                   ),
                 }))}

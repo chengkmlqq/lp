@@ -3,11 +3,13 @@
 import { useMemo, useState } from "react";
 import { Input, Typography } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
+import { useI18n } from "@/lib/i18n";
 import { ICON_CATEGORIES, resolveIcon } from "@/lib/icon-registry";
 
 const { Title } = Typography;
 
 export default function AdminIconsPage() {
+  const { t } = useI18n();
   const [search, setSearch] = useState("");
 
   const categories = useMemo(() => {
@@ -29,7 +31,7 @@ export default function AdminIconsPage() {
         图标参考
       </Title>
       <Input
-        placeholder="搜索图标名称..."
+        placeholder={t("搜索图标名称...")}
         prefix={<SearchOutlined />}
         value={search}
         onChange={(e) => setSearch(e.target.value)}

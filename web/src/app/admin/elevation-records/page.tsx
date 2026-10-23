@@ -45,6 +45,7 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { ElevationBackfillHistoryTable } from "@/components/elevation-backfill-history";
@@ -239,6 +240,7 @@ function readMutationError(error: unknown, fallback: string): string {
 }
 
 export default function ElevationRecordsPage() {
+  const { t } = useI18n();
   const { message: messageApi } = App.useApp();
   const { fetchWithAuth, getAccessToken, hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -696,49 +698,49 @@ export default function ElevationRecordsPage() {
 
   const columns: ColumnsType<ElevationFileRecordSummary> = [
     {
-      title: "文件名",
+      title: t("文件名"),
       dataIndex: "file_name",
       key: "file_name",
       width: 250,
       ellipsis: true,
     },
     {
-      title: "格式",
+      title: t("格式"),
       dataIndex: "file_format",
       key: "file_format",
       width: 80,
       render: (text) => <Tag>{text.toUpperCase()}</Tag>,
     },
     {
-      title: "大小",
+      title: t("大小"),
       dataIndex: "file_size",
       key: "file_size",
       width: 100,
       render: (size) => formatFileSize(size),
     },
     {
-      title: "来源",
+      title: t("来源"),
       dataIndex: "source",
       key: "source",
       width: 150,
       ellipsis: true,
     },
     {
-      title: "分辨率(m)",
+      title: t("分辨率(m)"),
       dataIndex: "resolution_m",
       key: "resolution_m",
       width: 100,
       render: (val) => (val ? val.toFixed(1) : "-"),
     },
     {
-      title: "样本数",
+      title: t("样本数"),
       dataIndex: "sample_count",
       key: "sample_count",
       width: 100,
       render: (val) => val.toLocaleString(),
     },
     {
-      title: "解析状态",
+      title: t("解析状态"),
       key: "parse_status",
       width: 120,
       render: (_value, record) => {
@@ -747,7 +749,7 @@ export default function ElevationRecordsPage() {
       },
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       fixed: "right",
       width: 180,
@@ -790,22 +792,22 @@ export default function ElevationRecordsPage() {
                 items: [
                   {
                     key: "backfill-history",
-                    label: "回填记录",
+                    label: t("回填记录"),
                     icon: <HistoryOutlined />,
                     disabled: rowBusy,
                     onClick: () => openBackfillHistoryTab(row),
                   },
                   {
                     key: "delete",
-                    label: "删除",
+                    label: t("删除"),
                     icon: <DeleteOutlined />,
                     danger: true,
                     disabled: rowBusy,
                     onClick: () => {
                       Modal.confirm({
                         title: `确认删除文件 "${row.file_name}"？`,
-                        okText: "删除",
-                        cancelText: "取消",
+                        okText: t("删除"),
+                        cancelText: t("取消"),
                         okButtonProps: { danger: true, loading: deleting },
                         onOk: () => deleteMutation.mutate(row.id),
                       });
@@ -815,7 +817,7 @@ export default function ElevationRecordsPage() {
               }}
               trigger={["click"]}
             >
-              <Tooltip title="更多">
+              <Tooltip title={t("更多")}>
                 <Button
                   type="text"
                   size="small"
@@ -864,7 +866,7 @@ export default function ElevationRecordsPage() {
           <div className="flex flex-col gap-2 px-4 py-3">
             <div className="flex items-center gap-2">
               <FileTextOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs">格式：</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs">{t("格式：")}</Typography.Text>
               <Tag color="blue" className="text-xs">{record.file_format.toUpperCase()}</Tag>
             </div>
             <div className="flex items-center gap-2">
@@ -888,7 +890,7 @@ export default function ElevationRecordsPage() {
               <div />
             )}
             <Space size={4} className="shrink-0">
-              <Tooltip title="编辑">
+              <Tooltip title={t("编辑")}>
                 <Button
                   type="text"
                   size="small"
@@ -900,7 +902,7 @@ export default function ElevationRecordsPage() {
                   }}
                 />
               </Tooltip>
-              <Tooltip title="回填">
+              <Tooltip title={t("回填")}>
                 <Button
                   type="text"
                   size="small"
@@ -917,7 +919,7 @@ export default function ElevationRecordsPage() {
                   items: [
                     {
                       key: "backfill-history",
-                      label: "回填记录",
+                      label: t("回填记录"),
                       icon: <HistoryOutlined />,
                       disabled: rowBusy,
                       onClick: (info) => {
@@ -927,7 +929,7 @@ export default function ElevationRecordsPage() {
                     },
                     {
                       key: "delete",
-                      label: "删除",
+                      label: t("删除"),
                       icon: <DeleteOutlined />,
                       danger: true,
                       disabled: rowBusy,
@@ -935,8 +937,8 @@ export default function ElevationRecordsPage() {
                         info.domEvent?.stopPropagation();
                         Modal.confirm({
                           title: `确认删除文件 "${record.file_name}"？`,
-                          okText: "删除",
-                          cancelText: "取消",
+                          okText: t("删除"),
+                          cancelText: t("取消"),
                           okButtonProps: { danger: true, loading: deleting },
                           onOk: () => deleteMutation.mutate(record.id),
                         });
@@ -946,7 +948,7 @@ export default function ElevationRecordsPage() {
                 }}
                 trigger={["click"]}
               >
-                <Tooltip title="更多">
+                <Tooltip title={t("更多")}>
                   <Button
                     type="text"
                     size="small"
@@ -982,16 +984,16 @@ export default function ElevationRecordsPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin_elevation_tab_title">高程数据管理</span>,
+            label: <span className="admin_elevation_tab_title">{t("高程数据管理")}</span>,
             closable: false,
             children: (
               <div className="admin_elevation_list_pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline" style={{ flexWrap: "nowrap" }}>
-                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         allowClear
-                        placeholder="搜索文件名或来源"
+                        placeholder={t("搜索文件名或来源")}
                         value={keywordInput}
                         onChange={(event) => handleKeywordChange(event.target.value)}
                         onPressEnter={(e) => {
@@ -1024,8 +1026,8 @@ export default function ElevationRecordsPage() {
                       setPagination((prev) => ({ ...prev, current: 1 }));
                     }}
                     options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "list" },
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "list" },
                     ]}
                   />
                 </div>
@@ -1060,7 +1062,7 @@ export default function ElevationRecordsPage() {
                         emptyText: (
                           <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description="未找到符合筛选条件的高程数据。"
+                            description={t("未找到符合筛选条件的高程数据。")}
                           />
                         ),
                       }}
@@ -1076,7 +1078,7 @@ export default function ElevationRecordsPage() {
                       <div className="admin-elevation-card-view-state">
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="未找到符合筛选条件的高程数据。"
+                          description={t("未找到符合筛选条件的高程数据。")}
                         />
                       </div>
                     ) : (
@@ -1113,7 +1115,7 @@ export default function ElevationRecordsPage() {
 
       {/* Upload Modal */}
       <Modal
-        title="上传高程文件"
+        title={t("上传高程文件")}
         open={uploadModalOpen}
         onCancel={() => {
           setUploadModalOpen(false);
@@ -1130,20 +1132,20 @@ export default function ElevationRecordsPage() {
           layout="vertical"
           onFinish={(values) => uploadMutation.mutate(values)}
         >
-          <Form.Item label="来源" name="source">
-            <Input placeholder="例如：SRTM、DEM 数据" />
+          <Form.Item label={t("来源")} name="source">
+            <Input placeholder={t("例如：SRTM、DEM 数据")} />
           </Form.Item>
 
-          <Form.Item label="分辨率(米)" name="resolution_m">
-            <InputNumber min={0.1} step={0.1} style={{ width: "100%" }} placeholder="例如：30" />
+          <Form.Item label={t("分辨率(米)")} name="resolution_m">
+            <InputNumber min={0.1} step={0.1} style={{ width: "100%" }} placeholder={t("例如：30")} />
           </Form.Item>
 
-          <Form.Item label="备注" name="notes">
-            <Input.TextArea rows={3} placeholder="文件说明..." />
+          <Form.Item label={t("备注")} name="notes">
+            <Input.TextArea rows={3} placeholder={t("文件说明...")} />
           </Form.Item>
 
           <Form.Item
-            label="文件"
+            label={t("文件")}
             required
           >
             <Upload.Dragger
@@ -1171,7 +1173,7 @@ export default function ElevationRecordsPage() {
                       <CheckCircleOutlined /> 上传完成，可以确认提交
                     </Typography.Text>
                   ) : (
-                    <Typography.Text type="warning">上传中…</Typography.Text>
+                    <Typography.Text type="warning">{t("上传中…")}</Typography.Text>
                   )}
                 </>
               ) : (
@@ -1202,7 +1204,7 @@ export default function ElevationRecordsPage() {
         onCancel={closeEditModal}
         onOk={() => editForm.submit()}
         confirmLoading={editMutation.isPending}
-        okText="保存"
+        okText={t("保存")}
         width={600}
       >
         <Form form={editForm} layout="vertical" onFinish={(values) => {
@@ -1210,23 +1212,23 @@ export default function ElevationRecordsPage() {
             editMutation.mutate({ id: editingRecord.id, values });
           }
         }}>
-          <Form.Item label="来源" name="source">
-            <Input placeholder="例如：SRTM、DEM 数据" allowClear />
+          <Form.Item label={t("来源")} name="source">
+            <Input placeholder={t("例如：SRTM、DEM 数据")} allowClear />
           </Form.Item>
 
-          <Form.Item label="分辨率(米)" name="resolution_m">
-            <InputNumber min={0.1} step={0.1} style={{ width: "100%" }} placeholder="例如：30" />
+          <Form.Item label={t("分辨率(米)")} name="resolution_m">
+            <InputNumber min={0.1} step={0.1} style={{ width: "100%" }} placeholder={t("例如：30")} />
           </Form.Item>
 
-          <Form.Item label="备注" name="notes">
-            <Input.TextArea rows={3} placeholder="文件说明..." />
+          <Form.Item label={t("备注")} name="notes">
+            <Input.TextArea rows={3} placeholder={t("文件说明...")} />
           </Form.Item>
         </Form>
       </Modal>
 
       {/* Apply Modal */}
       <Modal
-        title="回填线路高程"
+        title={t("回填线路高程")}
         open={applyModalOpen}
         forceRender
         onCancel={() => {
@@ -1242,7 +1244,7 @@ export default function ElevationRecordsPage() {
             <Input />
           </Form.Item>
 
-          <Form.Item label="选择线路" name="line_ids" rules={[{ required: true, message: "请至少选择一条线路" }]}>
+          <Form.Item label={t("选择线路")} name="line_ids" rules={[{ required: true, message: t("请至少选择一条线路") }]}>
             <Select
               mode="multiple"
               placeholder={coverageLoading ? "正在预检线路可回填杆塔…" : "请选择线路（无可回填杆塔的线路已置灰）"}
@@ -1260,7 +1262,7 @@ export default function ElevationRecordsPage() {
                     <Space size={6} style={{ width: "100%", justifyContent: "space-between" }}>
                       <span>{label}</span>
                       {noMatch ? (
-                        <Tag color="warning" style={{ marginInlineEnd: 0 }}>无可回填杆塔</Tag>
+                        <Tag color="warning" style={{ marginInlineEnd: 0 }}>{t("无可回填杆塔")}</Tag>
                       ) : (
                         <span style={{ color: "#8c8c8c", fontSize: 12, whiteSpace: "nowrap" }}>
                           {matchable}/{cov.total_tower_count} 座可回填

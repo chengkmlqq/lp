@@ -52,6 +52,7 @@ import {
 import type { UploadFile } from "antd/es/upload";
 import type { ComponentType, RefAttributes } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -129,6 +130,7 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 export default function AdminMatlabEnginePage() {
+  const { t } = useI18n();
   const { modal: modalApi } = App.useApp();
   const { user, initializing, hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -561,7 +563,7 @@ export default function AdminMatlabEnginePage() {
     (item: MatlabModule): MenuProps["items"] => [
       {
         key: "detail",
-        label: "详情",
+        label: t("详情"),
         icon: <EyeOutlined />,
         onClick: ({ domEvent }) => {
           domEvent.stopPropagation();
@@ -572,7 +574,7 @@ export default function AdminMatlabEnginePage() {
         ? [
             {
               key: "edit",
-              label: "编辑",
+              label: t("编辑"),
               icon: <EditOutlined />,
               onClick: ({ domEvent }) => {
                 domEvent.stopPropagation();
@@ -581,16 +583,16 @@ export default function AdminMatlabEnginePage() {
             },
             {
               key: "delete",
-              label: "删除",
+              label: t("删除"),
               icon: <DeleteOutlined />,
               danger: true,
               onClick: ({ domEvent }) => {
                 domEvent.stopPropagation();
                 modalApi.confirm({
-                  title: "删除模块",
+                  title: t("删除模块"),
                   content: `确认删除模块"${item.name}"吗？`,
-                  okText: "删除",
-                  cancelText: "取消",
+                  okText: t("删除"),
+                  cancelText: t("取消"),
                   okButtonProps: { danger: true },
                   onOk: () => deleteModule(item),
                 });
@@ -734,14 +736,14 @@ export default function AdminMatlabEnginePage() {
   const columns = useMemo<TableColumnsType<MatlabVersion>>(() => {
     const baseColumns: TableColumnsType<MatlabVersion> = [
       {
-        title: "版本号",
+        title: t("版本号"),
         dataIndex: "version_tag",
         key: "version_tag",
         width: 150,
         render: (value: string) => <Typography.Text>{value || "-"}</Typography.Text>,
       },
       {
-        title: "Worker 状态",
+        title: t("Worker 状态"),
         key: "worker_status",
         width: 140,
         render: (_, record) => {
@@ -754,7 +756,7 @@ export default function AdminMatlabEnginePage() {
                     : "已部署到 Worker"
                 }
               >
-                <Tag color="blue">Worker 已部署</Tag>
+                <Tag color="blue">{t("Worker 已部署")}</Tag>
               </Tooltip>
             );
           }
@@ -773,35 +775,35 @@ export default function AdminMatlabEnginePage() {
         },
       },
       {
-        title: "变更日志",
+        title: t("变更日志"),
         dataIndex: "changelog",
         key: "changelog",
         ellipsis: true,
         render: (text: string) => text || "-",
       },
       {
-        title: "发布时间",
+        title: t("发布时间"),
         dataIndex: "upload_time",
         key: "upload_time",
         width: 170,
         render: (value: string) => formatDateTime(value),
       },
       {
-        title: "发布人",
+        title: t("发布人"),
         dataIndex: "uploaded_by_name",
         key: "uploaded_by_name",
         width: 120,
         render: (name: string) => name || "-",
       },
       {
-        title: "大小",
+        title: t("大小"),
         dataIndex: "size_bytes",
         key: "size_bytes",
         width: 100,
         render: (size: number) => formatSize(size),
       },
       {
-        title: "文件数",
+        title: t("文件数"),
         dataIndex: "file_list",
         key: "file_count",
         width: 90,
@@ -810,7 +812,7 @@ export default function AdminMatlabEnginePage() {
     ];
 
     baseColumns.push({
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 150,
       fixed: "right",
@@ -819,7 +821,7 @@ export default function AdminMatlabEnginePage() {
           // 下载紧随「生效」之后，收纳于三点菜单中
           {
             key: "download",
-            label: "下载",
+            label: t("下载"),
             icon: <DownloadOutlined />,
             onClick: () => handleDownload(record),
           } as const,
@@ -827,14 +829,14 @@ export default function AdminMatlabEnginePage() {
             ? [
                 {
                   key: "delete",
-                  label: "删除",
+                  label: t("删除"),
                   danger: true,
                   onClick: () => {
                     modalApi.confirm({
-                      title: "删除版本",
+                      title: t("删除版本"),
                       content: `确认删除版本"${record.version_tag}"（${record.version_hash}）吗？删除后不可恢复。`,
-                      okText: "删除",
-                      cancelText: "取消",
+                      okText: t("删除"),
+                      cancelText: t("取消"),
                       okButtonProps: { danger: true },
                       onOk: () => deleteVersionMutation.mutateAsync(record),
                     });
@@ -886,7 +888,7 @@ export default function AdminMatlabEnginePage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问 MATLAB 引擎管理页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问 MATLAB 引擎管理页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -900,7 +902,7 @@ export default function AdminMatlabEnginePage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `line.read`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `line.read`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -918,7 +920,7 @@ export default function AdminMatlabEnginePage() {
       // 下载紧随「生效」之后，收纳于三点菜单中
       {
         key: "download",
-        label: "下载",
+        label: t("下载"),
         icon: <DownloadOutlined />,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
@@ -929,15 +931,15 @@ export default function AdminMatlabEnginePage() {
         ? [
             {
               key: "delete",
-              label: "删除",
+              label: t("删除"),
               danger: true,
               onClick: (info) => {
                 info.domEvent?.stopPropagation();
                 modalApi.confirm({
-                  title: "删除版本",
+                  title: t("删除版本"),
                   content: `确认删除版本"${item.version_tag}"（${item.version_hash}）吗？删除后不可恢复。`,
-                  okText: "删除",
-                  cancelText: "取消",
+                  okText: t("删除"),
+                  cancelText: t("取消"),
                   okButtonProps: { danger: true },
                   onOk: () => deleteVersionMutation.mutateAsync(item),
                 });
@@ -963,7 +965,7 @@ export default function AdminMatlabEnginePage() {
               {item.is_active && (
                 <>
                   <Badge status="success" />
-                  <Typography.Text type="secondary" className="text-xs">Worker 已部署</Typography.Text>
+                  <Typography.Text type="secondary" className="text-xs">{t("Worker 已部署")}</Typography.Text>
                 </>
               )}
             </div>
@@ -995,7 +997,7 @@ export default function AdminMatlabEnginePage() {
           <div className="admin-matlab-version-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
             <div />
             <Space size="small" className="shrink-0">
-              <Tooltip title="查看">
+              <Tooltip title={t("查看")}>
                 <Button
                   type="text"
                   size="small"
@@ -1023,7 +1025,7 @@ export default function AdminMatlabEnginePage() {
               )}
               {moreMenuItems.length > 0 && (
                 <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Tooltip title="更多">
+                  <Tooltip title={t("更多")}>
                     <Button
                       type="text"
                       size="small"
@@ -1074,7 +1076,7 @@ export default function AdminMatlabEnginePage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-matlab-tab-title">MATLAB 引擎管理</span>,
+            label: <span className="admin-matlab-tab-title">{t("MATLAB 引擎管理")}</span>,
             closable: false,
             children: (
               <div className="admin-matlab-list-pane">
@@ -1102,7 +1104,7 @@ export default function AdminMatlabEnginePage() {
                           <div className="admin-matlab-sider-search">
                             <Input
                               className="admin-matlab-search-input"
-                              placeholder="搜索模块..."
+                              placeholder={t("搜索模块...")}
                               prefix={<SearchOutlined />}
                               value={moduleKeywordInput}
                               onChange={(e) => setModuleKeywordInput(e.target.value)}
@@ -1150,7 +1152,7 @@ export default function AdminMatlabEnginePage() {
                           </>
                         ) : (
                           <div className="admin-matlab-sider-empty">
-                            <Empty description="暂无模块" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                            <Empty description={t("暂无模块")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                           </div>
                         )}
                       </AntCard>
@@ -1172,20 +1174,20 @@ export default function AdminMatlabEnginePage() {
                     <div className="admin-filter-bar">
                       <Form layout="inline">
                         {isMobile && (
-                          <Form.Item label="模块" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                          <Form.Item label={t("模块")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                             <Select
                               value={effectiveSlug ?? undefined}
-                              placeholder="请选择模块"
+                              placeholder={t("请选择模块")}
                               style={{ minWidth: 160 }}
                               options={modules.map((m) => ({ label: m.name, value: m.slug }))}
                               onChange={(value) => selectModule(value ?? null)}
                             />
                           </Form.Item>
                         )}
-                        <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                        <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                           <Input
                             allowClear
-                            placeholder="版本号 / Hash / 变更日志 / 发布人"
+                            placeholder={t("版本号 / Hash / 变更日志 / 发布人")}
                             value={keywordInput}
                             onChange={(event) => setKeywordInput(event.target.value)}
                             onPressEnter={handleQuery}
@@ -1212,8 +1214,8 @@ export default function AdminMatlabEnginePage() {
                             setAllLoadedVersions([]);
                           }}
                           options={[
-                            { label: "卡片视图", value: "card" },
-                            { label: "列表视图", value: "table" },
+                            { label: t("卡片视图"), value: "card" },
+                            { label: t("列表视图"), value: "table" },
                           ]}
                         />
                       </div>
@@ -1249,7 +1251,7 @@ export default function AdminMatlabEnginePage() {
                             emptyText: (
                               <Empty
                                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                description="未找到符合筛选条件的版本。"
+                                description={t("未找到符合筛选条件的版本。")}
                               />
                             ),
                           }}
@@ -1267,7 +1269,7 @@ export default function AdminMatlabEnginePage() {
                             <div className="admin-matlab-card-view-state">
                               <Empty
                                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                description="未找到符合筛选条件的版本。"
+                                description={t("未找到符合筛选条件的版本。")}
                               />
                             </div>
                           )
@@ -1326,7 +1328,7 @@ export default function AdminMatlabEnginePage() {
           onOk={() => saveModule()}
           confirmLoading={saveModuleMutation.isPending}
           okText={editingModule ? "保存" : "创建"}
-          cancelText="取消"
+          cancelText={t("取消")}
           destroyOnHidden
           forceRender
           width={760}
@@ -1337,23 +1339,23 @@ export default function AdminMatlabEnginePage() {
             initialValues={DEFAULT_MODULE_FORM_VALUES}
             preserve={false}
           >
-            <Form.Item label="模块名称" name="name" rules={[{ required: true, message: "请输入模块名称" }]}>
-              <Input placeholder="模块显示名称" />
+            <Form.Item label={t("模块名称")} name="name" rules={[{ required: true, message: t("请输入模块名称") }]}>
+              <Input placeholder={t("模块显示名称")} />
             </Form.Item>
 
             <Form.Item
-              label="描述"
+              label={t("描述")}
               name="description"
               extra={editingModule ? undefined : "标识（模块唯一键）将由系统根据模块名称自动生成。"}
             >
-              <Input.TextArea placeholder="模块用途说明" rows={2} />
+              <Input.TextArea placeholder={t("模块用途说明")} rows={2} />
             </Form.Item>
 
-            <Form.Item label="Worker 部署路径" name="worker_deploy_path">
+            <Form.Item label={t("Worker 部署路径")} name="worker_deploy_path">
               <Input placeholder="/opt/worker/matlab/{module}/" />
             </Form.Item>
 
-            <Form.Item label="必需文件" required={false}>
+            <Form.Item label={t("必需文件")} required={false}>
               <Form.List name="required_files">
                 {(fields, { add, remove }) => (
                   <div className="flex flex-col gap-2">
@@ -1362,7 +1364,7 @@ export default function AdminMatlabEnginePage() {
                         <Form.Item
                           {...field}
                           style={{ marginBottom: 0, flex: 1 }}
-                          rules={[{ required: true, message: "请输入文件名或删除该行" }]}
+                          rules={[{ required: true, message: t("请输入文件名或删除该行") }]}
                         >
                           <Input placeholder={`必需文件 ${index + 1}`} />
                         </Form.Item>
@@ -1394,7 +1396,7 @@ export default function AdminMatlabEnginePage() {
 
       {canManage && (
         <Modal
-          title="上传 MATLAB 引擎"
+          title={t("上传 MATLAB 引擎")}
           open={uploadModalOpen}
           onCancel={() => {
             setUploadModalOpen(false);
@@ -1402,8 +1404,8 @@ export default function AdminMatlabEnginePage() {
             uploadForm.resetFields();
           }}
           onOk={() => handleUpload()}
-          okText="上传"
-          cancelText="取消"
+          okText={t("上传")}
+          cancelText={t("取消")}
           confirmLoading={uploadMutation.isPending}
           destroyOnHidden
           forceRender
@@ -1417,16 +1419,16 @@ export default function AdminMatlabEnginePage() {
             <Row gutter={12}>
               <Col xs={24} md={12}>
                 <Form.Item
-                  label="版本号"
+                  label={t("版本号")}
                   name="version_tag"
-                  rules={[{ required: true, message: "请输入版本号" }]}
+                  rules={[{ required: true, message: t("请输入版本号") }]}
                 >
-                  <Input placeholder="版本号，如 v1.0.0" />
+                  <Input placeholder={t("版本号，如 v1.0.0")} />
                 </Form.Item>
               </Col>
               <Col xs={24} md={24}>
-                <Form.Item label="变更日志" name="changelog">
-                  <Input.TextArea placeholder="本次变更说明" rows={3} />
+                <Form.Item label={t("变更日志")} name="changelog">
+                  <Input.TextArea placeholder={t("本次变更说明")} rows={3} />
                 </Form.Item>
               </Col>
             </Row>
@@ -1441,7 +1443,7 @@ export default function AdminMatlabEnginePage() {
             <p className="ant-upload-drag-icon">
               <InboxOutlined />
             </p>
-            <p className="ant-upload-text">点击或拖拽 ZIP 文件到此处</p>
+            <p className="ant-upload-text">{t("点击或拖拽 ZIP 文件到此处")}</p>
             <p className="ant-upload-hint">
               ZIP 包必须包含 {(selectedModule?.required_files || []).join(", ") || "必需文件"}，上传成功后即为已发布版本
             </p>
@@ -1458,7 +1460,7 @@ export default function AdminMatlabEnginePage() {
         destroyOnHidden
       >
         {previewFiles.length === 0 ? (
-          <Typography.Text type="secondary">无文件记录</Typography.Text>
+          <Typography.Text type="secondary">{t("无文件记录")}</Typography.Text>
         ) : (
           <List
             size="small"
@@ -1483,14 +1485,14 @@ export default function AdminMatlabEnginePage() {
       >
         {detailModule && (
           <Descriptions column={1} bordered size="small" styles={{ label: { width: 130 } }}>
-            <Descriptions.Item label="标识">
+            <Descriptions.Item label={t("标识")}>
               <Typography.Text code>{detailModule.slug}</Typography.Text>
             </Descriptions.Item>
-            <Descriptions.Item label="描述">{detailModule.description || "-"}</Descriptions.Item>
-            <Descriptions.Item label="Worker 部署路径">
+            <Descriptions.Item label={t("描述")}>{detailModule.description || "-"}</Descriptions.Item>
+            <Descriptions.Item label={t("Worker 部署路径")}>
               {detailModule.worker_deploy_path || "-"}
             </Descriptions.Item>
-            <Descriptions.Item label="必需文件">
+            <Descriptions.Item label={t("必需文件")}>
               {detailModule.required_files && detailModule.required_files.length > 0 ? (
                 <Space size={[4, 4]} wrap>
                   {detailModule.required_files.map((file) => (
@@ -1501,8 +1503,8 @@ export default function AdminMatlabEnginePage() {
                 "-"
               )}
             </Descriptions.Item>
-            <Descriptions.Item label="创建时间">{formatDateTime(detailModule.created_at)}</Descriptions.Item>
-            <Descriptions.Item label="更新时间">{formatDateTime(detailModule.updated_at)}</Descriptions.Item>
+            <Descriptions.Item label={t("创建时间")}>{formatDateTime(detailModule.created_at)}</Descriptions.Item>
+            <Descriptions.Item label={t("更新时间")}>{formatDateTime(detailModule.updated_at)}</Descriptions.Item>
           </Descriptions>
         )}
       </Modal>

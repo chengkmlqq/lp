@@ -27,6 +27,7 @@ import { PlusOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { AnalysisCardList } from "@/components/fault-analysis/analysis-card-list";
 import { AnalysisDetailView } from "@/components/fault-analysis/analysis-detail-view";
@@ -164,6 +165,7 @@ function hasUploadFiles(values: CreateFaultAnalysisFormValues): boolean {
 }
 
 export default function AdminFaultAnalysisPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -506,11 +508,11 @@ export default function AdminFaultAnalysisPage() {
 
   const handleDelete = useCallback((id: string) => {
     modalApi.confirm({
-      title: "确认删除",
-      content: "确定要删除该故障分析记录吗？此操作不可撤销。",
-      okText: "确认删除",
+      title: t("确认删除"),
+      content: t("确定要删除该故障分析记录吗？此操作不可撤销。"),
+      okText: t("确认删除"),
       okType: "danger",
-      cancelText: "取消",
+      cancelText: t("取消"),
       onOk: async () => {
         try {
           const response = await fetchWithAuth(`/api/v1/fault-analysis/${id}`, {
@@ -598,33 +600,33 @@ export default function AdminFaultAnalysisPage() {
   const columns = useMemo<ColumnsType<FaultAnalysis>>(
     () => [
       {
-        title: "任务名称",
+        title: t("任务名称"),
         dataIndex: "title",
         width: 303,
         ellipsis: true,
         render: (value: string) => formatNullable(value),
       },
       {
-        title: "线路名称",
+        title: t("线路名称"),
         dataIndex: "line_name",
         width: 243,
         ellipsis: true,
         render: (value: string) => formatNullable(value),
       },
       {
-        title: "故障时刻",
+        title: t("故障时刻"),
         dataIndex: "fault_time",
         width: 258,
         render: (value: string) => formatDateTime(value),
       },
       {
-        title: "故障项",
+        title: t("故障项"),
         dataIndex: "fault_phase",
         width: 182,
         render: (value: string) => formatNullable(value),
       },
       {
-        title: "重合闸情况",
+        title: t("重合闸情况"),
         dataIndex: "reclosure_status",
         width: 182,
         render: (value: string) => {
@@ -633,7 +635,7 @@ export default function AdminFaultAnalysisPage() {
         },
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 190,
         fixed: "right",
@@ -644,7 +646,7 @@ export default function AdminFaultAnalysisPage() {
               ? [
                   {
                     key: "delete",
-                    label: "删除",
+                    label: t("删除"),
                     danger: true,
                     onClick: () => handleDelete(row.id),
                   },
@@ -682,7 +684,7 @@ export default function AdminFaultAnalysisPage() {
       <Alert
         type="warning"
         showIcon
-        message="请先登录后查看故障分析。"
+        message={t("请先登录后查看故障分析。")}
       />
     );
   }
@@ -692,7 +694,7 @@ export default function AdminFaultAnalysisPage() {
       <Alert
         type="error"
         showIcon
-        message="当前账号缺少线路读取权限，无法查看故障分析。"
+        message={t("当前账号缺少线路读取权限，无法查看故障分析。")}
       />
     );
   }
@@ -722,15 +724,15 @@ export default function AdminFaultAnalysisPage() {
           items={[
             {
               key: LIST_TAB_KEY,
-              label: <span className="admin-fault-analysis-tab-title">故障分析</span>,
+              label: <span className="admin-fault-analysis-tab-title">{t("故障分析")}</span>,
               closable: false,
               children: (
                 <div className="admin-fault-analysis-list-pane">
                   <div className="admin-filter-bar">
                     <Form layout="inline">
-                      <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                         <Input
-                          placeholder="搜索分析名称、线路名称或描述"
+                          placeholder={t("搜索分析名称、线路名称或描述")}
                           value={keywordInput}
                           onChange={(e) => setKeywordInput(e.target.value)}
                           allowClear
@@ -752,8 +754,8 @@ export default function AdminFaultAnalysisPage() {
                       value={viewMode}
                       onChange={(value) => setViewMode(value as "card" | "list")}
                       options={[
-                        { label: "卡片视图", value: "card" },
-                        { label: "列表视图", value: "list" },
+                        { label: t("卡片视图"), value: "card" },
+                        { label: t("列表视图"), value: "list" },
                       ]}
                     />
                   </div>
@@ -799,7 +801,7 @@ export default function AdminFaultAnalysisPage() {
                           emptyText: (
                             <Empty
                               image={Empty.PRESENTED_IMAGE_SIMPLE}
-                              description="暂无故障分析记录"
+                              description={t("暂无故障分析记录")}
                             />
                           ),
                         }}
@@ -847,7 +849,7 @@ export default function AdminFaultAnalysisPage() {
         />
       </div>
       <Drawer
-        title="新建故障分析"
+        title={t("新建故障分析")}
         className="admin-fault-analysis-drawer"
         open={createModalOpen}
         width={880}

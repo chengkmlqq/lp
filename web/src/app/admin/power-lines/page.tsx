@@ -43,6 +43,7 @@ import { useRouter } from "next/navigation";
 
 import { AdminPowerLinesDetailView } from "./line-detail-view";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { PowerLineMapPanel } from "@/components/power-line-map-panel";
@@ -139,6 +140,7 @@ function resolveVoltageOptionFromKv(voltageKv: number | null): LineFormValues["v
 }
 
 export default function AdminPowerLinesPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const { message: messageApi, modal: modalApi } = App.useApp();
@@ -449,9 +451,9 @@ export default function AdminPowerLinesPage() {
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">请先登录后再访问线路管理页面。</Typography.Text>
+          <Typography.Text type="secondary">{t("请先登录后再访问线路管理页面。")}</Typography.Text>
           <Button>
-            <Link href="/">返回首页</Link>
+            <Link href="/">{t("返回首页")}</Link>
           </Button>
         </Space>
       </Card>
@@ -461,9 +463,9 @@ export default function AdminPowerLinesPage() {
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">你没有访问该页面的权限（需要 `line.read` 或 `tower.read`）。</Typography.Text>
+          <Typography.Text type="secondary">{t("你没有访问该页面的权限（需要 `line.read` 或 `tower.read`）。")}</Typography.Text>
           <Button>
-            <Link href="/">返回首页</Link>
+            <Link href="/">{t("返回首页")}</Link>
           </Button>
         </Space>
       </Card>
@@ -488,18 +490,18 @@ export default function AdminPowerLinesPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin-power-lines-tab-title">线路列表</span>,
+            label: <span className="admin-power-lines-tab-title">{t("线路列表")}</span>,
             closable: false,
             children: (
               <div className="admin-power-lines-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
-                    <Form.Item label="线路名称" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("线路名称")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         value={keywordInput}
                         allowClear
                         onChange={(event) => setKeywordInput(event.target.value)}
-                        placeholder="按线路名称筛选"
+                        placeholder={t("按线路名称筛选")}
                         onPressEnter={handleSearch}
                       />
                     </Form.Item>
@@ -519,8 +521,8 @@ export default function AdminPowerLinesPage() {
                     value={viewMode}
                     onChange={(value) => setViewMode(value as "card" | "list")}
                     options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "list" },
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "list" },
                     ]}
                   />
                 </div>
@@ -542,7 +544,7 @@ export default function AdminPowerLinesPage() {
                       <Spin />
                     </div>
                   ) : (
-                    <Empty description="暂无线路数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    <Empty description={t("暂无线路数据")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                   )
                 ) : viewMode === "card" ? (
                   <div className="relative flex min-h-0 flex-1 flex-col">
@@ -561,10 +563,10 @@ export default function AdminPowerLinesPage() {
                             onPreview={openPreview}
                             onDelete={() => {
                               modalApi.confirm({
-                                title: "删除线路",
+                                title: t("删除线路"),
                                 content: `确认删除线路 ${line.name || line.code} 吗？`,
-                                okText: "删除",
-                                cancelText: "取消",
+                                okText: t("删除"),
+                                cancelText: t("取消"),
                                 okButtonProps: { danger: true },
                                 onOk: async () => {
                                   await deleteLineMutation.mutateAsync(line.id);
@@ -609,10 +611,10 @@ export default function AdminPowerLinesPage() {
                       loading={linesQuery.isFetching}
                       onDelete={(line) => {
                         modalApi.confirm({
-                          title: "删除线路",
+                          title: t("删除线路"),
                           content: `确认删除线路 ${line.name || line.code} 吗？`,
-                          okText: "删除",
-                          cancelText: "取消",
+                          okText: t("删除"),
+                          cancelText: t("取消"),
                           okButtonProps: { danger: true },
                           onOk: async () => {
                             await deleteLineMutation.mutateAsync(line.id);
@@ -649,19 +651,19 @@ export default function AdminPowerLinesPage() {
         <Form<LineFormValues> form={lineForm} layout="vertical" initialValues={EMPTY_LINE_FORM}>
           <Form.Item
             name="name"
-            label="线路名称"
-            rules={[{ required: true, message: "请输入线路名称" }]}
+            label={t("线路名称")}
+            rules={[{ required: true, message: t("请输入线路名称") }]}
           >
             <Input />
           </Form.Item>
           <Form.Item
             name="voltage_level"
-            label="电压等级"
-            rules={[{ required: true, message: "请选择电压等级" }]}
+            label={t("电压等级")}
+            rules={[{ required: true, message: t("请选择电压等级") }]}
           >
             <Select
               showSearch
-              placeholder="请选择电压等级"
+              placeholder={t("请选择电压等级")}
               options={[...LINE_VOLTAGE_OPTIONS].map((item) => ({ value: item.value, label: item.label }))}
               filterOption={(input, option) =>
                 String(option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
@@ -687,6 +689,7 @@ interface PowerLineCardProps {
 }
 
 function PowerLineCard({ line, canLineManage, canUpdateLine, canDeleteLine, canMap, onEdit, onDetail, onPreview, onDelete, deleteLoading }: PowerLineCardProps) {
+  const { t } = useI18n();
   return (
     <Card
       size="small"
@@ -738,7 +741,7 @@ function PowerLineCard({ line, canLineManage, canUpdateLine, canDeleteLine, canM
             <div />
           )}
           <Space size="small" className="shrink-0">
-            <Tooltip title="杆塔">
+            <Tooltip title={t("杆塔")}>
               <Button
                 type="text"
                 size="small"
@@ -770,7 +773,7 @@ function PowerLineCard({ line, canLineManage, canUpdateLine, canDeleteLine, canM
                     label: (
                       <Space size={4}>
                         <EditOutlined />
-                        <span>编辑</span>
+                        <span>{t("编辑")}</span>
                       </Space>
                     ),
                     disabled: canUpdateLine === false,
@@ -787,7 +790,7 @@ function PowerLineCard({ line, canLineManage, canUpdateLine, canDeleteLine, canM
                           label: (
                             <Space size={4}>
                               <DeleteOutlined />
-                              <span>删除</span>
+                              <span>{t("删除")}</span>
                             </Space>
                           ),
                           danger: true,
@@ -803,7 +806,7 @@ function PowerLineCard({ line, canLineManage, canUpdateLine, canDeleteLine, canM
               }}
               trigger={["click"]}
             >
-              <Tooltip title="更多">
+              <Tooltip title={t("更多")}>
                 <Button
                   type="text"
                   size="small"
@@ -834,31 +837,32 @@ interface PowerLineTableProps {
   scrollY?: number;
 }
 
+  const { t } = useI18n();
 function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onDelete, deleteLoading, loading, scrollY = POWER_LINES_TABLE_MIN_SCROLL_Y }: PowerLineTableProps) {
   const columns: ColumnsType<LineSummary> = [
     {
-      title: "线路名称",
+      title: t("线路名称"),
       dataIndex: "name",
       key: "name",
       width: 288,
       ellipsis: { showTitle: true },
     },
     {
-      title: "电压等级",
+      title: t("电压等级"),
       dataIndex: "voltage_kv",
       key: "voltage_kv",
       width: 198,
       render: (value: number | null) => `${value ?? "-"} kV`,
     },
     {
-      title: "杆塔总数",
+      title: t("杆塔总数"),
       dataIndex: "tower_count",
       key: "tower_count",
       width: 180,
       align: "right" as const,
     },
     {
-      title: "估算长度",
+      title: t("估算长度"),
       dataIndex: "estimated_length_km",
       key: "estimated_length_km",
       width: 216,
@@ -866,14 +870,14 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
         value != null && value > 0 ? `${value.toFixed(2)} km` : "-",
     },
     {
-      title: "更新时间",
+      title: t("更新时间"),
       dataIndex: "update_date",
       key: "update_date",
       width: 288,
       render: (value: string) => formatDateTime(value),
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 170,
       fixed: "right",
@@ -884,7 +888,7 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
             label: (
               <Space size={4}>
                 <EditOutlined />
-                <span>编辑</span>
+                <span>{t("编辑")}</span>
               </Space>
             ),
             onClick: () => onEdit(line),
@@ -896,7 +900,7 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
                   label: (
                     <Space size={4}>
                       <DeleteOutlined />
-                      <span>删除</span>
+                      <span>{t("删除")}</span>
                     </Space>
                   ),
                   danger: true,

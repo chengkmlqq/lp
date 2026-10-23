@@ -33,6 +33,7 @@ import { CheckCircleOutlined, EditOutlined, MoreOutlined, SearchOutlined } from 
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -243,6 +244,7 @@ function TowerModelImageCell({
 }
 
 export default function AdminTowerModelsPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, getAccessToken, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<TowerModelFormValues>();
@@ -573,24 +575,24 @@ export default function AdminTowerModelsPage() {
   const tableColumns = useMemo<ColumnsType<TowerModelSummary>>(
     () => [
       {
-        title: "模型编码",
+        title: t("模型编码"),
         dataIndex: "code",
         width: 160,
         render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
       },
       {
-        title: "模型名称",
+        title: t("模型名称"),
         dataIndex: "name",
         width: 200,
       },
       {
-        title: "塔型",
+        title: t("塔型"),
         dataIndex: "tower_type",
         width: 100,
         render: (value: string | null) => value || "-",
       },
       {
-        title: "默认参数",
+        title: t("默认参数"),
         key: "defaults",
         width: 320,
         render: (_: unknown, row) => (
@@ -603,30 +605,30 @@ export default function AdminTowerModelsPage() {
         ),
       },
       {
-        title: "图片",
+        title: t("图片"),
         key: "image",
         width: 200,
         render: (_: unknown, row) => {
           if (!row.image_path) {
-            return <Typography.Text type="secondary">未上传</Typography.Text>;
+            return <Typography.Text type="secondary">{t("未上传")}</Typography.Text>;
           }
           return <TowerModelImageCell model={row} fetchWithAuth={fetchWithAuth} onPreviewError={handleImagePreviewError} />;
         },
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "is_enabled",
         width: 80,
         align: "center",
         render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? "启用" : "禁用"}</Tag>,
       },
       {
-        title: "排序",
+        title: t("排序"),
         dataIndex: "sort_order",
         width: 80,
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         fixed: "right",
       width: 180,
@@ -635,7 +637,7 @@ export default function AdminTowerModelsPage() {
           const moreMenuItems: MenuProps["items"] = [
             {
               key: "delete",
-              label: "删除",
+              label: t("删除"),
               danger: true,
               disabled: rowBusy,
             },
@@ -660,10 +662,10 @@ export default function AdminTowerModelsPage() {
                     onClick: ({ key }) => {
                       if (key === "delete") {
                         Modal.confirm({
-                          title: "删除杆塔模型",
+                          title: t("删除杆塔模型"),
                           content: `确认删除模型 ${row.code} 吗？`,
-                          okText: "删除",
-                          cancelText: "取消",
+                          okText: t("删除"),
+                          cancelText: t("取消"),
                           okButtonProps: { danger: true },
                           onOk: async () => {
                             await deleteModelAsync(row.id);
@@ -682,7 +684,7 @@ export default function AdminTowerModelsPage() {
         },
       },
     ],
-    [canManage, deleteModelAsync, fetchWithAuth, handleImagePreviewError, isDeletingModel, isSavingModel, isUploadingImage, openEdit, openUpload],
+    [t, canManage, deleteModelAsync, fetchWithAuth, handleImagePreviewError, isDeletingModel, isSavingModel, isUploadingImage, openEdit, openUpload],
   );
 
   const renderDefaultSummary = (row: TowerModelSummary) => (
@@ -701,7 +703,7 @@ export default function AdminTowerModelsPage() {
     const moreMenuItems: MenuProps["items"] = [
       {
         key: "upload-image",
-        label: "上传图片",
+        label: t("上传图片"),
         disabled: rowBusy,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
@@ -710,16 +712,16 @@ export default function AdminTowerModelsPage() {
       },
       {
         key: "delete",
-        label: "删除",
+        label: t("删除"),
         danger: true,
         disabled: rowBusy,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
           Modal.confirm({
-            title: "删除杆塔模型",
+            title: t("删除杆塔模型"),
             content: `确认删除模型 ${row.code} 吗？`,
-            okText: "删除",
-            cancelText: "取消",
+            okText: t("删除"),
+            cancelText: t("取消"),
             okButtonProps: { danger: true },
             onOk: async () => {
               await deleteModelAsync(row.id);
@@ -748,29 +750,29 @@ export default function AdminTowerModelsPage() {
         </div>
         <Space direction="vertical" size={10} style={{ width: "100%" }}>
           <div className="admin-tower-models-model-card-field">
-            <Typography.Text type="secondary">模型编码</Typography.Text>
+            <Typography.Text type="secondary">{t("模型编码")}</Typography.Text>
             <Typography.Text code ellipsis={{ tooltip: row.code }}>
               {row.code}
             </Typography.Text>
           </div>
           <div className="admin-tower-models-model-card-field">
-            <Typography.Text type="secondary">塔型</Typography.Text>
+            <Typography.Text type="secondary">{t("塔型")}</Typography.Text>
             <Typography.Text>{row.tower_type || "-"}</Typography.Text>
           </div>
           <div className="admin-tower-models-model-card-field">
-            <Typography.Text type="secondary">排序</Typography.Text>
+            <Typography.Text type="secondary">{t("排序")}</Typography.Text>
             <Typography.Text>{row.sort_order}</Typography.Text>
           </div>
           <div className="admin-tower-models-model-card-field">
-            <Typography.Text type="secondary">默认参数</Typography.Text>
+            <Typography.Text type="secondary">{t("默认参数")}</Typography.Text>
             {renderDefaultSummary(row)}
           </div>
           <div className="admin-tower-models-model-card-field">
-            <Typography.Text type="secondary">模型图片</Typography.Text>
+            <Typography.Text type="secondary">{t("模型图片")}</Typography.Text>
             {row.image_path ? (
               <TowerModelImageCell model={row} fetchWithAuth={fetchWithAuth} onPreviewError={handleImagePreviewError} />
             ) : (
-              <Typography.Text type="secondary">未上传</Typography.Text>
+              <Typography.Text type="secondary">{t("未上传")}</Typography.Text>
             )}
           </div>
         </Space>
@@ -778,7 +780,7 @@ export default function AdminTowerModelsPage() {
           <div className="admin-tower-models-card-actions">
             <div />
             <Space size="small" className="shrink-0">
-              <Tooltip title="编辑">
+              <Tooltip title={t("编辑")}>
                 <Button
                   type="text"
                   size="small"
@@ -791,7 +793,7 @@ export default function AdminTowerModelsPage() {
                 />
               </Tooltip>
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Tooltip title="更多">
+                <Tooltip title={t("更多")}>
                   <Button
                     type="text"
                     size="small"
@@ -889,7 +891,7 @@ export default function AdminTowerModelsPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问杆塔模型管理页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问杆塔模型管理页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -903,7 +905,7 @@ export default function AdminTowerModelsPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `tower_model.read`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `tower_model.read`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -919,20 +921,20 @@ export default function AdminTowerModelsPage() {
       <AntCard
         ref={pageCardRef}
         className="admin-tower-models-page-card"
-        title="杆塔模型管理"
+        title={t("杆塔模型管理")}
         extra={canManage ? (
-          <Button onClick={openCreate} type="primary">新建模型</Button>
+          <Button onClick={openCreate} type="primary">{t("新建模型")}</Button>
         ) : null}
       >
         {viewMode === "card" ? (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   value={keywordInput}
                   allowClear
                   onChange={(event) => handleKeywordChange(event.target.value)}
-                  placeholder="按模型编码/名称/塔型搜索"
+                  placeholder={t("按模型编码/名称/塔型搜索")}
                   onPressEnter={() => {
                     setSearchKeyword(keywordInput);
                     setPagination((previous) => ({ ...previous, current: 1 }));
@@ -962,12 +964,12 @@ export default function AdminTowerModelsPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   value={keywordInput}
                   allowClear
                   onChange={(event) => handleKeywordChange(event.target.value)}
-                  placeholder="按模型编码/名称/塔型搜索"
+                  placeholder={t("按模型编码/名称/塔型搜索")}
                   onPressEnter={() => {
                     setSearchKeyword(keywordInput);
                     setPagination((previous) => ({ ...previous, current: 1 }));
@@ -976,14 +978,14 @@ export default function AdminTowerModelsPage() {
                   }}
                 />
               </Form.Item>
-              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select<"enabled" | "disabled">
                   value={enabledFilter}
                   allowClear
-                  placeholder="全部"
+                  placeholder={t("全部")}
                   options={[
-                    { value: "enabled", label: "已启用" },
-                    { value: "disabled", label: "已禁用" },
+                    { value: "enabled", label: t("已启用") },
+                    { value: "disabled", label: t("已禁用") },
                   ]}
                   onChange={(value) => {
                     setEnabledFilter(value);
@@ -1043,7 +1045,7 @@ export default function AdminTowerModelsPage() {
                 emptyText: (
                   <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="未找到符合筛选条件的杆塔模型。"
+                    description={t("未找到符合筛选条件的杆塔模型。")}
                   />
                 ),
               }}
@@ -1059,7 +1061,7 @@ export default function AdminTowerModelsPage() {
               <div className="admin-tower-models-card-view-state">
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的杆塔模型。"
+                  description={t("未找到符合筛选条件的杆塔模型。")}
                 />
               </div>
             ) : (
@@ -1111,30 +1113,30 @@ export default function AdminTowerModelsPage() {
             items={[
               {
                 key: "basic",
-                label: "基本信息",
+                label: t("基本信息"),
                 children: (
                   <>
                     <div className="grid gap-3 md:grid-cols-2">
-                      <Form.Item name="code" label="模型编码" rules={[{ required: true, message: "请输入模型编码" }]}>
+                      <Form.Item name="code" label={t("模型编码")} rules={[{ required: true, message: t("请输入模型编码") }]}>
                         <Input disabled={!!editingModel} />
                       </Form.Item>
-                      <Form.Item name="name" label="模型名称" rules={[{ required: true, message: "请输入模型名称" }]}>
+                      <Form.Item name="name" label={t("模型名称")} rules={[{ required: true, message: t("请输入模型名称") }]}>
                         <Input />
                       </Form.Item>
-                      <Form.Item name="tower_type" label="塔型">
+                      <Form.Item name="tower_type" label={t("塔型")}>
                         <Select
                           allowClear
                           options={[
-                            { value: "直线", label: "直线" },
-                            { value: "耐张", label: "耐张" },
+                            { value: "直线", label: t("直线") },
+                            { value: "耐张", label: t("耐张") },
                           ]}
                         />
                       </Form.Item>
-                      <Form.Item name="sort_order" label="排序">
+                      <Form.Item name="sort_order" label={t("排序")}>
                         <InputNumber min={0} max={1_000_000} className="w-full" />
                       </Form.Item>
                     </div>
-                    <Form.Item name="description" label="描述">
+                    <Form.Item name="description" label={t("描述")}>
                       <Input.TextArea rows={3} />
                     </Form.Item>
                   </>
@@ -1142,44 +1144,44 @@ export default function AdminTowerModelsPage() {
               },
               {
                 key: "defaults",
-                label: "默认参数",
+                label: t("默认参数"),
                 children: (
                   <div className="grid gap-3 md:grid-cols-2">
                     <Form.Item
                       name="default_ground_resistance_ohm"
-                      label="接地电阻（Ω）"
-                      tooltip="杆塔默认接地电阻，用于雷击特性计算。"
+                      label={t("接地电阻（Ω）")}
+                      tooltip={t("杆塔默认接地电阻，用于雷击特性计算。")}
                     >
                       <InputNumber min={0} max={10000} step={0.1} className="w-full" />
                     </Form.Item>
                     <Form.Item
                       name="default_lightning_density"
-                      label="地闪密度（次/km²·年）"
-                      tooltip="杆塔默认地闪密度（Ng）。"
+                      label={t("地闪密度（次/km²·年）")}
+                      tooltip={t("杆塔默认地闪密度（Ng）。")}
                     >
                       <InputNumber min={0} max={1000} step={0.1} className="w-full" />
                     </Form.Item>
                     <Form.Item
                       name="default_span_small_m"
-                      label="小号侧档距（m）"
+                      label={t("小号侧档距（m）")}
                     >
                       <InputNumber min={0} max={100000} className="w-full" />
                     </Form.Item>
                     <Form.Item
                       name="default_span_large_m"
-                      label="大号侧档距（m）"
+                      label={t("大号侧档距（m）")}
                     >
                       <InputNumber min={0} max={100000} className="w-full" />
                     </Form.Item>
                     <Form.Item
                       name="default_slope_1"
-                      label="地面倾角 1（°）"
+                      label={t("地面倾角 1（°）")}
                     >
                       <InputNumber min={-90} max={90} step={0.1} className="w-full" />
                     </Form.Item>
                     <Form.Item
                       name="default_slope_2"
-                      label="地面倾角 2（°）"
+                      label={t("地面倾角 2（°）")}
                     >
                       <InputNumber min={-90} max={90} step={0.1} className="w-full" />
                     </Form.Item>
@@ -1192,9 +1194,9 @@ export default function AdminTowerModelsPage() {
       </Modal>
 
       <Modal
-        title="上传模型图片"
+        title={t("上传模型图片")}
         open={!!uploadModel}
-        okText="上传"
+        okText={t("上传")}
         okButtonProps={{ disabled: !tempFileId }}
         confirmLoading={uploadImageMutation.isPending}
         onCancel={() => {
@@ -1231,7 +1233,7 @@ export default function AdminTowerModelsPage() {
           </Typography.Text>
           <div>
             <div style={{ marginBottom: 8 }}>
-              <Typography.Text>图片文件</Typography.Text>
+              <Typography.Text>{t("图片文件")}</Typography.Text>
             </div>
             <Upload.Dragger
               accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,image/*"
@@ -1268,7 +1270,7 @@ export default function AdminTowerModelsPage() {
                       <CheckCircleOutlined /> 上传完成，可以确认上传
                     </Typography.Text>
                   ) : (
-                    <Typography.Text type="warning">上传中…</Typography.Text>
+                    <Typography.Text type="warning">{t("上传中…")}</Typography.Text>
                   )}
                 </>
               ) : (

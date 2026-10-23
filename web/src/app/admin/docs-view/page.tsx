@@ -38,6 +38,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
@@ -67,6 +68,7 @@ function flattenDocuments(chapters: DocumentChapterTreeItem[]): { id: number; ti
 }
 
 export default function DocsViewPage() {
+  const { t } = useI18n();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const isMobile = useMobileDetection();
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
@@ -223,9 +225,9 @@ export default function DocsViewPage() {
   if (!user || !canRead) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        <AntCard className="admin-docs-view-page-card" title="操作文档">
+        <AntCard className="admin-docs-view-page-card" title={t("操作文档")}>
           <div className="flex items-center justify-center" style={{ minHeight: 300 }}>
-            <Empty description="暂无权限访问" />
+            <Empty description={t("暂无权限访问")} />
           </div>
         </AntCard>
       </div>
@@ -258,7 +260,7 @@ export default function DocsViewPage() {
               <div className="admin-docs-view-search-wrapper">
                 <Input
                   className="admin-docs-view-search-input"
-                  placeholder="搜索文档..."
+                  placeholder={t("搜索文档...")}
                   prefix={<SearchOutlined />}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -292,7 +294,7 @@ export default function DocsViewPage() {
         </>
       ) : (
         <div className="admin-docs-view-sider-empty">
-          <Empty description="暂无文档" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description={t("暂无文档")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
         </div>
       )}
       {!isMobile && (
@@ -448,7 +450,7 @@ export default function DocsViewPage() {
                               </div>
                             }
                             preview={{
-                              mask: <div className="admin-docs-view-image-preview-mask">点击预览</div>,
+                              mask: <div className="admin-docs-view-image-preview-mask">{t("点击预览")}</div>,
                             }}
                           />
                           {alt && (
@@ -467,7 +469,7 @@ export default function DocsViewPage() {
             ) : (
               <div className="admin-docs-view-empty">
                 <Empty
-                  description="请从左侧目录选择要查看的文档"
+                  description={t("请从左侧目录选择要查看的文档")}
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                 />
               </div>
@@ -477,7 +479,7 @@ export default function DocsViewPage() {
       </AntCard>
 
       <Drawer
-        title="文档目录"
+        title={t("文档目录")}
         placement="left"
         open={isMobile && mobileMenuOpen}
         width={300}
@@ -488,7 +490,7 @@ export default function DocsViewPage() {
           {!treeLoading && treeData && treeData.length > 0 && (
             <div className="admin-docs-view-search-wrapper" style={{ padding: "12px 16px" }}>
               <Input
-                placeholder="搜索文档..."
+                placeholder={t("搜索文档...")}
                 prefix={<SearchOutlined />}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}

@@ -53,6 +53,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, 
 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useBackfillTaskProgressSync, type BackfillTaskPatch } from "@/hooks/use-backfill-task-progress";
@@ -157,6 +158,7 @@ const FIELD_HELP_TOOLTIPS = {
 } as const;
 
 function FieldHelpTooltip({ content }: { content: string }) {
+  const { t } = useI18n();
   return (
     <Tooltip title={content}>
       <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px", marginLeft: 4 }} />
@@ -180,7 +182,7 @@ const IMAGE_LOAD_ERROR_FALLBACK =
       '<g fill="#bfbfbf" font-family="sans-serif" text-anchor="middle">' +
       '<circle cx="320" cy="150" r="40"/>' +
       '<path d="M280 240c8-40 24-56 40-56s32 16 40 56z"/>' +
-      '<text x="320" y="290" font-size="16">图片加载失败</text>' +
+      '<text x="320" y="290" font-size="16">{t("图片加载失败")}</text>' +
       "</g></svg>",
   );
 
@@ -210,7 +212,7 @@ function DistributionImagePane({
 
   if (query.isError) {
     return (
-      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="密度图加载失败">
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"密度图加载失败"}>
         <Button size="small" onClick={() => query.refetch()} loading={query.isFetching}>
           重新加载
         </Button>
@@ -264,6 +266,7 @@ type DetailTabItem = {
 const LIST_TAB_KEY = "list";
 
 export default function AdminLightningDistributionPage() {
+  const { t } = useI18n();
   const { user, initializing, hasPermission, fetchWithAuth, getAccessToken } = useAuth();
   const { modal: modalApi, message: messageApi } = App.useApp();
   const queryClient = useQueryClient();
@@ -790,19 +793,19 @@ export default function AdminLightningDistributionPage() {
   const columns = useMemo<ColumnsType<LightningDistributionRecord>>(
     () => [
       {
-        title: "文件名",
+        title: t("文件名"),
         dataIndex: "source_file_name",
         width: 200,
         render: (value: string) => value || "-",
       },
       {
-        title: "导入时间",
+        title: t("导入时间"),
         dataIndex: "create_date",
         width: 170,
         render: (value: string) => formatDateTime(value),
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "status",
         width: 160,
         render: (_: unknown, row) => {
@@ -818,7 +821,7 @@ export default function AdminLightningDistributionPage() {
         },
       },
       {
-        title: "有效点数",
+        title: t("有效点数"),
         dataIndex: "valid_count",
         width: 90,
         render: (value: number) => value,
@@ -857,7 +860,7 @@ export default function AdminLightningDistributionPage() {
         render: (value: number | null) => formatNumber(value, 2),
       },
       {
-        title: "关联线路",
+        title: t("关联线路"),
         key: "linked_lines",
         width: 110,
         render: (_: unknown, row) => (
@@ -872,7 +875,7 @@ export default function AdminLightningDistributionPage() {
         ),
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 150,
         fixed: "right",
@@ -881,14 +884,14 @@ export default function AdminLightningDistributionPage() {
           const moreMenuItems: MenuProps["items"] = [
             {
               key: "backfill-history",
-              label: "回填记录",
+              label: t("回填记录"),
               onClick: () => openLinkedLinesModal(row),
             },
             ...(canRead
               ? [
                   {
                     key: "download-source",
-                    label: "下载源文件",
+                    label: t("下载源文件"),
                     icon: <DownloadOutlined />,
                     onClick: () => {
                       void handleDownloadSource(row);
@@ -900,7 +903,7 @@ export default function AdminLightningDistributionPage() {
               ? [
                   {
                     key: "import-log",
-                    label: "日志",
+                    label: t("日志"),
                     onClick: () => openLogViewer(row.task_id, "日志", row.source_file_name),
                   },
                 ]
@@ -909,16 +912,16 @@ export default function AdminLightningDistributionPage() {
               ? [
                   {
                     key: "delete",
-                    label: "删除",
+                    label: t("删除"),
                     danger: true,
                     disabled: deleteMutation.isPending,
                     onClick: () => {
                       modalApi.confirm({
-                        title: "确认删除该地闪分布记录？",
-                        content: "将同时删除 MinIO 上的原始文件与密度图，此操作不可恢复。",
+                        title: t("确认删除该地闪分布记录？"),
+                        content: t("将同时删除 MinIO 上的原始文件与密度图，此操作不可恢复。"),
                         onOk: () => deleteMutation.mutate(row),
-                        okText: "确认删除",
-                        cancelText: "取消",
+                        okText: t("确认删除"),
+                        cancelText: t("取消"),
                         okButtonProps: { danger: true },
                       });
                     },
@@ -939,7 +942,7 @@ export default function AdminLightningDistributionPage() {
               )}
               {moreMenuItems.length > 0 && (
                 <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Tooltip title="更多操作">
+                  <Tooltip title={t("更多操作")}>
                     <Button size="small" icon={<MoreOutlined />} />
                   </Tooltip>
                 </Dropdown>
@@ -1016,7 +1019,7 @@ export default function AdminLightningDistributionPage() {
               <div />
             )}
             <Space size="small" className="flex-wrap">
-              <Tooltip title="查看详情">
+              <Tooltip title={t("查看详情")}>
                 <Button
                   type="text"
                   size="small"
@@ -1028,7 +1031,7 @@ export default function AdminLightningDistributionPage() {
                 />
               </Tooltip>
               {canManage && (
-                <Tooltip title="回填">
+                <Tooltip title={t("回填")}>
                   <Button
                     type="text"
                     size="small"
@@ -1044,7 +1047,7 @@ export default function AdminLightningDistributionPage() {
                 const extraActions: MenuProps["items"] = [
                   {
                     key: "download-source",
-                    label: "下载源文件",
+                    label: t("下载源文件"),
                     icon: <DownloadOutlined />,
                     onClick: (info) => {
                       info.domEvent?.stopPropagation();
@@ -1053,7 +1056,7 @@ export default function AdminLightningDistributionPage() {
                   },
                   {
                     key: "backfill-history",
-                    label: "回填记录",
+                    label: t("回填记录"),
                     icon: <FileTextOutlined />,
                     onClick: (info) => {
                       info.domEvent?.stopPropagation();
@@ -1064,7 +1067,7 @@ export default function AdminLightningDistributionPage() {
                     ? [
                         {
                           key: "import-log",
-                          label: "日志",
+                          label: t("日志"),
                           icon: <FileTextOutlined />,
                           onClick: (info) => {
                             info.domEvent?.stopPropagation();
@@ -1077,16 +1080,16 @@ export default function AdminLightningDistributionPage() {
                     ? [
                         {
                           key: "delete",
-                          label: "删除",
+                          label: t("删除"),
                           danger: true,
                           icon: <DeleteOutlined />,
                           onClick: (info) => {
                             info.domEvent?.stopPropagation();
                             modalApi.confirm({
-                              title: "确认删除",
-                              content: "确认删除该地闪分布记录？此操作不可恢复。",
-                              okText: "确认删除",
-                              cancelText: "取消",
+                              title: t("确认删除"),
+                              content: t("确认删除该地闪分布记录？此操作不可恢复。"),
+                              okText: t("确认删除"),
+                              cancelText: t("取消"),
                               okButtonProps: { danger: true },
                               onOk: () => deleteMutation.mutate(record),
                             });
@@ -1126,7 +1129,7 @@ export default function AdminLightningDistributionPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问地闪密度统计页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问地闪密度统计页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -1140,7 +1143,7 @@ export default function AdminLightningDistributionPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `lightning.read`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `lightning.read`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -1170,16 +1173,16 @@ export default function AdminLightningDistributionPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin-lightning-distribution-tab-title">地闪密度统计</span>,
+            label: <span className="admin-lightning-distribution-tab-title">{t("地闪密度统计")}</span>,
             closable: false,
             children: (
               <div className="admin-lightning-distribution-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
-                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         allowClear
-                        placeholder="按地点/标签/文件名筛选"
+                        placeholder={t("按地点/标签/文件名筛选")}
                         value={keywordInput}
                         onChange={(event) => setKeywordInput(event.target.value)}
                         onPressEnter={handleSearch}
@@ -1195,8 +1198,8 @@ export default function AdminLightningDistributionPage() {
                     value={viewMode}
                     onChange={(value) => setViewMode(value as "card" | "list")}
                     options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "list" },
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "list" },
                     ]}
                   />
                 </div>
@@ -1212,7 +1215,7 @@ export default function AdminLightningDistributionPage() {
                         <div className="admin-lightning-distribution-card-view-state">
                           <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description="未找到符合筛选条件的地闪分布记录。"
+                            description={t("未找到符合筛选条件的地闪分布记录。")}
                           />
                         </div>
                       ) : (
@@ -1265,7 +1268,7 @@ export default function AdminLightningDistributionPage() {
                         emptyText: (
                           <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description="未找到符合筛选条件的地闪分布记录。"
+                            description={t("未找到符合筛选条件的地闪分布记录。")}
                           />
                         ),
                       }}
@@ -1340,7 +1343,7 @@ function ImportModal({
   const { message: messageApi } = App.useApp();
   return (
     <Modal
-      title="导入地闪密度数据"
+      title={"导入地闪密度数据"}
       open={open}
       onCancel={onClose}
       footer={null}
@@ -1349,11 +1352,11 @@ function ImportModal({
     >
       <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={initialValues}>
         <div className="grid gap-3">
-          <Form.Item name="city" label="城市" rules={[{ max: 128, message: "城市最多 128 个字符" }]}>
+          <Form.Item name="city" label={"城市"} rules={[{ max: 128, message: "城市最多 128 个字符" }]}>
             <Select
               showSearch
               allowClear
-              placeholder="请搜索选择城市"
+              placeholder={"请搜索选择城市"}
               filterOption={(input, option) => {
                 const keyword = input.toLowerCase().trim();
                 const data = option?.["data-data"] as CityOption | undefined;
@@ -1371,26 +1374,26 @@ function ImportModal({
               }))}
             />
           </Form.Item>
-          <Form.Item name="region_id" label="地点" rules={[{ max: 64, message: "地点最多 64 个字符" }]}>
-            <Input placeholder="例如 XX变电站、XX区域（闪电事件发生地点）" />
+          <Form.Item name="region_id" label={"地点"} rules={[{ max: 64, message: "地点最多 64 个字符" }]}>
+            <Input placeholder={"例如 XX变电站、XX区域（闪电事件发生地点）"} />
           </Form.Item>
-          <Form.Item name="event_year" label="数据年份">
+          <Form.Item name="event_year" label={"数据年份"}>
             <InputNumber style={{ width: "100%" }} min={1900} max={2100} />
           </Form.Item>
           <Form.Item
             name="data_years"
-            label="观测年数(年)"
-            tooltip="该数据覆盖的统计年数（国标要求≥10年）。留空则从文件中的年份列自动推断，文件无年份时按 1 年计。"
+            label={"观测年数(年)"}
+            tooltip={"该数据覆盖的统计年数（国标要求≥10年）。留空则从文件中的年份列自动推断，文件无年份时按 1 年计。"}
           >
-            <InputNumber style={{ width: "100%" }} min={0.1} max={100} step={1} placeholder="留空自动推断" />
+            <InputNumber style={{ width: "100%" }} min={0.1} max={100} step={1} placeholder={"留空自动推断"} />
           </Form.Item>
-          <Form.Item name="notes" label="数据说明" rules={[{ max: 2000, message: "数据说明最多 2000 个字符" }]}>
-            <Input placeholder="可填写数据来源、采集说明等" />
+          <Form.Item name="notes" label={"数据说明"} rules={[{ max: 2000, message: "数据说明最多 2000 个字符" }]}>
+            <Input placeholder={"可填写数据来源、采集说明等"} />
           </Form.Item>
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <Form.Item label="数据文件" required>
+          <Form.Item label={"数据文件"} required>
               <Upload.Dragger
                 accept=".txt,.csv,text/plain,text/csv"
                 showUploadList={false}
@@ -1421,9 +1424,9 @@ function ImportModal({
                       <CheckCircleOutlined /> 上传完成，可以确认导入
                     </Typography.Text>
                   ) : uploadError ? (
-                    <Typography.Text type="danger">格式校验未通过，请更换文件</Typography.Text>
+                    <Typography.Text type="danger">{"格式校验未通过，请更换文件"}</Typography.Text>
                   ) : (
-                    <Typography.Text type="warning">上传中…</Typography.Text>
+                    <Typography.Text type="warning">{"上传中…"}</Typography.Text>
                   )}
                 </>
               ) : (
@@ -1490,12 +1493,12 @@ function DistributionDetailView({
     <div className="admin-lightning-distribution-detail-view">
       <Space direction="vertical" size={16} className="w-full">
       <Descriptions bordered size="small" column={3}>
-        <Descriptions.Item label="城市">{record.city || "-"}</Descriptions.Item>
-        <Descriptions.Item label="地点标签">{record.location_tag || "-"}</Descriptions.Item>
-        <Descriptions.Item label="年份">{record.event_year ?? "-"}</Descriptions.Item>
-        <Descriptions.Item label="有效点数">{record.valid_count}</Descriptions.Item>
-        <Descriptions.Item label="面积(km²)">{formatNumber(record.area_km2, 3)}</Descriptions.Item>
-        <Descriptions.Item label="统计年限">{formatNumber(record.data_years, 3)}</Descriptions.Item>
+        <Descriptions.Item label={"城市"}>{record.city || "-"}</Descriptions.Item>
+        <Descriptions.Item label={"地点标签"}>{record.location_tag || "-"}</Descriptions.Item>
+        <Descriptions.Item label={"年份"}>{record.event_year ?? "-"}</Descriptions.Item>
+        <Descriptions.Item label={"有效点数"}>{record.valid_count}</Descriptions.Item>
+        <Descriptions.Item label={"面积(km²)"}>{formatNumber(record.area_km2, 3)}</Descriptions.Item>
+        <Descriptions.Item label={"统计年限"}>{formatNumber(record.data_years, 3)}</Descriptions.Item>
         <Descriptions.Item label={
           <span>
             整体 Ng
@@ -1514,16 +1517,16 @@ function DistributionDetailView({
             <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
           </span>
         }>{formatNumber(record.avg_abs_current, 2)}</Descriptions.Item>
-        <Descriptions.Item label="正极数量">{record.positive_count}</Descriptions.Item>
-        <Descriptions.Item label="负极数量">{record.negative_count}</Descriptions.Item>
-        <Descriptions.Item label="未知极性">{record.unknown_count}</Descriptions.Item>
+        <Descriptions.Item label={"正极数量"}>{record.positive_count}</Descriptions.Item>
+        <Descriptions.Item label={"负极数量"}>{record.negative_count}</Descriptions.Item>
+        <Descriptions.Item label={"未知极性"}>{record.unknown_count}</Descriptions.Item>
       </Descriptions>
 
       <div style={{ textAlign: "center", minHeight: 200 }}>
         <DistributionImagePane
           query={imageQuery}
-          alt="地闪密度图"
-          emptyText="暂无密度图（导入失败或仍在处理中）"
+          alt={"地闪密度图"}
+          emptyText={"暂无密度图（导入失败或仍在处理中）"}
         />
       </div>
       </Space>
@@ -1805,10 +1808,10 @@ function BackfillRecordsView({
     >
       <div className="admin-filter-bar" style={{ marginBottom: 12 }}>
         <Form layout="inline">
-          <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+          <Form.Item label={"关键词"} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
             <Input
               allowClear
-              placeholder="按线路编号/名称筛选"
+              placeholder={"按线路编号/名称筛选"}
               value={keywordInput}
               onChange={(event) => setKeywordInput(event.target.value)}
               onPressEnter={handleSearch}
@@ -1855,7 +1858,7 @@ function BackfillRecordsView({
           emptyText: linkedLinesQuery.isLoading ? (
             <Spin size="small" />
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该分布尚未回填任何线路" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"该分布尚未回填任何线路"} />
           ),
         }}
       />
@@ -2021,10 +2024,10 @@ function TowerNgDrawer({
       <div ref={tableScrollAnchorRef} className="admin-lightning-density-drawer-pane">
         <div className="admin-filter-bar" style={{ marginBottom: 12 }}>
           <Form layout="inline">
-            <Form.Item label="杆塔号" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+            <Form.Item label={"杆塔号"} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
               <Input
                 allowClear
-                placeholder="按杆塔号筛选"
+                placeholder={"按杆塔号筛选"}
                 value={keywordInput}
                 onChange={(event) => setKeywordInput(event.target.value)}
                 onPressEnter={handleSearch}
@@ -2063,7 +2066,7 @@ function TowerNgDrawer({
             emptyText: towersQuery.isLoading ? (
               <Spin size="small" />
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该线路无回填杆塔数据" />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"该线路无回填杆塔数据"} />
             ),
           }}
         />
@@ -2185,9 +2188,9 @@ function NgImageDrawer({
             description={errorText || "暂无沿线圆密度图（回填线路后生成）"}
           />
         ) : imageUrl ? (
-          <Image src={imageUrl} alt="沿线圆密度图" style={{ maxWidth: "100%" }} />
+          <Image src={imageUrl} alt={"沿线圆密度图"} style={{ maxWidth: "100%" }} />
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无沿线圆密度图（回填线路后生成）" />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"暂无沿线圆密度图（回填线路后生成）"} />
         )}
       </div>
     </Drawer>
@@ -2208,7 +2211,7 @@ function DrawLpModal({
   onSubmitted: (taskId: string, fileName: string) => void;
 }) {
   return (
-    <Modal title="线路回填" open={open} onCancel={onClose} footer={null} width={560} destroyOnHidden>
+    <Modal title={"线路回填"} open={open} onCancel={onClose} footer={null} width={560} destroyOnHidden>
       {/* key 随分布记录变化强制重挂载，避免残留上一分布选中的线路 / 提交结果 */}
       <DrawLpBody key={data?.id ?? "empty"} open={open} data={data} fetchWithAuth={fetchWithAuth} onSubmitted={onSubmitted} />
     </Modal>
@@ -2350,16 +2353,16 @@ function DrawLpBody({
   return (
     <>
       <Form layout="vertical">
-        <Form.Item required label="选择线路">
+        <Form.Item required label={"选择线路"}>
           <Select
             showSearch
-            placeholder="选择线路（按该线路杆塔分组绘图）"
+            placeholder={"选择线路（按该线路杆塔分组绘图）"}
             filterOption={false}
             onSearch={setLineSearchText}
             notFoundContent={
               linesQuery.isLoading
                 ? <Spin size="small" />
-                : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无可用线路" />
+                : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"无可用线路"} />
             }
             value={lineId}
             onChange={setLineId}

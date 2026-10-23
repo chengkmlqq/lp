@@ -38,6 +38,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent, type RefAttributes } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { AtpBatchHistoryTab } from "@/components/atp-models/atp-batch-history-tab";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
@@ -165,6 +166,7 @@ function parseAtpTreeKey(key: string): AtpTreePathFilter | null {
 }
 
 export default function AtpModelsPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<AssetFormValues>();
@@ -938,7 +940,7 @@ export default function AtpModelsPage() {
         ...previous,
         {
           key,
-          label: <span className="admin-atp-models-tab-title">批量测试记录</span>,
+          label: <span className="admin-atp-models-tab-title">{t("批量测试记录")}</span>,
         },
       ];
     });
@@ -948,37 +950,37 @@ export default function AtpModelsPage() {
   const columns = useMemo<ColumnsType<AtpAssetSummary>>(
     () => [
       {
-        title: "电压等级",
+        title: t("电压等级"),
         dataIndex: "voltage_level",
         width: 140,
         render: (value: string | null) => formatDimensionValue(value, "voltage_level"),
       },
       {
-        title: "塔型",
+        title: t("塔型"),
         dataIndex: "tower_type",
         width: 140,
         render: (value: string | null) => formatDimensionValue(value, "tower_type"),
       },
       {
-        title: "场景",
+        title: t("场景"),
         dataIndex: "scene_type",
         width: 140,
         render: (value: string | null) => formatDimensionValue(value, "scene_type"),
       },
       {
-        title: "避雷器组合",
+        title: t("避雷器组合"),
         dataIndex: "arrester_config",
         width: 140,
         render: (value: string | null) => formatDimensionValue(value, "arrester_config"),
       },
       {
-        title: "更新时间",
+        title: t("更新时间"),
         dataIndex: "update_date",
         width: 190,
         render: (value: string) => formatDateTime(value),
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         fixed: "right",
         width: 150,
@@ -993,7 +995,7 @@ export default function AtpModelsPage() {
               label: (
                 <Space size={4}>
                   <EditOutlined />
-                  <span>编辑</span>
+                  <span>{t("编辑")}</span>
                 </Space>
               ),
               disabled: !canManage || rowBusy,
@@ -1006,17 +1008,17 @@ export default function AtpModelsPage() {
                     label: (
                       <Space size={4}>
                         <DeleteOutlined />
-                        <span>删除</span>
+                        <span>{t("删除")}</span>
                       </Space>
                     ),
                     danger: true,
                     disabled: rowBusy,
                     onClick: () => {
                       Modal.confirm({
-                        title: "删除模型",
-                        content: "这会同时删除其文件与运行记录。",
-                        okText: "删除",
-                        cancelText: "取消",
+                        title: t("删除模型"),
+                        content: t("这会同时删除其文件与运行记录。"),
+                        okText: t("删除"),
+                        cancelText: t("取消"),
                         okButtonProps: { danger: true, loading: deleteLoading },
                         onOk: () => deleteMutation.mutate(item.id),
                       });
@@ -1035,7 +1037,7 @@ export default function AtpModelsPage() {
                 测试
               </Button>
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button size="small" type="text" icon={<MoreOutlined />} aria-label="更多操作" />
+                <Button size="small" type="text" icon={<MoreOutlined />} aria-label={t("更多操作")} />
               </Dropdown>
             </Space>
           );
@@ -1136,7 +1138,7 @@ export default function AtpModelsPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-atp-models-tab-title">ATP 模型管理</span>,
+            label: <span className="admin-atp-models-tab-title">{t("ATP 模型管理")}</span>,
             closable: false,
             children: (
               <div className="admin-atp-models-list-pane">
@@ -1152,7 +1154,7 @@ export default function AtpModelsPage() {
                         <div className="admin-atp-models-sider-card-search">
                           <Input
                             className="admin-atp-models-search-input"
-                            placeholder="搜索电压等级/塔型/场景/避雷器组合"
+                            placeholder={t("搜索电压等级/塔型/场景/避雷器组合")}
                             prefix={<SearchOutlined />}
                             value={treeFilterKeyword}
                             onChange={(e) => setTreeFilterKeyword(e.target.value)}
@@ -1177,7 +1179,7 @@ export default function AtpModelsPage() {
                                   isLeaf: true,
                                   title: (
                                     <span className="admin-atp-models-tree-node">
-                                      <span className="admin-atp-models-tree-node-title">全部模型</span>
+                                      <span className="admin-atp-models-tree-node-title">{t("全部模型")}</span>
                                       <span className="admin-atp-models-tree-node-count">{totalQuery.data ?? 0}</span>
                                     </span>
                                   ),
@@ -1206,12 +1208,12 @@ export default function AtpModelsPage() {
                   <div className="admin-atp-models-main">
                     <div className="admin-filter-bar">
                       <Form layout="inline">
-                        <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                        <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                           <Input
                             allowClear
                             value={keywordInput}
                             onChange={(event) => setKeywordInput(event.target.value)}
-                            placeholder="按编码/名称搜索"
+                            placeholder={t("按编码/名称搜索")}
                             onPressEnter={handleSearch}
                           />
                         </Form.Item>
@@ -1231,8 +1233,8 @@ export default function AtpModelsPage() {
                           value={viewMode}
                           onChange={(value) => setViewModeOverride(value as "card" | "list")}
                           options={[
-                            { label: "卡片视图", value: "card" },
-                            { label: "列表视图", value: "list" },
+                            { label: t("卡片视图"), value: "card" },
+                            { label: t("列表视图"), value: "list" },
                           ]}
                         />
                       </div>
@@ -1264,7 +1266,7 @@ export default function AtpModelsPage() {
                             emptyText: (
                               <Empty
                                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                description="未找到符合筛选条件的 ATP 模型。"
+                                description={t("未找到符合筛选条件的 ATP 模型。")}
                               />
                             ),
                           }}
@@ -1293,7 +1295,7 @@ export default function AtpModelsPage() {
                               <Spin />
                             </div>
                           ) : (
-                            <Empty description="未找到符合筛选条件的 ATP 模型。" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                            <Empty description={t("未找到符合筛选条件的 ATP 模型。")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                           )
                         ) : (
                           <>
@@ -1367,7 +1369,7 @@ export default function AtpModelsPage() {
         />
 
       <Modal
-        title="新建 ATP 模型"
+        title={t("新建 ATP 模型")}
         open={modalOpen}
         forceRender
         onCancel={closeModal}
@@ -1375,7 +1377,7 @@ export default function AtpModelsPage() {
         confirmLoading={createAssetMutation.isPending}
         destroyOnHidden
         okText={createAssetMutation.isPending ? "提交中..." : "创建模型"}
-        cancelText="取消"
+        cancelText={t("取消")}
         okButtonProps={{ disabled: !tempFileId }}
       >
         <Form
@@ -1388,39 +1390,39 @@ export default function AtpModelsPage() {
           }}
           autoComplete="off"
         >
-          <Form.Item name="voltage_level" label="电压等级" rules={[{ required: true, message: "请选择电压等级" }]}>
+          <Form.Item name="voltage_level" label={t("电压等级")} rules={[{ required: true, message: t("请选择电压等级") }]}>
             <Select
               showSearch
               allowClear
-              placeholder="请选择电压等级"
+              placeholder={t("请选择电压等级")}
               options={voltageLevelOptions}
             />
           </Form.Item>
-          <Form.Item name="tower_type" label="塔型" rules={[{ required: true, message: "请选择塔型" }]}>
+          <Form.Item name="tower_type" label={t("塔型")} rules={[{ required: true, message: t("请选择塔型") }]}>
             <Select
               showSearch
               allowClear
-              placeholder="请选择塔型"
+              placeholder={t("请选择塔型")}
               options={towerTypeOptions}
             />
           </Form.Item>
-          <Form.Item name="scene_type" label="场景" rules={[{ required: true, message: "请选择场景" }]}>
+          <Form.Item name="scene_type" label={t("场景")} rules={[{ required: true, message: t("请选择场景") }]}>
             <Select
               showSearch
               allowClear
-              placeholder="请选择场景"
+              placeholder={t("请选择场景")}
               options={sceneTypeOptions}
             />
           </Form.Item>
-          <Form.Item name="arrester_config" label="避雷器装设组合" rules={[{ required: true, message: "请选择避雷器装设组合" }]}>
+          <Form.Item name="arrester_config" label={t("避雷器装设组合")} rules={[{ required: true, message: t("请选择避雷器装设组合") }]}>
             <Select
               showSearch
               allowClear
-              placeholder="请选择避雷器装设组合"
+              placeholder={t("请选择避雷器装设组合")}
               options={arresterConfigOptions}
             />
           </Form.Item>
-          <Form.Item label="上传模型文件" required>
+          <Form.Item label={t("上传模型文件")} required>
             <div>
               <Upload.Dragger
                 directory
@@ -1457,7 +1459,7 @@ export default function AtpModelsPage() {
                         <CheckCircleOutlined /> 上传完成，可以创建模型
                       </Typography.Text>
                     ) : (
-                      <Typography.Text type="warning">上传中…</Typography.Text>
+                      <Typography.Text type="warning">{t("上传中…")}</Typography.Text>
                     )}
                   </>
                 )}
@@ -1504,7 +1506,7 @@ export default function AtpModelsPage() {
         confirmLoading={updateAssetMutation.isPending}
         destroyOnHidden
         okText={updateAssetMutation.isPending ? "提交中..." : "保存"}
-        cancelText="取消"
+        cancelText={t("取消")}
         width={640}
       >
         <Form
@@ -1516,49 +1518,49 @@ export default function AtpModelsPage() {
           autoComplete="off"
         >
           <div className="grid gap-x-4 md:grid-cols-2">
-            <Form.Item name="name" label="名称" rules={[{ required: true, message: "请输入名称" }]}>
-              <Input placeholder="模型名称" maxLength={255} />
+            <Form.Item name="name" label={t("名称")} rules={[{ required: true, message: t("请输入名称") }]}>
+              <Input placeholder={t("模型名称")} maxLength={255} />
             </Form.Item>
-            <Form.Item name="storage_mount_code" label="存储挂载">
-              <Input placeholder="如 main" maxLength={64} />
+            <Form.Item name="storage_mount_code" label={t("存储挂载")}>
+              <Input placeholder={t("如 main")} maxLength={64} />
             </Form.Item>
-            <Form.Item name="voltage_level" label="电压等级" rules={[{ required: true, message: "请选择电压等级" }]}>
+            <Form.Item name="voltage_level" label={t("电压等级")} rules={[{ required: true, message: t("请选择电压等级") }]}>
               <Select
                 showSearch
                 allowClear
-                placeholder="请选择电压等级"
+                placeholder={t("请选择电压等级")}
                 options={voltageLevelOptions}
               />
             </Form.Item>
-            <Form.Item name="tower_type" label="塔型" rules={[{ required: true, message: "请选择塔型" }]}>
+            <Form.Item name="tower_type" label={t("塔型")} rules={[{ required: true, message: t("请选择塔型") }]}>
               <Select
                 showSearch
                 allowClear
-                placeholder="请选择塔型"
+                placeholder={t("请选择塔型")}
                 options={towerTypeOptions}
               />
             </Form.Item>
-            <Form.Item name="scene_type" label="场景" rules={[{ required: true, message: "请选择场景" }]}>
+            <Form.Item name="scene_type" label={t("场景")} rules={[{ required: true, message: t("请选择场景") }]}>
               <Select
                 showSearch
                 allowClear
-                placeholder="请选择场景"
+                placeholder={t("请选择场景")}
                 options={sceneTypeOptions}
               />
             </Form.Item>
-            <Form.Item name="arrester_config" label="避雷器装设组合" rules={[{ required: true, message: "请选择避雷器装设组合" }]}>
+            <Form.Item name="arrester_config" label={t("避雷器装设组合")} rules={[{ required: true, message: t("请选择避雷器装设组合") }]}>
               <Select
                 showSearch
                 allowClear
-                placeholder="请选择避雷器装设组合"
+                placeholder={t("请选择避雷器装设组合")}
                 options={arresterConfigOptions}
               />
             </Form.Item>
-            <Form.Item name="storage_root_path" label="存储目录" className="md:col-span-2" rules={[{ required: true, message: "请输入存储目录" }]}>
-              <Input placeholder="如 /atp-assets/220kV/猫头塔/平原/避雷器组合A" maxLength={2048} />
+            <Form.Item name="storage_root_path" label={t("存储目录")} className="md:col-span-2" rules={[{ required: true, message: t("请输入存储目录") }]}>
+              <Input placeholder={t("如 /atp-assets/220kV/猫头塔/平原/避雷器组合A")} maxLength={2048} />
             </Form.Item>
-            <Form.Item name="description" label="描述" className="md:col-span-2">
-              <Input.TextArea rows={2} placeholder="模型描述（可选）" maxLength={8000} />
+            <Form.Item name="description" label={t("描述")} className="md:col-span-2">
+              <Input.TextArea rows={2} placeholder={t("模型描述（可选）")} maxLength={8000} />
             </Form.Item>
           </div>
         </Form>

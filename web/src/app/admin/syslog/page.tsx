@@ -8,6 +8,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { CSSProperties, ComponentType, RefAttributes } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -90,6 +91,7 @@ function formatDate(value: string): string {
 }
 
 export default function AdminSyslogPage() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const isMobile = useMobileDetection();
@@ -288,7 +290,7 @@ export default function AdminSyslogPage() {
   const columns = useMemo<ColumnsType<AuditLogItem>>(
     () => [
       {
-        title: "时间",
+        title: t("时间"),
         dataIndex: "created_at",
         key: "created_at",
         width: 220,
@@ -299,7 +301,7 @@ export default function AdminSyslogPage() {
         ),
       },
       {
-        title: "用户",
+        title: t("用户"),
         key: "user",
         width: 260,
         render: (_value, record) => (
@@ -307,14 +309,14 @@ export default function AdminSyslogPage() {
         ),
       },
       {
-        title: "动作",
+        title: t("动作"),
         dataIndex: "action",
         key: "action",
         width: 220,
         render: (value: string) => <Tag>{getActionLabel(value)}</Tag>,
       },
       {
-        title: "入参",
+        title: t("入参"),
         dataIndex: "detail",
         key: "detail",
         render: (value: string | null) => (
@@ -322,7 +324,7 @@ export default function AdminSyslogPage() {
         ),
       },
       {
-        title: "出参",
+        title: t("出参"),
         dataIndex: "output",
         key: "output",
         render: (value: string | null) => (
@@ -419,20 +421,20 @@ export default function AdminSyslogPage() {
     >
       <Space direction="vertical" size={10} style={{ width: "100%" }}>
         <div className="admin-syslog-log-card-field">
-          <Typography.Text type="secondary">时间</Typography.Text>
+          <Typography.Text type="secondary">{t("时间")}</Typography.Text>
           <Typography.Text className="text-xs">
             {formatDate(log.created_at)}
           </Typography.Text>
         </div>
         <div className="admin-syslog-log-card-field">
-          <Typography.Text type="secondary">用户 ID</Typography.Text>
+          <Typography.Text type="secondary">{t("用户 ID")}</Typography.Text>
           <Typography.Text code type="secondary" ellipsis={{ tooltip: log.user_id ?? "-" }}>
             {log.user_id ?? "-"}
           </Typography.Text>
         </div>
         {log.detail && (
           <div className="admin-syslog-log-card-field">
-            <Typography.Text type="secondary">入参</Typography.Text>
+            <Typography.Text type="secondary">{t("入参")}</Typography.Text>
             <Typography.Text type="secondary" ellipsis={{ tooltip: log.detail }}>
               {log.detail}
             </Typography.Text>
@@ -440,7 +442,7 @@ export default function AdminSyslogPage() {
         )}
         {log.output && (
           <div className="admin-syslog-log-card-field">
-            <Typography.Text type="secondary">出参</Typography.Text>
+            <Typography.Text type="secondary">{t("出参")}</Typography.Text>
             <Typography.Text type="secondary" ellipsis={{ tooltip: log.output }}>
               {log.output}
             </Typography.Text>
@@ -461,7 +463,7 @@ export default function AdminSyslogPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问系统日志页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问系统日志页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -475,7 +477,7 @@ export default function AdminSyslogPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `menu.read`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `menu.read`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -489,11 +491,11 @@ export default function AdminSyslogPage() {
   const filterBar = (
     <div className="admin-filter-bar">
       <Form layout="inline">
-        <Form.Item label="动作" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+        <Form.Item label={t("动作")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
           <Select
             allowClear
             showSearch
-            placeholder="选择动作筛选"
+            placeholder={t("选择动作筛选")}
             value={draftFilters.action || undefined}
             onChange={handleActionChange}
             onClear={() => handleActionChange("")}
@@ -505,10 +507,10 @@ export default function AdminSyslogPage() {
             }
           />
         </Form.Item>
-        <Form.Item label="用户" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+        <Form.Item label={t("用户")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
           <Input
             allowClear
-            placeholder="按用户ID或用户名搜索"
+            placeholder={t("按用户ID或用户名搜索")}
             value={draftFilters.user_id}
             onChange={(event) => handleUserIdChange(event.target.value)}
             onPressEnter={handleSearch}
@@ -538,7 +540,7 @@ export default function AdminSyslogPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-syslog-tab-title">系统日志</span>,
+            label: <span className="admin-syslog-tab-title">{t("系统日志")}</span>,
             closable: false,
             children: (
               <div ref={pageCardRef} className="admin_syslog_list_pane">
@@ -571,7 +573,7 @@ export default function AdminSyslogPage() {
                         style: { marginBottom: 0 },
                       }}
                       locale={{
-                        emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的日志记录。" />,
+                        emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("未找到符合筛选条件的日志记录。")} />,
                       }}
                       scroll={{ y: tableScrollY }}
                     />
@@ -586,7 +588,7 @@ export default function AdminSyslogPage() {
                       <div className="admin-syslog-card-view-state">
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="未找到符合筛选条件的日志记录。"
+                          description={t("未找到符合筛选条件的日志记录。")}
                         />
                       </div>
                     ) : (

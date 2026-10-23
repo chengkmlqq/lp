@@ -35,6 +35,7 @@ import { EditOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-d
 import type { DataNode } from "antd/es/tree";
 import type { ComponentType, RefAttributes } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -88,7 +89,7 @@ function renderParamValue(value: string, record: SystemParamSummary): React.Reac
   if (record.is_encrypted) {
     return (
       <Space size={4} wrap>
-        <Tag color="purple">已加密</Tag>
+        <Tag color="purple">{"已加密"}</Tag>
         <Typography.Text className="font-mono text-xs">
           {record.has_value ? ENCRYPTED_VALUE_MASK : "-"}
         </Typography.Text>
@@ -108,6 +109,7 @@ function identityCategoryOf(path: unknown): string {
 }
 
 export default function AdminSystemParamsPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
@@ -201,7 +203,7 @@ export default function AdminSystemParamsPage() {
     const categoryMenuItems: MenuProps["items"] = [
       {
         key: "edit",
-        label: "编辑分类",
+        label: t("编辑分类"),
         onClick: ({ domEvent }) => {
           domEvent.stopPropagation();
           openCategoryEdit(cat);
@@ -209,15 +211,15 @@ export default function AdminSystemParamsPage() {
       },
       {
         key: "delete",
-        label: "删除分类",
+        label: t("删除分类"),
         danger: true,
         onClick: ({ domEvent }) => {
           domEvent.stopPropagation();
           Modal.confirm({
-            title: "删除分类",
+            title: t("删除分类"),
             content: `确认删除分类 "${cat.name}" 吗？该分类下不能有子分类和参数。`,
-            okText: "删除",
-            cancelText: "取消",
+            okText: t("删除"),
+            cancelText: t("取消"),
             okButtonProps: { danger: true },
             onOk: () => deleteCategoryMutation.mutate(cat.id),
           });
@@ -479,7 +481,7 @@ export default function AdminSystemParamsPage() {
       });
       const response = await fetchWithAuth(`/api/v1/admin/system-params?${params.toString()}`);
       if (!response.ok) {
-        return { available: false, message: "检查失败" };
+        return { available: false, message: t("检查失败") };
       }
       const payload = (await response.json()) as SystemParamListResponse;
       const normalizedKey = paramKey.trim().toLowerCase();
@@ -489,7 +491,7 @@ export default function AdminSystemParamsPage() {
         message: exists ? "参数键已存在，请更换后重试" : "参数键可用",
       };
     } catch {
-      return { available: false, message: "检查失败" };
+      return { available: false, message: t("检查失败") };
     }
   };
 
@@ -782,7 +784,7 @@ export default function AdminSystemParamsPage() {
     const moreMenuItems: MenuProps["items"] = [
       {
         key: "copy-key",
-        label: "复制参数键",
+        label: t("复制参数键"),
         disabled: rowBusy,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
@@ -801,15 +803,15 @@ export default function AdminSystemParamsPage() {
       },
       {
         key: "delete",
-        label: "删除",
+        label: t("删除"),
         danger: true,
         disabled: rowBusy || !canManage,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
           Modal.confirm({
             title: `确认删除系统参数 ${param.param_key}？`,
-            okText: "删除",
-            cancelText: "取消",
+            okText: t("删除"),
+            cancelText: t("取消"),
             okButtonProps: { danger: true },
             onOk: () => void removeParam(param),
           });
@@ -834,25 +836,25 @@ export default function AdminSystemParamsPage() {
         </div>
         <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-system-params-param-card-field">
-            <Typography.Text type="secondary">参数键</Typography.Text>
+            <Typography.Text type="secondary">{t("参数键")}</Typography.Text>
             <Typography.Text className="font-mono text-xs">{param.param_key}</Typography.Text>
           </div>
           <div className="admin-system-params-param-card-field">
-            <Typography.Text type="secondary">参数值</Typography.Text>
+            <Typography.Text type="secondary">{t("参数值")}</Typography.Text>
             <Typography.Text ellipsis={{ tooltip: param.param_value || "-" }}>
               {renderParamValue(param.param_value, param)}
             </Typography.Text>
           </div>
           {param.description && (
             <div className="admin-system-params-param-card-field">
-              <Typography.Text type="secondary">说明</Typography.Text>
+              <Typography.Text type="secondary">{t("说明")}</Typography.Text>
               <Typography.Text ellipsis={{ tooltip: param.description }}>
                 {param.description}
               </Typography.Text>
             </div>
           )}
           <div className="admin-system-params-param-card-field">
-            <Typography.Text type="secondary">更新时间</Typography.Text>
+            <Typography.Text type="secondary">{t("更新时间")}</Typography.Text>
             <Typography.Text>{new Date(param.updated_at).toLocaleString()}</Typography.Text>
           </div>
         </Space>
@@ -861,7 +863,7 @@ export default function AdminSystemParamsPage() {
           <Space size="small" className="shrink-0">
             {canManage ? (
               <>
-                <Tooltip title="编辑">
+                <Tooltip title={t("编辑")}>
                   <Button
                     type="text"
                     size="small"
@@ -874,7 +876,7 @@ export default function AdminSystemParamsPage() {
                   />
                 </Tooltip>
                 <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Tooltip title="更多">
+                  <Tooltip title={t("更多")}>
                     <Button
                       type="text"
                       size="small"
@@ -895,21 +897,21 @@ export default function AdminSystemParamsPage() {
   const columns = useMemo<TableColumnsType<SystemParamSummary>>(() => {
     const baseColumns: TableColumnsType<SystemParamSummary> = [
       {
-        title: "参数名",
+        title: t("参数名"),
         dataIndex: "param_key",
         key: "param_key",
         width: 180,
         render: (value: string) => <span className="font-mono text-xs">{value}</span>,
       },
       {
-        title: "参数描述",
+        title: t("参数描述"),
         dataIndex: "param_name",
         key: "param_name",
         width: 160,
         ellipsis: { showTitle: true },
       },
       {
-        title: "参数值",
+        title: t("参数值"),
         dataIndex: "param_value",
         key: "param_value",
         ellipsis: true,
@@ -917,7 +919,7 @@ export default function AdminSystemParamsPage() {
         render: (value: string, record: SystemParamSummary) => renderParamValue(value, record),
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "status",
         key: "status",
         width: 120,
@@ -928,7 +930,7 @@ export default function AdminSystemParamsPage() {
         ),
       },
       {
-        title: "更新时间",
+        title: t("更新时间"),
         dataIndex: "updated_at",
         key: "updated_at",
         width: 180,
@@ -947,7 +949,7 @@ export default function AdminSystemParamsPage() {
 
     if (canManage) {
       baseColumns.push({
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 180,
         fixed: "right",
@@ -973,10 +975,10 @@ export default function AdminSystemParamsPage() {
               <Button size="small" danger loading={deleteLoading} disabled={rowBusy}
                 onClick={() => {
                   Modal.confirm({
-                    title: "删除系统参数",
+                    title: t("删除系统参数"),
                     content: `确认删除系统参数 ${record.param_key} 吗？`,
-                    okText: "删除",
-                    cancelText: "取消",
+                    okText: t("删除"),
+                    cancelText: t("取消"),
                     okButtonProps: { danger: true, loading: deleteLoading },
                     onOk: () => void removeParam(record),
                   });
@@ -1089,7 +1091,7 @@ export default function AdminSystemParamsPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问参数管理页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问参数管理页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -1103,7 +1105,7 @@ export default function AdminSystemParamsPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `system_param.read`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `system_param.read`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -1133,7 +1135,7 @@ export default function AdminSystemParamsPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-system-params-tab-title">系统参数管理</span>,
+            label: <span className="admin-system-params-tab-title">{t("系统参数管理")}</span>,
             closable: false,
             children: (
               <div className="admin-system-params-list-pane">
@@ -1156,7 +1158,7 @@ export default function AdminSystemParamsPage() {
                 <div className="admin-system-params-sider-card-search">
                   <Input
                     className="admin-system-params-search-input"
-                    placeholder="搜索分类..."
+                    placeholder={t("搜索分类...")}
                     prefix={<SearchOutlined />}
                     value={categorySearch}
                     onChange={(e) => setCategorySearch(e.target.value)}
@@ -1181,7 +1183,7 @@ export default function AdminSystemParamsPage() {
                       treeData={[
                         {
                           key: "all",
-                          title: "全部参数",
+                          title: t("全部参数"),
                         } as DataNode,
                         ...convertToTreeData(filteredTreeData),
                       ]}
@@ -1192,7 +1194,7 @@ export default function AdminSystemParamsPage() {
                 </>
               ) : (
                 <div className="admin-system-params-sider-empty">
-                  <Empty description="暂无分类" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  <Empty description={t("暂无分类")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 </div>
               )}
             </AntCard>
@@ -1213,23 +1215,23 @@ export default function AdminSystemParamsPage() {
         >
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
-                  placeholder="搜索参数名"
+                  placeholder={t("搜索参数名")}
                   value={keywordInput}
                   onChange={(event) => handleKeywordChange(event.target.value)}
                   onPressEnter={handleQuery}
                 />
               </Form.Item>
-              <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Select<StatusFilter>
                   value={statusFilterInput}
                   allowClear
-                  placeholder="全部"
+                  placeholder={t("全部")}
                   options={[
-                    { value: "enabled", label: "启用" },
-                    { value: "disabled", label: "禁用" },
+                    { value: "enabled", label: t("启用") },
+                    { value: "disabled", label: t("禁用") },
                   ]}
                   labelRender={(props) => statusTag(props.value)}
                   optionRender={(option) => statusTag(option.value)}
@@ -1257,8 +1259,8 @@ export default function AdminSystemParamsPage() {
                   setAllLoadedParams([]);
                 }}
                 options={[
-                  { label: "卡片视图", value: "card" },
-                  { label: "列表视图", value: "table" },
+                  { label: t("卡片视图"), value: "card" },
+                  { label: t("列表视图"), value: "table" },
                 ]}
               />
             </div>
@@ -1296,7 +1298,7 @@ export default function AdminSystemParamsPage() {
                   emptyText: (
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="未找到符合筛选条件的系统参数。"
+                      description={t("未找到符合筛选条件的系统参数。")}
                     />
                   ),
                 }}
@@ -1312,7 +1314,7 @@ export default function AdminSystemParamsPage() {
                 <div className="admin-system-params-card-view-state">
                   <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="未找到符合筛选条件的系统参数。"
+                    description={t("未找到符合筛选条件的系统参数。")}
                   />
                 </div>
               ) : (
@@ -1353,7 +1355,7 @@ export default function AdminSystemParamsPage() {
             onCancel={closeEditor}
             onOk={() => formApi.submit()}
             okText={editingId === null ? "创建" : "保存"}
-            cancelText="取消"
+            cancelText={t("取消")}
             confirmLoading={saveMutation.isPending}
             destroyOnHidden
           >
@@ -1366,42 +1368,42 @@ export default function AdminSystemParamsPage() {
             >
               <div className="grid gap-4">
                 <Form.Item<FormState>
-                  label="参数键"
+                  label={t("参数键")}
                   name="param_key"
                   validateStatus={paramKeyValidationError ? "error" : ""}
                   help={paramKeyValidationError}
                   rules={[
-                    { required: true, message: "请输入参数键" },
-                    { min: 2, message: "参数键至少 2 位" },
-                    { max: 128, message: "参数键不能超过 128 位" },
+                    { required: true, message: t("请输入参数键") },
+                    { min: 2, message: t("参数键至少 2 位") },
+                    { max: 128, message: t("参数键不能超过 128 位") },
                   ]}
                 >
                   <Input
                     disabled={editingId !== null}
-                    placeholder="请输入参数键"
+                    placeholder={t("请输入参数键")}
                     onChange={(event) => handleParamKeyChange(event.target.value)}
                   />
                 </Form.Item>
 
                 <Form.Item<FormState>
-                  label="参数名称"
+                  label={t("参数名称")}
                   name="param_name"
                   rules={[
-                    { required: true, message: "请输入参数名称" },
-                    { min: 2, message: "参数名称至少 2 位" },
-                    { max: 128, message: "参数名称不能超过 128 位" },
+                    { required: true, message: t("请输入参数名称") },
+                    { min: 2, message: t("参数名称至少 2 位") },
+                    { max: 128, message: t("参数名称不能超过 128 位") },
                   ]}
                 >
-                  <Input placeholder="请输入参数名称" />
+                  <Input placeholder={t("请输入参数名称")} />
                 </Form.Item>
 
                 <Form.Item<FormState>
-                  label="参数分类"
+                  label={t("参数分类")}
                   name="category_id"
                 >
                   <Select
                     allowClear
-                    placeholder="请选择分类"
+                    placeholder={t("请选择分类")}
                     style={{ width: "100%" }}
                     options={(() => {
                       const flattenCategories = (cats: ParamCategoryTreeItem[], level: number = 0): { value: number; label: string }[] => {
@@ -1416,9 +1418,9 @@ export default function AdminSystemParamsPage() {
                 </Form.Item>
 
                 <Form.Item<FormState>
-                  label="参数值"
+                  label={t("参数值")}
                   name="param_value"
-                  rules={[{ max: 20000, message: "参数值不能超过 20000 位" }]}
+                  rules={[{ max: 20000, message: t("参数值不能超过 20000 位") }]}
                 >
                   <Input.TextArea
                     rows={4}
@@ -1433,18 +1435,18 @@ export default function AdminSystemParamsPage() {
                 </Form.Item>
 
                 <Form.Item<FormState>
-                  label="加密"
+                  label={t("加密")}
                   name="is_encrypted"
                   valuePropName="checked"
-                  extra="加密后参数值将以密文存储，后台与前端仅展示掩码；系统使用时自动解密。"
+                  extra={t("加密后参数值将以密文存储，后台与前端仅展示掩码；系统使用时自动解密。")}
                 >
                   <Switch checkedChildren="加密" unCheckedChildren="明文" />
                 </Form.Item>
 
                 <Form.Item<FormState>
-                  label="说明"
+                  label={t("说明")}
                   name="description"
-                  rules={[{ max: 20000, message: "说明不能超过 20000 位" }]}
+                  rules={[{ max: 20000, message: t("说明不能超过 20000 位") }]}
                 >
                   <Input.TextArea rows={3} />
                 </Form.Item>
@@ -1461,14 +1463,14 @@ export default function AdminSystemParamsPage() {
             onCancel={() => setCategoryEditorOpen(false)}
             onOk={() => saveCategoryMutation.mutate()}
             okText={editingCategoryId === null ? "创建" : "保存"}
-            cancelText="取消"
+            cancelText={t("取消")}
             confirmLoading={saveCategoryMutation.isPending}
             destroyOnHidden
           >
             <Form layout="vertical" style={{ marginTop: 16 }}>
-              <Form.Item label="分类名称" required>
+              <Form.Item label={t("分类名称")} required>
                 <Input
-                  placeholder="请输入分类名称"
+                  placeholder={t("请输入分类名称")}
                   value={categoryNameInput}
                   onChange={(e) => setCategoryNameInput(e.target.value)}
                   onPressEnter={() => saveCategoryMutation.mutate()}

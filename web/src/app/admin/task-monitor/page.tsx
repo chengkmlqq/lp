@@ -26,6 +26,7 @@ import {
 } from "antd";
 import { FileTextOutlined, SearchOutlined } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -116,6 +117,7 @@ function renderTaskStateTag(state: string) {
 }
 
 export default function AdminTaskMonitorPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const isMobile = useMobileDetection();
   const canRead = hasPermission("celery.read") || hasPermission("celery.manage");
@@ -217,7 +219,7 @@ export default function AdminTaskMonitorPage() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除任务失败";
-      Modal.error({ title: "删除任务失败", content: message });
+      Modal.error({ title: t("删除任务失败"), content: message });
     } finally {
       setDeletingTaskId(null);
     }
@@ -226,8 +228,8 @@ export default function AdminTaskMonitorPage() {
   const confirmDeleteTask = useCallback((taskId: string) => {
     Modal.confirm({
       title: `确认删除任务 ${taskId}？`,
-      okText: "删除",
-      cancelText: "取消",
+      okText: t("删除"),
+      cancelText: t("取消"),
       okButtonProps: { danger: true },
       onOk: () => handleDeleteTask(taskId),
     });
@@ -236,7 +238,7 @@ export default function AdminTaskMonitorPage() {
   const taskColumns = useMemo<TableColumnsType<TaskTableRow>>(
     () => [
       {
-        title: "任务 ID",
+        title: t("任务 ID"),
         dataIndex: "task_id",
         key: "task_id",
         width: 286,
@@ -248,21 +250,21 @@ export default function AdminTaskMonitorPage() {
         ),
       },
       {
-        title: "任务名称",
+        title: t("任务名称"),
         dataIndex: "name",
         key: "name",
         width: 242,
         render: (value: string) => getTaskDisplayName(value),
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "state",
         key: "state",
         width: 121,
         render: (value: string) => renderTaskStateTag(value),
       },
       {
-        title: "开始时间",
+        title: t("开始时间"),
         dataIndex: "started_at",
         key: "started_at",
         width: 198,
@@ -271,7 +273,7 @@ export default function AdminTaskMonitorPage() {
         ),
       },
       {
-        title: "完成时间",
+        title: t("完成时间"),
         dataIndex: "finished_at",
         key: "finished_at",
         width: 198,
@@ -280,14 +282,14 @@ export default function AdminTaskMonitorPage() {
         ),
       },
       {
-        title: "运行时长",
+        title: t("运行时长"),
         dataIndex: "runtime_seconds",
         key: "runtime_seconds",
         width: 121,
         render: (value: number | null) => formatTaskMonitorDuration(value),
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 130,
         fixed: "right",
@@ -535,7 +537,7 @@ export default function AdminTaskMonitorPage() {
       </div>
       <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
         <div className="admin-task-monitor-task-card-field">
-          <Typography.Text type="secondary">任务 ID</Typography.Text>
+          <Typography.Text type="secondary">{t("任务 ID")}</Typography.Text>
           <Typography.Text
             copyable
             ellipsis={{ tooltip: task.task_id }}
@@ -545,32 +547,32 @@ export default function AdminTaskMonitorPage() {
           </Typography.Text>
         </div>
         <div className="admin-task-monitor-task-card-field">
-          <Typography.Text type="secondary">队列</Typography.Text>
+          <Typography.Text type="secondary">{t("队列")}</Typography.Text>
           <Typography.Text>{getQueueDisplayName(task.queue_name)}</Typography.Text>
         </div>
         <div className="admin-task-monitor-task-card-field">
-          <Typography.Text type="secondary">节点</Typography.Text>
+          <Typography.Text type="secondary">{t("节点")}</Typography.Text>
           <Typography.Text ellipsis={{ tooltip: task.worker || "-" }}>
             {task.worker || "-"}
           </Typography.Text>
         </div>
         <div className="admin-task-monitor-task-card-field">
-          <Typography.Text type="secondary">开始</Typography.Text>
+          <Typography.Text type="secondary">{t("开始")}</Typography.Text>
           <Typography.Text>{formatDateTime(task.started_at)}</Typography.Text>
         </div>
         <div className="admin-task-monitor-task-card-field">
-          <Typography.Text type="secondary">完成</Typography.Text>
+          <Typography.Text type="secondary">{t("完成")}</Typography.Text>
           <Typography.Text>{formatDateTime(task.finished_at)}</Typography.Text>
         </div>
         <div className="admin-task-monitor-task-card-field">
-          <Typography.Text type="secondary">时长</Typography.Text>
+          <Typography.Text type="secondary">{t("时长")}</Typography.Text>
           <Typography.Text>{formatTaskMonitorDuration(task.runtime_seconds)}</Typography.Text>
         </div>
       </Space>
       <div className="admin-task-monitor-task-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
         <div />
         <Space size="small" className="shrink-0">
-          <Tooltip title="日志">
+          <Tooltip title={t("日志")}>
             <Button
               type="text"
               size="small"
@@ -597,7 +599,7 @@ export default function AdminTaskMonitorPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问任务监控页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问任务监控页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -611,7 +613,7 @@ export default function AdminTaskMonitorPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问任务监控页面的权限，请联系管理员开通相关权限。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问任务监控页面的权限，请联系管理员开通相关权限。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -632,18 +634,18 @@ export default function AdminTaskMonitorPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin_task_monitor_tab_title">任务监控</span>,
+            label: <span className="admin_task_monitor_tab_title">{t("任务监控")}</span>,
             closable: false,
             children: (
               <div ref={pageCardRef} className="admin_task_monitor_list_pane">
         {viewMode === "card" ? (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="任务" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Form.Item label={t("任务")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   maxLength={200}
-                  placeholder="按任务 ID / 任务名称筛选"
+                  placeholder={t("按任务 ID / 任务名称筛选")}
                   value={pendingKeyword}
                   onChange={(event) => {
                     setPendingKeyword(event.target.value);
@@ -668,11 +670,11 @@ export default function AdminTaskMonitorPage() {
         ) : (
           <div className="admin-filter-bar">
             <Form layout="inline">
-              <Form.Item label="任务" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+              <Form.Item label={t("任务")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                 <Input
                   allowClear
                   maxLength={200}
-                  placeholder="按任务 ID / 任务名称筛选"
+                  placeholder={t("按任务 ID / 任务名称筛选")}
                   value={pendingKeyword}
                   onChange={(event) => {
                     setPendingKeyword(event.target.value);
@@ -700,7 +702,7 @@ export default function AdminTaskMonitorPage() {
           <div className="mt-4">
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="暂无任务监控数据"
+              description={t("暂无任务监控数据")}
             />
           </div>
         )}
@@ -734,7 +736,7 @@ export default function AdminTaskMonitorPage() {
                 emptyText: (
                   <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="未找到符合筛选条件的任务。"
+                    description={t("未找到符合筛选条件的任务。")}
                   />
                 ),
               }}
@@ -751,7 +753,7 @@ export default function AdminTaskMonitorPage() {
               <div className="admin-task-monitor-card-view-state">
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="未找到符合筛选条件的任务。"
+                  description={t("未找到符合筛选条件的任务。")}
                 />
               </div>
             ) : (

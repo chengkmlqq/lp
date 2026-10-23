@@ -22,6 +22,7 @@ import {
 import { CheckCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -91,6 +92,7 @@ type DetailTabItem = {
 
 
 export default function AdminFaultRecurrencePage() {
+  const { t } = useI18n();
   const { user, initializing, hasPermission, fetchWithAuth, getAccessToken } = useAuth();
   const [form] = Form.useForm<FaultRecurrenceFormValues>();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -280,8 +282,8 @@ export default function AdminFaultRecurrencePage() {
         <Alert
           type="warning"
           showIcon
-          message="暂无访问权限"
-          description="故障复现工具依赖线路/杆塔读取权限，请联系管理员授权 line.read 或 tower.read。"
+          message={t("暂无访问权限")}
+          description={t("故障复现工具依赖线路/杆塔读取权限，请联系管理员授权 line.read 或 tower.read。")}
         />
       </Card>
     );
@@ -291,7 +293,7 @@ export default function AdminFaultRecurrencePage() {
     <>
       {contextHolder}
       <div className="flex min-h-0 flex-1 flex-col gap-4">
-        <Card title="故障复现" className="surface-card">
+        <Card title={t("故障复现")} className="surface-card">
           <Space direction="vertical" size={16} className="w-full">
             <Typography.Paragraph type="secondary" className="!mb-0">
               迁移自源端 `FuXian` 工具：上传基础数据文件后，按波形、类型和耐雷水平计算最可能的波头/波尾组合。
@@ -299,8 +301,8 @@ export default function AdminFaultRecurrencePage() {
             <Alert
               type="info"
               showIcon
-              message="输入口径"
-              description="支持源端 <TGanTa>/<XianLu> 分段文本，以及包含“波头时间/μs、波尾时间/μs、反击耐雷水平kA、绕击耐雷水平kA”列的普通 CSV/TXT。"
+              message={t("输入口径")}
+              description={t("支持源端 <TGanTa>/<XianLu> 分段文本，以及包含“波头时间/μs、波尾时间/μs、反击耐雷水平kA、绕击耐雷水平kA”列的普通 CSV/TXT。")}
             />
             <Form<FaultRecurrenceFormValues>
               form={form}
@@ -313,31 +315,31 @@ export default function AdminFaultRecurrencePage() {
             >
               <div className="flex flex-wrap items-end gap-4">
                 <Form.Item<FaultRecurrenceFormValues>
-                  label="雷电流波形"
+                  label={t("雷电流波形")}
                   name="curve_no"
-                  rules={[{ required: true, message: "请选择雷电流波形" }]}
+                  rules={[{ required: true, message: t("请选择雷电流波形") }]}
                   className="mb-0 min-w-[160px]"
                 >
                   <Select options={CURVE_OPTIONS} />
                 </Form.Item>
                 <Form.Item<FaultRecurrenceFormValues>
-                  label="类型"
+                  label={t("类型")}
                   name="stroke_mode"
-                  rules={[{ required: true, message: "请选择类型" }]}
+                  rules={[{ required: true, message: t("请选择类型") }]}
                   className="mb-0 min-w-[160px]"
                 >
                   <Select options={STROKE_OPTIONS} />
                 </Form.Item>
                 <Form.Item<FaultRecurrenceFormValues>
-                  label="耐雷水平 / kA"
+                  label={t("耐雷水平 / kA")}
                   name="withstand_level_ka"
-                  rules={[{ required: true, message: "请输入耐雷水平" }]}
+                  rules={[{ required: true, message: t("请输入耐雷水平") }]}
                   className="mb-0 min-w-[180px]"
                 >
                   <InputNumber min={0.0001} precision={4} className="w-full" />
                 </Form.Item>
                 <div className="flex min-w-[320px] flex-col gap-2">
-                  <Typography.Text strong>基础数据文件</Typography.Text>
+                  <Typography.Text strong>{t("基础数据文件")}</Typography.Text>
                   <Space wrap>
                     <Button onClick={() => fileInputRef.current?.click()}>
                       选择文件
@@ -394,7 +396,7 @@ export default function AdminFaultRecurrencePage() {
           <Alert
             type="error"
             showIcon
-            message="计算失败"
+            message={t("计算失败")}
             description={error}
           />
         ) : null}
@@ -410,12 +412,12 @@ export default function AdminFaultRecurrencePage() {
             items={[
               {
                 key: "result",
-                label: <span className="admin-fault-recurrence-tab-title">复现结果</span>,
+                label: <span className="admin-fault-recurrence-tab-title">{t("复现结果")}</span>,
                 closable: false,
                 children: (
                   <div className="admin-fault-recurrence-result-pane">
                     {resultTabs.length === 0 ? (
-                      <Empty description="选择基础数据文件并执行一次复现计算后，将在这里展示结果。" />
+                      <Empty description={t("选择基础数据文件并执行一次复现计算后，将在这里展示结果。")} />
                     ) : (
                       <Tabs
                         type="editable-card"
@@ -443,27 +445,28 @@ function FaultRecurrenceResultView({
 }: {
   result: FaultRecurrenceAnalyzeResponse;
 }) {
+  const { t } = useI18n();
   const columns: ColumnsType<FaultRecurrenceDataPoint> = [
     {
-      title: "波头时间 / μs",
+      title: t("波头时间 / μs"),
       dataIndex: "head_time_us",
       render: (value: number) => formatNumber(value, 4),
       width: 140,
     },
     {
-      title: "波尾时间 / μs",
+      title: t("波尾时间 / μs"),
       dataIndex: "tail_time_us",
       render: (value: number) => formatNumber(value, 4),
       width: 140,
     },
     {
-      title: "反击耐雷水平 / kA",
+      title: t("反击耐雷水平 / kA"),
       dataIndex: "counterstroke_withstand_ka",
       render: (value: number) => formatNumber(value, 4),
       width: 180,
     },
     {
-      title: "绕击耐雷水平 / kA",
+      title: t("绕击耐雷水平 / kA"),
       dataIndex: "shielding_withstand_ka",
       render: (value: number) => formatNumber(value, 4),
       width: 180,
@@ -476,46 +479,46 @@ function FaultRecurrenceResultView({
       items={[
         {
           key: "overview",
-          label: "结果概览",
+          label: t("结果概览"),
           children: (
             <Space direction="vertical" size={16} className="w-full">
               <Descriptions bordered column={{ xs: 1, sm: 1, md: 2, lg: 3 }}>
-                <Descriptions.Item label="结果状态">
+                <Descriptions.Item label={t("结果状态")}>
                   <Tag color={resultTagColor(result.result.status)}>
                     {result.result.status === "no_need" ? "No need" : "已匹配"}
                   </Tag>
                 </Descriptions.Item>
-                <Descriptions.Item label="波形">
+                <Descriptions.Item label={t("波形")}>
                   {result.curve_label}
                 </Descriptions.Item>
-                <Descriptions.Item label="类型">
+                <Descriptions.Item label={t("类型")}>
                   {result.stroke_label}
                 </Descriptions.Item>
-                <Descriptions.Item label="耐雷水平 / kA">
+                <Descriptions.Item label={t("耐雷水平 / kA")}>
                   {formatNumber(result.withstand_level_ka, 4)}
                 </Descriptions.Item>
-                <Descriptions.Item label="输入文件">
+                <Descriptions.Item label={t("输入文件")}>
                   {result.source_file_name}
                 </Descriptions.Item>
-                <Descriptions.Item label="输入格式">
+                <Descriptions.Item label={t("输入格式")}>
                   {formatSourceMode(result.source_mode)}
                 </Descriptions.Item>
-                <Descriptions.Item label="基准点(反击) / kA">
+                <Descriptions.Item label={t("基准点(反击) / kA")}>
                   {formatNumber(result.reference_counterstroke_ka, 4)}
                 </Descriptions.Item>
-                <Descriptions.Item label="基准点(绕击) / kA">
+                <Descriptions.Item label={t("基准点(绕击) / kA")}>
                   {formatNumber(result.reference_shielding_ka, 4)}
                 </Descriptions.Item>
-                <Descriptions.Item label="有效数据条数">
+                <Descriptions.Item label={t("有效数据条数")}>
                   {result.point_count}
                 </Descriptions.Item>
-                <Descriptions.Item label="匹配波头 / μs">
+                <Descriptions.Item label={t("匹配波头 / μs")}>
                   {formatNumber(result.result.head_time_us, 6)}
                 </Descriptions.Item>
-                <Descriptions.Item label="匹配波尾 / μs">
+                <Descriptions.Item label={t("匹配波尾 / μs")}>
                   {formatNumber(result.result.tail_time_us, 6)}
                 </Descriptions.Item>
-                <Descriptions.Item label="概率密度">
+                <Descriptions.Item label={t("概率密度")}>
                   {formatNumber(result.result.probability_density, 12)}
                 </Descriptions.Item>
               </Descriptions>
@@ -528,15 +531,15 @@ function FaultRecurrenceResultView({
                 <Alert
                   type="warning"
                   showIcon
-                  message="未命中 2.6/50 基准点"
-                  description="按源端逻辑，当前结果已回退为首条基础数据作为基准。"
+                  message={t("未命中 2.6/50 基准点")}
+                  description={t("按源端逻辑，当前结果已回退为首条基础数据作为基准。")}
                 />
               ) : null}
               {result.warnings.length > 0 ? (
                 <Alert
                   type="warning"
                   showIcon
-                  message="解析提醒"
+                  message={t("解析提醒")}
                   description={
                     <ul className="mb-0 list-disc pl-5">
                       {result.warnings.map((warning) => (
@@ -551,7 +554,7 @@ function FaultRecurrenceResultView({
         },
         {
           key: "detail",
-          label: "详细数据",
+          label: t("详细数据"),
           children: (
             <Card title={`基础数据预览 (${result.point_count} 条)`} className="surface-card">
               <Table<FaultRecurrenceDataPoint>

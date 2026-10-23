@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Col, Empty, Row, Space, Spin, Typography, message } from "antd";
 import { useState } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import { OverviewConfigModal } from "@/components/overview/overview-config-modal";
@@ -29,6 +30,7 @@ const DEFAULT_WIDGETS: OverviewWidget[] = [
 ];
 
 export default function AdminOverviewPage() {
+  const { t } = useI18n();
   const { fetchWithAuth } = useAuth();
   const queryClient = useQueryClient();
   const [configOpen, setConfigOpen] = useState(false);
@@ -92,7 +94,7 @@ export default function AdminOverviewPage() {
       <Alert
         type="error"
         showIcon
-        message="系统总览加载失败"
+        message={t("系统总览加载失败")}
         description={overviewQuery.error instanceof Error ? overviewQuery.error.message : "请稍后重试"}
       />
     );
@@ -111,7 +113,7 @@ export default function AdminOverviewPage() {
       </div>
 
       {widgets.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未配置卡片，点击「配置布局」添加" />
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("未配置卡片，点击「配置布局」添加")} />
       ) : (
         <Row gutter={[16, 16]}>
           {widgets.map((widget, index) => (

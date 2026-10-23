@@ -37,6 +37,7 @@ import type { ColumnsType } from "antd/es/table";
 import React, { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
 import type { DataNode } from "antd/es/tree";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -78,6 +79,7 @@ const DOCUMENTS_TABLE_VIEWPORT_GAP = 40;
 const DOCUMENTS_TABLE_FALLBACK_RESERVE = 220;
 
 export default function AdminDocumentsPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
@@ -606,12 +608,12 @@ export default function AdminDocumentsPage() {
 
   const columns: ColumnsType<Document> = useMemo(() => [
     {
-      title: "标题",
+      title: t("标题"),
       dataIndex: "title",
       width: 200,
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 100,
       align: "center",
@@ -622,13 +624,13 @@ export default function AdminDocumentsPage() {
       ),
     },
     {
-      title: "排序",
+      title: t("排序"),
       dataIndex: "sort_order",
       width: 80,
       align: "center",
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       fixed: "right",
       width: 180,
@@ -650,8 +652,8 @@ export default function AdminDocumentsPage() {
               onClick={() => {
                 Modal.confirm({
                   title: `确认删除文档 ${record.title}？`,
-                  okText: "删除",
-                  cancelText: "取消",
+                  okText: t("删除"),
+                  cancelText: t("取消"),
                   okButtonProps: { danger: true, loading: deleteLoading },
                   onOk: () => deleteDocumentMutation.mutate(record.id),
                 });
@@ -690,12 +692,12 @@ export default function AdminDocumentsPage() {
         </div>
         <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-documents-document-card-field">
-            <Typography.Text type="secondary">排序</Typography.Text>
+            <Typography.Text type="secondary">{t("排序")}</Typography.Text>
             <Typography.Text>{doc.sort_order}</Typography.Text>
           </div>
           {doc.content && (
             <div className="admin-documents-document-card-field">
-              <Typography.Text type="secondary">内容</Typography.Text>
+              <Typography.Text type="secondary">{t("内容")}</Typography.Text>
               <Typography.Text ellipsis={{ tooltip: doc.content }}>
                 {doc.content.substring(0, 100)}
                 {doc.content.length > 100 && "..."}
@@ -706,7 +708,7 @@ export default function AdminDocumentsPage() {
         <div className="admin-documents-document-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
           <div />
           <Space size="small" className="shrink-0">
-            <Tooltip title="编辑">
+            <Tooltip title={t("编辑")}>
               <Button
                 type="text"
                 size="small"
@@ -718,7 +720,7 @@ export default function AdminDocumentsPage() {
                 }}
               />
             </Tooltip>
-            <Tooltip title="删除">
+            <Tooltip title={t("删除")}>
               <Button
                 type="text"
                 size="small"
@@ -730,8 +732,8 @@ export default function AdminDocumentsPage() {
                   event.stopPropagation();
                   Modal.confirm({
                     title: `确认删除文档 ${doc.title}？`,
-                    okText: "删除",
-                    cancelText: "取消",
+                    okText: t("删除"),
+                    cancelText: t("取消"),
                     okButtonProps: { danger: true, loading: deleteLoading },
                     onOk: () => deleteDocumentMutation.mutate(doc.id),
                   });
@@ -769,7 +771,7 @@ export default function AdminDocumentsPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问文档管理页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问文档管理页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -783,7 +785,7 @@ export default function AdminDocumentsPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `file.read`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `file.read`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -824,7 +826,7 @@ export default function AdminDocumentsPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-documents-tab-title">文档管理</span>,
+            label: <span className="admin-documents-tab-title">{t("文档管理")}</span>,
             closable: false,
             children: (
               <div ref={pageCardRef} className="admin-documents-list-pane">
@@ -841,7 +843,7 @@ export default function AdminDocumentsPage() {
                 <div className="admin-documents-sider-search">
                   <Input
                     className="admin-documents-search-input"
-                    placeholder="搜索章节..."
+                    placeholder={t("搜索章节...")}
                     prefix={<SearchOutlined />}
                     value={treeFilterKeyword}
                     onChange={(e) => setTreeFilterKeyword(e.target.value)}
@@ -899,10 +901,10 @@ export default function AdminDocumentsPage() {
             {viewMode === "card" ? (
               <div className="admin-filter-bar">
                 <Form layout="inline">
-                  <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Input
                       allowClear
-                      placeholder="按标题/内容搜索"
+                      placeholder={t("按标题/内容搜索")}
                       value={keywordInput}
                       onChange={(event) => handleKeywordChange(event.target.value)}
                       onPressEnter={() => {
@@ -940,8 +942,8 @@ export default function AdminDocumentsPage() {
                       setAllLoadedDocuments([]);
                     }}
                     options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "table" },
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "table" },
                     ]}
                   />
                 </div>
@@ -949,10 +951,10 @@ export default function AdminDocumentsPage() {
             ) : (
               <div className="admin-filter-bar">
                 <Form layout="inline">
-                  <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Input
                       allowClear
-                      placeholder="按标题/内容搜索"
+                      placeholder={t("按标题/内容搜索")}
                       value={keywordInput}
                       onChange={(event) => handleKeywordChange(event.target.value)}
                       onPressEnter={() => {
@@ -964,14 +966,14 @@ export default function AdminDocumentsPage() {
                     />
                   </Form.Item>
 
-                  <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Select<"draft" | "published">
                       value={statusFilter}
                       allowClear
-                      placeholder="全部"
+                      placeholder={t("全部")}
                       options={[
-                        { value: "draft", label: "草稿" },
-                        { value: "published", label: "已发布" },
+                        { value: "draft", label: t("草稿") },
+                        { value: "published", label: t("已发布") },
                       ]}
                       onChange={(value) => {
                         setStatusFilter(value);
@@ -1009,8 +1011,8 @@ export default function AdminDocumentsPage() {
                       setAllLoadedDocuments([]);
                     }}
                     options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "table" },
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "table" },
                     ]}
                   />
                 </div>
@@ -1047,7 +1049,7 @@ export default function AdminDocumentsPage() {
                     emptyText: (
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="未找到符合筛选条件的文档。"
+                        description={t("未找到符合筛选条件的文档。")}
                       />
                     ),
                   }}
@@ -1063,7 +1065,7 @@ export default function AdminDocumentsPage() {
                   <div className="admin-documents-card-view-state">
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="未找到符合筛选条件的文档。"
+                      description={t("未找到符合筛选条件的文档。")}
                     />
                   </div>
                 ) : (
@@ -1109,8 +1111,8 @@ export default function AdminDocumentsPage() {
           setEditingChapterId(null);
           chapterForm.resetFields();
         }}
-        okText="保存"
-        cancelText="取消"
+        okText={t("保存")}
+        cancelText={t("取消")}
         confirmLoading={
           createChapterMutation.isPending || updateChapterMutation.isPending
         }
@@ -1118,16 +1120,16 @@ export default function AdminDocumentsPage() {
         <Form form={chapterForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
             name="name"
-            label="章节名称"
-            rules={[{ required: true, message: "请输入章节名称" }]}
+            label={t("章节名称")}
+            rules={[{ required: true, message: t("请输入章节名称") }]}
           >
-            <Input placeholder="请输入章节名称" />
+            <Input placeholder={t("请输入章节名称")} />
           </Form.Item>
-          <Form.Item name="description" label="描述">
-            <TextArea rows={3} placeholder="请输入描述" />
+          <Form.Item name="description" label={t("描述")}>
+            <TextArea rows={3} placeholder={t("请输入描述")} />
           </Form.Item>
-          <Form.Item name="parent_id" label="父章节">
-            <Select placeholder="选择父章节（可选）" allowClear>
+          <Form.Item name="parent_id" label={t("父章节")}>
+            <Select placeholder={t("选择父章节（可选）")} allowClear>
               {treeData &&
                 flattenChapters(treeData)
                   .filter((c) => c.id !== editingChapterId)
@@ -1138,7 +1140,7 @@ export default function AdminDocumentsPage() {
                   ))}
             </Select>
           </Form.Item>
-          <Form.Item name="sort_order" label="排序" initialValue={0}>
+          <Form.Item name="sort_order" label={t("排序")} initialValue={0}>
             <InputNumber min={0} style={{ width: "100%" }} />
           </Form.Item>
         </Form>
@@ -1180,20 +1182,20 @@ export default function AdminDocumentsPage() {
         <Form form={documentForm} layout="vertical">
           <Form.Item
             name="title"
-            label="文档标题"
-            rules={[{ required: true, message: "请输入文档标题" }]}
+            label={t("文档标题")}
+            rules={[{ required: true, message: t("请输入文档标题") }]}
           >
-            <Input placeholder="请输入文档标题" />
+            <Input placeholder={t("请输入文档标题")} />
           </Form.Item>
           <Form.Item
             name="content"
-            label="文档内容"
-            rules={[{ required: true, message: "请输入文档内容" }]}
+            label={t("文档内容")}
+            rules={[{ required: true, message: t("请输入文档内容") }]}
           >
-            <TextArea rows={15} placeholder="请输入文档内容，支持 Markdown 格式" />
+            <TextArea rows={15} placeholder={t("请输入文档内容，支持 Markdown 格式")} />
           </Form.Item>
-          <Form.Item name="chapter_id" label="所属章节">
-            <Select placeholder="选择所属章节（可选）" allowClear>
+          <Form.Item name="chapter_id" label={t("所属章节")}>
+            <Select placeholder={t("选择所属章节（可选）")} allowClear>
               {treeData &&
                 flattenChapters(treeData).map((chapter) => (
                   <Select.Option key={chapter.id} value={chapter.id}>
@@ -1202,13 +1204,13 @@ export default function AdminDocumentsPage() {
                 ))}
             </Select>
           </Form.Item>
-          <Form.Item name="status" label="状态" initialValue="draft">
+          <Form.Item name="status" label={t("状态")} initialValue="draft">
             <Select>
-              <Select.Option value="draft">草稿</Select.Option>
-              <Select.Option value="published">已发布</Select.Option>
+              <Select.Option value="draft">{t("草稿")}</Select.Option>
+              <Select.Option value="published">{t("已发布")}</Select.Option>
             </Select>
           </Form.Item>
-          <Form.Item name="sort_order" label="排序" initialValue={0}>
+          <Form.Item name="sort_order" label={t("排序")} initialValue={0}>
             <InputNumber min={0} style={{ width: "100%" }} />
           </Form.Item>
         </Form>

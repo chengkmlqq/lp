@@ -27,6 +27,7 @@ import { DeleteOutlined, EditOutlined, KeyOutlined, MoreOutlined, QuestionCircle
 import type { ColumnsType } from "antd/es/table";
 import type { CSSProperties, ComponentType, RefAttributes } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -69,6 +70,7 @@ const ROLE_TABLE_VIEWPORT_GAP = 40;
 const ROLE_TABLE_FALLBACK_RESERVE = 220;
 
 export default function AdminRolesPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
@@ -269,7 +271,7 @@ export default function AdminRolesPage() {
       permsByModule.set(mod, arr);
     }
     // 叶子菜单 -> 其 permission_code 模块前缀对应的权限码(菜单页面权限 + 该模块操作按钮)
-    // 叶子菜单 value=menu:<id>, 权限码 value=perm:<code>, 提交/回显时分拆。
+    // 叶子菜单 value=menu:<id>{t(", 权限码 value=perm:")}<code>, 提交/回显时分拆。
     const menuMap = new Map<string, MenuItem>();
     for (const menu of menus) {
       menuMap.set(menu.id, menu);
@@ -424,7 +426,7 @@ export default function AdminRolesPage() {
   /**
    * 分配权限：只处理「菜单 + 操作权限（按钮级）」。
    *
-   * 勾选值用统一前缀编码：`menu:<id>` 表示菜单/按钮行，`perm:<code>` 表示模块权限码；
+   * 勾选值用统一前缀编码：`menu:<id>{t("` 表示菜单/按钮行，`perm:")}<code>` 表示模块权限码；
    * 提交时分拆并合并按钮自身的 permission_code（与后端 role_menus / role_permissions 双写对应）。
    */
   const startEditPermissions = useCallback((role: RoleItem) => {
@@ -612,23 +614,23 @@ export default function AdminRolesPage() {
   const columns = useMemo<ColumnsType<RoleItem>>(() => {
     const base: ColumnsType<RoleItem> = [
       {
-        title: "角色编码",
+        title: t("角色编码"),
         dataIndex: "code",
         width: 140,
       },
       {
-        title: "角色名称",
+        title: t("角色名称"),
         dataIndex: "name",
         width: 140,
       },
       {
-        title: "菜单",
+        title: t("菜单"),
         dataIndex: "menu_ids",
         // 不设置固定宽度：在 tableLayout="fixed" 下作为弹性列吸收表格富余宽度，
         // 使「角色编码」「角色名称」「操作」等固定宽度列不随窗口缩放而变化。
         render: (value: string[]) => {
           if (value.length === 0) {
-            return <Typography.Text type="secondary">未绑定菜单</Typography.Text>;
+            return <Typography.Text type="secondary">{t("未绑定菜单")}</Typography.Text>;
           }
           const menuLabels = value.map((menuId) => menuNameById.get(menuId) ?? String(menuId));
           const fullText = menuLabels.join("、");
@@ -652,7 +654,7 @@ export default function AdminRolesPage() {
 
     if (canManage) {
       base.push({
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         fixed: "right",
         width: 170,
@@ -669,7 +671,7 @@ export default function AdminRolesPage() {
               label: (
                 <Space size={4}>
                   <DeleteOutlined />
-                  <span>删除</span>
+                  <span>{t("删除")}</span>
                 </Space>
               ),
               danger: true,
@@ -677,9 +679,9 @@ export default function AdminRolesPage() {
               onClick: () => {
                 Modal.confirm({
                   title: `确认删除角色 ${role.code} 吗？`,
-                  content: "删除后无法恢复，请谨慎操作。",
-                  okText: "删除",
-                  cancelText: "取消",
+                  content: t("删除后无法恢复，请谨慎操作。"),
+                  okText: t("删除"),
+                  cancelText: t("取消"),
                   okButtonProps: { danger: true, loading: isDeleting },
                   onOk: () => deleteRoleMutation.mutate(role.id),
                 });
@@ -713,7 +715,7 @@ export default function AdminRolesPage() {
     }
 
     return base;
-  }, [canManage, createRoleMutation.isPending, deletingRoleId, deleteRoleMutation, menuNameById, savingRoleId, startEditRole, startEditPermissions, updateRoleMutation.isPending]);
+  }, [t, canManage, createRoleMutation.isPending, deletingRoleId, deleteRoleMutation, menuNameById, savingRoleId, startEditRole, startEditPermissions, updateRoleMutation.isPending]);
 
   const renderRoleCard = (role: RoleItem) => {
     const isDeleting = deletingRoleId === role.id;
@@ -726,7 +728,7 @@ export default function AdminRolesPage() {
     const moreMenuItems: MenuProps["items"] = [
       {
         key: "view-menus",
-        label: "查看菜单",
+        label: t("查看菜单"),
         disabled: menuLabels.length === 0,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
@@ -739,26 +741,26 @@ export default function AdminRolesPage() {
                     <Typography.Text key={label}>{label}</Typography.Text>
                   ))
                 ) : (
-                  <Typography.Text type="secondary">未绑定菜单</Typography.Text>
+                  <Typography.Text type="secondary">{t("未绑定菜单")}</Typography.Text>
                 )}
               </Space>
             ),
-            okText: "知道了",
+            okText: t("知道了"),
           });
         },
       },
       {
         key: "delete",
-        label: "删除",
+        label: t("删除"),
         danger: true,
         disabled: rowBusy,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
           Modal.confirm({
             title: `确认删除角色 ${role.code} 吗？`,
-            content: "删除后无法恢复，请谨慎操作。",
-            okText: "删除",
-            cancelText: "取消",
+            content: t("删除后无法恢复，请谨慎操作。"),
+            okText: t("删除"),
+            cancelText: t("取消"),
             okButtonProps: { danger: true, loading: isDeleting },
             onOk: () => deleteRoleMutation.mutate(role.id),
           });
@@ -786,19 +788,19 @@ export default function AdminRolesPage() {
       >
         <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-roles-role-card-field">
-            <Typography.Text type="secondary">角色编码</Typography.Text>
+            <Typography.Text type="secondary">{t("角色编码")}</Typography.Text>
             <Typography.Text ellipsis={{ tooltip: role.code }}>
               {role.code}
             </Typography.Text>
           </div>
           <div className="admin-roles-role-card-field">
-            <Typography.Text type="secondary">角色名称</Typography.Text>
+            <Typography.Text type="secondary">{t("角色名称")}</Typography.Text>
             <Typography.Text ellipsis={{ tooltip: role.name }}>
               {role.name}
             </Typography.Text>
           </div>
           <div className="admin-roles-role-card-field">
-            <Typography.Text type="secondary">菜单</Typography.Text>
+            <Typography.Text type="secondary">{t("菜单")}</Typography.Text>
             <Typography.Text
               title={fullText}
               ellipsis={{ tooltip: fullText }}
@@ -814,7 +816,7 @@ export default function AdminRolesPage() {
           <Space size="small" className="shrink-0">
             {canManage ? (
               <>
-                <Tooltip title="编辑">
+                <Tooltip title={t("编辑")}>
                   <Button
                     type="text"
                     size="small"
@@ -826,7 +828,7 @@ export default function AdminRolesPage() {
                     }}
                   />
                 </Tooltip>
-                <Tooltip title="分配权限">
+                <Tooltip title={t("分配权限")}>
                   <Button
                     type="text"
                     size="small"
@@ -839,7 +841,7 @@ export default function AdminRolesPage() {
                   />
                 </Tooltip>
                 <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Tooltip title="更多">
+                  <Tooltip title={t("更多")}>
                     <Button
                       type="text"
                       size="small"
@@ -946,7 +948,7 @@ export default function AdminRolesPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问角色管理页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问角色管理页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -960,7 +962,7 @@ export default function AdminRolesPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `role.read`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `role.read`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -988,17 +990,17 @@ export default function AdminRolesPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-roles-tab-title">角色管理</span>,
+            label: <span className="admin-roles-tab-title">{t("角色管理")}</span>,
             closable: false,
             children: (
               <div ref={pageCardRef} className="admin_roles_list_pane">
                 {viewMode === "card" ? (
                   <div className="admin-filter-bar">
                     <Form layout="inline">
-                      <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                         <Input
                           allowClear
-                          placeholder="按角色编码/名称/菜单搜索"
+                          placeholder={t("按角色编码/名称/菜单搜索")}
                           value={keywordInput}
                           onChange={(event) => handleKeywordChange(event.target.value)}
                           onPressEnter={handleSearch}
@@ -1018,10 +1020,10 @@ export default function AdminRolesPage() {
                 ) : (
                   <div className="admin-filter-bar">
                     <Form layout="inline">
-                      <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                         <Input
                           allowClear
-                          placeholder="按角色编码/名称/菜单搜索"
+                          placeholder={t("按角色编码/名称/菜单搜索")}
                           value={keywordInput}
                           onChange={(event) => handleKeywordChange(event.target.value)}
                           onPressEnter={handleSearch}
@@ -1073,7 +1075,7 @@ export default function AdminRolesPage() {
                         emptyText: (
                           <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description="未找到符合筛选条件的角色。"
+                            description={t("未找到符合筛选条件的角色。")}
                           />
                         ),
                       }}
@@ -1089,7 +1091,7 @@ export default function AdminRolesPage() {
                       <div className="admin-roles-card-view-state">
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="未找到符合筛选条件的角色。"
+                          description={t("未找到符合筛选条件的角色。")}
                         />
                       </div>
                     ) : (
@@ -1133,7 +1135,7 @@ export default function AdminRolesPage() {
           forceRender
           destroyOnHidden
           okText={editingRole ? "保存修改" : "创建角色"}
-          cancelText="取消"
+          cancelText={t("取消")}
           confirmLoading={createRoleMutation.isPending || updateRoleMutation.isPending}
           onCancel={closeDialog}
           onOk={() => void submitRole()}
@@ -1147,14 +1149,14 @@ export default function AdminRolesPage() {
             <Row gutter={12}>
               <Col xs={24}>
                 <Form.Item
-                  label="角色编码"
+                  label={t("角色编码")}
                   name="code"
                   validateStatus={roleCodeValidationError ? "error" : ""}
                   help={roleCodeValidationError}
                   rules={[
-                    { required: true, message: "请输入角色编码" },
-                    { min: 2, message: "角色编码至少 2 位" },
-                    { max: 64, message: "角色编码不能超过 64 位" },
+                    { required: true, message: t("请输入角色编码") },
+                    { min: 2, message: t("角色编码至少 2 位") },
+                    { max: 64, message: t("角色编码不能超过 64 位") },
                   ]}
                 >
                   <Input
@@ -1166,14 +1168,14 @@ export default function AdminRolesPage() {
               </Col>
               <Col xs={24}>
                 <Form.Item
-                  label="角色名称"
+                  label={t("角色名称")}
                   name="name"
                   rules={[
-                    { required: true, message: "请输入角色名称" },
-                    { max: 120, message: "角色名称不能超过 120 位" },
+                    { required: true, message: t("请输入角色名称") },
+                    { max: 120, message: t("角色名称不能超过 120 位") },
                   ]}
                 >
-                  <Input placeholder="运营管理员" />
+                  <Input placeholder={t("运营管理员")} />
                 </Form.Item>
               </Col>
               {!editingRole && (
@@ -1196,8 +1198,8 @@ export default function AdminRolesPage() {
           forceRender
           destroyOnHidden
           width={560}
-          okText="保存权限"
-          cancelText="取消"
+          okText={t("保存权限")}
+          cancelText={t("取消")}
           confirmLoading={updateRoleMutation.isPending}
           onCancel={closePermissionDialog}
           onOk={() => void submitPermissions()}
@@ -1213,7 +1215,7 @@ export default function AdminRolesPage() {
               label={
                 <span>
                   菜单与操作权限{" "}
-                  <Tooltip title="勾选菜单即授予页面查看权限；展开菜单可勾选查看/管理/运行等操作权限（按钮级）。">
+                  <Tooltip title={t("勾选菜单即授予页面查看权限；展开菜单可勾选查看/管理/运行等操作权限（按钮级）。")}>
                     <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
                   </Tooltip>
                 </span>
@@ -1225,7 +1227,7 @@ export default function AdminRolesPage() {
                 treeCheckable
                 showCheckedStrategy="SHOW_PARENT"
                 treeData={menuTreeOptions}
-                placeholder="请选择菜单与操作权限"
+                placeholder={t("请选择菜单与操作权限")}
                 maxTagCount={6}
                 maxTagPlaceholder={(omitted) => `+${omitted.length} 项`}
                 style={{ width: "100%" }}

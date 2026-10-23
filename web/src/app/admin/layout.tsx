@@ -431,7 +431,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <AdminCenteredState>
         <Space align="center" direction="vertical" size={12}>
           <Spin size="large" />
-          <Typography.Text type="secondary">正在加载后台工作台...</Typography.Text>
+          <Typography.Text type="secondary">{t("正在加载后台工作台...")}</Typography.Text>
         </Space>
       </AdminCenteredState>
     );
@@ -442,11 +442,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <AdminCenteredState>
         <AntResult
           status="403"
-          title="请先登录"
+          title={t("请先登录")}
           subTitle="登录后才能访问后台工作台。"
           extra={(
             <Button type="primary">
-              <Link href="/login">前往登录</Link>
+              <Link href="/login">{t("前往登录")}</Link>
             </Button>
           )}
         />
@@ -465,11 +465,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <AdminCenteredState>
         <AntResult
           status="403"
-          title="无法访问"
+          title={t("无法访问")}
           subTitle={subTitle}
           extra={(
             <Button type="primary">
-              <Link href="/admin">返回后台首页</Link>
+              <Link href="/admin">{t("返回后台首页")}</Link>
             </Button>
           )}
         />
@@ -482,7 +482,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <Header className="admin-design-header">
         {!isDesktop && (
           <Button
-            aria-label="打开菜单"
+            aria-label={t("打开菜单")}
             icon={<MenuOutlined />}
             type="text"
             onClick={() => setMobileMenuOpen(true)}
@@ -495,7 +495,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         >
           <img
             src={withBasePath("/favicon.ico")}
-            alt="高压电塔图标"
+            alt={t("高压电塔图标")}
             width={22}
             height={22}
             className="h-[22px] w-[22px]"
@@ -519,9 +519,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </Tooltip>
           </Dropdown>
 
-          <Tooltip title="系统消息">
+          <Tooltip title={t("系统消息")}>
             <Popover
-              title="系统消息"
+              title={t("系统消息")}
               trigger="click"
               open={messagePopoverOpen}
               onOpenChange={(open) => {
@@ -537,7 +537,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                       <Spin />
                     </div>
                   ) : messages.length === 0 ? (
-                    <Empty description="暂无消息" />
+                    <Empty description={t("暂无消息")} />
                   ) : (
                     <List<SystemMessageSummary>
                       dataSource={messages}
@@ -617,7 +617,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             placement="bottomRight"
             trigger={["click"]}
           >
-            <Button aria-label="用户菜单" type="text">
+            <Button aria-label={t("用户菜单")} type="text">
               {user.avatar_url && !avatarError ? (
                 <Avatar
                   size="small"

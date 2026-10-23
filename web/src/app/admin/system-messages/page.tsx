@@ -30,6 +30,7 @@ import Link from "next/link";
 import type { ComponentType, CSSProperties, ReactNode, RefAttributes } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -266,9 +267,14 @@ function MarkdownPreview({
   compact?: boolean;
   placeholder?: string;
 }) {
+  const { t: previewT } = useI18n();
   const trimmedContent = content.trim();
   if (!trimmedContent) {
-    return <Typography.Text type="secondary">{placeholder}</Typography.Text>;
+    return (
+      <Typography.Text type="secondary">
+        {placeholder ? previewT(placeholder) : placeholder}
+      </Typography.Text>
+    );
   }
 
   return (
@@ -302,6 +308,7 @@ const MESSAGES_TABLE_VIEWPORT_GAP = 40;
 const MESSAGES_TABLE_FALLBACK_RESERVE = 220;
 
 export default function AdminSystemMessagesPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
@@ -629,7 +636,7 @@ export default function AdminSystemMessagesPage() {
     const moreMenuItems: MenuProps["items"] = [
       {
         key: "mark-read",
-        label: "标记已读",
+        label: t("标记已读"),
         disabled: item.is_read || isDeleting || isMarkingRead,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
@@ -640,16 +647,16 @@ export default function AdminSystemMessagesPage() {
         ? [
             {
               key: "delete",
-              label: "删除",
+              label: t("删除"),
               danger: true,
               disabled: isDeleting,
               onClick: (info) => {
                 info.domEvent?.stopPropagation();
                 Modal.confirm({
-                  title: "删除系统消息",
+                  title: t("删除系统消息"),
                   content: `确认删除系统消息「${item.title}」吗？`,
-                  okText: "删除",
-                  cancelText: "取消",
+                  okText: t("删除"),
+                  cancelText: t("取消"),
                   okButtonProps: { danger: true },
                   onOk: () => deleteMutation.mutate(item.id),
                 });
@@ -685,24 +692,24 @@ export default function AdminSystemMessagesPage() {
         </div>
         <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-system-messages-message-card-field">
-            <Typography.Text type="secondary">类型</Typography.Text>
+            <Typography.Text type="secondary">{t("类型")}</Typography.Text>
             <Tag color={MESSAGE_TYPE_COLORS[item.message_type]}>
               {MESSAGE_TYPE_LABELS[item.message_type]}
             </Tag>
           </div>
           <div className="admin-system-messages-message-card-field">
-            <Typography.Text type="secondary">内容</Typography.Text>
+            <Typography.Text type="secondary">{t("内容")}</Typography.Text>
             <MarkdownPreview compact content={item.content} />
           </div>
           <div className="admin-system-messages-message-card-field">
-            <Typography.Text type="secondary">创建时间</Typography.Text>
+            <Typography.Text type="secondary">{t("创建时间")}</Typography.Text>
             <Typography.Text>{formatDateTime(item.created_at)}</Typography.Text>
           </div>
         </Space>
         <div className="admin-system-messages-message-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
           <div />
           <Space size="small" className="shrink-0">
-            <Tooltip title="查看">
+            <Tooltip title={t("查看")}>
               <Button
                 type="text"
                 size="small"
@@ -714,7 +721,7 @@ export default function AdminSystemMessagesPage() {
               />
             </Tooltip>
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Tooltip title="更多">
+              <Tooltip title={t("更多")}>
                 <Button
                   type="text"
                   size="small"
@@ -732,7 +739,7 @@ export default function AdminSystemMessagesPage() {
 
   const columns: TableColumnsType<SystemMessageSummary> = [
     {
-      title: "标题",
+      title: t("标题"),
       dataIndex: "title",
       key: "title",
       width: 220,
@@ -746,7 +753,7 @@ export default function AdminSystemMessagesPage() {
       ),
     },
     {
-      title: "类型",
+      title: t("类型"),
       dataIndex: "message_type",
       key: "message_type",
       width: 90,
@@ -755,13 +762,13 @@ export default function AdminSystemMessagesPage() {
       ),
     },
     {
-      title: "内容",
+      title: t("内容"),
       dataIndex: "content",
       key: "content",
       render: (value: string) => <MarkdownPreview compact content={value} />,
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "is_read",
       key: "is_read",
       width: 90,
@@ -770,14 +777,14 @@ export default function AdminSystemMessagesPage() {
       ),
     },
     {
-      title: "创建时间",
+      title: t("创建时间"),
       dataIndex: "created_at",
       key: "created_at",
       width: 180,
       render: (value: string) => formatDateTime(value),
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       width: 200,
       fixed: "right",
@@ -788,15 +795,15 @@ export default function AdminSystemMessagesPage() {
           ? [
               {
                 key: "delete",
-                label: "删除",
+                label: t("删除"),
                 danger: true,
                 disabled: isDeleting,
                 onClick: () => {
                   Modal.confirm({
-                    title: "删除系统消息",
+                    title: t("删除系统消息"),
                     content: `确认删除系统消息「${item.title}」吗？`,
-                    okText: "删除",
-                    cancelText: "取消",
+                    okText: t("删除"),
+                    cancelText: t("取消"),
                     okButtonProps: { danger: true, loading: isDeleting },
                     onOk: () => deleteMutation.mutate(item.id),
                   });
@@ -841,7 +848,7 @@ export default function AdminSystemMessagesPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问系统消息页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问系统消息页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -868,7 +875,7 @@ export default function AdminSystemMessagesPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-system-messages-tab-title">消息列表</span>,
+            label: <span className="admin-system-messages-tab-title">{t("消息列表")}</span>,
             closable: false,
             children: (
               <div ref={pageCardRef} className="admin_system_messages_list_pane">
@@ -877,7 +884,7 @@ export default function AdminSystemMessagesPage() {
                     showIcon
                     className="mb-4"
                     type="error"
-                    message="系统消息加载失败"
+                    message={t("系统消息加载失败")}
                     description={listQuery.error instanceof Error ? listQuery.error.message : "请检查后端服务。"}
                   />
                 )}
@@ -887,19 +894,19 @@ export default function AdminSystemMessagesPage() {
                     showIcon
                     className="mb-4"
                     type="info"
-                    message="当前账号仅可查看和标记自己的系统消息。"
+                    message={t("当前账号仅可查看和标记自己的系统消息。")}
                   />
                 )}
         
                 {viewMode === "card" ? (
                   <div className="admin-filter-bar">
                     <Form layout="inline">
-                      <Form.Item label="类型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Form.Item label={t("类型")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                         <Select<SystemMessageType | undefined>
                           value={messageTypeFilter}
                           style={{ minWidth: 150 }}
                           allowClear
-                          placeholder="全部类型"
+                          placeholder={t("全部类型")}
                           options={MESSAGE_TYPE_OPTIONS}
                           onChange={(value) => {
                             setMessageTypeFilter(value);
@@ -908,15 +915,15 @@ export default function AdminSystemMessagesPage() {
                         />
                       </Form.Item>
         
-                      <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                         <Select<"read" | "unread" | undefined>
                           value={readStatus}
                           style={{ minWidth: 150 }}
                           allowClear
-                          placeholder="全部状态"
+                          placeholder={t("全部状态")}
                           options={[
-                            { label: "已读", value: "read" },
-                            { label: "未读", value: "unread" },
+                            { label: t("已读"), value: "read" },
+                            { label: t("未读"), value: "unread" },
                           ]}
                           onChange={(value) => {
                             setReadStatus(value);
@@ -937,11 +944,11 @@ export default function AdminSystemMessagesPage() {
                 ) : (
                   <div className="admin-filter-bar">
                     <Form layout="inline">
-                      <Form.Item label="类型" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Form.Item label={t("类型")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                         <Select<SystemMessageType | undefined>
                           value={messageTypeFilter}
                           allowClear
-                          placeholder="全部类型"
+                          placeholder={t("全部类型")}
                           options={MESSAGE_TYPE_OPTIONS}
                           onChange={(value) => {
                             setMessageTypeFilter(value);
@@ -950,14 +957,14 @@ export default function AdminSystemMessagesPage() {
                         />
                       </Form.Item>
 
-                      <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                      <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                         <Select<"read" | "unread" | undefined>
                           value={readStatus}
                           allowClear
-                          placeholder="全部状态"
+                          placeholder={t("全部状态")}
                           options={[
-                            { label: "已读", value: "read" },
-                            { label: "未读", value: "unread" },
+                            { label: t("已读"), value: "read" },
+                            { label: t("未读"), value: "unread" },
                           ]}
                           onChange={(value) => {
                             setReadStatus(value);
@@ -992,7 +999,7 @@ export default function AdminSystemMessagesPage() {
                         emptyText: (
                           <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description="暂无系统消息"
+                            description={t("暂无系统消息")}
                           />
                         ),
                       }}
@@ -1017,7 +1024,7 @@ export default function AdminSystemMessagesPage() {
                       <div className="admin-system-messages-card-view-state">
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="暂无系统消息"
+                          description={t("暂无系统消息")}
                         />
                       </div>
                     ) : (
@@ -1055,15 +1062,15 @@ export default function AdminSystemMessagesPage() {
       />
 
       <Modal
-        title="发送消息"
+        title={t("发送消息")}
         open={createMessageModalOpen}
         forceRender
         destroyOnHidden
         width={960}
         onCancel={closeCreateMessageModal}
         onOk={() => formApi.submit()}
-        okText="发送消息"
-        cancelText="取消"
+        okText={t("发送消息")}
+        cancelText={t("取消")}
         confirmLoading={createMutation.isPending}
       >
         <Form<CreateMessageValues>
@@ -1075,34 +1082,34 @@ export default function AdminSystemMessagesPage() {
         >
           <div className="grid gap-3 md:grid-cols-2">
             <Form.Item
-              label="标题"
+              label={t("标题")}
               name="title"
               rules={[
-                { required: true, message: "请输入标题" },
-                { max: 255, message: "标题不能超过 255 字符" },
+                { required: true, message: t("请输入标题") },
+                { max: 255, message: t("标题不能超过 255 字符") },
               ]}
             >
-              <Input maxLength={255} placeholder="请输入消息标题" />
+              <Input maxLength={255} placeholder={t("请输入消息标题")} />
             </Form.Item>
 
             <Form.Item
-              label="类型"
+              label={t("类型")}
               name="message_type"
-              rules={[{ required: true, message: "请选择类型" }]}
+              rules={[{ required: true, message: t("请选择类型") }]}
             >
               <Select options={MESSAGE_TYPE_OPTIONS} />
             </Form.Item>
 
-            <Form.Item label="目标用户 ID" name="target_user_id" className="md:col-span-2">
-              <Input allowClear placeholder="留空表示全员广播" />
+            <Form.Item label={t("目标用户 ID")} name="target_user_id" className="md:col-span-2">
+              <Input allowClear placeholder={t("留空表示全员广播")} />
             </Form.Item>
           </div>
 
-          <Form.Item label="内容（Markdown）" required style={{ marginBottom: 0 }}>
+          <Form.Item label={t("内容（Markdown）")} required style={{ marginBottom: 0 }}>
             <div className="grid gap-3 md:grid-cols-2">
               <Form.Item
                 name="content"
-                rules={[{ required: true, message: "请输入内容" }]}
+                rules={[{ required: true, message: t("请输入内容") }]}
                 style={{ marginBottom: 0 }}
               >
                 <Input.TextArea
@@ -1112,8 +1119,8 @@ export default function AdminSystemMessagesPage() {
               </Form.Item>
 
               <div className="flex flex-col gap-2">
-                <Typography.Text strong>预览</Typography.Text>
-                <MarkdownPreview content={contentPreview} placeholder="输入 Markdown 后在这里预览" />
+                <Typography.Text strong>{t("预览")}</Typography.Text>
+                <MarkdownPreview content={contentPreview} placeholder={t("输入 Markdown 后在这里预览")} />
               </div>
             </div>
           </Form.Item>

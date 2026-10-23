@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button, Card, Space, Typography } from "antd";
 import Link from "next/link";
 
+import { useI18n } from "@/lib/i18n";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { PowerLineMapPanel } from "@/components/power-line-map-panel";
 import { useAuth } from "@/components/auth-provider";
@@ -16,6 +17,7 @@ const TOWER_MAP_QUERY_LIMIT = 500;
 const MAP_HEADER_ESTIMATED_HEIGHT = 220;
 
 export default function AdminPowerLineMapPage() {
+  const { t } = useI18n();
   const { lineId } = useParams<{ lineId: string }>();
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
 
@@ -74,9 +76,9 @@ export default function AdminPowerLineMapPage() {
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">请先登录后再访问地图页面。</Typography.Text>
+          <Typography.Text type="secondary">{t("请先登录后再访问地图页面。")}</Typography.Text>
           <Button>
-            <Link href="/">返回首页</Link>
+            <Link href="/">{t("返回首页")}</Link>
           </Button>
         </Space>
       </Card>
@@ -86,9 +88,9 @@ export default function AdminPowerLineMapPage() {
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">你没有访问该页面的权限（需要 `tower.read` 或 `line.read`）。</Typography.Text>
+          <Typography.Text type="secondary">{t("你没有访问该页面的权限（需要 `tower.read` 或 `line.read`）。")}</Typography.Text>
           <Button>
-            <Link href="/admin/power-lines">返回线路列表</Link>
+            <Link href="/admin/power-lines">{t("返回线路列表")}</Link>
           </Button>
         </Space>
       </Card>

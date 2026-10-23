@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { Button, Space, Typography } from "antd";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
 import { LightningCurrentBackfillHistoryTable } from "@/components/lightning-current-backfill-history";
 
 export default function AdminLightningCurrentsBackfillHistoryPage() {
+  const { t } = useI18n();
   const { user, initializing, hasPermission } = useAuth();
 
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
@@ -28,7 +30,7 @@ export default function AdminLightningCurrentsBackfillHistoryPage() {
             请先登录后再访问回填记录页面。
           </Typography.Text>
           <Button>
-            <Link href="/">返回首页</Link>
+            <Link href="/">{t("返回首页")}</Link>
           </Button>
         </Space>
       </Card>
@@ -44,7 +46,7 @@ export default function AdminLightningCurrentsBackfillHistoryPage() {
               你没有访问该页面的权限（需要 `lightning.read`）。
             </Typography.Text>
             <Button>
-              <Link href="/">返回首页</Link>
+              <Link href="/">{t("返回首页")}</Link>
             </Button>
           </Space>
         </Card>

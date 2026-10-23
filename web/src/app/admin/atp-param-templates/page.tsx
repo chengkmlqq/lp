@@ -43,6 +43,7 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 
@@ -162,17 +163,18 @@ const TOWER_TYPE_LABEL: Record<string, string> = {
 
 /** 参数模板卡片（参照 ATP 计算参数管理页 DefinitionCard 结构）。 */
 function TemplateCard({ row, canManage, onDetail, onEdit, onPreview, onDerive, onDelete }: TemplateCardProps) {
+  const { t } = useI18n();
   const hasRule = Boolean(row.node.rule_id);
   const dims = row.node.dimensions;
   const towerText = dims?.tower_type
     ? (TOWER_TYPE_LABEL[dims.tower_type] ?? dims.tower_type)
     : "全部";
   const moreItems: MenuProps["items"] = [
-    { key: "preview", label: "试算", icon: <ExperimentOutlined />, disabled: !hasRule, onClick: onPreview },
+    { key: "preview", label: t("试算"), icon: <ExperimentOutlined />, disabled: !hasRule, onClick: onPreview },
     ...(canManage
       ? [
-          { key: "derive", label: "细分", icon: <PlusOutlined />, disabled: !hasRule, onClick: onDerive },
-          { key: "delete", label: "删除", icon: <DeleteOutlined />, danger: true, disabled: !hasRule, onClick: onDelete },
+          { key: "derive", label: t("细分"), icon: <PlusOutlined />, disabled: !hasRule, onClick: onDerive },
+          { key: "delete", label: t("删除"), icon: <DeleteOutlined />, danger: true, disabled: !hasRule, onClick: onDelete },
         ]
       : []),
   ];
@@ -187,65 +189,65 @@ function TemplateCard({ row, canManage, onDetail, onEdit, onPreview, onDerive, o
         <FunctionOutlined className="text-base text-gray-500" />
         <Typography.Text strong className="truncate flex-1">{row.node.label}</Typography.Text>
         {row.node.status === "inherit" ? (
-          <Tag style={{ marginInlineEnd: 0 }}>继承</Tag>
+          <Tag style={{ marginInlineEnd: 0 }}>{t("继承")}</Tag>
         ) : (
-          <Tag color="blue" style={{ marginInlineEnd: 0 }}>本级</Tag>
+          <Tag color="blue" style={{ marginInlineEnd: 0 }}>{t("本级")}</Tag>
         )}
       </div>
 
       <div className="flex flex-col gap-2 px-4 py-3" style={{ minHeight: 120 }}>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>杆塔类型：</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("杆塔类型：")}</Typography.Text>
           <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: towerText }}>
             {towerText}
           </Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>电压等级：</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("电压等级：")}</Typography.Text>
           <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.voltage_level ?? "全部" }}>
             {dims?.voltage_level ? `${dims.voltage_level}kV` : "全部"}
           </Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>回路数量：</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("回路数量：")}</Typography.Text>
           <Text style={{ fontSize: 12 }}>{dims?.circuit_count != null ? `${dims.circuit_count} 回` : "全部"}</Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>场景：</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("场景：")}</Typography.Text>
           <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.scene_type ?? "全部" }}>
             {dims?.scene_type ?? "全部"}
           </Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>避雷器组合：</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("避雷器组合：")}</Typography.Text>
           <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.arrester_config ?? "全部" }}>
             {dims?.arrester_config ?? "全部"}
           </Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>槽位数量：</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("槽位数量：")}</Typography.Text>
           {row.node.has_template ? (
             <Typography.Text style={{ fontSize: 12 }}>
               {row.node.defined_slots}/{row.node.effective_slots}
             </Typography.Text>
           ) : (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>继承</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("继承")}</Typography.Text>
           )}
         </div>
       </div>
 
       <div className="admin-atp-params-card-actions admin-atp-models-card-actions flex items-center justify-end gap-1 px-4 py-2">
         <Space size={4}>
-          <Tooltip title="详情">
+          <Tooltip title={t("详情")}>
             <Button size="small" type="text" icon={<EyeOutlined />} disabled={!hasRule} onClick={(event) => { event.stopPropagation(); onDetail(); }} />
           </Tooltip>
           {canManage ? (
-            <Tooltip title="编辑">
+            <Tooltip title={t("编辑")}>
               <Button size="small" type="text" icon={<EditOutlined />} disabled={!hasRule} onClick={(event) => { event.stopPropagation(); onEdit(); }} />
             </Tooltip>
           ) : null}
           <Dropdown menu={{ items: moreItems }} trigger={["click"]}>
-            <Tooltip title="更多">
+            <Tooltip title={t("更多")}>
               <Button size="small" type="text" icon={<MoreOutlined />} onClick={(event) => { event.stopPropagation(); }} />
             </Tooltip>
           </Dropdown>
@@ -256,6 +258,7 @@ function TemplateCard({ row, canManage, onDetail, onEdit, onPreview, onDerive, o
 }
 
 export default function AtpParamTemplatesPage() {
+  const { t } = useI18n();
   const { message } = App.useApp();
   const { fetchWithAuth, hasPermission } = useAuth();
   const canManage = hasPermission("atp.manage");
@@ -431,10 +434,10 @@ export default function AtpParamTemplatesPage() {
     if (!detail) return;
     Modal.confirm({
       title: `确认删除模板「${detail.name}」？`,
-      content: "删除后该节点将回退到上层继承,不可恢复。",
-      okText: "删除",
+      content: t("删除后该节点将回退到上层继承,不可恢复。"),
+      okText: t("删除"),
       okButtonProps: { danger: true },
-      cancelText: "取消",
+      cancelText: t("取消"),
       onOk: async () => {
         try {
           const response = await fetchWithAuth(`/api/v1/atp/param-templates/${detail.id}`, { method: "DELETE" });
@@ -569,14 +572,14 @@ export default function AtpParamTemplatesPage() {
   }, [templateRows, tableKeyword, levelFilter]);
 
   const slotColumns: ColumnsType<SlotRow> = [
-    { title: "槽位", dataIndex: "slot", width: 250, render: (v) => <Text code>{v}</Text> },
+    { title: t("槽位"), dataIndex: "slot", width: 250, render: (v) => <Text code>{v}</Text> },
     {
-      title: "表达式 / 值 / 参数",
+      title: t("表达式 / 值 / 参数"),
       dataIndex: "expr",
       render: (v, row) =>
         row.param ? (
           <Space size={4}>
-            <Tag color="purple">参数</Tag>
+            <Tag color="purple">{t("参数")}</Tag>
             <Text code>{row.param}</Text>
           </Space>
         ) : row.value ? (
@@ -586,7 +589,7 @@ export default function AtpParamTemplatesPage() {
         ),
     },
     {
-      title: "映射参数",
+      title: t("映射参数"),
       key: "ref_params",
       width: 190,
       render: (_, row) => {
@@ -615,7 +618,7 @@ export default function AtpParamTemplatesPage() {
       },
     },
     {
-      title: "参数来源",
+      title: t("参数来源"),
       key: "param_source",
       width: 240,
       render: (_, row) => {
@@ -630,7 +633,7 @@ export default function AtpParamTemplatesPage() {
                   {ref.source_type === "line_binding" ? (
                     <Text type="secondary" style={{ fontSize: 12 }}>{ref.via}</Text>
                   ) : (
-                    <Text type="secondary" style={{ fontSize: 12 }}>脚本计算</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>{t("脚本计算")}</Text>
                   )}
                 </Text>
               </Tooltip>
@@ -639,8 +642,8 @@ export default function AtpParamTemplatesPage() {
         );
       },
     },
-    { title: "格式", dataIndex: "fmt", width: 70, render: (v) => `${v} 位` },
-    { title: "启用", dataIndex: "enabled", width: 70, render: (v) => (v ? <Tag color="green">启用</Tag> : <Tag>关闭</Tag>) },
+    { title: t("格式"), dataIndex: "fmt", width: 70, render: (v) => `${v} 位` },
+    { title: t("启用"), dataIndex: "enabled", width: 70, render: (v) => (v ? <Tag color="green">{t("启用")}</Tag> : <Tag>{t("关闭")}</Tag>) },
     {
       title: "",
       width: 60,
@@ -653,39 +656,39 @@ export default function AtpParamTemplatesPage() {
   ];
 
   const previewColumns: ColumnsType<ResolvedSlot> = [
-    { title: "槽位", dataIndex: "slot", width: 130, render: (v) => <Text code>{v}</Text> },
-    { title: "值", dataIndex: "value", width: 110 },
+    { title: t("槽位"), dataIndex: "slot", width: 130, render: (v) => <Text code>{v}</Text> },
+    { title: t("值"), dataIndex: "value", width: 110 },
     {
-      title: "来源",
+      title: t("来源"),
       dataIndex: "source",
       render: (v, row) => (row.inherited ? <Tag color="orange">继承 · {v}</Tag> : <Tag color="blue">本级 · {v}</Tag>),
     },
     {
       title: "",
       width: 70,
-      render: (_, row) => (preview?.diff.some((item) => item.slot === row.slot) ? <Tag color="red">差异</Tag> : null),
+      render: (_, row) => (preview?.diff.some((item) => item.slot === row.slot) ? <Tag color="red">{t("差异")}</Tag> : null),
     },
   ];
 
   const tableColumns: ColumnsType<TemplateRow> = [
     {
-      title: "模板名称",
+      title: t("模板名称"),
       dataIndex: ["node", "label"],
       render: (_v, row) => (
         <Space size={6}>
           <span>{row.node.label}</span>
-          {row.node.status === "inherit" ? <Tag>继承</Tag> : <Tag color="blue">本级</Tag>}
+          {row.node.status === "inherit" ? <Tag>{t("继承")}</Tag> : <Tag color="blue">{t("本级")}</Tag>}
         </Space>
       ),
     },
     {
-      title: "覆盖路径",
+      title: t("覆盖路径"),
       dataIndex: "pathLabel",
       width: 649,
       render: (v: string) => <Text type="secondary" style={{ fontSize: 12 }}>{v}</Text>,
     },
     {
-      title: "槽位",
+      title: t("槽位"),
       key: "slots",
       width: 100,
       render: (_v, row) =>
@@ -694,21 +697,21 @@ export default function AtpParamTemplatesPage() {
             {row.node.defined_slots}/{row.node.effective_slots}
           </span>
         ) : (
-          <Text type="secondary">继承</Text>
+          <Text type="secondary">{t("继承")}</Text>
         ),
     },
     {
-      title: "状态",
+      title: t("状态"),
       key: "status",
       width: 250,
       render: (_v, row) => {
-        if (!row.node.has_template) return <Tag>继承</Tag>;
+        if (!row.node.has_template) return <Tag>{t("继承")}</Tag>;
         // 模板启用状态以 detail 为准;表格里统一显示「本级/继承」+ 槽位
-        return row.node.status === "own" ? <Tag color="blue">本级</Tag> : <Tag color="orange">继承</Tag>;
+        return row.node.status === "own" ? <Tag color="blue">{t("本级")}</Tag> : <Tag color="orange">{t("继承")}</Tag>;
       },
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       fixed: "right",
       width: 150,
@@ -728,7 +731,7 @@ export default function AtpParamTemplatesPage() {
         const moreMenuItems: MenuProps["items"] = [
           {
             key: "preview",
-            label: "试算",
+            label: t("试算"),
             icon: <ExperimentOutlined />,
             disabled: !hasRule,
             onClick: () => void openPreviewDrawer(row),
@@ -737,14 +740,14 @@ export default function AtpParamTemplatesPage() {
             ? [
                 {
                   key: "derive",
-                  label: "细分",
+                  label: t("细分"),
                   icon: <PlusOutlined />,
                   disabled: !hasRule,
                   onClick: () => void deriveTemplate(),
                 },
                 {
                   key: "delete",
-                  label: "删除",
+                  label: t("删除"),
                   icon: <DeleteOutlined />,
                   danger: true,
                   disabled: !hasRule,
@@ -776,7 +779,7 @@ export default function AtpParamTemplatesPage() {
               编辑
             </Button>
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button size="small" icon={<MoreOutlined />} aria-label="更多操作" />
+              <Button size="small" icon={<MoreOutlined />} aria-label={t("更多操作")} />
             </Dropdown>
           </Space>
         );
@@ -865,28 +868,28 @@ export default function AtpParamTemplatesPage() {
               <div className="admin-atp-params-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
-                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         allowClear
                         value={tableKeywordInput}
                         onChange={(event) => setTableKeywordInput(event.currentTarget.value)}
-                        placeholder="按模板名称/覆盖路径搜索"
+                        placeholder={t("按模板名称/覆盖路径搜索")}
                         onPressEnter={() => handleTableSearch()}
                       />
                     </Form.Item>
 
-                    <Form.Item label="层级" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("层级")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Select<"own" | "inherit">
                         value={levelFilter}
                         allowClear
-                        placeholder="全部"
+                        placeholder={t("全部")}
                         onChange={(value) => {
                           setLevelFilter(value);
                           setPagination((prev) => ({ ...prev, current: 1 }));
                         }}
                         options={[
-                          { value: "own", label: "本级模板" },
-                          { value: "inherit", label: "继承节点" },
+                          { value: "own", label: t("本级模板") },
+                          { value: "inherit", label: t("继承节点") },
                         ]}
                       />
                     </Form.Item>
@@ -913,8 +916,8 @@ export default function AtpParamTemplatesPage() {
                           setPagination((prev) => ({ ...prev, current: 1 }));
                         }}
                         options={[
-                          { label: "卡片视图", value: "card" },
-                          { label: "列表视图", value: "list" },
+                          { label: t("卡片视图"), value: "card" },
+                          { label: t("列表视图"), value: "list" },
                         ]}
                       />
                     </Form.Item>
@@ -922,7 +925,7 @@ export default function AtpParamTemplatesPage() {
                 </div>
 
                 {filteredRows.length === 0 && !loading ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的模板节点。" style={{ padding: 40 }} />
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("未找到符合筛选条件的模板节点。")} style={{ padding: 40 }} />
                 ) : viewMode === "card" ? (
                   <div className="relative flex min-h-0 flex-1 flex-col">
                     <div className="admin-atp-params-card-scroll">
@@ -997,7 +1000,7 @@ export default function AtpParamTemplatesPage() {
                         },
                       }}
                       locale={{
-                        emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到符合筛选条件的模板节点。" />,
+                        emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("未找到符合筛选条件的模板节点。")} />,
                       }}
                     />
                   </div>
@@ -1086,7 +1089,7 @@ export default function AtpParamTemplatesPage() {
           <Space wrap>
             <Select
               style={{ width: 190 }}
-              placeholder="杆塔类型"
+              placeholder={t("杆塔类型")}
               allowClear
               value={previewCtx.tower_type}
               options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
@@ -1094,7 +1097,7 @@ export default function AtpParamTemplatesPage() {
             />
             <Select
               style={{ width: 130 }}
-              placeholder="电压等级"
+              placeholder={t("电压等级")}
               allowClear
               value={previewCtx.voltage_level}
               options={(meta?.voltages ?? []).map((item) => ({ value: item, label: `${item}kV` }))}
@@ -1102,7 +1105,7 @@ export default function AtpParamTemplatesPage() {
             />
             <Select
               style={{ width: 130 }}
-              placeholder="回路数量"
+              placeholder={t("回路数量")}
               allowClear
               value={previewCtx.circuit_count}
               options={[1, 2, 4].map((item) => ({ value: item, label: `${item} 回` }))}
@@ -1110,7 +1113,7 @@ export default function AtpParamTemplatesPage() {
             />
             <Select
               style={{ width: 150 }}
-              placeholder="场景"
+              placeholder={t("场景")}
               allowClear
               value={previewCtx.scene_type}
               options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
@@ -1118,7 +1121,7 @@ export default function AtpParamTemplatesPage() {
             />
             <Select
               style={{ width: 170 }}
-              placeholder="避雷器组合"
+              placeholder={t("避雷器组合")}
               allowClear
               value={previewCtx.arrester_config}
               options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: item.label }))}
@@ -1128,7 +1131,7 @@ export default function AtpParamTemplatesPage() {
           {preview ? (
             <>
               <div>
-                <Text type="secondary">命中链（粗 → 细）：</Text>{" "}
+                <Text type="secondary">{t("命中链（粗 → 细）：")}</Text>{" "}
                 {preview.chain.map((item, index) => (
                   <Tag key={item} color={index === preview.chain.length - 1 ? "blue" : "default"}>
                     {item}
@@ -1139,7 +1142,7 @@ export default function AtpParamTemplatesPage() {
               <Table size="small" rowKey="slot" pagination={false} scroll={{ y: 300 }} columns={previewColumns} dataSource={preview.slots} />
             </>
           ) : (
-            <Text type="secondary">选择上下文后点击「试算」，会显示命中链、每个槽位的最终值与来源、以及被本层覆盖的槽位。</Text>
+            <Text type="secondary">{t("选择上下文后点击「试算」，会显示命中链、每个槽位的最终值与来源、以及被本层覆盖的槽位。")}</Text>
           )}
         </Space>
       </Drawer>
@@ -1151,66 +1154,66 @@ export default function AtpParamTemplatesPage() {
         width={880}
         onCancel={() => setEditing(false)}
         onOk={() => void saveEditor()}
-        okText="保存并生效"
+        okText={t("保存并生效")}
       >
         <Form form={form} layout="vertical">
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="name" label="名称" rules={[{ required: true }]} tooltip="模板名称，如：猫头型 · 220kV">
-                <Input placeholder="如：猫头型 · 220kV" />
+              <Form.Item name="name" label={t("名称")} rules={[{ required: true }]} tooltip={t("模板名称，如：猫头型 · 220kV")}>
+                <Input placeholder={t("如：猫头型 · 220kV")} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="tower_type" label="杆塔类型" tooltip="匹配条件；留空 = 通配所有塔型">
+              <Form.Item name="tower_type" label={t("杆塔类型")} tooltip={t("匹配条件；留空 = 通配所有塔型")}>
                 <Select
                   allowClear
-                  placeholder="选择杆塔类型"
+                  placeholder={t("选择杆塔类型")}
                   options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="voltage_level" label="电压等级" tooltip="匹配条件；留空 = 通配所有电压等级">
-                <Select allowClear placeholder="选择电压等级" options={(meta?.voltages ?? []).map((item) => ({ value: item, label: `${item}kV` }))} />
+              <Form.Item name="voltage_level" label={t("电压等级")} tooltip={t("匹配条件；留空 = 通配所有电压等级")}>
+                <Select allowClear placeholder={t("选择电压等级")} options={(meta?.voltages ?? []).map((item) => ({ value: item, label: `${item}kV` }))} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="circuit_count" label="回路数量" tooltip="匹配条件；留空 = 通配">
-                <Select allowClear placeholder="选择回路数量" options={[1, 2, 4].map((item) => ({ value: item, label: `${item} 回` }))} />
+              <Form.Item name="circuit_count" label={t("回路数量")} tooltip={t("匹配条件；留空 = 通配")}>
+                <Select allowClear placeholder={t("选择回路数量")} options={[1, 2, 4].map((item) => ({ value: item, label: `${item} 回` }))} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="scene_type" label="场景" tooltip="匹配条件；留空 = 通配">
-                <Select allowClear placeholder="选择场景" options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: item.label }))} />
+              <Form.Item name="scene_type" label={t("场景")} tooltip={t("匹配条件；留空 = 通配")}>
+                <Select allowClear placeholder={t("选择场景")} options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: item.label }))} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="arrester_config" label="避雷器组合" tooltip="匹配条件；留空 = 通配">
-                <Select allowClear placeholder="选择避雷器组合" options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: item.label }))} />
+              <Form.Item name="arrester_config" label={t("避雷器组合")} tooltip={t("匹配条件；留空 = 通配")}>
+                <Select allowClear placeholder={t("选择避雷器组合")} options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: item.label }))} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="priority" label="优先级" initialValue={100} tooltip="数字越小越优先；条件越细的模板优先级更高，此值用于同级兜底排序" rules={[{ type: "number", min: 0, max: 10000, message: "优先级须在 0~10000 之间" }]}>
+              <Form.Item name="priority" label={t("优先级")} initialValue={100} tooltip={t("数字越小越优先；条件越细的模板优先级更高，此值用于同级兜底排序")} rules={[{ type: "number", min: 0, max: 10000, message: t("优先级须在 0~10000 之间") }]}>
                 <InputNumber style={{ width: "100%" }} min={0} max={9999} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="mode" label="合并方式" initialValue="merge" tooltip="逐槽位合并：只覆盖填了的槽位，未填继承上层；整块替换：整套槽位用自己的">
+              <Form.Item name="mode" label={t("合并方式")} initialValue="merge" tooltip={t("逐槽位合并：只覆盖填了的槽位，未填继承上层；整块替换：整套槽位用自己的")}>
                 <Select
                   options={[
-                    { value: "merge", label: "逐槽位合并" },
-                    { value: "replace", label: "整块替换" },
+                    { value: "merge", label: t("逐槽位合并") },
+                    { value: "replace", label: t("整块替换") },
                   ]}
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="fallback_to" label="wine 回退到" tooltip="槽位公式算不出来时回退到哪个塔型的模板继续算；留空 = 不回退">
-                <Select allowClear placeholder="选择回退塔型" options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))} />
+              <Form.Item name="fallback_to" label={t("wine 回退到")} tooltip={t("槽位公式算不出来时回退到哪个塔型的模板继续算；留空 = 不回退")}>
+                <Select allowClear placeholder={t("选择回退塔型")} options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="fallback_enabled" label="启用回退" valuePropName="checked" initialValue={true} tooltip="回退行为的总开关">
+              <Form.Item name="fallback_enabled" label={t("启用回退")} valuePropName="checked" initialValue={true} tooltip={t("回退行为的总开关")}>
                 <Switch />
               </Form.Item>
             </Col>
@@ -1224,7 +1227,7 @@ export default function AtpParamTemplatesPage() {
           dataSource={slotRows}
           columns={[
             {
-              title: "槽位",
+              title: t("槽位"),
               dataIndex: "slot",
               width: 130,
               render: (value: string, row: SlotRow) => (
@@ -1238,7 +1241,7 @@ export default function AtpParamTemplatesPage() {
               ),
             },
             {
-              title: "参数引用（可选）",
+              title: t("参数引用（可选）"),
               dataIndex: "param",
               width: 180,
               render: (value: string | undefined, row: SlotRow) => (
@@ -1247,7 +1250,7 @@ export default function AtpParamTemplatesPage() {
                   allowClear
                   style={{ width: 160 }}
                   value={value || undefined}
-                  placeholder="选注册表参数（ATP计算参数管理）"
+                  placeholder={t("选注册表参数（ATP计算参数管理）")}
                   options={paramCodes.map((item) => ({ value: item, label: item }))}
                   onChange={(next) =>
                     setSlotRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, param: next, expr: next ? "" : item.expr, value: next ? "" : item.value } : item)))
@@ -1256,7 +1259,7 @@ export default function AtpParamTemplatesPage() {
               ),
             },
             {
-              title: "表达式（或字面量）",
+              title: t("表达式（或字面量）"),
               dataIndex: "expr",
               render: (value: string, row: SlotRow) => (
                 <Input
@@ -1268,7 +1271,7 @@ export default function AtpParamTemplatesPage() {
               ),
             },
             {
-              title: "引用参数",
+              title: t("引用参数"),
               key: "edit_ref_params",
               width: 190,
               render: (_, row: SlotRow) => {
@@ -1304,7 +1307,7 @@ export default function AtpParamTemplatesPage() {
               },
             },
             {
-              title: "格式",
+              title: t("格式"),
               dataIndex: "fmt",
               width: 90,
               render: (value: number, row: SlotRow) => (
@@ -1317,7 +1320,7 @@ export default function AtpParamTemplatesPage() {
               ),
             },
             {
-              title: "启用",
+              title: t("启用"),
               dataIndex: "enabled",
               width: 70,
               render: (value: boolean, row: SlotRow) => (
@@ -1339,8 +1342,8 @@ export default function AtpParamTemplatesPage() {
               >
                 添加槽位
               </Button>
-              <Tooltip title="保存时后端会做表达式语法与变量校验">
-                <Text type="secondary">仅需填写与上层不同的槽位</Text>
+              <Tooltip title={t("保存时后端会做表达式语法与变量校验")}>
+                <Text type="secondary">{t("仅需填写与上层不同的槽位")}</Text>
               </Tooltip>
             </Space>
           )}

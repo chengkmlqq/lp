@@ -21,6 +21,7 @@ import {
 } from "@ant-design/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { readApiError, API_BASE_URL } from "@/lib/api";
@@ -44,6 +45,7 @@ type ChatStreamEvent =
   | { type: "done"; reply: AiChatMessage };
 
 export default function AiChatPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth } = useAuth();
   const queryClient = useQueryClient();
 
@@ -385,7 +387,7 @@ export default function AiChatPage() {
             icon={<PlusOutlined />}
             onClick={() => createConvMutation.mutate("新对话")}
             loading={createConvMutation.isPending}
-            aria-label="新建对话"
+            aria-label={t("新建对话")}
           />
         </div>
 
@@ -450,7 +452,7 @@ export default function AiChatPage() {
                       {conv.message_count || 0} 条消息
                     </div>
                   </div>
-                  <Tooltip title="删除对话">
+                  <Tooltip title={t("删除对话")}>
                   <Button
                     danger
                     size="small"
@@ -459,10 +461,10 @@ export default function AiChatPage() {
                     onClick={(e) => {
                       e.stopPropagation();
                       Modal.confirm({
-                        title: "确认删除",
-                        content: "删除后将无法恢复，确定删除此对话吗？",
-                        okText: "确定",
-                        cancelText: "取消",
+                        title: t("确认删除"),
+                        content: t("删除后将无法恢复，确定删除此对话吗？"),
+                        okText: t("确定"),
+                        cancelText: t("取消"),
                         onOk: () => {
                           deleteConvMutation.mutate(conv.id);
                         },
@@ -581,7 +583,7 @@ export default function AiChatPage() {
                   className="ai-chat-textarea"
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
-                  placeholder="输入您的问题...（Shift + Enter 换行，Enter 发送）"
+                  placeholder={t("输入您的问题...（Shift + Enter 换行，Enter 发送）")}
                   autoSize={{ minRows: 1, maxRows: 4 }}
                   onPressEnter={(e) => {
                     if (!e.shiftKey) {
@@ -709,7 +711,7 @@ export default function AiChatPage() {
                   className="ai-chat-textarea"
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
-                  placeholder="输入消息...（Shift + Enter 换行，Enter 发送）"
+                  placeholder={t("输入消息...（Shift + Enter 换行，Enter 发送）")}
                   autoSize={{ minRows: 1, maxRows: 4 }}
                   onPressEnter={(e) => {
                     if (!e.shiftKey) {

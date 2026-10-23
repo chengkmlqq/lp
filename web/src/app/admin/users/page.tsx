@@ -31,6 +31,7 @@ import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode, type RefAttributes } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -79,6 +80,7 @@ const USERS_TABLE_FALLBACK_RESERVE = 220;
 const USERS_TABLE_EXTRA_HEIGHT = 15;
 
 export default function AdminUsersPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
@@ -525,11 +527,11 @@ export default function AdminUsersPage() {
       }
       const response = await fetchWithAuth(`/api/v1/users/check-id/${encodeURIComponent(userId)}?${excludeUserId ? `exclude_user_id=${encodeURIComponent(excludeUserId)}` : ""}`);
       if (!response.ok) {
-        return { available: false, message: "检查失败" };
+        return { available: false, message: t("检查失败") };
       }
       return (await response.json()) as { available: boolean; message: string };
     } catch {
-      return { available: false, message: "检查失败" };
+      return { available: false, message: t("检查失败") };
     }
   };
 
@@ -941,17 +943,17 @@ export default function AdminUsersPage() {
       ),
     },
     {
-      title: "用户 ID",
+      title: t("用户 ID"),
       dataIndex: "id",
       width: 140,
     },
     {
-      title: "用户名",
+      title: t("用户名"),
       dataIndex: "username",
       width: 140,
     },
     {
-      title: "角色",
+      title: t("角色"),
       dataIndex: "role_codes",
       width: 180,
       render: (roleCodes: string[]) => (
@@ -969,12 +971,12 @@ export default function AdminUsersPage() {
       ),
     },
     {
-      title: "邮箱",
+      title: t("邮箱"),
       dataIndex: "email",
       width: 200,
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 100,
       align: "center",
@@ -983,7 +985,7 @@ export default function AdminUsersPage() {
       ),
     },
     {
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       fixed: "right",
       width: 200,
@@ -997,13 +999,13 @@ export default function AdminUsersPage() {
         const moreMenuItems: MenuProps["items"] = [
           {
             key: "assign-roles",
-            label: "分配角色",
+            label: t("分配角色"),
             disabled: rowBusy,
             onClick: () => openAssignRolesModal(row),
           },
           {
             key: "reset-password",
-            label: "重置密码",
+            label: t("重置密码"),
             disabled: rowBusy,
             onClick: () => openResetPasswordModal(row),
           },
@@ -1036,8 +1038,8 @@ export default function AdminUsersPage() {
               onClick={() => {
                 Modal.confirm({
                   title: `确认删除用户 ${row.username}（${row.id}）？`,
-                  okText: "删除",
-                  cancelText: "取消",
+                  okText: t("删除"),
+                  cancelText: t("取消"),
                   okButtonProps: { danger: true, loading: deleteLoading },
                   onOk: () => deleteUserMutation.mutate(row.id),
                 });
@@ -1065,15 +1067,15 @@ export default function AdminUsersPage() {
     const moreMenuItems: MenuProps["items"] = [
       {
         key: "delete",
-        label: "删除",
+        label: t("删除"),
         danger: true,
         disabled: rowBusy,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
           Modal.confirm({
             title: `确认删除用户 ${userItem.username}（${userItem.id}）？`,
-            okText: "删除",
-            cancelText: "取消",
+            okText: t("删除"),
+            cancelText: t("取消"),
             okButtonProps: { danger: true },
             onOk: () => deleteUserMutation.mutate(userItem.id),
           });
@@ -1081,7 +1083,7 @@ export default function AdminUsersPage() {
       },
       {
         key: "assign-roles",
-        label: "分配角色",
+        label: t("分配角色"),
         disabled: rowBusy,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
@@ -1090,7 +1092,7 @@ export default function AdminUsersPage() {
       },
       {
         key: "reset-password",
-        label: "重置密码",
+        label: t("重置密码"),
         disabled: rowBusy,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
@@ -1130,11 +1132,11 @@ export default function AdminUsersPage() {
         </div>
         <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-users-user-card-field">
-            <Typography.Text type="secondary">用户 ID</Typography.Text>
+            <Typography.Text type="secondary">{t("用户 ID")}</Typography.Text>
             <Typography.Text>{userItem.id}</Typography.Text>
           </div>
           <div className="admin-users-user-card-field">
-            <Typography.Text type="secondary">角色</Typography.Text>
+            <Typography.Text type="secondary">{t("角色")}</Typography.Text>
             <Space wrap size={[4, 4]}>
               {userItem.role_codes && userItem.role_codes.length > 0 ? (
                 userItem.role_codes.map((code) => (
@@ -1148,7 +1150,7 @@ export default function AdminUsersPage() {
             </Space>
           </div>
           <div className="admin-users-user-card-field">
-            <Typography.Text type="secondary">邮箱</Typography.Text>
+            <Typography.Text type="secondary">{t("邮箱")}</Typography.Text>
             <Typography.Text ellipsis={{ tooltip: userItem.email || "-" }}>
               {userItem.email || "-"}
             </Typography.Text>
@@ -1157,7 +1159,7 @@ export default function AdminUsersPage() {
         <div className="admin-users-user-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
           <div />
           <Space size="small" className="shrink-0">
-            <Tooltip title="编辑">
+            <Tooltip title={t("编辑")}>
               <Button
                 type="text"
                 size="small"
@@ -1170,7 +1172,7 @@ export default function AdminUsersPage() {
               />
             </Tooltip>
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Tooltip title="更多">
+              <Tooltip title={t("更多")}>
                 <Button
                   type="text"
                   size="small"
@@ -1197,7 +1199,7 @@ export default function AdminUsersPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问用户管理页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问用户管理页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -1211,7 +1213,7 @@ export default function AdminUsersPage() {
   if (!canManage) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `user.manage`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `user.manage`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -1237,31 +1239,31 @@ export default function AdminUsersPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin_users_tab_title">用户管理</span>,
+            label: <span className="admin_users_tab_title">{t("用户管理")}</span>,
             closable: false,
             children: (
               <div ref={pageCardRef} className="admin_users_list_pane">
             {viewMode === "card" ? (
               <div className="admin-filter-bar">
                 <Form layout="inline">
-                  <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Input
                       allowClear
-                      placeholder="按用户 ID/邮箱/用户名搜索"
+                      placeholder={t("按用户 ID/邮箱/用户名搜索")}
                       value={keywordInput}
                       onChange={(event) => handleKeywordChange(event.target.value)}
                       onPressEnter={handleSearch}
                     />
                   </Form.Item>
 
-                  <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Select<"active" | "disabled">
                       value={statusFilter}
                       allowClear
-                      placeholder="全部"
+                      placeholder={t("全部")}
                       options={[
-                        { value: "active", label: "已启用" },
-                        { value: "disabled", label: "已禁用" },
+                        { value: "active", label: t("已启用") },
+                        { value: "disabled", label: t("已禁用") },
                       ]}
                       labelRender={(props) => statusTag(props.value)}
                       optionRender={(option) => statusTag(option.value)}
@@ -1289,24 +1291,24 @@ export default function AdminUsersPage() {
             ) : (
               <div className="admin-filter-bar">
                 <Form layout="inline">
-                  <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Input
                       allowClear
-                      placeholder="按用户 ID/邮箱/用户名搜索"
+                      placeholder={t("按用户 ID/邮箱/用户名搜索")}
                       value={keywordInput}
                       onChange={(event) => handleKeywordChange(event.target.value)}
                       onPressEnter={handleSearch}
                     />
                   </Form.Item>
     
-                  <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Select<"active" | "disabled">
                       value={statusFilter}
                       allowClear
-                      placeholder="全部"
+                      placeholder={t("全部")}
                       options={[
-                        { value: "active", label: "已启用" },
-                        { value: "disabled", label: "已禁用" },
+                        { value: "active", label: t("已启用") },
+                        { value: "disabled", label: t("已禁用") },
                       ]}
                       labelRender={(props) => statusTag(props.value)}
                       optionRender={(option) => statusTag(option.value)}
@@ -1363,7 +1365,7 @@ export default function AdminUsersPage() {
                     emptyText: (
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="未找到符合筛选条件的用户。"
+                        description={t("未找到符合筛选条件的用户。")}
                       />
                     ),
                   }}
@@ -1379,7 +1381,7 @@ export default function AdminUsersPage() {
                   <div className="admin-users-card-view-state">
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="未找到符合筛选条件的用户。"
+                      description={t("未找到符合筛选条件的用户。")}
                     />
                   </div>
                 ) : (
@@ -1417,14 +1419,14 @@ export default function AdminUsersPage() {
       />
 
       <Modal
-        title="新增用户"
+        title={t("新增用户")}
         open={createUserModalOpen}
         forceRender
         destroyOnHidden
         onCancel={closeCreateUserModal}
         onOk={() => createForm.submit()}
-        okText="创建用户"
-        cancelText="取消"
+        okText={t("创建用户")}
+        cancelText={t("取消")}
         confirmLoading={createUserMutation.isPending || createAvatarUploading}
       >
         <div style={{ textAlign: "center", marginBottom: 16 }}>
@@ -1475,54 +1477,54 @@ export default function AdminUsersPage() {
           autoComplete="off"
         >
           <Form.Item
-            label="用户 ID"
+            label={t("用户 ID")}
             name="user_id"
             validateStatus={userIdValidationError ? "error" : ""}
             help={userIdValidationError}
             rules={[
-              { required: true, message: "请输入用户 ID" },
-              { min: 3, message: "用户 ID 至少 3 位" },
-              { max: 64, message: "用户 ID 不能超过 64 位" },
+              { required: true, message: t("请输入用户 ID") },
+              { min: 3, message: t("用户 ID 至少 3 位") },
+              { max: 64, message: t("用户 ID 不能超过 64 位") },
             ]}
           >
             <Input
-              placeholder="例如 ck001"
+              placeholder={t("例如 ck001")}
               onChange={(e) => handleUserIdChange(e.target.value, false)}
             />
           </Form.Item>
 
           <Form.Item
-            label="用户名"
+            label={t("用户名")}
             name="username"
             rules={[
-              { required: true, message: "请输入用户名" },
-              { min: 3, message: "用户名至少 3 位" },
-              { max: 64, message: "用户名不能超过 64 位" },
+              { required: true, message: t("请输入用户名") },
+              { min: 3, message: t("用户名至少 3 位") },
+              { max: 64, message: t("用户名不能超过 64 位") },
             ]}
           >
-            <Input placeholder="请输入用户名" />
+            <Input placeholder={t("请输入用户名")} />
           </Form.Item>
 
           <Form.Item
-            label="初始密码"
+            label={t("初始密码")}
             name="password"
             rules={[
-              { required: true, message: "请输入初始密码" },
-              { min: 8, message: "密码至少 8 位" },
-              { max: 128, message: "密码不能超过 128 位" },
+              { required: true, message: t("请输入初始密码") },
+              { min: 8, message: t("密码至少 8 位") },
+              { max: 128, message: t("密码不能超过 128 位") },
             ]}
           >
-            <Input.Password placeholder="至少 8 位" />
+            <Input.Password placeholder={t("至少 8 位")} />
           </Form.Item>
 
           <Form.Item
-            label="邮箱"
+            label={t("邮箱")}
             name="email"
             rules={[
-              { type: "email", message: "邮箱格式不正确" },
+              { type: "email", message: t("邮箱格式不正确") },
             ]}
           >
-            <Input placeholder="请输入邮箱（可选）" />
+            <Input placeholder={t("请输入邮箱（可选）")} />
           </Form.Item>
         </Form>
       </Modal>
@@ -1533,8 +1535,8 @@ export default function AdminUsersPage() {
         destroyOnHidden
         onCancel={closeEditUserModal}
         onOk={() => editUserForm.submit()}
-        okText="保存"
-        cancelText="取消"
+        okText={t("保存")}
+        cancelText={t("取消")}
         confirmLoading={updateUserProfileMutation.isPending}
         okButtonProps={{ disabled: !!editUserIdValidationError }}
       >
@@ -1591,40 +1593,40 @@ export default function AdminUsersPage() {
           autoComplete="off"
         >
           <Form.Item
-            label="用户 ID"
+            label={t("用户 ID")}
             name="user_id"
             validateStatus={editUserIdValidationError ? "error" : ""}
             help={editUserIdValidationError}
             rules={[
-              { required: true, message: "请输入用户 ID" },
-              { min: 3, message: "用户 ID 至少 3 位" },
-              { max: 64, message: "用户 ID 不能超过 64 位" },
+              { required: true, message: t("请输入用户 ID") },
+              { min: 3, message: t("用户 ID 至少 3 位") },
+              { max: 64, message: t("用户 ID 不能超过 64 位") },
             ]}
           >
             <Input
-              placeholder="请输入用户 ID"
+              placeholder={t("请输入用户 ID")}
               onChange={(e) => handleUserIdChange(e.target.value, true)}
             />
           </Form.Item>
           <Form.Item
-            label="用户名"
+            label={t("用户名")}
             name="username"
             rules={[
-              { required: true, message: "请输入用户名" },
-              { min: 3, message: "用户名至少 3 位" },
-              { max: 64, message: "用户名不能超过 64 位" },
+              { required: true, message: t("请输入用户名") },
+              { min: 3, message: t("用户名至少 3 位") },
+              { max: 64, message: t("用户名不能超过 64 位") },
             ]}
           >
-            <Input placeholder="请输入用户名" />
+            <Input placeholder={t("请输入用户名")} />
           </Form.Item>
           <Form.Item
-            label="邮箱"
+            label={t("邮箱")}
             name="email"
             rules={[
-              { type: "email", message: "邮箱格式不正确" },
+              { type: "email", message: t("邮箱格式不正确") },
             ]}
           >
-            <Input placeholder="请输入邮箱" />
+            <Input placeholder={t("请输入邮箱")} />
           </Form.Item>
         </Form>
       </Modal>
@@ -1635,8 +1637,8 @@ export default function AdminUsersPage() {
         destroyOnHidden
         onCancel={closeResetPasswordModal}
         onOk={() => resetPasswordForm.submit()}
-        okText="确认重置"
-        cancelText="取消"
+        okText={t("确认重置")}
+        cancelText={t("取消")}
         confirmLoading={
           !!resetPasswordTarget
           && resettingUserId === resetPasswordTarget.id
@@ -1650,15 +1652,15 @@ export default function AdminUsersPage() {
           autoComplete="off"
         >
           <Form.Item
-            label="新密码"
+            label={t("新密码")}
             name="password"
             rules={[
-              { required: true, message: "请输入新密码" },
-              { min: 8, message: "新密码至少 8 位" },
-              { max: 128, message: "新密码不能超过 128 位" },
+              { required: true, message: t("请输入新密码") },
+              { min: 8, message: t("新密码至少 8 位") },
+              { max: 128, message: t("新密码不能超过 128 位") },
             ]}
           >
-            <Input.Password placeholder="请输入新密码" />
+            <Input.Password placeholder={t("请输入新密码")} />
           </Form.Item>
         </Form>
       </Modal>
@@ -1669,8 +1671,8 @@ export default function AdminUsersPage() {
         destroyOnHidden
         onCancel={closeAssignRolesModal}
         onOk={handleSubmitAssignRoles}
-        okText="保存"
-        cancelText="取消"
+        okText={t("保存")}
+        cancelText={t("取消")}
         confirmLoading={updateRolesMutation.isPending && savingUserId === assigningRolesUser?.id}
       >
         <Form<{ role_codes: string[] }>
@@ -1690,13 +1692,13 @@ export default function AdminUsersPage() {
           autoComplete="off"
         >
           <Form.Item
-            label="角色"
+            label={t("角色")}
             name="role_codes"
-            rules={[{ required: true, message: "请至少选择一个角色" }]}
+            rules={[{ required: true, message: t("请至少选择一个角色") }]}
           >
             <Select
               mode="multiple"
-              placeholder="请选择角色"
+              placeholder={t("请选择角色")}
               options={roleOptions.map((code) => ({ label: getRoleName(code), value: code }))}
               allowClear
             />

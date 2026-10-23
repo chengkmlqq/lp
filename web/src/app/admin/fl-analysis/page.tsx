@@ -19,6 +19,7 @@ import {
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
@@ -57,6 +58,7 @@ const FL_ANALYSIS_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
 const FL_ANALYSIS_TABLE_BOTTOM_GAP = 8;
 
 export default function AdminFlAnalysisPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const { modal: modalApi, message: messageApi } = App.useApp();
@@ -376,10 +378,10 @@ export default function AdminFlAnalysisPage() {
   // 删除前二次确认（对齐雷电流幅值统计页的 modalApi.confirm 交互）
   const handleDeleteJob = (job: FlAnalysisJobSummary) => {
     modalApi.confirm({
-      title: "删除防雷分析任务",
+      title: t("删除防雷分析任务"),
       content: `确认删除任务「${job.job_name || job.line_name || job.id}」吗？删除后不可恢复。`,
-      okText: "删除",
-      cancelText: "取消",
+      okText: t("删除"),
+      cancelText: t("取消"),
       okButtonProps: { danger: true },
       onOk: () => deleteJobMutation.mutate(job),
     });
@@ -415,10 +417,10 @@ export default function AdminFlAnalysisPage() {
 
   const handleCancelJob = (job: FlAnalysisJobSummary) => {
     modalApi.confirm({
-      title: "取消任务",
+      title: t("取消任务"),
       content: `确认取消任务「${job.job_name || job.line_name || job.id}」吗？正在执行的计算会被终止，已计算出的部分结果会保留。`,
-      okText: "确认取消",
-      cancelText: "再想想",
+      okText: t("确认取消"),
+      cancelText: t("再想想"),
       onOk: () => cancelJobMutation.mutate(job),
     });
   };
@@ -638,9 +640,9 @@ export default function AdminFlAnalysisPage() {
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">请先登录后再查看防雷分析结果。</Typography.Text>
+          <Typography.Text type="secondary">{t("请先登录后再查看防雷分析结果。")}</Typography.Text>
           <Button>
-            <Link href="/">返回首页</Link>
+            <Link href="/">{t("返回首页")}</Link>
           </Button>
         </Space>
       </Card>
@@ -651,9 +653,9 @@ export default function AdminFlAnalysisPage() {
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">你没有访问该页面的权限（需要 `line.read` 或 `line.manage`）。</Typography.Text>
+          <Typography.Text type="secondary">{t("你没有访问该页面的权限（需要 `line.read` 或 `line.manage`）。")}</Typography.Text>
           <Button>
-            <Link href="/">返回首页</Link>
+            <Link href="/">{t("返回首页")}</Link>
           </Button>
         </Space>
       </Card>
@@ -681,18 +683,18 @@ export default function AdminFlAnalysisPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin-fl-analysis-tab-title">防雷计算</span>,
+            label: <span className="admin-fl-analysis-tab-title">{t("防雷计算")}</span>,
             closable: false,
             children: (
               <div className="admin-fl-analysis-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
-                    <Form.Item label="关键字" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("关键字")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         value={keywordInput}
                         allowClear
                         onChange={(event) => setKeywordInput(event.target.value)}
-                        placeholder="按任务名/线路名/线路编码筛选"
+                        placeholder={t("按任务名/线路名/线路编码筛选")}
                         onPressEnter={handleSearch}
                       />
                     </Form.Item>
@@ -711,14 +713,14 @@ export default function AdminFlAnalysisPage() {
                     value={viewMode}
                     onChange={(value) => setViewMode(value as "card" | "list")}
                     options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "list" },
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "list" },
                     ]}
                   />
                 </div>
 
                  {jobs.length === 0 ? (
-                  <Empty description="暂无防雷分析任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  <Empty description={t("暂无防雷分析任务")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : viewMode === "card" ? (
                   <>
                     <div className="admin-power-lines-card-scroll">
@@ -786,7 +788,7 @@ export default function AdminFlAnalysisPage() {
       />
 
       <Modal
-        title="新建防雷任务"
+        title={t("新建防雷任务")}
         open={createModalOpen}
         width={880}
         footer={null}

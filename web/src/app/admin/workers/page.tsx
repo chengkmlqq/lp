@@ -25,6 +25,7 @@ import {
 } from "antd";
 import { ClusterOutlined, EyeOutlined, SearchOutlined } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -138,6 +139,7 @@ function parseStatusFilter(value: string | undefined): "online" | "offline" | un
 }
 
 export default function AdminWorkersPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("celery.read") || hasPermission("celery.manage");
 
@@ -198,42 +200,42 @@ export default function AdminWorkersPage() {
   const taskColumns = useMemo<TableColumnsType<WorkerMonitorTaskItem>>(
     () => [
       {
-        title: "任务 ID",
+        title: t("任务 ID"),
         dataIndex: "task_id",
         key: "task_id",
         width: 260,
         render: (value: string) => <Text copyable>{value}</Text>,
       },
       {
-        title: "任务名称",
+        title: t("任务名称"),
         dataIndex: "name",
         key: "name",
         width: 220,
         render: (value: string) => getTaskDisplayName(value),
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "state",
         key: "state",
         width: 110,
         render: (value: string) => renderTaskStateTag(value),
       },
       {
-        title: "监控分组",
+        title: t("监控分组"),
         dataIndex: "source",
         key: "source",
         width: 120,
         render: (value: string) => renderTaskSourceTag(value),
       },
       {
-        title: "队列",
+        title: t("队列"),
         dataIndex: "queue_name",
         key: "queue_name",
         width: 120,
         render: (value: string | null) => getQueueDisplayName(value),
       },
       {
-        title: "执行节点",
+        title: t("执行节点"),
         dataIndex: "worker",
         key: "worker",
         width: 220,
@@ -247,49 +249,49 @@ export default function AdminWorkersPage() {
         render: (value: string | null) => formatDateTime(value),
       },
       {
-        title: "接收时间",
+        title: t("接收时间"),
         dataIndex: "received_at",
         key: "received_at",
         width: 170,
         render: (value: string | null) => formatDateTime(value),
       },
       {
-        title: "开始时间",
+        title: t("开始时间"),
         dataIndex: "started_at",
         key: "started_at",
         width: 170,
         render: (value: string | null) => formatDateTime(value),
       },
       {
-        title: "完成时间",
+        title: t("完成时间"),
         dataIndex: "finished_at",
         key: "finished_at",
         width: 170,
         render: (value: string | null) => formatDateTime(value),
       },
       {
-        title: "运行时长",
+        title: t("运行时长"),
         dataIndex: "runtime_seconds",
         key: "runtime_seconds",
         width: 110,
         render: (value: number | null) => formatTaskMonitorDuration(value),
       },
       {
-        title: "位置参数",
+        title: t("位置参数"),
         dataIndex: "args_text",
         key: "args_text",
         width: 220,
         render: (value: string | null) => (value ? <Text ellipsis={{ tooltip: value }}>{value}</Text> : "-"),
       },
       {
-        title: "关键字参数",
+        title: t("关键字参数"),
         dataIndex: "kwargs_text",
         key: "kwargs_text",
         width: 220,
         render: (value: string | null) => (value ? <Text ellipsis={{ tooltip: value }}>{value}</Text> : "-"),
       },
       {
-        title: "执行结果",
+        title: t("执行结果"),
         dataIndex: "result_text",
         key: "result_text",
         width: 220,
@@ -303,7 +305,7 @@ export default function AdminWorkersPage() {
           ),
       },
       {
-        title: "异常信息",
+        title: t("异常信息"),
         dataIndex: "exception_text",
         key: "exception_text",
         width: 220,
@@ -369,7 +371,7 @@ export default function AdminWorkersPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问Worker监控页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问Worker监控页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -383,7 +385,7 @@ export default function AdminWorkersPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `celery.read` 或 `celery.manage`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `celery.read` 或 `celery.manage`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -421,27 +423,27 @@ export default function AdminWorkersPage() {
       >
         <Space direction="vertical" size={0} style={{ width: "100%" }}>
           <div className="admin-workers-worker-card-row">
-            <Typography.Text type="secondary">运行中任务</Typography.Text>
+            <Typography.Text type="secondary">{t("运行中任务")}</Typography.Text>
             <Typography.Text strong>{workerItem.active_count}</Typography.Text>
           </div>
           <div className="admin-workers-worker-card-row">
-            <Typography.Text type="secondary">已处理任务</Typography.Text>
+            <Typography.Text type="secondary">{t("已处理任务")}</Typography.Text>
             <Typography.Text strong>{workerItem.processed_count}</Typography.Text>
           </div>
           <div className="admin-workers-worker-card-row">
-            <Typography.Text type="secondary">空闲状态</Typography.Text>
+            <Typography.Text type="secondary">{t("空闲状态")}</Typography.Text>
             <Tag color={idle ? "green" : "default"} bordered={false}>
               {idle ? "空闲" : "忙碌"}
             </Tag>
           </div>
           <div className="admin-workers-worker-card-row admin-workers-worker-card-row--divider">
-            <Typography.Text type="secondary">心跳时间</Typography.Text>
+            <Typography.Text type="secondary">{t("心跳时间")}</Typography.Text>
             <Typography.Text className="admin-workers-worker-card-heartbeat">
               {formatDateTime(workerItem.last_heartbeat_at)}
             </Typography.Text>
           </div>
           <div className="admin-workers-worker-card-row admin-workers-worker-card-row--divider">
-            <Typography.Text type="secondary">注册任务</Typography.Text>
+            <Typography.Text type="secondary">{t("注册任务")}</Typography.Text>
             <Typography.Text>{workerItem.registered_count}</Typography.Text>
           </div>
           <Button
@@ -467,30 +469,30 @@ export default function AdminWorkersPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin_workers_tab_title">Worker监控</span>,
+            label: <span className="admin_workers_tab_title">{t("Worker监控")}</span>,
             closable: false,
             children: (
               <div className="admin_workers_list_pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
-                    <Form.Item label="执行节点" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("执行节点")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         allowClear
-                        placeholder="按节点名称筛选"
+                        placeholder={t("按节点名称筛选")}
                         value={pendingWorkerKeyword}
                         onChange={(event) => setPendingWorkerKeyword(event.target.value)}
                         onPressEnter={handleWorkerSearch}
                       />
                     </Form.Item>
 
-                    <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Select
                         allowClear
                         value={statusFilter}
                         onChange={(value) => setStatusFilter(parseStatusFilter(value))}
                         options={[
-                          { label: "在线", value: "online" },
-                          { label: "离线", value: "offline" },
+                          { label: t("在线"), value: "online" },
+                          { label: t("离线"), value: "offline" },
                         ]}
                       />
                     </Form.Item>
@@ -517,7 +519,7 @@ export default function AdminWorkersPage() {
                     <div className="admin-workers-card-view-state">
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="未找到符合筛选条件的执行节点。"
+                        description={t("未找到符合筛选条件的执行节点。")}
                       />
                     </div>
                   ) : (
@@ -584,46 +586,46 @@ export default function AdminWorkersPage() {
               <Tag color="default">最近记录: {taskOverview.summary.recent}</Tag>
             </Space>
 
-            <AntCard title="运行中任务">
+            <AntCard title={t("运行中任务")}>
               <Table<WorkerMonitorTaskItem>
                 rowKey={(record) => `active-${record.task_id}`}
                 columns={taskColumns}
                 dataSource={taskOverview.active_tasks}
                 pagination={false}
-                locale={{ emptyText: "暂无运行中任务" }}
+                locale={{ emptyText: t("暂无运行中任务") }}
                 scroll={{ x: 2200 }}
               />
             </AntCard>
 
-            <AntCard title="保留任务">
+            <AntCard title={t("保留任务")}>
               <Table<WorkerMonitorTaskItem>
                 rowKey={(record) => `reserved-${record.task_id}`}
                 columns={taskColumns}
                 dataSource={taskOverview.reserved_tasks}
                 pagination={false}
-                locale={{ emptyText: "暂无保留任务" }}
+                locale={{ emptyText: t("暂无保留任务") }}
                 scroll={{ x: 2200 }}
               />
             </AntCard>
 
-            <AntCard title="定时任务">
+            <AntCard title={t("定时任务")}>
               <Table<WorkerMonitorTaskItem>
                 rowKey={(record) => `scheduled-${record.task_id}`}
                 columns={taskColumns}
                 dataSource={taskOverview.scheduled_tasks}
                 pagination={false}
-                locale={{ emptyText: "暂无定时任务" }}
+                locale={{ emptyText: t("暂无定时任务") }}
                 scroll={{ x: 2200 }}
               />
             </AntCard>
 
-            <AntCard title="最近完成任务">
+            <AntCard title={t("最近完成任务")}>
               <Table<WorkerMonitorTaskItem>
                 rowKey={(record) => `recent-${record.task_id}`}
                 columns={taskColumns}
                 dataSource={taskOverview.recent_tasks}
                 pagination={false}
-                locale={{ emptyText: "暂无最近任务" }}
+                locale={{ emptyText: t("暂无最近任务") }}
                 scroll={{ x: 2200 }}
               />
             </AntCard>

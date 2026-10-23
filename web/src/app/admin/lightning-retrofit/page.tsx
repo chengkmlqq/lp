@@ -43,6 +43,7 @@ import {
   ThunderboltOutlined,
 } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
@@ -81,6 +82,7 @@ type RetrofitTaskItem = FlAnalysisJobSummary & {
 };
 
 export default function AdminLightningRetrofitPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const [messageApi, contextHolder] = message.useMessage();
   const queryClient = useQueryClient();
@@ -303,7 +305,7 @@ export default function AdminLightningRetrofitPage() {
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">请先登录后再访问防雷改造页面。</Typography.Text>
+          <Typography.Text type="secondary">{t("请先登录后再访问防雷改造页面。")}</Typography.Text>
         </Space>
       </Card>
     );
@@ -313,7 +315,7 @@ export default function AdminLightningRetrofitPage() {
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">你没有访问该页面的权限（需要 `line.read` 或 `line.manage`）。</Typography.Text>
+          <Typography.Text type="secondary">{t("你没有访问该页面的权限（需要 `line.read` 或 `line.manage`）。")}</Typography.Text>
         </Space>
       </Card>
     );
@@ -342,7 +344,7 @@ export default function AdminLightningRetrofitPage() {
           items={[
             {
               key: LIST_TAB_KEY,
-              label: <span className="admin-power-lines-tab-title">防雷改造任务</span>,
+              label: <span className="admin-power-lines-tab-title">{t("防雷改造任务")}</span>,
               closable: false,
               children: renderJobsPane(),
             },
@@ -366,27 +368,27 @@ export default function AdminLightningRetrofitPage() {
   function renderJobsPane() {
     const columns: ColumnsType<RetrofitTaskItem> = [
       {
-        title: "任务名",
+        title: t("任务名"),
         dataIndex: "job_name",
         key: "job_name",
         ellipsis: true,
         render: (value, job) => value || job.line_name || job.line_code || "-",
       },
       {
-        title: "线路",
+        title: t("线路"),
         key: "line",
         ellipsis: true,
         render: (_value, job) => job.line_name || job.line_code || "-",
       },
       {
-        title: "类型",
+        title: t("类型"),
         dataIndex: "job_type",
         key: "job_type",
         width: 150,
         render: (_value, job) => formatJobType(job.job_type, readMitigationMode(job)),
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "status",
         key: "status",
         width: 140,
@@ -405,28 +407,28 @@ export default function AdminLightningRetrofitPage() {
         ),
       },
       {
-        title: "创建时间",
+        title: t("创建时间"),
         dataIndex: "create_date",
         key: "create_date",
         width: 180,
         render: (value) => formatDateTime(value),
       },
       {
-        title: "杆塔数",
+        title: t("杆塔数"),
         dataIndex: "total_tower_count",
         key: "total_tower_count",
         width: 100,
         align: "right" as const,
       },
       {
-        title: "结果数",
+        title: t("结果数"),
         dataIndex: "result_tower_count",
         key: "result_tower_count",
         width: 100,
         align: "right" as const,
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "operation",
         width: 160,
         fixed: "right" as const,
@@ -452,12 +454,12 @@ export default function AdminLightningRetrofitPage() {
       <div className="admin-power-lines-list-pane">
         <div className="admin-filter-bar">
           <Form layout="inline">
-            <Form.Item label="关键字" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+            <Form.Item label={t("关键字")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
               <Input
                 value={keywordInput}
                 allowClear
                 onChange={(event) => setKeywordInput(event.target.value)}
-                placeholder="按任务名/线路名/线路编码筛选"
+                placeholder={t("按任务名/线路名/线路编码筛选")}
                 onPressEnter={handleSearch}
               />
             </Form.Item>
@@ -476,8 +478,8 @@ export default function AdminLightningRetrofitPage() {
             value={viewMode}
             onChange={(value) => setViewMode(value as "card" | "list")}
             options={[
-              { label: "卡片视图", value: "card" },
-              { label: "列表视图", value: "list" },
+              { label: t("卡片视图"), value: "card" },
+              { label: t("列表视图"), value: "list" },
             ]}
           />
         </div>
@@ -496,7 +498,7 @@ export default function AdminLightningRetrofitPage() {
               <Spin />
             </div>
           ) : (
-            <Empty description="暂无防雷改造任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <Empty description={t("暂无防雷改造任务")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
           )
         ) : viewMode === "list" ? (
           <div
@@ -525,7 +527,7 @@ export default function AdminLightningRetrofitPage() {
               scroll={{ x: 1200, y: tableScrollY }}
               locale={{
                 emptyText: (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无防雷改造任务" />
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无防雷改造任务")} />
                 ),
               }}
             />
@@ -562,7 +564,7 @@ export default function AdminLightningRetrofitPage() {
                           </div>
                           <div className="flex items-center gap-2">
                             <ThunderboltOutlined className="text-xs text-gray-500" />
-                            <Typography.Text type="secondary" className="text-xs">类型：</Typography.Text>
+                            <Typography.Text type="secondary" className="text-xs">{t("类型：")}</Typography.Text>
                             <Tag color={readMitigationMode(job) ? "orange" : "blue"} className="text-xs">
                               {formatJobType(job.job_type, readMitigationMode(job))}
                             </Tag>
@@ -588,7 +590,7 @@ export default function AdminLightningRetrofitPage() {
                         <div className="admin-power-lines-line-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
                           <div />
                           <Space size="small" className="shrink-0">
-                            <Tooltip title="查看详情">
+                            <Tooltip title={t("查看详情")}>
                               <Button
                                 type="text"
                                 size="small"
@@ -599,7 +601,7 @@ export default function AdminLightningRetrofitPage() {
                                 }}
                               />
                             </Tooltip>
-                            <Tooltip title="删除">
+                            <Tooltip title={t("删除")}>
                               <Button
                                 type="text"
                                 size="small"
@@ -670,6 +672,7 @@ function retrofitJobBadgeStatus(
 
 // ── 动态详情 Tab 内容：防雷改造任务详情（信息 + 塔结果）────────────
 function RetrofitJobDetail({ jobId }: { jobId: string }) {
+  const { t } = useI18n();
   const { user, fetchWithAuth, hasPermission } = useAuth();
   const canRead = hasPermission("line.read") || hasPermission("line.manage");
   const [job, setJob] = useState<FlAnalysisJobSummary | null>(null);
@@ -744,14 +747,14 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
 
   const columns: ColumnsType<FlAnalysisTowerResultSummary> = [
     {
-      title: "塔号",
+      title: t("塔号"),
       dataIndex: "tower_no",
       key: "tower_no",
       width: 120,
       render: (value) => value || "-",
     },
     {
-      title: "当前风险",
+      title: t("当前风险"),
       key: "current_risk",
       width: 120,
       render: (_value, row) => {
@@ -761,7 +764,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
       },
     },
     {
-      title: "预期风险",
+      title: t("预期风险"),
       key: "expected_risk",
       width: 120,
       render: (_value, row) => {
@@ -771,7 +774,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
       },
     },
     {
-      title: "预期得分",
+      title: t("预期得分"),
       key: "expected_score",
       width: 100,
       align: "right" as const,
@@ -781,7 +784,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
       },
     },
     {
-      title: "措施建议",
+      title: t("措施建议"),
       key: "recommendation",
       ellipsis: true,
       render: (_value, row) => {
@@ -790,7 +793,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
       },
     },
     {
-      title: "结论",
+      title: t("结论"),
       key: "conclusion",
       width: 180,
       render: (_value, row) => {
@@ -802,7 +805,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
       },
     },
     {
-      title: "优化过程",
+      title: t("优化过程"),
       key: "process",
       width: 100,
       render: (_value, row) => {
@@ -860,7 +863,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
           }}
           scroll={{ x: 1000, y: 240 }}
           locale={{
-            emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无杆塔结果" />,
+            emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无杆塔结果")} />,
           }}
         />
       </div>
@@ -875,7 +878,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
         title={processRow ? `优化过程 - ${processRow.tower_no || processRow.tower_id}` : "优化过程"}
         open={processRow !== null}
         onCancel={() => setProcessRow(null)}
-        footer={<Button onClick={() => setProcessRow(null)}>关闭</Button>}
+        footer={<Button onClick={() => setProcessRow(null)}>{t("关闭")}</Button>}
         width={760}
       >
         {processRow ? (
@@ -887,6 +890,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
 }
 
 /** 措施推荐状态机逐轮过程时间线（后端 result_json.mitigation_process） */
+  const { t } = useI18n();
 function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
   const result = (row.result_json ?? {}) as Record<string, unknown>;
   const steps = Array.isArray(result.mitigation_process) ? result.mitigation_process : [];
@@ -894,7 +898,7 @@ function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="该杆塔无逐轮过程记录（历史任务未保存，重新生成任务后即可查看）。"
+        description={t("该杆塔无逐轮过程记录（历史任务未保存，重新生成任务后即可查看）。")}
       />
     );
   }
@@ -942,7 +946,7 @@ function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
                     ))}
                   </Typography.Text>
                 ) : (
-                  <Typography.Text type="secondary">本轮无参数改动</Typography.Text>
+                  <Typography.Text type="secondary">{t("本轮无参数改动")}</Typography.Text>
                 )}
                 {recomputed ? (
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -956,7 +960,7 @@ function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
                     {typeof recomputed.shielding_trip_rate === "number" ? `，绕击跳闸率 ${Number(recomputed.shielding_trip_rate).toFixed(4)}` : ""}
                   </Typography.Text>
                 ) : (
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>本轮未重算（直接进入终态判定）</Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("本轮未重算（直接进入终态判定）")}</Typography.Text>
                 )}
                 <Typography.Text style={{ fontSize: 12, color: decision.includes("补装避雷器") ? "#cf1322" : "#1677ff" }}>
                   ▸ {decision}

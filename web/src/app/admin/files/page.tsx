@@ -36,6 +36,7 @@ import {
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -95,6 +96,7 @@ const FILES_TABLE_FALLBACK_RESERVE = 220;
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 export default function AdminFilesPage() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [messageApi, messageContextHolder] = antdMessage.useMessage();
   const { modal } = App.useApp();
@@ -410,10 +412,10 @@ export default function AdminFilesPage() {
         : `确认删除文件 ${item.name} 吗？`;
 
       modal.confirm({
-        title: "删除确认",
+        title: t("删除确认"),
         content,
-        okText: "确认删除",
-        cancelText: "取消",
+        okText: t("确认删除"),
+        cancelText: t("取消"),
         okType: "danger",
         onOk: () => deleteMutation.mutateAsync(item),
       });
@@ -646,7 +648,7 @@ export default function AdminFilesPage() {
 
   const columns: TableProps<FileEntryItem>["columns"] = [
       {
-        title: "名称",
+        title: t("名称"),
         dataIndex: "name",
         key: "name",
         render: (_value, item) => (
@@ -670,7 +672,7 @@ export default function AdminFilesPage() {
         ),
       },
       {
-        title: "类型",
+        title: t("类型"),
         key: "type",
         width: 180,
         render: (_value, item) => (
@@ -680,7 +682,7 @@ export default function AdminFilesPage() {
         ),
       },
       {
-        title: "大小",
+        title: t("大小"),
         key: "size",
         width: 140,
         render: (_value, item) => (
@@ -690,7 +692,7 @@ export default function AdminFilesPage() {
         ),
       },
       {
-        title: "修改时间",
+        title: t("修改时间"),
         key: "modified_at",
         width: 220,
         render: (_value, item) => (
@@ -700,7 +702,7 @@ export default function AdminFilesPage() {
         ),
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         fixed: "right",
       width: 150,
@@ -708,7 +710,7 @@ export default function AdminFilesPage() {
           const menuItems: MenuProps["items"] = [
             {
               key: "move",
-              label: "移动",
+              label: t("移动"),
               icon: <DragOutlined />,
               disabled: operationBusy,
             },
@@ -717,7 +719,7 @@ export default function AdminFilesPage() {
             },
             {
               key: "delete",
-              label: "删除",
+              label: t("删除"),
               icon: <DeleteOutlined />,
               danger: true,
               disabled: deleteMutation.isPending,
@@ -794,7 +796,7 @@ export default function AdminFilesPage() {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
         <p className="text-sm text-[var(--gray-11)]">请先登录后再访问{pageDisplayName}页面。</p>
-        <Link href="/" className="inline-flex items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)] disabled:cursor-not-allowed disabled:opacity-60 w-fit">返回首页</Link>
+        <Link href="/" className="inline-flex items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)] disabled:cursor-not-allowed disabled:opacity-60 w-fit">{t("返回首页")}</Link>
       </main>
     );
   }
@@ -802,8 +804,8 @@ export default function AdminFilesPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `file.read`）。</p>
-        <Link href="/" className="inline-flex items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)] disabled:cursor-not-allowed disabled:opacity-60 w-fit">返回首页</Link>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `file.read`）。")}</p>
+        <Link href="/" className="inline-flex items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)] disabled:cursor-not-allowed disabled:opacity-60 w-fit">{t("返回首页")}</Link>
       </main>
     );
   }
@@ -816,7 +818,7 @@ export default function AdminFilesPage() {
         title={
           <div className="flex items-center gap-2">
             <FolderFilled className="text-lg text-[var(--accent-11)]" />
-            <span className="text-base font-semibold">文件管理</span>
+            <span className="text-base font-semibold">{t("文件管理")}</span>
           </div>
         }
         extra={(
@@ -908,7 +910,7 @@ export default function AdminFilesPage() {
                 emptyText: (
                   <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="当前目录为空"
+                    description={t("当前目录为空")}
                     className="py-12"
                   />
                 ),
@@ -920,12 +922,12 @@ export default function AdminFilesPage() {
       </AntCard>
 
       <Modal
-        title="新建目录"
+        title={t("新建目录")}
         open={createDirectoryModalOpen}
         onCancel={closeCreateDirectoryModal}
         onOk={submitCreateDirectory}
-        okText="确认创建"
-        cancelText="取消"
+        okText={t("确认创建")}
+        cancelText={t("取消")}
         confirmLoading={createDirectoryMutation.isPending}
         destroyOnHidden
         styles={{
@@ -935,7 +937,7 @@ export default function AdminFilesPage() {
       >
         <Form layout="vertical">
           <Form.Item
-            label="目录名称"
+            label={t("目录名称")}
             required
             validateStatus={newDirectoryName.trim() ? undefined : "error"}
             help={newDirectoryName.trim() ? undefined : "目录名称不能为空"}
@@ -943,7 +945,7 @@ export default function AdminFilesPage() {
             <Input
               value={newDirectoryName}
               onChange={(event) => setNewDirectoryName(event.currentTarget.value)}
-              placeholder="请输入目录名称"
+              placeholder={t("请输入目录名称")}
               allowClear
               autoFocus
               size="large"
@@ -957,8 +959,8 @@ export default function AdminFilesPage() {
         open={Boolean(renameTarget)}
         onCancel={closeRenameModal}
         onOk={submitRename}
-        okText="确认重命名"
-        cancelText="取消"
+        okText={t("确认重命名")}
+        cancelText={t("取消")}
         confirmLoading={renameMutation.isPending}
         destroyOnHidden
         styles={{
@@ -968,7 +970,7 @@ export default function AdminFilesPage() {
       >
         <Form layout="vertical">
           <Form.Item
-            label="新名称"
+            label={t("新名称")}
             required
             validateStatus={renameName.trim() ? undefined : "error"}
             help={renameName.trim() ? undefined : "新名称不能为空"}
@@ -976,7 +978,7 @@ export default function AdminFilesPage() {
             <Input
               value={renameName}
               onChange={(event) => setRenameName(event.currentTarget.value)}
-              placeholder="请输入新名称"
+              placeholder={t("请输入新名称")}
               autoFocus
               size="large"
             />
@@ -989,8 +991,8 @@ export default function AdminFilesPage() {
         open={Boolean(moveTarget)}
         onCancel={closeMoveModal}
         onOk={submitMove}
-        okText="确认移动"
-        cancelText="取消"
+        okText={t("确认移动")}
+        cancelText={t("取消")}
         confirmLoading={moveMutation.isPending}
         destroyOnHidden
         styles={{
@@ -1000,7 +1002,7 @@ export default function AdminFilesPage() {
       >
         <Form layout="vertical">
           <Form.Item
-            label="目标目录"
+            label={t("目标目录")}
             required
             validateStatus={moveTargetParentPath.trim() ? undefined : "error"}
             help={moveTargetParentPath.trim() ? undefined : "目标目录不能为空"}
@@ -1008,16 +1010,16 @@ export default function AdminFilesPage() {
             <Input
               value={moveTargetParentPath}
               onChange={(event) => setMoveTargetParentPath(event.currentTarget.value)}
-              placeholder="目标目录（如 /a/b）"
+              placeholder={t("目标目录（如 /a/b）")}
               autoFocus
               size="large"
             />
           </Form.Item>
-          <Form.Item label="新名称（可选）">
+          <Form.Item label={t("新名称（可选）")}>
             <Input
               value={moveNewName}
               onChange={(event) => setMoveNewName(event.currentTarget.value)}
-              placeholder="留空则使用当前名称"
+              placeholder={t("留空则使用当前名称")}
               size="large"
             />
           </Form.Item>

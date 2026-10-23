@@ -34,6 +34,7 @@ import { EditOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from "@ant-d
 import type { DataNode } from "antd/es/tree";
 import type { ComponentType, RefAttributes } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -84,6 +85,7 @@ function identityTypeOf(path: unknown): string {
 }
 
 export default function AdminDimensionsPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
@@ -668,27 +670,27 @@ export default function AdminDimensionsPage() {
   const columns = useMemo<TableColumnsType<DimensionItem>>(() => {
     const baseColumns: TableColumnsType<DimensionItem> = [
       {
-        title: "维度类型",
+        title: t("维度类型"),
         dataIndex: "type_id",
         key: "type_id",
         width: 140,
         render: (value: string | null) => typeName(value, typeTreeQuery.data),
       },
       {
-        title: "维度编码",
+        title: t("维度编码"),
         dataIndex: "code",
         key: "code",
         width: 140,
       },
       {
-        title: "维度名称",
+        title: t("维度名称"),
         dataIndex: "name",
         key: "name",
         width: 180,
         ellipsis: { showTitle: true },
       },
       {
-        title: "父级",
+        title: t("父级"),
         dataIndex: "parent_id",
         key: "parent_id",
         width: 160,
@@ -699,7 +701,7 @@ export default function AdminDimensionsPage() {
         },
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "is_enabled",
         key: "is_enabled",
         width: 100,
@@ -709,14 +711,14 @@ export default function AdminDimensionsPage() {
         ),
       },
       {
-        title: "排序",
+        title: t("排序"),
         dataIndex: "sort_order",
         key: "sort_order",
         width: 80,
         align: "center",
       },
       {
-        title: "更新时间",
+        title: t("更新时间"),
         dataIndex: "update_date",
         key: "update_date",
         width: 180,
@@ -726,7 +728,7 @@ export default function AdminDimensionsPage() {
 
     if (canManage) {
       baseColumns.push({
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 180,
         fixed: "right",
@@ -743,15 +745,15 @@ export default function AdminDimensionsPage() {
             },
             {
               key: "delete",
-              label: "删除",
+              label: t("删除"),
               danger: true,
               disabled: rowBusy,
               onClick: () => {
                 Modal.confirm({
-                  title: "删除维度项",
+                  title: t("删除维度项"),
                   content: `确认删除维度项 ${record.name}（${record.code}）吗？`,
-                  okText: "删除",
-                  cancelText: "取消",
+                  okText: t("删除"),
+                  cancelText: t("取消"),
                   okButtonProps: { danger: true },
                   onOk: () => void removeDimension(record.id),
                 });
@@ -770,10 +772,10 @@ export default function AdminDimensionsPage() {
                 disabled={rowBusy}
                 onClick={() => {
                   Modal.confirm({
-                    title: "删除维度项",
+                    title: t("删除维度项"),
                     content: `确认删除维度项 ${record.name}（${record.code}）吗？`,
-                    okText: "删除",
-                    cancelText: "取消",
+                    okText: t("删除"),
+                    cancelText: t("取消"),
                     okButtonProps: { danger: true, loading: deleteLoading },
                     onOk: () => void removeDimension(record.id),
                   });
@@ -807,16 +809,16 @@ export default function AdminDimensionsPage() {
       },
       {
         key: "delete",
-        label: "删除",
+        label: t("删除"),
         danger: true,
         disabled: deleteLoading,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
           Modal.confirm({
-            title: "删除维度项",
+            title: t("删除维度项"),
             content: `确认删除维度项 ${item.name}（${item.code}）吗？`,
-            okText: "删除",
-            cancelText: "取消",
+            okText: t("删除"),
+            cancelText: t("取消"),
             okButtonProps: { danger: true },
             onOk: () => void removeDimension(item.id),
           });
@@ -841,29 +843,29 @@ export default function AdminDimensionsPage() {
         </div>
         <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-system-params-param-card-field">
-            <Typography.Text type="secondary">维度类型</Typography.Text>
+            <Typography.Text type="secondary">{t("维度类型")}</Typography.Text>
             <Typography.Text>{typeName(item.type_id, typeTreeQuery.data)}</Typography.Text>
           </div>
           <div className="admin-system-params-param-card-field">
-            <Typography.Text type="secondary">维度编码</Typography.Text>
+            <Typography.Text type="secondary">{t("维度编码")}</Typography.Text>
             <Typography.Text className="font-mono text-xs">{item.code}</Typography.Text>
           </div>
           <div className="admin-system-params-param-card-field">
-            <Typography.Text type="secondary">父级</Typography.Text>
+            <Typography.Text type="secondary">{t("父级")}</Typography.Text>
             <Typography.Text ellipsis={{ tooltip: parent ? `${parent.name}（${parent.code}）` : "-" }}>
               {parent ? `${parent.name}（${parent.code}）` : "-"}
             </Typography.Text>
           </div>
           {item.description && (
             <div className="admin-system-params-param-card-field">
-              <Typography.Text type="secondary">描述</Typography.Text>
+              <Typography.Text type="secondary">{t("描述")}</Typography.Text>
               <Typography.Text ellipsis={{ tooltip: item.description }}>
                 {item.description}
               </Typography.Text>
             </div>
           )}
           <div className="admin-system-params-param-card-field">
-            <Typography.Text type="secondary">排序</Typography.Text>
+            <Typography.Text type="secondary">{t("排序")}</Typography.Text>
             <Typography.Text>{item.sort_order}</Typography.Text>
           </div>
         </Space>
@@ -872,7 +874,7 @@ export default function AdminDimensionsPage() {
           <Space size="small" className="shrink-0">
             {canManage ? (
               <>
-                <Tooltip title="编辑">
+                <Tooltip title={t("编辑")}>
                   <Button
                     type="text"
                     size="small"
@@ -885,7 +887,7 @@ export default function AdminDimensionsPage() {
                   />
                 </Tooltip>
                 <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Tooltip title="更多">
+                  <Tooltip title={t("更多")}>
                     <Button
                       type="text"
                       size="small"
@@ -928,7 +930,7 @@ export default function AdminDimensionsPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问维度管理页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问维度管理页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -942,7 +944,7 @@ export default function AdminDimensionsPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `dimension.read` 或 `dimension.manage`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `dimension.read` 或 `dimension.manage`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -979,10 +981,10 @@ export default function AdminDimensionsPage() {
                   danger
                   onClick={() => {
                     Modal.confirm({
-                      title: "删除类型",
+                      title: t("删除类型"),
                       content: `确认删除类型 "${selectedType?.name}" 吗？该类型下不能有维度值。`,
-                      okText: "删除",
-                      cancelText: "取消",
+                      okText: t("删除"),
+                      cancelText: t("取消"),
                       okButtonProps: { danger: true },
                       onOk: () => deleteTypeMutation.mutate(selectedType!.id),
                     });
@@ -997,7 +999,7 @@ export default function AdminDimensionsPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-dimensions-tab-title">维度管理</span>,
+            label: <span className="admin-dimensions-tab-title">{t("维度管理")}</span>,
             closable: false,
             children: (
               <div className="admin_dimensions_list_pane">
@@ -1020,7 +1022,7 @@ export default function AdminDimensionsPage() {
                   <div className="admin-system-params-sider-card-search">
                     <Input
                       className="admin-system-params-search-input"
-                      placeholder="搜索类型..."
+                      placeholder={t("搜索类型...")}
                       prefix={<SearchOutlined />}
                       value={typeSearch}
                       onChange={(e) => setTypeSearch(e.target.value)}
@@ -1045,7 +1047,7 @@ export default function AdminDimensionsPage() {
                         treeData={[
                           {
                             key: "all",
-                            title: "全部维度",
+                            title: t("全部维度"),
                           } as DataNode,
                           ...convertToTypeData(filteredTreeData),
                         ]}
@@ -1056,7 +1058,7 @@ export default function AdminDimensionsPage() {
                   </>
                 ) : (
                   <div className="admin-system-params-sider-empty">
-                    <Empty description="暂无类型" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    <Empty description={t("暂无类型")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                   </div>
                 )}
               </AntCard>
@@ -1078,23 +1080,23 @@ export default function AdminDimensionsPage() {
           >
             <div className="admin-filter-bar">
               <Form layout="inline">
-                <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                   <Input
                     allowClear
-                    placeholder="搜索维度编码/名称"
+                    placeholder={t("搜索维度编码/名称")}
                     value={keywordInput}
                     onChange={(event) => setKeywordInput(event.target.value)}
                     onPressEnter={handleQuery}
                   />
                 </Form.Item>
-                <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                   <Select<StatusFilter>
                     value={statusFilterInput}
                     allowClear
-                    placeholder="全部"
+                    placeholder={t("全部")}
                     options={[
-                      { value: "enabled", label: "已启用" },
-                      { value: "disabled", label: "已禁用" },
+                      { value: "enabled", label: t("已启用") },
+                      { value: "disabled", label: t("已禁用") },
                     ]}
                     onChange={(value) => setStatusFilterInput(value)}
                   />
@@ -1110,11 +1112,11 @@ export default function AdminDimensionsPage() {
                   </Button>
                 </Form.Item>
                 {isMobile && (
-                  <Form.Item label="类型" style={{ marginBottom: 0 }}>
+                  <Form.Item label={t("类型")} style={{ marginBottom: 0 }}>
                     <Select
                       value={typeIdFilter}
                       allowClear
-                      placeholder="全部类型"
+                      placeholder={t("全部类型")}
                       style={{ width: 180 }}
                       options={flattenTypeOptions(typeTreeQuery.data ?? [])}
                       onChange={(value) => {
@@ -1138,8 +1140,8 @@ export default function AdminDimensionsPage() {
                     setAllLoadedDimensions([]);
                   }}
                   options={[
-                    { label: "卡片视图", value: "card" },
-                    { label: "列表视图", value: "table" },
+                    { label: t("卡片视图"), value: "card" },
+                    { label: t("列表视图"), value: "table" },
                   ]}
                 />
               </div>
@@ -1177,7 +1179,7 @@ export default function AdminDimensionsPage() {
                     emptyText: (
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="未找到符合筛选条件的维度项。"
+                        description={t("未找到符合筛选条件的维度项。")}
                       />
                     ),
                   }}
@@ -1193,7 +1195,7 @@ export default function AdminDimensionsPage() {
                   <div className="admin-system-params-card-view-state">
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="未找到符合筛选条件的维度项。"
+                      description={t("未找到符合筛选条件的维度项。")}
                     />
                   </div>
                 ) : (
@@ -1239,7 +1241,7 @@ export default function AdminDimensionsPage() {
               }}
               onOk={() => saveDimensionMutation.mutate()}
               okText={editingDimension === null ? "创建" : "保存"}
-              cancelText="取消"
+              cancelText={t("取消")}
               confirmLoading={saveDimensionMutation.isPending}
               destroyOnHidden
             >
@@ -1251,12 +1253,12 @@ export default function AdminDimensionsPage() {
                 autoComplete="off"
               >
                 <Form.Item
-                  label="维度类型"
+                  label={t("维度类型")}
                   name="type_id"
-                  rules={[{ required: true, message: "请选择维度类型" }]}
+                  rules={[{ required: true, message: t("请选择维度类型") }]}
                 >
                   <Select
-                    placeholder="请选择维度类型"
+                    placeholder={t("请选择维度类型")}
                     showSearch
                     optionFilterProp="label"
                     options={flattenTypeOptions(typeTreeQuery.data ?? [])}
@@ -1264,30 +1266,30 @@ export default function AdminDimensionsPage() {
                 </Form.Item>
 
                 <Form.Item
-                  label="维度编码"
+                  label={t("维度编码")}
                   name="code"
                   rules={[
-                    { required: true, message: "请输入维度编码" },
-                    { max: 128, message: "维度编码不能超过 128 位" },
+                    { required: true, message: t("请输入维度编码") },
+                    { max: 128, message: t("维度编码不能超过 128 位") },
                   ]}
                 >
-                  <Input placeholder="例如 110kv" />
+                  <Input placeholder={t("例如 110kv")} />
                 </Form.Item>
 
                 <Form.Item
-                  label="维度名称"
+                  label={t("维度名称")}
                   name="name"
                   rules={[
-                    { required: true, message: "请输入维度名称" },
-                    { max: 255, message: "维度名称不能超过 255 位" },
+                    { required: true, message: t("请输入维度名称") },
+                    { max: 255, message: t("维度名称不能超过 255 位") },
                   ]}
                 >
-                  <Input placeholder="例如 110千伏" />
+                  <Input placeholder={t("例如 110千伏")} />
                 </Form.Item>
 
-                <Form.Item label="父级" name="parent_id">
+                <Form.Item label={t("父级")} name="parent_id">
                   <Select
-                    placeholder="留空表示顶级节点"
+                    placeholder={t("留空表示顶级节点")}
                     allowClear
                     showSearch
                     optionFilterProp="label"
@@ -1297,20 +1299,20 @@ export default function AdminDimensionsPage() {
                   />
                 </Form.Item>
 
-                <Form.Item label="描述" name="description">
-                  <Input.TextArea rows={3} placeholder="可选" maxLength={2000} />
+                <Form.Item label={t("描述")} name="description">
+                  <Input.TextArea rows={3} placeholder={t("可选")} maxLength={2000} />
                 </Form.Item>
 
-                <Form.Item label="启用状态" name="is_enabled">
+                <Form.Item label={t("启用状态")} name="is_enabled">
                   <Select
                     options={[
-                      { value: true, label: "启用" },
-                      { value: false, label: "禁用" },
+                      { value: true, label: t("启用") },
+                      { value: false, label: t("禁用") },
                     ]}
                   />
                 </Form.Item>
 
-                <Form.Item label="排序" name="sort_order">
+                <Form.Item label={t("排序")} name="sort_order">
                   <Input type="number" placeholder="0" />
                 </Form.Item>
               </Form>
@@ -1325,29 +1327,29 @@ export default function AdminDimensionsPage() {
               onCancel={() => setTypeEditorOpen(false)}
               onOk={() => saveTypeMutation.mutate()}
               okText={editingTypeId === null ? "创建" : "保存"}
-              cancelText="取消"
+              cancelText={t("取消")}
               confirmLoading={saveTypeMutation.isPending}
               destroyOnHidden
             >
               <Form layout="vertical" style={{ marginTop: 16 }}>
-                <Form.Item label="类型编码" required>
+                <Form.Item label={t("类型编码")} required>
                   <Input
-                    placeholder="如 voltage_level"
+                    placeholder={t("如 voltage_level")}
                     value={typeCodeInput}
                     onChange={(e) => setTypeCodeInput(e.target.value)}
                   />
                 </Form.Item>
-                <Form.Item label="类型名称" required>
+                <Form.Item label={t("类型名称")} required>
                   <Input
-                    placeholder="如 电压等级"
+                    placeholder={t("如 电压等级")}
                     value={typeNameInput}
                     onChange={(e) => setTypeNameInput(e.target.value)}
                     onPressEnter={() => saveTypeMutation.mutate()}
                   />
                 </Form.Item>
-                <Form.Item label="父类型">
+                <Form.Item label={t("父类型")}>
                   <Select
-                    placeholder="留空表示顶级类型"
+                    placeholder={t("留空表示顶级类型")}
                     allowClear
                     showSearch
                     optionFilterProp="label"
@@ -1356,7 +1358,7 @@ export default function AdminDimensionsPage() {
                     options={getParentOptions()}
                   />
                 </Form.Item>
-                <Form.Item label="排序值">
+                <Form.Item label={t("排序值")}>
                   <Input
                     type="number"
                     placeholder="0"

@@ -22,6 +22,7 @@ import {
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -77,21 +78,21 @@ function formatDateTime(value: string | null | undefined): string {
 
 function renderStatus(value: ScheduledTaskSummary["status"]) {
   if (value === "success") {
-    return <Tag color="green">成功</Tag>;
+    return <Tag color="green">{"成功"}</Tag>;
   }
   if (value === "failed") {
-    return <Tag color="red">失败</Tag>;
+    return <Tag color="red">{"失败"}</Tag>;
   }
   if (value === "running") {
-    return <Tag color="processing">运行中</Tag>;
+    return <Tag color="processing">{"运行中"}</Tag>;
   }
   if (value === "queued") {
-    return <Tag color="blue">已排队</Tag>;
+    return <Tag color="blue">{"已排队"}</Tag>;
   }
   if (value === "disabled") {
-    return <Tag>已禁用</Tag>;
+    return <Tag>{"已禁用"}</Tag>;
   }
-  return <Tag color="default">空闲</Tag>;
+  return <Tag color="default">{"空闲"}</Tag>;
 }
 
 function renderTaskType(value: ScheduledTaskSummary["task_type"]) {
@@ -105,6 +106,7 @@ function renderTaskType(value: ScheduledTaskSummary["task_type"]) {
 }
 
 export default function AdminScheduledTasksPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [formApi] = Form.useForm<FormState>();
@@ -285,7 +287,7 @@ export default function AdminScheduledTasksPage() {
   const columns = useMemo<TableColumnsType<ScheduledTaskSummary>>(() => {
     const baseColumns: TableColumnsType<ScheduledTaskSummary> = [
       {
-        title: "任务",
+        title: t("任务"),
         key: "name",
         width: 260,
         render: (_, record) => (
@@ -298,14 +300,14 @@ export default function AdminScheduledTasksPage() {
         ),
       },
       {
-        title: "类型",
+        title: t("类型"),
         dataIndex: "task_type",
         key: "task_type",
         width: 140,
         render: (value: ScheduledTaskSummary["task_type"]) => renderTaskType(value),
       },
       {
-        title: "Cron / 时区",
+        title: t("Cron / 时区"),
         key: "cron",
         width: 220,
         render: (_, record) => (
@@ -316,7 +318,7 @@ export default function AdminScheduledTasksPage() {
         ),
       },
       {
-        title: "状态",
+        title: t("状态"),
         key: "status",
         width: 160,
         render: (_, record) => (
@@ -327,7 +329,7 @@ export default function AdminScheduledTasksPage() {
         ),
       },
       {
-        title: "最近执行 / 下次执行",
+        title: t("最近执行 / 下次执行"),
         key: "runtime",
         width: 260,
         render: (_, record) => (
@@ -338,7 +340,7 @@ export default function AdminScheduledTasksPage() {
         ),
       },
       {
-        title: "结果",
+        title: t("结果"),
         key: "result",
         width: 320,
         render: (_, record) => (
@@ -356,7 +358,7 @@ export default function AdminScheduledTasksPage() {
 
     if (canManage) {
       baseColumns.push({
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         fixed: "right",
       width: 150,
@@ -457,7 +459,7 @@ export default function AdminScheduledTasksPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问定时任务管理页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问定时任务管理页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -471,7 +473,7 @@ export default function AdminScheduledTasksPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `celery.read`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `celery.read`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -492,23 +494,23 @@ export default function AdminScheduledTasksPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin_scheduled_tasks_tab_title">定时任务管理</span>,
+            label: <span className="admin_scheduled_tasks_tab_title">{t("定时任务管理")}</span>,
             closable: false,
             children: (
               <div className="admin_scheduled_tasks_list_pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
-                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         value={keywordInput}
                         allowClear
                         onChange={(event) => setKeywordInput(event.currentTarget.value)}
-                        placeholder="按任务键/名称/Cron 筛选"
+                        placeholder={t("按任务键/名称/Cron 筛选")}
                         onPressEnter={handleSearch}
                       />
                     </Form.Item>
 
-                    <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Select<StatusFilter>
                         value={statusFilter}
                         options={[...STATUS_FILTER_OPTIONS]}
@@ -557,7 +559,7 @@ export default function AdminScheduledTasksPage() {
                       },
                     }}
                     locale={{
-                      emptyText: <Empty description="暂无定时任务。" image={Empty.PRESENTED_IMAGE_SIMPLE} />,
+                      emptyText: <Empty description={t("暂无定时任务。")} image={Empty.PRESENTED_IMAGE_SIMPLE} />,
                     }}
                   />
                 </div>
@@ -569,7 +571,7 @@ export default function AdminScheduledTasksPage() {
 
       {canManage ? (
         <Modal
-          title="编辑定时任务"
+          title={t("编辑定时任务")}
           open={editorOpen}
           forceRender
           onCancel={closeEditor}
@@ -587,26 +589,26 @@ export default function AdminScheduledTasksPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <Form.Item
                 name="task_key"
-                label="任务键"
-                extra="由系统代码定义，不可修改"
+                label={t("任务键")}
+                extra={t("由系统代码定义，不可修改")}
               >
                 <Input disabled placeholder="syslog.cleanup.default" />
               </Form.Item>
-              <Form.Item name="name" label="任务名称">
-                <Input disabled placeholder="系统日志定时清理" />
+              <Form.Item name="name" label={t("任务名称")}>
+                <Input disabled placeholder={t("系统日志定时清理")} />
               </Form.Item>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <Form.Item
                 name="cron_expression"
-                label="Cron 表达式"
-                rules={[{ required: true, message: "请输入 Cron 表达式" }]}
-                extra="格式：分钟 小时 日 月 周，例如 `0 3 * * *`。"
+                label={t("Cron 表达式")}
+                rules={[{ required: true, message: t("请输入 Cron 表达式") }]}
+                extra={t("格式：分钟 小时 日 月 周，例如 `0 3 * * *`。")}
               >
                 <Input placeholder="0 3 * * *" />
               </Form.Item>
-              <Form.Item name="timezone" label="时区" rules={[{ required: true, message: "请选择时区" }]}>
+              <Form.Item name="timezone" label={t("时区")} rules={[{ required: true, message: t("请选择时区") }]}>
                 <Select options={[...TIMEZONE_OPTIONS]} disabled />
               </Form.Item>
             </div>
@@ -614,18 +616,18 @@ export default function AdminScheduledTasksPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <Form.Item
                 name="retain_days"
-                label="数据保留天数"
-                rules={[{ required: true, message: "请输入日志保留天数" }]}
+                label={t("数据保留天数")}
+                rules={[{ required: true, message: t("请输入日志保留天数") }]}
               >
                 <InputNumber min={1} max={3650} className="w-full" disabled />
               </Form.Item>
-              <Form.Item name="enabled" label="启用状态" valuePropName="checked">
+              <Form.Item name="enabled" label={t("启用状态")} valuePropName="checked">
                 <Switch checkedChildren="启用" unCheckedChildren="停用" />
               </Form.Item>
             </div>
 
-            <Form.Item name="description" label="说明">
-              <Input.TextArea rows={4} placeholder="说明任务用途、影响范围和运行窗口。" disabled />
+            <Form.Item name="description" label={t("说明")}>
+              <Input.TextArea rows={4} placeholder={t("说明任务用途、影响范围和运行窗口。")} disabled />
             </Form.Item>
           </Form>
         </Modal>

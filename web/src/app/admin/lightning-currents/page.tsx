@@ -56,6 +56,7 @@ const MultiReturnPeakChart = dynamic(() => import("@/components/lightning-curren
   loading: () => <div style={{ height: 320 }} />,
 });
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { LightningCurrentBackfillHistoryTable } from "@/components/lightning-current-backfill-history";
@@ -154,6 +155,7 @@ const LIGHTNING_TABLE_ESTIMATED_PAGINATION_HEIGHT = 64;
 const LIGHTNING_TABLE_BOTTOM_GAP = 8;
 
 export default function AdminLightningCurrentsPage() {
+  const { t } = useI18n();
   const { user, initializing, hasPermission, fetchWithAuth, getAccessToken } = useAuth();
   const { modal: modalApi, message: messageApi } = App.useApp();
   const queryClient = useQueryClient();
@@ -787,7 +789,7 @@ export default function AdminLightningCurrentsPage() {
               <div />
             )}
             <Space size="small" className="shrink-0">
-              <AntTooltip title="详情">
+              <AntTooltip title={t("详情")}>
                 <Button
                   type="text"
                   size="small"
@@ -799,7 +801,7 @@ export default function AdminLightningCurrentsPage() {
                 />
               </AntTooltip>
               {canManage && (
-                <AntTooltip title="回填">
+                <AntTooltip title={t("回填")}>
                   <Button
                     type="text"
                     size="small"
@@ -818,7 +820,7 @@ export default function AdminLightningCurrentsPage() {
                       ? [
                           {
                             key: "edit",
-                            label: "编辑",
+                            label: t("编辑"),
                             onClick: (info) => {
                               info.domEvent?.stopPropagation();
                               openEditModal(record);
@@ -830,7 +832,7 @@ export default function AdminLightningCurrentsPage() {
                       ? [
                           {
                             key: "download-source",
-                            label: "下载",
+                            label: t("下载"),
                             onClick: (info) => {
                               info.domEvent?.stopPropagation();
                               void handleDownloadSource(record);
@@ -842,7 +844,7 @@ export default function AdminLightningCurrentsPage() {
                       ? [
                           {
                             key: "import-log",
-                            label: "日志",
+                            label: t("日志"),
                             onClick: (info) => {
                               info.domEvent?.stopPropagation();
                               openLogViewer(record.task_id, "日志", record.source_file_name);
@@ -854,16 +856,16 @@ export default function AdminLightningCurrentsPage() {
                       ? [
                           {
                             key: "delete",
-                            label: "删除",
+                            label: t("删除"),
                             danger: true,
                             disabled: deleteMutation.isPending,
                             onClick: (info) => {
                               info.domEvent?.stopPropagation();
                               modalApi.confirm({
-                                title: "删除记录",
+                                title: t("删除记录"),
                                 content: `确认删除记录 ${record.source_file_name} 吗？`,
-                                okText: "删除",
-                                cancelText: "取消",
+                                okText: t("删除"),
+                                cancelText: t("取消"),
                                 okButtonProps: { danger: true },
                                 onOk: async () => {
                                   await deleteMutation.mutateAsync(record);
@@ -877,7 +879,7 @@ export default function AdminLightningCurrentsPage() {
                 }}
                 trigger={["click"]}
               >
-                <AntTooltip title="更多">
+                <AntTooltip title={t("更多")}>
                   <Button
                     type="text"
                     size="small"
@@ -896,31 +898,31 @@ export default function AdminLightningCurrentsPage() {
   const columns = useMemo<ColumnsType<LightningAmplitudeRecord>>(
     () => [
       {
-        title: "文件名称",
+        title: t("文件名称"),
         dataIndex: "source_file_name",
         width: 200,
         render: (value: string) => value || "-",
       },
       {
-        title: "采样点数",
+        title: t("采样点数"),
         dataIndex: "sample_count",
         width: 100,
         render: (value: number) => value ?? 0,
       },
       {
-        title: "峰值(kA)",
+        title: t("峰值(kA)"),
         dataIndex: "peak_abs_current_ka",
         width: 100,
         render: (value: number | null) => formatNumber(value, 2),
       },
       {
-        title: "极性",
+        title: t("极性"),
         dataIndex: "polarity",
         width: 90,
         render: (value: LightningPolarity) => formatPolarity(value),
       },
       {
-        title: "回填状态",
+        title: t("回填状态"),
         dataIndex: "status",
         width: 160,
         render: (_: unknown, row) => {
@@ -944,7 +946,7 @@ export default function AdminLightningCurrentsPage() {
         },
       },
       {
-        title: "回填线路数",
+        title: t("回填线路数"),
         dataIndex: "backfill_line_count",
         key: "backfill_line_count",
         width: 130,
@@ -961,13 +963,13 @@ export default function AdminLightningCurrentsPage() {
         },
       },
       {
-        title: "导入时间",
+        title: t("导入时间"),
         dataIndex: "create_date",
         width: 170,
         render: (value: string) => formatDateTime(value),
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 200,
         fixed: "right",
@@ -978,7 +980,7 @@ export default function AdminLightningCurrentsPage() {
               ? [
                   {
                     key: "edit",
-                    label: "编辑",
+                    label: t("编辑"),
                     onClick: () => openEditModal(row),
                     disabled: editMutation.isPending,
                   },
@@ -988,7 +990,7 @@ export default function AdminLightningCurrentsPage() {
               ? [
                   {
                     key: "download-source",
-                    label: "下载",
+                    label: t("下载"),
                     onClick: () => {
                       void handleDownloadSource(row);
                     },
@@ -999,7 +1001,7 @@ export default function AdminLightningCurrentsPage() {
               ? [
                   {
                     key: "import-log",
-                    label: "日志",
+                    label: t("日志"),
                     onClick: () => openLogViewer(row.task_id, "日志", row.source_file_name),
                   },
                 ]
@@ -1008,15 +1010,15 @@ export default function AdminLightningCurrentsPage() {
               ? [
                   {
                     key: "delete",
-                    label: "删除",
+                    label: t("删除"),
                     danger: true,
                     disabled: deleteMutation.isPending,
                     onClick: () => {
                       modalApi.confirm({
-                        title: "删除记录",
+                        title: t("删除记录"),
                         content: `确认删除记录 ${row.source_file_name} 吗？`,
-                        okText: "删除",
-                        cancelText: "取消",
+                        okText: t("删除"),
+                        cancelText: t("取消"),
                         okButtonProps: { danger: true },
                         onOk: async () => {
                           await deleteMutation.mutateAsync(row);
@@ -1063,7 +1065,7 @@ export default function AdminLightningCurrentsPage() {
             请先登录后再访问雷电流幅值统计页面。
           </Typography.Text>
           <Button>
-            <Link href="/">返回首页</Link>
+            <Link href="/">{t("返回首页")}</Link>
           </Button>
         </Space>
       </Card>
@@ -1074,9 +1076,9 @@ export default function AdminLightningCurrentsPage() {
     return (
       <Card>
         <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">你没有访问该页面的权限（需要 `lightning.read`）。</Typography.Text>
+          <Typography.Text type="secondary">{t("你没有访问该页面的权限（需要 `lightning.read`）。")}</Typography.Text>
           <Button>
-            <Link href="/">返回首页</Link>
+            <Link href="/">{t("返回首页")}</Link>
           </Button>
         </Space>
       </Card>
@@ -1104,16 +1106,16 @@ export default function AdminLightningCurrentsPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin-lightning-currents-tab-title">雷电流幅值统计</span>,
+            label: <span className="admin-lightning-currents-tab-title">{t("雷电流幅值统计")}</span>,
             closable: false,
             children: (
               <div className="admin-lightning-currents-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
-                    <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Input
                         allowClear
-                        placeholder="按文件名/事件编号搜索"
+                        placeholder={t("按文件名/事件编号搜索")}
                         value={keywordInput}
                         onChange={(event) => handleKeywordChange(event.target.value)}
                         onPressEnter={handleSearch}
@@ -1129,8 +1131,8 @@ export default function AdminLightningCurrentsPage() {
                     value={viewMode}
                     onChange={(value) => setViewMode(value as "card" | "list")}
                     options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "list" },
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "list" },
                     ]}
                   />
                 </div>
@@ -1164,7 +1166,7 @@ export default function AdminLightningCurrentsPage() {
                         emptyText: (
                           <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description="未找到符合筛选条件的记录。"
+                            description={t("未找到符合筛选条件的记录。")}
                           />
                         ),
                       }}
@@ -1180,7 +1182,7 @@ export default function AdminLightningCurrentsPage() {
                       <div className="admin-lightning-events-card-view-state">
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="未找到符合筛选条件的记录。"
+                          description={t("未找到符合筛选条件的记录。")}
                         />
                       </div>
                     ) : (
@@ -1214,7 +1216,7 @@ export default function AdminLightningCurrentsPage() {
       />
 
       <Modal
-        title="导入雷电流幅值数据"
+        title={t("导入雷电流幅值数据")}
         open={importModalOpen}
         onCancel={() => {
           setImportModalOpen(false);
@@ -1230,10 +1232,10 @@ export default function AdminLightningCurrentsPage() {
       >
         <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
           <div className="flex flex-col gap-3">
-            <Form.Item name="city" label="采样城市">
+            <Form.Item name="city" label={t("采样城市")}>
               <Select
                 showSearch
-                placeholder="请搜索选择城市"
+                placeholder={t("请搜索选择城市")}
                 filterOption={(input, option) => {
                   const keyword = input.toLowerCase().trim();
                   const data = option?.["data-data"] as CityOption | undefined;
@@ -1251,18 +1253,18 @@ export default function AdminLightningCurrentsPage() {
                 }))}
               />
             </Form.Item>
-            <Form.Item name="location_tag" label="采样地点" rules={[{ max: 255, message: "采样地点最多 255 个字符" }]}>
-              <Input placeholder="例如 XX变电站、XX区域" />
+            <Form.Item name="location_tag" label={t("采样地点")} rules={[{ max: 255, message: t("采样地点最多 255 个字符") }]}>
+              <Input placeholder={t("例如 XX变电站、XX区域")} />
             </Form.Item>
-            <Form.Item name="sample_interval_us" label="采样间隔(us)" rules={[{ type: "number", min: 0.000001, message: "采样间隔必须大于 0" }]}>
+            <Form.Item name="sample_interval_us" label={t("采样间隔(us)")} rules={[{ type: "number", min: 0.000001, message: t("采样间隔必须大于 0") }]}>
               <InputNumber style={{ width: "100%" }} min={0.000001} precision={6} />
             </Form.Item>
-            <Form.Item name="event_time" label="采样时间">
-              <DatePicker className="w-full" showTime placeholder="选择日期时间" />
+            <Form.Item name="event_time" label={t("采样时间")}>
+              <DatePicker className="w-full" showTime placeholder={t("选择日期时间")} />
             </Form.Item>
           </div>
           <div style={{ marginBottom: 16 }}>
-            <Form.Item label="数据文件" required>
+            <Form.Item label={t("数据文件")} required>
               <Upload.Dragger
                 accept=".txt,.csv,text/plain,text/csv"
                 showUploadList={false}
@@ -1298,9 +1300,9 @@ export default function AdminLightningCurrentsPage() {
                         <CheckCircleOutlined /> 上传完成，可以确认导入
                       </Typography.Text>
                     ) : uploadError ? (
-                      <Typography.Text type="danger">格式校验未通过，请更换文件</Typography.Text>
+                      <Typography.Text type="danger">{t("格式校验未通过，请更换文件")}</Typography.Text>
                     ) : (
-                      <Typography.Text type="warning">上传中…</Typography.Text>
+                      <Typography.Text type="warning">{t("上传中…")}</Typography.Text>
                     )}
                   </>
                 ) : (
@@ -1362,13 +1364,13 @@ export default function AdminLightningCurrentsPage() {
               <Descriptions.Item label="current_b(kA)">
                 {formatNumber(backfillAmplitudeSnapshot.currentB, 3)}
               </Descriptions.Item>
-              <Descriptions.Item label="峰值max(kA)">
+              <Descriptions.Item label={t("峰值max(kA)")}>
                 {formatNumber(backfillAmplitudeSnapshot.peakMax, 3)}
               </Descriptions.Item>
-              <Descriptions.Item label="峰值min(kA)">
+              <Descriptions.Item label={t("峰值min(kA)")}>
                 {formatNumber(backfillAmplitudeSnapshot.peakMin, 3)}
               </Descriptions.Item>
-              <Descriptions.Item label="采样数" span={4}>
+              <Descriptions.Item label={t("采样数")} span={4}>
                 {backfillAmplitudeSnapshot.sampledEventCount}
               </Descriptions.Item>
             </Descriptions>
@@ -1383,14 +1385,14 @@ export default function AdminLightningCurrentsPage() {
             scroll={{ y: 260 }}
             columns={[
               {
-                title: "线路编号",
+                title: t("线路编号"),
                 dataIndex: "line_code",
                 key: "line_code",
                 width: 120,
                 render: (value: string | null) => value || "-",
               },
               {
-                title: "线路名称",
+                title: t("线路名称"),
                 dataIndex: "line_name",
                 key: "line_name",
                 width: 150,
@@ -1398,14 +1400,14 @@ export default function AdminLightningCurrentsPage() {
                 render: (value: string | null) => value || "-",
               },
               {
-                title: "电压(kV)",
+                title: t("电压(kV)"),
                 dataIndex: "voltage_kv",
                 key: "voltage_kv",
                 width: 90,
                 render: (value: number | null) => (value == null ? "-" : value),
               },
               {
-                title: "回填时间",
+                title: t("回填时间"),
                 dataIndex: "prepared_at",
                 key: "prepared_at",
                 width: 150,
@@ -1416,7 +1418,7 @@ export default function AdminLightningCurrentsPage() {
               emptyText: (
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="该幅值尚未被任何线路回填使用"
+                  description={t("该幅值尚未被任何线路回填使用")}
                 />
               ),
             }}
@@ -1450,17 +1452,17 @@ export default function AdminLightningCurrentsPage() {
           }
         }}
         confirmLoading={editMutation.isPending}
-        okText="保存"
-        cancelText="取消"
+        okText={t("保存")}
+        cancelText={t("取消")}
         width={560}
         destroyOnHidden
       >
         <Form<ImportFormValues> form={editForm} layout="vertical" initialValues={INITIAL_IMPORT_VALUES}>
           <div className="flex flex-col gap-3">
-            <Form.Item name="city" label="采样城市">
+            <Form.Item name="city" label={t("采样城市")}>
               <Select
                 showSearch
-                placeholder="请搜索选择城市"
+                placeholder={t("请搜索选择城市")}
                 filterOption={(input, option) => {
                   const keyword = input.toLowerCase().trim();
                   const data = option?.["data-data"] as CityOption | undefined;
@@ -1478,14 +1480,14 @@ export default function AdminLightningCurrentsPage() {
                 }))}
               />
             </Form.Item>
-            <Form.Item name="location_tag" label="采样地点" rules={[{ max: 255, message: "采样地点最多 255 个字符" }]}>
-              <Input placeholder="例如 XX变电站、XX区域" />
+            <Form.Item name="location_tag" label={t("采样地点")} rules={[{ max: 255, message: t("采样地点最多 255 个字符") }]}>
+              <Input placeholder={t("例如 XX变电站、XX区域")} />
             </Form.Item>
-            <Form.Item name="sample_interval_us" label="采样间隔(us)" rules={[{ type: "number", min: 0.000001, message: "采样间隔必须大于 0" }]}>
+            <Form.Item name="sample_interval_us" label={t("采样间隔(us)")} rules={[{ type: "number", min: 0.000001, message: t("采样间隔必须大于 0") }]}>
               <InputNumber style={{ width: "100%" }} min={0.000001} precision={6} />
             </Form.Item>
-            <Form.Item name="event_time" label="采样时间">
-              <DatePicker className="w-full" showTime placeholder="选择日期时间" />
+            <Form.Item name="event_time" label={t("采样时间")}>
+              <DatePicker className="w-full" showTime placeholder={t("选择日期时间")} />
             </Form.Item>
           </div>
         </Form>
@@ -1516,34 +1518,34 @@ function AmplitudeDetailView({
   return (
     <Space direction="vertical" size={24} className="w-full admin-lightning-currents-detail-pane">
       <div>
-        <Typography.Title level={5}>基本信息</Typography.Title>
+        <Typography.Title level={5}>{"基本信息"}</Typography.Title>
         <Descriptions bordered size="small" column={2} className="admin-lightning-currents-meta-table">
-          <Descriptions.Item label="采样城市">{formatNullable(record.city)}</Descriptions.Item>
-          <Descriptions.Item label="采样地点">{formatNullable(record.location_tag)}</Descriptions.Item>
-          <Descriptions.Item label="采样时间">{formatNullable(record.event_time)}</Descriptions.Item>
-          <Descriptions.Item label="采样点数">{record.sample_count}</Descriptions.Item>
-          <Descriptions.Item label="采样间隔(us)">{formatNumber(record.sample_interval_us, 6)}</Descriptions.Item>
+          <Descriptions.Item label={"采样城市"}>{formatNullable(record.city)}</Descriptions.Item>
+          <Descriptions.Item label={"采样地点"}>{formatNullable(record.location_tag)}</Descriptions.Item>
+          <Descriptions.Item label={"采样时间"}>{formatNullable(record.event_time)}</Descriptions.Item>
+          <Descriptions.Item label={"采样点数"}>{record.sample_count}</Descriptions.Item>
+          <Descriptions.Item label={"采样间隔(us)"}>{formatNumber(record.sample_interval_us, 6)}</Descriptions.Item>
         </Descriptions>
       </div>
 
       <div>
-        <Typography.Title level={5}>波形特征参数</Typography.Title>
+        <Typography.Title level={5}>{"波形特征参数"}</Typography.Title>
         <Descriptions bordered size="small" column={2} className="admin-lightning-currents-meta-table">
           <Descriptions.Item label={
             <span>
               峰值电流(kA){" "}
-              <AntTooltip title="波形序列中绝对值最大的电流值（kA），代表该次雷击的最强瞬间。是衡量雷击强度的核心指标。">
+              <AntTooltip title={"波形序列中绝对值最大的电流值（kA），代表该次雷击的最强瞬间。是衡量雷击强度的核心指标。"}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
           }>
             {formatNumber(record.peak_current_ka, 3)}
           </Descriptions.Item>
-          <Descriptions.Item label="绝对峰值(kA)">{formatNumber(record.peak_abs_current_ka, 3)}</Descriptions.Item>
+          <Descriptions.Item label={"绝对峰值(kA)"}>{formatNumber(record.peak_abs_current_ka, 3)}</Descriptions.Item>
           <Descriptions.Item label={
             <span>
               波形分类{" "}
-              <AntTooltip title="将实际波形的波前时间（T1）和半峰值时间（T2）与 IEC 标准波形模板匹配，归入最接近的分类：10/350（T1=10μs, T2=350μs，典型直击雷波形）、8/20（T1=8μs, T2=20μs，典型感应雷/测试波形）、1.2/50（T1=1.2μs, T2=50μs，典型操作冲击波形）。">
+              <AntTooltip title={"将实际波形的波前时间（T1）和半峰值时间（T2）与 IEC 标准波形模板匹配，归入最接近的分类：10/350（T1=10μs, T2=350μs，典型直击雷波形）、8/20（T1=8μs, T2=20μs，典型感应雷/测试波形）、1.2/50（T1=1.2μs, T2=50μs，典型操作冲击波形）。"}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
@@ -1553,7 +1555,7 @@ function AmplitudeDetailView({
           <Descriptions.Item label={
             <span>
               极性{" "}
-              <AntTooltip title="雷电流的主导方向。自然界约 90% 为负极性雷击，正极性雷击虽少但峰值更大、危害更强。正极性：正峰值大于负峰值；负极性：负峰值大于正峰值；混合：正负峰值相近。">
+              <AntTooltip title={"雷电流的主导方向。自然界约 90% 为负极性雷击，正极性雷击虽少但峰值更大、危害更强。正极性：正峰值大于负峰值；负极性：负峰值大于正峰值；混合：正负峰值相近。"}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
@@ -1563,7 +1565,7 @@ function AmplitudeDetailView({
           <Descriptions.Item label={
             <span>
               波前时间 T1(us){" "}
-              <AntTooltip title="电流从峰值的 10% 上升到 90% 所需时间的 1.25 倍（μs），反映雷电流上升的陡度。">
+              <AntTooltip title={"电流从峰值的 10% 上升到 90% 所需时间的 1.25 倍（μs），反映雷电流上升的陡度。"}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
@@ -1573,7 +1575,7 @@ function AmplitudeDetailView({
           <Descriptions.Item label={
             <span>
               半峰值时间 T2(us){" "}
-              <AntTooltip title="从虚拟零点到电流下降到峰值 50% 的时间（μs），反映脉冲宽度。">
+              <AntTooltip title={"从虚拟零点到电流下降到峰值 50% 的时间（μs），反映脉冲宽度。"}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
@@ -1583,7 +1585,7 @@ function AmplitudeDetailView({
           <Descriptions.Item label={
             <span>
               陡度(kA/us){" "}
-              <AntTooltip title="波形中电流变化率的最大值（kA/μs），影响感应过电压的大小。">
+              <AntTooltip title={"波形中电流变化率的最大值（kA/μs），影响感应过电压的大小。"}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
@@ -1593,7 +1595,7 @@ function AmplitudeDetailView({
           <Descriptions.Item label={
             <span>
               I²t 作用积分(J/Ω){" "}
-              <AntTooltip title="电流平方对时间的积分（J/Ω），衡量雷电流的热效应能量。">
+              <AntTooltip title={"电流平方对时间的积分（J/Ω），衡量雷电流的热效应能量。"}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
@@ -1605,14 +1607,14 @@ function AmplitudeDetailView({
 
       {record.stroke_peaks_json && record.stroke_peaks_json.length > 0 && (
         <div>
-          <Typography.Title level={5}>多回击峰值分布</Typography.Title>
+          <Typography.Title level={5}>{"多回击峰值分布"}</Typography.Title>
           <MultiReturnPeakChart peaks={record.stroke_peaks_json as Record<string, unknown>[]} />
         </div>
       )}
 
       {record.status === "failed" && (
         <div>
-          <Typography.Title level={5}>失败原因</Typography.Title>
+          <Typography.Title level={5}>{"失败原因"}</Typography.Title>
           <Typography.Paragraph type="danger">
             {record.error_message || "未知错误"}
           </Typography.Paragraph>

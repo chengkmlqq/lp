@@ -33,6 +33,7 @@ import type { DataNode } from "antd/es/tree";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
 
+import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { IconPicker } from "@/components/icon-picker";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -158,6 +159,7 @@ function buildMenuTreeData(menus: MenuItem[]): DataNode[] {
 }
 
 export default function AdminMenusPage() {
+  const { t } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const isMobile = useMobileDetection();
@@ -612,42 +614,42 @@ export default function AdminMenusPage() {
 
   const columns: ColumnsType<MenuItem> = [
     {
-      title: "编码",
+      title: t("编码"),
       dataIndex: "code",
       width: 220,
       render: (value: string) => <span className="font-mono text-xs">{value}</span>,
     },
     {
-      title: "名称",
+      title: t("名称"),
       dataIndex: "name",
       width: 180,
     },
     {
-      title: "路径",
+      title: t("路径"),
       dataIndex: "path",
       width: 220,
       render: (value: string | null) => value || "-",
     },
     {
-      title: "父菜单",
+      title: t("父菜单"),
       dataIndex: "parent_id",
       width: 220,
       render: (value: string | null) => (value ? menuNameById.get(value) ?? value : "-"),
     },
     {
-      title: "状态",
+      title: t("状态"),
       dataIndex: "status",
       width: 110,
       render: (value: string) =>
-        value === "enabled" ? <Tag color="success">已启用</Tag> : <Tag color="error">已禁用</Tag>,
+        value === "enabled" ? <Tag color="success">{t("已启用")}</Tag> : <Tag color="error">{t("已禁用")}</Tag>,
     },
     {
-      title: "排序",
+      title: t("排序"),
       dataIndex: "sort_order",
       width: 90,
     },
     ...(canManage ? [{
-      title: "操作",
+      title: t("操作"),
       key: "actions",
       fixed: "right",
       width: 180,
@@ -659,14 +661,14 @@ export default function AdminMenusPage() {
         const moreMenuItems: MenuProps["items"] = [
           {
             key: "delete",
-            label: "删除",
+            label: t("删除"),
             danger: true,
             disabled: menuBusy,
             onClick: () => {
               Modal.confirm({
                 title: `确认删除菜单 ${record.name}（${record.code}）？`,
-                okText: "删除",
-                cancelText: "取消",
+                okText: t("删除"),
+                cancelText: t("取消"),
                 okButtonProps: { danger: true, loading: deleteLoading },
                 onOk: () => deleteMenuMutation.mutate(record.id),
               });
@@ -703,15 +705,15 @@ export default function AdminMenusPage() {
     const moreMenuItems: MenuProps["items"] = [
       {
               key: "delete",
-              label: "删除",
+              label: t("删除"),
               danger: true,
               disabled: menuBusy || !canManage,
               onClick: (info) => {
                 info.domEvent?.stopPropagation();
                 Modal.confirm({
                   title: `确认删除菜单 ${menuItem.name}（${menuItem.code}）？`,
-                  okText: "删除",
-                  cancelText: "取消",
+                  okText: t("删除"),
+                  cancelText: t("取消"),
                   okButtonProps: { danger: true },
                   onOk: () => deleteMenuMutation.mutate(menuItem.id),
                 });
@@ -738,21 +740,21 @@ export default function AdminMenusPage() {
         </div>
         <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
           <div className="admin-menus-menu-card-field">
-            <Typography.Text type="secondary">菜单编码</Typography.Text>
+            <Typography.Text type="secondary">{t("菜单编码")}</Typography.Text>
             <Typography.Text className="font-mono text-xs">{menuItem.code}</Typography.Text>
           </div>
           <div className="admin-menus-menu-card-field">
-            <Typography.Text type="secondary">路径</Typography.Text>
+            <Typography.Text type="secondary">{t("路径")}</Typography.Text>
             <Typography.Text ellipsis={{ tooltip: menuItem.path || "-" }}>{menuItem.path || "-"}</Typography.Text>
           </div>
           <div className="admin-menus-menu-card-field">
-            <Typography.Text type="secondary">父菜单</Typography.Text>
+            <Typography.Text type="secondary">{t("父菜单")}</Typography.Text>
             <Typography.Text ellipsis>
               {menuItem.parent_id ? menuNameById.get(menuItem.parent_id) ?? menuItem.parent_id : "-"}
             </Typography.Text>
           </div>
           <div className="admin-menus-menu-card-field">
-            <Typography.Text type="secondary">排序</Typography.Text>
+            <Typography.Text type="secondary">{t("排序")}</Typography.Text>
             <Typography.Text>{menuItem.sort_order}</Typography.Text>
           </div>
         </Space>
@@ -761,7 +763,7 @@ export default function AdminMenusPage() {
           <Space size="small" className="shrink-0">
             {canManage ? (
               <>
-                <Tooltip title="编辑">
+                <Tooltip title={t("编辑")}>
                                   <Button
                                     type="text"
                                     size="small"
@@ -787,7 +789,7 @@ export default function AdminMenusPage() {
                                   />
                                 </Tooltip>
                 <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Tooltip title="更多">
+                  <Tooltip title={t("更多")}>
                     <Button
                       type="text"
                       size="small"
@@ -885,7 +887,7 @@ export default function AdminMenusPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问菜单管理页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问菜单管理页面。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -899,7 +901,7 @@ export default function AdminMenusPage() {
   if (!canRead) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">你没有访问该页面的权限（需要 `menu.read`）。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("你没有访问该页面的权限（需要 `menu.read`）。")}</p>
         <Link
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
@@ -927,7 +929,7 @@ export default function AdminMenusPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-menus-tab-title">菜单管理</span>,
+            label: <span className="admin-menus-tab-title">{t("菜单管理")}</span>,
             closable: false,
             children: (
               <div className="admin_menus_list_pane">
@@ -943,7 +945,7 @@ export default function AdminMenusPage() {
                 <div className="admin-menus-sider-search">
                   <Input
                     className="admin-menus-search-input"
-                    placeholder="搜索菜单..."
+                    placeholder={t("搜索菜单...")}
                     prefix={<SearchOutlined />}
                     value={treeFilterKeyword}
                     onChange={(e) => setTreeFilterKeyword(e.target.value)}
@@ -1000,12 +1002,12 @@ export default function AdminMenusPage() {
             {viewMode === "card" ? (
               <div className="admin-filter-bar">
                 <Form layout="inline">
-                  <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Input
                       allowClear
                       value={keywordInput}
                       onChange={(event) => handleKeywordChange(event.currentTarget.value)}
-                      placeholder="按编码/名称/路径筛选"
+                      placeholder={t("按编码/名称/路径筛选")}
                       onPressEnter={() => handleSearch()}
                     />
                   </Form.Item>
@@ -1029,8 +1031,8 @@ export default function AdminMenusPage() {
                       setCardViewPage(1);
                     }}
                     options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "table" },
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "table" },
                     ]}
                   />
                 </div>
@@ -1038,31 +1040,31 @@ export default function AdminMenusPage() {
             ) : (
               <div className="admin-filter-bar">
                 <Form layout="inline">
-                  <Form.Item label="关键词" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Input
                       allowClear
                       value={keywordInput}
                       onChange={(event) => handleKeywordChange(event.currentTarget.value)}
-                      placeholder="按编码/名称/路径筛选"
+                      placeholder={t("按编码/名称/路径筛选")}
                       onPressEnter={() => handleSearch()}
                     />
                   </Form.Item>
 
-                  <Form.Item label="状态" className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+                  <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                     <Select<"enabled" | "disabled">
                       value={statusFilter}
                       allowClear
-                      placeholder="全部"
+                      placeholder={t("全部")}
                       onChange={handleStatusFilterChange}
                       options={[
-                        { value: "enabled", label: "已启用" },
-                        { value: "disabled", label: "已禁用" },
+                        { value: "enabled", label: t("已启用") },
+                        { value: "disabled", label: t("已禁用") },
                       ]}
                       optionRender={(option) =>
                         option.value === "enabled" ? (
-                          <Tag color="success" style={{ margin: 0 }}>已启用</Tag>
+                          <Tag color="success" style={{ margin: 0 }}>{t("已启用")}</Tag>
                         ) : (
-                          <Tag color="error" style={{ margin: 0 }}>已禁用</Tag>
+                          <Tag color="error" style={{ margin: 0 }}>{t("已禁用")}</Tag>
                         )
                       }
                     />
@@ -1088,8 +1090,8 @@ export default function AdminMenusPage() {
                       setCardViewPage(1);
                     }}
                     options={[
-                      { label: "卡片视图", value: "card" },
-                      { label: "列表视图", value: "table" },
+                      { label: t("卡片视图"), value: "card" },
+                      { label: t("列表视图"), value: "table" },
                     ]}
                   />
                 </div>
@@ -1128,7 +1130,7 @@ export default function AdminMenusPage() {
                     emptyText: (
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="未找到符合筛选条件的菜单项。"
+                        description={t("未找到符合筛选条件的菜单项。")}
                       />
                     ),
                   }}
@@ -1144,7 +1146,7 @@ export default function AdminMenusPage() {
                   <div className="admin-menus-card-view-state">
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="未找到符合筛选条件的菜单项。"
+                      description={t("未找到符合筛选条件的菜单项。")}
                     />
                   </div>
                 ) : (
@@ -1190,7 +1192,7 @@ export default function AdminMenusPage() {
         onOk={() => void submit()}
         confirmLoading={createMenuMutation.isPending || updateMenuMutation.isPending}
         okText={createMenuMutation.isPending || updateMenuMutation.isPending ? "提交中..." : editingMenuId ? "保存修改" : "创建菜单"}
-        cancelText="取消"
+        cancelText={t("取消")}
         destroyOnHidden
         width={760}
       >
@@ -1203,84 +1205,84 @@ export default function AdminMenusPage() {
           <Row gutter={12}>
             <Col xs={24} md={12}>
               <Form.Item
-                label="菜单编码"
+                label={t("菜单编码")}
                 name="code"
-                rules={[{ required: true, message: "请输入菜单编码" }]}
+                rules={[{ required: true, message: t("请输入菜单编码") }]}
               >
                 <Input placeholder="admin.example" disabled={editingMenuId !== null} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item
-                label="菜单名称"
+                label={t("菜单名称")}
                 name="name"
-                rules={[{ required: true, message: "请输入菜单名称" }]}
+                rules={[{ required: true, message: t("请输入菜单名称") }]}
               >
-                <Input placeholder="示例菜单" />
+                <Input placeholder={t("示例菜单")} />
               </Form.Item>
             </Col>
 
             <Col xs={24} md={12}>
-              <Form.Item label="路由路径" name="path" rules={[{ pattern: /^\/[\w\-\/]*$/, message: "路径需以 / 开头且仅含字母/数字/中划线/斜杠（不允许空格、分号、..）" }]}>
+              <Form.Item label={t("路由路径")} name="path" rules={[{ pattern: /^\/[\w\-\/]*$/, message: t("路径需以 / 开头且仅含字母/数字/中划线/斜杠（不允许空格、分号、..）") }]}>
                 <Input placeholder="/admin/example" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="图标名" name="icon">
+              <Form.Item label={t("图标名")} name="icon">
                 <IconPicker />
               </Form.Item>
             </Col>
 
             <Col xs={24} md={12}>
-              <Form.Item label="父菜单" name="parent_id">
+              <Form.Item label={t("父菜单")} name="parent_id">
                 <Select
                   allowClear
-                  placeholder="无"
+                  placeholder={t("无")}
                   options={parentOptions.filter((item) => item.value !== editingMenuId)}
                 />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="类型" name="type" rules={[{ required: true, message: "请选择类型" }]}>
+              <Form.Item label={t("类型")} name="type" rules={[{ required: true, message: t("请选择类型") }]}>
                 <Select
                   options={[
-                    { value: "directory", label: "目录" },
-                    { value: "menu", label: "菜单" },
-                    { value: "button", label: "按钮" },
+                    { value: "directory", label: t("目录") },
+                    { value: "menu", label: t("菜单") },
+                    { value: "button", label: t("按钮") },
                   ]}
                 />
               </Form.Item>
             </Col>
 
             <Col xs={24} md={24}>
-              <Form.Item label="排序" name="sort_order" rules={[{ required: true, message: "请输入排序值" }]}>
+              <Form.Item label={t("排序")} name="sort_order" rules={[{ required: true, message: t("请输入排序值") }]}>
                 <InputNumber className="w-full" min={0} precision={0} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="状态" name="status" rules={[{ required: true, message: "请选择状态" }]}>
+              <Form.Item label={t("状态")} name="status" rules={[{ required: true, message: t("请选择状态") }]}>
                 <Select
                   options={[
-                    { value: "enabled", label: "已启用" },
-                    { value: "disabled", label: "已禁用" },
+                    { value: "enabled", label: t("已启用") },
+                    { value: "disabled", label: t("已禁用") },
                   ]}
                 />
               </Form.Item>
             </Col>
 
             <Col xs={24} md={12}>
-              <Form.Item label="组件标识" name="component">
+              <Form.Item label={t("组件标识")} name="component">
                 <Input placeholder="app/admin/users/page" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item name="visible" valuePropName="checked">
-                <Checkbox>可见</Checkbox>
+                <Checkbox>{t("可见")}</Checkbox>
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item name="cacheable" valuePropName="checked">
-                <Checkbox>可缓存</Checkbox>
+                <Checkbox>{t("可缓存")}</Checkbox>
               </Form.Item>
             </Col>
           </Row>
