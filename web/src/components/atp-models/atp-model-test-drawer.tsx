@@ -830,8 +830,8 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
   );
 }
 
-  const { t } = useI18n();
 function WaveformModalContent({ runId, path }: { runId: string; path: string }) {
+  const { t } = useI18n();
   const { user, fetchWithAuth } = useAuth();
   const waveformQuery = useQuery({
     queryKey: ["/api/v1/atp/test-runs", runId, "waveform"],

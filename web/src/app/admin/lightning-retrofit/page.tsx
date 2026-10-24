@@ -890,8 +890,8 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
 }
 
 /** 措施推荐状态机逐轮过程时间线（后端 result_json.mitigation_process） */
-  const { t } = useI18n();
 function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
+  const { t } = useI18n();
   const result = (row.result_json ?? {}) as Record<string, unknown>;
   const steps = Array.isArray(result.mitigation_process) ? result.mitigation_process : [];
   if (steps.length === 0) {

@@ -837,8 +837,8 @@ interface PowerLineTableProps {
   scrollY?: number;
 }
 
-  const { t } = useI18n();
 function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onDelete, deleteLoading, loading, scrollY = POWER_LINES_TABLE_MIN_SCROLL_Y }: PowerLineTableProps) {
+  const { t } = useI18n();
   const columns: ColumnsType<LineSummary> = [
     {
       title: t("线路名称"),
