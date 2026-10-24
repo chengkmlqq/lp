@@ -81,6 +81,9 @@ def upload_task_log(task_id: str, log_content: str) -> tuple[str, datetime]:
             connect_timeout=3.0,
             read_timeout=10.0,
             retries={"max_attempts": 2},
+            s3={"addressing_style": "virtual"},
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
         )
 
         session = boto3.session.Session(
@@ -145,6 +148,9 @@ def get_task_log(task_id: str, log_date: datetime | None = None, log_path: str |
             connect_timeout=3.0,
             read_timeout=10.0,
             retries={"max_attempts": 2},
+            s3={"addressing_style": "virtual"},
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
         )
 
         session = boto3.session.Session(
@@ -299,6 +305,9 @@ def list_task_logs(task_id: str) -> list[str]:
             connect_timeout=3.0,
             read_timeout=10.0,
             retries={"max_attempts": 2},
+            s3={"addressing_style": "virtual"},
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
         )
 
         session = boto3.session.Session(
@@ -370,6 +379,9 @@ def cleanup_expired_task_logs(
             connect_timeout=3.0,
             read_timeout=10.0,
             retries={"max_attempts": 2},
+            s3={"addressing_style": "virtual"},
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
         )
 
         session = boto3.session.Session(

@@ -64,6 +64,12 @@ def _build_client() -> Any:
         connect_timeout=3.0,
         read_timeout=30.0,
         retries={"max_attempts": 2},
+        # 兼容阿里云 OSS S3 兼容接口：
+        # - virtual hosted style（OSS 拒绝 path style 的对象级操作）
+        # - when_required 校验：规避 botocore 默认 STREAMING-UNSIGNED-PAYLOAD-TRAILER 流式上传
+        s3={"addressing_style": "virtual"},
+        request_checksum_calculation="when_required",
+        response_checksum_validation="when_required",
     )
     session = boto3.session.Session(
         aws_access_key_id=settings.minio_access_key,
@@ -290,6 +296,9 @@ def cleanup_expired_temp_files(
             connect_timeout=3.0,
             read_timeout=10.0,
             retries={"max_attempts": 2},
+            s3={"addressing_style": "virtual"},
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
         )
         session = boto3.session.Session(
             aws_access_key_id=settings.minio_access_key,
