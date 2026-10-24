@@ -821,7 +821,7 @@ export function LightningCurrentBackfillHistoryTable({
             <Form.Item style={{ marginBottom: 0 }}>
               <Space size={4}>
                 <Button type="primary" htmlType="submit">
-                  查询
+                  {t("查询")}
                 </Button>
                 {canManage && (
                   <Button onClick={openBackfillModal} disabled={backfillMutation.isPending}>
@@ -868,7 +868,7 @@ export function LightningCurrentBackfillHistoryTable({
             <Form.Item style={{ marginBottom: 0 }}>
               <Space size={4}>
                 <Button type="primary" htmlType="submit">
-                  查询
+                  {t("查询")}
                 </Button>
                 {canManage && (
                   <Button onClick={openBackfillModal} disabled={backfillMutation.isPending}>

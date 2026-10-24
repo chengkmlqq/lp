@@ -336,7 +336,7 @@ export default function AdminLightningRetrofitPage() {
             <Space>
               {canManage ? (
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => setRetrofitOpen(true)}>
-                  改造
+                  {t("改造")}
                 </Button>
               ) : null}
             </Space>
@@ -470,7 +470,7 @@ export default function AdminLightningRetrofitPage() {
                 onClick={handleSearch}
                 className="admin-search-btn" loading={jobsQuery.isFetching}
               >
-                查询
+                {t("查询")}
               </Button>
             </Form.Item>
           </Form>
@@ -820,7 +820,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
             style={{ padding: 0 }}
             onClick={() => setProcessRow(row)}
           >
-            查看过程
+            {t("查看过程")}
           </Button>
         );
       },
@@ -869,7 +869,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
       </div>
       <div className="flex justify-end">
         <Button onClick={() => void handleExport()} disabled={rows.length === 0}>
-          导出结果
+          {t("导出结果")}
         </Button>
       </div>
 

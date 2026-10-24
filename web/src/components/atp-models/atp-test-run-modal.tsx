@@ -226,7 +226,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
             取消
           </Button>
           <Button type="primary" icon={<RocketOutlined />} loading={submitting} onClick={() => void handleSubmit()}>
-            确认测试
+            {t("确认测试")}
           </Button>
         </Space>
       }

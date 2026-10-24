@@ -1018,7 +1018,7 @@ export default function AdminMenusPage() {
                       onClick={() => handleSearch()}
                       className="admin-search-btn" loading={menusQuery.isFetching}
                     >
-                      查询
+                      {t("查询")}
                     </Button>
                   </Form.Item>
                 </Form>
@@ -1077,7 +1077,7 @@ export default function AdminMenusPage() {
                       onClick={() => handleSearch()}
                       className="admin-search-btn" loading={menusQuery.isFetching}
                     >
-                      查询
+                      {t("查询")}
                     </Button>
                   </Form.Item>
                 </Form>

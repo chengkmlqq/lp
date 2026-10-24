@@ -936,7 +936,7 @@ export default function AdminSystemMessagesPage() {
                         <Button
                           htmlType="button"
                           icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn" loading={listQuery.isFetching}>
-                          查询
+                          {t("查询")}
                         </Button>
                       </Form.Item>
                     </Form>
@@ -977,7 +977,7 @@ export default function AdminSystemMessagesPage() {
                         <Button
                           htmlType="button"
                           icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn" loading={listQuery.isFetching}>
-                          查询
+                          {t("查询")}
                         </Button>
                       </Form.Item>
                     </Form>

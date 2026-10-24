@@ -108,7 +108,7 @@ export default function AdminOverviewPage() {
       {contextHolder}
       <div className="flex justify-end">
         <Button size="small" onClick={() => setConfigOpen(true)}>
-          配置布局
+          {t("配置布局")}
         </Button>
       </div>
 

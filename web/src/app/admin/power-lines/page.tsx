@@ -513,7 +513,7 @@ export default function AdminPowerLinesPage() {
                         loading={linesQuery.isFetching}
                         className="admin-search-btn"
                       >
-                        查询
+                        {t("查询")}
                       </Button>
                     </Form.Item>
                   </Form>

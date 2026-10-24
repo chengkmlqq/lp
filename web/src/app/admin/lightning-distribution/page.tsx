@@ -202,6 +202,7 @@ function DistributionImagePane({
   alt: string;
   emptyText: string;
 }) {
+  const { t } = useI18n();
   if (query.isPending) {
     return (
       <div className="admin-lightning-distribution-image-skeleton">
@@ -214,7 +215,7 @@ function DistributionImagePane({
     return (
       <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"密度图加载失败"}>
         <Button size="small" onClick={() => query.refetch()} loading={query.isFetching}>
-          重新加载
+          {t("重新加载")}
         </Button>
       </Empty>
     );
@@ -870,7 +871,7 @@ export default function AdminLightningDistributionPage() {
             style={{ padding: 0 }}
             onClick={() => openLinkedLinesModal(row)}
           >
-            {row.linked_line_count ?? 0} 条
+            {row.linked_line_count ?? 0} {t("条")}
           </Button>
         ),
       },
@@ -1190,7 +1191,7 @@ export default function AdminLightningDistributionPage() {
                     </Form.Item>
                     <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
                       <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn" loading={distributionsQuery.isFetching}>
-                        查询
+                        {t("查询")}
                       </Button>
                     </Form.Item>
                   </Form>
@@ -1340,6 +1341,7 @@ function ImportModal({
   loading: boolean;
   onConfirm: () => void;
 }) {
+  const { t } = useI18n();
   const { message: messageApi } = App.useApp();
   return (
     <Modal
@@ -1455,7 +1457,7 @@ function ImportModal({
             loading={loading}
             onClick={onConfirm}
           >
-            确认导入
+            {t("确认导入")}
           </Button>
         </div>
       </Form>
@@ -1547,6 +1549,7 @@ function BackfillRecordsView({
   canManage: boolean;
   onOpenLog: (taskId: string | null | undefined, label: string, fileName: string) => void;
 }) {
+  const { t } = useI18n();
   const { message: messageApi } = App.useApp();
   const queryClient = useQueryClient();
   const [keywordInput, setKeywordInput] = useState("");
@@ -1789,7 +1792,7 @@ function BackfillRecordsView({
                   disabled={busy || !row.has_circle_image}
                   onClick={() => setNgImageDrawer(row)}
                 >
-                  Ng图
+                  {t("Ng图")}
                 </Button>
               </Tooltip>
             </Space>
@@ -1820,7 +1823,7 @@ function BackfillRecordsView({
           <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
             <Space size={4}>
               <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn" loading={linkedLinesQuery.isFetching}>
-                查询
+                {t("查询")}
               </Button>
               {canManage && (
                 <Button htmlType="button" onClick={() => setBackfillModalOpen(true)}>
@@ -1900,6 +1903,7 @@ function TowerNgDrawer({
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [keywordInput, setKeywordInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
@@ -2035,7 +2039,7 @@ function TowerNgDrawer({
             </Form.Item>
             <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
               <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn" loading={towersQuery.isFetching}>
-                查询
+                {t("查询")}
               </Button>
             </Form.Item>
           </Form>
@@ -2229,6 +2233,7 @@ function DrawLpBody({
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
   onSubmitted: (taskId: string, fileName: string) => void;
 }) {
+  const { t } = useI18n();
   const [lineSearchText, setLineSearchText] = useState("");
   const [lineId, setLineId] = useState<string | null>(null);
   const [success, setSuccess] = useState("");
@@ -2372,7 +2377,7 @@ function DrawLpBody({
       </Form>
       <div style={{ textAlign: "right", borderTop: "1px solid var(--ant-color-border-secondary)", paddingTop: 16 }}>
         <Button type="primary" loading={drawMutation.isPending} onClick={() => drawMutation.mutate()}>
-          提交回填
+          {t("提交回填")}
         </Button>
       </div>
       {success && <Typography.Paragraph type="success" style={{ marginTop: 12 }}>{success}</Typography.Paragraph>}

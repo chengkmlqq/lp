@@ -349,7 +349,7 @@ export default function AdminFaultRecurrencePage() {
                     </Typography.Text>
                     {selectedFile ? (
                       <Button size="small" type="text" onClick={handleRemoveFile}>
-                        移除
+                        {t("移除")}
                       </Button>
                     ) : null}
                   </Space>
@@ -374,10 +374,10 @@ export default function AdminFaultRecurrencePage() {
                       void handleAnalyze();
                     }}
                   >
-                    开始复现
+                    {t("开始复现")}
                   </Button>
                   <Button onClick={handleReset}>
-                    清空结果
+                    {t("清空结果")}
                   </Button>
                 </Space>
               </div>

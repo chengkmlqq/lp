@@ -1034,7 +1034,7 @@ export default function AtpModelsPage() {
                 详情
               </Button>
               <Button size="small" disabled={!canTest} onClick={() => openTestTab(item)}>
-                测试
+                {t("测试")}
               </Button>
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" type="text" icon={<MoreOutlined />} aria-label={t("更多操作")} />
@@ -1130,7 +1130,7 @@ export default function AtpModelsPage() {
                 onClick={openBatchTab}
                 disabled={(totalQuery.data ?? 0) === 0}
               >
-                批量测试
+                {t("批量测试")}
               </Button>
             ) : null}
           </Space>
@@ -1224,7 +1224,7 @@ export default function AtpModelsPage() {
                             onClick={handleSearch}
                             className="admin-search-btn" loading={assetsQuery.isFetching}
                           >
-                            查询
+                            {t("查询")}
                           </Button>
                         </Form.Item>
                       </Form>

@@ -956,7 +956,7 @@ export default function AdminTowerModelsPage() {
                   }}
                   className="admin-search-btn" loading={towerModelsQuery.isFetching}
                 >
-                  查询
+                  {t("查询")}
                 </Button>
               </Form.Item>
             </Form>
@@ -1008,7 +1008,7 @@ export default function AdminTowerModelsPage() {
                   }}
                   className="admin-search-btn" loading={towerModelsQuery.isFetching}
                 >
-                  查询
+                  {t("查询")}
                 </Button>
               </Form.Item>
             </Form>

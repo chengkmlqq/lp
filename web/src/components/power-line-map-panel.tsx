@@ -133,7 +133,7 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button htmlType="button" icon={<SearchOutlined />} onClick={applyFilters} className="admin-search-btn">
-              查询
+              {t("查询")}
             </Button>
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>

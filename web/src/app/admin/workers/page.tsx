@@ -452,7 +452,7 @@ export default function AdminWorkersPage() {
             icon={<EyeOutlined />}
             onClick={() => setSelectedWorker(workerItem.worker)}
           >
-            查看运行中任务
+            {t("查看运行中任务")}
           </Button>
         </Space>
       </AntCard>
@@ -504,7 +504,7 @@ export default function AdminWorkersPage() {
                         onClick={handleWorkerSearch}
                         className="admin-search-btn" loading={workerTasksQuery.isFetching}
                       >
-                        查询
+                        {t("查询")}
                       </Button>
                     </Form.Item>
                   </Form>
@@ -564,7 +564,7 @@ export default function AdminWorkersPage() {
         extra={
           <Space>
             <Button size="small" onClick={() => void workerTasksQuery.refetch()} loading={workerTasksQuery.isFetching}>
-              刷新任务
+              {t("刷新任务")}
             </Button>
             <Text type="secondary">{taskOverview ? `采集时间：${formatDateTime(taskOverview.generated_at)}` : "-"}</Text>
           </Space>

@@ -785,7 +785,7 @@ export default function AtpParamsPage() {
                         onClick={handleSearch}
                          loading={loading}className="admin-search-btn"
                       >
-                        查询
+                        {t("查询")}
                       </Button>
                     </Form.Item>
                   </Form>
@@ -1106,7 +1106,7 @@ export default function AtpParamsPage() {
               disabled={trialSelected.length === 0}
               onClick={() => void runTrial()}
             >
-              确认试算（已选 {trialSelected.length} 座）
+              {t("确认试算（已选")} {trialSelected.length} {t("座）")}
             </Button>
           </Space>
         }

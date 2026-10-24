@@ -435,7 +435,7 @@ export default function AdminPowerLineTowersPage() {
               onClick={handleSearch}
               className="admin-search-btn"
             >
-              查询
+              {t("查询")}
             </Button>
           </Form.Item>
           <Form.Item style={{ marginBottom: 0, marginRight: 0 }}>
@@ -576,7 +576,7 @@ export default function AdminPowerLineTowersPage() {
             loading={importMutation.isPending}
             onClick={() => importMutation.mutate()}
           >
-            确认导入
+            {t("确认导入")}
           </Button>
         </div>
       </Modal>

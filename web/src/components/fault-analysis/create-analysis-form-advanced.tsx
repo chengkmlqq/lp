@@ -532,7 +532,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 previewKind="wave_data"
                 trailing={
                   <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadWaveDataTemplate}>
-                    下载模板
+                    {t("下载模板")}
                   </Button>
                 }
                 onPdfExtracted={(item, response) => {
@@ -557,7 +557,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                     )}
                   </span>
                   <Button size="small" icon={<DownloadOutlined />} onClick={() => handleDownloadExtracted(extractState.response)}>
-                    下载 Excel
+                    {t("下载 Excel")}
                   </Button>
                 </div>
                 {extractState.response.missing.length > 0 && (
@@ -796,7 +796,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                   previewKind="lightning_data"
                   trailing={
                     <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadLightningTemplate}>
-                      下载模板
+                      {t("下载模板")}
                     </Button>
                   }
                 />
@@ -818,7 +818,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                   multiple
                   trailing={
                     <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadWaveTemplate}>
-                      下载模板
+                      {t("下载模板")}
                     </Button>
                   }
                 />
@@ -839,7 +839,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                   previewKind="optical_data"
                   trailing={
                     <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadOpticalTemplate}>
-                      下载模板
+                      {t("下载模板")}
                     </Button>
                   }
                 />
@@ -856,12 +856,12 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       <div className="admin-fault-analysis-form-actions">
         {currentStep > 0 ? (
           <Button onClick={goPrev} disabled={submitting}>
-            上一步
+            {t("上一步")}
           </Button>
         ) : null}
         {currentStep < lastStepIndex ? (
           <Button type="primary" onClick={goNext}>
-            下一步
+            {t("下一步")}
           </Button>
         ) : (
           <Button type="primary" htmlType="submit" loading={submitting}>

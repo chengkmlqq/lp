@@ -260,7 +260,7 @@ export function AtpTestSetTab() {
               icon={<SettingOutlined />}
               onClick={() => openDetail(row)}
             >
-              管理
+              {t("管理")}
             </Button>
             <Button
               type="link"
@@ -270,7 +270,7 @@ export function AtpTestSetTab() {
               disabled={!canTest || row.case_count === 0}
               onClick={() => openDetail(row)}
             >
-              执行
+              {t("执行")}
             </Button>
             {canManage ? (
               <>
@@ -334,7 +334,7 @@ export function AtpTestSetTab() {
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
-              查询
+              {t("查询")}
             </Button>
           </Form.Item>
           {canManage ? (

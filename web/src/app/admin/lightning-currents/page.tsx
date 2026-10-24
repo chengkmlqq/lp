@@ -769,7 +769,7 @@ export default function AdminLightningCurrentsPage() {
                       openBackfillLines(record);
                     }}
                   >
-                    {record.backfill_line_count} 条
+                    {record.backfill_line_count} {t("条")}
                   </Button>
                 ) : (
                   "-"
@@ -957,7 +957,7 @@ export default function AdminLightningCurrentsPage() {
           }
           return (
             <Button type="link" size="small" style={{ padding: 0 }} onClick={() => openBackfillLines(row)}>
-              {count} 条
+              {count} {t("条")}
             </Button>
           );
         },
@@ -1123,7 +1123,7 @@ export default function AdminLightningCurrentsPage() {
                     </Form.Item>
                     <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
                       <Button htmlType="button" icon={<SearchOutlined />} onClick={handleSearch} className="admin-search-btn" loading={recordsQuery.isFetching}>
-                        查询
+                        {t("查询")}
                       </Button>
                     </Form.Item>
                   </Form>
@@ -1338,7 +1338,7 @@ export default function AdminLightningCurrentsPage() {
                 }
               }}
             >
-              确认导入
+              {t("确认导入")}
             </Button>
           </div>
         </Form>

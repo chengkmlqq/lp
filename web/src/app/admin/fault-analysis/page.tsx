@@ -717,7 +717,7 @@ export default function AdminFaultAnalysisPage() {
                 icon={<PlusOutlined />}
                 onClick={openCreateModal}
               >
-                新建分析
+                {t("新建分析")}
               </Button>
             ) : null
           }
@@ -746,7 +746,7 @@ export default function AdminFaultAnalysisPage() {
                           onClick={handleQuery}
                           className="admin-search-btn" loading={analysesQuery.isFetching}
                         >
-                          查询
+                          {t("查询")}
                         </Button>
                       </Form.Item>
                     </Form>

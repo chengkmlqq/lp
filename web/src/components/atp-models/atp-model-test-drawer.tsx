@@ -112,7 +112,7 @@ function readStageResult(
   return readTestSummary(run).stages?.[stage];
 }
 
-function statusTag(status: string | null | undefined) {
+function statusTag(status: string | null | undefined, t: (zh: string) => string) {
   if (status === "success") return <Tag color="green">{t("成功")}</Tag>;
   if (status === "failed") return <Tag color="red">{t("失败")}</Tag>;
   if (status === "running") return <Tag color="blue">{t("运行中")}</Tag>;
@@ -426,7 +426,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                   disabled={running}
                   onClick={() => void handleSubmit(ALL_STAGES, "all")}
                 >
-                  全部执行
+                  {t("全部执行")}
                 </Button>
                 <Tooltip title={t("从头按 ①→②→③ 依次跑完整测试；依赖段会自动补齐")}>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -442,7 +442,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
             <Card size="small">
               <Space size={8} wrap>
                 <Typography.Text strong>{t("当前测试")}</Typography.Text>
-                {statusTag(activeRun.status)}
+                {statusTag(activeRun.status, t)}
                 <Typography.Text type="secondary">
                   用时{" "}
                   {activeRun.duration_ms != null
@@ -488,7 +488,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                     disabled={running}
                     onClick={handleDownload}
                   >
-                    下载产物包
+                    {t("下载产物包")}
                   </Button>
                   <Button
                     size="small"
@@ -496,7 +496,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                     disabled={running}
                     onClick={handleCopyCompare}
                   >
-                    复制对比 JSON
+                    {t("复制对比 JSON")}
                   </Button>
                   <Button
                     size="small"
@@ -504,7 +504,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                     disabled={running}
                     onClick={() => setParamsDrawerOpen(true)}
                   >
-                    参数溯源
+                    {t("参数溯源")}
                   </Button>
                 </Space>
               ) : null}
@@ -543,7 +543,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
               })}
               columns={[
                 { title: t("时间"), dataIndex: "create_date", width: 180, render: (value: string) => formatDateTime(value) },
-                { title: t("状态"), dataIndex: "status", width: 100, render: (value: string) => statusTag(value) },
+                { title: t("状态"), dataIndex: "status", width: 100, render: (value: string) => statusTag(value, t) },
                 {
                   title: t("结果"),
                   key: "result",
@@ -604,6 +604,7 @@ function StageCard({
   runId: string | null;
   onRun: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <Card
       size="small"
@@ -631,7 +632,7 @@ function StageCard({
           disabled={running}
           onClick={onRun}
         >
-          测试该段
+          {t("测试该段")}
         </Button>
       }
     >

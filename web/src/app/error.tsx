@@ -76,7 +76,7 @@ export default function AppError({ error, reset }: AppErrorProps) {
               fontWeight: 600,
             }}
           >
-            刷新页面
+            {t("刷新页面")}
           </button>
         </div>
       </section>

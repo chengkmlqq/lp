@@ -637,7 +637,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
               onClick={handleSearch}
               className="admin-search-btn"
             >
-              查询
+              {t("查询")}
             </Button>
           </Form.Item>
           {canTowerManage && (
@@ -782,7 +782,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
             loading={importMutation.isPending}
             onClick={() => importMutation.mutate()}
           >
-            确认导入
+            {t("确认导入")}
           </Button>
         </div>
       </Modal>

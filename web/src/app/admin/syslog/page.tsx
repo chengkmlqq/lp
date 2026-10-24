@@ -523,7 +523,7 @@ export default function AdminSyslogPage() {
             onClick={handleSearch}
             className="admin-search-btn" loading={logsQuery.isFetching}
           >
-            查询
+            {t("查询")}
           </Button>
         </Form.Item>
       </Form>

@@ -373,7 +373,7 @@ export default function AdminScheduledTasksPage() {
               loading={runningId === record.id}
               onClick={() => void runTask(record)}
             >
-              立即执行
+              {t("立即执行")}
             </Button>
           </Space>
         ),
@@ -525,7 +525,7 @@ export default function AdminScheduledTasksPage() {
                         onClick={handleSearch}
                         className="admin-search-btn" loading={listQuery.isFetching}
                       >
-                        查询
+                        {t("查询")}
                       </Button>
                     </Form.Item>
                   </Form>

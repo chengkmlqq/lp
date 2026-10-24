@@ -703,7 +703,7 @@ export default function AdminRolesPage() {
                 disabled={rowBusy}
                 onClick={() => startEditPermissions(role)}
               >
-                权限
+                {t("权限")}
               </Button>
               <Dropdown menu={{ items: overflowItems }} trigger={["click"]}>
                 <Button size="small" icon={<MoreOutlined />} />
@@ -1012,7 +1012,7 @@ export default function AdminRolesPage() {
                           onClick={handleSearch}
                           className="admin-search-btn" loading={rolesQuery.isFetching}
                         >
-                          查询
+                          {t("查询")}
                         </Button>
                       </Form.Item>
                     </Form>
@@ -1036,7 +1036,7 @@ export default function AdminRolesPage() {
                           onClick={handleSearch}
                           className="admin-search-btn" loading={rolesQuery.isFetching}
                         >
-                          查询
+                          {t("查询")}
                         </Button>
                       </Form.Item>
                     </Form>

@@ -267,7 +267,7 @@ export function JobDetailPanel({
                   disabled={candidateMitigationRows.length === 0}
                   onClick={onOpenMitigation}
                 >
-                  生成措施推荐
+                  {t("生成措施推荐")}
                 </Button>
               ) : null}
               {canCreateScenario ? (
@@ -283,7 +283,7 @@ export function JobDetailPanel({
                   disabled={candidateReportRows.length === 0}
                   onClick={onOpenReport}
                 >
-                  生成报告
+                  {t("生成报告")}
                 </Button>
               ) : null}
             </Space>
@@ -296,7 +296,7 @@ export function JobDetailPanel({
                 loading={downloadReportPending}
                 disabled={selectedJob.status !== "success"}
               >
-                下载报告
+                {t("下载报告")}
               </Button>
             ) : null}
           </Space>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Drawer, message, Spin } from "antd";
 
@@ -48,6 +49,7 @@ export function JobDetailTabView({
   onOpenLog,
 }: JobDetailTabViewProps) {
   const { user, fetchWithAuth, hasPermission } = useAuth();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -264,7 +266,7 @@ export function JobDetailTabView({
                   loading={downloadResultsMutation.isPending}
                   disabled={!canDownloadResults}
                 >
-                  导出结果
+                  {t("导出结果")}
                 </Button>
               ) : null
             }

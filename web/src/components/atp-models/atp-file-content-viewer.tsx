@@ -184,7 +184,7 @@ export function AtpFileContentViewer({ assetId, relativePath, name }: AtpFileCon
             onClick={() => void loadMore()}
             loading={loadingMoreRef.current}
           >
-            加载更多（已加载 {loadedLines.length} / {totalLines} 行）
+            {t("加载更多（已加载")} {loadedLines.length} / {totalLines} {t("行）")}
           </Button>
         </div>
       )}

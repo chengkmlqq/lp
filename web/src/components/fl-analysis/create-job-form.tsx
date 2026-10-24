@@ -396,7 +396,7 @@ export function CreateJobForm({
             取消
           </Button>
           <Button type="primary" loading={submitting} onClick={() => form.submit()}>
-            创建并启动任务
+            {t("创建并启动任务")}
           </Button>
         </div>
       </div>

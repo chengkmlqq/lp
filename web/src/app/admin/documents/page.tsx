@@ -928,7 +928,7 @@ export default function AdminDocumentsPage() {
                       }}
                       className="admin-search-btn" loading={documentsFetching}
                     >
-                      查询
+                      {t("查询")}
                     </Button>
                   </Form.Item>
                 </Form>
@@ -997,7 +997,7 @@ export default function AdminDocumentsPage() {
                       }}
                       className="admin-search-btn" loading={documentsFetching}
                     >
-                      查询
+                      {t("查询")}
                     </Button>
                   </Form.Item>
                 </Form>

@@ -6,6 +6,7 @@
  * 数据来自 GET /atp/test-sets/runs/{run_id}。
  */
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useI18n } from "@/lib/i18n";
 import {
   Alert,
   Button,
@@ -43,6 +44,7 @@ export function AtpTestSetRunDrawer({
   onClose: () => void;
 }) {
   const { user, hasPermission } = useAuth();
+  const { t } = useI18n();
   const canRead =
     hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
 
@@ -251,7 +253,7 @@ export function AtpTestSetRunDrawer({
       extra={
         <Space>
           <Button icon={<DownloadOutlined />} onClick={() => void downloadReport()}>
-            下载报告
+            {t("下载报告")}
           </Button>
         </Space>
       }

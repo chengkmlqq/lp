@@ -1233,7 +1233,7 @@ export default function AdminUsersPage() {
         className="admin_users_tabs"
         tabBarExtraContent={
           <Button type="primary" onClick={openCreateUserModal}>
-            新建用户
+            {t("新建用户")}
           </Button>
         }
         items={[
@@ -1283,7 +1283,7 @@ export default function AdminUsersPage() {
                       onClick={handleSearch}
                       className="admin-search-btn" loading={usersQuery.isFetching}
                     >
-                      查询
+                      {t("查询")}
                     </Button>
                   </Form.Item>
                 </Form>
@@ -1328,7 +1328,7 @@ export default function AdminUsersPage() {
                       onClick={handleSearch}
                       className="admin-search-btn" loading={usersQuery.isFetching}
                     >
-                      查询
+                      {t("查询")}
                     </Button>
                   </Form.Item>
                 </Form>
@@ -1447,7 +1447,7 @@ export default function AdminUsersPage() {
               }}
             >
               <Button size="small" icon={<UploadOutlined />}>
-                上传 Logo
+                {t("上传 Logo")}
               </Button>
             </Upload>
             {selectedCreateAvatarFile && (
@@ -1568,7 +1568,7 @@ export default function AdminUsersPage() {
                 loading={uploadingAvatarUserId === editingUser.id}
                 onClick={() => document.getElementById("avatar-upload-input")?.click()}
               >
-                上传头像
+                {t("上传头像")}
               </Button>
               {editAvatarUploadProgress > 0 && editAvatarUploadProgress < 100 ? (
                 <Progress percent={editAvatarUploadProgress} size="small" style={{ width: 200, marginTop: 8 }} />

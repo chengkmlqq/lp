@@ -263,7 +263,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
           <Typography.Text type="secondary">{t("轮询中…")}</Typography.Text>
         ) : batch ? (
           <Button size="small" icon={<DownloadOutlined />} onClick={() => void downloadReport(batch.batch_id)}>
-            下载报告
+            {t("下载报告")}
           </Button>
         ) : null
       }
@@ -362,7 +362,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
             disabled={selectedKeys.size === 0}
             onClick={() => void submit()}
           >
-            发起批量测试({selectedKeys.size} 个模型)
+            {t("发起批量测试(")}{selectedKeys.size} {t("个模型)")}
           </Button>
         </Space>
       ) : (

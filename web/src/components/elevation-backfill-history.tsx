@@ -409,7 +409,7 @@ export function ElevationBackfillHistoryTable({
             style={{ padding: 0 }}
             onClick={() => openDetail(row)}
           >
-            查看明细
+            {t("查看明细")}
           </Button>
         ),
       },
@@ -456,7 +456,7 @@ export function ElevationBackfillHistoryTable({
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
-              查询
+              {t("查询")}
             </Button>
           </Form.Item>
         </Form>

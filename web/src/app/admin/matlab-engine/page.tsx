@@ -1068,7 +1068,7 @@ export default function AdminMatlabEnginePage() {
             )}
             {canManage && (
               <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
-                上传新包
+                {t("上传新包")}
               </Button>
             )}
           </Space>
@@ -1200,7 +1200,7 @@ export default function AdminMatlabEnginePage() {
                             onClick={handleQuery}
                             className="admin-search-btn" loading={versionsQuery.isFetching}
                           >
-                            查询
+                            {t("查询")}
                           </Button>
                         </Form.Item>
                       </Form>
@@ -1384,7 +1384,7 @@ export default function AdminMatlabEnginePage() {
                       icon={<PlusOutlined />}
                       onClick={() => add()}
                     >
-                      添加必需文件
+                      {t("添加必需文件")}
                     </Button>
                   </div>
                 )}

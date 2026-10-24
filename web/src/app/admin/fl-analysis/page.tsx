@@ -675,7 +675,7 @@ export default function AdminFlAnalysisPage() {
           <Space>
             {canFlCreate && (
               <Button type="primary" onClick={openCreateJobModal}>
-                新建任务
+                {t("新建任务")}
               </Button>
             )}
           </Space>
@@ -705,7 +705,7 @@ export default function AdminFlAnalysisPage() {
                         onClick={handleSearch}
                         className="admin-search-btn" loading={jobsQuery.isFetching}
                       >
-                        查询
+                        {t("查询")}
                       </Button>
                     </Form.Item>
                   </Form>

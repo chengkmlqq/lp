@@ -74,7 +74,7 @@ function readSummary(run: AtpAssetRunDetail | undefined): TestResultSummary {
   return (run?.result_summary_json ?? {}) as TestResultSummary;
 }
 
-function statusTag(status: string | null | undefined) {
+function statusTag(status: string | null | undefined, t: (zh: string) => string) {
   if (status === "success") return <Tag color="green">{t("成功")}</Tag>;
   if (status === "failed") return <Tag color="red">{t("失败")}</Tag>;
   if (status === "running") return <Tag color="blue">{t("运行中")}</Tag>;
@@ -233,7 +233,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
           record.status === "pending" || record.status === "running" ? (
             <Space direction="vertical" size={2} style={{ width: "100%" }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {statusTag(value)}
+                {statusTag(value, t)}
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   {runProgress(record)}%
                 </Typography.Text>
@@ -247,7 +247,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
               />
             </Space>
           ) : (
-            statusTag(value)
+            statusTag(value, t)
           ),
       },
       {
@@ -302,7 +302,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
         fixed: "right",
         render: (_: unknown, record) => (
           <Button size="small" icon={<EyeOutlined />} onClick={() => setDetailRunId(record.id)}>
-            测试详情
+            {t("测试详情")}
           </Button>
         ),
       },
@@ -333,7 +333,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
             icon={<ExperimentOutlined />}
             onClick={() => setTestModalOpen(true)}
           >
-            测试
+            {t("测试")}
           </Button>
         ) : null}
       </div>
@@ -373,7 +373,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
         {detail ? (
           <Space direction="vertical" size={12} style={{ width: "100%" }}>
             <Space size={8} wrap>
-              {statusTag(detail.status)}
+              {statusTag(detail.status, t)}
               {detailSummary.dry_run ? <Tag color="orange">{t("试跑")}</Tag> : null}
               <Typography.Text type="secondary">
                 用时{" "}
@@ -405,13 +405,13 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
 
             <Space>
               <Button size="small" icon={<DownloadOutlined />} disabled={detailRunning} onClick={() => void handleDownload()}>
-                下载产物包
+                {t("下载产物包")}
               </Button>
               <Button size="small" icon={<CopyOutlined />} disabled={detailRunning} onClick={() => void handleCopyCompare()}>
-                复制对比 JSON
+                {t("复制对比 JSON")}
               </Button>
               <Button size="small" icon={<ExperimentOutlined />} disabled={detailRunning} onClick={() => setTraceOpen(true)}>
-                参数溯源
+                {t("参数溯源")}
               </Button>
             </Space>
 

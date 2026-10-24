@@ -80,7 +80,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
                 fontWeight: 600,
               }}
             >
-              刷新页面
+              {t("刷新页面")}
             </button>
           </div>
         </section>

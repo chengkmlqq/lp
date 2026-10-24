@@ -830,6 +830,7 @@ function SectionContent({ content }: { content: ReportSectionItem[] }) {
 }
 
 function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, onExportReport, onOpenLog }: ReportViewProps) {
+  const { t } = useI18n();
   const tabGroups = groupReportSections(sections.sections);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   return (
@@ -867,7 +868,7 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
                 </Button>
               ) : null}
               <Button icon={<DownloadOutlined />} loading={exportLoading} onClick={onExportReport}>
-                导出报告
+                {t("导出报告")}
               </Button>
             </Space>
           </div>

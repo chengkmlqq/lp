@@ -1015,7 +1015,7 @@ export default function ElevationRecordsPage() {
                         }}
                          loading={recordsFetching}className="admin-search-btn"
                       >
-                        查询
+                        {t("查询")}
                       </Button>
                     </Form.Item>
                   </Form>

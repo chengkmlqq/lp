@@ -974,7 +974,7 @@ export default function AdminDimensionsPage() {
             {canManage && selectedTypeId !== null ? (
               <Space>
                 <Button size="small" onClick={() => selectedType && openTypeEdit(selectedType)}>
-                  编辑类型
+                  {t("编辑类型")}
                 </Button>
                 <Button
                   size="small"
@@ -1014,7 +1014,7 @@ export default function AdminDimensionsPage() {
                 styles={{ body: { flex: 1, overflow: "auto", padding: 0 } }}
                 actions={canManage ? [
                   <Button type="text" key="add-type" onClick={() => openTypeCreate(null)} style={{ width: "100%", color: "var(--ant-color-primary)" }}>
-                    <PlusOutlined /> 新建类型
+                    <PlusOutlined /> {t("新建类型")}
                   </Button>,
                 ] : undefined}
               >
@@ -1108,7 +1108,7 @@ export default function AdminDimensionsPage() {
                     onClick={handleQuery}
                     className="admin-search-btn" loading={listQuery.isFetching}
                   >
-                    查询
+                    {t("查询")}
                   </Button>
                 </Form.Item>
                 {isMobile && (

@@ -5,6 +5,7 @@
  * 用例参数表单：常用字段（计算类型/雷电流/场景）+ 高级 JSON（params_json / expected_json）。
  */
 import { useCallback, useMemo, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import {
   Button,
   Checkbox,
@@ -70,6 +71,7 @@ export function AtpTestSetDetailDrawer({
   onChanged: () => void;
 }) {
   const { user, hasPermission } = useAuth();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const set = setData;
   const setLoaded = Boolean(open && set);
@@ -642,7 +644,7 @@ export function AtpTestSetDetailDrawer({
               loading={executing}
               onClick={() => void executeSet(false)}
             >
-              执行测试集
+              {t("执行测试集")}
             </Button>
           </Space>
         }
@@ -734,7 +736,7 @@ export function AtpTestSetDetailDrawer({
                           loading={executing}
                           onClick={() => void executeSet(executeDryRun)}
                         >
-                          开始执行
+                          {t("开始执行")}
                         </Button>
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                           {jobsOffered.normal ? `普通 ${jobsOffered.normal} 个 · ` : ""}

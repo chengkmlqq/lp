@@ -120,7 +120,7 @@ export function OverviewConfigModal({
           </Popconfirm>
           <Button onClick={onCancel}>{t("取消")}</Button>
           <Button type="primary" loading={saving} onClick={() => onSave(draft)}>
-            保存布局
+            {t("保存布局")}
           </Button>
         </Space>
       }
@@ -229,7 +229,7 @@ export function OverviewConfigModal({
                           patchWidget(index, { props: { ...widget.props, links } });
                         }}
                       >
-                        删
+                        {t("删")}
                       </Button>
                     </div>
                   ))}
@@ -240,7 +240,7 @@ export function OverviewConfigModal({
                       patchWidget(index, { props: { ...widget.props, links } });
                     }}
                   >
-                    + 添加链接
+                    {t("+ 添加链接")}
                   </Button>
                 </div>
               ) : null}

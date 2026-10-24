@@ -11,6 +11,7 @@ import {
 } from "@ant-design/icons";
 
 import { useAuth } from "@/components/auth-provider";
+import { useI18n } from "@/lib/i18n";
 import { getApiBaseUrl } from "@/lib/api";
 import type { TempUploadResponse } from "@/types/auth";
 import type { FaultAnalysisTempFile } from "./types";
@@ -280,6 +281,7 @@ export function TempFileUpload({
 }: TempFileUploadProps) {
   const { message: messageApi } = App.useApp();
   const { getAccessToken } = useAuth();
+  const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
   // 始终读取最新 value，避免并发上传时 onProgress 回调闭包读到陈旧值。
   const valueRef = useRef<FaultAnalysisTempFile[]>(value);
@@ -551,7 +553,7 @@ export function TempFileUpload({
                   </Typography.Text>
                 )}
                 <Button type="text" size="small" danger onClick={() => removeItem(item.uid)}>
-                  移除
+                  {t("移除")}
                 </Button>
               </Space>
               {item.status === "done" && previewKind && (

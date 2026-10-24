@@ -896,14 +896,14 @@ export default function AtpParamTemplatesPage() {
 
                     <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
                       <Button htmlType="button" icon={<SearchOutlined />} onClick={() => handleTableSearch()}  loading={loading}className="admin-search-btn">
-                        查询
+                        {t("查询")}
                       </Button>
                     </Form.Item>
 
                     {hasTableFilter ? (
                       <Form.Item style={{ marginBottom: 0, marginRight: 8 }}>
                         <Button htmlType="button" onClick={() => clearFilters()}>
-                          清除筛选
+                          {t("清除筛选")}
                         </Button>
                       </Form.Item>
                     ) : null}
@@ -1020,7 +1020,7 @@ export default function AtpParamTemplatesPage() {
           detail && canManage ? (
             <Space>
               <Button icon={<PlusOutlined />} onClick={() => { setEditingForChild(true); void deriveChild(); }}>
-                新建细分
+                {t("新建细分")}
               </Button>
               <Button onClick={() => void disableTemplate()}>{detail.enabled ? "停用" : "启用"}</Button>
               <Button danger icon={<DeleteOutlined />} onClick={() => void removeTemplate()}>
@@ -1340,7 +1340,7 @@ export default function AtpParamTemplatesPage() {
                   setSlotRows((rows) => [...rows, { key: `new-${rows.length}-${Date.now()}`, slot: "", expr: "", fmt: 2, enabled: true }])
                 }
               >
-                添加槽位
+                {t("添加槽位")}
               </Button>
               <Tooltip title={t("保存时后端会做表达式语法与变量校验")}>
                 <Text type="secondary">{t("仅需填写与上层不同的槽位")}</Text>

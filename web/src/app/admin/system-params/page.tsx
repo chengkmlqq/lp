@@ -1150,7 +1150,7 @@ export default function AdminSystemParamsPage() {
               styles={{ body: { flex: 1, overflow: "auto", padding: 0 } }}
               actions={canManage ? [
                 <Button type="text" key="add-cat" onClick={() => openCategoryCreate(null)} style={{ width: "100%", color: "var(--ant-color-primary)" }}>
-                  <PlusOutlined /> 新建分类
+                  <PlusOutlined /> {t("新建分类")}
                 </Button>,
               ] : undefined}
             >
@@ -1245,7 +1245,7 @@ export default function AdminSystemParamsPage() {
                   onClick={handleQuery}
                   className="admin-search-btn" loading={listQuery.isFetching}
                 >
-                  查询
+                  {t("查询")}
                 </Button>
               </Form.Item>
             </Form>

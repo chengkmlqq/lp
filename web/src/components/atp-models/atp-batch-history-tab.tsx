@@ -243,7 +243,7 @@ export function AtpBatchHistoryTab() {
               icon={<DownloadOutlined />}
               onClick={() => void downloadReport(row.batch_id)}
             >
-              下载报告
+              {t("下载报告")}
             </Button>
           </Space>
         ),
@@ -276,13 +276,13 @@ export function AtpBatchHistoryTab() {
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
-              查询
+              {t("查询")}
             </Button>
           </Form.Item>
           {canTest ? (
             <Form.Item style={{ marginBottom: 0 }}>
               <Button type="primary" icon={<ExperimentOutlined />} onClick={openLaunch}>
-                批量测试
+                {t("批量测试")}
               </Button>
             </Form.Item>
           ) : null}
