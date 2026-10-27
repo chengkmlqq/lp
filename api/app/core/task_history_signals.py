@@ -31,6 +31,15 @@ def _is_system_task(task_name: str | None) -> bool:
     return bool(task_name and task_name in SYSTEM_TASK_NAMES)
 
 
+def _as_utc(value):
+    """DB DATETIME 读出为 naive；系统按 UTC 存取，补 UTC 时区后参与算术。"""
+    if value is None:
+        return None
+    if getattr(value, "tzinfo", None) is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _get_db_task(task_id: str) -> TaskHistory | None:
     """Get existing task record from DB, or None."""
     db = SessionLocal()
@@ -217,8 +226,9 @@ def on_task_success(sender=None, result=None, **kwargs):  # type: ignore[no-unty
     done_at = datetime.now(timezone.utc)
     runtime = None
     record = _get_db_task(task_id)
-    if record and record.started_at:
-        runtime = (done_at - record.started_at).total_seconds()
+    started_at = _as_utc(record.started_at) if record else None
+    if started_at is not None:
+        runtime = (done_at - started_at).total_seconds()
 
     _upsert_task(
         task_id,
@@ -241,8 +251,9 @@ def on_task_failure(sender=None, task_id=None, exception=None, **kwargs):  # typ
     done_at = datetime.now(timezone.utc)
     runtime = None
     record = _get_db_task(task_id)
-    if record and record.started_at:
-        runtime = (done_at - record.started_at).total_seconds()
+    started_at = _as_utc(record.started_at) if record else None
+    if started_at is not None:
+        runtime = (done_at - started_at).total_seconds()
 
     _upsert_task(
         task_id,
