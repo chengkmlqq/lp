@@ -1,11 +1,12 @@
 "use client";
 
-import { IdcardOutlined, LockOutlined } from "@ant-design/icons";
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { IdcardOutlined, LockOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Card, Checkbox, Input, Space, Typography } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
+import { getJson } from "@/lib/api";
 import { withBasePath } from "@/lib/base-path";
 import { useI18n } from "@/lib/i18n";
 import { LangSwitcher } from "@/components/lang-switcher";
@@ -40,9 +41,32 @@ export default function LoginPage() {
 
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
+  const [captchaCode, setCaptchaCode] = useState("");
+  const [captchaId, setCaptchaId] = useState("");
+  const [captchaImage, setCaptchaImage] = useState("");
   const [rememberPassword, setRememberPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const refreshCaptcha = useCallback(async () => {
+    try {
+      const data = await getJson<{ captcha_id: string; image_base64: string }>(
+        "/api/v1/auth/captcha",
+        undefined,
+        false,
+      );
+      setCaptchaId(data.captcha_id);
+      setCaptchaImage(`data:image/png;base64,${data.image_base64}`);
+      setCaptchaCode("");
+    } catch {
+      setCaptchaImage("");
+    }
+  }, []);
+
+  // 进入登录页时自动加载验证码
+  useEffect(() => {
+    void refreshCaptcha();
+  }, [refreshCaptcha]);
 
   useEffect(() => {
     if (!initializing && user) {
@@ -90,7 +114,14 @@ export default function LoginPage() {
 
     try {
       const normalizedUserId = userId.trim();
-      await login(normalizedUserId, password);
+      if (!captchaId || !captchaCode.trim()) {
+        setError(t("请输入验证码"));
+        return;
+      }
+      await login(normalizedUserId, password, {
+        captchaId,
+        captchaCode: captchaCode.trim(),
+      });
 
       if (typeof window !== "undefined") {
         if (rememberPassword) {
@@ -108,6 +139,8 @@ export default function LoginPage() {
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : t("未知错误");
       setError(message);
+      // 验证码一次性使用,失败后立即刷新,防止旧验证码重放
+      void refreshCaptcha();
     } finally {
       setBusy(false);
     }
@@ -169,6 +202,39 @@ export default function LoginPage() {
               maxLength={128}
               required
             />
+
+            <div className="flex items-center gap-2">
+              <Input
+                className="flex-1"
+                size="large"
+                value={captchaCode}
+                placeholder={t("验证码")}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => setCaptchaCode(event.currentTarget.value)}
+                autoComplete="off"
+                maxLength={8}
+                required
+              />
+              {captchaImage ? (
+                <button
+                  type="button"
+                  className="h-[40px] shrink-0 cursor-pointer overflow-hidden rounded border border-gray-300"
+                  onClick={() => void refreshCaptcha()}
+                  title={t("点击刷新验证码")}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={captchaImage} alt={t("验证码")} className="h-full w-[120px] object-cover" />
+                </button>
+              ) : (
+                <Button
+                  size="large"
+                  className="shrink-0"
+                  icon={<ReloadOutlined />}
+                  onClick={() => void refreshCaptcha()}
+                >
+                  {t("刷新")}
+                </Button>
+              )}
+            </div>
 
             <div className="flex items-center justify-between">
               <Checkbox

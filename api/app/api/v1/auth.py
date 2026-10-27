@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from ...core.config import get_settings
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, get_current_user
-from ...schemas.auth import AuthTokenResponse, LoginRequest, MessageResponse, RegisterRequest
+from ...schemas.auth import AuthTokenResponse, CaptchaResponse, LoginRequest, MessageResponse, RegisterRequest
 from ...schemas.user import UserPublic
 from ...services.auth_service import (
     AuthResult,
@@ -13,6 +13,7 @@ from ...services.auth_service import (
     refresh_user_session,
     register_user,
 )
+from ...services.captcha_service import generate_captcha, verify_captcha
 from ...services.user_service import serialize_user
 
 settings = get_settings()
@@ -111,6 +112,17 @@ def register(
     return _to_auth_response(result)
 
 
+@router.get("/captcha", response_model=CaptchaResponse)
+def get_captcha() -> CaptchaResponse:
+    """获取登录图形验证码(captcha_id + base64 PNG 图片)。"""
+    captcha_id, image_base64 = generate_captcha()
+    return CaptchaResponse(
+        captcha_id=captcha_id,
+        image_base64=image_base64,
+        expires_in=300,
+    )
+
+
 @router.post("/login", response_model=AuthTokenResponse)
 def login(
     payload: LoginRequest,
@@ -118,6 +130,12 @@ def login(
     response: Response,
     db: Session = Depends(get_db),
 ) -> AuthTokenResponse:
+    # 图形验证码人机校验(LP 登录安全增强):校验失败直接 400,不泄露账号信息
+    if not verify_captcha(payload.captcha_id, payload.captcha_code):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="验证码错误或已过期,请刷新后重试",
+        )
     result = login_user(
         db,
         payload,

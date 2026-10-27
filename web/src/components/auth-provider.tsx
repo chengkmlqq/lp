@@ -21,7 +21,7 @@ type AuthContextValue = {
   accessToken: string | null;
   getAccessToken: () => string | null;
   initializing: boolean;
-  login: (userId: string, password: string) => Promise<void>;
+  login: (userId: string, password: string, captcha?: { captchaId: string; captchaCode: string }) => Promise<void>;
   register: (email: string, username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAccessToken: () => Promise<boolean>;
@@ -121,10 +121,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [getAccessToken, refreshAccessToken]);
 
   const login = useCallback(
-    async (userId: string, password: string) => {
+    async (userId: string, password: string, captcha?: { captchaId: string; captchaCode: string }) => {
       const payload = await postJson<AuthTokenResponse>(
         "/api/v1/auth/login",
-        { user_id: userId, password },
+        {
+          user_id: userId,
+          password,
+          captcha_id: captcha?.captchaId ?? "",
+          captcha_code: captcha?.captchaCode ?? "",
+        },
         false,
       );
       applyAuthPayload(payload);

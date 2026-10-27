@@ -12,6 +12,15 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     user_id: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=128)
+    # 图形验证码(登录人机验证,LP 新增)
+    captcha_id: str = Field(default="", max_length=64)
+    captcha_code: str = Field(default="", max_length=16)
+
+
+class CaptchaResponse(BaseModel):
+    captcha_id: str
+    image_base64: str
+    expires_in: int
 
 
 class AuthTokenResponse(BaseModel):
