@@ -240,10 +240,10 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
         },
       );
       setActiveRunId(run.id);
-      message.success(dryRun ? "已发起试跑（只列命令，不执行）" : "测试已发起，结果自动刷新");
+      message.success(dryRun ? t("已发起试跑（只列命令，不执行）") : t("测试已发起，结果自动刷新"));
       void historyQuery.refetch();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "发起测试失败");
+      message.error(error instanceof Error ? error.message : t("发起测试失败"));
     } finally {
       setSubmittingStage(null);
     }
@@ -265,7 +265,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "下载失败");
+      message.error(error instanceof Error ? error.message : t("下载失败"));
     }
   };
 
@@ -276,9 +276,9 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
         `/api/v1/atp/test-runs/${activeRunId}/compare`,
       );
       await navigator.clipboard.writeText(JSON.stringify(compare, null, 2));
-      message.success("已复制 compare.json（可直接与 C# 侧产物 diff）");
+      message.success(t("已复制 compare.json（可直接与 C# 侧产物 diff）"));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "获取 compare.json 失败");
+      message.error(error instanceof Error ? error.message : t("获取 compare.json 失败"));
     }
   };
 
@@ -300,8 +300,8 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
     <Drawer
       title={
         asset
-          ? `模型测试 - ${asset.name || asset.code || asset.id}`
-          : "模型测试"
+          ? `${t("模型测试")} - ${asset.name || asset.code || asset.id}`
+          : t("模型测试")
       }
       open={open}
       onClose={onClose}
@@ -359,8 +359,8 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                     key: "params",
                     label:
                       paramsSource === "template"
-                        ? "高级：塔型/场景、C# 参数串、默认值不完整时放行"
-                        : "高级：杆塔数据（base_tower / profile）",
+                        ? t("高级：塔型/场景、C# 参数串、默认值不完整时放行")
+                        : t("高级：杆塔数据（base_tower / profile）"),
                     children: (
                       <Space direction="vertical" size={8} style={{ width: "100%" }}>
                         <Space wrap size={8}>
@@ -455,15 +455,15 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
               {compareParamsSource ? (
                 <div style={{ marginTop: 6 }}>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    参数来源：
+                    {t("参数来源")}：
                     {compareParamsSource === "template"
-                      ? `参数模板默认值（链：${(compareDiagnostics?.chain ?? []).join(" → ") || "-"}）`
-                      : "手工杆塔数据"}
+                      ? `${t("参数模板默认值")}（${t("链")}：${(compareDiagnostics?.chain ?? []).join(" → ") || "-"}）`
+                      : t("手工杆塔数据")}
                     {defaultsApplied.length > 0
-                      ? `；用默认值的变量 ${defaultsApplied.length} 个：${defaultsApplied.slice(0, 8).join(", ")}`
+                      ? `；${t("用默认值的变量")} ${defaultsApplied.length} ${t("个")}：${defaultsApplied.slice(0, 8).join(", ")}`
                       : ""}
                     {unresolvedKeys.length > 0
-                      ? `；⚠️ 未解析槽位 ${unresolvedKeys.length} 个`
+                      ? `；${t("⚠️ 未解析槽位")} ${unresolvedKeys.length} ${t("个")}`
                       : ""}
                   </Typography.Text>
                 </div>

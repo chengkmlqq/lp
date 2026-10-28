@@ -2629,6 +2629,9 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "卡片库（点击添加）": "Card Library (Click to Add)",
   "已配置卡片": "Configured Cards",
   "分辨率": "Resolution",
+  "链": "chain",
+  "用默认值的变量": "variables using defaults",
+  "⚠️ 未解析槽位": "⚠️ unresolved slots",
 };
 
 // ─────────────────────────── Context ───────────────────────────
