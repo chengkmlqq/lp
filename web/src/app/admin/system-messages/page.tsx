@@ -272,7 +272,7 @@ function MarkdownPreview({
   if (!trimmedContent) {
     return (
       <Typography.Text type="secondary">
-        {placeholder ? previewT(placeholder) : placeholder}
+        {placeholder ? previewT(placeholder) : previewT("暂无内容")}
       </Typography.Text>
     );
   }
@@ -380,7 +380,7 @@ export default function AdminSystemMessagesPage() {
   const createMutation = useMutation({
     mutationFn: async (values: CreateMessageValues) => {
       if (!canManage) {
-        throw new Error("缺少 admin.system_message 权限");
+        throw new Error(t("缺少 admin.system_message 权限"));
       }
 
       const response = await fetchWithAuth("/api/v1/system-messages", {
@@ -400,14 +400,14 @@ export default function AdminSystemMessagesPage() {
     },
     onSuccess: async () => {
       setError("");
-      setSuccess("系统消息已发送");
+      setSuccess(t("系统消息已发送"));
       formApi.resetFields();
       setCreateMessageModalOpen(false);
       await refreshMessages();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "发送失败");
+      setError(candidate instanceof Error ? candidate.message : t("发送失败"));
     },
   });
 
@@ -425,19 +425,19 @@ export default function AdminSystemMessagesPage() {
     },
     onSuccess: async () => {
       setError("");
-      setSuccess("消息已标记为已读");
+      setSuccess(t("消息已标记为已读"));
       await refreshMessages();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "标记已读失败");
+      setError(candidate instanceof Error ? candidate.message : t("标记已读失败"));
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (messageId: string) => {
       if (!canManage) {
-        throw new Error("缺少 admin.system_message 权限");
+        throw new Error(t("缺少 admin.system_message 权限"));
       }
 
       const response = await fetchWithAuth(`/api/v1/system-messages/${messageId}`, {
@@ -455,12 +455,12 @@ export default function AdminSystemMessagesPage() {
     },
     onSuccess: async () => {
       setError("");
-      setSuccess("系统消息已删除");
+      setSuccess(t("系统消息已删除"));
       await refreshMessages();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "删除失败");
+      setError(candidate instanceof Error ? candidate.message : t("删除失败"));
     },
     onSettled: () => {
       setDeletingMessageId(null);
@@ -680,13 +680,13 @@ export default function AdminSystemMessagesPage() {
               {item.title}
             </Typography.Text>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {item.target_user_id ? `用户：${item.target_user_id}` : "全员广播"}
+              {item.target_user_id ? `${t("用户")}：${item.target_user_id}` : t("全员广播")}
             </Typography.Text>
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
             <Badge status={item.is_read ? "default" : "processing"} />
             <Typography.Text type="secondary" className="text-xs">
-              {item.is_read ? "已读" : "未读"}
+              {item.is_read ? t("已读") : t("未读")}
             </Typography.Text>
           </div>
         </div>
@@ -694,7 +694,7 @@ export default function AdminSystemMessagesPage() {
           <div className="admin-system-messages-message-card-field">
             <Typography.Text type="secondary">{t("类型")}</Typography.Text>
             <Tag color={MESSAGE_TYPE_COLORS[item.message_type]}>
-              {MESSAGE_TYPE_LABELS[item.message_type]}
+              {t(MESSAGE_TYPE_LABELS[item.message_type])}
             </Tag>
           </div>
           <div className="admin-system-messages-message-card-field">
@@ -747,7 +747,7 @@ export default function AdminSystemMessagesPage() {
         <Space direction="vertical" size={2}>
           <Typography.Text strong={!item.is_read}>{item.title}</Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {item.target_user_id ? `用户：${item.target_user_id}` : "全员广播"}
+            {item.target_user_id ? `${t("用户")}：${item.target_user_id}` : t("全员广播")}
           </Typography.Text>
         </Space>
       ),
@@ -758,7 +758,7 @@ export default function AdminSystemMessagesPage() {
       key: "message_type",
       width: 90,
       render: (value: SystemMessageType) => (
-        <Tag color={MESSAGE_TYPE_COLORS[value]}>{MESSAGE_TYPE_LABELS[value]}</Tag>
+        <Tag color={MESSAGE_TYPE_COLORS[value]}>{t(MESSAGE_TYPE_LABELS[value])}</Tag>
       ),
     },
     {
@@ -773,7 +773,7 @@ export default function AdminSystemMessagesPage() {
       key: "is_read",
       width: 90,
       render: (value: boolean) => (
-        <Tag color={value ? "default" : "processing"}>{value ? "已读" : "未读"}</Tag>
+        <Tag color={value ? "default" : "processing"}>{value ? t("已读") : t("未读")}</Tag>
       ),
     },
     {
@@ -885,7 +885,7 @@ export default function AdminSystemMessagesPage() {
                     className="mb-4"
                     type="error"
                     message={t("系统消息加载失败")}
-                    description={listQuery.error instanceof Error ? listQuery.error.message : "请检查后端服务。"}
+                    description={listQuery.error instanceof Error ? listQuery.error.message : t("请检查后端服务。")}
                   />
                 )}
         
@@ -907,7 +907,7 @@ export default function AdminSystemMessagesPage() {
                           style={{ minWidth: 150 }}
                           allowClear
                           placeholder={t("全部类型")}
-                          options={MESSAGE_TYPE_OPTIONS}
+                          options={MESSAGE_TYPE_OPTIONS.map((opt) => ({ ...opt, label: t(opt.label) }))}
                           onChange={(value) => {
                             setMessageTypeFilter(value);
                             resetCardViewState();
@@ -949,7 +949,7 @@ export default function AdminSystemMessagesPage() {
                           value={messageTypeFilter}
                           allowClear
                           placeholder={t("全部类型")}
-                          options={MESSAGE_TYPE_OPTIONS}
+                          options={MESSAGE_TYPE_OPTIONS.map((opt) => ({ ...opt, label: t(opt.label) }))}
                           onChange={(value) => {
                             setMessageTypeFilter(value);
                             resetCardViewState();
@@ -1097,7 +1097,7 @@ export default function AdminSystemMessagesPage() {
               name="message_type"
               rules={[{ required: true, message: t("请选择类型") }]}
             >
-              <Select options={MESSAGE_TYPE_OPTIONS} />
+              <Select options={MESSAGE_TYPE_OPTIONS.map((opt) => ({ ...opt, label: t(opt.label) }))} />
             </Form.Item>
 
             <Form.Item label={t("目标用户 ID")} name="target_user_id" className="md:col-span-2">
@@ -1128,7 +1128,7 @@ export default function AdminSystemMessagesPage() {
       </Modal>
 
       <Modal
-        title={detailMessage ? detailMessage.title : "消息详情"}
+        title={detailMessage ? detailMessage.title : t("消息详情")}
         open={!!detailMessage}
         width={760}
         footer={null}
@@ -1138,13 +1138,13 @@ export default function AdminSystemMessagesPage() {
           <Space direction="vertical" size={12} style={{ width: "100%" }}>
             <Space wrap>
               <Tag color={MESSAGE_TYPE_COLORS[detailMessage.message_type]}>
-                {MESSAGE_TYPE_LABELS[detailMessage.message_type]}
+                {t(MESSAGE_TYPE_LABELS[detailMessage.message_type])}
               </Tag>
               <Tag color={detailMessage.is_read ? "default" : "processing"}>
-                {detailMessage.is_read ? "已读" : "未读"}
+                {detailMessage.is_read ? t("已读") : t("未读")}
               </Tag>
               <Typography.Text type="secondary">
-                {detailMessage.target_user_id ? `用户：${detailMessage.target_user_id}` : "全员广播"}
+                {detailMessage.target_user_id ? `${t("用户")}：${detailMessage.target_user_id}` : t("全员广播")}
               </Typography.Text>
               <Typography.Text type="secondary">
                 {formatDateTime(detailMessage.created_at)}
