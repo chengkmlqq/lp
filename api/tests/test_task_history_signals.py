@@ -160,4 +160,4 @@ class TestIsSystemTask:
     def test_blacklist_is_frozenset_of_str(self):
         assert isinstance(mod.SYSTEM_TASK_NAMES, frozenset)
         assert all(isinstance(name, str) for name in mod.SYSTEM_TASK_NAMES)
-        assert len(mod.SYSTEM_TASK_NAMES) == 6
+        assert len(mod.SYSTEM_TASK_NAMES) == 5
