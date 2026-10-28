@@ -114,13 +114,13 @@ function formatDateTime(value: string | null | undefined): string {
   return parsed.format("YYYY-MM-DD HH:mm:ss");
 }
 
-function renderTaskStateTag(state: string) {
-  const display = getTaskStateDisplay(state);
+function renderTaskStateTag(state: string, t: (s: string) => string) {
+  const display = getTaskStateDisplay(state, t);
   return <Tag color={display.color}>{display.label}</Tag>;
 }
 
-function renderTaskSourceTag(source: string) {
-  const display = getTaskSourceDisplay(source);
+function renderTaskSourceTag(source: string, t: (s: string) => string) {
+  const display = getTaskSourceDisplay(source, t);
   return <Tag color={display.color}>{display.label}</Tag>;
 }
 
@@ -218,21 +218,21 @@ export default function AdminWorkersPage() {
         dataIndex: "state",
         key: "state",
         width: 110,
-        render: (value: string) => renderTaskStateTag(value),
+        render: (value: string) => renderTaskStateTag(value, t),
       },
       {
         title: t("监控分组"),
         dataIndex: "source",
         key: "source",
         width: 120,
-        render: (value: string) => renderTaskSourceTag(value),
+        render: (value: string) => renderTaskSourceTag(value, t),
       },
       {
         title: t("队列"),
         dataIndex: "queue_name",
         key: "queue_name",
         width: 120,
-        render: (value: string | null) => getQueueDisplayName(value),
+        render: (value: string | null) => getQueueDisplayName(value, t),
       },
       {
         title: t("执行节点"),
@@ -274,7 +274,7 @@ export default function AdminWorkersPage() {
         dataIndex: "runtime_seconds",
         key: "runtime_seconds",
         width: 110,
-        render: (value: number | null) => formatTaskMonitorDuration(value),
+        render: (value: number | null) => formatTaskMonitorDuration(value, t),
       },
       {
         title: t("位置参数"),
@@ -354,10 +354,10 @@ export default function AdminWorkersPage() {
   );
 
   const overviewErrorMessage = overviewQuery.error instanceof Error
-    ? formatTaskMonitorErrorMessage(overviewQuery.error.message, "Worker监控数据加载失败，请稍后重试。")
+    ? formatTaskMonitorErrorMessage(overviewQuery.error.message, t("Worker监控数据加载失败，请稍后重试。"), t)
     : "";
   const taskErrorMessage = workerTasksQuery.error instanceof Error
-    ? formatTaskMonitorErrorMessage(workerTasksQuery.error.message, "Worker任务数据加载失败，请稍后重试。")
+    ? formatTaskMonitorErrorMessage(workerTasksQuery.error.message, t("Worker任务数据加载失败，请稍后重试。"), t)
     : "";
 
   useToastFeedback({

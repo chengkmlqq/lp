@@ -41,23 +41,23 @@ function containsChineseText(value: string): boolean {
   return /\p{Script=Han}/u.test(value);
 }
 
-export function getTaskStateDisplay(state: string | null | undefined): TagDisplay {
+export function getTaskStateDisplay(state: string | null | undefined, t: (s: string) => string): TagDisplay {
   const normalized = normalizeCode(state);
   if (!normalized) {
     return DEFAULT_TAG_DISPLAY;
   }
-  return TASK_STATE_DISPLAYS[normalized] || { label: "未识别状态", color: "geekblue" };
+  return TASK_STATE_DISPLAYS[normalized] ? { ...TASK_STATE_DISPLAYS[normalized], label: t(TASK_STATE_DISPLAYS[normalized].label) } : { label: t("未识别状态"), color: "geekblue" };
 }
 
-export function getTaskSourceDisplay(source: string | null | undefined): TagDisplay {
+export function getTaskSourceDisplay(source: string | null | undefined, t: (s: string) => string): TagDisplay {
   const normalized = normalizeCode(source);
   if (!normalized) {
     return DEFAULT_TAG_DISPLAY;
   }
-  return TASK_SOURCE_DISPLAYS[normalized] || { label: "其他来源", color: "default" };
+  return TASK_SOURCE_DISPLAYS[normalized] ? { ...TASK_SOURCE_DISPLAYS[normalized], label: t(TASK_SOURCE_DISPLAYS[normalized].label) } : { label: t("其他来源"), color: "default" };
 }
 
-export function getQueueDisplayName(queueName: string | null | undefined): string {
+export function getQueueDisplayName(queueName: string | null | undefined, t: (s: string) => string): string {
   const normalized = (queueName || "").trim();
   if (!normalized) {
     return "-";
@@ -65,18 +65,18 @@ export function getQueueDisplayName(queueName: string | null | undefined): strin
 
   const lowered = normalized.toLowerCase();
   if (lowered === "celery" || lowered === "default") {
-    return "默认队列";
+    return t("默认队列");
   }
 
   return normalized;
 }
 
-export function normalizeQueueNames(queueNames: string[]): string[] {
+export function normalizeQueueNames(queueNames: string[], t: (s: string) => string): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
 
   for (const queueName of queueNames) {
-    const displayName = getQueueDisplayName(queueName);
+    const displayName = getQueueDisplayName(queueName, t);
     if (!seen.has(displayName)) {
       seen.add(displayName);
       result.push(queueName);
@@ -86,35 +86,35 @@ export function normalizeQueueNames(queueNames: string[]): string[] {
   return result;
 }
 
-export function formatTaskMonitorDuration(value: number | null | undefined): string {
+export function formatTaskMonitorDuration(value: number | null | undefined, t: (s: string) => string): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return "-";
   }
 
   if (value < 1) {
-    return "< 1 秒";
+    return `< ${t("1 秒")}`;
   }
 
   const totalSeconds = Math.floor(value);
 
   if (totalSeconds < 60) {
-    return `${totalSeconds} 秒`;
+    return `${totalSeconds} ${t("秒")}`;
   }
 
   const minutes = Math.floor(totalSeconds / 60);
   const remainingSeconds = totalSeconds % 60;
 
   if (totalSeconds < 3600) {
-    return `${minutes} 分 ${remainingSeconds} 秒`;
+    return `${minutes} ${t("分")} ${remainingSeconds} ${t("秒")}`;
   }
 
   const hours = Math.floor(totalSeconds / 3600);
   const remainingMinutes = Math.floor((totalSeconds % 3600) / 60);
   const secs = totalSeconds % 60;
-  return `${hours} 时 ${remainingMinutes} 分 ${secs} 秒`;
+  return `${hours} ${t("时")} ${remainingMinutes} ${t("分")} ${secs} ${t("秒")}`;
 }
 
-export function formatTaskMonitorErrorMessage(message: string | null | undefined, fallback: string): string {
+export function formatTaskMonitorErrorMessage(message: string | null | undefined, fallback: string, t: (s: string) => string): string {
   const normalized = (message || "").trim();
   if (!normalized) {
     return fallback;
@@ -128,21 +128,21 @@ export function formatTaskMonitorErrorMessage(message: string | null | undefined
     return `${fallback}（HTTP ${httpMatch[1]}）`;
   }
   if (/worker is required/i.test(normalized)) {
-    return "缺少执行节点参数。";
+    return t("缺少执行节点参数。");
   }
   if (/flower request timeout/i.test(normalized)) {
-    return "任务监控服务请求超时，请稍后重试。";
+    return t("任务监控服务请求超时，请稍后重试。");
   }
   if (/flower returned non-json payload/i.test(normalized)) {
-    return "任务监控服务返回了无法识别的数据。";
+    return t("任务监控服务返回了无法识别的数据。");
   }
 
   const flowerErrorMatch = /flower error\s+(\d{3})/i.exec(normalized);
   if (flowerErrorMatch) {
-    return `任务监控服务返回异常（HTTP ${flowerErrorMatch[1]}）。`;
+    return `${t("任务监控服务返回异常")}（HTTP ${flowerErrorMatch[1]}）。`;
   }
   if (/flower request failed/i.test(normalized)) {
-    return "任务监控服务请求失败，请检查后端服务状态。";
+    return t("任务监控服务请求失败，请检查后端服务状态。");
   }
 
   return fallback;

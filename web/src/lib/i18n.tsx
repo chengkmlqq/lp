@@ -2615,6 +2615,11 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "座": "tower(s)",
   "编辑系统参数": "Edit System Parameter",
   "编辑维度项": "Edit Dimension Item",
+  "1 秒": "1 second",
+  "任务监控服务返回异常": "Task monitoring service returned an error",
+  "分": "min",
+  "时": "h",
+  "秒": "s",
 };
 
 // ─────────────────────────── Context ───────────────────────────

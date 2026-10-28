@@ -105,8 +105,8 @@ function formatDateTime(value: string | null | undefined): string {
   return parsed.format("YYYY-MM-DD HH:mm:ss");
 }
 
-function renderTaskStateTag(state: string) {
-  const display = getTaskStateDisplay(state);
+function renderTaskStateTag(state: string, t: (s: string) => string) {
+  const display = getTaskStateDisplay(state, t);
   const isRunning = ["STARTED", "RUNNING"].includes(state?.toUpperCase());
   return (
     <Tag color={display.color} className={isRunning ? "admin-task-tag-running" : undefined}>
@@ -261,7 +261,7 @@ export default function AdminTaskMonitorPage() {
         dataIndex: "state",
         key: "state",
         width: 121,
-        render: (value: string) => renderTaskStateTag(value),
+        render: (value: string) => renderTaskStateTag(value, t),
       },
       {
         title: t("开始时间"),
@@ -286,7 +286,7 @@ export default function AdminTaskMonitorPage() {
         dataIndex: "runtime_seconds",
         key: "runtime_seconds",
         width: 121,
-        render: (value: number | null) => formatTaskMonitorDuration(value),
+        render: (value: number | null) => formatTaskMonitorDuration(value, t),
       },
       {
         title: t("操作"),
@@ -355,7 +355,8 @@ export default function AdminTaskMonitorPage() {
   ) instanceof Error
     ? formatTaskMonitorErrorMessage(
         (viewMode === "table" ? overviewQuery.error : cardQuery.error)?.message ?? "",
-        "任务监控概览数据加载失败，请稍后重试。",
+        t("任务监控概览数据加载失败，请稍后重试。"),
+        t,
       )
     : "";
 
@@ -532,7 +533,7 @@ export default function AdminTaskMonitorPage() {
           {getTaskDisplayName(task.name)}
         </Typography.Text>
         <div className="flex flex-shrink-0 items-center gap-2">
-          {renderTaskStateTag(task.state)}
+          {renderTaskStateTag(task.state, t)}
         </div>
       </div>
       <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
@@ -548,7 +549,7 @@ export default function AdminTaskMonitorPage() {
         </div>
         <div className="admin-task-monitor-task-card-field">
           <Typography.Text type="secondary">{t("队列")}</Typography.Text>
-          <Typography.Text>{getQueueDisplayName(task.queue_name)}</Typography.Text>
+          <Typography.Text>{getQueueDisplayName(task.queue_name, t)}</Typography.Text>
         </div>
         <div className="admin-task-monitor-task-card-field">
           <Typography.Text type="secondary">{t("节点")}</Typography.Text>
@@ -566,7 +567,7 @@ export default function AdminTaskMonitorPage() {
         </div>
         <div className="admin-task-monitor-task-card-field">
           <Typography.Text type="secondary">{t("时长")}</Typography.Text>
-          <Typography.Text>{formatTaskMonitorDuration(task.runtime_seconds)}</Typography.Text>
+          <Typography.Text>{formatTaskMonitorDuration(task.runtime_seconds, t)}</Typography.Text>
         </div>
       </Space>
       <div className="admin-task-monitor-task-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
