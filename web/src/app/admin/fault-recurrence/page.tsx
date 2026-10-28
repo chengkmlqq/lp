@@ -65,12 +65,12 @@ function formatNumber(value: number | null | undefined, digits = 6): string {
 }
 
 
-function formatSourceMode(sourceMode: string): string {
+function formatSourceMode(sourceMode: string, t: (s: string) => string = (s) => s): string {
   if (sourceMode === "legacy-sections") {
-    return "源端分段文本";
+    return t("源端分段文本");
   }
   if (sourceMode === "plain-csv") {
-    return "普通 CSV/TXT";
+    return t("普通 CSV/TXT");
   }
   return sourceMode || "-";
 }
@@ -119,10 +119,10 @@ export default function AdminFaultRecurrencePage() {
   const analyzeMutation = useMutation({
     mutationFn: async () => {
       if (!canRead) {
-        throw new Error("缺少 line/tower 相关读取权限");
+        throw new Error(t("缺少 line/tower 相关读取权限"));
       }
       if (!tempFileId) {
-        throw new Error("文件尚未上传完成，请先等待上传完成再开始复现");
+        throw new Error(t("文件尚未上传完成，请先等待上传完成再开始复现"));
       }
 
       const values = await form.validateFields();
@@ -149,9 +149,9 @@ export default function AdminFaultRecurrencePage() {
           key: tabKey,
           label: (
             <Space size={6}>
-              <span>{payload.source_file_name || "复现结果"}</span>
+              <span>{payload.source_file_name || t("复现结果")}</span>
               <Tag color={resultTagColor(payload.result.status)}>
-                {payload.result.status === "no_need" ? "No need" : "已匹配"}
+                {payload.result.status === "no_need" ? "No need" : t("已匹配")}
               </Tag>
             </Space>
           ),
@@ -163,10 +163,10 @@ export default function AdminFaultRecurrencePage() {
       ]);
       setActiveTabKey(tabKey);
       setError("");
-      messageApi.success("故障复现计算完成");
+      messageApi.success(t("故障复现计算完成"));
     },
     onError: (mutationError) => {
-      setError(mutationError instanceof Error ? mutationError.message : "故障复现计算失败");
+      setError(mutationError instanceof Error ? mutationError.message : t("故障复现计算失败"));
     },
   });
 
@@ -239,7 +239,7 @@ export default function AdminFaultRecurrencePage() {
 
   const handleAnalyze = async () => {
     if (!tempFileId) {
-      setError(selectedFile ? "文件尚未上传完成，请稍候或重新选择文件" : "请先选择基础数据文件");
+      setError(selectedFile ? t("文件尚未上传完成，请稍候或重新选择文件") : t("请先选择基础数据文件"));
       return;
     }
     setError("");
@@ -320,7 +320,7 @@ export default function AdminFaultRecurrencePage() {
                   rules={[{ required: true, message: t("请选择雷电流波形") }]}
                   className="mb-0 min-w-[160px]"
                 >
-                  <Select options={CURVE_OPTIONS} />
+                  <Select options={CURVE_OPTIONS.map((opt) => ({ ...opt, label: t(opt.label) }))} />
                 </Form.Item>
                 <Form.Item<FaultRecurrenceFormValues>
                   label={t("类型")}
@@ -328,7 +328,7 @@ export default function AdminFaultRecurrencePage() {
                   rules={[{ required: true, message: t("请选择类型") }]}
                   className="mb-0 min-w-[160px]"
                 >
-                  <Select options={STROKE_OPTIONS} />
+                  <Select options={STROKE_OPTIONS.map((opt) => ({ ...opt, label: t(opt.label) }))} />
                 </Form.Item>
                 <Form.Item<FaultRecurrenceFormValues>
                   label={t("耐雷水平 / kA")}
@@ -345,7 +345,7 @@ export default function AdminFaultRecurrencePage() {
                       选择文件
                     </Button>
                     <Typography.Text type={selectedFile ? undefined : "secondary"}>
-                      {selectedFile?.name || "未选择文件"}
+                      {selectedFile?.name || t("未选择文件")}
                     </Typography.Text>
                     {selectedFile ? (
                       <Button size="small" type="text" onClick={handleRemoveFile}>
@@ -485,7 +485,7 @@ function FaultRecurrenceResultView({
               <Descriptions bordered column={{ xs: 1, sm: 1, md: 2, lg: 3 }}>
                 <Descriptions.Item label={t("结果状态")}>
                   <Tag color={resultTagColor(result.result.status)}>
-                    {result.result.status === "no_need" ? "No need" : "已匹配"}
+                    {result.result.status === "no_need" ? "No need" : t("已匹配")}
                   </Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label={t("波形")}>
@@ -501,7 +501,7 @@ function FaultRecurrenceResultView({
                   {result.source_file_name}
                 </Descriptions.Item>
                 <Descriptions.Item label={t("输入格式")}>
-                  {formatSourceMode(result.source_mode)}
+                  {formatSourceMode(result.source_mode, t)}
                 </Descriptions.Item>
                 <Descriptions.Item label={t("基准点(反击) / kA")}>
                   {formatNumber(result.reference_counterstroke_ka, 4)}
