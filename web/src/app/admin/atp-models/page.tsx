@@ -245,10 +245,10 @@ export default function AtpModelsPage() {
   const createAssetMutation = useMutation({
     mutationFn: async (values: AssetFormValues) => {
       if (values.files.length === 0) {
-        throw new Error("请先选择模型文件");
+        throw new Error(t("请先选择模型文件"));
       }
       if (!tempFileId) {
-        throw new Error("模型文件尚未上传完成，请等待上传完成后再创建模型");
+        throw new Error(t("模型文件尚未上传完成，请等待上传完成后再创建模型"));
       }
 
       const payload = {
@@ -294,7 +294,7 @@ export default function AtpModelsPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
-      setSuccess("模型已创建并上传文件");
+      setSuccess(t("模型已创建并上传文件"));
       setError(null);
       setModalOpen(false);
       setFileList([]);
@@ -305,7 +305,7 @@ export default function AtpModelsPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "创建模型失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("创建模型失败")));
     },
   });
 
@@ -318,19 +318,19 @@ export default function AtpModelsPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
-      setSuccess("模型已删除");
+      setSuccess(t("模型已删除"));
       setError(null);
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "删除模型失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("删除模型失败")));
     },
   });
 
   const updateAssetMutation = useMutation({
     mutationFn: async (values: AssetEditFormValues) => {
       if (!editingAsset) {
-        throw new Error("未选择要编辑的模型");
+        throw new Error(t("未选择要编辑的模型"));
       }
       const payload = {
         name: values.name.trim() || null,
@@ -354,7 +354,7 @@ export default function AtpModelsPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
-      setSuccess("模型信息已更新");
+      setSuccess(t("模型信息已更新"));
       setError(null);
       setEditModalOpen(false);
       setEditingAsset(null);
@@ -362,7 +362,7 @@ export default function AtpModelsPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "更新模型失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("更新模型失败")));
     },
   });
 
@@ -1096,7 +1096,7 @@ export default function AtpModelsPage() {
       <Card>
         <Space direction="vertical" size={12}>
           <Typography.Text type="secondary">
-            {!user ? "请先登录后再查看 ATP 模型管理。" : "当前账号无 ATP 模块权限（需要 atp.read/atp.run/atp.manage）。"}
+            {!user ? t("请先登录后再查看 ATP 模型管理。") : t("当前账号无 ATP 模块权限（需要 atp.read/atp.run/atp.manage）。")}
           </Typography.Text>
         </Space>
       </Card>
@@ -1192,7 +1192,7 @@ export default function AtpModelsPage() {
                           ) : (
                             <Empty
                               image={Empty.PRESENTED_IMAGE_SIMPLE}
-                              description={treeFilterKeyword.trim() ? "未找到匹配的维度组合" : "暂无模型数据"}
+                              description={treeFilterKeyword.trim() ? t("未找到匹配的维度组合") : t("暂无模型数据")}
                             />
                           )}
                         </div>
@@ -1244,7 +1244,7 @@ export default function AtpModelsPage() {
                       <Alert
                         type="error"
                         showIcon
-                        message={apiError.message || "加载失败"}
+                        message={apiError.message || t("加载失败")}
                       />
                     )}
 
@@ -1376,7 +1376,7 @@ export default function AtpModelsPage() {
         onOk={() => void form.submit()}
         confirmLoading={createAssetMutation.isPending}
         destroyOnHidden
-        okText={createAssetMutation.isPending ? "提交中..." : "创建模型"}
+        okText={createAssetMutation.isPending ? t("提交中...") : t("创建模型")}
         cancelText={t("取消")}
         okButtonProps={{ disabled: !tempFileId }}
       >
@@ -1505,7 +1505,7 @@ export default function AtpModelsPage() {
         onOk={() => void editForm.submit()}
         confirmLoading={updateAssetMutation.isPending}
         destroyOnHidden
-        okText={updateAssetMutation.isPending ? "提交中..." : "保存"}
+        okText={updateAssetMutation.isPending ? t("提交中...") : t("保存")}
         cancelText={t("取消")}
         width={640}
       >
