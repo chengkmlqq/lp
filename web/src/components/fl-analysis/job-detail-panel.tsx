@@ -104,7 +104,7 @@ export function JobDetailPanel({
       <Alert
         type="error"
         showIcon
-        message={error instanceof Error ? error.message : "任务详情加载失败"}
+        message={error instanceof Error ? error.message : t("任务详情加载失败")}
       />
     );
   }
@@ -139,7 +139,7 @@ export function JobDetailPanel({
     xiandao: "先导发展法",
     none: "无",
   };
-  const showMethod = (v: unknown) => (typeof v === "string" && v ? (METHOD_TEXT[v] ?? v) : "-");
+  const showMethod = (v: unknown) => (typeof v === "string" && v ? (METHOD_TEXT[v] ? t(METHOD_TEXT[v]) : v) : "-");
   // ATP 模型：把 "atp500-guxing-fanji-M1" 这类编码翻译成中文，不展示编码
   const ATP_TOWER_TEXT: Record<string, string> = {
     guxing: "鼓型", maotou: "猫头型", ganzi: "干字型", jiubei: "酒杯型",
@@ -158,10 +158,10 @@ export function JobDetailPanel({
       .filter((part) => part !== kv && !/^atp\d*$/i.test(part))
       .map((part) => {
         const key = part.toLowerCase();
-        if (ATP_TOWER_TEXT[key]) return ATP_TOWER_TEXT[key];
-        if (ATP_SCENE_TEXT[key]) return ATP_SCENE_TEXT[key];
+        if (ATP_TOWER_TEXT[key]) return t(ATP_TOWER_TEXT[key]);
+        if (ATP_SCENE_TEXT[key]) return t(ATP_SCENE_TEXT[key]);
         const arrester = /^M\d+/i.exec(part);
-        if (arrester) return `避雷器组合 ${arrester[0].toUpperCase()}`;
+        if (arrester) return `${t("避雷器组合")} ${arrester[0].toUpperCase()}`;
         return part;
       });
     return [label, ...rest].filter(Boolean).join(" ") || "-";
@@ -169,16 +169,16 @@ export function JobDetailPanel({
   // 风险计数：high/medium/low → 高/中/低风险 + 座数
   const formatRiskCounts = (counts?: unknown) => {
     if (!counts || typeof counts !== "object") return "-";
-    const map: Array<[string, string]> = [["high", "高风险"], ["medium", "中风险"], ["low", "低风险"]];
+    const map: Array<[string, string]> = [["high", t("高风险")], ["medium", t("中风险")], ["low", t("低风险")]];
     const record = counts as Record<string, unknown>;
     const parts = map
       .filter(([key]) => record[key] !== undefined && record[key] !== null)
-      .map(([key, label]) => `${label} ${Number(record[key]) || 0} 座`);
+      .map(([key, label]) => `${label} ${Number(record[key]) || 0} ${t("座")}`);
     const extra = Object.entries(record)
       .filter(([key]) => !map.some(([k]) => k === key))
       .map(([key, value]) => `${key} ${value}`);
     const all = [...parts, ...extra];
-    return all.length ? all.join("；") : "无";
+    return all.length ? all.join("；") : t("无");
   };
   return (
     <Space direction="vertical" size={16} className="flex w-full">
@@ -187,7 +187,7 @@ export function JobDetailPanel({
         <Descriptions bordered size="small" column={2}>
         <Descriptions.Item label={t("任务名称")}>{selectedJobDetail.job_name || "-"}</Descriptions.Item>
         <Descriptions.Item label={t("任务状态")}>
-          <Tag color={statusColor(selectedJobDetail.status)}>{JOB_STATUS_TEXT[selectedJobDetail.status] ?? selectedJobDetail.status}</Tag>
+          <Tag color={statusColor(selectedJobDetail.status)}>{JOB_STATUS_TEXT[selectedJobDetail.status] ? t(JOB_STATUS_TEXT[selectedJobDetail.status]) : selectedJobDetail.status}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label={t("线路")}>{selectedJobDetail.line_name || selectedJobDetail.line_code || "-"}</Descriptions.Item>
         <Descriptions.Item label={t("任务类型")}>{formatJobType(selectedJobDetail.job_type, mitigationMode(selectedJobDetail))}</Descriptions.Item>
@@ -197,7 +197,7 @@ export function JobDetailPanel({
           <>
             <Descriptions.Item label={t("前驱风险任务")}>{sourceJobId || "-"}</Descriptions.Item>
             <Descriptions.Item label={t("选塔数")}>{String(selectedTowerCount(selectedJobDetail) || "-")}</Descriptions.Item>
-            <Descriptions.Item label={t("模式")}>{mitigationMode(selectedJobDetail) ? "非建线" : "常规建线"}</Descriptions.Item>
+            <Descriptions.Item label={t("模式")}>{mitigationMode(selectedJobDetail) ? t("非建线") : t("常规建线")}</Descriptions.Item>
             <Descriptions.Item label={t("需装避雷器数")}>
               {String(readObject(selectedJobDetail.result_summary_json).arrester_required_count ?? "-")}
             </Descriptions.Item>
@@ -220,8 +220,8 @@ export function JobDetailPanel({
             <Descriptions.Item label={t("选塔数")}>
               {String(readObject(selectedJobDetail.result_summary_json).selected_tower_count ?? "-")}
             </Descriptions.Item>
-            <Descriptions.Item label={t("关联措施任务")}>{reportMitigationJobName || "未关联"}</Descriptions.Item>
-            <Descriptions.Item label={t("关联复算任务")}>{reportScenarioJobName || "未关联"}</Descriptions.Item>
+            <Descriptions.Item label={t("关联措施任务")}>{reportMitigationJobName || t("未关联")}</Descriptions.Item>
+            <Descriptions.Item label={t("关联复算任务")}>{reportScenarioJobName || t("未关联")}</Descriptions.Item>
             <Descriptions.Item label={t("文档名")} span={2}>{reportDocumentName || "-"}</Descriptions.Item>
           </>
         ) : null}
@@ -275,7 +275,7 @@ export function JobDetailPanel({
                   disabled={candidateScenarioRows.length === 0 || candidateScenarioBaseJobs.length === 0}
                   onClick={onOpenScenario}
                 >
-                  加装避雷器复算
+                  {t("加装避雷器复算")}
                 </Button>
               ) : null}
               {canCreateReport ? (
