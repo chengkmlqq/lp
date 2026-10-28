@@ -145,13 +145,13 @@ export function AtpTestSetTab() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["atp-test-sets"] });
-      message.success(editingSet ? "测试集已更新" : "测试集已创建");
+      message.success(editingSet ? t("测试集已更新") : t("测试集已创建"));
       setEditModalOpen(false);
       setEditingSet(null);
       setForm.resetFields();
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "保存测试集失败");
+      message.error(error instanceof Error ? error.message : t("保存测试集失败"));
     },
   });
 
@@ -162,10 +162,10 @@ export function AtpTestSetTab() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["atp-test-sets"] });
-      message.success("测试集已删除");
+      message.success(t("测试集已删除"));
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "删除测试集失败");
+      message.error(error instanceof Error ? error.message : t("删除测试集失败"));
     },
   });
 
@@ -224,7 +224,7 @@ export function AtpTestSetTab() {
               <Tag
                 color={last.status === "success" ? "green" : last.status === "failed" ? "red" : "processing"}
               >
-                {last.status === "success" ? "全部通过" : last.status === "failed" ? "有失败" : "运行中"}
+                {last.status === "success" ? t("全部通过") : last.status === "failed" ? t("有失败") : t("运行中")}
               </Tag>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {formatDateTime(last.create_date)} · {last.total_cases} 用例
@@ -395,7 +395,7 @@ export function AtpTestSetTab() {
 
       {/* 新建/编辑测试集 */}
       <Modal
-        title={editingSet ? "编辑测试集" : "新建测试集"}
+        title={editingSet ? t("编辑测试集") : t("新建测试集")}
         open={editModalOpen}
         onCancel={() => {
           setEditModalOpen(false);
@@ -405,7 +405,7 @@ export function AtpTestSetTab() {
         onOk={() => void setForm.submit()}
         confirmLoading={saveSetMutation.isPending}
         destroyOnHidden
-        okText={saveSetMutation.isPending ? "提交中..." : editingSet ? "保存" : "创建"}
+        okText={saveSetMutation.isPending ? t("提交中...") : editingSet ? t("保存") : t("创建")}
         cancelText={t("取消")}
       >
         <Form form={setForm} layout="vertical" onFinish={(values) => void saveSetMutation.mutateAsync(values)} autoComplete="off">

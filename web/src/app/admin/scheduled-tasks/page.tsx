@@ -76,31 +76,31 @@ function formatDateTime(value: string | null | undefined): string {
   return date.toLocaleString();
 }
 
-function renderStatus(value: ScheduledTaskSummary["status"]) {
+function renderStatus(value: ScheduledTaskSummary["status"], t: (s: string) => string = (s) => s) {
   if (value === "success") {
-    return <Tag color="green">{"成功"}</Tag>;
+    return <Tag color="green">{t("成功")}</Tag>;
   }
   if (value === "failed") {
-    return <Tag color="red">{"失败"}</Tag>;
+    return <Tag color="red">{t("失败")}</Tag>;
   }
   if (value === "running") {
-    return <Tag color="processing">{"运行中"}</Tag>;
+    return <Tag color="processing">{t("运行中")}</Tag>;
   }
   if (value === "queued") {
-    return <Tag color="blue">{"已排队"}</Tag>;
+    return <Tag color="blue">{t("已排队")}</Tag>;
   }
   if (value === "disabled") {
-    return <Tag>{"已禁用"}</Tag>;
+    return <Tag>{t("已禁用")}</Tag>;
   }
-  return <Tag color="default">{"空闲"}</Tag>;
+  return <Tag color="default">{t("空闲")}</Tag>;
 }
 
-function renderTaskType(value: ScheduledTaskSummary["task_type"]) {
+function renderTaskType(value: ScheduledTaskSummary["task_type"], t: (s: string) => string = (s) => s) {
   if (value === "syslog_cleanup") {
-    return "系统日志清理";
+    return t("系统日志清理");
   }
   if (value === "fl_run_cleanup") {
-    return "防雷计算产物清理";
+    return t("防雷计算产物清理");
   }
   return value;
 }
@@ -214,7 +214,7 @@ export default function AdminScheduledTasksPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!canManage) {
-        throw new Error("缺少 celery.manage 权限");
+        throw new Error(t("缺少 celery.manage 权限"));
       }
 
       const values = await formApi.validateFields();
@@ -235,13 +235,13 @@ export default function AdminScheduledTasksPage() {
     },
     onSuccess: async () => {
       setError("");
-      setSuccess("定时任务已更新");
+      setSuccess(t("定时任务已更新"));
       closeEditor();
       await refreshList();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "保存失败");
+      setError(candidate instanceof Error ? candidate.message : t("保存失败"));
     },
   });
 
@@ -257,12 +257,12 @@ export default function AdminScheduledTasksPage() {
     },
     onSuccess: async (payload) => {
       setError("");
-      setSuccess(payload.celery_task_id ? `任务已触发，Celery ID: ${payload.celery_task_id}` : "任务已触发");
+      setSuccess(payload.celery_task_id ? `${t("任务已触发")}，Celery ID: ${payload.celery_task_id}` : t("任务已触发"));
       await refreshList();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "执行失败");
+      setError(candidate instanceof Error ? candidate.message : t("执行失败"));
     },
   });
 
@@ -304,7 +304,7 @@ export default function AdminScheduledTasksPage() {
         dataIndex: "task_type",
         key: "task_type",
         width: 140,
-        render: (value: ScheduledTaskSummary["task_type"]) => renderTaskType(value),
+        render: (value: ScheduledTaskSummary["task_type"]) => renderTaskType(value, t),
       },
       {
         title: t("Cron / 时区"),
@@ -323,8 +323,8 @@ export default function AdminScheduledTasksPage() {
         width: 160,
         render: (_, record) => (
           <Space direction="vertical" size={4}>
-            {renderStatus(record.status)}
-            <Tag color={record.enabled ? "green" : "default"}>{record.enabled ? "已启用" : "已禁用"}</Tag>
+            {renderStatus(record.status, t)}
+            <Tag color={record.enabled ? "green" : "default"}>{record.enabled ? t("已启用") : t("已禁用")}</Tag>
           </Space>
         ),
       },
@@ -513,7 +513,7 @@ export default function AdminScheduledTasksPage() {
                     <Form.Item label={t("状态")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
                       <Select<StatusFilter>
                         value={statusFilter}
-                        options={[...STATUS_FILTER_OPTIONS]}
+                        options={[...STATUS_FILTER_OPTIONS.map((opt) => ({ ...opt, label: t(opt.label) }))]}
                         onChange={(value) => setStatusFilter(value)}
                       />
                     </Form.Item>
@@ -580,7 +580,7 @@ export default function AdminScheduledTasksPage() {
           footer={(
             <Space>
               <Button type="primary" loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-                {saveMutation.isPending ? "提交中..." : "保存"}
+                {saveMutation.isPending ? t("提交中...") : t("保存")}
               </Button>
             </Space>
           )}
@@ -622,7 +622,7 @@ export default function AdminScheduledTasksPage() {
                 <InputNumber min={1} max={3650} className="w-full" disabled />
               </Form.Item>
               <Form.Item name="enabled" label={t("启用状态")} valuePropName="checked">
-                <Switch checkedChildren="启用" unCheckedChildren="停用" />
+                <Switch checkedChildren={t("启用")} unCheckedChildren={t("停用")} />
               </Form.Item>
             </div>
 

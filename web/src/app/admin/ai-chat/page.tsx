@@ -60,7 +60,7 @@ export default function AiChatPage() {
   useToastFeedback({
     errorMessage: error,
     successMessage: success,
-    errorTitle: "操作失败",
+    errorTitle: t("操作失败"),
     clearError: () => setError(""),
     clearSuccess: () => setSuccess(""),
   });
@@ -113,7 +113,7 @@ export default function AiChatPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["ai-chat-conversations"] });
       setSelectedConvId(data.id);
-      setSuccess("创建对话成功");
+      setSuccess(t("创建对话成功"));
     },
     onError: (err: Error) => {
       setError(`创建对话失败: ${err.message}`);
@@ -136,7 +136,7 @@ export default function AiChatPage() {
       if (selectedConvId === deletedId) {
         setSelectedConvId(null);
       }
-      setSuccess("删除对话成功");
+      setSuccess(t("删除对话成功"));
     },
     onError: (err: Error) => {
       setError(`删除对话失败: ${err.message}`);
@@ -194,7 +194,7 @@ export default function AiChatPage() {
         throw new Error(await readApiError(response));
       }
       if (!response.body) {
-        throw new Error("浏览器未返回流式响应体");
+        throw new Error(t("浏览器未返回流式响应体"));
       }
 
       const reader = response.body.getReader();
@@ -385,7 +385,7 @@ export default function AiChatPage() {
           <Button
             type="text"
             icon={<PlusOutlined />}
-            onClick={() => createConvMutation.mutate("新对话")}
+            onClick={() => createConvMutation.mutate(t("新对话"))}
             loading={createConvMutation.isPending}
             aria-label={t("新建对话")}
           />
@@ -512,8 +512,8 @@ export default function AiChatPage() {
                   </Text>
                   <Text style={{ display: "block", fontSize: 14, color: "var(--ant-color-text-secondary)", lineHeight: 1.8 }}>
                     {hasConversations
-                      ? "选择左侧对话继续，或点击下方示例问题快速开始。"
-                      : "左侧列表保持可用。点击示例问题即可自动创建会话并发送，也可以直接输入你的问题。"}
+                      ? t("选择左侧对话继续，或点击下方示例问题快速开始。")
+                      : t("左侧列表保持可用。点击示例问题即可自动创建会话并发送，也可以直接输入你的问题。")}
                   </Text>
                 </div>
 
@@ -630,7 +630,7 @@ export default function AiChatPage() {
               }}
             >
               <Text strong style={{ fontSize: 16 }}>
-                {currentConv ? currentConv.title : "AI 对话"}
+                {currentConv ? currentConv.title : t("AI 对话")}
               </Text>
             </div>
 
@@ -677,7 +677,7 @@ export default function AiChatPage() {
                             fontSize: 14,
                           }}
                         >
-                          {msg.content || (msg.id === streamingMessageId ? "正在回复..." : "")}
+                          {msg.content || (msg.id === streamingMessageId ? t("正在回复...") : "")}
                         </div>
                         <div
                           className="ai-chat-message-timestamp"
