@@ -1117,6 +1117,7 @@ export const EN_DICT: Record<string, string> = {
   "故障信息": "Fault Information",
   "故障信息模板": "Fault Information Template",
   "故障分析": "Fault Analysis",
+  "故障分析报告": "Fault Analysis Report",
   "故障分析创建成功": "Fault analysis created",
   "故障分析已删除": "Fault analysis deleted",
   "故障原因融合": "Fault Cause Fusion",

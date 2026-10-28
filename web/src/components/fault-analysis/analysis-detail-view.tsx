@@ -388,7 +388,7 @@ function buildComputationSteps(t: (s: string) => string): ComputationStepDef[] {
           label: t("状态"),
           get: (rj) => {
             const status = rjText(rj, "fault_location.status", "-");
-            const map: Record<string, string> = { located: t("已定位"), needs_review: "需复核", unavailable: "无法定位" };
+            const map: Record<string, string> = { located: t("已定位"), needs_review: t("需复核"), unavailable: t("无法定位") };
             return map[status] ?? status;
           },
         },
@@ -628,7 +628,7 @@ function buildArtifactTree(
               {artifactIcon(parts[i])}
               {label}
               <Button size="small" icon={<DownloadOutlined />} onClick={(e) => { e.stopPropagation(); onDownload(fullKey); }}>
-                下载
+                {t("下载")}
               </Button>
             </span>
           ) : (
@@ -857,7 +857,7 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
         <div className="border-b pb-4 mb-6 fa-detail-report-header">
           <div className="flex items-start justify-between mb-4">
             <Title level={3} className="mb-0">
-              {sections.fault_id} 故障分析报告
+              {sections.fault_id} {t("故障分析报告")}
             </Title>
             <Space size={8}>
               {onOpenLog ? (
@@ -865,7 +865,7 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
                   icon={<FileSearchOutlined />}
                   onClick={() => onOpenLog(detail.task_id, t("分析日志"), detail.title ?? `FA-${detail.id?.slice(0, 12) ?? ""}`)}
                 >
-                  查看日志
+                  {t("查看日志")}
                 </Button>
               ) : null}
               <Button icon={<DownloadOutlined />} loading={exportLoading} onClick={onExportReport}>
@@ -875,17 +875,17 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
           </div>
           <Space size={16} wrap className="fa-detail-meta">
             <span>
-              线路：<Text strong>{detail.line_name ?? "-"}</Text>
+              {t("线路")}：<Text strong>{detail.line_name ?? "-"}</Text>
             </span>
             <span>
-              录波记录厂站：<Text>{sections.station || "-"}</Text>
+              {t("录波记录厂站")}：<Text>{sections.station || "-"}</Text>
             </span>
             <span>
-              故障时间：<Text>{sections.fault_datetime || "-"}</Text>
+              {t("故障时间")}：<Text>{sections.fault_datetime || "-"}</Text>
             </span>
             {detail.fault_phase ? (
               <span>
-                故障相：<Text strong>{detail.fault_phase}</Text>
+                {t("故障相")}：<Text strong>{detail.fault_phase}</Text>
               </span>
             ) : null}
           </Space>
@@ -1109,7 +1109,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
     try {
       const response = await fetchWithAuth(`/api/v1/fault-analysis/${analysisId}/report`);
       if (!response.ok) {
-        const errMsg = await readApiError(response).catch(() => "请求失败");
+        const errMsg = await readApiError(response).catch(() => t("请求失败"));
         throw new Error(errMsg);
       }
       const blob = await response.blob();
@@ -1117,15 +1117,15 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${taskName}_故障分析报告.docx`;
+      a.download = `${taskName}_${t("故障分析报告")}.docx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      messageApi.success("Word报告导出成功");
+      messageApi.success(t("Word报告导出成功"));
     } catch (error) {
       console.error("导出报告失败", error);
-      messageApi.error(error instanceof Error ? error.message : "导出失败，请重试");
+      messageApi.error(error instanceof Error ? error.message : t("导出失败，请重试"));
     } finally {
       setExporting(false);
     }
@@ -1148,7 +1148,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
         description={
           detailQuery.error instanceof Error
             ? detailQuery.error.message
-            : "未知错误"
+            : t("未知错误")
         }
       />
     );
