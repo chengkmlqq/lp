@@ -167,8 +167,8 @@ function TemplateCard({ row, canManage, onDetail, onEdit, onPreview, onDerive, o
   const hasRule = Boolean(row.node.rule_id);
   const dims = row.node.dimensions;
   const towerText = dims?.tower_type
-    ? (TOWER_TYPE_LABEL[dims.tower_type] ?? dims.tower_type)
-    : "全部";
+    ? (TOWER_TYPE_LABEL[dims.tower_type] ? t(TOWER_TYPE_LABEL[dims.tower_type]) : dims.tower_type)
+    : t("全部");
   const moreItems: MenuProps["items"] = [
     { key: "preview", label: t("试算"), icon: <ExperimentOutlined />, disabled: !hasRule, onClick: onPreview },
     ...(canManage
@@ -204,24 +204,24 @@ function TemplateCard({ row, canManage, onDetail, onEdit, onPreview, onDerive, o
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("电压等级：")}</Typography.Text>
-          <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.voltage_level ?? "全部" }}>
-            {dims?.voltage_level ? `${dims.voltage_level}kV` : "全部"}
+          <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.voltage_level ?? t("全部") }}>
+            {dims?.voltage_level ? `${dims.voltage_level}kV` : t("全部")}
           </Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("回路数量：")}</Typography.Text>
-          <Text style={{ fontSize: 12 }}>{dims?.circuit_count != null ? `${dims.circuit_count} 回` : "全部"}</Text>
+          <Text style={{ fontSize: 12 }}>{dims?.circuit_count != null ? `${dims.circuit_count} ${t("回")}` : t("全部")}</Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("场景：")}</Typography.Text>
-          <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.scene_type ?? "全部" }}>
-            {dims?.scene_type ?? "全部"}
+          <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.scene_type ?? t("全部") }}>
+            {dims?.scene_type ?? t("全部")}
           </Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("避雷器组合：")}</Typography.Text>
-          <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.arrester_config ?? "全部" }}>
-            {dims?.arrester_config ?? "全部"}
+          <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: dims?.arrester_config ?? t("全部") }}>
+            {dims?.arrester_config ?? t("全部")}
           </Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
@@ -301,7 +301,7 @@ export default function AtpParamTemplatesPage() {
       const data: TreeResponse = await response.json();
       setTree(data);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "加载模板树失败");
+      message.error(error instanceof Error ? error.message : t("加载模板树失败"));
     } finally {
       setLoading(false);
     }
@@ -357,7 +357,7 @@ export default function AtpParamTemplatesPage() {
         setSlotParams(data.slot_params ?? {});
         setParamSources(data.param_sources ?? {});
       } catch (error) {
-        message.error(error instanceof Error ? error.message : "加载模板失败");
+        message.error(error instanceof Error ? error.message : t("加载模板失败"));
       }
     },
     [message],
@@ -373,7 +373,7 @@ export default function AtpParamTemplatesPage() {
       if (!response.ok) throw new Error(await readApiError(response));
       setPreview((await response.json()) as PreviewResponse);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "试算失败");
+      message.error(error instanceof Error ? error.message : t("试算失败"));
     }
   }, [previewCtx, detail?.id, message]);
 
@@ -395,7 +395,7 @@ export default function AtpParamTemplatesPage() {
   // 打开详情弹窗:先加载模板数据再开
   const openDetailDrawer = async (row: TemplateRow) => {
     if (!row.node.rule_id) {
-      message.info(row.node.has_template ? "该节点是继承节点,没有独立模板" : "该层为分组节点");
+      message.info(row.node.has_template ? t("该节点是继承节点,没有独立模板") : t("该层为分组节点"));
       return;
     }
     await loadDetail(row.node.rule_id);
@@ -405,7 +405,7 @@ export default function AtpParamTemplatesPage() {
   // 打开试算抽屉:沿用当前选中模板上下文
   const openPreviewDrawer = async (row: TemplateRow) => {
     if (!row.node.rule_id) {
-      message.info("该节点没有独立模板,请选择一个有模板的节点试算");
+      message.info(t("该节点没有独立模板,请选择一个有模板的节点试算"));
       return;
     }
     await loadDetail(row.node.rule_id);
@@ -422,18 +422,18 @@ export default function AtpParamTemplatesPage() {
         body: JSON.stringify({ ...detail, enabled: !detail.enabled }),
       });
       if (!response.ok) throw new Error(await readApiError(response));
-      message.success(detail.enabled ? "已停用" : "已启用");
+      message.success(detail.enabled ? t("已停用") : t("已启用"));
       await loadTree();
       if (detail.id) void loadDetail(detail.id);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "操作失败");
+      message.error(error instanceof Error ? error.message : t("操作失败"));
     }
   };
 
   const removeTemplate = async () => {
     if (!detail) return;
     Modal.confirm({
-      title: `确认删除模板「${detail.name}」？`,
+      title: `${t("确认删除模板")}「${detail.name}」${t("？")}`,
       content: t("删除后该节点将回退到上层继承,不可恢复。"),
       okText: t("删除"),
       okButtonProps: { danger: true },
@@ -442,13 +442,13 @@ export default function AtpParamTemplatesPage() {
         try {
           const response = await fetchWithAuth(`/api/v1/atp/param-templates/${detail.id}`, { method: "DELETE" });
           if (!response.ok) throw new Error(await readApiError(response));
-          message.success("已删除");
+          message.success(t("已删除"));
           setDetail(null);
           setDetailOpen(false);
           setPreview(null);
           await loadTree();
         } catch (error) {
-          message.error(error instanceof Error ? error.message : "删除失败");
+          message.error(error instanceof Error ? error.message : t("删除失败"));
         }
       },
     });
@@ -475,7 +475,7 @@ export default function AtpParamTemplatesPage() {
       setSlotRows([]);
       openEditor(derived.inherited_slots);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "派生失败");
+      message.error(error instanceof Error ? error.message : t("派生失败"));
     }
   };
 
@@ -543,7 +543,7 @@ export default function AtpParamTemplatesPage() {
       const method = detail && !editingForChild ? "PUT" : "POST";
       const response = await fetchWithAuth(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!response.ok) throw new Error(await readApiError(response));
-      message.success("已保存（保存即生效）");
+      message.success(t("已保存（保存即生效）"));
       setEditing(false);
       setEditingForChild(false);
       await loadTree();
@@ -583,7 +583,7 @@ export default function AtpParamTemplatesPage() {
             <Text code>{row.param}</Text>
           </Space>
         ) : row.value ? (
-          <Text type="secondary">字面量 {row.value}</Text>
+          <Text type="secondary">{t("字面量")} {row.value}</Text>
         ) : (
           <Text>{v}</Text>
         ),
@@ -602,10 +602,10 @@ export default function AtpParamTemplatesPage() {
                 key={ref.code}
                 title={
                   ref.source_type === "line_binding"
-                    ? `线路导入绑定：${ref.via}`
+                    ? `${t("线路导入绑定")}：${ref.via}`
                     : ref.source_type === "script"
-                      ? `${ref.name}（脚本计算）`
-                      : "字面量"
+                      ? `${ref.name}（${t("脚本计算")}）`
+                      : t("字面量")
                 }
               >
                 <Tag color={ref.source_type === "line_binding" ? "geekblue" : "purple"} style={{ marginInlineEnd: 0 }}>
@@ -642,14 +642,14 @@ export default function AtpParamTemplatesPage() {
         );
       },
     },
-    { title: t("格式"), dataIndex: "fmt", width: 70, render: (v) => `${v} 位` },
+    { title: t("格式"), dataIndex: "fmt", width: 70, render: (v) => `${v} ${t("位")}` },
     { title: t("启用"), dataIndex: "enabled", width: 70, render: (v) => (v ? <Tag color="green">{t("启用")}</Tag> : <Tag>{t("关闭")}</Tag>) },
     {
       title: "",
       width: 60,
       render: (_, row) => (
         <Button type="link" danger size="small" onClick={() => setSlotRows((rows) => rows.filter((item) => item.key !== row.key))}>
-          删除
+          {t("删除")}
         </Button>
       ),
     },
@@ -661,7 +661,7 @@ export default function AtpParamTemplatesPage() {
     {
       title: t("来源"),
       dataIndex: "source",
-      render: (v, row) => (row.inherited ? <Tag color="orange">继承 · {v}</Tag> : <Tag color="blue">本级 · {v}</Tag>),
+      render: (v, row) => (row.inherited ? <Tag color="orange">{t("继承")} · {v}</Tag> : <Tag color="blue">{t("本级")} · {v}</Tag>),
     },
     {
       title: "",
@@ -761,10 +761,10 @@ export default function AtpParamTemplatesPage() {
           return (
             <Space wrap size={4}>
               <Button size="small" disabled={!hasRule} onClick={() => void openDetailDrawer(row)}>
-                详情
+                {t("详情")}
               </Button>
               <Button size="small" disabled={!hasRule} onClick={() => void openPreviewDrawer(row)}>
-                试算
+                {t("试算")}
               </Button>
             </Space>
           );
@@ -773,10 +773,10 @@ export default function AtpParamTemplatesPage() {
         return (
           <Space wrap size={4}>
             <Button size="small" disabled={!hasRule} onClick={() => void openDetailDrawer(row)}>
-              详情
+              {t("详情")}
             </Button>
             <Button size="small" disabled={!hasRule} onClick={() => void editTemplate()}>
-              编辑
+              {t("编辑")}
             </Button>
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
               <Button size="small" icon={<MoreOutlined />} aria-label={t("更多操作")} />
@@ -851,7 +851,7 @@ export default function AtpParamTemplatesPage() {
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
-              新建模板
+              {t("新建模板")}
             </Button>
           ) : null
         }
@@ -860,7 +860,7 @@ export default function AtpParamTemplatesPage() {
             key: "list",
             label: (
               <span className="admin-atp-params-tab-title">
-                <FunctionOutlined /> 参数模板管理
+                <FunctionOutlined /> {t("参数模板管理")}
               </span>
             ),
             closable: false,
@@ -966,7 +966,7 @@ export default function AtpParamTemplatesPage() {
                           total={filteredRows.length}
                           onChange={(page, pageSize) => setPagination({ current: page, pageSize })}
                           showSizeChanger
-                          showTotal={(total) => `共 ${total} 条`}
+                          showTotal={(total) => `${t("共")} ${total} ${t("条")}`}
                         />
                       </div>
                     ) : null}
@@ -992,7 +992,7 @@ export default function AtpParamTemplatesPage() {
                         hideOnSinglePage: false,
                         showSizeChanger: true,
                         pageSizeOptions: [10, 20, 50, 100],
-                        showTotal: () => `共 ${filteredRows.length} 条`,
+                        showTotal: () => `${t("共")} ${filteredRows.length} ${t("条")}`,
                         // 与卡片视图独立分页组件尺寸一致（default=32px，不随 Table size=small 缩到 24px）
                         size: "default",
                         onChange: (page, pageSize) => {
@@ -1014,7 +1014,7 @@ export default function AtpParamTemplatesPage() {
       {/* ── 详情弹窗（原抽屉） ── */}
       <Modal
         open={detailOpen}
-        title={detail ? `模板详情：${detail.name}` : "模板详情"}
+        title={detail ? `${t("模板详情")}：${detail.name}` : t("模板详情")}
         width={720}
         footer={
           detail && canManage ? (
@@ -1022,9 +1022,9 @@ export default function AtpParamTemplatesPage() {
               <Button icon={<PlusOutlined />} onClick={() => { setEditingForChild(true); void deriveChild(); }}>
                 {t("新建细分")}
               </Button>
-              <Button onClick={() => void disableTemplate()}>{detail.enabled ? "停用" : "启用"}</Button>
+              <Button onClick={() => void disableTemplate()}>{detail.enabled ? t("停用") : t("启用")}</Button>
               <Button danger icon={<DeleteOutlined />} onClick={() => void removeTemplate()}>
-                删除
+                {t("删除")}
               </Button>
             </Space>
           ) : null
@@ -1041,11 +1041,11 @@ export default function AtpParamTemplatesPage() {
             <Alert
               type="info"
               showIcon
-              message={`${detail.name}${detail.enabled ? "" : "（已停用）"} · 特异性 ${detail.specificity} · 优先级 ${detail.priority} · ${
-                detail.mode === "replace" ? "整块替换" : "逐槽位合并"
-              }${detail.fallback_to ? ` · wine 回退 → ${detail.fallback_to}` : ""}`}
+              message={`${detail.name}${detail.enabled ? "" : t("（已停用）")} · ${t("特异性")} ${detail.specificity} · ${t("优先级")} ${detail.priority} · ${
+                detail.mode === "replace" ? t("整块替换") : t("逐槽位合并")
+              }${detail.fallback_to ? ` · ${t("wine 回退")} → ${detail.fallback_to}` : ""}`}
             />
-            <Card size="small" title={`槽位定义（${detail.defined_slots} 个）`}>
+            <Card size="small" title={`${t("槽位定义")}（${detail.defined_slots} ${t("个")}）`}>
               <Table
                 size="small"
                 rowKey="slot"
@@ -1064,7 +1064,7 @@ export default function AtpParamTemplatesPage() {
                 }))}
               />
               <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
-                更新于 {detail.updated_at ? new Date(detail.updated_at).toLocaleString() : "-"}
+                {t("更新于")} {detail.updated_at ? new Date(detail.updated_at).toLocaleString() : "-"}
                 {detail.updated_by ? ` · ${detail.updated_by}` : ""}
               </Text>
             </Card>
@@ -1075,13 +1075,13 @@ export default function AtpParamTemplatesPage() {
       {/* ── 试算抽屉 ── */}
       <Drawer
         open={previewOpen}
-        title={detail ? `试算预览：${detail.name}` : "试算预览"}
+        title={detail ? `${t("试算预览")}：${detail.name}` : t("试算预览")}
         width={720}
         onClose={() => setPreviewOpen(false)}
         destroyOnClose
         extra={
           <Button type="primary" ghost onClick={() => void runPreview()}>
-            试算
+            {t("试算")}
           </Button>
         }
       >
@@ -1108,7 +1108,7 @@ export default function AtpParamTemplatesPage() {
               placeholder={t("回路数量")}
               allowClear
               value={previewCtx.circuit_count}
-              options={[1, 2, 4].map((item) => ({ value: item, label: `${item} 回` }))}
+              options={[1, 2, 4].map((item) => ({ value: item, label: `${item} ${t("回")}` }))}
               onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, circuit_count: value }))}
             />
             <Select
@@ -1137,7 +1137,7 @@ export default function AtpParamTemplatesPage() {
                     {item}
                   </Tag>
                 ))}
-                {preview.diff.length ? <Tag color="red">本层定义/覆盖 {preview.diff.length} 个槽位</Tag> : null}
+                {preview.diff.length ? <Tag color="red">{t("本层定义/覆盖")} {preview.diff.length} {t("个槽位")}</Tag> : null}
               </div>
               <Table size="small" rowKey="slot" pagination={false} scroll={{ y: 300 }} columns={previewColumns} dataSource={preview.slots} />
             </>
@@ -1150,7 +1150,7 @@ export default function AtpParamTemplatesPage() {
       {/* ── 编辑 / 新建 / 新建细分弹窗 ── */}
       <Modal
         open={editing}
-        title={editingForChild ? "新建细分模板" : detail ? `编辑：${detail.name}` : "新建模板"}
+        title={editingForChild ? t("新建细分模板") : detail ? `${t("编辑")}：${detail.name}` : t("新建模板")}
         width={880}
         onCancel={() => setEditing(false)}
         onOk={() => void saveEditor()}
@@ -1179,7 +1179,7 @@ export default function AtpParamTemplatesPage() {
             </Col>
             <Col span={12}>
               <Form.Item name="circuit_count" label={t("回路数量")} tooltip={t("匹配条件；留空 = 通配")}>
-                <Select allowClear placeholder={t("选择回路数量")} options={[1, 2, 4].map((item) => ({ value: item, label: `${item} 回` }))} />
+                <Select allowClear placeholder={t("选择回路数量")} options={[1, 2, 4].map((item) => ({ value: item, label: `${item} ${t("回")}` }))} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -1265,7 +1265,7 @@ export default function AtpParamTemplatesPage() {
                 <Input
                   value={value}
                   disabled={!!row.param}
-                  placeholder={row.param ? "已选参数引用" : "如：abs(h_u - insul_m - v(10/3,1.5,10/3,14/3,14/3,8,14/3,0))"}
+                  placeholder={row.param ? t("已选参数引用") : "如：abs(h_u - insul_m - v(10/3,1.5,10/3,14/3,14/3,8,14/3,0))"}
                   onChange={(event) => setSlotRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, expr: event.target.value } : item)))}
                 />
               ),
@@ -1291,10 +1291,10 @@ export default function AtpParamTemplatesPage() {
                         key={ref.code}
                         title={
                           ref.source_type === "line_binding"
-                            ? `线路导入绑定：${ref.via}`
+                            ? `${t("线路导入绑定")}：${ref.via}`
                             : ref.source_type === "script"
-                              ? `${ref.name}（脚本计算：${ref.via}）`
-                              : `字面量：${ref.via}`
+                              ? `${ref.name}（${t("脚本计算")}：${ref.via}）`
+                              : `${t("字面量")}：${ref.via}`
                         }
                       >
                         <Tag color={ref.source_type === "line_binding" ? "geekblue" : "purple"} style={{ marginInlineEnd: 0 }}>

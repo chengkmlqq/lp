@@ -2602,6 +2602,16 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "确认删除版本": "Confirm deletion of version",
   "编辑模块": "Edit Module",
   "部署时间": "Deployment time",
+  "wine 回退": "wine fallback",
+  "个槽位": "slots",
+  "位": "digits",
+  "参数模板管理": "Parameter Template Management",
+  "回": "circuit(s)",
+  "更新于": "Updated at",
+  "本层定义/覆盖": "Defined/overridden at this level",
+  "槽位定义": "Slot Definition",
+  "特异性": "Specificity",
+  "确认删除模板": "Confirm deletion of template",
 };
 
 // ─────────────────────────── Context ───────────────────────────
