@@ -62,8 +62,9 @@ const ACTION_LABEL_MAP: Record<string, string> = {
   "scheduled_task.run_failed": "定时任务执行失败",
 };
 
-function getActionLabel(action: string): string {
-  return ACTION_LABEL_MAP[action] || action;
+function getActionLabel(action: string, t: (s: string) => string): string {
+  const label = ACTION_LABEL_MAP[action];
+  return label ? t(label) : action;
 }
 
 type Filters = {
@@ -189,7 +190,7 @@ export default function AdminSyslogPage() {
   useEffect(() => {
     if (!actionsQuery.data) return;
     const items = actionsQuery.data.items.map((action: string) => ({
-      label: getActionLabel(action),
+      label: getActionLabel(action, t),
       value: action,
     }));
     setActionOptions(items);
@@ -313,7 +314,7 @@ export default function AdminSyslogPage() {
         dataIndex: "action",
         key: "action",
         width: 220,
-        render: (value: string) => <Tag>{getActionLabel(value)}</Tag>,
+        render: (value: string) => <Tag>{getActionLabel(value, t)}</Tag>,
       },
       {
         title: t("入参"),
@@ -332,7 +333,7 @@ export default function AdminSyslogPage() {
         ),
       },
     ],
-    [],
+    [t],
   );
 
   const updateTableScrollY = useCallback(() => {
@@ -414,7 +415,7 @@ export default function AdminSyslogPage() {
             {log.username ?? log.user_id ?? "-"}
           </Typography.Text>
           <div className="flex flex-shrink-0 items-center gap-2">
-            <Tag>{getActionLabel(log.action)}</Tag>
+            <Tag>{getActionLabel(log.action, t)}</Tag>
           </div>
         </div>
       }
@@ -468,7 +469,7 @@ export default function AdminSyslogPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -482,7 +483,7 @@ export default function AdminSyslogPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -568,7 +569,7 @@ export default function AdminSyslogPage() {
                         },
                         showSizeChanger: true,
                         pageSizeOptions: [10, 20, 50, 100],
-                        showTotal: () => `共 ${total} 条`,
+                        showTotal: () => `${t("共")} ${total} ${t("条")}`,
                         hideOnSinglePage: false,
                         style: { marginBottom: 0 },
                       }}
@@ -610,7 +611,7 @@ export default function AdminSyslogPage() {
                           {allLoadedLogs.length >= total && allLoadedLogs.length > 0 && (
                             <div style={{ textAlign: "center", padding: "20px 0" }}>
                               <Typography.Text type="secondary">
-                                已加载全部 {allLoadedLogs.length} 条数据
+                                {t("已加载全部")} {allLoadedLogs.length} {t("条数据")}
                               </Typography.Text>
                             </div>
                           )}

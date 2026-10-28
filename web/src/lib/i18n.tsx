@@ -2566,6 +2566,9 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "正在解析文件内容...": "Parsing file content...",
   "正在识别并回填故障字段...": "Identifying and backfilling fault fields...",
   "识别失败": "Recognition failed",
+  "共": "Total",
+  "已加载全部": "All loaded",
+  "条数据": "records",
 };
 
 // ─────────────────────────── Context ───────────────────────────
