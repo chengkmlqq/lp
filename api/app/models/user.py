@@ -49,6 +49,8 @@ class User(Base):
         String(500),
         nullable=True,
     )
+    # 手机号(短信验证码登录用, 可空: 短信开关开启时未绑定手机号的账号无法登录)
+    phone: Mapped[str | None] = mapped_column(String(20), unique=True, index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         "created_at",
         DateTime(timezone=False),

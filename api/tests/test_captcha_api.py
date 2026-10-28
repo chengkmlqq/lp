@@ -122,6 +122,21 @@ class CaptchaApiTestCase(unittest.TestCase):
         )
         assert resp.status_code == 401, resp.text
 
+    def test_sms_send_requires_captcha(self):
+        # 短信开关默认关闭: 发送短信接口应报"未启用", 但图形码校验前置
+        resp = self.client.post(
+            "/api/v1/auth/sms-captcha/send",
+            json={"captcha_id": "bad", "captcha_code": "bad", "phone": "13800138000"},
+        )
+        assert resp.status_code == 400
+        assert "验证码" in resp.json()["detail"]
+
+    def test_captcha_response_has_sms_enabled_flag(self):
+        resp = self.client.get("/api/v1/auth/captcha")
+        data = resp.json()
+        assert "sms_captcha_enabled" in data
+        assert data["sms_captcha_enabled"] is False
+
 
 if __name__ == "__main__":
     unittest.main()

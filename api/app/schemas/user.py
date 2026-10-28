@@ -16,6 +16,7 @@ class UserPublic(BaseModel):
     updated_at: datetime | None = None
     last_login_at: datetime | None = None
     avatar_url: str | None = None
+    phone: str | None = None
 
 
 class UserListResponse(BaseModel):
@@ -33,6 +34,7 @@ class UserUpdateRequest(BaseModel):
     email: str | None = None
     username: str | None = Field(default=None, min_length=3, max_length=64)
     status: Literal["active", "disabled", "enabled"] | None = None
+    phone: str | None = Field(default=None, max_length=20)
 
     @field_validator("new_user_id")
     @classmethod
@@ -60,6 +62,7 @@ class UserCreateRequest(BaseModel):
     email: str | None = None
     username: str = Field(min_length=3, max_length=64)
     password: str = Field(min_length=8, max_length=128)
+    phone: str | None = Field(default=None, max_length=20)
 
     @field_validator("user_id")
     @classmethod

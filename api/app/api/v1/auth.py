@@ -4,7 +4,15 @@ from sqlalchemy.orm import Session
 from ...core.config import get_settings
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, get_current_user
-from ...schemas.auth import AuthTokenResponse, CaptchaResponse, LoginRequest, MessageResponse, RegisterRequest
+from ...schemas.auth import (
+    AuthTokenResponse,
+    CaptchaResponse,
+    LoginRequest,
+    MessageResponse,
+    RegisterRequest,
+    SmsCaptchaSendRequest,
+    SmsCaptchaSendResponse,
+)
 from ...schemas.user import UserPublic
 from ...services.auth_service import (
     AuthResult,
@@ -14,6 +22,12 @@ from ...services.auth_service import (
     register_user,
 )
 from ...services.captcha_service import generate_captcha, verify_captcha
+from ...services.sms_captcha_service import (
+    SmsCaptchaError,
+    is_sms_captcha_enabled,
+    send_sms_captcha,
+    verify_sms_captcha,
+)
 from ...services.user_service import serialize_user
 
 settings = get_settings()
@@ -113,13 +127,36 @@ def register(
 
 
 @router.get("/captcha", response_model=CaptchaResponse)
-def get_captcha() -> CaptchaResponse:
+def get_captcha(db: Session = Depends(get_db)) -> CaptchaResponse:
     """获取登录图形验证码(captcha_id + base64 PNG 图片)。"""
     captcha_id, image_base64 = generate_captcha()
     return CaptchaResponse(
         captcha_id=captcha_id,
         image_base64=image_base64,
         expires_in=300,
+        sms_captcha_enabled=is_sms_captcha_enabled(db),
+    )
+
+
+@router.post("/sms-captcha/send", response_model=SmsCaptchaSendResponse)
+def send_sms_captcha_endpoint(
+    payload: SmsCaptchaSendRequest,
+    db: Session = Depends(get_db),
+) -> SmsCaptchaSendResponse:
+    """发送短信验证码: 必须先通过图形验证码(防刷), 发到指定手机号。"""
+    if not verify_captcha(payload.captcha_id, payload.captcha_code):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="验证码错误或已过期,请刷新后重试",
+        )
+    try:
+        result = send_sms_captcha(db, payload.phone)
+    except SmsCaptchaError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return SmsCaptchaSendResponse(
+        message="短信验证码已发送",
+        interval_seconds=result["interval_seconds"],
+        ttl_seconds=result["ttl_seconds"],
     )
 
 
@@ -130,12 +167,36 @@ def login(
     response: Response,
     db: Session = Depends(get_db),
 ) -> AuthTokenResponse:
-    # 图形验证码人机校验(LP 登录安全增强):校验失败直接 400,不泄露账号信息
-    if not verify_captcha(payload.captcha_id, payload.captcha_code):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="验证码错误或已过期,请刷新后重试",
-        )
+    sms_enabled = is_sms_captcha_enabled(db)
+    if sms_enabled:
+        # 短信开关开启: 登录必须通过短信验证码(图形码在发送短信时已校验)
+        if not payload.sms_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="请输入短信验证码",
+            )
+        # 需要用户手机号: 先用 user_id 定位用户, 取绑定手机号校验
+        from ...services.user_service import get_user_by_id, get_user_by_username
+
+        requested_user_id = payload.user_id.strip()
+        user = get_user_by_id(db, requested_user_id) or get_user_by_username(db, requested_user_id)
+        if not user or not user.phone:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="该账号未绑定手机号,无法使用短信验证码登录",
+            )
+        if not verify_sms_captcha(db, user.phone, payload.sms_code):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="短信验证码错误或已过期,请重新获取",
+            )
+    else:
+        # 图形验证码人机校验(LP 登录安全增强):校验失败直接 400,不泄露账号信息
+        if not verify_captcha(payload.captcha_id, payload.captcha_code):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="验证码错误或已过期,请刷新后重试",
+            )
     result = login_user(
         db,
         payload,

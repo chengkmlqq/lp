@@ -135,6 +135,7 @@ def create_user(
         username=payload.username,
         password_hash=hash_password(payload.password),
         status="ENABLED",
+        phone=payload.phone.strip() if payload.phone else None,
     )
 
     try:
@@ -349,6 +350,18 @@ def update_user(
             status_changed = True
             changed_fields.append("status")
 
+    if payload.phone is not None:
+        next_phone = payload.phone.strip() or None
+        if next_phone != user.phone:
+            # 手机号唯一性检查
+            duplicate = db.scalar(
+                select(User.id).where(User.phone == next_phone, User.id != user.id)
+            )
+            if duplicate:
+                return None
+            user.phone = next_phone
+            changed_fields.append("phone")
+
     if not changed_fields:
         return serialize_user(user)
 
@@ -484,6 +497,7 @@ def _serialize_user_with_authz(user: User, authz: UserAuthorization | None) -> U
         updated_at=user.updated_at,
         last_login_at=user.last_login_at,
         avatar_url=avatar_url,
+        phone=user.phone,
     )
 
 
@@ -505,6 +519,7 @@ def serialize_user(user: User | None) -> UserPublic:
         updated_at=user.updated_at,
         last_login_at=user.last_login_at,
         avatar_url=avatar_url,
+        phone=user.phone,
     )
 
 
