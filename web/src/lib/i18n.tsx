@@ -2632,6 +2632,9 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "链": "chain",
   "用默认值的变量": "variables using defaults",
   "⚠️ 未解析槽位": "⚠️ unresolved slots",
+  "参数类型": "Parameter Type",
+  "绑定": "Binding",
+  "编辑参数": "Edit Parameter",
 };
 
 // ─────────────────────────── Context ───────────────────────────
