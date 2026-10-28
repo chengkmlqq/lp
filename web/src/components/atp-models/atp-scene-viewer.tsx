@@ -587,20 +587,20 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
             {Object.entries(KIND_LABELS).map(([kind, label]) => (
               <span key={kind} style={{ fontSize: 12, color: "#ccc", display: "inline-flex", alignItems: "center", gap: 4 }}>
                 <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: `#${(KIND_COLORS[kind] ?? KIND_COLORS.other).toString(16).padStart(6, "0")}` }} />
-                {label}
+                {t(label)}
               </span>
             ))}
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("形状=元件类型（⚡电源 · ▦开关 · ‖线路段 · ◎端口 · ●内部节点）· 拖拽旋转 · 滚轮缩放 · 点击节点查看详情")}</Typography.Text>
           </div>
 
           {scene.warnings.length > 0 ? (
-            <Alert type="warning" showIcon style={{ marginBottom: 8 }} message={`解析警告 ${scene.warnings.length} 条（尽力而为渲染）`} description={scene.warnings.slice(0, 5).join("；")} />
+            <Alert type="warning" showIcon style={{ marginBottom: 8 }} message={t("解析警告") + ` ${scene.warnings.length} ` + t("条（尽力而为渲染）")} description={scene.warnings.slice(0, 5).join("；")} />
           ) : null}
 
           <div ref={containerRef} style={{ position: "relative", width: "100%", height: 440, borderRadius: 8, overflow: "hidden", border: "1px solid #2a3b4d", background: "#0f1419" }}>
             {hovered && tooltipPos ? (
               <div style={{ position: "fixed", left: tooltipPos.x + 12, top: tooltipPos.y + 12, zIndex: 1000, pointerEvents: "none", transform: "translateY(0)", background: "rgba(15,20,25,0.92)", border: "1px solid #3a4b5d", borderRadius: 6, padding: "4px 10px", fontSize: 12, color: "#e8e8e8" }}>
-                <b>{hovered}</b> · {KIND_LABELS[scene.nodes.find((n) => n.id === hovered)?.kind ?? "other"] ?? hovered}
+                <b>{hovered}</b> · {t(KIND_LABELS[scene.nodes.find((n) => n.id === hovered)?.kind ?? "other"] ?? hovered)}
               </div>
             ) : null}
           </div>
@@ -609,13 +609,13 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
             <div style={{ marginTop: 10 }}>
               <Typography.Title level={5}>
                 节点 {selected.id}
-                <Tag style={{ marginLeft: 8 }} color="blue">{KIND_LABELS[selected.kind] ?? selected.kind}</Tag>
+                <Tag style={{ marginLeft: 8 }} color="blue">{t(KIND_LABELS[selected.kind] ?? selected.kind)}</Tag>
               </Typography.Title>
               {selected.branches.length > 0 ? (
                 <Descriptions size="small" column={1} bordered style={{ marginBottom: 8 }}
                   items={selected.branches.map((branch, index) => ({
                     key: `b${index}`,
-                    label: `支路 ${branch.n1} ⇄ ${branch.n2}`,
+                    label: `${t("支路")} ${branch.n1} ⇄ ${branch.n2}`,
                     children: branch.raw ?? `R=${branch.r ?? "-"}  L=${branch.l ?? "-"}  C=${branch.c ?? "-"}`,
                   }))}
                 />
@@ -624,8 +624,8 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
                 <Descriptions size="small" column={1} bordered style={{ marginBottom: 8 }}
                   items={selected.switches.map((sw, index) => ({
                     key: `s${index}`,
-                    label: `开关 ${sw.n1} ⇄ ${sw.n2}`,
-                    children: `type=${sw.type ?? "-"}${sw.control ? `, 控制量=${sw.control}` : ""}${sw.raw ? `,  ${sw.raw}` : ""}`,
+                    label: `${t("开关")} ${sw.n1} ⇄ ${sw.n2}`,
+                    children: `type=${sw.type ?? "-"}${sw.control ? `, ${t("控制量")}=${sw.control}` : ""}${sw.raw ? `,  ${sw.raw}` : ""}`,
                   }))}
                 />
               ) : null}
@@ -634,7 +634,7 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
                   items={selected.sources.map((src, index) => ({
                     key: `src${index}`,
                     label: `电源 ${src.node}`,
-                    children: `幅值=${src.amplitude ?? "-"} 频率=${src.freq ?? "-"} 相位=${src.phase ?? "-"}`,
+                    children: `${t("幅值")}=${src.amplitude ?? "-"} ${t("频率")}=${src.freq ?? "-"} ${t("相位")}=${src.phase ?? "-"}`,
                   }))}
                 />
               ) : null}
