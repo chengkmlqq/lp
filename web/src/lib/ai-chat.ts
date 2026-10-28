@@ -5,10 +5,13 @@ export const AI_CHAT_EXAMPLE_PROMPTS = [
   "tpbig.exe 的输入文件格式是什么？",
 ] as const;
 
-export function generateConversationTitle(content: string): string {
+export function generateConversationTitle(
+  content: string,
+  t: (s: string) => string = (s) => s,
+): string {
   const firstLine = content.trim().split(/\r?\n/, 1)[0]?.trim() ?? "";
   if (!firstLine) {
-    return "新对话";
+    return t("新对话");
   }
 
   return firstLine.length > 20 ? `${firstLine.slice(0, 20)}...` : firstLine;

@@ -167,7 +167,7 @@ function QuickLinksCard({ widget }: { widget: OverviewWidget }) {
 /** 渲染单张配置卡片；未知类型返回 null（前端兜底，不白屏）。 */
 export function OverviewWidgetCard({ widget, data }: { widget: OverviewWidget; data: OverviewData }) {
   const { t } = useI18n();
-  const title = widget.title?.trim() || widgetDefaultTitle(widget.type);
+  const title = t(widget.title?.trim() || widgetDefaultTitle(widget.type, t));
   let body: ReactNode = null;
   switch (widget.type) {
     case "asset_stats":

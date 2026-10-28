@@ -443,7 +443,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <AntResult
           status="403"
           title={t("请先登录")}
-          subTitle="登录后才能访问后台工作台。"
+          subTitle={t("登录后才能访问后台工作台。")}
           extra={(
             <Button type="primary">
               <Link href="/login">{t("前往登录")}</Link>
@@ -458,8 +458,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     const subTitle = menusQuery.isError
       ? menusQuery.error instanceof Error
         ? menusQuery.error.message
-        : "菜单加载失败，请检查网络连接或后端服务。"
-      : "该菜单已禁用或你没有访问该菜单的权限。";
+        : t("菜单加载失败，请检查网络连接或后端服务。")
+      : t("该菜单已禁用或你没有访问该菜单的权限。");
 
     return (
       <AdminCenteredState>
@@ -654,7 +654,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               </div>
               <div className="admin-design-sider-footer">
                 <Button
-                  aria-label={siderCollapsed ? "展开菜单" : "收起菜单"}
+                  aria-label={siderCollapsed ? t("展开菜单") : t("收起菜单")}
                   icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
                   type="text"
                   onClick={() => setSiderCollapsed((previous) => !previous)}

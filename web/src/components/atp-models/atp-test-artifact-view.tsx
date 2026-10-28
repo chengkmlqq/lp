@@ -250,11 +250,11 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
       {isLog ? (
         <>
           <Typography.Title level={5} style={{ marginTop: 12, fontSize: 14 }}>
-            日志特征点({logFeatures.length})
+            {t("日志特征点")}({logFeatures.length})
           </Typography.Title>
           {logFeatures.length === 0 ? (
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              未识别到闪络/Halt/KILL/错误/警告特征。
+              {t("未识别到闪络/Halt/KILL/错误/警告特征。")}
             </Typography.Text>
           ) : (
             <Table
@@ -268,7 +268,7 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
                   title: t("特征"),
                   dataIndex: "label",
                   width: 90,
-                  render: (v: string, row: { color: string }) => <Tag color={row.color}>{v}</Tag>,
+                  render: (v: string, row: { color: string }) => <Tag color={row.color}>{t(v)}</Tag>,
                 },
                 { title: t("内容"), dataIndex: "text" },
               ]}

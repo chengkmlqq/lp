@@ -286,7 +286,7 @@ export default function AiChatPage() {
 
     if (!selectedConvId) {
       try {
-        const newConv = await createConvMutation.mutateAsync(generateConversationTitle(content));
+        const newConv = await createConvMutation.mutateAsync(generateConversationTitle(content, t));
         sendMessageMutation.mutate({
           convId: newConv.id,
           content,
@@ -328,7 +328,7 @@ export default function AiChatPage() {
         }
 
         try {
-          const newConv = await createConvMutation.mutateAsync(generateConversationTitle(prompt));
+          const newConv = await createConvMutation.mutateAsync(generateConversationTitle(prompt, t));
           sendMessageMutation.mutate({
             convId: newConv.id,
             content: prompt,
@@ -541,7 +541,7 @@ export default function AiChatPage() {
                         whiteSpace: "normal",
                       }}
                     >
-                      {prompt}
+                      {t(prompt)}
                     </Button>
                   ))}
                 </div>

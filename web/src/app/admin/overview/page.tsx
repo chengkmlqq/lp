@@ -74,10 +74,10 @@ export default function AdminOverviewPage() {
     onSuccess: (data) => {
       queryClient.setQueryData([...OVERVIEW_CONFIG_QUERY_KEY], data);
       setConfigOpen(false);
-      void messageApi.success("总览布局已保存");
+      void messageApi.success(t("总览布局已保存"));
     },
     onError: (error) => {
-      void messageApi.error(`保存失败：${error instanceof Error ? error.message : "未知错误"}`);
+      void messageApi.error(`${t("保存失败：")}${error instanceof Error ? error.message : t("未知错误")}`);
     },
   });
 
@@ -95,7 +95,7 @@ export default function AdminOverviewPage() {
         type="error"
         showIcon
         message={t("系统总览加载失败")}
-        description={overviewQuery.error instanceof Error ? overviewQuery.error.message : "请稍后重试"}
+        description={overviewQuery.error instanceof Error ? overviewQuery.error.message : t("请稍后重试")}
       />
     );
   }
