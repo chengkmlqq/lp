@@ -107,7 +107,7 @@ export default function AdminFilesPage() {
   const [newDirectoryName, setNewDirectoryName] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  const pageDisplayName = "文件管理";
+  const pageDisplayName = t("文件管理");
 
   const [renameTarget, setRenameTarget] = useState<FileEntryItem | null>(null);
   const [renameName, setRenameName] = useState("");
@@ -196,7 +196,7 @@ export default function AdminFilesPage() {
   const createDirectoryMutation = useMutation({
     mutationFn: async () => {
       if (!activeMountCode) {
-        throw new Error("当前无可用存储挂载");
+        throw new Error(t("当前无可用存储挂载"));
       }
       const response = await fetchWithAuth("/api/v1/admin/files/directories", {
         method: "POST",
@@ -215,10 +215,10 @@ export default function AdminFilesPage() {
     onSuccess: async (payload) => {
       setNewDirectoryName("");
       setCreateDirectoryModalOpen(false);
-      await applyMutationSuccess(payload, "目录已创建");
+      await applyMutationSuccess(payload, t("目录已创建"));
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : "目录创建失败";
+      const message = error instanceof Error ? error.message : t("目录创建失败");
       setErrorMessage(message);
       messageApi.error(message);
     },
@@ -227,7 +227,7 @@ export default function AdminFilesPage() {
   const deleteMutation = useMutation({
     mutationFn: async (item: FileEntryItem) => {
       if (!activeMountCode) {
-        throw new Error("当前无可用存储挂载");
+        throw new Error(t("当前无可用存储挂载"));
       }
       const response = await fetchWithAuth("/api/v1/admin/files/delete", {
         method: "POST",
@@ -245,10 +245,10 @@ export default function AdminFilesPage() {
       return (await response.json()) as FileOperationResponse;
     },
     onSuccess: async (payload) => {
-      await applyMutationSuccess(payload, "路径已删除");
+      await applyMutationSuccess(payload, t("路径已删除"));
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : "删除失败";
+      const message = error instanceof Error ? error.message : t("删除失败");
       setErrorMessage(message);
       messageApi.error(message);
     },
@@ -257,7 +257,7 @@ export default function AdminFilesPage() {
   const renameMutation = useMutation({
     mutationFn: async (item: FileEntryItem) => {
       if (!activeMountCode) {
-        throw new Error("当前无可用存储挂载");
+        throw new Error(t("当前无可用存储挂载"));
       }
       const response = await fetchWithAuth("/api/v1/admin/files/rename", {
         method: "POST",
@@ -275,10 +275,10 @@ export default function AdminFilesPage() {
       return (await response.json()) as FileOperationResponse;
     },
     onSuccess: async (payload) => {
-      await applyMutationSuccess(payload, "重命名成功");
+      await applyMutationSuccess(payload, t("重命名成功"));
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : "重命名失败";
+      const message = error instanceof Error ? error.message : t("重命名失败");
       setErrorMessage(message);
       messageApi.error(message);
     },
@@ -287,7 +287,7 @@ export default function AdminFilesPage() {
   const moveMutation = useMutation({
     mutationFn: async (item: FileEntryItem) => {
       if (!activeMountCode) {
-        throw new Error("当前无可用存储挂载");
+        throw new Error(t("当前无可用存储挂载"));
       }
       const response = await fetchWithAuth("/api/v1/admin/files/move", {
         method: "POST",
@@ -306,10 +306,10 @@ export default function AdminFilesPage() {
       return (await response.json()) as FileOperationResponse;
     },
     onSuccess: async (payload) => {
-      await applyMutationSuccess(payload, "移动成功");
+      await applyMutationSuccess(payload, t("移动成功"));
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : "移动失败";
+      const message = error instanceof Error ? error.message : t("移动失败");
       setErrorMessage(message);
       messageApi.error(message);
     },
@@ -318,10 +318,10 @@ export default function AdminFilesPage() {
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       if (!activeMountCode) {
-        throw new Error("当前无可用存储挂载");
+        throw new Error(t("当前无可用存储挂载"));
       }
       setUploadProgress(0);
-      setUploadFileName(file.name || "未命名文件");
+      setUploadFileName(file.name || t("未命名文件"));
 
       const params = new URLSearchParams({
         mount_code: activeMountCode,
@@ -351,15 +351,15 @@ export default function AdminFilesPage() {
               try {
                 resolve(JSON.parse(xhr.responseText) as FileOperationResponse);
               } catch {
-                reject(new Error("上传成功但响应解析失败"));
+                reject(new Error(t("上传成功但响应解析失败")));
               }
               return;
             }
             reject(new Error(readXhrError(xhr)));
           };
 
-          xhr.onerror = () => reject(new Error("网络异常，上传失败"));
-          xhr.onabort = () => reject(new Error("上传已取消"));
+          xhr.onerror = () => reject(new Error(t("网络异常，上传失败")));
+          xhr.onabort = () => reject(new Error(t("上传已取消")));
 
           const formData = new FormData();
           formData.append("file", file);
@@ -370,7 +370,7 @@ export default function AdminFilesPage() {
       try {
         payload = await uploadWithXhr(getAccessToken());
       } catch (error) {
-        const message = error instanceof Error ? error.message : "上传失败";
+        const message = error instanceof Error ? error.message : t("上传失败");
         const isUnauthorized = message.includes("401") || message.includes("未授权");
         if (!isUnauthorized) {
           throw error;
@@ -384,13 +384,13 @@ export default function AdminFilesPage() {
       return payload;
     },
     onSuccess: async (payload) => {
-      await applyMutationSuccess(payload, "上传成功");
+      await applyMutationSuccess(payload, t("上传成功"));
       setUploadFileName("");
       setUploadProgress(0);
     },
     onError: (error) => {
       setUploadProgress(0);
-      const message = error instanceof Error ? error.message : "上传失败";
+      const message = error instanceof Error ? error.message : t("上传失败");
       setErrorMessage(message);
       messageApi.error(message);
     },
@@ -441,7 +441,7 @@ export default function AdminFilesPage() {
       return;
     }
     if (!renameName.trim()) {
-      setErrorMessage("新名称不能为空");
+      setErrorMessage(t("新名称不能为空"));
       return;
     }
     void renameMutation.mutateAsync(renameTarget);
@@ -452,7 +452,7 @@ export default function AdminFilesPage() {
       return;
     }
     if (!moveTargetParentPath.trim()) {
-      setErrorMessage("目标目录不能为空");
+      setErrorMessage(t("目标目录不能为空"));
       return;
     }
     void moveMutation.mutateAsync(moveTarget);
@@ -460,7 +460,7 @@ export default function AdminFilesPage() {
 
   const submitCreateDirectory = () => {
     if (!newDirectoryName.trim()) {
-      setErrorMessage("目录名称不能为空");
+      setErrorMessage(t("目录名称不能为空"));
       return;
     }
     void createDirectoryMutation.mutateAsync();
@@ -476,7 +476,7 @@ export default function AdminFilesPage() {
 
   const handleDownloadFile = async (item: FileEntryItem) => {
     if (!activeMountCode) {
-      setErrorMessage("当前无可用存储挂载");
+      setErrorMessage(t("当前无可用存储挂载"));
       return;
     }
 
@@ -502,7 +502,7 @@ export default function AdminFilesPage() {
       setErrorMessage("");
       messageApi.success(`下载已开始：${item.name}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "下载失败";
+      const message = error instanceof Error ? error.message : t("下载失败");
       setErrorMessage(message);
       messageApi.error(message);
     }
@@ -510,7 +510,7 @@ export default function AdminFilesPage() {
 
   const handleDownloadDirectory = async (item: FileEntryItem) => {
     if (!activeMountCode) {
-      setErrorMessage("当前无可用存储挂载");
+      setErrorMessage(t("当前无可用存储挂载"));
       return;
     }
 
@@ -536,7 +536,7 @@ export default function AdminFilesPage() {
       setErrorMessage("");
       messageApi.success(`目录下载已开始：${item.name}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "目录下载失败";
+      const message = error instanceof Error ? error.message : t("目录下载失败");
       setErrorMessage(message);
       messageApi.error(message);
     }
@@ -559,7 +559,7 @@ export default function AdminFilesPage() {
 
   const breadcrumbItems = useMemo(
     () =>
-      (listData?.breadcrumbs ?? [{ name: "根目录", path: "/" }]).map((crumb) => ({
+      (listData?.breadcrumbs ?? [{ name: t("根目录"), path: "/" }]).map((crumb) => ({
         title: (
           <Button
             type="text"
@@ -677,7 +677,7 @@ export default function AdminFilesPage() {
         width: 180,
         render: (_value, item) => (
           <Typography.Text type="secondary" className="text-sm">
-            {item.is_dir ? "目录" : item.mime_type ?? "文件"}
+            {item.is_dir ? t("目录") : item.mime_type ?? t("文件")}
           </Typography.Text>
         ),
       },
@@ -842,7 +842,7 @@ export default function AdminFilesPage() {
                   disabled={uploadMutation.isPending || !activeMountCode}
                   icon={<UploadOutlined />}
                 >
-                  {uploadMutation.isPending ? "上传中..." : "上传文件"}
+                  {uploadMutation.isPending ? t("上传中...") : t("上传文件")}
                 </Button>
               </Upload>
             )}
@@ -866,7 +866,7 @@ export default function AdminFilesPage() {
                     ellipsis={{ tooltip: uploadFileName || undefined }}
                     className="font-medium text-[var(--gray-12)]"
                   >
-                    {uploadFileName || "未命名文件"}
+                    {uploadFileName || t("未命名文件")}
                   </Typography.Text>
                 </div>
                 <Typography.Text className="font-semibold text-[var(--accent-11)] flex-shrink-0">
@@ -940,7 +940,7 @@ export default function AdminFilesPage() {
             label={t("目录名称")}
             required
             validateStatus={newDirectoryName.trim() ? undefined : "error"}
-            help={newDirectoryName.trim() ? undefined : "目录名称不能为空"}
+            help={newDirectoryName.trim() ? undefined : t("目录名称不能为空")}
           >
             <Input
               value={newDirectoryName}
@@ -955,7 +955,7 @@ export default function AdminFilesPage() {
       </Modal>
 
       <Modal
-        title={renameTarget ? `重命名：${renameTarget.name}` : "重命名"}
+        title={renameTarget ? `${t("重命名")}：${renameTarget.name}` : t("重命名")}
         open={Boolean(renameTarget)}
         onCancel={closeRenameModal}
         onOk={submitRename}
@@ -973,7 +973,7 @@ export default function AdminFilesPage() {
             label={t("新名称")}
             required
             validateStatus={renameName.trim() ? undefined : "error"}
-            help={renameName.trim() ? undefined : "新名称不能为空"}
+            help={renameName.trim() ? undefined : t("新名称不能为空")}
           >
             <Input
               value={renameName}
@@ -987,7 +987,7 @@ export default function AdminFilesPage() {
       </Modal>
 
       <Modal
-        title={moveTarget ? `移动：${moveTarget.name}` : "移动"}
+        title={moveTarget ? `${t("移动")}：${moveTarget.name}` : t("移动")}
         open={Boolean(moveTarget)}
         onCancel={closeMoveModal}
         onOk={submitMove}
@@ -1005,7 +1005,7 @@ export default function AdminFilesPage() {
             label={t("目标目录")}
             required
             validateStatus={moveTargetParentPath.trim() ? undefined : "error"}
-            help={moveTargetParentPath.trim() ? undefined : "目标目录不能为空"}
+            help={moveTargetParentPath.trim() ? undefined : t("目标目录不能为空")}
           >
             <Input
               value={moveTargetParentPath}
