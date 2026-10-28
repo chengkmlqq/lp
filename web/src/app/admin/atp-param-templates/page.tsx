@@ -1265,7 +1265,7 @@ export default function AtpParamTemplatesPage() {
                 <Input
                   value={value}
                   disabled={!!row.param}
-                  placeholder={row.param ? t("已选参数引用") : "如：abs(h_u - insul_m - v(10/3,1.5,10/3,14/3,14/3,8,14/3,0))"}
+                  placeholder={row.param ? t("已选参数引用") : t("如：abs(h_u - insul_m - v(10/3,1.5,10/3,14/3,14/3,8,14/3,0))")}
                   onChange={(event) => setSlotRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, expr: event.target.value } : item)))}
                 />
               ),
