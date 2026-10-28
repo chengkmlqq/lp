@@ -40,7 +40,7 @@ const RECLOSURE_MAPPING: Record<string, string> = {
 /**
  * 从Excel文件解析故障信息数据
  */
-export async function parseExcelFile(file: File): Promise<Partial<CreateFaultAnalysisFormValues>> {
+export async function parseExcelFile(file: File, t: (s: string) => string = (s) => s): Promise<Partial<CreateFaultAnalysisFormValues>> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -48,7 +48,7 @@ export async function parseExcelFile(file: File): Promise<Partial<CreateFaultAna
       try {
         const data = e.target?.result;
         if (!data) {
-          throw new Error('读取文件失败');
+          throw new Error(t('读取文件失败'));
         }
 
         const workbook = XLSX.read(data, { type: 'binary' });
@@ -56,7 +56,7 @@ export async function parseExcelFile(file: File): Promise<Partial<CreateFaultAna
         const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as any[][];
 
         if (jsonData.length < 2) {
-          throw new Error('Excel文件格式不正确，至少需要包含表头和一行数据');
+          throw new Error(t('Excel文件格式不正确，至少需要包含表头和一行数据'));
         }
 
         // 第一行为表头，第二行为数据
@@ -108,7 +108,7 @@ export async function parseExcelFile(file: File): Promise<Partial<CreateFaultAna
     };
 
     reader.onerror = () => {
-      reject(new Error('读取文件失败'));
+      reject(new Error(t('读取文件失败')));
     };
 
     reader.readAsBinaryString(file);
