@@ -530,7 +530,7 @@ export function PowerLineCesiumMap({
       const color = colorByRisk ? (RISK_COLOR_BY_LEVEL[risk] ?? DEFAULT_POINT_COLOR) : DEFAULT_POINT_COLOR;
       const isEdgePoint = index === 0 || index === lastIndex;
       const shouldRenderLabel = showLabels && (shouldShowAllLabels || isEdgePoint);
-      const labelPrefix = index === 0 ? "起点" : index === lastIndex ? "终点" : "";
+      const labelPrefix = index === 0 ? t("起点") : index === lastIndex ? t("终点") : "";
 
       viewer.entities.add({
         id: `tower-${tower.id}`,
@@ -561,7 +561,7 @@ export function PowerLineCesiumMap({
             <div><strong>{t("海拔：")}</strong>${tower.altitudeM.toFixed(2)} m</div>
             <div><strong>{t("地形：")}</strong>${tower.terrain ?? "-"}</div>
             <div><strong>{t("风险等级：")}</strong>${tower.riskLevel ?? "-"}</div>
-            <div><strong>{t("高程采样：")}</strong>${tower.elevationPrepared ? "已回填" : "未回填"}</div>
+            <div><strong>{t("高程采样：")}</strong>{tower.elevationPrepared ? t("已回填") : t("未回填")}</div>
             <div><strong>{t("来源数据集：")}</strong>${tower.elevationDatasetCode ?? "-"}</div>
             <div><strong>{t("采样方式：")}</strong>${tower.elevationSampleMethod ?? "-"}</div>
           </div>
@@ -584,7 +584,7 @@ export function PowerLineCesiumMap({
       {terrainDataset ? (
         <Typography.Text type="secondary">
           地形底图：{terrainDataset.name}，状态 {terrainDataset.terrain_status}
-          {terrainDataset.terrain_status === "ready" ? `，夸张 ${exaggeration.toFixed(1)}x` : "，未启用真实地形"}
+          {terrainDataset.terrain_status === "ready" ? `，${t("夸张")} ${exaggeration.toFixed(1)}x` : t("，未启用真实地形")}
           {towersOutsideTerrainBounds > 0 ? `，超出范围杆塔 ${towersOutsideTerrainBounds} 个` : ""}
         </Typography.Text>
       ) : null}
@@ -657,7 +657,7 @@ export function PowerLineCesiumMap({
           <Segmented
             size="small"
             value={effectiveBaseLayer}
-            options={[...TIANDITU_BASE_LAYER_OPTIONS]}
+            options={[...TIANDITU_BASE_LAYER_OPTIONS.map((opt) => ({ ...opt, label: t(opt.label) }))]}
             onChange={(value) => setBaseLayerOverride(value)}
             disabled={!tiandituEnabled}
           />

@@ -2638,6 +2638,8 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "编辑角色": "Edit Role",
   "进度": "Progress",
   "回填明细": "Backfill Detail",
+  "夸张": "exaggeration",
+  "，未启用真实地形": ", real terrain not enabled",
 };
 
 // ─────────────────────────── Context ───────────────────────────
