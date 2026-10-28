@@ -232,8 +232,8 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
         const currentLine = lines.find((line) => line.id === currentLineId);
         messageApi.warning(
           `录波识别的线路「${extractedLineName}」不在系统线路列表中，` +
-            `当前第一步选择的是「${currentLine ? `${currentLine.name} (${currentLine.code})` : "未选择"}」，请确认是否需要更换线路；` +
-            "否则判别时台账将按所选线路组装，无法匹配录波线路。",
+            `${t("当前第一步选择的是")}「${currentLine ? `${currentLine.name} (${currentLine.code})` : t("未选择")}」，${t("请确认是否需要更换线路")}；` +
+            t("否则判别时台账将按所选线路组装，无法匹配录波线路。"),
         );
       }
     }
