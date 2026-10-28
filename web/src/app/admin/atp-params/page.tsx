@@ -161,7 +161,7 @@ function formatValue(value: unknown): string {
 }
 
 /** 绑定 / 脚本摘要（表格列与卡片共用；showIcon=false 时去掉前置图标，卡片用）。 */
-function renderSourceSummary(record: DefinitionItem, showIcon = true) {
+function renderSourceSummary(record: DefinitionItem, showIcon = true, t: (s: string) => string = (s) => s) {
   if (record.source_type === "line_binding") {
     const binding = record.binding_json as { source?: string; path?: string };
     const label = `${binding.source ?? ""}.${binding.path ?? ""}`;
@@ -184,7 +184,7 @@ function renderSourceSummary(record: DefinitionItem, showIcon = true) {
           style={{ fontSize: 12, maxWidth: 200 }}
           ellipsis={{ tooltip: record.script_code ?? "" }}
         >
-          {record.script_code ? `${record.script_code.slice(0, 60)}${record.script_code.length > 60 ? "…" : ""}` : "(空脚本)"}
+          {record.script_code ? `${record.script_code.slice(0, 60)}${record.script_code.length > 60 ? "…" : ""}` : t("(空脚本)")}
         </Text>
       </Space>
     );
@@ -205,7 +205,7 @@ interface DefinitionCardProps {
 function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: DefinitionCardProps) {
   const { t } = useI18n();
   const sourceColor = SOURCE_TYPE_COLOR[item.source_type];
-  const sourceLabel = SOURCE_TYPE_LABEL[item.source_type];
+  const sourceLabel = t(SOURCE_TYPE_LABEL[item.source_type]);
   return (
     <Card
       size="small"
@@ -236,7 +236,7 @@ function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: Definit
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            参数类型：{DATA_TYPE_LABEL[item.data_type] ?? item.data_type}
+            {t("参数类型")}：{t(DATA_TYPE_LABEL[item.data_type]) ?? item.data_type}
           </Typography.Text>
         </div>
         <div className="admin-atp-params-card-field admin-atp-models-card-field">
@@ -245,7 +245,7 @@ function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: Definit
           ) : item.source_type === "script" ? (
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("脚本内容：")}</Typography.Text>
           ) : null}
-          {renderSourceSummary(item, false)}
+          {renderSourceSummary(item, false, t)}
         </div>
         {item.description ? (
           <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis={{ tooltip: item.description }}>
@@ -448,7 +448,7 @@ export default function AtpParamsPage() {
         const data: { items: TowerOption[] } = await response.json();
         setTrialTowers(data.items ?? []);
       } catch (error) {
-        message.error(error instanceof Error ? error.message : "加载杆塔失败");
+        message.error(error instanceof Error ? error.message : t("加载杆塔失败"));
       } finally {
         setTrialTowersLoading(false);
       }
@@ -459,7 +459,7 @@ export default function AtpParamsPage() {
   /** 确认试算：批量按真实杆塔上下文解析参数，结果用抽屉展示。 */
   const runTrial = useCallback(async () => {
     if (!trialSelected.length) {
-      message.warning("请先勾选至少一根杆塔");
+      message.warning(t("请先勾选至少一根杆塔"));
       return;
     }
     setTrialRunning(true);
@@ -478,7 +478,7 @@ export default function AtpParamsPage() {
       setTrialOpen(false);
       setTrialResultOpen(true);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "试算失败");
+      message.error(error instanceof Error ? error.message : t("试算失败"));
     } finally {
       setTrialRunning(false);
     }
@@ -495,7 +495,7 @@ export default function AtpParamsPage() {
       const data: { items: DefinitionItem[] } = await response.json();
       setList(data.items ?? []);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "加载参数列表失败");
+      message.error(error instanceof Error ? error.message : t("加载参数列表失败"));
     } finally {
       setLoading(false);
     }
@@ -580,7 +580,7 @@ export default function AtpParamsPage() {
       if (values.source_type === "line_binding") {
         const binding = payload.binding_json || {};
         if (!binding.source || !binding.path) {
-          message.warning("线路导入绑定需要选择「来源 + 取数口径」");
+          message.warning(t("线路导入绑定需要选择「来源 + 取数口径」"));
           return;
         }
       }
@@ -593,12 +593,12 @@ export default function AtpParamsPage() {
         body: JSON.stringify(payload),
       });
       if (!response.ok) throw new Error(await readApiError(response));
-      message.success(editing ? "已保存" : "已创建");
+      message.success(editing ? t("已保存") : t("已创建"));
       setEditOpen(false);
       await loadList();
     } catch (error) {
       if (error instanceof Error && "errorFields" in error) return; // 表单校验失败由表单提示
-      message.error(error instanceof Error ? error.message : "保存失败");
+      message.error(error instanceof Error ? error.message : t("保存失败"));
     } finally {
       setSaving(false);
     }
@@ -614,10 +614,10 @@ export default function AtpParamsPage() {
         try {
           const response = await fetchWithAuth(`/api/v1/atp/param-definitions/${item.id}`, { method: "DELETE" });
           if (!response.ok) throw new Error(await readApiError(response));
-          message.success("已删除");
+          message.success(t("已删除"));
           await loadList();
         } catch (error) {
-          message.error(error instanceof Error ? error.message : "删除失败");
+          message.error(error instanceof Error ? error.message : t("删除失败"));
         }
       },
     });
@@ -665,14 +665,14 @@ export default function AtpParamsPage() {
       dataIndex: "source_type",
       width: 191,
       render: (value: SourceType) => (
-        <Tag color={SOURCE_TYPE_COLOR[value]}>{SOURCE_TYPE_LABEL[value]}</Tag>
+        <Tag color={SOURCE_TYPE_COLOR[value]}>{t(SOURCE_TYPE_LABEL[value])}</Tag>
       ),
     },
     {
       title: t("绑定 / 脚本"),
       dataIndex: "source_type",
       width: 383,
-      render: (_, record) => renderSourceSummary(record),
+      render: (_, record) => renderSourceSummary(record, true, t),
     },
     {
       title: t("状态"),
@@ -882,13 +882,13 @@ export default function AtpParamsPage() {
             <Alert
               type="info"
               showIcon
-              message={`${detail.name} ｜ ${SOURCE_TYPE_LABEL[detail.source_type]}`}
+              message={`${detail.name} ｜ ${t(SOURCE_TYPE_LABEL[detail.source_type])}`}
               description={
                 detail.source_type === "line_binding"
-                  ? `绑定：${(detail.binding_json as { source?: string }).source}.${(detail.binding_json as { path?: string }).path}`
+                  ? `${t("绑定")}：${(detail.binding_json as { source?: string }).source}.${(detail.binding_json as { path?: string }).path}`
                   : detail.source_type === "script"
-                    ? "计算脚本（沙箱求值，纯数学函数）"
-                    : "字面量"
+                    ? t("计算脚本（沙箱求值，纯数学函数）")
+                    : t("字面量")
               }
             />
             {detail.source_type === "script" && detail.script_code ? (
@@ -913,7 +913,7 @@ export default function AtpParamsPage() {
               dataSource={[
                 { key: "code", label: t("参数 code"), value: detail.code },
                 { key: "unit", label: t("单位"), value: detail.unit ?? "-" },
-                { key: "data_type", label: t("数据类型"), value: DATA_TYPE_LABEL[detail.data_type] ?? detail.data_type },
+                { key: "data_type", label: t("数据类型"), value: t(DATA_TYPE_LABEL[detail.data_type]) ?? detail.data_type },
                 { key: "deps", label: t("依赖参数"), value: detail.deps_json.length ? detail.deps_json.join(", ") : "-" },
                 { key: "enabled", label: t("启用"), value: detail.enabled ? "是" : "否" },
                 { key: "desc", label: t("说明"), value: detail.description ?? "-" },
@@ -929,7 +929,7 @@ export default function AtpParamsPage() {
 
       {/* 新建/编辑弹窗（参照防雷计算任务新建：Modal + 表单内按钮） */}
       <Modal
-        title={editing ? `编辑参数 ${editing.code}` : "新建参数"}
+        title={editing ? `${t("编辑参数")} ${editing.code}` : t("新建参数")}
         open={editOpen}
         width={880}
         footer={null}
@@ -1027,7 +1027,7 @@ export default function AtpParamsPage() {
                   <Select
                     allowClear
                     placeholder={t("无")}
-                    options={(fieldsMeta?.transform_options ?? []).map((value) => ({ value, label: value === "mm_to_m" ? "毫米→米（>100 启发式）" : value }))}
+                    options={(fieldsMeta?.transform_options ?? []).map((value) => ({ value, label: value === "mm_to_m" ? t("毫米→米（>100 启发式）") : value }))}
                   />
                 </Form.Item>
               </Col>
@@ -1134,7 +1134,7 @@ export default function AtpParamsPage() {
               size="small"
               dataSource={trialTowers}
               pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 座杆塔`, size: "default" }}
-              locale={{ emptyText: trialLineId ? "该线路暂无杆塔" : "请先选择线路" }}
+              locale={{ emptyText: trialLineId ? t("该线路暂无杆塔") : t("请先选择线路") }}
               rowSelection={{
                 selectedRowKeys: trialSelected,
                 onChange: (keys) => setTrialSelected(keys.map(String)),
@@ -1197,7 +1197,7 @@ export default function AtpParamsPage() {
                 onChange={(key) => setTrialResultActiveTab(key)}
                 items={trialResults.map((result) => ({
                   key: result.tower_id,
-                  label: `${result.tower_no ?? "未知塔号"}${result.tower_type ? `（${result.tower_type}）` : ""}`,
+                  label: `${result.tower_no ?? t("未知塔号")}${result.tower_type ? `（${result.tower_type}）` : ""}`,
                   children: result.ok ? (
                     <Table
                       rowKey="code"
@@ -1218,7 +1218,7 @@ export default function AtpParamsPage() {
                           width: 120,
                           render: (value: string) => (
                             <Tag color={SOURCE_TYPE_COLOR[value as SourceType] ?? "default"}>
-                              {SOURCE_TYPE_LABEL[value as SourceType] ?? value}
+                              {t(SOURCE_TYPE_LABEL[value as SourceType]) ?? value}
                             </Tag>
                           ),
                         },
@@ -1239,7 +1239,7 @@ export default function AtpParamsPage() {
                     <Alert
                       type="error"
                       showIcon
-                      message={`试算失败：${result.error ?? "未知错误"}`}
+                      message={`${t("试算失败")}：${result.error ?? t("未知错误")}`}
                       description={t("该杆塔缺少必要的台账/profile 数据（如未导入塔属性），请先补齐后再试算。")}
                     />
                   ),
