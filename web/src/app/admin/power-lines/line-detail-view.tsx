@@ -123,7 +123,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
         }
       } catch (err) {
         if (!cancelled) {
-          setLineError(err instanceof Error ? err.message : "加载线路失败");
+          setLineError(err instanceof Error ? err.message : t("加载线路失败"));
         }
       } finally {
         if (!cancelled) {
@@ -327,10 +327,10 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
   const updateTowerMutation = useMutation({
     mutationFn: async () => {
       if (!editingTower) {
-        throw new Error("未选择待编辑杆塔");
+        throw new Error(t("未选择待编辑杆塔"));
       }
       if (!canTowerManage) {
-        throw new Error("缺少 tower.manage 权限");
+        throw new Error(t("缺少 tower.manage 权限"));
       }
       const payload: Record<string, unknown> = {};
       if (towerForm.tower_no !== undefined) payload.tower_no = towerForm.tower_no;
@@ -358,20 +358,20 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       return response.json();
     },
     onSuccess: async () => {
-      messageApi.success("杆塔已更新");
+      messageApi.success(t("杆塔已更新"));
       setEditModalOpen(false);
       setEditingTower(null);
       await refreshTowers();
     },
     onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "更新失败");
+      messageApi.error(candidate instanceof Error ? candidate.message : t("更新失败"));
     },
   });
 
   const deleteTowerMutation = useMutation({
     mutationFn: async (item: LineTowerSummary) => {
       if (!canTowerManage) {
-        throw new Error("缺少 tower.manage 权限");
+        throw new Error(t("缺少 tower.manage 权限"));
       }
       const response = await fetchWithAuth(`/api/v1/lines/towers/${item.id}`, {
         method: "DELETE",
@@ -382,11 +382,11 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       return response.json();
     },
     onSuccess: async () => {
-      messageApi.success("杆塔已删除");
+      messageApi.success(t("杆塔已删除"));
       await refreshTowers();
     },
     onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "删除失败");
+      messageApi.error(candidate instanceof Error ? candidate.message : t("删除失败"));
     },
   });
 
@@ -458,10 +458,10 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!canTowerManage) {
-        throw new Error("缺少 tower.manage 权限");
+        throw new Error(t("缺少 tower.manage 权限"));
       }
       if (!tempFileId) {
-        throw new Error("文件尚未上传完成，请等待上传后再确认导入");
+        throw new Error(t("文件尚未上传完成，请等待上传后再确认导入"));
       }
       const formData = new FormData();
       formData.append("temp_file_id", tempFileId);
@@ -483,7 +483,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       await refreshTowers();
     },
     onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "导入失败");
+      messageApi.error(candidate instanceof Error ? candidate.message : t("导入失败"));
     },
   });
 
@@ -508,10 +508,10 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       anchor.click();
       document.body.removeChild(anchor);
       window.URL.revokeObjectURL(url);
-      messageApi.success("导出成功");
+      messageApi.success(t("导出成功"));
     },
     onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "导出失败");
+      messageApi.error(candidate instanceof Error ? candidate.message : t("导出失败"));
     },
   });
 
@@ -601,7 +601,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       <div className="flex flex-1 flex-col p-6">
         <Card size="small" className="admin-power-line-detail-meta">
           <Space direction="vertical" size={12}>
-            <Typography.Text type="danger">{lineError || "加载线路失败"}</Typography.Text>
+            <Typography.Text type="danger">{lineError || t("加载线路失败")}</Typography.Text>
           </Space>
         </Card>
       </div>
@@ -788,7 +788,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       </Modal>
 
       <Modal
-        title={editingTower ? `编辑杆塔 - ${editingTower.tower_no}` : "编辑杆塔"}
+        title={editingTower ? `${t("编辑杆塔")} - ${editingTower.tower_no}` : t("编辑杆塔")}
         open={editModalOpen}
         onCancel={() => {
           if (updateTowerMutation.isPending) return;
@@ -967,7 +967,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
       </Modal>
 
       <Drawer
-        title={selectedTowerForDetail ? `杆塔详情 - ${selectedTowerForDetail.tower_no}` : "杆塔详情"}
+        title={selectedTowerForDetail ? `${t("杆塔详情")} - ${selectedTowerForDetail.tower_no}` : t("杆塔详情")}
         open={towerDetailDrawerOpen}
         width={880}
         onClose={closeTowerDetailDrawer}
@@ -982,7 +982,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
             showIcon
             type="error"
             message={t("加载杆塔详情失败")}
-            description={towerDetailQuery.error instanceof Error ? towerDetailQuery.error.message : "未知错误"}
+            description={towerDetailQuery.error instanceof Error ? towerDetailQuery.error.message : t("未知错误")}
           />
         ) : towerDetailQuery.data ? (
           (() => {
@@ -1083,9 +1083,9 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                           <Descriptions.Item label={t("避雷线高度(m)")}>{tower.shield_wire_height_m ?? "-"}</Descriptions.Item>
                           <Descriptions.Item label={t("左保护角(°)")}>{tower.protection_angle_left_deg ?? "-"}</Descriptions.Item>
                           <Descriptions.Item label={t("右保护角(°)")}>{tower.protection_angle_right_deg ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label={t("A相避雷器")}>{detail.arrester?.A ? "是" : "否"}</Descriptions.Item>
-                          <Descriptions.Item label={t("B相避雷器")}>{detail.arrester?.B ? "是" : "否"}</Descriptions.Item>
-                          <Descriptions.Item label={t("C相避雷器")}>{detail.arrester?.C ? "是" : "否"}</Descriptions.Item>
+                          <Descriptions.Item label={t("A相避雷器")}>{detail.arrester?.A ? t("是") : t("否")}</Descriptions.Item>
+                          <Descriptions.Item label={t("B相避雷器")}>{detail.arrester?.B ? t("是") : t("否")}</Descriptions.Item>
+                          <Descriptions.Item label={t("C相避雷器")}>{detail.arrester?.C ? t("是") : t("否")}</Descriptions.Item>
                         </Descriptions>
                       </Space>
                     ),
