@@ -71,20 +71,20 @@ const LEDGER_OUTPUT_FIELDS: Record<string, string> = {
   "纬度": "latitude",
 };
 
-function readFileAsText(file: File): Promise<string> {
+function readFileAsText(file: File, t: (s: string) => string): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("读取文件失败"));
+    reader.onerror = () => reject(new Error(t("读取文件失败")));
     reader.readAsText(file);
   });
 }
 
-function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+function readFileAsArrayBuffer(file: File, t: (s: string) => string): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as ArrayBuffer);
-    reader.onerror = () => reject(new Error("读取文件失败"));
+    reader.onerror = () => reject(new Error(t("读取文件失败")));
     reader.readAsArrayBuffer(file);
   });
 }
@@ -151,10 +151,10 @@ function buildLightningFieldStatus(headers: string[]): Record<string, boolean> {
   return fields;
 }
 
-async function readXlsxHeaders(file: File): Promise<string[]> {
+async function readXlsxHeaders(file: File, t: (s: string) => string): Promise<string[]> {
   // xlsx（SheetJS，约 400KB）按需动态加载：只在真正选中 xlsx 文件时下载该 chunk
   const XLSX = await import("xlsx");
-  const buffer = await readFileAsArrayBuffer(file);
+  const buffer = await readFileAsArrayBuffer(file, t);
   const workbook = XLSX.read(buffer, { type: "array" });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
   const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as any[][];
@@ -163,7 +163,7 @@ async function readXlsxHeaders(file: File): Promise<string[]> {
   return row.map((cell) => String(cell ?? "").trim());
 }
 
-async function validateWaveDataFile(file: File): Promise<ValidationResult> {
+async function validateWaveDataFile(file: File, t: (s: string) => string): Promise<ValidationResult> {
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -172,7 +172,7 @@ async function validateWaveDataFile(file: File): Promise<ValidationResult> {
 
   if (ext === "pdf") {
     try {
-      const buffer = await readFileAsArrayBuffer(file);
+      const buffer = await readFileAsArrayBuffer(file, t);
       const bytes = new Uint8Array(buffer).slice(0, 2048);
       const sample = new TextDecoder("utf-8").decode(bytes);
       const containsChinese = /[\u4e00-\u9fff]/.test(sample);
@@ -192,7 +192,7 @@ async function validateWaveDataFile(file: File): Promise<ValidationResult> {
       return {
         ok: true,
         errors: [],
-        warnings: ["PDF 无法读取二进制内容，将交由后端尝试提取"],
+        warnings: [t("PDF 无法读取二进制内容，将交由后端尝试提取")],
         fields: {},
         extra: { format: "pdf" },
       };
@@ -200,7 +200,7 @@ async function validateWaveDataFile(file: File): Promise<ValidationResult> {
   }
 
   if (ext === "xlsx" || ext === "xls") {
-    const headers = await readXlsxHeaders(file);
+    const headers = await readXlsxHeaders(file, t);
     fields = buildWaveFieldStatus(headers);
     extra = { format: "xlsx", headers };
     return { ok: true, errors, warnings, fields, extra };
@@ -208,10 +208,10 @@ async function validateWaveDataFile(file: File): Promise<ValidationResult> {
 
   if (ext === "json") {
     try {
-      const text = await readFileAsText(file);
+      const text = await readFileAsText(file, t);
       const data = JSON.parse(text);
       if (!Array.isArray(data) && typeof data !== "object") {
-        errors.push("JSON 结构不符合录波数据预期格式");
+        errors.push(t("JSON 结构不符合录波数据预期格式"));
       } else {
         const sample = Array.isArray(data) && data.length > 0 ? data[0] : data;
         const sampleObj = typeof sample === "object" && sample !== null ? sample : {};
@@ -223,16 +223,16 @@ async function validateWaveDataFile(file: File): Promise<ValidationResult> {
         }
       }
     } catch {
-      errors.push("JSON 解析失败");
+      errors.push(t("JSON 解析失败"));
     }
     return { ok: errors.length === 0, errors, warnings, fields, extra };
   }
 
   if (ext === "csv" || ext === "txt") {
-    const text = await readFileAsText(file);
+    const text = await readFileAsText(file, t);
     const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
     if (lines.length === 0) {
-      errors.push("文件内容为空");
+      errors.push(t("文件内容为空"));
       return { ok: false, errors, warnings, fields };
     }
     const headers = splitCsvLine(lines[0]);
@@ -241,11 +241,11 @@ async function validateWaveDataFile(file: File): Promise<ValidationResult> {
     return { ok: errors.length === 0, errors, warnings, fields, extra };
   }
 
-  errors.push("不支持的文件格式");
+  errors.push(t("不支持的文件格式"));
   return { ok: false, errors, warnings, fields };
 }
 
-async function validateLightningDataFile(file: File): Promise<ValidationResult> {
+async function validateLightningDataFile(file: File, t: (s: string) => string): Promise<ValidationResult> {
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -253,17 +253,17 @@ async function validateLightningDataFile(file: File): Promise<ValidationResult> 
   let extra: Record<string, unknown> = {};
 
   if (ext === "xlsx" || ext === "xls") {
-    const headers = await readXlsxHeaders(file);
+    const headers = await readXlsxHeaders(file, t);
     fields = buildLightningFieldStatus(headers);
     extra = { format: "xlsx", headers };
     return { ok: true, errors, warnings, fields, extra };
   }
 
   if (ext === "csv") {
-    const text = await readFileAsText(file);
+    const text = await readFileAsText(file, t);
     const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
     if (lines.length === 0) {
-      errors.push("文件内容为空");
+      errors.push(t("文件内容为空"));
       return { ok: false, errors, warnings, fields };
     }
     const headers = splitCsvLine(lines[0]);
@@ -272,25 +272,25 @@ async function validateLightningDataFile(file: File): Promise<ValidationResult> 
     return { ok: errors.length === 0, errors, warnings, fields, extra };
   }
 
-  errors.push("雷电定位数据仅支持 .xlsx/.xls/.csv 格式");
+  errors.push(t("雷电定位数据仅支持 .xlsx/.xls/.csv 格式"));
   return { ok: false, errors, warnings, fields };
 }
 
-async function validateLedgerDataFile(file: File): Promise<ValidationResult> {
+async function validateLedgerDataFile(file: File, t: (s: string) => string): Promise<ValidationResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
   const fields: Record<string, boolean> = {};
 
-  const text = await readFileAsText(file);
+  const text = await readFileAsText(file, t);
   const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
   if (lines.length === 0) {
-    errors.push("台账文件内容为空");
+    errors.push(t("台账文件内容为空"));
     return { ok: false, errors, warnings, fields };
   }
 
   const headers = splitCsvLine(lines[0]);
   if (headers.length !== 16) {
-    errors.push(`台账列数应为 16，当前识别到 ${headers.length} 列`);
+    errors.push(`${t("台账列数应为")} 16，${t("当前识别到")} ${headers.length} ${t("列")}`);
     return { ok: false, errors, warnings, fields };
   }
 
@@ -306,7 +306,7 @@ async function validateLedgerDataFile(file: File): Promise<ValidationResult> {
 
   const missingCols = Object.keys(LEDGER_OUTPUT_FIELDS).filter((col) => !matchedCols.has(col));
   if (missingCols.length > 0) {
-    warnings.push(`台账缺少必填列：${missingCols.join("、")}`);
+    warnings.push(`${t("台账缺少必填列")}：${missingCols.map((c) => t(c)).join("、")}`);
   }
 
   const towerNoIndex = headers.findIndex((h) => normalizeHeader(h) === normalizeHeader("塔号"));
@@ -320,14 +320,14 @@ async function validateLedgerDataFile(file: File): Promise<ValidationResult> {
     }
     const uniqueTowerNos = new Set(towerNos);
     if (towerNos.length !== uniqueTowerNos.size) {
-      warnings.push("塔号存在重复记录，请核对数据");
+      warnings.push(t("塔号存在重复记录，请核对数据"));
     }
   }
 
   return { ok: errors.length === 0, errors, warnings, fields };
 }
 
-async function validateTravelingWaveFile(file: File): Promise<ValidationResult> {
+async function validateTravelingWaveFile(file: File, t: (s: string) => string): Promise<ValidationResult> {
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -336,39 +336,39 @@ async function validateTravelingWaveFile(file: File): Promise<ValidationResult> 
 
   if (ext === "json") {
     try {
-      const text = await readFileAsText(file);
+      const text = await readFileAsText(file, t);
       const data = JSON.parse(text);
       if (!Array.isArray(data)) {
-        errors.push("JSON 根节点应为数组格式");
+        errors.push(t("JSON 根节点应为数组格式"));
         return { ok: false, errors, warnings, fields };
       }
       if (data.length < 32) {
-        errors.push(`采样点数量不足 32，当前 ${data.length} 点`);
+        errors.push(`${t("采样点数量不足")} 32，${t("当前")} ${data.length} ${t("点")}`);
       }
       const sample = data[0];
       if (typeof sample !== "object" || sample === null) {
-        errors.push("采样数据格式异常");
+        errors.push(t("采样数据格式异常"));
       } else {
         const phaseKeys = ["A", "B", "C", "a", "b", "c"];
         const foundPhases = phaseKeys.filter((p) => Object.prototype.hasOwnProperty.call(sample, p));
         if (foundPhases.length === 0) {
-          errors.push("未识别到 A/B/C 三相采样数据");
+          errors.push(t("未识别到 A/B/C 三相采样数据"));
         }
         fields = { phase_count: foundPhases.length === 3 };
       }
       extra = { format: "json", sampleCount: data.length };
       return { ok: errors.length === 0, errors, warnings, fields, extra };
     } catch {
-      errors.push("JSON 解析失败");
+      errors.push(t("JSON 解析失败"));
       return { ok: false, errors, warnings, fields };
     }
   }
 
-  const text = await readFileAsText(file);
+  const text = await readFileAsText(file, t);
   const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
   const dataRowCount = Math.max(lines.length - 1, 0);
   if (lines.length === 0) {
-    errors.push("文件内容为空");
+    errors.push(t("文件内容为空"));
     return { ok: false, errors, warnings, fields };
   }
   const headerLine = lines[0] || "";
@@ -376,7 +376,7 @@ async function validateTravelingWaveFile(file: File): Promise<ValidationResult> 
   const hasPhaseB = /B/.test(headerLine);
   const hasPhaseC = /C/.test(headerLine);
   if (!hasPhaseA && !hasPhaseB && !hasPhaseC) {
-    errors.push("未识别到 A/B/C 相标");
+    errors.push(t("未识别到 A/B/C 相标"));
   } else {
     fields = {
       hasPhaseA,
@@ -389,14 +389,14 @@ async function validateTravelingWaveFile(file: File): Promise<ValidationResult> 
   return { ok: errors.length === 0, errors, warnings, fields, extra };
 }
 
-async function validateOpticalDataFile(file: File): Promise<ValidationResult> {
+async function validateOpticalDataFile(file: File, t: (s: string) => string): Promise<ValidationResult> {
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
   const isImage = ["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext);
   const isVideo = ["mp4", "avi", "mov", "mkv", "wmv", "flv"].includes(ext);
   if (!isImage && !isVideo) {
     return {
       ok: false,
-      errors: ["光学监控数据仅支持图片或视频格式"],
+      errors: [t("光学监控数据仅支持图片或视频格式")],
       warnings: [],
       fields: {},
       extra: { format: ext },
@@ -411,18 +411,18 @@ async function validateOpticalDataFile(file: File): Promise<ValidationResult> {
   };
 }
 
-export async function validateFile(file: File, kind: PreviewKind): Promise<ValidationResult> {
+export async function validateFile(file: File, kind: PreviewKind, t: (s: string) => string): Promise<ValidationResult> {
   switch (kind) {
     case "wave_data":
-      return validateWaveDataFile(file);
+      return validateWaveDataFile(file, t);
     case "lightning_data":
-      return validateLightningDataFile(file);
+      return validateLightningDataFile(file, t);
     case "ledger_data":
-      return validateLedgerDataFile(file);
+      return validateLedgerDataFile(file, t);
     case "traveling_wave":
-      return validateTravelingWaveFile(file);
+      return validateTravelingWaveFile(file, t);
     case "optical_data":
-      return validateOpticalDataFile(file);
+      return validateOpticalDataFile(file, t);
     default:
       return { ok: true, errors: [], warnings: [], fields: {} };
   }

@@ -39,6 +39,7 @@ function uploadToTemp(
   file: File,
   token: string | null,
   onProgress: (percent: number) => void,
+  t: (s: string) => string,
 ): Promise<TempUploadResponse> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -60,7 +61,7 @@ function uploadToTemp(
         try {
           resolve(JSON.parse(xhr.responseText) as TempUploadResponse);
         } catch {
-          reject(new Error("上传成功但响应解析失败，请重新选择文件"));
+          reject(new Error(t("上传成功但响应解析失败，请重新选择文件")));
         }
         return;
       }
@@ -73,8 +74,8 @@ function uploadToTemp(
       }
       reject(new Error(text));
     };
-    xhr.onerror = () => reject(new Error("网络异常，上传失败"));
-    xhr.onabort = () => reject(new Error("上传已取消"));
+    xhr.onerror = () => reject(new Error(t("网络异常，上传失败")));
+    xhr.onabort = () => reject(new Error(t("上传已取消")));
 
     const formData = new FormData();
     formData.append("file", file);
@@ -153,22 +154,22 @@ function PreviewPanel({
   const renderSummary = () => {
     if (kind === "optical_data") {
       const fmt = result.extra?.format as string | undefined;
-      const kindText = result.extra?.kind === "video" ? t("视频") : "图片";
+      const kindText = result.extra?.kind === "video" ? t("视频") : t("图片");
       return <span>{t("媒体文件")}（{kindText}{fmt ? ` · .${fmt}` : ""}），{t("无需结构校验")}</span>;
     }
     if (kind === "traveling_wave") {
       const count = Number(result.extra?.sampleCount ?? result.extra?.rowCount ?? 0) || 0;
       const phases = result.fields.phaseCount;
-      return <span>采样点 {count}，识别相 {String(phases ?? "-")}</span>;
+      return <span>{t("采样点")} {count}，{t("识别相")} {String(phases ?? "-")}</span>;
     }
     if (kind === "ledger_data") {
       const matched = Object.values(result.fields).filter(Boolean).length;
-      return <span>识别到台账列 {matched}/16</span>;
+      return <span>{t("识别到台账列")} {matched}/16</span>;
     }
     if (kind === "wave_data" || kind === "lightning_data") {
       const matched = Object.values(result.fields).filter(Boolean).length;
       const total = kind === "wave_data" ? Object.keys(WAVE_FIELD_LABELS).length : Object.keys(LIGHTNING_FIELD_LABELS).length;
-      return <span>识别到字段 {matched}/{total}</span>;
+      return <span>{t("识别到字段")} {matched}/{total}</span>;
     }
     return null;
   };
@@ -182,7 +183,7 @@ function PreviewPanel({
       const phases = result.fields;
       return (
         <div className="space-y-1">
-          <div>采样点数量：{count}</div>
+          <div>{t("采样点数量")}：{count}</div>
           <div className="flex gap-3">
             {["A", "B", "C"].map((p) => {
               const key = `hasPhase${p}`;
@@ -202,7 +203,7 @@ function PreviewPanel({
       const matchedCount = Object.keys(LEDGER_FIELD_LABELS).length - missing.length;
       return (
         <div className="space-y-1">
-          <div>识别到 {matchedCount}/16 列</div>
+          <div>{t("识别到")} {matchedCount}/16 {t("列")}</div>
           {missing.length > 0 && (
             <div className="text-yellow-600">{t("缺失列")}：{missing.map((key) => t(LEDGER_FIELD_LABELS[key])).join("、")}</div>
           )}
@@ -215,14 +216,14 @@ function PreviewPanel({
     return (
       <div className="space-y-1">
         <div>
-          识别到字段 {matchedCount}/{shownKeys.length}
+          {t("识别到字段")} {matchedCount}/{shownKeys.length}
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           {shownKeys.map((key) => {
             const hit = result.fields[key];
             return (
               <span key={key} className={hit ? "" : "text-yellow-600"}>
-                {labels[key]} {hit ? "✓" : "✗"}
+                {t(labels[key])} {hit ? "✓" : "✗"}
               </span>
             );
           })}
@@ -253,14 +254,14 @@ function PreviewPanel({
       {result.errors.length > 0 && (
         <div className="mt-1 text-red-600">
           {result.errors.map((e, i) => (
-            <div key={i}>格式错误：{e}</div>
+            <div key={i}>{t("格式错误")}：{e}</div>
           ))}
         </div>
       )}
       {result.warnings.length > 0 && (
         <div className="mt-1 text-yellow-600">
           {result.warnings.map((w, i) => (
-            <div key={i}>提示：{w}</div>
+            <div key={i}>{t("提示")}：{w}</div>
           ))}
         </div>
       )}
@@ -385,7 +386,7 @@ export function TempFileUpload({
         items.map((it) => (it.uid === uid ? { ...it, previewing: true } : it)),
       );
       try {
-        const result = await validateFile(file, previewKind);
+        const result = await validateFile(file, previewKind, t);
         patchValue((items) =>
           items.map((it) => (it.uid === uid ? { ...it, preview: result, previewing: false } : it)),
         );
@@ -399,7 +400,7 @@ export function TempFileUpload({
                   previewing: false,
                   preview: {
                     ok: false,
-                    errors: [`内容校验失败：${text}`],
+                    errors: [`${t("内容校验失败")}：${text}`],
                     warnings: [],
                     fields: {},
                   },
@@ -426,6 +427,7 @@ export function TempFileUpload({
             items.map((it) => (it.uid === item.uid ? { ...it, percent } : it)),
           );
         },
+        t,
       )
         .then((payload) => {
           patchValue((items) =>
@@ -453,7 +455,7 @@ export function TempFileUpload({
               it.uid === item.uid ? { ...it, status: "error", error: text } : it,
             ),
           );
-          messageApi.error(`${file.name} 上传失败：${text}`);
+          messageApi.error(`${file.name} ${t("上传失败")}：${text}`);
         });
     },
     [getAccessToken, patchValue, startValidate, callWaveExtract, previewKind],
@@ -462,7 +464,7 @@ export function TempFileUpload({
   const buildPendingItem = useCallback(
     (file: File): FaultAnalysisTempFile | null => {
       if (maxSizeMb != null && file.size > maxSizeMb * 1024 * 1024) {
-        messageApi.error(`${file.name} 超过 ${maxSizeMb}MB 大小限制，请重新选择`);
+        messageApi.error(`${file.name} ${t("超过")} ${maxSizeMb}MB ${t("大小限制，请重新选择")}`);
         return null;
       }
       return {
@@ -545,7 +547,7 @@ export function TempFileUpload({
                 )}
                 {item.status === "done" && (
                   <Typography.Text type="success" style={{ fontSize: 12 }}>
-                    <CheckCircleOutlined /> 上传完成
+                    <CheckCircleOutlined /> {t("上传完成")}
                   </Typography.Text>
                 )}
                 {item.status === "error" && (
@@ -561,7 +563,7 @@ export function TempFileUpload({
                 <div className="mt-1">
                   {item.previewing && !item.preview ? (
                     <div className="flex items-center gap-2 rounded bg-[var(--gray-2)] px-2 py-1 text-xs text-[var(--ant-color-text-secondary)]">
-                      <Spin size="small" /> 正在解析文件内容...
+                      <Spin size="small" /> {t("正在解析文件内容...")}
                     </div>
                   ) : item.preview ? (
                     <PreviewPanel kind={previewKind} result={item.preview} />
@@ -570,12 +572,12 @@ export function TempFileUpload({
               )}
               {item.pdfExtracting && (
                 <div className="mt-1 flex items-center gap-2 rounded bg-[var(--ant-color-primary-bg)] px-2 py-1 text-xs text-[var(--ant-color-primary)]">
-                  <Spin size="small" /> 正在识别并回填故障字段...
+                  <Spin size="small" /> {t("正在识别并回填故障字段...")}
                 </div>
               )}
               {item.pdfExtractError && (
                 <div className="mt-1 rounded bg-red-50 px-2 py-1 text-xs text-red-600">
-                  识别失败：{item.pdfExtractError}
+                  {t("识别失败")}：{item.pdfExtractError}
                 </div>
               )}
             </div>
