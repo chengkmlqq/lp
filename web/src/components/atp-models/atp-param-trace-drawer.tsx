@@ -35,14 +35,14 @@ export interface AtpParamTraceDrawerProps {
 
 type SourceKind = "template" | "system" | "default" | "unresolved" | "disabled" | "else" | "unknown";
 
-function classifySource(source: string): { kind: SourceKind; label: string } {
+function classifySource(source: string, t: (s: string) => string = (s) => s): { kind: SourceKind; label: string } {
   const s = source || "";
-  if (s.includes("缺")) return { kind: "unresolved", label: "缺变量" };
-  if (s.includes("默认值")) return { kind: "default", label: "模板默认值" };
-  if (s.includes("全局")) return { kind: "system", label: "系统默认" };
-  if (s.includes("else")) return { kind: "else", label: "规则 else" };
-  if (s.includes("关闭")) return { kind: "disabled", label: "本级关闭" };
-  if (s && s !== "全局参数") return { kind: "template", label: "模板规则" };
+  if (s.includes("缺")) return { kind: "unresolved", label: t("缺变量") };
+  if (s.includes("默认值")) return { kind: "default", label: t("模板默认值") };
+  if (s.includes("全局")) return { kind: "system", label: t("系统默认") };
+  if (s.includes("else")) return { kind: "else", label: t("规则 else") };
+  if (s.includes("关闭")) return { kind: "disabled", label: t("本级关闭") };
+  if (s && s !== "全局参数") return { kind: "template", label: t("模板规则") };
   return { kind: "unknown", label: s || "-" };
 }
 
@@ -78,7 +78,7 @@ function ParamsTraceBody({ runId }: { runId: string }) {
     const keys = new Set<string>([...Object.keys(sources), ...Object.keys(resolved)]);
     return [...keys].sort().map((slot) => {
       const sourceText = sources[slot] ?? "-";
-      const cls = classifySource(sourceText);
+      const cls = classifySource(sourceText, t);
       return {
         key: slot,
         slot,
@@ -147,7 +147,7 @@ function ParamsTraceBody({ runId }: { runId: string }) {
           {
             key: "unresolved",
             label: t("未解析槽位"),
-            children: unresolvedCount > 0 ? <Tag color="red">{unresolvedCount} 个</Tag> : <Tag color="green">{t("无")}</Tag>,
+            children: unresolvedCount > 0 ? <Tag color="red">{unresolvedCount} {t("个")}</Tag> : <Tag color="green">{t("无")}</Tag>,
           },
         ]}
       />

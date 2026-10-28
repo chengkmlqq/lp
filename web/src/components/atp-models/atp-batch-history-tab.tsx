@@ -139,7 +139,7 @@ export function AtpBatchHistoryTab() {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "报告下载失败");
+      message.error(error instanceof Error ? error.message : t("报告下载失败"));
     }
   }, []);
 
@@ -182,7 +182,7 @@ export function AtpBatchHistoryTab() {
             );
           }
           const meta = BATCH_STATUS_TAG[value ?? ""] ?? { color: "default", text: value ?? "-" };
-          return <Tag color={meta.color}>{meta.text}</Tag>;
+          return <Tag color={meta.color}>{t(meta.text)}</Tag>;
         },
       },
       {
