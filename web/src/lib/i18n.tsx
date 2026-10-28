@@ -2589,6 +2589,18 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "重试任务已提交（任务ID": "Retry task submitted (Task ID",
   "限制，请压缩后重新上传": "limit. Please compress and re-upload",
   "陡度(kA/us)": "Steepness (kA/us)",
+  "ZIP 包必须包含": "The ZIP package must contain",
+  "上传成功后即为已发布版本": "and it becomes a published version after a successful upload",
+  "个模块": "modules",
+  "删除必需文件": "Delete required file",
+  "吗？删除后不可恢复。": "? Deletion is irreversible.",
+  "找到": "Found",
+  "模块详情": "Module Details",
+  "版本文件列表": "Version File List",
+  "确认删除模块": "Confirm deletion of module",
+  "确认删除版本": "Confirm deletion of version",
+  "编辑模块": "Edit Module",
+  "部署时间": "Deployment time",
 };
 
 // ─────────────────────────── Context ───────────────────────────
