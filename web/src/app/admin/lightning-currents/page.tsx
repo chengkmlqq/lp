@@ -135,16 +135,16 @@ function formatDateTime(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function formatPolarity(polarity: LightningPolarity): string {
-  if (polarity === "positive") return "正极性";
-  if (polarity === "negative") return "负极性";
-  if (polarity === "mixed") return "混合";
-  return "未知";
+function formatPolarity(polarity: LightningPolarity, t: (s: string) => string): string {
+  if (polarity === "positive") return t("正极性");
+  if (polarity === "negative") return t("负极性");
+  if (polarity === "mixed") return t("混合");
+  return t("未知");
 }
 
-function truncateFileName(name: string, maxLength = 20): string {
+function truncateFileName(name: string, maxLength = 20, t: (s: string) => string): string {
   if (!name) {
-    return "未命名";
+    return t("未命名");
   }
   return name.length > maxLength ? `${name.slice(0, maxLength)}…` : name;
 }
@@ -182,7 +182,7 @@ export default function AdminLightningCurrentsPage() {
   // ---- 任务日志弹窗 ----
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
-  const [logModalTitle, setLogModalTitle] = useState("任务执行日志");
+  const [logModalTitle, setLogModalTitle] = useState(t("任务执行日志"));
 
   // ---- 编辑弹窗 ----
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -267,12 +267,12 @@ export default function AdminLightningCurrentsPage() {
       } else if (name === "amplitude.import_completed") {
         setSuccess(
           payload?.sample_count != null
-            ? `导入完成：采样点 ${payload.sample_count} 个，峰值 ${formatNumber(payload.peak_abs_current_ka, 2)}kA`
-            : "导入完成",
+            ? `${t("导入完成")}：${t("采样点")} ${payload.sample_count} ${t("个")}，${t("峰值")} ${formatNumber(payload.peak_abs_current_ka, 2)}kA`
+            : t("导入完成"),
         );
         void refreshAll();
       } else if (name === "amplitude.import_failed") {
-        setError(new ApiError(payload?.error || "导入失败，请在列表中对失败记录执行重试"));
+        setError(new ApiError(payload?.error || t("导入失败，请在列表中对失败记录执行重试")));
         void refreshAll();
       } else {
         void refreshAll();
@@ -300,14 +300,14 @@ export default function AdminLightningCurrentsPage() {
       if (name === "backfill.completed") {
         if (payload.sampled_event_count != null) {
           setSuccess(
-            `回填完成：峰值 A=${formatNumber(payload.current_a, 2)}kA，B=${formatNumber(payload.current_b, 2)}kA，采样点 ${payload.sampled_event_count} 个`,
+            `${t("回填完成")}：${t("峰值")} A=${formatNumber(payload.current_a, 2)}kA，B=${formatNumber(payload.current_b, 2)}kA，${t("采样点")} ${payload.sampled_event_count} ${t("个")}`,
           );
         } else {
-          setSuccess("回填完成");
+          setSuccess(t("回填完成"));
         }
         void refreshAll();
       } else if (name === "backfill.failed") {
-        setError(new ApiError(payload?.error || "线路回填失败"));
+        setError(new ApiError(payload?.error || t("线路回填失败")));
         void refreshAll();
       } else if (name === "backfill.started") {
         void refreshAll();
@@ -383,10 +383,10 @@ export default function AdminLightningCurrentsPage() {
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!canManage) {
-        throw new Error("缺少 lightning.manage 权限");
+        throw new Error(t("缺少 lightning.manage 权限"));
       }
       if (!tempFileId) {
-        throw new Error("文件尚未上传完成，请等待上传后再确认导入");
+        throw new Error(t("文件尚未上传完成，请等待上传后再确认导入"));
       }
       const values = importForm.getFieldsValue(true);
       const formData = new FormData();
@@ -412,7 +412,7 @@ export default function AdminLightningCurrentsPage() {
     },
     onSuccess: async (payload) => {
       setError(null);
-      setSuccess(`导入任务已提交（任务ID: ${payload.task_id}），正在后台处理`);
+      setSuccess(`${t("导入任务已提交（任务ID")}: ${payload.task_id}），${t("正在后台处理")}`);
       setImportModalOpen(false);
       importForm.resetFields();
       setSelectedFile(null);
@@ -423,7 +423,7 @@ export default function AdminLightningCurrentsPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "导入失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("导入失败")));
     },
   });
 
@@ -457,8 +457,8 @@ export default function AdminLightningCurrentsPage() {
             return tokens.length < 1 || numbers.length < 1;
           }) ?? lines[0];
           setUploadError(
-            `文件格式疑似有误：前 ${lines.length} 行仅 ${valid} 行可解析（如「${badSample.slice(0, 80)}」）。` +
-              "雷电流幅值文件每行应为 1 个电流值（如「-15.3」），或「时间 电流」两列（如「0.0001 -15.3」）。",
+            `${t("文件格式疑似有误")}：${t("前")} ${lines.length} ${t("行仅")} ${valid} ${t("行可解析")}（${t("如")}「${badSample.slice(0, 80)}」）。` +
+              t("雷电流幅值文件每行应为 1 个电流值（如「-15.3」），或「时间 电流」两列（如「0.0001 -15.3」）。"),
           );
         }
       };
@@ -525,19 +525,19 @@ export default function AdminLightningCurrentsPage() {
     },
     onSuccess: async () => {
       setError(null);
-      setSuccess("雷电流幅值记录已删除");
+      setSuccess(t("雷电流幅值记录已删除"));
       await refreshAll();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "删除失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("删除失败")));
     },
   });
 
   const retryMutation = useMutation({
     mutationFn: async (record: LightningAmplitudeRecord) => {
       if (!canManage) {
-        throw new Error("缺少 lightning.manage 权限");
+        throw new Error(t("缺少 lightning.manage 权限"));
       }
       const response = await fetchWithAuth(`/api/v1/lightning-currents/amplitudes/${record.id}/retry`, {
         method: "POST",
@@ -549,22 +549,22 @@ export default function AdminLightningCurrentsPage() {
     },
     onSuccess: async (payload) => {
       setError(null);
-      setSuccess(`重试任务已提交（任务ID: ${payload.task_id}）`);
+      setSuccess(`${t("重试任务已提交（任务ID")}: ${payload.task_id}）`);
       await refreshAll();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "重试失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("重试失败")));
     },
   });
 
   const editMutation = useMutation({
     mutationFn: async (values: Partial<LightningAmplitudeUpdateRequest>) => {
       if (!canManage) {
-        throw new Error("缺少 lightning.manage 权限");
+        throw new Error(t("缺少 lightning.manage 权限"));
       }
       if (!editRecord) {
-        throw new Error("未选择记录");
+        throw new Error(t("未选择记录"));
       }
       const response = await fetchWithAuth(`/api/v1/lightning-currents/amplitudes/${editRecord.id}`, {
         method: "PATCH",
@@ -578,7 +578,7 @@ export default function AdminLightningCurrentsPage() {
     },
     onSuccess: async () => {
       setError(null);
-      setSuccess("雷电流幅值记录元信息已更新");
+      setSuccess(t("雷电流幅值记录元信息已更新"));
       setEditModalOpen(false);
       setEditRecord(null);
       editForm.resetFields();
@@ -586,7 +586,7 @@ export default function AdminLightningCurrentsPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? (candidate.message ?? "更新失败") : "更新失败"));
+      setError(new ApiError(candidate instanceof Error ? (candidate.message ?? t("更新失败")) : t("更新失败")));
     },
   });
 
@@ -611,7 +611,7 @@ export default function AdminLightningCurrentsPage() {
         ...previous,
         {
           key,
-          label: <span>{truncateFileName(record.source_file_name)}</span>,
+          label: <span>{truncateFileName(record.source_file_name, 20, t)}</span>,
           closable: true,
           children: (
             <AmplitudeDetailView
@@ -638,7 +638,7 @@ export default function AdminLightningCurrentsPage() {
         ...previous,
         {
           key,
-          label: <span>回填记录 - {truncateFileName(record.source_file_name)}</span>,
+          label: <span>{t("回填记录")} - {truncateFileName(record.source_file_name, 20, t)}</span>,
           closable: true,
           children: <LightningCurrentBackfillHistoryTable amplitudeId={record.id} />,
         },
@@ -689,7 +689,7 @@ export default function AdminLightningCurrentsPage() {
         record.source_file_name || "lightning_amplitude.csv",
       );
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "下载源文件失败");
+      messageApi.error(error instanceof Error ? error.message : t("下载源文件失败"));
     }
   }, [messageApi]);
 
@@ -737,7 +737,7 @@ export default function AdminLightningCurrentsPage() {
               </div>
               <div className="flex flex-shrink-0 items-center gap-2">
                 <Badge status={meta.color} />
-                <Typography.Text type="secondary" className="text-xs">{meta.label}</Typography.Text>
+                <Typography.Text type="secondary" className="text-xs">{t(meta.label)}</Typography.Text>
               </div>
             </div>
           </div>
@@ -745,20 +745,20 @@ export default function AdminLightningCurrentsPage() {
           <div className="flex flex-col gap-2 px-4 py-3">
             <div className="flex items-center gap-2">
               <NumberOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">采样点数：{record.sample_count}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">{t("采样点数")}：{record.sample_count}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <ThunderboltOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">峰值(kA)：{formatNumber(record.peak_abs_current_ka, 2)}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">{t("峰值(kA)")}：{formatNumber(record.peak_abs_current_ka, 2)}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <SwapOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">极性：{formatPolarity(record.polarity)}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">{t("极性")}：{formatPolarity(record.polarity, t)}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <NodeIndexOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
-                回填线路数：
+                {t("回填线路数")}：
                 {(record.backfill_line_count ?? 0) > 0 ? (
                   <Button
                     type="link"
@@ -778,7 +778,7 @@ export default function AdminLightningCurrentsPage() {
             </div>
             <div className="flex items-center gap-2">
               <HistoryOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">导入时间：{formatDateTime(record.create_date) || "-"}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">{t("导入时间")}：{formatDateTime(record.create_date) || "-"}</Typography.Text>
             </div>
           </div>
 
@@ -847,7 +847,7 @@ export default function AdminLightningCurrentsPage() {
                             label: t("日志"),
                             onClick: (info) => {
                               info.domEvent?.stopPropagation();
-                              openLogViewer(record.task_id, "日志", record.source_file_name);
+                              openLogViewer(record.task_id, t("日志"), record.source_file_name);
                             },
                           },
                         ]
@@ -863,7 +863,7 @@ export default function AdminLightningCurrentsPage() {
                               info.domEvent?.stopPropagation();
                               modalApi.confirm({
                                 title: t("删除记录"),
-                                content: `确认删除记录 ${record.source_file_name} 吗？`,
+                                content: `${t("确认删除记录")} ${record.source_file_name} ${t("吗？")}`,
                                 okText: t("删除"),
                                 cancelText: t("取消"),
                                 okButtonProps: { danger: true },
@@ -919,7 +919,7 @@ export default function AdminLightningCurrentsPage() {
         title: t("极性"),
         dataIndex: "polarity",
         width: 90,
-        render: (value: LightningPolarity) => formatPolarity(value),
+        render: (value: LightningPolarity) => formatPolarity(value, t),
       },
       {
         title: t("回填状态"),
@@ -929,7 +929,7 @@ export default function AdminLightningCurrentsPage() {
           const meta = STATUS_META[row.status] ?? { color: "default", label: row.status };
           const failed = row.status === "failed";
           const statusTag = (
-            <Tag color={meta.color}>{meta.label}</Tag>
+            <Tag color={meta.color}>{t(meta.label)}</Tag>
           );
           return (
             <Space size={6}>
@@ -1002,7 +1002,7 @@ export default function AdminLightningCurrentsPage() {
                   {
                     key: "import-log",
                     label: t("日志"),
-                    onClick: () => openLogViewer(row.task_id, "日志", row.source_file_name),
+                    onClick: () => openLogViewer(row.task_id, t("日志"), row.source_file_name),
                   },
                 ]
               : []),
@@ -1016,7 +1016,7 @@ export default function AdminLightningCurrentsPage() {
                     onClick: () => {
                       modalApi.confirm({
                         title: t("删除记录"),
-                        content: `确认删除记录 ${row.source_file_name} 吗？`,
+                        content: `${t("确认删除记录")} ${row.source_file_name} ${t("吗？")}`,
                         okText: t("删除"),
                         cancelText: t("取消"),
                         okButtonProps: { danger: true },
@@ -1032,11 +1032,11 @@ export default function AdminLightningCurrentsPage() {
           return (
             <Space wrap>
               <Button size="small" onClick={() => openDetail(row)}>
-                详情
+                {t("详情")}
               </Button>
               {canManage && (
                 <Button size="small" onClick={() => openBackfillHistory(row)}>
-                  回填
+                  {t("回填")}
                 </Button>
               )}
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
@@ -1062,7 +1062,7 @@ export default function AdminLightningCurrentsPage() {
       <Card>
         <Space direction="vertical" size={12}>
           <Typography.Text type="secondary">
-            请先登录后再访问雷电流幅值统计页面。
+            {t("请先登录后再访问雷电流幅值统计页面。")}
           </Typography.Text>
           <Button>
             <Link href="/">{t("返回首页")}</Link>
@@ -1098,7 +1098,7 @@ export default function AdminLightningCurrentsPage() {
           <Space size={8}>
             {canManage ? (
               <Button type="primary" onClick={() => setImportModalOpen(true)}>
-                导入
+                {t("导入")}
               </Button>
             ) : null}
           </Space>
@@ -1155,7 +1155,7 @@ export default function AdminLightningCurrentsPage() {
                         total: recordsQuery.data?.total ?? 0,
                         showSizeChanger: true,
                         pageSizeOptions: [10, 20, 50, 100],
-                        showTotal: () => `共 ${recordsQuery.data?.total ?? 0} 条`,
+                        showTotal: () => `${t("共")} ${recordsQuery.data?.total ?? 0} ${t("条")}`,
                         hideOnSinglePage: false,
                         onChange: (page, pageSize) => {
                           setPagination({ current: page, pageSize });
@@ -1201,7 +1201,7 @@ export default function AdminLightningCurrentsPage() {
                               setPagination({ current: page, pageSize });
                             }}
                             showSizeChanger
-                            showTotal={(total) => `共 ${total} 条`}
+                            showTotal={(total) => `${t("共")} ${total} ${t("条")}`}
                           />
                         </div>
                       </>
@@ -1273,11 +1273,11 @@ export default function AdminLightningCurrentsPage() {
                   const allowedExts = ["csv", "txt"];
                   const ext = file.name.split(".").pop()?.toLowerCase() || "";
                   if (file.size > maxMB * 1024 * 1024) {
-                    messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                    messageApi.error(`${t("文件大小超过")} ${maxMB}MB ${t("限制，请压缩后重新上传")}`);
                     return Upload.LIST_IGNORE;
                   }
                   if (!allowedExts.includes(ext)) {
-                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                    messageApi.error(`${t("不支持的文件格式，仅支持")} .${allowedExts.join("/")}`);
                     return Upload.LIST_IGNORE;
                   }
                   return true;
@@ -1297,7 +1297,7 @@ export default function AdminLightningCurrentsPage() {
                       <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
                     ) : tempFileId ? (
                       <Typography.Text type="success">
-                        <CheckCircleOutlined /> 上传完成，可以确认导入
+                        <CheckCircleOutlined /> {t("上传完成，可以确认导入")}
                       </Typography.Text>
                     ) : uploadError ? (
                       <Typography.Text type="danger">{t("格式校验未通过，请更换文件")}</Typography.Text>
@@ -1309,10 +1309,10 @@ export default function AdminLightningCurrentsPage() {
                   <>
                     <InboxOutlined style={{ fontSize: 40, color: "#999" }} />
                     <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
-                      点击或拖拽文件到此区域上传
+                      {t("点击或拖拽文件到此区域上传")}
                     </p>
                     <Typography.Text type="secondary">
-                      支持单列电流序列（每行一个值）或双列 time,current 格式。选择文件后立即上传到临时存储。
+                      {t("支持单列电流序列（每行一个值）或双列 time,current 格式。选择文件后立即上传到临时存储。")}
                     </Typography.Text>
                   </>
                 )}
@@ -1346,7 +1346,7 @@ export default function AdminLightningCurrentsPage() {
 
       {/* 回填线路小窗 */}
       <Modal
-        title={backfillLinesRecord ? `使用此幅值的线路 - ${backfillLinesRecord.source_file_name}` : "使用此幅值的线路"}
+        title={backfillLinesRecord ? `${t("使用此幅值的线路")} - ${backfillLinesRecord.source_file_name}` : t("使用此幅值的线路")}
         open={backfillLinesOpen}
         onCancel={() => {
           setBackfillLinesOpen(false);
@@ -1428,7 +1428,7 @@ export default function AdminLightningCurrentsPage() {
 
       {/* 编辑雷电流幅值元信息 */}
       <Modal
-        title={editRecord ? `编辑元信息 - ${editRecord.source_file_name}` : "编辑元信息"}
+        title={editRecord ? `${t("编辑元信息")} - ${editRecord.source_file_name}` : t("编辑元信息")}
         open={editModalOpen}
         forceRender
         onCancel={() => {
@@ -1515,37 +1515,38 @@ function AmplitudeDetailView({
   onRetry: (record: LightningAmplitudeRecord) => void;
   retryLoading: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <Space direction="vertical" size={24} className="w-full admin-lightning-currents-detail-pane">
       <div>
-        <Typography.Title level={5}>{"基本信息"}</Typography.Title>
+        <Typography.Title level={5}>{t("基本信息")}</Typography.Title>
         <Descriptions bordered size="small" column={2} className="admin-lightning-currents-meta-table">
-          <Descriptions.Item label={"采样城市"}>{formatNullable(record.city)}</Descriptions.Item>
-          <Descriptions.Item label={"采样地点"}>{formatNullable(record.location_tag)}</Descriptions.Item>
-          <Descriptions.Item label={"采样时间"}>{formatNullable(record.event_time)}</Descriptions.Item>
-          <Descriptions.Item label={"采样点数"}>{record.sample_count}</Descriptions.Item>
-          <Descriptions.Item label={"采样间隔(us)"}>{formatNumber(record.sample_interval_us, 6)}</Descriptions.Item>
+          <Descriptions.Item label={t("采样城市")}>{formatNullable(record.city)}</Descriptions.Item>
+          <Descriptions.Item label={t("采样地点")}>{formatNullable(record.location_tag)}</Descriptions.Item>
+          <Descriptions.Item label={t("采样时间")}>{formatNullable(record.event_time)}</Descriptions.Item>
+          <Descriptions.Item label={t("采样点数")}>{record.sample_count}</Descriptions.Item>
+          <Descriptions.Item label={t("采样间隔(us)")}>{formatNumber(record.sample_interval_us, 6)}</Descriptions.Item>
         </Descriptions>
       </div>
 
       <div>
-        <Typography.Title level={5}>{"波形特征参数"}</Typography.Title>
+        <Typography.Title level={5}>{t("波形特征参数")}</Typography.Title>
         <Descriptions bordered size="small" column={2} className="admin-lightning-currents-meta-table">
           <Descriptions.Item label={
             <span>
-              峰值电流(kA){" "}
-              <AntTooltip title={"波形序列中绝对值最大的电流值（kA），代表该次雷击的最强瞬间。是衡量雷击强度的核心指标。"}>
+              {t("峰值电流(kA)")}{" "}
+              <AntTooltip title={t("波形序列中绝对值最大的电流值（kA），代表该次雷击的最强瞬间。是衡量雷击强度的核心指标。")}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
           }>
             {formatNumber(record.peak_current_ka, 3)}
           </Descriptions.Item>
-          <Descriptions.Item label={"绝对峰值(kA)"}>{formatNumber(record.peak_abs_current_ka, 3)}</Descriptions.Item>
+          <Descriptions.Item label={t("绝对峰值(kA)")}>{formatNumber(record.peak_abs_current_ka, 3)}</Descriptions.Item>
           <Descriptions.Item label={
             <span>
-              波形分类{" "}
-              <AntTooltip title={"将实际波形的波前时间（T1）和半峰值时间（T2）与 IEC 标准波形模板匹配，归入最接近的分类：10/350（T1=10μs, T2=350μs，典型直击雷波形）、8/20（T1=8μs, T2=20μs，典型感应雷/测试波形）、1.2/50（T1=1.2μs, T2=50μs，典型操作冲击波形）。"}>
+              {t("波形分类")}{" "}
+              <AntTooltip title={t("将实际波形的波前时间（T1）和半峰值时间（T2）与 IEC 标准波形模板匹配，归入最接近的分类：10/350（T1=10μs, T2=350μs，典型直击雷波形）、8/20（T1=8μs, T2=20μs，典型感应雷/测试波形）、1.2/50（T1=1.2μs, T2=50μs，典型操作冲击波形）。")}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
@@ -1554,18 +1555,18 @@ function AmplitudeDetailView({
           </Descriptions.Item>
           <Descriptions.Item label={
             <span>
-              极性{" "}
-              <AntTooltip title={"雷电流的主导方向。自然界约 90% 为负极性雷击，正极性雷击虽少但峰值更大、危害更强。正极性：正峰值大于负峰值；负极性：负峰值大于正峰值；混合：正负峰值相近。"}>
+              {t("极性")}{" "}
+              <AntTooltip title={t("雷电流的主导方向。自然界约 90% 为负极性雷击，正极性雷击虽少但峰值更大、危害更强。正极性：正峰值大于负峰值；负极性：负峰值大于正峰值；混合：正负峰值相近。")}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
           }>
-            {formatPolarity(record.polarity)}
+            {formatPolarity(record.polarity, t)}
           </Descriptions.Item>
           <Descriptions.Item label={
             <span>
-              波前时间 T1(us){" "}
-              <AntTooltip title={"电流从峰值的 10% 上升到 90% 所需时间的 1.25 倍（μs），反映雷电流上升的陡度。"}>
+              {t("波前时间 T1(us)")}{" "}
+              <AntTooltip title={t("电流从峰值的 10% 上升到 90% 所需时间的 1.25 倍（μs），反映雷电流上升的陡度。")}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
@@ -1574,8 +1575,8 @@ function AmplitudeDetailView({
           </Descriptions.Item>
           <Descriptions.Item label={
             <span>
-              半峰值时间 T2(us){" "}
-              <AntTooltip title={"从虚拟零点到电流下降到峰值 50% 的时间（μs），反映脉冲宽度。"}>
+              {t("半峰值时间 T2(us)")}{" "}
+              <AntTooltip title={t("从虚拟零点到电流下降到峰值 50% 的时间（μs），反映脉冲宽度。")}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
@@ -1584,8 +1585,8 @@ function AmplitudeDetailView({
           </Descriptions.Item>
           <Descriptions.Item label={
             <span>
-              陡度(kA/us){" "}
-              <AntTooltip title={"波形中电流变化率的最大值（kA/μs），影响感应过电压的大小。"}>
+              {t("陡度(kA/us)")}{" "}
+              <AntTooltip title={t("波形中电流变化率的最大值（kA/μs），影响感应过电压的大小。")}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
@@ -1594,8 +1595,8 @@ function AmplitudeDetailView({
           </Descriptions.Item>
           <Descriptions.Item label={
             <span>
-              I²t 作用积分(J/Ω){" "}
-              <AntTooltip title={"电流平方对时间的积分（J/Ω），衡量雷电流的热效应能量。"}>
+              {t("I²t 作用积分(J/Ω)")}{" "}
+              <AntTooltip title={t("电流平方对时间的积分（J/Ω），衡量雷电流的热效应能量。")}>
                 <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
               </AntTooltip>
             </span>
@@ -1607,20 +1608,20 @@ function AmplitudeDetailView({
 
       {record.stroke_peaks_json && record.stroke_peaks_json.length > 0 && (
         <div>
-          <Typography.Title level={5}>{"多回击峰值分布"}</Typography.Title>
+          <Typography.Title level={5}>{t("多回击峰值分布")}</Typography.Title>
           <MultiReturnPeakChart peaks={record.stroke_peaks_json as Record<string, unknown>[]} />
         </div>
       )}
 
       {record.status === "failed" && (
         <div>
-          <Typography.Title level={5}>{"失败原因"}</Typography.Title>
+          <Typography.Title level={5}>{t("失败原因")}</Typography.Title>
           <Typography.Paragraph type="danger">
-            {record.error_message || "未知错误"}
+            {record.error_message || t("未知错误")}
           </Typography.Paragraph>
           {canManage && (
             <Button danger loading={retryLoading} onClick={() => onRetry(record)}>
-              重试
+              {t("重试")}
             </Button>
           )}
         </div>
