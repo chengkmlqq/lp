@@ -99,7 +99,7 @@ export function AtpTestSetRunDrawer({
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "报告下载失败");
+      message.error(error instanceof Error ? error.message : t("报告下载失败"));
     }
   }, [runId]);
 
@@ -113,7 +113,7 @@ export function AtpTestSetRunDrawer({
   const columns = useMemo<ColumnsType<AtpTestSetRunSummary["items"][number]>>(
     () => [
       {
-        title: "用例",
+        title: t("用例"),
         dataIndex: "case_name",
         width: 150,
         ellipsis: { showTitle: true },
@@ -129,32 +129,33 @@ export function AtpTestSetRunDrawer({
         ),
       },
       {
-        title: "计算类型",
+        title: t("计算类型"),
         dataIndex: "job_kind",
         width: 90,
         render: (value: string) =>
           value === "tongtiao" ? (
-            <Tag color="purple">{"同跳计算"}</Tag>
+            <Tag color="purple">{t("同跳计算")}</Tag>
           ) : (
-            <Tag color="blue">{"普通计算"}</Tag>
+            <Tag color="blue">{t("普通计算")}</Tag>
           ),
       },
       {
-        title: "电压/塔型/场景",
+        title: t("电压/塔型/场景"),
         key: "dims",
         width: 170,
         render: (_, row) =>
           [row.voltage_level, row.tower_type, row.scene_type].filter(Boolean).join(" / ") || "-",
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "status",
         width: 90,
         render: (value: string, row) => {
           const meta = STATUS_TAG[value] ?? { color: "default", text: value ?? "-" };
+          const metaText = t(meta.text);
           return (
             <Space direction="vertical" size={0}>
-              <Tag color={meta.color}>{meta.text}</Tag>
+              <Tag color={meta.color}>{t(meta.text)}</Tag>
               {(value === "running" || value === "pending") && row.run_id && (
                 <Progress
                   type="circle"
@@ -169,13 +170,13 @@ export function AtpTestSetRunDrawer({
         },
       },
       {
-        title: "雷电流(kA)",
+        title: t("雷电流(kA)"),
         dataIndex: "current_ka",
         width: 100,
         render: (value: number | null) => (value != null ? value : "-"),
       },
       {
-        title: "闪络相数",
+        title: t("闪络相数"),
         dataIndex: "flashover_count",
         width: 120,
         render: (value: number | null, row) => {
@@ -189,7 +190,7 @@ export function AtpTestSetRunDrawer({
         },
       },
       {
-        title: "与上次对比",
+        title: t("与上次对比"),
         key: "prev",
         width: 130,
         render: (_, row) => {
@@ -198,10 +199,10 @@ export function AtpTestSetRunDrawer({
           const statusChanged = prev.status !== row.status;
           const flashoverChanged = prev.flashover_count !== row.flashover_count;
           if (!statusChanged && !flashoverChanged) {
-            return <Tag color="green">{"无变化"}</Tag>;
+            return <Tag color="green">{t("无变化")}</Tag>;
           }
           if (prev.status === "success" && row.status !== "success") {
-            return <Tag color="red">{"回归失败"}</Tag>;
+            return <Tag color="red">{t("回归失败")}</Tag>;
           }
           if (flashoverChanged) {
             return (
@@ -211,20 +212,20 @@ export function AtpTestSetRunDrawer({
             );
           }
           if (prev.status !== "success" && row.status === "success") {
-            return <Tag color="green">{"修复通过"}</Tag>;
+            return <Tag color="green">{t("修复通过")}</Tag>;
           }
-          return <Tag color="orange">{"结果有变"}</Tag>;
+          return <Tag color="orange">{t("结果有变")}</Tag>;
         },
       },
       {
-        title: "耗时",
+        title: t("耗时"),
         dataIndex: "duration_ms",
         width: 90,
         render: (value: number | null) =>
           value != null ? `${(value / 1000).toFixed(1)}s` : "-",
       },
       {
-        title: "错误信息",
+        title: t("错误信息"),
         dataIndex: "error_message",
         ellipsis: { showTitle: true },
         render: (value: string | null) =>
@@ -238,10 +239,10 @@ export function AtpTestSetRunDrawer({
     <Drawer
       title={
         <Space>
-          <span>{"执行结果"}</span>
+          <span>{t("执行结果")}</span>
           {data ? (
             <Tag color={STATUS_TAG[data.status]?.color ?? "default"}>
-              {STATUS_TAG[data.status]?.text ?? data.status}
+              {t(STATUS_TAG[data.status]?.text ?? data.status)}
             </Tag>
           ) : null}
         </Space>
@@ -262,11 +263,11 @@ export function AtpTestSetRunDrawer({
         <Alert
           type="error"
           showIcon
-          message={"加载执行结果失败"}
+          message={t("加载执行结果失败")}
           description={runQuery.error instanceof Error ? runQuery.error.message : ""}
         />
       ) : !data ? (
-        <div style={{ padding: 40, textAlign: "center" }}>{"加载中…"}</div>
+        <div style={{ padding: 40, textAlign: "center" }}>{t("加载中…")}</div>
       ) : (
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           {/* 集合级摘要 */}
@@ -294,37 +295,37 @@ export function AtpTestSetRunDrawer({
               column={2}
               size="small"
               items={[
-                { key: "total", label: "用例总数", children: data.total_cases },
+                { key: "total", label: t("用例总数"), children: data.total_cases },
                 {
                   key: "success",
-                  label: "成功",
+                  label: t("成功"),
                   children: (
                     <Typography.Text style={{ color: "#3f8600" }}>{data.counts.success}</Typography.Text>
                   ),
                 },
                 {
                   key: "failed",
-                  label: "失败",
+                  label: t("失败"),
                   children: (
                     <Typography.Text style={{ color: "#cf1322" }}>{data.counts.failed}</Typography.Text>
                   ),
                 },
                 {
                   key: "pass",
-                  label: "通过率",
+                  label: t("通过率"),
                   children: (
                     <Typography.Text strong>{data.report?.overall_pass_rate ?? 0}%</Typography.Text>
                   ),
                 },
                 {
                   key: "duration",
-                  label: "耗时",
+                  label: t("耗时"),
                   children:
                     data.duration_ms != null ? `${(data.duration_ms / 1000).toFixed(1)}s` : "-",
                 },
                 {
                   key: "time",
-                  label: "发起时间",
+                  label: t("发起时间"),
                   children: formatDateTime(data.create_date),
                 },
               ]}
@@ -374,7 +375,7 @@ export function AtpTestSetRunDrawer({
               pagination={false}
               locale={{
                 emptyText: (
-                  <Typography.Text type="secondary">{"暂无用例结果（可能全部派发失败）。"}</Typography.Text>
+                  <Typography.Text type="secondary">{t("暂无用例结果（可能全部派发失败）。")}</Typography.Text>
                 ),
               }}
             />
