@@ -64,6 +64,8 @@ class CaptchaApiTestCase(unittest.TestCase):
         self.redis_patcher.start()
 
     def tearDown(self) -> None:
+        if getattr(self, "captcha_patcher", None) is not None:
+            self.captcha_patcher.stop()
         self.redis_patcher.stop()
         app.dependency_overrides.clear()
         Base.metadata.drop_all(bind=self.engine)
@@ -136,6 +138,50 @@ class CaptchaApiTestCase(unittest.TestCase):
         data = resp.json()
         assert "sms_captcha_enabled" in data
         assert data["sms_captcha_enabled"] is False
+
+    def _disable_captcha(self):
+        """monkeypatch captcha_service._get_param: auth.captcha.enabled=false 关闭图码。"""
+        from app.services import captcha_service
+
+        orig = captcha_service._get_param
+
+        def fake_get_param(db, key):
+            if key == captcha_service.CAPTCHA_ENABLED_PARAM_KEY:
+                return "false"
+            return orig(db, key)
+
+        self.captcha_patcher = mock.patch.object(
+            captcha_service, "_get_param", side_effect=fake_get_param
+        )
+        self.captcha_patcher.start()
+
+    def test_captcha_disabled_returns_empty_and_flag(self):
+        self._disable_captcha()
+        data = self.client.get("/api/v1/auth/captcha").json()
+        assert data["captcha_id"] == ""
+        assert data["image_base64"] == ""
+        assert data["expires_in"] == 0
+        assert data["captcha_enabled"] is False
+
+    def test_captcha_disabled_login_skips_captcha(self):
+        self._disable_captcha()
+        # 不传图码也能走到账号校验(401 而非 400 验证码), 证明图码门禁被跳过
+        resp = self.client.post(
+            "/api/v1/auth/login",
+            json={"user_id": "no_such_user_xyz", "password": "whatever"},
+        )
+        assert resp.status_code == 401, resp.text
+
+    def test_captcha_disabled_sms_send_skips_captcha_gate(self):
+        self._disable_captcha()
+        # 图码门禁跳过, 直接命中"短信未启用"(短信开关默认关), 而非图码错误
+        resp = self.client.post(
+            "/api/v1/auth/sms-captcha/send",
+            json={"phone": "13800138000"},
+        )
+        assert resp.status_code == 400
+        assert "短信" in resp.json()["detail"]
+        assert "验证码" not in resp.json()["detail"]
 
 
 if __name__ == "__main__":

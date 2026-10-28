@@ -44,6 +44,7 @@ export default function LoginPage() {
   const [captchaCode, setCaptchaCode] = useState("");
   const [captchaId, setCaptchaId] = useState("");
   const [captchaImage, setCaptchaImage] = useState("");
+  const [captchaEnabled, setCaptchaEnabled] = useState(true);
   const [smsCaptchaEnabled, setSmsCaptchaEnabled] = useState(false);
   const [phone, setPhone] = useState("");
   const [smsCode, setSmsCode] = useState("");
@@ -59,9 +60,13 @@ export default function LoginPage() {
         captcha_id: string;
         image_base64: string;
         sms_captcha_enabled: boolean;
+        captcha_enabled: boolean;
       }>("/api/v1/auth/captcha", undefined, false);
+      setCaptchaEnabled(data.captcha_enabled ?? true);
       setCaptchaId(data.captcha_id);
-      setCaptchaImage(`data:image/png;base64,${data.image_base64}`);
+      setCaptchaImage(
+        data.image_base64 ? `data:image/png;base64,${data.image_base64}` : "",
+      );
       setCaptchaCode("");
       setSmsCaptchaEnabled(data.sms_captcha_enabled ?? false);
     } catch {
@@ -115,7 +120,7 @@ export default function LoginPage() {
 
   const handleSendSms = async () => {
     setError("");
-    if (!captchaId || !captchaCode.trim()) {
+    if (captchaEnabled && (!captchaId || !captchaCode.trim())) {
       setError(t("请先输入图形验证码"));
       return;
     }
@@ -164,7 +169,7 @@ export default function LoginPage() {
 
     try {
       const normalizedUserId = userId.trim();
-      if (!captchaId || !captchaCode.trim()) {
+      if (captchaEnabled && (!captchaId || !captchaCode.trim())) {
         setError(t("请输入验证码"));
         return;
       }
@@ -258,6 +263,7 @@ export default function LoginPage() {
               required
             />
 
+            {captchaEnabled && (
             <div className="flex items-center gap-2">
               <Input
                 className="flex-1"
@@ -290,8 +296,9 @@ export default function LoginPage() {
                 </Button>
               )}
             </div>
+          )}
 
-            {smsCaptchaEnabled && (
+          {smsCaptchaEnabled && (
               <div className="space-y-4 rounded border border-gray-200 bg-gray-50/50 p-3">
                 <Input
                   size="large"

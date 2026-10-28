@@ -25,12 +25,14 @@ class CaptchaResponse(BaseModel):
     expires_in: int
     # 短信验证码开关状态: 前端据此决定是否展示短信验证码输入
     sms_captcha_enabled: bool = False
+    # 图形验证码开关状态: 前端据此决定是否展示图形验证码输入(默认开启)
+    captcha_enabled: bool = True
 
 
 class SmsCaptchaSendRequest(BaseModel):
-    # 发送短信验证码: 先通过图形验证码(防刷), 手机号为目标接收号码
-    captcha_id: str = Field(min_length=1, max_length=64)
-    captcha_code: str = Field(min_length=1, max_length=16)
+    # 发送短信验证码(防刷前置): 图形验证码总开关开启时必填, 关闭时可省略
+    captcha_id: str = Field(default="", max_length=64)
+    captcha_code: str = Field(default="", max_length=16)
     phone: str = Field(min_length=6, max_length=20)
 
 
