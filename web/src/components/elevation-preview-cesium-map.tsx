@@ -66,8 +66,8 @@ function pointSizeByAltitude(altitude: number, minAltitude: number, maxAltitude:
   return 6;
 }
 
-function formatErrorMessage(candidate: unknown): string {
-  return formatCesiumInitError(candidate);
+function formatErrorMessage(candidate: unknown, t: (s: string) => string): string {
+  return formatCesiumInitError(candidate, t);
 }
 
 export function ElevationPreviewCesiumMap({
@@ -230,7 +230,7 @@ export function ElevationPreviewCesiumMap({
         if (reloadOnceOnChunkError(candidate)) {
           return;
         }
-        setError(formatErrorMessage(candidate));
+        setError(formatErrorMessage(candidate, t));
       }
     }
 
@@ -323,7 +323,7 @@ export function ElevationPreviewCesiumMap({
         if (!cancelled) {
           viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
           viewer.scene.globe.depthTestAgainstTerrain = false;
-          setTerrainError(formatErrorMessage(candidate));
+          setTerrainError(formatErrorMessage(candidate, t));
         }
       }
     }

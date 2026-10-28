@@ -80,8 +80,8 @@ function normalizeRiskLevel(value: string | null): string {
   return text || "unknown";
 }
 
-function formatErrorMessage(candidate: unknown): string {
-  return formatCesiumInitError(candidate);
+function formatErrorMessage(candidate: unknown, t: (s: string) => string): string {
+  return formatCesiumInitError(candidate, t);
 }
 
 function toRad(value: number): number {
@@ -337,7 +337,7 @@ export function PowerLineCesiumMap({
           if (reloadOnceOnChunkError(error)) {
             return;
           }
-          setInitError(formatErrorMessage(error));
+          setInitError(formatErrorMessage(error, t));
           setReady(false);
         }
       }
@@ -405,7 +405,7 @@ export function PowerLineCesiumMap({
         if (!cancelled) {
           viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
           viewer.scene.globe.depthTestAgainstTerrain = false;
-          setTerrainError(formatErrorMessage(error));
+          setTerrainError(formatErrorMessage(error, t));
         }
       }
     }

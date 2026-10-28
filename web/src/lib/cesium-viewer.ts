@@ -58,13 +58,13 @@ export function createCesiumViewer(
 /**
  * 格式化 Cesium 初始化错误，遇到 WebGL 相关失败时附加浏览器侧排查提示。
  */
-export function formatCesiumInitError(candidate: unknown): string {
+export function formatCesiumInitError(candidate: unknown, t: (s: string) => string = (s) => s): string {
   const message = candidate instanceof Error && candidate.message
     ? candidate.message
-    : "Cesium 初始化失败，请检查依赖与静态资源是否已同步。";
+    : t("Cesium 初始化失败，请检查依赖与静态资源是否已同步。");
 
   if (/webgl/i.test(message)) {
-    return `${message}。当前浏览器未能创建 WebGL 上下文，可尝试：开启浏览器硬件加速、更换 Chrome/Edge 浏览器、或更新显卡驱动。`;
+    return `${message}。${t("当前浏览器未能创建 WebGL 上下文，可尝试：开启浏览器硬件加速、更换 Chrome/Edge 浏览器、或更新显卡驱动。")}`;
   }
 
   return message;
