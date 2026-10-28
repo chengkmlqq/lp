@@ -145,7 +145,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
 
   const submit = async () => {
     if (selectedKeys.size === 0) {
-      setSubmitError("请至少勾选一个模型");
+      setSubmitError(t("请至少勾选一个模型"));
       return;
     }
     setSubmitting(true);
@@ -402,7 +402,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                   {batch.report.flashover_count_distribution &&
                   Object.keys(batch.report.flashover_count_distribution).length > 0 ? (
                     <div>
-                      <Typography.Text strong>{t("闪络相数分布: ")}</Typography.Text>
+                      <Typography.Text strong>{t("闪络相数分布:")}</Typography.Text>
                       {Object.entries(batch.report.flashover_count_distribution).map(([k, v]) => (
                         <Tag key={k} color="purple">{k}相 × {v}</Tag>
                       ))}
@@ -410,7 +410,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                   ) : null}
                   {batch.report.failure_reasons_top?.length > 0 ? (
                     <div>
-                      <Typography.Text strong>{t("失败原因 TOP: ")}</Typography.Text>
+                      <Typography.Text strong>{t("失败原因 TOP:")}</Typography.Text>
                       {batch.report.failure_reasons_top.map((r) => (
                         <Tag key={r.reason} color="red">{r.reason}({r.count})</Tag>
                       ))}

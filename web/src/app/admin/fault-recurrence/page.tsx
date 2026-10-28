@@ -207,7 +207,7 @@ export default function AdminFaultRecurrencePage() {
           const payload = JSON.parse(xhr.responseText) as FaultRecurrenceTempUploadResponse;
           setTempFileId(payload.temp_file_id);
         } catch {
-          setUploadError("上传成功但响应解析失败，请重新选择文件");
+          setUploadError(t("上传成功但响应解析失败，请重新选择文件"));
         }
         return;
       }
@@ -222,8 +222,8 @@ export default function AdminFaultRecurrencePage() {
       }
       setUploadError(detail);
     };
-    xhr.onerror = () => setUploadError("网络异常，上传失败");
-    xhr.onabort = () => setUploadError("上传已取消");
+    xhr.onerror = () => setUploadError(t("网络异常，上传失败"));
+    xhr.onabort = () => setUploadError(t("上传已取消"));
 
     const formData = new FormData();
     formData.append("file", file);

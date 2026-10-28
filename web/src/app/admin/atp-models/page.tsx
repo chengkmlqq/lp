@@ -405,7 +405,7 @@ export default function AtpModelsPage() {
         }
         zipBlob = await zip.generateAsync({ type: "blob" });
       } catch {
-        setUploadError("模型文件打包失败，请重新选择文件夹");
+        setUploadError(t("模型文件打包失败，请重新选择文件夹"));
         return;
       }
 
@@ -430,7 +430,7 @@ export default function AtpModelsPage() {
             const payload = JSON.parse(xhr.responseText) as TempUploadResponse;
             setTempFileId(payload.temp_file_id);
           } catch {
-            setUploadError("上传成功但响应解析失败，请重新选择文件夹");
+            setUploadError(t("上传成功但响应解析失败，请重新选择文件夹"));
           }
           return;
         }
@@ -443,8 +443,8 @@ export default function AtpModelsPage() {
         }
         setUploadError(message);
       };
-      xhr.onerror = () => setUploadError("网络异常，上传失败");
-      xhr.onabort = () => setUploadError("上传已取消");
+      xhr.onerror = () => setUploadError(t("网络异常，上传失败"));
+      xhr.onabort = () => setUploadError(t("上传已取消"));
 
       const formData = new FormData();
       formData.append("file", zipBlob, "model.zip");

@@ -146,12 +146,12 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
     if (paramsSource === "tower") {
       const parsedBase = parseJsonObject(baseTowerText, "base_tower");
       if (parsedBase === null) {
-        message.error("base_tower 不是合法 JSON 对象");
+        message.error(t("base_tower 不是合法 JSON 对象"));
         return;
       }
       const parsedProfile = parseJsonObject(profileText, "profile");
       if (parsedProfile === null) {
-        message.error("profile 不是合法 JSON 对象");
+        message.error(t("profile 不是合法 JSON 对象"));
         return;
       }
       const payload: AtpAssetTestRunRequest = {

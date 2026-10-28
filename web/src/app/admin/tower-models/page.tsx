@@ -517,7 +517,7 @@ export default function AdminTowerModelsPage() {
             const payload = JSON.parse(xhr.responseText) as TowerModelTempUploadResponse;
             setTempFileId(payload.temp_file_id);
           } catch {
-            setUploadError("上传成功但响应解析失败，请重新选择文件");
+            setUploadError(t("上传成功但响应解析失败，请重新选择文件"));
           }
           return;
         }
@@ -530,8 +530,8 @@ export default function AdminTowerModelsPage() {
         }
         setUploadError(messageText);
       };
-      xhr.onerror = () => setUploadError("网络异常，上传失败");
-      xhr.onabort = () => setUploadError("上传已取消");
+      xhr.onerror = () => setUploadError(t("网络异常，上传失败"));
+      xhr.onabort = () => setUploadError(t("上传已取消"));
 
       const formData = new FormData();
       formData.append("file", file);
@@ -1210,12 +1210,12 @@ export default function AdminTowerModelsPage() {
         onOk={() => {
           if (!uploadModel) return;
           if (!tempFileId) {
-            setUploadError("请先选择并上传图片文件");
+            setUploadError(t("请先选择并上传图片文件"));
             return;
           }
           const mount = mounts[0];
           if (!mount) {
-            setError("未查询到可用文件挂载点");
+            setError(t("未查询到可用文件挂载点"));
             return;
           }
           uploadImageMutation.mutate({
