@@ -73,23 +73,23 @@ const PARAM_TABLE_VIEWPORT_GAP = 40;
 const PARAM_TABLE_FALLBACK_RESERVE = 232;
 const PARAM_TABLE_EXTRA_HEIGHT = 14;
 
-function paramStatusLabel(status: SystemParamSummary["status"]): string {
-  if (status === "enabled") return "启用";
-  if (status === "disabled") return "禁用";
+function paramStatusLabel(status: SystemParamSummary["status"], t: (s: string) => string): string {
+  if (status === "enabled") return t("启用");
+  if (status === "disabled") return t("禁用");
   return status || "-";
 }
 
 // 状态过滤下拉的选中项/选项以 Tag 展示，颜色与表格状态列保持一致
-function statusTag(value: unknown): React.ReactNode {
-  return <Tag color={value === "enabled" ? "green" : "red"}>{paramStatusLabel(value as SystemParamSummary["status"])}</Tag>;
+function statusTag(value: unknown, t: (s: string) => string): React.ReactNode {
+  return <Tag color={value === "enabled" ? "green" : "red"}>{paramStatusLabel(value as SystemParamSummary["status"], t)}</Tag>;
 }
 
 /** 参数值展示：加密参数显示掩码 + "已加密" Tag，绝不展示明文 */
-function renderParamValue(value: string, record: SystemParamSummary): React.ReactNode {
+function renderParamValue(value: string, record: SystemParamSummary, t: (s: string) => string): React.ReactNode {
   if (record.is_encrypted) {
     return (
       <Space size={4} wrap>
-        <Tag color="purple">{"已加密"}</Tag>
+        <Tag color="purple">{t("已加密")}</Tag>
         <Typography.Text className="font-mono text-xs">
           {record.has_value ? ENCRYPTED_VALUE_MASK : "-"}
         </Typography.Text>
@@ -319,9 +319,9 @@ export default function AdminSystemParamsPage() {
 
   const saveCategoryMutation = useMutation({
     mutationFn: async () => {
-      if (!canManage) throw new Error("缺少权限");
+      if (!canManage) throw new Error(t("缺少权限"));
       const name = categoryNameInput.trim();
-      if (!name) throw new Error("分类名称不能为空");
+      if (!name) throw new Error(t("分类名称不能为空"));
 
       if (editingCategoryId === null) {
         const response = await fetchWithAuth("/api/v1/admin/system-param-categories", {
@@ -342,12 +342,12 @@ export default function AdminSystemParamsPage() {
       return "updated";
     },
     onSuccess: async () => {
-      setSuccess(editingCategoryId === null ? "分类已创建" : "分类已更新");
+      setSuccess(editingCategoryId === null ? t("分类已创建") : t("分类已更新"));
       setCategoryEditorOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["/api/v1/admin/system-param-categories/tree"] });
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "保存分类失败");
+      setError(candidate instanceof Error ? candidate.message : t("保存分类失败"));
     },
   });
 
@@ -360,7 +360,7 @@ export default function AdminSystemParamsPage() {
       return categoryId;
     },
     onSuccess: async (categoryId) => {
-      setSuccess("分类已删除");
+      setSuccess(t("分类已删除"));
       setCategoryDeleteConfirmId(null);
       if (selectedCategoryId === categoryId) {
         setSelectedCategoryId(null);
@@ -370,7 +370,7 @@ export default function AdminSystemParamsPage() {
       await queryClient.invalidateQueries({ queryKey: ["/api/v1/admin/system-param-categories/tree"] });
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "删除分类失败");
+      setError(candidate instanceof Error ? candidate.message : t("删除分类失败"));
     },
   });
 
@@ -467,8 +467,8 @@ export default function AdminSystemParamsPage() {
   const validateParamKeyFormat = (paramKey: string): string | null => {
     const trimmedKey = paramKey.trim();
     if (!trimmedKey) return null;
-    if (trimmedKey.length < 2) return "参数键至少 2 位";
-    if (trimmedKey.length > 128) return "参数键不能超过 128 位";
+    if (trimmedKey.length < 2) return t("参数键至少 2 位");
+    if (trimmedKey.length > 128) return t("参数键不能超过 128 位");
     return null;
   };
 
@@ -488,7 +488,7 @@ export default function AdminSystemParamsPage() {
       const exists = payload.items.some((item) => item.param_key.trim().toLowerCase() === normalizedKey);
       return {
         available: !exists,
-        message: exists ? "参数键已存在，请更换后重试" : "参数键可用",
+        message: exists ? t("参数键已存在，请更换后重试") : t("参数键可用"),
       };
     } catch {
       return { available: false, message: t("检查失败") };
@@ -526,12 +526,12 @@ export default function AdminSystemParamsPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!canManage) {
-        throw new Error("缺少 system_param.manage 权限");
+        throw new Error(t("缺少 system_param.manage 权限"));
       }
 
       const values = await formApi.validateFields();
       if (!values.param_name.trim() || !values.param_key.trim()) {
-        throw new Error("参数键和参数名称不能为空");
+        throw new Error(t("参数键和参数名称不能为空"));
       }
 
       const paramKey = values.param_key.trim();
@@ -597,14 +597,14 @@ export default function AdminSystemParamsPage() {
     },
     onSuccess: async (mode) => {
       setError("");
-      setSuccess(mode === "created" ? "系统参数已创建" : "系统参数已更新");
+      setSuccess(mode === "created" ? t("系统参数已创建") : t("系统参数已更新"));
       setEditorOpen(false);
       resetForm();
       await refreshList();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "保存失败");
+      setError(candidate instanceof Error ? candidate.message : t("保存失败"));
     },
   });
 
@@ -624,12 +624,12 @@ export default function AdminSystemParamsPage() {
         resetForm();
       }
       setError("");
-      setSuccess("系统参数已删除");
+      setSuccess(t("系统参数已删除"));
       await refreshList();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "删除失败");
+      setError(candidate instanceof Error ? candidate.message : t("删除失败"));
     },
   });
 
@@ -660,12 +660,12 @@ export default function AdminSystemParamsPage() {
       setSuccess("");
     },
     onSuccess: async (status) => {
-      setSuccess(status === "enabled" ? "系统参数已启用" : "系统参数已禁用");
+      setSuccess(status === "enabled" ? t("系统参数已启用") : t("系统参数已禁用"));
       await refreshList();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "更新系统参数状态失败");
+      setError(candidate instanceof Error ? candidate.message : t("更新系统参数状态失败"));
     },
     onSettled: () => setUpdatingStatusId(null),
   });
@@ -794,7 +794,7 @@ export default function AdminSystemParamsPage() {
       },
       {
         key: "toggle-status",
-        label: param.status === "enabled" ? "禁用" : "启用",
+        label: param.status === "enabled" ? t("禁用") : t("启用"),
         disabled: rowBusy || !canManage,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
@@ -831,7 +831,7 @@ export default function AdminSystemParamsPage() {
           <Typography.Text strong className="truncate flex-1">{param.param_name}</Typography.Text>
           <div className="flex flex-shrink-0 items-center gap-2">
             <Badge status={param.status === "enabled" ? "success" : "error"} />
-            <Typography.Text type="secondary" className="text-xs">{paramStatusLabel(param.status)}</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs">{paramStatusLabel(param.status, t)}</Typography.Text>
           </div>
         </div>
         <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
@@ -842,7 +842,7 @@ export default function AdminSystemParamsPage() {
           <div className="admin-system-params-param-card-field">
             <Typography.Text type="secondary">{t("参数值")}</Typography.Text>
             <Typography.Text ellipsis={{ tooltip: param.param_value || "-" }}>
-              {renderParamValue(param.param_value, param)}
+              {renderParamValue(param.param_value, param, t)}
             </Typography.Text>
           </div>
           {param.description && (
@@ -916,7 +916,7 @@ export default function AdminSystemParamsPage() {
         key: "param_value",
         ellipsis: true,
         width: 240,
-        render: (value: string, record: SystemParamSummary) => renderParamValue(value, record),
+        render: (value: string, record: SystemParamSummary) => renderParamValue(value, record, t),
       },
       {
         title: t("状态"),
@@ -925,7 +925,7 @@ export default function AdminSystemParamsPage() {
         width: 120,
         render: (value: SystemParamSummary["status"]) => (
           <Tag color={value === "enabled" ? "green" : "red"}>
-            {paramStatusLabel(value)}
+            {paramStatusLabel(value, t)}
           </Tag>
         ),
       },
@@ -961,7 +961,7 @@ export default function AdminSystemParamsPage() {
           const moreMenuItems: MenuProps["items"] = [
             {
               key: "toggle-status",
-              label: record.status === "enabled" ? "禁用" : "启用",
+              label: record.status === "enabled" ? t("禁用") : t("启用"),
               disabled: rowBusy,
               onClick: () => toggleParamStatus(record),
             },
@@ -1233,8 +1233,8 @@ export default function AdminSystemParamsPage() {
                     { value: "enabled", label: t("启用") },
                     { value: "disabled", label: t("禁用") },
                   ]}
-                  labelRender={(props) => statusTag(props.value)}
-                  optionRender={(option) => statusTag(option.value)}
+                  labelRender={(props) => statusTag(props.value, t)}
+                  optionRender={(option) => statusTag(option.value, t)}
                   onChange={(value) => setStatusFilterInput(value)}
                 />
               </Form.Item>
@@ -1349,12 +1349,12 @@ export default function AdminSystemParamsPage() {
 
         {canManage && (
           <Modal
-            title={editingId === null ? "新建系统参数" : `编辑系统参数：${formApi.getFieldValue("param_name")}（ID: ${editingId}）`}
+            title={editingId === null ? t("新建系统参数") : `${t("编辑系统参数")}：${formApi.getFieldValue("param_name")}（ID: ${editingId}）`}
             open={editorOpen}
             forceRender
             onCancel={closeEditor}
             onOk={() => formApi.submit()}
-            okText={editingId === null ? "创建" : "保存"}
+            okText={editingId === null ? t("创建") : t("保存")}
             cancelText={t("取消")}
             confirmLoading={saveMutation.isPending}
             destroyOnHidden
@@ -1427,9 +1427,9 @@ export default function AdminSystemParamsPage() {
                     placeholder={
                       isEncryptedFormValue
                         ? (editingItem?.is_encrypted
-                          ? "已加密参数，留空不修改；输入新值将替换密文"
-                          : "加密存储，保存后不可查看明文")
-                        : "请输入参数值"
+                          ? t("已加密参数，留空不修改；输入新值将替换密文")
+                          : t("加密存储，保存后不可查看明文"))
+                        : t("请输入参数值")
                     }
                   />
                 </Form.Item>
@@ -1440,7 +1440,7 @@ export default function AdminSystemParamsPage() {
                   valuePropName="checked"
                   extra={t("加密后参数值将以密文存储，后台与前端仅展示掩码；系统使用时自动解密。")}
                 >
-                  <Switch checkedChildren="加密" unCheckedChildren="明文" />
+                  <Switch checkedChildren={t("加密")} unCheckedChildren={t("明文")} />
                 </Form.Item>
 
                 <Form.Item<FormState>
@@ -1458,11 +1458,11 @@ export default function AdminSystemParamsPage() {
         {/* Category management modal */}
         {canManage && (
           <Modal
-            title={editingCategoryId === null ? (categoryParentId !== null ? "新建子分类" : "新建参数分类") : `编辑分类：${categoryNameInput}`}
+            title={editingCategoryId === null ? (categoryParentId !== null ? t("新建子分类") : t("新建参数分类")) : `${t("编辑分类")}：${categoryNameInput}`}
             open={categoryEditorOpen}
             onCancel={() => setCategoryEditorOpen(false)}
             onOk={() => saveCategoryMutation.mutate()}
-            okText={editingCategoryId === null ? "创建" : "保存"}
+            okText={editingCategoryId === null ? t("创建") : t("保存")}
             cancelText={t("取消")}
             confirmLoading={saveCategoryMutation.isPending}
             destroyOnHidden
