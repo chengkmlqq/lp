@@ -831,7 +831,7 @@ export default function AdminLightningDistributionPage() {
         title: (
           <span>
             整体Ng
-            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.overallNg} />
+            <FieldHelpTooltip content={t(FIELD_HELP_TOOLTIPS.overallNg)} />
           </span>
         ),
         dataIndex: "overall_ng",
@@ -842,7 +842,7 @@ export default function AdminLightningDistributionPage() {
         title: (
           <span style={{ whiteSpace: "nowrap" }}>
             最大电流(kA)
-            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.maxCurrent} />
+            <FieldHelpTooltip content={t(FIELD_HELP_TOOLTIPS.maxCurrent)} />
           </span>
         ),
         dataIndex: "max_abs_current",
@@ -853,7 +853,7 @@ export default function AdminLightningDistributionPage() {
         title: (
           <span style={{ whiteSpace: "nowrap" }}>
             平均电流(kA)
-            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
+            <FieldHelpTooltip content={t(FIELD_HELP_TOOLTIPS.avgCurrent)} />
           </span>
         ),
         dataIndex: "avg_abs_current",
@@ -1354,7 +1354,7 @@ function ImportModal({
     >
       <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={initialValues}>
         <div className="grid gap-3">
-          <Form.Item name="city" label={t("城市")} rules={[{ max: 128, message: "城市最多 128 个字符" }]}>
+          <Form.Item name="city" label={t("城市")} rules={[{ max: 128, message: t("城市最多 128 个字符") }]}>
             <Select
               showSearch
               allowClear
@@ -1376,7 +1376,7 @@ function ImportModal({
               }))}
             />
           </Form.Item>
-          <Form.Item name="region_id" label={t("地点")} rules={[{ max: 64, message: "地点最多 64 个字符" }]}>
+          <Form.Item name="region_id" label={t("地点")} rules={[{ max: 64, message: t("地点最多 64 个字符") }]}>
             <Input placeholder={t("例如 XX变电站、XX区域（闪电事件发生地点）")} />
           </Form.Item>
           <Form.Item name="event_year" label={t("数据年份")}>
@@ -1389,7 +1389,7 @@ function ImportModal({
           >
             <InputNumber style={{ width: "100%" }} min={0.1} max={100} step={1} placeholder={t("留空自动推断")} />
           </Form.Item>
-          <Form.Item name="notes" label={t("数据说明")} rules={[{ max: 2000, message: "数据说明最多 2000 个字符" }]}>
+          <Form.Item name="notes" label={t("数据说明")} rules={[{ max: 2000, message: t("数据说明最多 2000 个字符") }]}>
             <Input placeholder={t("可填写数据来源、采集说明等")} />
           </Form.Item>
         </div>
@@ -1505,19 +1505,19 @@ function DistributionDetailView({
         <Descriptions.Item label={
           <span>
             整体 Ng
-            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.overallNg} />
+            <FieldHelpTooltip content={t(FIELD_HELP_TOOLTIPS.overallNg)} />
           </span>
         }>{formatNumber(record.overall_ng, 4)}</Descriptions.Item>
         <Descriptions.Item label={
           <span>
             Imax(kA)
-            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.maxCurrent} />
+            <FieldHelpTooltip content={t(FIELD_HELP_TOOLTIPS.maxCurrent)} />
           </span>
         }>{formatNumber(record.max_abs_current, 2)}</Descriptions.Item>
         <Descriptions.Item label={
           <span>
             Iavg(kA)
-            <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
+            <FieldHelpTooltip content={t(FIELD_HELP_TOOLTIPS.avgCurrent)} />
           </span>
         }>{formatNumber(record.avg_abs_current, 2)}</Descriptions.Item>
         <Descriptions.Item label={t("正极数量")}>{record.positive_count}</Descriptions.Item>
