@@ -1101,6 +1101,8 @@ export const EN_DICT: Record<string, string> = {
   "操作人": "Operator",
   "操作失败": "Operation Failed",
   "操作成功": "Operation Succeeded",
+  "，反击跳闸率 ": ", counterstrike trip rate ",
+  "，绕击跳闸率 ": ", shielding trip rate ",
   "操作文档": "Operations Manual",
   "支持 .csv/.dat/.txt/.json 格式，可多选（A/B/C 三相）": "Supports .csv/.dat/.txt/.json formats; multiple selection allowed (phases A/B/C)",
   "支持 .txt/.json/.csv/.pdf/.xlsx，上传后自动识别并回填下方故障信息": "Supports .txt/.json/.csv/.pdf/.xlsx; fault information below is auto-detected and backfilled after upload",

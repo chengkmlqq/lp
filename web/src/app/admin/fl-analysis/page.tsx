@@ -624,10 +624,10 @@ export default function AdminFlAnalysisPage() {
     onSuccess: async () => {
       await invalidateFlAnalysisQueries();
       setReportOpen(false);
-      messageApi.success("报告生成任务已创建");
+      messageApi.success(t("报告生成任务已创建"));
     },
     onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "报告生成任务创建失败");
+      messageApi.error(candidate instanceof Error ? candidate.message : t("报告生成任务创建失败"));
     },
   });
 
@@ -767,7 +767,7 @@ export default function AdminFlAnalysisPage() {
             key: tab.key,
             label: (
               <span className="admin-fl-analysis-tab-title">
-                {tab.job.job_name || tab.job.line_name || tab.job.line_code || "任务详情"}
+                {tab.job.job_name || tab.job.line_name || tab.job.line_code || t("任务详情")}
               </span>
             ),
             closable: true,

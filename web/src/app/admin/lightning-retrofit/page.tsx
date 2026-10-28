@@ -956,8 +956,8 @@ function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
                     ) : (
                       <Tag style={{ marginLeft: 4 }}>-</Tag>
                     )}
-                    {typeof recomputed.counterstrike_trip_rate === "number" ? `，反击跳闸率 ${Number(recomputed.counterstrike_trip_rate).toFixed(4)}` : ""}
-                    {typeof recomputed.shielding_trip_rate === "number" ? `，绕击跳闸率 ${Number(recomputed.shielding_trip_rate).toFixed(4)}` : ""}
+                    {typeof recomputed.counterstrike_trip_rate === "number" ? `${t("，反击跳闸率 ")}${Number(recomputed.counterstrike_trip_rate).toFixed(4)}` : ""}
+                    {typeof recomputed.shielding_trip_rate === "number" ? `${t("，绕击跳闸率 ")}${Number(recomputed.shielding_trip_rate).toFixed(4)}` : ""}
                   </Typography.Text>
                 ) : (
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("本轮未重算（直接进入终态判定）")}</Typography.Text>
