@@ -53,7 +53,7 @@ const DIMENSIONS_TABLE_MIN_SCROLL_Y = 180;
 const DIMENSIONS_TABLE_VIEWPORT_GAP = 40;
 const DIMENSIONS_TABLE_FALLBACK_RESERVE = 220;
 
-function statusLabel(enabled: boolean): string {
+function statusLabel(enabled: boolean, t: (s: string) => string): string {
   return enabled ? "启用" : "禁用";
 }
 
@@ -179,7 +179,7 @@ export default function AdminDimensionsPage() {
       }
       const data = (await response.json()) as unknown;
       if (!Array.isArray(data)) {
-        throw new Error("维度类型数据格式异常");
+        throw new Error(t("维度类型数据格式异常"));
       }
       return data as DimensionTypeTreeItem[];
     },
@@ -245,11 +245,11 @@ export default function AdminDimensionsPage() {
 
   const saveTypeMutation = useMutation({
     mutationFn: async () => {
-      if (!canManage) throw new Error("缺少权限");
+      if (!canManage) throw new Error(t("缺少权限"));
       const code = typeCodeInput.trim();
       const name = typeNameInput.trim();
-      if (!code) throw new Error("类型编码不能为空");
-      if (!name) throw new Error("类型名称不能为空");
+      if (!code) throw new Error(t("类型编码不能为空"));
+      if (!name) throw new Error(t("类型名称不能为空"));
       const sortOrder = Number(typeSortInput) || 0;
 
       if (editingTypeId === null) {
@@ -271,13 +271,13 @@ export default function AdminDimensionsPage() {
       return "updated";
     },
     onSuccess: async (mode) => {
-      setSuccess(mode === "created" ? "维度类型已创建" : "维度类型已更新");
+      setSuccess(mode === "created" ? t("维度类型已创建") : t("维度类型已更新"));
       setTypeEditorOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["/api/v1/dimensions/types/tree"] });
       await queryClient.invalidateQueries({ queryKey: ["admin.dimensions"] });
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "保存维度类型失败");
+      setError(candidate instanceof Error ? candidate.message : t("保存维度类型失败"));
     },
   });
 
@@ -290,7 +290,7 @@ export default function AdminDimensionsPage() {
       return typeId;
     },
     onSuccess: async (typeId) => {
-      setSuccess("维度类型已删除");
+      setSuccess(t("维度类型已删除"));
       if (selectedTypeId === typeId) {
         setSelectedTypeId(null);
         setTypeIdFilter(null);
@@ -300,7 +300,7 @@ export default function AdminDimensionsPage() {
       await queryClient.invalidateQueries({ queryKey: ["admin.dimensions"] });
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "删除维度类型失败");
+      setError(candidate instanceof Error ? candidate.message : t("删除维度类型失败"));
     },
   });
 
@@ -408,14 +408,14 @@ export default function AdminDimensionsPage() {
 
   const saveDimensionMutation = useMutation({
     mutationFn: async () => {
-      if (!canManage) throw new Error("缺少 dimension.manage 权限");
+      if (!canManage) throw new Error(t("缺少 dimension.manage 权限"));
       const values = await dimensionForm.validateFields();
       if (!values.code.trim() || !values.name.trim()) {
-        throw new Error("维度编码和维度名称不能为空");
+        throw new Error(t("维度编码和维度名称不能为空"));
       }
       const typeId = values.type_id ?? null;
       if (!typeId) {
-        throw new Error("请选择维度类型");
+        throw new Error(t("请选择维度类型"));
       }
 
       if (editingDimension === null) {
@@ -458,7 +458,7 @@ export default function AdminDimensionsPage() {
       setSuccess("");
     },
     onSuccess: async (mode) => {
-      setSuccess(mode === "created" ? "维度项已创建" : "维度项已更新");
+      setSuccess(mode === "created" ? t("维度项已创建") : t("维度项已更新"));
       setDimensionEditorOpen(false);
       setEditingDimension(null);
       dimensionForm.resetFields();
@@ -466,7 +466,7 @@ export default function AdminDimensionsPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "保存维度项失败");
+      setError(candidate instanceof Error ? candidate.message : t("保存维度项失败"));
     },
   });
 
@@ -479,12 +479,12 @@ export default function AdminDimensionsPage() {
       return id;
     },
     onSuccess: async () => {
-      setSuccess("维度项已删除");
+      setSuccess(t("维度项已删除"));
       await refreshList();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "删除维度项失败");
+      setError(candidate instanceof Error ? candidate.message : t("删除维度项失败"));
     },
   });
 
@@ -512,12 +512,12 @@ export default function AdminDimensionsPage() {
       setSuccess("");
     },
     onSuccess: async (enabled) => {
-      setSuccess(enabled ? "维度项已启用" : "维度项已禁用");
+      setSuccess(enabled ? t("维度项已启用") : t("维度项已禁用"));
       await refreshList();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "更新维度项状态失败");
+      setError(candidate instanceof Error ? candidate.message : t("更新维度项状态失败"));
     },
     onSettled: () => setUpdatingId(null),
   });
@@ -707,7 +707,7 @@ export default function AdminDimensionsPage() {
         width: 100,
         align: "center",
         render: (value: boolean) => (
-          <Tag color={value ? "green" : "default"}>{statusLabel(value)}</Tag>
+          <Tag color={value ? "green" : "default"}>{statusLabel(value, t)}</Tag>
         ),
       },
       {
@@ -739,7 +739,7 @@ export default function AdminDimensionsPage() {
           const moreMenuItems: MenuProps["items"] = [
             {
               key: "toggle-status",
-              label: record.is_enabled ? "禁用" : "启用",
+              label: record.is_enabled ? t("禁用") : t("启用"),
               disabled: rowBusy,
               onClick: () => toggleDimensionStatus(record),
             },
@@ -800,7 +800,7 @@ export default function AdminDimensionsPage() {
     const moreMenuItems: MenuProps["items"] = [
       {
         key: "toggle-status",
-        label: item.is_enabled ? "禁用" : "启用",
+        label: item.is_enabled ? t("禁用") : t("启用"),
         disabled: deleteLoading,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
@@ -838,7 +838,7 @@ export default function AdminDimensionsPage() {
           <Typography.Text strong className="truncate flex-1">{item.name}</Typography.Text>
           <div className="flex flex-shrink-0 items-center gap-2">
             <Badge status={item.is_enabled ? "success" : "default"} />
-            <Typography.Text type="secondary" className="text-xs">{statusLabel(item.is_enabled)}</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs">{statusLabel(item.is_enabled, t)}</Typography.Text>
           </div>
         </div>
         <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
@@ -1231,7 +1231,7 @@ export default function AdminDimensionsPage() {
           {/* Dimension value create/edit modal */}
           {canManage && (
             <Modal
-              title={editingDimension === null ? "新建维度项" : `编辑维度项：${editingDimension.name}（${editingDimension.code}）`}
+              title={editingDimension === null ? t("新建维度项") : `${t("编辑维度项")}：${editingDimension.name}（${editingDimension.code}）`}
               open={dimensionEditorOpen}
               forceRender
               onCancel={() => {
@@ -1240,7 +1240,7 @@ export default function AdminDimensionsPage() {
                 dimensionForm.resetFields();
               }}
               onOk={() => saveDimensionMutation.mutate()}
-              okText={editingDimension === null ? "创建" : "保存"}
+              okText={editingDimension === null ? t("创建") : t("保存")}
               cancelText={t("取消")}
               confirmLoading={saveDimensionMutation.isPending}
               destroyOnHidden
@@ -1322,11 +1322,11 @@ export default function AdminDimensionsPage() {
           {/* Type management modal */}
           {canManage && (
             <Modal
-              title={editingTypeId === null ? (typeParentId !== null ? "新建子类型" : "新建维度类型") : `编辑类型：${typeNameInput}`}
+              title={editingTypeId === null ? (typeParentId !== null ? t("新建子类型") : t("新建维度类型")) : `${t("编辑类型")}：${typeNameInput}`}
               open={typeEditorOpen}
               onCancel={() => setTypeEditorOpen(false)}
               onOk={() => saveTypeMutation.mutate()}
-              okText={editingTypeId === null ? "创建" : "保存"}
+              okText={editingTypeId === null ? t("创建") : t("保存")}
               cancelText={t("取消")}
               confirmLoading={saveTypeMutation.isPending}
               destroyOnHidden

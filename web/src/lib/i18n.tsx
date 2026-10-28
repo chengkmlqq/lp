@@ -2614,6 +2614,7 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "确认删除模板": "Confirm deletion of template",
   "座": "tower(s)",
   "编辑系统参数": "Edit System Parameter",
+  "编辑维度项": "Edit Dimension Item",
 };
 
 // ─────────────────────────── Context ───────────────────────────
