@@ -2640,6 +2640,7 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "回填明细": "Backfill Detail",
   "夸张": "exaggeration",
   "，未启用真实地形": ", real terrain not enabled",
+  "缺失字段": "Missing Fields",
 };
 
 // ─────────────────────────── Context ───────────────────────────

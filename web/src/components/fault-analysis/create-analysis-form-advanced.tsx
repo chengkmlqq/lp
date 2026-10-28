@@ -440,7 +440,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
         current={currentStep}
         size="small"
         className="mb-4"
-        items={STEP_TITLES.map((title, index) => ({ title, key: index }))}
+        items={STEP_TITLES.map((title, index) => ({ title: t(title), key: index }))}
       />
 
       {/* 步骤内容区：撑满抽屉剩余高度，超高时内部滚动（顶部步骤栏 / 底部按钮栏固定不滚动） */}
@@ -486,7 +486,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                   type="error"
                   showIcon
                   message={t("杆塔列表加载失败")}
-                  description={towersQuery.error instanceof Error ? towersQuery.error.message : "未知错误"}
+                  description={towersQuery.error instanceof Error ? towersQuery.error.message : t("未知错误")}
                 />
               ) : (
                 <Table<LineTowerSummary>
@@ -528,7 +528,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               <TempFileUpload
                 accept=".txt,.json,.csv,.pdf,.xlsx"
                 maxSizeMb={50}
-                buttonLabel="选择文件"
+                buttonLabel={t("选择文件")}
                 previewKind="wave_data"
                 trailing={
                   <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadWaveDataTemplate}>
@@ -562,7 +562,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 </div>
                 {extractState.response.missing.length > 0 && (
                   <div className="mt-1 text-yellow-600">
-                    缺失字段：{extractState.response.missing.map((key) => WAVE_FIELD_LABELS[key] ?? key).join("、")}
+                    {t("缺失字段")}：{extractState.response.missing.map((key) => t(WAVE_FIELD_LABELS[key] ?? key)).join("、")}
                   </div>
                 )}
               </div>
@@ -792,7 +792,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 <TempFileUpload
                   accept=".xls,.xlsx,.csv"
                   maxSizeMb={50}
-                  buttonLabel="选择文件"
+                  buttonLabel={t("选择文件")}
                   previewKind="lightning_data"
                   trailing={
                     <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadLightningTemplate}>
@@ -813,7 +813,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 <TempFileUpload
                   accept=".csv,.dat,.txt,.json"
                   maxSizeMb={50}
-                  buttonLabel="选择文件"
+                  buttonLabel={t("选择文件")}
                   previewKind="traveling_wave"
                   multiple
                   trailing={
@@ -835,7 +835,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 <TempFileUpload
                   accept="image/*,video/*"
                   maxSizeMb={50}
-                  buttonLabel="选择文件"
+                  buttonLabel={t("选择文件")}
                   previewKind="optical_data"
                   trailing={
                     <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadOpticalTemplate}>
