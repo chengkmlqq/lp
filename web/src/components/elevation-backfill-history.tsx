@@ -50,28 +50,28 @@ function formatDateTime(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function renderStatus(status: string) {
+function renderStatus(status: string, t: (s: string) => string = (s) => s) {
   if (status === "success") {
-    return <Tag color="green">{"成功"}</Tag>;
+    return <Tag color="green">{t("成功")}</Tag>;
   }
   if (status === "running") {
-    return <Tag color="blue">{"处理中"}</Tag>;
+    return <Tag color="blue">{t("处理中")}</Tag>;
   }
   if (status === "pending") {
-    return <Tag color="orange">{"待处理"}</Tag>;
+    return <Tag color="orange">{t("待处理")}</Tag>;
   }
   if (status === "failed") {
-    return <Tag color="red">{"失败"}</Tag>;
+    return <Tag color="red">{t("失败")}</Tag>;
   }
   return <Tag>{status}</Tag>;
 }
 
-function renderMode(mode: string) {
+function renderMode(mode: string, t: (s: string) => string = (s) => s) {
   if (mode === "fill_null_only") {
-    return <Tag color="default">{"仅填空"}</Tag>;
+    return <Tag color="default">{t("仅填空")}</Tag>;
   }
   if (mode === "overwrite_all") {
-    return <Tag color="purple">{"全部覆盖"}</Tag>;
+    return <Tag color="purple">{t("全部覆盖")}</Tag>;
   }
   return <Tag>{mode}</Tag>;
 }
@@ -90,18 +90,18 @@ function formatCoordinate(value: number | null | undefined): string {
   return value.toFixed(6);
 }
 
-function renderTowerAction(action: ElevationApplyJobTowerAction) {
+function renderTowerAction(action: ElevationApplyJobTowerAction, t: (s: string) => string = (s) => s) {
   if (action === "updated") {
-    return <Tag color="green">{"已更新"}</Tag>;
+    return <Tag color="green">{t("已更新")}</Tag>;
   }
   if (action === "skipped") {
-    return <Tag color="default">{"已跳过"}</Tag>;
+    return <Tag color="default">{t("已跳过")}</Tag>;
   }
   if (action === "missing_geo") {
-    return <Tag color="orange">{"缺坐标"}</Tag>;
+    return <Tag color="orange">{t("缺坐标")}</Tag>;
   }
   if (action === "unmatched") {
-    return <Tag color="red">{"未命中"}</Tag>;
+    return <Tag color="red">{t("未命中")}</Tag>;
   }
   return <Tag>{action}</Tag>;
 }
@@ -292,7 +292,7 @@ export function ElevationBackfillHistoryTable({
         dataIndex: "action",
         key: "action",
         width: 90,
-        render: (value: ElevationApplyJobTowerAction) => renderTowerAction(value),
+        render: (value: ElevationApplyJobTowerAction) => renderTowerAction(value, t),
       },
       {
         title: t("回填前海拔(m)"),
@@ -353,7 +353,7 @@ export function ElevationBackfillHistoryTable({
         title: t("状态"),
         dataIndex: "status",
         width: 100,
-        render: (value: string) => renderStatus(value),
+        render: (value: string) => renderStatus(value, t),
       },
       {
         title: t("回填时间"),
@@ -502,8 +502,8 @@ export function ElevationBackfillHistoryTable({
       {/* 回填任务 → 杆塔回填数据明细 */}
       <Drawer
         title={detailJob
-          ? `回填任务明细 - ${[detailJob.line_code, detailJob.line_name].filter(Boolean).join(" ")}`
-          : "回填任务明细"}
+          ? `${t("回填任务明细")} - ${[detailJob.line_code, detailJob.line_name].filter(Boolean).join(" ")}`
+          : t("回填任务明细")}
         open={detailOpen}
         onClose={closeDetail}
         width={1120}
@@ -522,10 +522,10 @@ export function ElevationBackfillHistoryTable({
                 {formatDateTime(detailJob.finished_at)}
               </Descriptions.Item>
               <Descriptions.Item label={t("模式")}>
-                {renderMode(detailJob.mode)}
+                {renderMode(detailJob.mode, t)}
               </Descriptions.Item>
               <Descriptions.Item label={t("状态")}>
-                {renderStatus(detailJob.status)}
+                {renderStatus(detailJob.status, t)}
               </Descriptions.Item>
               <Descriptions.Item label={t("操作人")}>
                 {detailJob.create_user_name || detailJob.create_user || "-"}
@@ -586,8 +586,8 @@ export function ElevationBackfillHistoryTable({
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
                       description={
                         detailJob.status === "success"
-                          ? "该任务暂无杆塔明细（历史任务未保存逐塔快照，重新回填后即可查看）。"
-                          : "任务尚未生成杆塔明细，处理完成后可查看。"
+                          ? t("该任务暂无杆塔明细（历史任务未保存逐塔快照，重新回填后即可查看）。")
+                          : t("任务尚未生成杆塔明细，处理完成后可查看。")
                       }
                     />
                   ),
