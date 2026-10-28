@@ -2635,6 +2635,7 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "参数类型": "Parameter Type",
   "绑定": "Binding",
   "编辑参数": "Edit Parameter",
+  "编辑角色": "Edit Role",
 };
 
 // ─────────────────────────── Context ───────────────────────────

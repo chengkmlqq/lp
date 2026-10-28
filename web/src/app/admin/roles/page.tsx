@@ -184,7 +184,7 @@ export default function AdminRolesPage() {
       return response.json() as Promise<RoleItem>;
     },
     onSuccess: async () => {
-      setSuccess("角色已创建");
+      setSuccess(t("角色已创建"));
       setError(null);
       form.resetFields();
       setDialogOpen(false);
@@ -193,7 +193,7 @@ export default function AdminRolesPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "创建角色失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("创建角色失败")));
     },
   });
 
@@ -218,7 +218,7 @@ export default function AdminRolesPage() {
       setSuccess("");
     },
     onSuccess: async () => {
-      setSuccess("角色已更新");
+      setSuccess(t("角色已更新"));
       setDialogOpen(false);
       setPermissionDialogOpen(false);
       setEditingRole(null);
@@ -229,7 +229,7 @@ export default function AdminRolesPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "更新角色失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("更新角色失败")));
     },
     onSettled: () => setSavingRoleId(null),
   });
@@ -246,7 +246,7 @@ export default function AdminRolesPage() {
       setSuccess("");
     },
     onSuccess: async () => {
-      setSuccess("角色已删除");
+      setSuccess(t("角色已删除"));
       if (editingRole && deletingRoleId === editingRole.id) {
         setDialogOpen(false);
         setEditingRole(null);
@@ -256,7 +256,7 @@ export default function AdminRolesPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "删除角色失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("删除角色失败")));
     },
     onSettled: () => setDeletingRoleId(null),
   });
@@ -336,7 +336,7 @@ export default function AdminRolesPage() {
 
     const validPattern = /^[a-zA-Z0-9_.-]+$/;
     if (!validPattern.test(trimmedCode)) {
-      return "角色编码只能包含英文字母、数字、下划线、点和短横线";
+      return t("角色编码只能包含英文字母、数字、下划线、点和短横线");
     }
 
     return null;
@@ -359,7 +359,7 @@ export default function AdminRolesPage() {
       );
       return {
         available: !existingRole,
-        message: existingRole ? "角色编码已存在，请更换后重试" : "",
+        message: existingRole ? t("角色编码已存在，请更换后重试") : "",
       };
     } catch {
       return { available: true, message: "" };
@@ -482,7 +482,7 @@ export default function AdminRolesPage() {
         return;
       }
 
-      const nextError = candidate instanceof Error ? candidate.message : "提交失败，请稍后重试";
+      const nextError = candidate instanceof Error ? candidate.message : t("提交失败，请稍后重试");
       setError(new ApiError(nextError));
     }
   }, [checkRoleCodeAvailability, createRoleMutation, editingRole, form, updateRoleMutation, validateRoleCodeFormat]);
@@ -522,7 +522,7 @@ export default function AdminRolesPage() {
         return;
       }
 
-      const nextError = candidate instanceof Error ? candidate.message : "提交失败，请稍后重试";
+      const nextError = candidate instanceof Error ? candidate.message : t("提交失败，请稍后重试");
       setError(new ApiError(nextError));
     }
   }, [editingPermissionRole, menus, permissionForm, updateRoleMutation]);
@@ -724,7 +724,7 @@ export default function AdminRolesPage() {
     const menuLabels = role.menu_ids.length > 0
       ? role.menu_ids.map((menuId) => menuNameById.get(menuId) ?? String(menuId))
       : [];
-    const fullText = menuLabels.length > 0 ? menuLabels.join("、") : "未绑定菜单";
+    const fullText = menuLabels.length > 0 ? menuLabels.join("、") : t("未绑定菜单");
     const moreMenuItems: MenuProps["items"] = [
       {
         key: "view-menus",
@@ -1130,11 +1130,11 @@ export default function AdminRolesPage() {
 
       {canManage && (
         <Modal
-          title={editingRole ? `编辑角色：${editingRole.name}` : "新建角色"}
+          title={editingRole ? `${t("编辑角色")}：${editingRole.name}` : t("新建角色")}
           open={dialogOpen}
           forceRender
           destroyOnHidden
-          okText={editingRole ? "保存修改" : "创建角色"}
+          okText={editingRole ? t("保存修改") : t("创建角色")}
           cancelText={t("取消")}
           confirmLoading={createRoleMutation.isPending || updateRoleMutation.isPending}
           onCancel={closeDialog}
@@ -1193,7 +1193,7 @@ export default function AdminRolesPage() {
       {/* 分配权限：与「编辑角色」拆开的独立入口，只提交 menu_ids / permission_codes */}
       {canManage && (
         <Modal
-          title={editingPermissionRole ? `分配权限：${editingPermissionRole.name}（${editingPermissionRole.code}）` : "分配权限"}
+          title={editingPermissionRole ? `${t("分配权限")}：${editingPermissionRole.name}（${editingPermissionRole.code}）` : t("分配权限")}
           open={permissionDialogOpen}
           forceRender
           destroyOnHidden
