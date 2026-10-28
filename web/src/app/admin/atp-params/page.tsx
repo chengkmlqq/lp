@@ -1133,7 +1133,7 @@ export default function AtpParamsPage() {
               rowKey="id"
               size="small"
               dataSource={trialTowers}
-              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 座杆塔`, size: "default" }}
+              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${t("共 ")}${total}${t(" 座杆塔")}`, size: "default" }}
               locale={{ emptyText: trialLineId ? t("该线路暂无杆塔") : t("请先选择线路") }}
               rowSelection={{
                 selectedRowKeys: trialSelected,

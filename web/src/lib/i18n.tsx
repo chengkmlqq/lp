@@ -727,6 +727,7 @@ export const EN_DICT: Record<string, string> = {
   "地理坐标°": "Geographic Coordinates °",
   "地闪 {row.default_lightning_density ?? \"-\"}": "Ground Flash {row.default_lightning_density ?? \"-\"}",
   "地闪分布数据导入": "Import Ground Flash Distribution Data",
+  " 座杆塔": " towers",
   "地闪密度": "Ground Flash Density",
   "地闪密度 {row.default_lightning_density ?? \"-\"}": "Ground Flash Density {row.default_lightning_density ?? \"-\"}",
   "地闪密度 次/(km^2*年)": "Ground Flash Density strikes/(km²·yr)",

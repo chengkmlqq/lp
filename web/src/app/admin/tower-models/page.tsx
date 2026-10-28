@@ -598,10 +598,10 @@ export default function AdminTowerModelsPage() {
         width: 320,
         render: (_: unknown, row) => (
           <Space size={[8, 4]} wrap>
-            <Tag>接地电阻 {row.default_ground_resistance_ohm ?? "-"}Ω</Tag>
-            <Tag>地闪密度 {row.default_lightning_density ?? "-"}</Tag>
-            <Tag>档距 {row.default_span_small_m ?? "-"} / {row.default_span_large_m ?? "-"}</Tag>
-            <Tag>倾角 {row.default_slope_1 ?? "-"} / {row.default_slope_2 ?? "-"}</Tag>
+            <Tag>{t("接地电阻 ")}{row.default_ground_resistance_ohm ?? "-"}Ω</Tag>
+            <Tag>{t("地闪密度 ")}{row.default_lightning_density ?? "-"}</Tag>
+            <Tag>{t("档距 ")}{row.default_span_small_m ?? "-"} / {row.default_span_large_m ?? "-"}</Tag>
+            <Tag>{t("倾角 ")}{row.default_slope_1 ?? "-"} / {row.default_slope_2 ?? "-"}</Tag>
           </Space>
         ),
       },
@@ -690,9 +690,9 @@ export default function AdminTowerModelsPage() {
 
   const renderDefaultSummary = (row: TowerModelSummary) => (
     <Space size={[4, 4]} wrap>
-      <Tag bordered={false}>接地 {row.default_ground_resistance_ohm ?? "-"}Ω</Tag>
-      <Tag bordered={false}>地闪 {row.default_lightning_density ?? "-"}</Tag>
-      <Tag bordered={false}>档距 {row.default_span_small_m ?? "-"} / {row.default_span_large_m ?? "-"}</Tag>
+      <Tag bordered={false}>{t("接地 ")}{row.default_ground_resistance_ohm ?? "-"}Ω</Tag>
+      <Tag bordered={false}>{t("地闪 ")}{row.default_lightning_density ?? "-"}</Tag>
+      <Tag bordered={false}>{t("档距 ")}{row.default_span_small_m ?? "-"} / {row.default_span_large_m ?? "-"}</Tag>
     </Space>
   );
 
