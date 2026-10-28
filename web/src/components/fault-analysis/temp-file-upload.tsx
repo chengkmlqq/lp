@@ -147,13 +147,14 @@ function PreviewPanel({
   kind: PreviewKind;
   result: ValidationResult;
 }) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
 
   const renderSummary = () => {
     if (kind === "optical_data") {
       const fmt = result.extra?.format as string | undefined;
-      const kindText = result.extra?.kind === "video" ? "视频" : "图片";
-      return <span>媒体文件（{kindText}{fmt ? ` · .${fmt}` : ""}），无需结构校验</span>;
+      const kindText = result.extra?.kind === "video" ? t("视频") : "图片";
+      return <span>{t("媒体文件")}（{kindText}{fmt ? ` · .${fmt}` : ""}），{t("无需结构校验")}</span>;
     }
     if (kind === "traveling_wave") {
       const count = Number(result.extra?.sampleCount ?? result.extra?.rowCount ?? 0) || 0;
@@ -203,7 +204,7 @@ function PreviewPanel({
         <div className="space-y-1">
           <div>识别到 {matchedCount}/16 列</div>
           {missing.length > 0 && (
-            <div className="text-yellow-600">缺失列：{missing.map((key) => LEDGER_FIELD_LABELS[key]).join("、")}</div>
+            <div className="text-yellow-600">{t("缺失列")}：{missing.map((key) => t(LEDGER_FIELD_LABELS[key])).join("、")}</div>
           )}
         </div>
       );
@@ -273,7 +274,7 @@ export function TempFileUpload({
   onChange,
   multiple = false,
   accept,
-  buttonLabel = "选择文件",
+  buttonLabel,
   maxSizeMb,
   previewKind,
   onPdfExtracted,
@@ -331,7 +332,7 @@ export function TempFileUpload({
               ? ({
                   ...it,
                   pdfExtracting: false,
-                  pdfExtractError: response.ok ? null : data?.detail ?? data?.error ?? "提取失败",
+                  pdfExtractError: response.ok ? null : t("提取失败"),
                   pdfExtractResponse: response.ok
                     ? {
                         ok: Boolean(data.ok),
@@ -364,7 +365,7 @@ export function TempFileUpload({
               ? ({
                   ...it,
                   pdfExtracting: false,
-                  pdfExtractError: error instanceof Error ? error.message : "提取失败",
+                  pdfExtractError: error instanceof Error ? error.message : t("提取失败"),
                   pdfExtractResponse: null,
                 } satisfies FaultAnalysisTempFile)
               : it,
@@ -389,7 +390,7 @@ export function TempFileUpload({
           items.map((it) => (it.uid === uid ? { ...it, preview: result, previewing: false } : it)),
         );
       } catch (error) {
-        const text = error instanceof Error ? error.message : "校验失败";
+        const text = error instanceof Error ? error.message : t("校验失败");
         patchValue((items) =>
           items.map((it) =>
             it.uid === uid
@@ -446,7 +447,7 @@ export function TempFileUpload({
           startValidate(item.uid, file);
         })
         .catch((error) => {
-          const text = error instanceof Error ? error.message : "上传失败";
+          const text = error instanceof Error ? error.message : t("上传失败");
           patchValue((items) =>
             items.map((it) =>
               it.uid === item.uid ? { ...it, status: "error", error: text } : it,
@@ -523,7 +524,7 @@ export function TempFileUpload({
       />
       <div className="flex items-center gap-2">
         <Button size="small" icon={<UploadOutlined />} onClick={triggerPicker}>
-          {buttonLabel}
+          {buttonLabel ?? t("选择文件")}
         </Button>
         {trailing}
       </div>
@@ -549,7 +550,7 @@ export function TempFileUpload({
                 )}
                 {item.status === "error" && (
                   <Typography.Text type="danger" style={{ fontSize: 12 }}>
-                    <CloseCircleOutlined /> {item.error || "上传失败"}
+                    <CloseCircleOutlined /> {item.error || t("上传失败")}
                   </Typography.Text>
                 )}
                 <Button type="text" size="small" danger onClick={() => removeItem(item.uid)}>
