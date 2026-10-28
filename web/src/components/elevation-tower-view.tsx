@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { readApiError } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import type {
   ElevationLinkedLineListResponse,
   ElevationLinkedLineSummary,
@@ -45,6 +46,7 @@ export function ElevationTowerView({
     retryOnUnauthorized?: boolean,
   ) => Promise<Response>;
 }) {
+  const { t } = useI18n();
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
 
   // 关联线路列表（作为下拉数据源，同时决定是否显示空状态）

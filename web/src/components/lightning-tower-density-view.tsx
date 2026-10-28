@@ -14,6 +14,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useMemo, useState } from "react";
 
 import { readApiError } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import type {
   LightningLinkedLinesResponse,
   LineTowerListResponse,
@@ -68,6 +69,7 @@ export function TowerDensityView({
   distributionId: string;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
 }) {
+  const { t } = useI18n();
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
 
   // 关联线路列表（数据源 = linked-lines 接口）
