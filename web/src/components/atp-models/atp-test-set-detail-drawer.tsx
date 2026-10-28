@@ -180,14 +180,14 @@ export function AtpTestSetDetailDrawer({
         const raw = (values.params_extra as string)?.trim();
         if (raw) paramsExtra = JSON.parse(raw);
       } catch {
-        throw new Error("测试参数(高级)不是合法 JSON");
+        throw new Error(t("测试参数(高级)不是合法 JSON"));
       }
       let expectedExtra: Record<string, unknown> = {};
       try {
         const raw = (values.expected_extra as string)?.trim();
         if (raw) expectedExtra = JSON.parse(raw);
       } catch {
-        throw new Error("预期结果(高级)不是合法 JSON");
+        throw new Error(t("预期结果(高级)不是合法 JSON"));
       }
       const body = {
         asset_id: values.asset_id,
@@ -217,12 +217,12 @@ export function AtpTestSetDetailDrawer({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["atp-test-set-cases", set?.id] });
       void queryClient.invalidateQueries({ queryKey: ["atp-test-sets"] });
-      message.success(editingCase ? "用例已更新" : "用例已添加");
+      message.success(editingCase ? t("用例已更新") : "用例已添加");
       setCaseModalOpen(false);
       onChanged();
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "保存用例失败");
+      message.error(error instanceof Error ? error.message : t("保存用例失败"));
     },
   });
 
@@ -236,11 +236,11 @@ export function AtpTestSetDetailDrawer({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["atp-test-set-cases", set?.id] });
       void queryClient.invalidateQueries({ queryKey: ["atp-test-sets"] });
-      message.success("用例已删除");
+      message.success(t("用例已删除"));
       onChanged();
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "删除用例失败");
+      message.error(error instanceof Error ? error.message : t("删除用例失败"));
     },
   });
 
@@ -279,7 +279,7 @@ export function AtpTestSetDetailDrawer({
       void queryClient.invalidateQueries({ queryKey: ["atp-test-set-cases", set?.id] });
     },
     onError: (error) => {
-      message.error(error instanceof Error ? error.message : "调整顺序失败");
+      message.error(error instanceof Error ? error.message : t("调整顺序失败"));
     },
   });
 
@@ -304,7 +304,7 @@ export function AtpTestSetDetailDrawer({
         if (!response.ok) throw new Error(await readApiError(response));
         const result = (await response.json()) as AtpTestSetExecuteResponse;
         if (result.launched === 0) {
-          message.warning("执行未启动（0 个用例派发成功）");
+          message.warning(t("执行未启动（0 个用例派发成功）"));
         } else {
           message.success(`已发起 ${result.launched} 个用例执行（批次 ${result.run_id.slice(0, 12)}…）`);
         }
@@ -313,7 +313,7 @@ export function AtpTestSetDetailDrawer({
         onChanged();
         setSelectedCaseIds([]);
       } catch (error) {
-        message.error(error instanceof Error ? error.message : "发起执行失败");
+        message.error(error instanceof Error ? error.message : t("发起执行失败"));
       } finally {
         setExecuting(false);
         setRunOptionsOpen(false);
@@ -340,7 +340,7 @@ export function AtpTestSetDetailDrawer({
         link.remove();
         window.URL.revokeObjectURL(url);
       } catch (error) {
-        message.error(error instanceof Error ? error.message : "报告下载失败");
+        message.error(error instanceof Error ? error.message : t("报告下载失败"));
       }
     },
     [],
@@ -349,7 +349,7 @@ export function AtpTestSetDetailDrawer({
   const caseColumns = useMemo<ColumnsType<AtpTestSetCase>>(
     () => [
       {
-        title: "顺序",
+        title: t("顺序"),
         dataIndex: "sort_order",
         width: 90,
         render: (value: number, row) => (
@@ -378,7 +378,7 @@ export function AtpTestSetDetailDrawer({
         ),
       },
       {
-        title: "用例",
+        title: t("用例"),
         dataIndex: "name",
         width: 150,
         ellipsis: { showTitle: true },
@@ -387,23 +387,23 @@ export function AtpTestSetDetailDrawer({
             <Typography.Text ellipsis={{ tooltip: value || row.id }} style={{ maxWidth: 140 }}>
               {value || row.id}
             </Typography.Text>
-            {!row.enabled ? <Tag>{"已禁用"}</Tag> : null}
+            {!row.enabled ? <Tag>{t("已禁用")}</Tag> : null}
           </Space>
         ),
       },
       {
-        title: "计算类型",
+        title: t("计算类型"),
         dataIndex: "job_kind",
         width: 90,
         render: (value: string) =>
           value === "tongtiao" ? (
-            <Tag color="purple">{"同跳计算"}</Tag>
+            <Tag color="purple">{t("同跳计算")}</Tag>
           ) : (
-            <Tag color="blue">{"普通计算"}</Tag>
+            <Tag color="blue">{t("普通计算")}</Tag>
           ),
       },
       {
-        title: "模型",
+        title: t("模型"),
         dataIndex: "asset_code",
         width: 150,
         ellipsis: { showTitle: true },
@@ -420,7 +420,7 @@ export function AtpTestSetDetailDrawer({
         ),
       },
       {
-        title: "测试参数",
+        title: t("测试参数"),
         key: "params",
         width: 180,
         render: (_, row) => {
@@ -433,13 +433,13 @@ export function AtpTestSetDetailDrawer({
           }
           return (
             <Typography.Text style={{ fontSize: 12 }} type="secondary">
-              {parts.length ? parts.join(" · ") : "默认参数"}
+              {parts.length ? parts.join(" · ") : t("默认参数")}
             </Typography.Text>
           );
         },
       },
       {
-        title: "预期结果",
+        title: t("预期结果"),
         key: "expected",
         width: 120,
         render: (_, row) => {
@@ -456,7 +456,7 @@ export function AtpTestSetDetailDrawer({
         },
       },
       {
-        title: "启用",
+        title: t("启用"),
         dataIndex: "enabled",
         width: 70,
         render: (value: boolean, row) => (
@@ -469,7 +469,7 @@ export function AtpTestSetDetailDrawer({
         ),
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 130,
         fixed: "right" as const,
@@ -487,9 +487,9 @@ export function AtpTestSetDetailDrawer({
                   编辑
                 </Button>
                 <Popconfirm
-                  title={"删除该用例？"}
-                  okText={"删除"}
-                  cancelText={"取消"}
+                  title={t("删除该用例？")}
+                  okText={t("删除")}
+                  cancelText={t("取消")}
                   okButtonProps={{ danger: true }}
                   onConfirm={() => deleteCaseMutation.mutate(row.id)}
                 >
@@ -509,7 +509,7 @@ export function AtpTestSetDetailDrawer({
   const runHistoryColumns = useMemo<ColumnsType<AtpTestSetRunSummary>>(
     () => [
       {
-        title: "批次",
+        title: t("批次"),
         dataIndex: "run_id",
         width: 200,
         ellipsis: { showTitle: true },
@@ -520,26 +520,26 @@ export function AtpTestSetDetailDrawer({
         ),
       },
       {
-        title: "状态",
+        title: t("状态"),
         dataIndex: "status",
         width: 100,
         render: (value: string) =>
           value === "running" || value === "pending" ? (
-            <Tag color="processing">{"运行中"}</Tag>
+            <Tag color="processing">{t("运行中")}</Tag>
           ) : value === "success" ? (
-            <Tag color="green">{"成功"}</Tag>
+            <Tag color="green">{t("成功")}</Tag>
           ) : (
-            <Tag color="red">{"有失败"}</Tag>
+            <Tag color="red">{t("有失败")}</Tag>
           ),
       },
       {
-        title: "总数",
+        title: t("总数"),
         dataIndex: "total_cases",
         width: 70,
         render: (value: number) => value ?? 0,
       },
       {
-        title: "成功/失败",
+        title: t("成功/失败"),
         key: "counts",
         width: 110,
         render: (_, row) => (
@@ -551,7 +551,7 @@ export function AtpTestSetDetailDrawer({
         ),
       },
       {
-        title: "通过率",
+        title: t("通过率"),
         key: "pass",
         width: 90,
         render: (_, row) => {
@@ -565,20 +565,20 @@ export function AtpTestSetDetailDrawer({
         },
       },
       {
-        title: "发起时间",
+        title: t("发起时间"),
         dataIndex: "create_date",
         width: 165,
         render: (value: string) => formatDateTime(value),
       },
       {
-        title: "发起人",
+        title: t("发起人"),
         dataIndex: "create_user",
         width: 100,
         ellipsis: true,
         render: (value: string | null) => value || "-",
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 150,
         fixed: "right" as const,
@@ -625,10 +625,10 @@ export function AtpTestSetDetailDrawer({
             <Space size={8}>
               <span>{set.name}</span>
               <Tag>{set.case_count} 用例</Tag>
-              {set.status === "disabled" ? <Tag>{"已停用"}</Tag> : null}
+              {set.status === "disabled" ? <Tag>{t("已停用")}</Tag> : null}
             </Space>
           ) : (
-            "测试集"
+            <span>{t("测试集")}</span>
           )
         }
         open={open}
@@ -676,8 +676,8 @@ export function AtpTestSetDetailDrawer({
                             onClick={() => setRunOptionsOpen((previous) => !previous)}
                           >
                             {selectedCaseIds.length > 0
-                              ? `勾选 ${selectedCaseIds.length} 个执行`
-                              : "勾选执行"}
+                              ? `${t("勾选")} ${selectedCaseIds.length} ${t("个执行")}`
+                              : t("勾选执行")}
                           </Button>
                         ) : null}
                         <Button
@@ -726,8 +726,8 @@ export function AtpTestSetDetailDrawer({
                           optionType="button"
                           buttonStyle="solid"
                           options={[
-                            { value: false, label: "真实仿真" },
-                            { value: true, label: "试运行(dry-run)" },
+                            { value: false, label: t("真实仿真") },
+                            { value: true, label: t("试运行(dry-run)") },
                           ]}
                         />
                         <Button
@@ -757,7 +757,7 @@ export function AtpTestSetDetailDrawer({
                         emptyText: (
                           <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description={"暂无用例。点击「新增用例」为测试集添加模型与计算类型的测试用例。"}
+                            description={t("暂无用例。点击「新增用例」为测试集添加模型与计算类型的测试用例。")}
                           />
                         ),
                       }}
@@ -785,7 +785,7 @@ export function AtpTestSetDetailDrawer({
                       emptyText: (
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description={"暂无执行记录。点击「执行测试集」发起一次批量仿真测试。"}
+                          description={t("暂无执行记录。点击「执行测试集」发起一次批量仿真测试。")}
                         />
                       ),
                     }}
@@ -799,14 +799,14 @@ export function AtpTestSetDetailDrawer({
 
       {/* 用例编辑弹窗 */}
       <Modal
-        title={editingCase ? "编辑用例" : "新增用例"}
+        title={editingCase ? t("编辑用例") : "新增用例"}
         open={caseModalOpen}
         onCancel={() => setCaseModalOpen(false)}
         onOk={() => void caseForm.submit()}
         confirmLoading={saveCaseMutation.isPending}
         destroyOnHidden
-        okText={saveCaseMutation.isPending ? "提交中..." : editingCase ? "保存" : "添加"}
-        cancelText={"取消"}
+        okText={saveCaseMutation.isPending ? t("提交中...") : editingCase ? t("保存") : "添加"}
+        cancelText={t("取消")}
         width={720}
       >
         <Form
@@ -818,18 +818,18 @@ export function AtpTestSetDetailDrawer({
           <div className="grid gap-x-4 md:grid-cols-2">
             <Form.Item
               name="job_kind"
-              label={"计算类型"}
-              rules={[{ required: true, message: "请选择计算类型" }]}
+              label={t("计算类型")}
+              rules={[{ required: true, message: t("请选择计算类型") }]}
             >
-              <Select options={JOB_KIND_OPTIONS} />
+              <Select options={JOB_KIND_OPTIONS.map((o) => ({ ...o, label: t(o.label) }))} />
             </Form.Item>
-            <Form.Item name="name" label={"用例名称"}>
-              <Input placeholder={"如：普通计算-110kV-反击-酒杯塔（可空）"} maxLength={255} />
+            <Form.Item name="name" label={t("用例名称")}>
+              <Input placeholder={t("如：普通计算-110kV-反击-酒杯塔（可空）")} maxLength={255} />
             </Form.Item>
             <Form.Item
               name="asset_id"
-              label={"ATP 模型"}
-              rules={[{ required: true, message: "请选择模型" }]}
+              label={t("ATP 模型")}
+              rules={[{ required: true, message: t("请选择模型") }]}
               className="md:col-span-2"
             >
               <Select
@@ -837,23 +837,23 @@ export function AtpTestSetDetailDrawer({
                 filterOption={false}
                 onSearch={setAssetKeyword}
                 loading={assetsQuery.isFetching}
-                placeholder={"搜索并选择模型（输入编码/名称过滤）"}
+                placeholder={t("搜索并选择模型（输入编码/名称过滤）")}
                 options={(assetsQuery.data?.items ?? []).map((asset) => ({
                   value: asset.id,
-                  label: `${asset.code} · ${[asset.voltage_level, asset.tower_type, asset.scene_type, asset.arrester_config].filter(Boolean).join("/") || "无维度"}`,
+                  label: `${asset.code} · ${[asset.voltage_level, asset.tower_type, asset.scene_type, asset.arrester_config].filter(Boolean).join("/") || t("无维度")}`,
                 }))}
               />
             </Form.Item>
-            <Form.Item name="current_ka" label={"雷电流(kA)"}>
-              <InputNumber min={0.1} max={500} step={0.5} style={{ width: "100%" }} placeholder={"默认 31"} />
+            <Form.Item name="current_ka" label={t("雷电流(kA)")}>
+              <InputNumber min={0.1} max={500} step={0.5} style={{ width: "100%" }} placeholder={t("默认 31")} />
             </Form.Item>
-            <Form.Item name="scene" label={"场景"}>
-              <Input placeholder={"如 fanji / raoji1（可空，用默认）"} />
+            <Form.Item name="scene" label={t("场景")}>
+              <Input placeholder={t("如 fanji / raoji1（可空，用默认）")} />
             </Form.Item>
-            <Form.Item name="stages" label={"测试阶段"} className="md:col-span-1">
-              <Input placeholder={"materialize,geometry,simulate（留空=全部）"} />
+            <Form.Item name="stages" label={t("测试阶段")} className="md:col-span-1">
+              <Input placeholder={t("materialize,geometry,simulate（留空=全部）")} />
             </Form.Item>
-            <Form.Item name="expected_extra" label={"预期结果(JSON，可选)"} className="md:col-span-2">
+            <Form.Item name="expected_extra" label={t("预期结果(JSON，可选)")} className="md:col-span-2">
               <Input.TextArea
                 rows={2}
                 placeholder='如 {"flashover_count": 2}（回归断言；可空）'
@@ -861,14 +861,14 @@ export function AtpTestSetDetailDrawer({
             </Form.Item>
             <Form.Item
               name="params_extra"
-              label={"测试参数(JSON 高级，可选)"}
+              label={t("测试参数(JSON 高级，可选)")}
               className="md:col-span-2"
               extra='如 {"params_source":"tower","execution_options":{"method_raoji":"egm"}}'
             >
-              <Input.TextArea rows={2} placeholder={"留空则只用上面的常用字段"} />
+              <Input.TextArea rows={2} placeholder={t("留空则只用上面的常用字段")} />
             </Form.Item>
             <Form.Item name="enabled" valuePropName="checked" style={{ marginBottom: 0 }}>
-              <Checkbox defaultChecked>{"启用该用例（执行时默认包含）"}</Checkbox>
+              <Checkbox defaultChecked>{t("启用该用例（执行时默认包含）")}</Checkbox>
             </Form.Item>
           </div>
         </Form>

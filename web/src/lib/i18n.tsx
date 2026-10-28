@@ -537,6 +537,8 @@ export const EN_DICT: Record<string, string> = {
   "加载线路失败": "Failed to load line",
   "动作": "Actions",
   "勾选执行": "Check to Execute",
+  "勾选": "Selected",
+  "个执行": "to run",
   "勾选菜单即授予页面查看权限；展开菜单可勾选查看/管理/运行等操作权限（按钮级）。": "Checking a menu grants page-view permission; expanding a menu lets you check action permissions such as View/Manage/Run (button-level).",
   "匹配杆塔": "Match Tower",
   "匹配条件；留空 = 通配": "Match criteria; leave blank for wildcard",
