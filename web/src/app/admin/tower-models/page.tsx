@@ -135,6 +135,7 @@ function TowerModelImageCell({
   fetchWithAuth,
   onPreviewError,
 }: TowerModelImageCellProps) {
+  const { t } = useI18n();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -201,7 +202,7 @@ function TowerModelImageCell({
         URL.revokeObjectURL(objectUrl);
       }, 60_000);
     } catch (candidate) {
-      const message = candidate instanceof Error ? candidate.message : "图片加载失败";
+      const message = candidate instanceof Error ? candidate.message : t("图片加载失败");
       onPreviewError(message);
     } finally {
       setPreviewing(false);
@@ -232,12 +233,12 @@ function TowerModelImageCell({
           }}
         >
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {loading ? "加载中" : "无预览"}
+            {loading ? t("加载中") : t("无预览")}
           </Typography.Text>
         </div>
       )}
       <Button size="small" onClick={() => void openPreview()} loading={previewing}>
-        查看
+        {t("查看")}
       </Button>
     </Space>
   );
@@ -428,7 +429,7 @@ export default function AdminTowerModelsPage() {
       return "created" as const;
     },
     onSuccess: async (mode) => {
-      setSuccess(mode === "created" ? "杆塔模型已创建" : "杆塔模型已更新");
+      setSuccess(mode === "created" ? t("杆塔模型已创建") : t("杆塔模型已更新"));
       setError("");
       setDialogOpen(false);
       setEditingModel(null);
@@ -436,7 +437,7 @@ export default function AdminTowerModelsPage() {
       await refreshList();
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "保存杆塔模型失败");
+      setError(candidate instanceof Error ? candidate.message : t("保存杆塔模型失败"));
     },
   });
 
@@ -448,19 +449,19 @@ export default function AdminTowerModelsPage() {
       }
     },
     onSuccess: async () => {
-      setSuccess("杆塔模型已删除");
+      setSuccess(t("杆塔模型已删除"));
       setError("");
       await refreshList();
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "删除杆塔模型失败");
+      setError(candidate instanceof Error ? candidate.message : t("删除杆塔模型失败"));
     },
   });
 
   const uploadImageMutation = useMutation({
     mutationFn: async (payload: { modelId: string; mountCode: string }) => {
       if (!tempFileId) {
-        throw new Error("文件尚未上传完成，请等待上传后再确认");
+        throw new Error(t("文件尚未上传完成，请等待上传后再确认"));
       }
       const formData = new FormData();
       formData.append("temp_file_id", tempFileId);
@@ -475,7 +476,7 @@ export default function AdminTowerModelsPage() {
       return (await response.json()) as TowerModelImageUploadResponse;
     },
     onSuccess: async () => {
-      setSuccess("模型图片上传成功");
+      setSuccess(t("模型图片上传成功"));
       setError("");
       setUploadModel(null);
       setSelectedImageFile(null);
@@ -485,7 +486,7 @@ export default function AdminTowerModelsPage() {
       await refreshList();
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "图片上传失败");
+      setError(candidate instanceof Error ? candidate.message : t("图片上传失败"));
     },
   });
 
@@ -620,7 +621,7 @@ export default function AdminTowerModelsPage() {
         dataIndex: "is_enabled",
         width: 80,
         align: "center",
-        render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? "启用" : "禁用"}</Tag>,
+        render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? t("启用") : t("禁用")}</Tag>,
       },
       {
         title: t("排序"),
@@ -695,9 +696,9 @@ export default function AdminTowerModelsPage() {
     </Space>
   );
 
-  const renderTowerModelCard = (row: TowerModelSummary) => {
+  const renderTowerModelCard = (row: TowerModelSummary, t: (s: string) => string) => {
     const rowBusy = isDeletingModel || isSavingModel || isUploadingImage;
-    const statusLabel = row.is_enabled ? "启用" : "禁用";
+    const statusLabel = row.is_enabled ? t("启用") : t("禁用");
     const statusColor = row.is_enabled ? "success" : "default";
 
     const moreMenuItems: MenuProps["items"] = [
@@ -1069,7 +1070,7 @@ export default function AdminTowerModelsPage() {
                 <Row gutter={[12, 12]}>
                   {allLoadedModels.map((row) => (
                     <Col key={row.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                      {renderTowerModelCard(row)}
+                      {renderTowerModelCard(row, t)}
                     </Col>
                   ))}
                 </Row>
@@ -1092,11 +1093,11 @@ export default function AdminTowerModelsPage() {
       </AntCard>
 
       <Modal
-        title={editingModel ? "编辑杆塔模型" : "新建杆塔模型"}
+        title={editingModel ? t("编辑杆塔模型") : t("新建杆塔模型")}
         open={dialogOpen}
         width={720}
         forceRender
-        okText={editingModel ? "保存" : "创建"}
+        okText={editingModel ? t("保存") : t("创建")}
         confirmLoading={saveMutation.isPending}
         onCancel={() => {
           if (saveMutation.isPending) return;
