@@ -212,7 +212,7 @@ export default function AdminDocumentsPage() {
       return response.json();
     },
     onSuccess: () => {
-      setSuccess("章节创建成功");
+      setSuccess(t("章节创建成功"));
       setError(null);
       refreshData();
       setChapterDialogOpen(false);
@@ -220,7 +220,7 @@ export default function AdminDocumentsPage() {
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(new ApiError(candidate.message || "创建章节失败"));
+      setError(new ApiError(candidate.message || t("创建章节失败")));
     },
   });
 
@@ -241,7 +241,7 @@ export default function AdminDocumentsPage() {
       return response.json();
     },
     onSuccess: () => {
-      setSuccess("章节更新成功");
+      setSuccess(t("章节更新成功"));
       setError(null);
       refreshData();
       setChapterDialogOpen(false);
@@ -250,7 +250,7 @@ export default function AdminDocumentsPage() {
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(new ApiError(candidate.message || "更新章节失败"));
+      setError(new ApiError(candidate.message || t("更新章节失败")));
     },
   });
 
@@ -262,13 +262,13 @@ export default function AdminDocumentsPage() {
       if (!response.ok) throw new Error(await readApiError(response));
     },
     onSuccess: () => {
-      setSuccess("章节删除成功");
+      setSuccess(t("章节删除成功"));
       setError(null);
       refreshData();
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(new ApiError(candidate.message || "删除章节失败"));
+      setError(new ApiError(candidate.message || t("删除章节失败")));
     },
   });
 
@@ -283,7 +283,7 @@ export default function AdminDocumentsPage() {
       return response.json();
     },
     onSuccess: () => {
-      setSuccess("文档创建成功");
+      setSuccess(t("文档创建成功"));
       setError(null);
       refreshData();
       setDocumentDrawerOpen(false);
@@ -291,7 +291,7 @@ export default function AdminDocumentsPage() {
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(new ApiError(candidate.message || "创建文档失败"));
+      setError(new ApiError(candidate.message || t("创建文档失败")));
     },
   });
 
@@ -312,7 +312,7 @@ export default function AdminDocumentsPage() {
       return response.json();
     },
     onSuccess: () => {
-      setSuccess("文档更新成功");
+      setSuccess(t("文档更新成功"));
       setError(null);
       refreshData();
       setDocumentDrawerOpen(false);
@@ -321,7 +321,7 @@ export default function AdminDocumentsPage() {
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(new ApiError(candidate.message || "更新文档失败"));
+      setError(new ApiError(candidate.message || t("更新文档失败")));
     },
   });
 
@@ -338,12 +338,12 @@ export default function AdminDocumentsPage() {
       setSuccess("");
     },
     onSuccess: () => {
-      setSuccess("文档删除成功");
+      setSuccess(t("文档删除成功"));
       refreshData();
     },
     onError: (candidate: Error) => {
       setSuccess("");
-      setError(new ApiError(candidate.message || "删除文档失败"));
+      setError(new ApiError(candidate.message || t("删除文档失败")));
     },
     onSettled: () => setDeletingDocumentId(null),
   });
@@ -619,7 +619,7 @@ export default function AdminDocumentsPage() {
       align: "center",
       render: (status: string) => (
         <Tag color={status === "published" ? "green" : "orange"}>
-          {status === "published" ? "已发布" : "草稿"}
+          {status === "published" ? t("已发布") : t("草稿")}
         </Tag>
       ),
     },
@@ -686,7 +686,7 @@ export default function AdminDocumentsPage() {
           <div className="flex flex-shrink-0 items-center gap-2">
             <Badge status={doc.status === "published" ? "success" : "warning"} />
             <Typography.Text type="secondary" className="text-xs">
-              {doc.status === "published" ? "已发布" : "草稿"}
+              {doc.status === "published" ? t("已发布") : t("草稿")}
             </Typography.Text>
           </div>
         </div>
@@ -877,8 +877,8 @@ export default function AdminDocumentsPage() {
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
                       description={
                         treeFilterKeyword.trim()
-                          ? "未找到匹配的章节"
-                          : "未找到符合筛选条件的章节。"
+                          ? t("未找到匹配的章节")
+                          : t("未找到符合筛选条件的章节。")
                       }
                     />
                   )}
@@ -1102,7 +1102,7 @@ export default function AdminDocumentsPage() {
       />
 
       <Modal
-        title={editingChapterId ? "编辑章节" : "新建章节"}
+        title={editingChapterId ? t("编辑章节") : t("新建章节")}
         open={chapterDialogOpen}
         forceRender
         onOk={handleChapterFormSubmit}
@@ -1147,7 +1147,7 @@ export default function AdminDocumentsPage() {
       </Modal>
 
       <Drawer
-        title={editingDocumentId ? "编辑文档" : "新建文档"}
+        title={editingDocumentId ? t("编辑文档") : t("新建文档")}
         width={720}
         open={documentDrawerOpen}
         forceRender
