@@ -181,10 +181,10 @@ async function validateWaveDataFile(file: File, t: (s: string) => string): Promi
         ok: true,
         errors: [],
         warnings: containsChinese
-          ? ["PDF 已识别到文本内容，正在后端自动提取字段并回填表单..."]
+          ? [t("PDF 已识别到文本内容，正在后端自动提取字段并回填表单...")]
           : isScannedPdf
-            ? ["PDF 疑似扫描件，文本层不可用，将尝试 OCR 识别，可能较慢"]
-            : ["PDF 文本层未识别到中文，将交由后端尝试 OCR 提取"],
+            ? [t("PDF 疑似扫描件，文本层不可用，将尝试 OCR 识别，可能较慢")]
+            : [t("PDF 文本层未识别到中文，将交由后端尝试 OCR 提取")],
         fields: {},
         extra: { format: "pdf", containsChinese, isScannedPdf },
       };
