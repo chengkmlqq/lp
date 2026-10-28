@@ -5,6 +5,7 @@ import { Drawer, Empty, Modal, Spin } from "antd";
 
 import { useAuth } from "@/components/auth-provider";
 import { readApiError, API_BASE_URL } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import type { WsTicketResponse } from "@/types/ws";
 
 /**
@@ -38,6 +39,7 @@ export function TaskLogViewerDrawer({
   variant?: "drawer" | "modal";
 }) {
   const { fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState("");
@@ -88,7 +90,7 @@ export function TaskLogViewerDrawer({
             await connectRef.current?.(cancelledRef, taskId);
           } catch (error) {
             if (cancelledRef.current) return;
-            const errorMessage = error instanceof Error ? error.message : "获取日志失败";
+            const errorMessage = error instanceof Error ? error.message : t("获取日志失败");
             setLines([`错误：${errorMessage}`]);
             setLoading(false);
             reconnectRef.current?.(cancelledRef, taskId);
@@ -110,11 +112,11 @@ export function TaskLogViewerDrawer({
       const ticketRes = await fetchWithAuth("/api/v1/ws/ticket", { method: "POST" });
       if (!ticketRes.ok) {
         const errorText = await readApiError(ticketRes);
-        throw new Error(errorText || "获取日志凭证失败");
+        throw new Error(errorText || t("获取日志凭证失败"));
       }
       const ticketPayload = (await ticketRes.json()) as WsTicketResponse;
       if (!ticketPayload.ticket) {
-        throw new Error("获取日志凭证失败");
+        throw new Error(t("获取日志凭证失败"));
       }
 
       // 2. 建立 SSE 连接（EventSource 无法自定义 Authorization header，走 ticket 查询参数）
@@ -232,7 +234,7 @@ export function TaskLogViewerDrawer({
         await connect(cancelledRef, taskId);
       } catch (error) {
         if (cancelledRef.current) return;
-        const errorMessage = error instanceof Error ? error.message : "获取日志失败";
+        const errorMessage = error instanceof Error ? error.message : t("获取日志失败");
         setLines([`错误：${errorMessage}`]);
         setLoading(false);
       }

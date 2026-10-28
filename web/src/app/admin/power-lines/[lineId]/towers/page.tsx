@@ -111,7 +111,7 @@ export default function AdminPowerLineTowersPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setLineError(err instanceof Error ? err.message : "加载线路失败");
+          setLineError(err instanceof Error ? err.message : t("加载线路失败"));
         }
       } finally {
         if (!cancelled) {
@@ -277,10 +277,10 @@ export default function AdminPowerLineTowersPage() {
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!canTowerManage) {
-        throw new Error("缺少 tower.manage 权限");
+        throw new Error(t("缺少 tower.manage 权限"));
       }
       if (!tempFileId) {
-        throw new Error("文件尚未上传完成，请等待上传后再确认导入");
+        throw new Error(t("文件尚未上传完成，请等待上传后再确认导入"));
       }
       const formData = new FormData();
       formData.append("temp_file_id", tempFileId);
@@ -302,7 +302,7 @@ export default function AdminPowerLineTowersPage() {
       await refreshTowers();
     },
     onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "导入失败");
+      messageApi.error(candidate instanceof Error ? candidate.message : t("导入失败"));
     },
   });
 
@@ -327,10 +327,10 @@ export default function AdminPowerLineTowersPage() {
       anchor.click();
       document.body.removeChild(anchor);
       window.URL.revokeObjectURL(url);
-      messageApi.success("导出成功");
+      messageApi.success(t("导出成功"));
     },
     onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "导出失败");
+      messageApi.error(candidate instanceof Error ? candidate.message : t("导出失败"));
     },
   });
 
@@ -387,7 +387,7 @@ export default function AdminPowerLineTowersPage() {
       <div className="flex flex-1 flex-col p-4">
         <Card size="small" className="admin-power-line-detail-meta">
           <Space direction="vertical" size={12}>
-            <Typography.Text type="danger">{lineError || "加载线路失败"}</Typography.Text>
+            <Typography.Text type="danger">{lineError || t("加载线路失败")}</Typography.Text>
           </Space>
         </Card>
       </div>
@@ -424,7 +424,7 @@ export default function AdminPowerLineTowersPage() {
           <Form.Item label={t("塔型")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
             <Select
               value={towerTypeFilter}
-              options={[...TOWER_TYPE_OPTIONS]}
+              options={TOWER_TYPE_OPTIONS.map((opt) => ({ ...opt, label: t(opt.label) }))}
               onChange={(value) => setTowerTypeFilter(value)}
             />
           </Form.Item>
@@ -582,7 +582,7 @@ export default function AdminPowerLineTowersPage() {
       </Modal>
 
       <Drawer
-        title={selectedTowerForDetail ? `杆塔详情 - ${selectedTowerForDetail.tower_no}` : "杆塔详情"}
+        title={selectedTowerForDetail ? `${t("杆塔详情")} - ${selectedTowerForDetail.tower_no}` : t("杆塔详情")}
         open={towerDetailDrawerOpen}
         width={720}
         onClose={closeTowerDetailDrawer}

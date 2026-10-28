@@ -200,7 +200,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "下载失败");
+      message.error(error instanceof Error ? error.message : t("下载失败"));
     }
   };
 
@@ -211,9 +211,9 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
         `/api/v1/atp/test-runs/${detailRunId}/compare`
       );
       await navigator.clipboard.writeText(JSON.stringify(compare, null, 2));
-      message.success("已复制 compare.json（可直接与 C# 侧产物 diff）");
+      message.success(t("已复制 compare.json（可直接与 C# 侧产物 diff）"));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "获取 compare.json 失败");
+      message.error(error instanceof Error ? error.message : t("获取 compare.json 失败"));
     }
   };
 
@@ -257,7 +257,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
         render: (_: unknown, record) => {
           const summary = record.result_summary_json as TestResultSummary | undefined;
           const requested = summary?.requested_stages;
-          return (requested ?? STAGE_ORDER).map((stage) => STAGE_LABEL[stage]).join(" / ");
+          return (requested ?? STAGE_ORDER).map((stage) => t(STAGE_LABEL[stage])).join(" / ");
         },
       },
       {
@@ -324,7 +324,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
             format="YYYY-MM-DD HH:mm:ss"
             value={timeRange}
             onChange={(range) => setTimeRange(range)}
-            placeholder={["开始时间", "结束时间"]}
+            placeholder={[t("开始时间"), t("结束时间")]}
           />
         </Space>
         {canRun ? (
@@ -387,12 +387,12 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
 
             {detailSummary.compare?.params_source ? (
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                参数来源：
+                {t("参数来源：")}
                 {detailSummary.compare.params_source === "template"
-                  ? `模板默认值（链：${(detailSummary.compare.params_diagnostics?.chain ?? []).join(" → ") || "-"}）`
+                  ? `${t("模板默认值（链：")}${(detailSummary.compare.params_diagnostics?.chain ?? []).join(" → ") || "-"}）`
                   : detailSummary.compare.params_source === "line-tower"
-                    ? "线路杆塔（按塔组装）"
-                    : "手工杆塔数据"}
+                    ? t("线路杆塔（按塔组装）")
+                    : t("手工杆塔数据")}
               </Typography.Text>
             ) : null}
 
@@ -423,7 +423,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
                 const result = detailSummary.stages?.[stage];
                 return {
                   key: stage,
-                  label: STAGE_LABEL[stage] ?? stage,
+                  label: t(STAGE_LABEL[stage] ?? stage),
                   children: !result ? (
                     <Typography.Text type="secondary">{t("未执行")}</Typography.Text>
                   ) : result.status === "ok" ? (
@@ -446,7 +446,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
                   size="small"
                   title={
                     <Space size={8}>
-                      <Typography.Text strong>{STAGE_LABEL[stage]}</Typography.Text>
+                      <Typography.Text strong>{t(STAGE_LABEL[stage])}</Typography.Text>
                       {result.status === "ok" ? (
                         <Tag color="green">{t("通过")}</Tag>
                       ) : result.status === "failed" ? (

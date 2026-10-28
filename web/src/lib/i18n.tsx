@@ -1544,6 +1544,7 @@ export const EN_DICT: Record<string, string> = {
   "模板规则": "Template Rules",
   "模板详情": "Template Details",
   "模板默认值": "Template Default Values",
+  "模板默认值（链：": "Template default (chain: ",
   "模板默认值不完整时仍继续": "Continue Even If Template Defaults Are Incomplete",
   "橙色": "Orange",
   "正在初始化会话": "Initializing Session...",

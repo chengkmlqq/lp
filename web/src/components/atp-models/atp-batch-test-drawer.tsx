@@ -160,7 +160,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
       setBatch(data);
       setPolling(true);
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "批量测试发起失败");
+      setSubmitError(error instanceof Error ? error.message : t("批量测试发起失败"));
     } finally {
       setSubmitting(false);
     }
@@ -183,7 +183,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "报告下载失败");
+      message.error(error instanceof Error ? error.message : t("报告下载失败"));
     }
   };
 
@@ -218,7 +218,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
       width: 90,
       render: (v: AtpAssetRunStatus) => {
         const meta = STATUS_TAG[v] ?? { color: "default", text: v };
-        return <Tag color={meta.color}>{meta.text}</Tag>;
+        return <Tag color={meta.color}>{t(meta.text)}</Tag>;
       },
     },
     {
