@@ -2628,6 +2628,7 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "绝缘": "Insulation",
   "卡片库（点击添加）": "Card Library (Click to Add)",
   "已配置卡片": "Configured Cards",
+  "分辨率": "Resolution",
 };
 
 // ─────────────────────────── Context ───────────────────────────

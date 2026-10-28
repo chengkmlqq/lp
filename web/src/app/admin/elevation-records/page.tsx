@@ -193,7 +193,7 @@ function formatFileSize(bytes: number): string {
 
 type ParseStatusInfo = { label: string; color: "success" | "processing" | "error" };
 
-function computedParseStatus(record: ElevationFileRecordSummary): ParseStatusInfo {
+function computedParseStatus(record: ElevationFileRecordSummary, t: (s: string) => string): ParseStatusInfo {
   const { analysis_status, terrain_status, status } = record;
 
   // Any failed/disabled → 失败
@@ -202,24 +202,24 @@ function computedParseStatus(record: ElevationFileRecordSummary): ParseStatusInf
     terrain_status === "failed" ||
     status === "disabled"
   ) {
-    return { label: "失败", color: "error" };
+    return { label: t("失败"), color: "error" };
   }
 
   // 分析任务进行中（含排队未开始）→ 处理中
   const activeAnalysisStates = ["running", "queued", "pending", "processing"];
   if (activeAnalysisStates.includes(analysis_status)) {
-    return { label: "处理中", color: "processing" };
+    return { label: t("处理中"), color: "processing" };
   }
 
   // 地形瓦片构建链已下线（LP-457）：新建记录 terrain_status 默认 "pending" 且永不推进，
   // 不再视为处理中；仅历史遗留的真实进行中构建（processing/running）保持处理中
   const activeTerrainStates = ["processing", "running"];
   if (activeTerrainStates.includes(terrain_status)) {
-    return { label: "处理中", color: "processing" };
+    return { label: t("处理中"), color: "processing" };
   }
 
   // Otherwise → 成功（含分析完成且地形就绪/不支持等正常状态）
-  return { label: "成功", color: "success" };
+  return { label: t("成功"), color: "success" };
 }
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
@@ -324,7 +324,7 @@ export default function ElevationRecordsPage() {
   const uploadMutation = useMutation({
     mutationFn: async (values: UploadFormValues) => {
       if (!tempFileId) {
-        throw new Error("文件尚未上传完成，请等待上传后再确认");
+        throw new Error(t("文件尚未上传完成，请等待上传后再确认"));
       }
       const formData = new FormData();
       formData.append("temp_file_id", tempFileId);
@@ -340,14 +340,14 @@ export default function ElevationRecordsPage() {
       return readJsonResponse<ElevationFileRecordUploadResponse>(response);
     },
     onSuccess: () => {
-      messageApi.success("文件上传成功");
+      messageApi.success(t("文件上传成功"));
       setUploadModalOpen(false);
       uploadForm.resetFields();
       resetTempUploadState();
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
-      messageApi.error(readMutationError(error, "上传失败"));
+      messageApi.error(readMutationError(error, t("上传失败")));
     },
   });
 
@@ -422,11 +422,11 @@ export default function ElevationRecordsPage() {
       setDeletingId(id);
     },
     onSuccess: () => {
-      messageApi.success("删除成功");
+      messageApi.success(t("删除成功"));
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
-      messageApi.error(readMutationError(error, "删除失败"));
+      messageApi.error(readMutationError(error, t("删除失败")));
     },
     onSettled: () => setDeletingId(null),
   });
@@ -443,11 +443,11 @@ export default function ElevationRecordsPage() {
       setAnalyzingId(id);
     },
     onSuccess: () => {
-      messageApi.success("分析任务已提交");
+      messageApi.success(t("分析任务已提交"));
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
-      messageApi.error(readMutationError(error, "分析失败"));
+      messageApi.error(readMutationError(error, t("分析失败")));
     },
     onSettled: () => setAnalyzingId(null),
   });
@@ -461,11 +461,11 @@ export default function ElevationRecordsPage() {
       return readJsonResponse<ElevationFileRecordTaskResponse>(response);
     },
     onSuccess: () => {
-      messageApi.success("地形瓦片任务已提交");
+      messageApi.success(t("地形瓦片任务已提交"));
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
-      messageApi.error(readMutationError(error, "地形生成失败"));
+      messageApi.error(readMutationError(error, t("地形生成失败")));
     },
   });
 
@@ -477,7 +477,7 @@ export default function ElevationRecordsPage() {
         record.file_name || "elevation.tif",
       );
     } catch (error) {
-      messageApi.error(readMutationError(error, "下载失败"));
+      messageApi.error(readMutationError(error, t("下载失败")));
     }
   }, [messageApi]);
 
@@ -499,14 +499,14 @@ export default function ElevationRecordsPage() {
       setEditingId(args.id);
     },
     onSuccess: () => {
-      messageApi.success("保存成功");
+      messageApi.success(t("保存成功"));
       setEditModalOpen(false);
       setEditingRecord(null);
       editForm.resetFields();
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
-      messageApi.error(readMutationError(error, "保存失败"));
+      messageApi.error(readMutationError(error, t("保存失败")));
     },
     onSettled: () => setEditingId(null),
   });
@@ -516,7 +516,7 @@ export default function ElevationRecordsPage() {
     mutationFn: async (values: ApplyFormValues) => {
       const lineIds = Array.from(new Set(values.line_ids ?? []));
       if (lineIds.length === 0) {
-        throw new Error("请选择至少一条线路");
+        throw new Error(t("请选择至少一条线路"));
       }
       const failed: Array<{ line_id: string; detail: string }> = [];
       for (const lineId of lineIds) {
@@ -536,7 +536,7 @@ export default function ElevationRecordsPage() {
         } catch (error) {
           failed.push({
             line_id: lineId,
-            detail: error instanceof Error && error.message ? error.message : "请求失败",
+            detail: error instanceof Error && error.message ? error.message : t("请求失败"),
           });
         }
       }
@@ -555,7 +555,7 @@ export default function ElevationRecordsPage() {
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
     },
     onError: (error) => {
-      messageApi.error(readMutationError(error, "创建任务失败"));
+      messageApi.error(readMutationError(error, t("创建任务失败")));
     },
   });
 
@@ -744,7 +744,7 @@ export default function ElevationRecordsPage() {
       key: "parse_status",
       width: 120,
       render: (_value, record) => {
-        const { label, color } = computedParseStatus(record);
+        const { label, color } = computedParseStatus(record, t);
         return <Tag color={color}>{label}</Tag>;
       },
     },
@@ -839,7 +839,7 @@ export default function ElevationRecordsPage() {
     const deleting = deleteMutation.isPending && deletingId === record.id;
     const editing = editMutation.isPending && editingId === record.id;
     const rowBusy = analyzing || deleting || editing;
-    const recordStatus = computedParseStatus(record);
+    const recordStatus = computedParseStatus(record, t);
     // 分析生命周期：queued（已提交）→ running（执行中）→ success/failed；
     // 进行中即展示底部进度条（分析无增量进度数据，用全宽动画条表示处理中）
     const showProgress = ["queued", "running", "processing"].includes(record.analysis_status) ||
@@ -875,7 +875,7 @@ export default function ElevationRecordsPage() {
             </div>
             <div className="flex items-center gap-2">
               <AppstoreOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">分辨率：{record.resolution_m ? `${record.resolution_m.toFixed(1)} m` : "-"}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">{t("分辨率")}：{record.resolution_m ? `${record.resolution_m.toFixed(1)} m` : "-"}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <NumberOutlined className="text-xs text-gray-500" />
@@ -1199,7 +1199,7 @@ export default function ElevationRecordsPage() {
 
       {/* 编辑文件记录 Modal（来源/分辨率/备注） */}
       <Modal
-        title={editingRecord ? `编辑文件 - ${editingRecord.file_name}` : "编辑文件"}
+        title={editingRecord ? `${t("编辑文件")} - ${editingRecord.file_name}` : t("编辑文件")}
         open={editModalOpen}
         onCancel={closeEditModal}
         onOk={() => editForm.submit()}
@@ -1247,7 +1247,7 @@ export default function ElevationRecordsPage() {
           <Form.Item label={t("选择线路")} name="line_ids" rules={[{ required: true, message: t("请至少选择一条线路") }]}>
             <Select
               mode="multiple"
-              placeholder={coverageLoading ? "正在预检线路可回填杆塔…" : "请选择线路（无可回填杆塔的线路已置灰）"}
+              placeholder={coverageLoading ? t("正在预检线路可回填杆塔…") : t("请选择线路（无可回填杆塔的线路已置灰）")}
               showSearch
               optionFilterProp="label"
               loading={coverageLoading}
