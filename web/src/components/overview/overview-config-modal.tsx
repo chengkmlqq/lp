@@ -126,21 +126,21 @@ export function OverviewConfigModal({
       }
     >
       <Divider orientation="left" plain>
-        卡片库（点击添加）
+        {t("卡片库（点击添加）")}
       </Divider>
       <div className="flex flex-wrap gap-2">
         {(Object.keys(WIDGET_TYPE_META) as OverviewWidgetType[]).map((type) => (
           <Button key={type} size="small" onClick={() => addWidget(type)}>
-            + {WIDGET_TYPE_META[type].label}
+            + {t(WIDGET_TYPE_META[type].label)}
             <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
-              {WIDGET_TYPE_META[type].hint}
+              {t(WIDGET_TYPE_META[type].hint)}
             </Text>
           </Button>
         ))}
       </div>
 
       <Divider orientation="left" plain>
-        已配置卡片（{draft.length}）
+        {t("已配置卡片")}（{draft.length}）
       </Divider>
 
       {draft.length === 0 ? (
@@ -161,19 +161,19 @@ export function OverviewConfigModal({
                     ↓
                   </Button>
                 </Space>
-                <Tag color="blue">{WIDGET_TYPE_META[widget.type]?.label ?? widget.type}</Tag>
+                <Tag color="blue">{WIDGET_TYPE_META[widget.type]?.label ? t(WIDGET_TYPE_META[widget.type].label) : widget.type}</Tag>
                 <Input
                   size="small"
                   style={{ width: 180 }}
                   value={widget.title ?? ""}
-                  placeholder={widgetDefaultTitle(widget.type)}
+                  placeholder={widgetDefaultTitle(widget.type, t)}
                   onChange={(event) => patchWidget(index, { title: event.target.value || null })}
                 />
                 <Select
                   size="small"
                   style={{ width: 90 }}
                   value={widget.span}
-                  options={SPAN_OPTIONS}
+                  options={SPAN_OPTIONS.map((opt) => ({ ...opt, label: t(opt.label) }))}
                   onChange={(span) => patchWidget(index, { span })}
                 />
                 <Popconfirm title={t("删除该卡片？")} onConfirm={() => removeAt(index)} okText={t("删除")} cancelText={t("取消")}>

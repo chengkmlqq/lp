@@ -2626,6 +2626,8 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "接地": "Grounding",
   "最终风险": "Final Risk",
   "绝缘": "Insulation",
+  "卡片库（点击添加）": "Card Library (Click to Add)",
+  "已配置卡片": "Configured Cards",
 };
 
 // ─────────────────────────── Context ───────────────────────────

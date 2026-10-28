@@ -65,8 +65,9 @@ export const WIDGET_TYPE_META: Record<OverviewWidgetType, { label: string; defau
   quick_links: { label: "快捷入口", defaultTitle: "快捷入口", hint: "自定义常用页面链接" },
 };
 
-export function widgetDefaultTitle(type: OverviewWidgetType): string {
-  return WIDGET_TYPE_META[type]?.defaultTitle ?? "卡片";
+export function widgetDefaultTitle(type: OverviewWidgetType, t: (s: string) => string = (s) => s): string {
+  const meta = WIDGET_TYPE_META[type];
+  return meta ? t(meta.defaultTitle) : t("卡片");
 }
 
 function AssetStatsCard({ widget, data }: { widget: OverviewWidget; data: OverviewData }) {
@@ -102,24 +103,26 @@ function AssetStatsCard({ widget, data }: { widget: OverviewWidget; data: Overvi
 }
 
 function TaskSummaryCard({ data }: { data: OverviewData }) {
+  const { t } = useI18n();
   return (
     <Row gutter={[16, 16]}>
       <Col xs={12} sm={8} md={4}>
-        <Statistic title={"历史任务总数"} value={data.tasks.total} />
+        <Statistic title={t("历史任务总数")} value={data.tasks.total} />
       </Col>
       <Col xs={12} sm={8} md={4}>
-        <Statistic title={"队列积压任务数"} value={data.tasks.queue_pending_total} />
+        <Statistic title={t("队列积压任务数")} value={data.tasks.queue_pending_total} />
       </Col>
       <Col xs={12} sm={8} md={4}>
-        <Statistic title={"定时任务数"} value={data.tasks.scheduled_tasks} />
+        <Statistic title={t("定时任务数")} value={data.tasks.scheduled_tasks} />
       </Col>
     </Row>
   );
 }
 
 function TaskStatesCard({ data }: { data: OverviewData }) {
+  const { t } = useI18n();
   if (data.tasks.state_buckets.length === 0) {
-    return <Text type="secondary">{"暂无任务历史记录"}</Text>;
+    return <Text type="secondary">{t("暂无任务历史记录")}</Text>;
   }
   return (
     <div className="flex flex-wrap gap-2">
@@ -138,9 +141,10 @@ interface QuickLinkItem {
 }
 
 function QuickLinksCard({ widget }: { widget: OverviewWidget }) {
+  const { t } = useI18n();
   const links = (Array.isArray(widget.props.links) ? widget.props.links : []) as QuickLinkItem[];
   if (links.length === 0) {
-    return <Text type="secondary">{"尚未配置快捷入口"}</Text>;
+    return <Text type="secondary">{t("尚未配置快捷入口")}</Text>;
   }
   return (
     <div className="flex flex-wrap gap-2">
