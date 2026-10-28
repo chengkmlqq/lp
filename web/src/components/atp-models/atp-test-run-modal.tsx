@@ -136,7 +136,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
       const data: { items: TowerOption[] } = await response.json();
       setTowers(data.items ?? []);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "加载杆塔失败");
+      message.error(error instanceof Error ? error.message : t("加载杆塔失败"));
     } finally {
       setTowersLoading(false);
     }
@@ -170,7 +170,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
     }
     if (paramsSource === "line-tower") {
       if (selectedTowerIds.length === 0) {
-        message.warning("请先选择线路并勾选至少一根杆塔");
+        message.warning(t("请先选择线路并勾选至少一根杆塔"));
         return;
       }
       const payload: AtpAssetTestRunRequest = {
@@ -204,11 +204,11 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
     setSubmitting(true);
     try {
       const run = await postJson<AtpAssetRunDetail>(`/api/v1/atp/assets/${asset.id}/test-runs`, payload);
-      message.success(dryRun ? "已发起试跑（只列命令，不执行）" : "测试已发起");
+      message.success(dryRun ? t("已发起试跑（只列命令，不执行）") : t("测试已发起"));
       onCreated(run);
       onClose();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "发起测试失败");
+      message.error(error instanceof Error ? error.message : t("发起测试失败"));
     } finally {
       setSubmitting(false);
     }
@@ -335,7 +335,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
                 size="small"
                 dataSource={towers}
                 pagination={{ pageSize: 8, showSizeChanger: true, showTotal: (total) => `共 ${total} 座杆塔` }}
-                locale={{ emptyText: lineId ? "该线路暂无杆塔" : "请先选择线路" }}
+                locale={{ emptyText: lineId ? t("该线路暂无杆塔") : t("请先选择线路") }}
                 rowSelection={{
                   type: "radio",
                   selectedRowKeys: selectedTowerIds,

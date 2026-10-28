@@ -1543,6 +1543,7 @@ export const EN_DICT: Record<string, string> = {
   "模板名称，如：猫头型 · 220kV": "Template name, e.g. Owl Type · 220kV",
   "模板规则": "Template Rules",
   "模板详情": "Template Details",
+  "支持 Markdown，例如：\n# 标题\n- 列表项\n**重点内容**\n[链接](https://example.com)": "Supports Markdown, e.g.\n# Heading\n- List item\n**Bold content**\n[Link](https://example.com)",
   "模板默认值": "Template Default Values",
   "模板默认值（链：": "Template default (chain: ",
   "模板默认值不完整时仍继续": "Continue Even If Template Defaults Are Incomplete",

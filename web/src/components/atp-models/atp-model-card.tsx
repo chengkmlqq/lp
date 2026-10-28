@@ -42,18 +42,18 @@ function formatDimension(
   return map?.get(value) ?? value;
 }
 
-function assetBadgeStatus(status: AtpAssetStatus): { badge: "success" | "processing" | "error" | "warning" | "default"; text: string } {
+function assetBadgeStatus(status: AtpAssetStatus, t: (s: string) => string): { badge: "success" | "processing" | "error" | "warning" | "default"; text: string } {
   switch (status) {
     case "processing":
-      return { badge: "processing", text: "处理中" };
+      return { badge: "processing", text: t("处理中") };
     case "disabled":
-      return { badge: "error", text: "已停用" };
+      return { badge: "error", text: t("已停用") };
     case "archived":
-      return { badge: "warning", text: "已归档" };
+      return { badge: "warning", text: t("已归档") };
     case "draft":
-      return { badge: "default", text: "草稿" };
+      return { badge: "default", text: t("草稿") };
     default:
-      return { badge: "success", text: "正常" };
+      return { badge: "success", text: t("正常") };
   }
 }
 
@@ -84,7 +84,7 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
     });
   }, [deleteLoading, onDelete, asset.id]);
 
-  const { badge: statusBadge, text: statusText } = assetBadgeStatus(asset.status);
+  const { badge: statusBadge, text: statusText } = assetBadgeStatus(asset.status, t);
 
   return (
     <Card
@@ -131,7 +131,7 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
             <div />
           )}
           <Space size="small" className="shrink-0">
-            <Tooltip title={canTest ? "模型测试" : "缺少测试权限（需要 atp.run / atp.manage）"}>
+            <Tooltip title={canTest ? t("模型测试") : t("缺少测试权限（需要 atp.run / atp.manage）")}>
               <Button
                 type="text"
                 size="small"

@@ -1114,7 +1114,7 @@ export default function AdminSystemMessagesPage() {
               >
                 <Input.TextArea
                   autoSize={{ minRows: 10, maxRows: 18 }}
-                  placeholder={"支持 Markdown，例如：\n# 标题\n- 列表项\n**重点内容**\n[链接](https://example.com)"}
+                  placeholder={t("支持 Markdown，例如：\n# 标题\n- 列表项\n**重点内容**\n[链接](https://example.com)")}
                 />
               </Form.Item>
 

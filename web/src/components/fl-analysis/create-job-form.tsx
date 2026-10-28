@@ -244,7 +244,7 @@ export function CreateJobForm({
           <Form.Item name="job_type" label={t("任务类型")} rules={[{ required: true, message: t("请选择任务类型") }]}>
             <Select
               loading={dimensionsLoading}
-              options={jobTypeOptions}
+              options={jobTypeOptions.map((opt) => ({ ...opt, label: t(opt.label) }))}
             />
           </Form.Item>
 
@@ -308,25 +308,25 @@ export function CreateJobForm({
               <Form.Item name="fanji_naleishuiping_method" label={t("反击耐雷水平计算方法")} rules={[{ required: true, message: t("请选择反击耐雷水平计算方法") }]}>
                 <Select
                   loading={dimensionsLoading}
-                  options={fanjiNaleishuipingMethodOptions}
+                  options={fanjiNaleishuipingMethodOptions.map((opt) => ({ ...opt, label: t(opt.label) }))}
                 />
               </Form.Item>
               <Form.Item name="raoji_naleishuiping_method" label={t("绕击耐雷水平计算方法")} rules={[{ required: true, message: t("请选择绕击耐雷水平计算方法") }]}>
                 <Select
                   loading={dimensionsLoading}
-                  options={raojiNaleishuipingMethodOptions}
+                  options={raojiNaleishuipingMethodOptions.map((opt) => ({ ...opt, label: t(opt.label) }))}
                 />
               </Form.Item>
               <Form.Item name="fanji_tzl_method" label={t("反击跳闸率计算方法")} rules={[{ required: true, message: t("请选择反击跳闸率计算方法") }]}>
                 <Select
                   loading={dimensionsLoading}
-                  options={fanjiTzlMethodOptions}
+                  options={fanjiTzlMethodOptions.map((opt) => ({ ...opt, label: t(opt.label) }))}
                 />
               </Form.Item>
               <Form.Item name="raoji_tzl_method" label={t("绕击跳闸率计算方法")} rules={[{ required: true, message: t("请选择绕击跳闸率计算方法") }]}>
                 <Select
                   loading={dimensionsLoading}
-                  options={raojiTzlMethodOptions}
+                  options={raojiTzlMethodOptions.map((opt) => ({ ...opt, label: t(opt.label) }))}
                 />
               </Form.Item>
             </div>
@@ -420,7 +420,7 @@ export function CreateJobForm({
           <Form.Item name="altitude_correction" label={t("是否海拔修正")}>
             <Select
               loading={dimensionsLoading}
-              options={altitudeCorrectionOptions}
+              options={altitudeCorrectionOptions.map((opt) => ({ ...opt, label: t(opt.label) }))}
             />
           </Form.Item>
           <Form.Item name="induced_voltage_formula" label={t("感应电压公式")}>
