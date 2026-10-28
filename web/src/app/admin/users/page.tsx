@@ -63,15 +63,15 @@ type ResetPasswordValues = {
   password: string;
 };
 
-function statusLabel(status: string): string {
-  if (status === "active") return "启用";
-  if (status === "disabled") return "禁用";
+function statusLabel(status: string, t: (s: string) => string): string {
+  if (status === "active") return t("启用");
+  if (status === "disabled") return t("禁用");
   return status || "-";
 }
 
 // 状态过滤下拉的选中项/选项以 Tag 展示，颜色与表格状态列保持一致
-function statusTag(value: unknown): ReactNode {
-  return <Tag color={value === "active" ? "green" : "red"}>{statusLabel(String(value ?? ""))}</Tag>;
+function statusTag(value: unknown, t: (s: string) => string): ReactNode {
+  return <Tag color={value === "active" ? "green" : "red"}>{statusLabel(String(value ?? ""), t)}</Tag>;
 }
 
 const USERS_TABLE_MIN_SCROLL_Y = 180;
@@ -246,13 +246,13 @@ export default function AdminUsersPage() {
             tempFileId: createAvatarTempFileId,
           });
         } catch {
-          setError(new ApiError("用户已创建，但 Logo 上传失败，可在编辑中重试"));
+          setError(new ApiError(t("用户已创建，但 Logo 上传失败，可在编辑中重试")));
           setSuccess("");
         } finally {
           setCreateAvatarUploading(false);
         }
       } else {
-        setSuccess("用户已创建");
+        setSuccess(t("用户已创建"));
       }
       setError(null);
       createForm.resetFields();
@@ -266,7 +266,7 @@ export default function AdminUsersPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "创建用户失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("创建用户失败")));
     },
   });
 
@@ -286,11 +286,11 @@ export default function AdminUsersPage() {
       setSuccess("");
     },
     onSuccess: async () => {
-      setSuccess("用户角色已更新");
+      setSuccess(t("用户角色已更新"));
       await refreshData();
     },
     onError: (mutationError) => {
-      setError(new ApiError(mutationError instanceof Error ? mutationError.message : "更新失败"));
+      setError(new ApiError(mutationError instanceof Error ? mutationError.message : t("更新失败")));
     },
     onSettled: () => setSavingUserId(null),
   });
@@ -311,13 +311,13 @@ export default function AdminUsersPage() {
       setSuccess("");
     },
     onSuccess: () => {
-      setSuccess("密码已重置");
+      setSuccess(t("密码已重置"));
       setResetPasswordTarget(null);
       resetPasswordForm.resetFields();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "重置密码失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("重置密码失败")));
     },
     onSettled: () => setResettingUserId(null),
   });
@@ -347,9 +347,9 @@ export default function AdminUsersPage() {
     },
     onSuccess: async (_, variables) => {
       if (variables.payload.status) {
-        setSuccess(variables.payload.status === "active" ? "用户已启用" : "用户已禁用");
+        setSuccess(variables.payload.status === "active" ? t("用户已启用") : t("用户已禁用"));
       } else {
-        setSuccess("用户信息已更新");
+        setSuccess(t("用户信息已更新"));
       }
       setEditingUser(null);
       editUserForm.resetFields();
@@ -357,7 +357,7 @@ export default function AdminUsersPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "更新用户信息失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("更新用户信息失败")));
     },
     onSettled: () => setUpdatingStatusUserId(null),
   });
@@ -374,12 +374,12 @@ export default function AdminUsersPage() {
       setSuccess("");
     },
     onSuccess: async () => {
-      setSuccess("用户已删除");
+      setSuccess(t("用户已删除"));
       await refreshData();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "删除用户失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("删除用户失败")));
     },
     onSettled: () => setDeletingUserId(null),
   });
@@ -401,13 +401,13 @@ export default function AdminUsersPage() {
       setUploadingAvatarUserId(userId);
     },
     onSuccess: (updatedUser) => {
-      setSuccess("头像已更新");
+      setSuccess(t("头像已更新"));
       // 同步更新编辑弹窗快照，使弹窗头像即时刷新
       setEditingUser((prev) => (prev ? { ...prev, ...updatedUser } : prev));
       void refreshData();
     },
     onError: (candidate) => {
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "上传头像失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("上传头像失败")));
     },
     onSettled: () => setUploadingAvatarUserId(null),
   });
@@ -461,7 +461,7 @@ export default function AdminUsersPage() {
               avatarUploadMutation.mutate({ userId: editingUser.id, tempFileId: payload.temp_file_id });
             }
           } catch {
-            const detail = "上传成功但响应解析失败，请重新选择文件";
+            const detail = t("上传成功但响应解析失败，请重新选择文件");
             if (mode === "create") {
               setCreateAvatarUploadError(detail);
             } else {
@@ -484,7 +484,7 @@ export default function AdminUsersPage() {
         }
       };
       xhr.onerror = () => {
-        const detail = "网络异常，上传失败";
+        const detail = t("网络异常，上传失败");
         if (mode === "create") {
           setCreateAvatarUploadError(detail);
         } else {
@@ -492,7 +492,7 @@ export default function AdminUsersPage() {
         }
       };
       xhr.onabort = () => {
-        const detail = "上传已取消";
+        const detail = t("上传已取消");
         if (mode === "create") {
           setCreateAvatarUploadError(detail);
         } else {
@@ -513,7 +513,7 @@ export default function AdminUsersPage() {
 
     const validPattern = /^[a-zA-Z0-9_]+$/;
     if (!validPattern.test(trimmedId)) {
-      return "用户 ID 只能包含英文字母、数字和下划线";
+      return t("用户 ID 只能包含英文字母、数字和下划线");
     }
 
     return null;
@@ -580,7 +580,7 @@ export default function AdminUsersPage() {
     setSuccess("");
 
     if (selectedCreateAvatarFile && !createAvatarTempFileId) {
-      setError(new ApiError(createAvatarUploadError || "Logo 上传尚未完成，请等待上传完成后再创建用户"));
+      setError(new ApiError(createAvatarUploadError || t("Logo 上传尚未完成，请等待上传完成后再创建用户")));
       return;
     }
 
@@ -610,11 +610,11 @@ export default function AdminUsersPage() {
     const candidateUsername = payload.username.toLowerCase();
 
     if (candidateEmail && existingEmails.has(candidateEmail)) {
-      setError(new ApiError("邮箱已存在，请更换后重试"));
+      setError(new ApiError(t("邮箱已存在，请更换后重试")));
       return;
     }
     if (existingUsernames.has(candidateUsername)) {
-      setError(new ApiError("用户名已存在，请更换后重试"));
+      setError(new ApiError(t("用户名已存在，请更换后重试")));
       return;
     }
 
@@ -722,7 +722,7 @@ export default function AdminUsersPage() {
     }
 
     if (Object.keys(payload).length === 0) {
-      setSuccess("未检测到变更");
+      setSuccess(t("未检测到变更"));
       closeEditUserModal();
       return;
     }
@@ -981,7 +981,7 @@ export default function AdminUsersPage() {
       width: 100,
       align: "center",
       render: (value: string) => (
-        <Tag color={value === "active" ? "green" : "red"}>{statusLabel(value)}</Tag>
+        <Tag color={value === "active" ? "green" : "red"}>{statusLabel(value, t)}</Tag>
       ),
     },
     {
@@ -1011,11 +1011,11 @@ export default function AdminUsersPage() {
           },
           {
             key: "toggle-status",
-            label: row.status === "active" ? "禁用" : "启用",
+            label: row.status === "active" ? t("禁用") : t("启用"),
             disabled: rowBusy || row.id === user?.id,
             onClick: () => {
               if (row.id === user?.id) {
-                setError(new ApiError("不能修改当前登录账号的状态"));
+                setError(new ApiError(t("不能修改当前登录账号的状态")));
                 return;
               }
               const nextStatus: "active" | "disabled" = row.status === "active" ? "disabled" : "active";
@@ -1101,12 +1101,12 @@ export default function AdminUsersPage() {
       },
       {
         key: "toggle-status",
-        label: userItem.status === "active" ? "禁用" : "启用",
+        label: userItem.status === "active" ? t("禁用") : t("启用"),
         disabled: rowBusy || userItem.id === user?.id,
         onClick: (info) => {
           info.domEvent?.stopPropagation();
           if (userItem.id === user?.id) {
-            setError(new ApiError("不能修改当前登录账号的状态"));
+            setError(new ApiError(t("不能修改当前登录账号的状态")));
             return;
           }
           const nextStatus: "active" | "disabled" = userItem.status === "active" ? "disabled" : "active";
@@ -1127,7 +1127,7 @@ export default function AdminUsersPage() {
           <Typography.Text strong className="truncate flex-1">{userItem.username}</Typography.Text>
           <div className="flex flex-shrink-0 items-center gap-2">
             <Badge status={userItem.status === "active" ? "success" : "error"} />
-            <Typography.Text type="secondary" className="text-xs">{statusLabel(userItem.status)}</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs">{statusLabel(userItem.status, t)}</Typography.Text>
           </div>
         </div>
         <Space direction="vertical" size={10} style={{ width: "100%" }} className="px-4 py-3">
@@ -1265,8 +1265,8 @@ export default function AdminUsersPage() {
                         { value: "active", label: t("已启用") },
                         { value: "disabled", label: t("已禁用") },
                       ]}
-                      labelRender={(props) => statusTag(props.value)}
-                      optionRender={(option) => statusTag(option.value)}
+                      labelRender={(props) => statusTag(props.value, t)}
+                      optionRender={(option) => statusTag(option.value, t)}
                       onChange={(value) => {
                         setStatusFilter(value);
                         setPagination((prev) => ({ ...prev, current: 1 }));
@@ -1310,8 +1310,8 @@ export default function AdminUsersPage() {
                         { value: "active", label: t("已启用") },
                         { value: "disabled", label: t("已禁用") },
                       ]}
-                      labelRender={(props) => statusTag(props.value)}
-                      optionRender={(option) => statusTag(option.value)}
+                      labelRender={(props) => statusTag(props.value, t)}
+                      optionRender={(option) => statusTag(option.value, t)}
                       onChange={(value) => {
                         setStatusFilter(value);
                         setPagination((prev) => ({ ...prev, current: 1 }));
@@ -1530,7 +1530,7 @@ export default function AdminUsersPage() {
       </Modal>
 
       <Modal
-        title={editingUser ? `编辑用户：${editingUser.username}` : "编辑用户"}
+        title={editingUser ? `${t("编辑用户")}：${editingUser.username}` : t("编辑用户")}
         open={!!editingUser}
         destroyOnHidden
         onCancel={closeEditUserModal}
@@ -1632,7 +1632,7 @@ export default function AdminUsersPage() {
       </Modal>
 
       <Modal
-        title={resetPasswordTarget ? `重置密码：${resetPasswordTarget.username}` : "重置密码"}
+        title={resetPasswordTarget ? `${t("重置密码")}：${resetPasswordTarget.username}` : t("重置密码")}
         open={!!resetPasswordTarget}
         destroyOnHidden
         onCancel={closeResetPasswordModal}
@@ -1666,7 +1666,7 @@ export default function AdminUsersPage() {
       </Modal>
 
       <Modal
-        title={assigningRolesUser ? `分配角色：${assigningRolesUser.username}` : "分配角色"}
+        title={assigningRolesUser ? `${t("分配角色")}：${assigningRolesUser.username}` : t("分配角色")}
         open={!!assigningRolesUser}
         destroyOnHidden
         onCancel={closeAssignRolesModal}
