@@ -491,13 +491,13 @@ export default function AdminMenusPage() {
       setSuccess("");
     },
     onSuccess: async () => {
-      setSuccess("菜单已创建");
+      setSuccess(t("菜单已创建"));
       closeDialog();
       await refreshData();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "创建菜单失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("创建菜单失败")));
     },
   });
 
@@ -520,9 +520,9 @@ export default function AdminMenusPage() {
     },
     onSuccess: async (_, variables) => {
       if (variables.payload.status && Object.keys(variables.payload).length === 1) {
-        setSuccess(variables.payload.status === "enabled" ? "菜单已启用" : "菜单已禁用");
+        setSuccess(variables.payload.status === "enabled" ? t("菜单已启用") : t("菜单已禁用"));
       } else {
-        setSuccess("菜单已更新");
+        setSuccess(t("菜单已更新"));
         closeDialog();
       }
       await refreshData();
@@ -530,8 +530,8 @@ export default function AdminMenusPage() {
     onError: (candidate, variables) => {
       setSuccess("");
       const fallbackMessage = variables.payload.status && Object.keys(variables.payload).length === 1
-        ? "菜单状态更新失败"
-        : "更新菜单失败";
+        ? t("菜单状态更新失败")
+        : t("更新菜单失败");
       setError(new ApiError(candidate instanceof Error ? candidate.message : fallbackMessage));
     },
     onSettled: (_data, _error, variables) => {
@@ -555,7 +555,7 @@ export default function AdminMenusPage() {
       setSuccess("");
     },
     onSuccess: async (_, menuId) => {
-      setSuccess("菜单已删除");
+      setSuccess(t("菜单已删除"));
       if (editingMenuId === menuId) {
         closeDialog();
       }
@@ -564,7 +564,7 @@ export default function AdminMenusPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : "菜单删除失败"));
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("菜单删除失败")));
     },
     onSettled: () => setDeletingMenuId(null),
   });
@@ -602,7 +602,7 @@ export default function AdminMenusPage() {
         return;
       }
 
-      const msg = candidate instanceof Error ? candidate.message : "提交失败，请稍后重试";
+      const msg = candidate instanceof Error ? candidate.message : t("提交失败，请稍后重试");
       setError(new ApiError(msg));
     }
   }, [createMenuMutation, editingMenuId, form, updateMenuMutation]);
@@ -685,7 +685,7 @@ export default function AdminMenusPage() {
             <Button size="small" loading={updatingLoading} disabled={menuBusy}
               onClick={() => void updateMenuStatus(record)}
             >
-              {record.status === "enabled" ? "禁用" : "启用"}
+              {record.status === "enabled" ? t("禁用") : t("启用")}
             </Button>
 
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
@@ -734,7 +734,7 @@ export default function AdminMenusPage() {
           <div className="flex flex-shrink-0 items-center gap-2">
             <Badge status={menuItem.status === "enabled" ? "success" : "error"} />
             <Typography.Text type="secondary" className="text-xs">
-              {menuItem.status === "enabled" ? "已启用" : "已禁用"}
+              {menuItem.status === "enabled" ? t("已启用") : t("已禁用")}
             </Typography.Text>
           </div>
         </div>
@@ -775,7 +775,7 @@ export default function AdminMenusPage() {
                                     }}
                                   />
                                 </Tooltip>
-                                <Tooltip title={menuItem.status === "enabled" ? "禁用" : "启用"}>
+                                <Tooltip title={menuItem.status === "enabled" ? t("禁用") : t("启用")}>
                                   <Button
                                     type="text"
                                     size="small"
@@ -979,7 +979,7 @@ export default function AdminMenusPage() {
                   ) : (
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description={treeFilterKeyword.trim() ? "未找到匹配的菜单" : "暂无菜单数据"}
+                      description={treeFilterKeyword.trim() ? t("未找到匹配的菜单") : t("暂无菜单数据")}
                     />
                   )}
                 </div>
@@ -1186,12 +1186,12 @@ export default function AdminMenusPage() {
       />
 
       <Modal
-        title={editingMenu ? `编辑菜单：${editingMenu.name}（${editingMenu.id}）` : editingMenuId ? "编辑菜单" : "新建菜单"}
+        title={editingMenu ? `${t("编辑菜单")}：${editingMenu.name}（${editingMenu.id}）` : editingMenuId ? t("编辑菜单") : t("新建菜单")}
         open={dialogOpen}
         onCancel={closeDialog}
         onOk={() => void submit()}
         confirmLoading={createMenuMutation.isPending || updateMenuMutation.isPending}
-        okText={createMenuMutation.isPending || updateMenuMutation.isPending ? "提交中..." : editingMenuId ? "保存修改" : "创建菜单"}
+        okText={createMenuMutation.isPending || updateMenuMutation.isPending ? t("提交中...") : editingMenuId ? t("保存修改") : t("创建菜单")}
         cancelText={t("取消")}
         destroyOnHidden
         width={760}
