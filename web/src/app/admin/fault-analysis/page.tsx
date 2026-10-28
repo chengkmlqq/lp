@@ -185,7 +185,7 @@ export default function AdminFaultAnalysisPage() {
   // ---- 分析执行日志弹窗（参照雷电流幅值统计页的日志查看） ----
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
-  const [logModalTitle, setLogModalTitle] = useState("任务执行日志");
+  const [logModalTitle, setLogModalTitle] = useState(t("任务执行日志"));
   const [messageApi, contextHolder] = message.useMessage();
   const { modal: modalApi } = App.useApp();
   const [wsProgressMap, setWsProgressMap] = useState<Record<string, { progress: number; status: string; error?: string; step?: string }>>({});
@@ -202,7 +202,7 @@ export default function AdminFaultAnalysisPage() {
   const openLogViewer = useCallback(
     (taskId: string | null | undefined, label: string, title: string) => {
       if (!taskId) {
-        messageApi.warning("该记录暂无分析日志");
+        messageApi.warning(t("该记录暂无分析日志"));
         return;
       }
       setLogModalTaskId(taskId);
@@ -437,7 +437,7 @@ export default function AdminFaultAnalysisPage() {
       if (hasPendingUploads(values.wave_data_file)
         || hasPendingUploads(values.lightning_data_file) || hasPendingUploads(values.ledger_data_file)
         || hasPendingUploads(values.traveling_wave_file) || hasPendingUploads(values.optical_data_file)) {
-        throw new Error("仍有文件在上传中，请等待上传完成后提交");
+        throw new Error(t("仍有文件在上传中，请等待上传完成后提交"));
       }
 
       const formData = new FormData();
@@ -498,7 +498,7 @@ export default function AdminFaultAnalysisPage() {
     await queryClient.refetchQueries({ queryKey: ["/api/v1/fault-analysis"], type: "active" });
     setPagination((prev) => ({ ...prev, current: 1 }));
     setCreateModalOpen(false);
-    messageApi.success("故障分析创建成功");
+    messageApi.success(t("故障分析创建成功"));
   }, [queryClient, messageApi]);
 
   // 点击「新建分析」→ 打开新建分步弹窗（LP-546：参照防雷计算任务新建表单）。
@@ -522,9 +522,9 @@ export default function AdminFaultAnalysisPage() {
             throw new Error(await readApiError(response));
           }
           await queryClient.invalidateQueries({ queryKey: ["/api/v1/fault-analysis"] });
-          messageApi.success("故障分析已删除");
+          messageApi.success(t("故障分析已删除"));
         } catch (error) {
-          messageApi.error(error instanceof Error ? error.message : "删除失败");
+          messageApi.error(error instanceof Error ? error.message : t("删除失败"));
         }
       },
     });
@@ -537,7 +537,7 @@ export default function AdminFaultAnalysisPage() {
     const tabKey = defaultView ? `${record.id}-${defaultView}` : record.id;
     const tabLabel = defaultView
       ? `${record.title || `故障分析 ${record.id.slice(0, 8)}`} - ${
-          defaultView === "process" ? "计算过程" : defaultView === "artifacts" ? "产物" : "报告"
+          defaultView === "process" ? t("计算过程") : defaultView === "artifacts" ? t("产物") : t("报告")
         }`
       : record.title || `故障分析 ${record.id.slice(0, 8)}`;
     setDetailTabs((previous) => {
@@ -661,7 +661,7 @@ export default function AdminFaultAnalysisPage() {
               <Button
                 size="small"
                 onClick={() =>
-                  openLogViewer(row.task_id, "日志", row.title ?? `FA-${row.id.slice(0, 8)}`)
+                  openLogViewer(row.task_id, t("日志"), row.title ?? `FA-${row.id.slice(0, 8)}`)
                 }
               >
                 日志
@@ -767,7 +767,7 @@ export default function AdminFaultAnalysisPage() {
                       message={
                         analysesQuery.error instanceof Error
                           ? analysesQuery.error.message
-                          : "加载失败"
+                          : t("加载失败")
                       }
                     />
                   )}
@@ -821,7 +821,7 @@ export default function AdminFaultAnalysisPage() {
                           onDelete={canFaultDelete ? handleDelete : undefined}
                           onLog={(id) => {
                             const record = analyses.find((item) => item.id === id);
-                            openLogViewer(record?.task_id, "分析日志", record?.title ?? "");
+                            openLogViewer(record?.task_id, t("分析日志"), record?.title ?? "");
                           }}
                         />
                       </div>
@@ -871,7 +871,7 @@ export default function AdminFaultAnalysisPage() {
           mode="create"
           submitRequest={submitCreate}
           onSuccess={handleCreateSuccess}
-          onError={(error) => messageApi.error(error instanceof Error ? error.message : "创建失败")}
+          onError={(error) => messageApi.error(error instanceof Error ? error.message : t("创建失败"))}
           onSubmittingChange={setFormModalSubmitting}
           open={createModalOpen}
         />
