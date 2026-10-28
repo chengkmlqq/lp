@@ -304,7 +304,7 @@ export default function AdminPowerLinesPage() {
   const saveLineMutation = useMutation({
     mutationFn: async (values: LineFormValues) => {
       if (!canLineManage) {
-        throw new Error("缺少 line.manage 权限");
+        throw new Error(t("缺少 line.manage 权限"));
       }
       const payload = {
         name: values.name.trim(),
@@ -337,7 +337,7 @@ export default function AdminPowerLinesPage() {
     },
     onSuccess: async ({ mode, line }) => {
       setError("");
-      messageApi.success(mode === "created" ? "线路已创建，已进入杆塔列表" : "线路已更新");
+      messageApi.success(mode === "created" ? t("线路已创建，已进入杆塔列表") : t("线路已更新"));
       setLineModalOpen(false);
       setEditingLine(null);
       lineForm.resetFields();
@@ -348,7 +348,7 @@ export default function AdminPowerLinesPage() {
       }
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "保存线路失败");
+      setError(candidate instanceof Error ? candidate.message : t("保存线路失败"));
     },
   });
   const deleteLineMutation = useMutation({
@@ -361,11 +361,11 @@ export default function AdminPowerLinesPage() {
     },
     onSuccess: async () => {
       setError("");
-      messageApi.success("线路已删除");
+      messageApi.success(t("线路已删除"));
       await refreshLines();
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "删除线路失败");
+      setError(candidate instanceof Error ? candidate.message : t("删除线路失败"));
     },
   });
 
@@ -531,7 +531,7 @@ export default function AdminPowerLinesPage() {
                   <Alert
                     type="error"
                     showIcon
-                    message={lineError || "加载失败"}
+                    message={lineError || t("加载失败")}
                     style={{ marginBottom: 16 }}
                   />
                 )}
@@ -634,10 +634,10 @@ export default function AdminPowerLinesPage() {
       />
 
       <Modal
-        title={editingLine ? "编辑线路" : "新建线路"}
+        title={editingLine ? t("编辑线路") : t("新建线路")}
         open={lineModalOpen}
         forceRender
-        okText={editingLine ? "保存" : "创建"}
+        okText={editingLine ? t("保存") : t("创建")}
         confirmLoading={saveLineMutation.isPending}
         onCancel={() => {
           if (saveLineMutation.isPending) return;
@@ -705,7 +705,7 @@ function PowerLineCard({ line, canLineManage, canUpdateLine, canDeleteLine, canM
             <div className="flex flex-shrink-0 items-center gap-2">
               <Badge status={line.status === "processing" ? "processing" : "error"} />
               <Typography.Text type="secondary" className="text-xs">
-                {line.status === "processing" ? "处理中" : "已停用"}
+                {line.status === "processing" ? t("处理中") : t("已停用")}
               </Typography.Text>
             </div>
           )}
@@ -714,7 +714,7 @@ function PowerLineCard({ line, canLineManage, canUpdateLine, canDeleteLine, canM
         <div className="flex flex-col gap-2 px-4 py-3">
           <div className="flex items-center gap-2">
             <ThunderboltOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" className="text-xs">电压等级：{line.voltage_kv ?? "-"} kV</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs">{t("电压等级")}：{line.voltage_kv ?? "-"} kV</Typography.Text>
           </div>
           <div className="flex items-center gap-2">
             <ApartmentOutlined className="text-xs text-gray-500" />
@@ -752,7 +752,7 @@ function PowerLineCard({ line, canLineManage, canUpdateLine, canDeleteLine, canM
                 }}
               />
             </Tooltip>
-            <Tooltip title={canMap === false ? "无地图预览权限" : "预览"}>
+            <Tooltip title={canMap === false ? t("无地图预览权限") : t("预览")}>
               <Button
                 type="text"
                 size="small"
