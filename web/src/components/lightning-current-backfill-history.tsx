@@ -74,17 +74,18 @@ function renderBackfillProgressCell(
   status: string | null | undefined,
   progress: number | null | undefined,
   errorMessage?: string | null,
+  t: (s: string) => string = (s) => s,
 ) {
   const key = status || "pending";
   const meta = BACKFILL_STATUS_META[key] ?? {
-    label: key,
+    label: t(key),
     tagColor: "default",
     progressStatus: "normal" as const,
   };
   const percent = Math.max(0, Math.min(100, Math.round(progress ?? 0)));
   const isActive = key === "pending" || key === "processing";
   const tip =
-    key === "failed" ? errorMessage || "回填失败" : isActive ? `进度 ${percent}%` : undefined;
+    key === "failed" ? errorMessage || t("回填失败") : isActive ? `${t("进度")} ${percent}%` : undefined;
   // 2026-09-27 规范：回填过程中展示进度条；完成/失败后直接展示状态标签
   if (isActive) {
     return (
@@ -203,11 +204,11 @@ function formatNumber(value: number | null | undefined, digits = 3): string {
   return value.toFixed(digits);
 }
 
-function renderAction(action: string) {
+function renderAction(action: string, t: (s: string) => string = (s) => s) {
   if (action === "created") {
-    return <Tag color="blue">{"新建"}</Tag>;
+    return <Tag color="blue">{t("新建")}</Tag>;
   }
-  return <Tag color="orange">{"更新"}</Tag>;
+  return <Tag color="orange">{t("更新")}</Tag>;
 }
 
 function renderDelta(value: number | null | undefined) {
@@ -241,7 +242,7 @@ export function LightningCurrentBackfillHistoryTable({
   // 任务执行日志弹窗（复用通用 TaskLogViewerDrawer，SSE 实时流）
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logTaskId, setLogTaskId] = useState<string | null>(null);
-  const [logTitle, setLogTitle] = useState("任务执行日志");
+  const [logTitle, setLogTitle] = useState(t("任务执行日志"));
   // 幅值模式：筛选关键词（draft 为输入框实时值，keyword 为已生效查询词，
   // 输入过程不触发请求，点「查询」/回车才把 draft 落进查询路径）
   const [keywordDraft, setKeywordDraft] = useState("");
@@ -407,7 +408,7 @@ export function LightningCurrentBackfillHistoryTable({
   const backfillMutation = useMutation({
     mutationFn: async (lineIds: string[]) => {
       if (!canManage) {
-        throw new Error("缺少 lightning.manage 权限");
+        throw new Error(t("缺少 lightning.manage 权限"));
       }
       type SubmitResult =
         | { lineId: string; ok: true; taskId: string }
@@ -458,7 +459,7 @@ export function LightningCurrentBackfillHistoryTable({
       void queryClient.invalidateQueries({ queryKey: ["lightning-currents"] });
     },
     onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "回填失败");
+      messageApi.error(candidate instanceof Error ? candidate.message : t("回填失败"));
     },
   });
 
@@ -466,7 +467,7 @@ export function LightningCurrentBackfillHistoryTable({
   const deleteBackfillMutation = useMutation({
     mutationFn: async (taskId: string) => {
       if (!canManage) {
-        throw new Error("缺少 lightning.manage 权限");
+        throw new Error(t("缺少 lightning.manage 权限"));
       }
       const response = await fetchWithAuth(`/api/v1/lightning-currents/backfill-tasks/${taskId}`, {
         method: "DELETE",
@@ -477,11 +478,11 @@ export function LightningCurrentBackfillHistoryTable({
       return true;
     },
     onSuccess: () => {
-      messageApi.success("回填记录已删除");
+      messageApi.success(t("回填记录已删除"));
       void queryClient.invalidateQueries({ queryKey: ["lightning-currents"] });
     },
     onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "删除回填记录失败");
+      messageApi.error(candidate instanceof Error ? candidate.message : t("删除回填记录失败"));
     },
   });
 
@@ -587,7 +588,7 @@ export function LightningCurrentBackfillHistoryTable({
         key: "progress",
         width: 160,
         render: (_: unknown, row) =>
-          renderBackfillProgressCell(row.status, row.progress, row.error_message),
+          renderBackfillProgressCell(row.status, row.progress, row.error_message, t),
       },
       {
         title: t("操作"),
@@ -602,7 +603,7 @@ export function LightningCurrentBackfillHistoryTable({
                   {
                     key: "log",
                     label: t("日志"),
-                    onClick: () => openLogViewer(row.task_id, row.line_name || row.line_code || "未知线路"),
+                    onClick: () => openLogViewer(row.task_id, row.line_name || row.line_code || t("未知线路")),
                   },
                 ]
               : []),
@@ -677,7 +678,7 @@ export function LightningCurrentBackfillHistoryTable({
         key: "progress",
         width: 160,
         render: (_: unknown, row: LightningCurrentBackfillTaskSummary) =>
-          renderBackfillProgressCell(row.status, row.progress, row.error_message),
+          renderBackfillProgressCell(row.status, row.progress, row.error_message, t),
       },
       {
         title: t("幅值a (kA)"),
@@ -718,7 +719,7 @@ export function LightningCurrentBackfillHistoryTable({
             <Button
               size="small"
               disabled={!row.task_id || !canReadLogs}
-              onClick={() => openLogViewer(row.task_id, row.line_name || row.line_id || "未知线路")}
+              onClick={() => openLogViewer(row.task_id, row.line_name || row.line_id || t("未知线路"))}
             >
               日志
             </Button>
@@ -741,7 +742,7 @@ export function LightningCurrentBackfillHistoryTable({
         title: t("操作"),
         dataIndex: "action",
         width: 80,
-        render: (value: string) => renderAction(value),
+        render: (value: string) => renderAction(value, t),
       },
       {
         title: t("回填前幅值a"),
@@ -916,7 +917,7 @@ export function LightningCurrentBackfillHistoryTable({
             emptyText: (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={isAmplitudeMode ? "该幅值尚未被任何线路回填使用。" : "未找到回填记录。"}
+                description={isAmplitudeMode ? t("该幅值尚未被任何线路回填使用。") : t("未找到回填记录。")}
               />
             ),
           }}
@@ -979,7 +980,7 @@ export function LightningCurrentBackfillHistoryTable({
       </Modal>
 
       <Drawer
-        title={task?.line_name ? `回填明细 - ${task.line_name}` : "回填任务详情"}
+        title={task?.line_name ? `${t("回填明细")} - ${task.line_name}` : t("回填任务详情")}
         open={detailOpen}
         onClose={closeDetail}
         width={920}

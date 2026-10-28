@@ -2636,6 +2636,8 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "绑定": "Binding",
   "编辑参数": "Edit Parameter",
   "编辑角色": "Edit Role",
+  "进度": "Progress",
+  "回填明细": "Backfill Detail",
 };
 
 // ─────────────────────────── Context ───────────────────────────
