@@ -160,7 +160,7 @@ const FIELD_HELP_TOOLTIPS = {
 function FieldHelpTooltip({ content }: { content: string }) {
   const { t } = useI18n();
   return (
-    <Tooltip title={content}>
+    <Tooltip title={t(content)}>
       <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px", marginLeft: 4 }} />
     </Tooltip>
   );
@@ -213,7 +213,7 @@ function DistributionImagePane({
 
   if (query.isError) {
     return (
-      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"密度图加载失败"}>
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("密度图加载失败")}>
         <Button size="small" onClick={() => query.refetch()} loading={query.isFetching}>
           {t("重新加载")}
         </Button>
@@ -252,7 +252,7 @@ function formatDateTime(iso: string): string {
 
 function truncateFileName(name: string, maxLength = 20): string {
   if (!name) {
-    return "未命名";
+    return "";
   }
   return name.length > maxLength ? `${name.slice(0, maxLength)}…` : name;
 }
@@ -295,7 +295,7 @@ export default function AdminLightningDistributionPage() {
   // ---- 任务日志弹窗 ----
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
-  const [logModalTitle, setLogModalTitle] = useState("任务执行日志");
+  const [logModalTitle, setLogModalTitle] = useState(t("任务执行日志"));
 
   const canRead = hasPermission("lightning.read") || hasPermission("lightning.manage");
   const canManage = hasPermission("lightning.manage");
@@ -405,25 +405,25 @@ export default function AdminLightningDistributionPage() {
         void refreshAll();
       } else if (name === "distribution.import_failed") {
         setActiveImportId(null);
-        setError(payload?.error || "分布导入失败，请查看记录详情后重试");
+        setError(payload?.error || t("分布导入失败，请查看记录详情后重试"));
         void refreshAll();
       } else if (name === "distribution.lp_draw_completed") {
         setError("");
-        setSuccess("LP 分区密度图绘制完成，可在详情弹窗查看。");
+        setSuccess(t("LP 分区密度图绘制完成，可在详情弹窗查看。"));
         void refreshAll();
       } else if (name === "distribution.lp_draw_failed") {
-        setError(payload?.error || "LP 分区密度图绘制失败");
+        setError(payload?.error || t("LP 分区密度图绘制失败"));
         void refreshAll();
       } else if (name === "density_backfill.started") {
         setError("");
-        setSuccess("地闪密度回填任务已开始，可在回填记录中查看进度。");
+        setSuccess(t("地闪密度回填任务已开始，可在回填记录中查看进度。"));
         void refreshAll();
       } else if (name === "density_backfill.completed") {
         setError("");
-        setSuccess("地闪密度回填完成，可在回填记录中查看 Ng 图。");
+        setSuccess(t("地闪密度回填完成，可在回填记录中查看 Ng 图。"));
         void refreshAll();
       } else if (name === "density_backfill.failed") {
-        setError(payload?.error || "地闪密度回填失败，请在回填记录中查看详情");
+        setError(payload?.error || t("地闪密度回填失败，请在回填记录中查看详情"));
         void refreshAll();
       }
     }, [refreshAll]),
@@ -433,10 +433,10 @@ export default function AdminLightningDistributionPage() {
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!canManage) {
-        throw new Error("缺少 lightning.manage 权限");
+        throw new Error(t("缺少 lightning.manage 权限"));
       }
       if (!tempFileId) {
-        throw new Error("文件尚未上传完成，请等待上传后再确认导入");
+        throw new Error(t("文件尚未上传完成，请等待上传后再确认导入"));
       }
       const values = importForm.getFieldsValue(true);
       const formData = new FormData();
@@ -458,7 +458,7 @@ export default function AdminLightningDistributionPage() {
     },
     onSuccess: async (payload) => {
       setError("");
-      setSuccess("分布导入已提交，正在后台解析统计…");
+      setSuccess(t("分布导入已提交，正在后台解析统计…"));
       setActiveImportId(payload.distribution_id);
       setImportModalOpen(false);
       importForm.resetFields();
@@ -470,7 +470,7 @@ export default function AdminLightningDistributionPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "分布导入失败");
+      setError(candidate instanceof Error ? candidate.message : t("分布导入失败"));
     },
   });
 
@@ -504,8 +504,8 @@ export default function AdminLightningDistributionPage() {
             return tokens.length < 3 || numbers.length < 3;
           }) ?? lines[0];
           setUploadError(
-            `文件格式疑似有误：前 ${lines.length} 行仅 ${valid} 行可解析（如「${badSample.slice(0, 80)}」）。` +
-              "地闪密度文件每行应为「纬度 经度 电流」3 个数值（空格分隔，如「22.54 114.05 -15.3」）。",
+            `${t("文件格式疑似有误")}：${t("前")} ${lines.length} ${t("行仅")} ${valid} ${t("行可解析")}（${t("如")}「${badSample.slice(0, 80)}」）。` +
+              t("地闪密度文件每行应为「纬度 经度 电流」3 个数值（空格分隔，如「22.54 114.05 -15.3」）。"),
           );
         }
       };
@@ -570,11 +570,11 @@ export default function AdminLightningDistributionPage() {
           + `Ng=${formatNumber(activeRecord.overall_ng, 4)}，Imax=${formatNumber(activeRecord.max_abs_current, 2)}kA`,
         );
       } else {
-        setSuccess("分布导入完成");
+        setSuccess(t("分布导入完成"));
       }
       setActiveImportId(null);
     } else if (activeStatus === "failed") {
-      setError(activeRecord?.error_message || "分布导入失败，请查看记录详情后重试");
+      setError(activeRecord?.error_message || t("分布导入失败，请查看记录详情后重试"));
       setActiveImportId(null);
     }
   }, [activeStatus, activeImportId, activeRecord]);
@@ -583,7 +583,7 @@ export default function AdminLightningDistributionPage() {
   const deleteMutation = useMutation({
     mutationFn: async (record: LightningDistributionRecord) => {
       if (!canManage) {
-        throw new Error("缺少 lightning.manage 权限");
+        throw new Error(t("缺少 lightning.manage 权限"));
       }
       const response = await fetchWithAuth(
         `/api/v1/lightning-currents/distributions/${record.id}`,
@@ -601,12 +601,12 @@ export default function AdminLightningDistributionPage() {
         return;
       }
       setError("");
-      setSuccess("分布记录已删除");
+      setSuccess(t("分布记录已删除"));
       await refreshAll();
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(candidate instanceof Error ? candidate.message : "删除失败");
+      setError(candidate instanceof Error ? candidate.message : t("删除失败"));
     },
   });
 
@@ -620,7 +620,7 @@ export default function AdminLightningDistributionPage() {
         ...previous,
         {
           key,
-          label: <span>{truncateFileName(record.source_file_name)}</span>,
+          label: <span>{truncateFileName(record.source_file_name) || t("未命名")}</span>,
           closable: true,
           children: (
             <DistributionDetailView
@@ -645,7 +645,7 @@ export default function AdminLightningDistributionPage() {
         ...previous,
         {
           key,
-          label: <span>{truncateFileName(record.source_file_name)} - 回填记录</span>,
+          label: <span>{truncateFileName(record.source_file_name) || t("未命名")} - {t("回填记录")}</span>,
           closable: true,
           children: (
             <BackfillRecordsView
@@ -669,7 +669,7 @@ export default function AdminLightningDistributionPage() {
         record.source_file_name || "lightning_distribution.csv",
       );
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "下载源文件失败");
+      messageApi.error(error instanceof Error ? error.message : t("下载源文件失败"));
     }
   }, [messageApi]);
 
@@ -813,7 +813,7 @@ export default function AdminLightningDistributionPage() {
           const meta = STATUS_META[row.status] ?? { color: "default", label: row.status };
           return (
             <Space size={6}>
-              <Tag color={meta.color}>{meta.label}</Tag>
+              <Tag color={meta.color}>{t(meta.label)}</Tag>
               {row.status === "processing" && (
                 <Progress percent={row.progress} size="small" style={{ width: 80 }} />
               )}
@@ -905,7 +905,7 @@ export default function AdminLightningDistributionPage() {
                   {
                     key: "import-log",
                     label: t("日志"),
-                    onClick: () => openLogViewer(row.task_id, "日志", row.source_file_name),
+                    onClick: () => openLogViewer(row.task_id, t("日志"), row.source_file_name),
                   },
                 ]
               : []),
@@ -977,11 +977,11 @@ export default function AdminLightningDistributionPage() {
             <ThunderboltOutlined className="text-base text-gray-500" />
             <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
               <Typography.Text strong className="truncate min-w-0">
-                {record.source_file_name || "未命名文件"}
+                {record.source_file_name || t("未命名文件")}
               </Typography.Text>
               <div className="flex flex-shrink-0 items-center gap-2">
                 <Badge status={meta.color} />
-                <Typography.Text type="secondary" className="text-xs">{meta.label}</Typography.Text>
+                <Typography.Text type="secondary" className="text-xs">{t(meta.label)}</Typography.Text>
               </div>
             </div>
           </div>
@@ -1072,7 +1072,7 @@ export default function AdminLightningDistributionPage() {
                           icon: <FileTextOutlined />,
                           onClick: (info) => {
                             info.domEvent?.stopPropagation();
-                            openLogViewer(record.task_id, "日志", record.source_file_name);
+                            openLogViewer(record.task_id, t("日志"), record.source_file_name);
                           },
                         },
                       ]
@@ -1345,7 +1345,7 @@ function ImportModal({
   const { message: messageApi } = App.useApp();
   return (
     <Modal
-      title={"导入地闪密度数据"}
+      title={t("导入地闪密度数据")}
       open={open}
       onCancel={onClose}
       footer={null}
@@ -1354,11 +1354,11 @@ function ImportModal({
     >
       <Form<ImportFormValues> form={importForm} layout="vertical" initialValues={initialValues}>
         <div className="grid gap-3">
-          <Form.Item name="city" label={"城市"} rules={[{ max: 128, message: "城市最多 128 个字符" }]}>
+          <Form.Item name="city" label={t("城市")} rules={[{ max: 128, message: "城市最多 128 个字符" }]}>
             <Select
               showSearch
               allowClear
-              placeholder={"请搜索选择城市"}
+              placeholder={t("请搜索选择城市")}
               filterOption={(input, option) => {
                 const keyword = input.toLowerCase().trim();
                 const data = option?.["data-data"] as CityOption | undefined;
@@ -1376,26 +1376,26 @@ function ImportModal({
               }))}
             />
           </Form.Item>
-          <Form.Item name="region_id" label={"地点"} rules={[{ max: 64, message: "地点最多 64 个字符" }]}>
-            <Input placeholder={"例如 XX变电站、XX区域（闪电事件发生地点）"} />
+          <Form.Item name="region_id" label={t("地点")} rules={[{ max: 64, message: "地点最多 64 个字符" }]}>
+            <Input placeholder={t("例如 XX变电站、XX区域（闪电事件发生地点）")} />
           </Form.Item>
-          <Form.Item name="event_year" label={"数据年份"}>
+          <Form.Item name="event_year" label={t("数据年份")}>
             <InputNumber style={{ width: "100%" }} min={1900} max={2100} />
           </Form.Item>
           <Form.Item
             name="data_years"
-            label={"观测年数(年)"}
-            tooltip={"该数据覆盖的统计年数（国标要求≥10年）。留空则从文件中的年份列自动推断，文件无年份时按 1 年计。"}
+            label={t("观测年数(年)")}
+            tooltip={t("该数据覆盖的统计年数（国标要求≥10年）。留空则从文件中的年份列自动推断，文件无年份时按 1 年计。")}
           >
-            <InputNumber style={{ width: "100%" }} min={0.1} max={100} step={1} placeholder={"留空自动推断"} />
+            <InputNumber style={{ width: "100%" }} min={0.1} max={100} step={1} placeholder={t("留空自动推断")} />
           </Form.Item>
-          <Form.Item name="notes" label={"数据说明"} rules={[{ max: 2000, message: "数据说明最多 2000 个字符" }]}>
-            <Input placeholder={"可填写数据来源、采集说明等"} />
+          <Form.Item name="notes" label={t("数据说明")} rules={[{ max: 2000, message: "数据说明最多 2000 个字符" }]}>
+            <Input placeholder={t("可填写数据来源、采集说明等")} />
           </Form.Item>
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <Form.Item label={"数据文件"} required>
+          <Form.Item label={t("数据文件")} required>
               <Upload.Dragger
                 accept=".txt,.csv,text/plain,text/csv"
                 showUploadList={false}
@@ -1426,9 +1426,9 @@ function ImportModal({
                       <CheckCircleOutlined /> 上传完成，可以确认导入
                     </Typography.Text>
                   ) : uploadError ? (
-                    <Typography.Text type="danger">{"格式校验未通过，请更换文件"}</Typography.Text>
+                    <Typography.Text type="danger">{t("格式校验未通过，请更换文件")}</Typography.Text>
                   ) : (
-                    <Typography.Text type="warning">{"上传中…"}</Typography.Text>
+                    <Typography.Text type="warning">{t("上传中…")}</Typography.Text>
                   )}
                 </>
               ) : (
@@ -1472,6 +1472,7 @@ function DistributionDetailView({
   record: LightningDistributionRecord;
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
 }) {
+  const { t } = useI18n();
   const imageQuery = useQuery({
     queryKey: ["/api/v1/lightning-currents/distributions", record.id, "image"],
     queryFn: async () => {
@@ -1495,12 +1496,12 @@ function DistributionDetailView({
     <div className="admin-lightning-distribution-detail-view">
       <Space direction="vertical" size={16} className="w-full">
       <Descriptions bordered size="small" column={3}>
-        <Descriptions.Item label={"城市"}>{record.city || "-"}</Descriptions.Item>
-        <Descriptions.Item label={"地点标签"}>{record.location_tag || "-"}</Descriptions.Item>
-        <Descriptions.Item label={"年份"}>{record.event_year ?? "-"}</Descriptions.Item>
-        <Descriptions.Item label={"有效点数"}>{record.valid_count}</Descriptions.Item>
-        <Descriptions.Item label={"面积(km²)"}>{formatNumber(record.area_km2, 3)}</Descriptions.Item>
-        <Descriptions.Item label={"统计年限"}>{formatNumber(record.data_years, 3)}</Descriptions.Item>
+        <Descriptions.Item label={t("城市")}>{record.city || "-"}</Descriptions.Item>
+        <Descriptions.Item label={t("地点标签")}>{record.location_tag || "-"}</Descriptions.Item>
+        <Descriptions.Item label={t("年份")}>{record.event_year ?? "-"}</Descriptions.Item>
+        <Descriptions.Item label={t("有效点数")}>{record.valid_count}</Descriptions.Item>
+        <Descriptions.Item label={t("面积(km²)")}>{formatNumber(record.area_km2, 3)}</Descriptions.Item>
+        <Descriptions.Item label={t("统计年限")}>{formatNumber(record.data_years, 3)}</Descriptions.Item>
         <Descriptions.Item label={
           <span>
             整体 Ng
@@ -1519,16 +1520,16 @@ function DistributionDetailView({
             <FieldHelpTooltip content={FIELD_HELP_TOOLTIPS.avgCurrent} />
           </span>
         }>{formatNumber(record.avg_abs_current, 2)}</Descriptions.Item>
-        <Descriptions.Item label={"正极数量"}>{record.positive_count}</Descriptions.Item>
-        <Descriptions.Item label={"负极数量"}>{record.negative_count}</Descriptions.Item>
-        <Descriptions.Item label={"未知极性"}>{record.unknown_count}</Descriptions.Item>
+        <Descriptions.Item label={t("正极数量")}>{record.positive_count}</Descriptions.Item>
+        <Descriptions.Item label={t("负极数量")}>{record.negative_count}</Descriptions.Item>
+        <Descriptions.Item label={t("未知极性")}>{record.unknown_count}</Descriptions.Item>
       </Descriptions>
 
       <div style={{ textAlign: "center", minHeight: 200 }}>
         <DistributionImagePane
           query={imageQuery}
-          alt={"地闪密度图"}
-          emptyText={"暂无密度图（导入失败或仍在处理中）"}
+          alt={t("地闪密度图")}
+          emptyText={t("暂无密度图（导入失败或仍在处理中）")}
         />
       </div>
       </Space>
@@ -1659,7 +1660,7 @@ function BackfillRecordsView({
   const handleBackfillSubmitted = useCallback(() => {
     setBackfillModalOpen(false);
     setPagination((previous) => ({ ...previous, current: 1 }));
-    messageApi.success("地闪密度回填任务已提交，进度见下方列表");
+    messageApi.success(t("地闪密度回填任务已提交，进度见下方列表"));
     void queryClient.invalidateQueries({
       predicate: (query) => {
         const first = query.queryKey[0];
@@ -1674,13 +1675,13 @@ function BackfillRecordsView({
   const linkedColumns = useMemo<ColumnsType<LightningDensityBackfillTaskSummary>>(
     () => [
       {
-        title: "线路名称",
+        title: t("线路名称"),
         dataIndex: "line_name",
         width: 150,
         render: (value: string | null) => value || "-",
       },
       {
-        title: "回填状态",
+        title: t("回填状态"),
         dataIndex: "status",
         width: 160,
         render: (value: string, row: LightningDensityBackfillTaskSummary) => {
@@ -1697,7 +1698,7 @@ function BackfillRecordsView({
                   : "normal";
           const tip =
             value === "failed"
-              ? row.error_message || "回填失败"
+              ? row.error_message || t("回填失败")
               : isActive
                 ? `进度 ${percent}%`
                 : undefined;
@@ -1706,7 +1707,7 @@ function BackfillRecordsView({
             <Space direction="vertical" size={2} style={{ width: "100%" }}>
               <Tooltip title={tip}>
                 <Tag color={meta.color} style={{ marginInlineEnd: 0 }}>
-                  {meta.label}
+                  {t(meta.label)}
                 </Tag>
               </Tooltip>
               <Progress
@@ -1720,37 +1721,37 @@ function BackfillRecordsView({
         },
       },
       {
-        title: "回填时间",
+        title: t("回填时间"),
         dataIndex: "prepared_at",
         width: 160,
         render: (value: string | null) => (value ? formatDateTime(value) : "-"),
       },
       {
-        title: "回填塔数",
+        title: t("回填塔数"),
         dataIndex: "updated_tower_count",
         width: 90,
         render: (value: number) => value,
       },
       {
-        title: "平均 Ng",
+        title: t("平均 Ng"),
         dataIndex: "avg_density",
         width: 100,
         render: (value: number | null) => formatNumber(value, 4),
       },
       {
-        title: "最小 Ng",
+        title: t("最小 Ng"),
         dataIndex: "min_density",
         width: 100,
         render: (value: number | null) => formatNumber(value, 4),
       },
       {
-        title: "最大 Ng",
+        title: t("最大 Ng"),
         dataIndex: "max_density",
         width: 100,
         render: (value: number | null) => formatNumber(value, 4),
       },
       {
-        title: "操作",
+        title: t("操作"),
         key: "actions",
         width: 200,
         fixed: "right",
@@ -1763,7 +1764,7 @@ function BackfillRecordsView({
                 size="small"
                 style={{ padding: 0 }}
                 disabled={!canReadLogs}
-                onClick={() => onOpenLog(record.task_id, "回填日志", record.source_file_name)}
+                onClick={() => onOpenLog(record.task_id, t("回填日志"), record.source_file_name)}
               >
                 日志
               </Button>
@@ -1779,9 +1780,9 @@ function BackfillRecordsView({
               <Tooltip
                 title={
                   busy
-                    ? "回填处理中，完成后可查看"
+                    ? t("回填处理中，完成后可查看")
                     : !row.has_circle_image
-                      ? "该次回填未生成沿线圆图（历史数据），重新回填后可查看"
+                      ? t("该次回填未生成沿线圆图（历史数据），重新回填后可查看")
                       : undefined
                 }
               >
@@ -1811,10 +1812,10 @@ function BackfillRecordsView({
     >
       <div className="admin-filter-bar" style={{ marginBottom: 12 }}>
         <Form layout="inline">
-          <Form.Item label={"关键词"} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+          <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
             <Input
               allowClear
-              placeholder={"按线路编号/名称筛选"}
+              placeholder={t("按线路编号/名称筛选")}
               value={keywordInput}
               onChange={(event) => setKeywordInput(event.target.value)}
               onPressEnter={handleSearch}
@@ -1861,7 +1862,7 @@ function BackfillRecordsView({
           emptyText: linkedLinesQuery.isLoading ? (
             <Spin size="small" />
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"该分布尚未回填任何线路"} />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("该分布尚未回填任何线路")} />
           ),
         }}
       />
@@ -1984,31 +1985,31 @@ function TowerNgDrawer({
   const towerColumns = useMemo<ColumnsType<LightningDensityBackfillTowerDetail>>(
     () => [
       {
-        title: "杆塔号",
+        title: t("杆塔号"),
         dataIndex: "tower_no",
         width: 110,
         render: (value: string | null) => value || "-",
       },
       {
-        title: "Ng 值(次/km²·年)",
+        title: t("Ng 值(次/km²·年)"),
         dataIndex: "lightning_density",
         width: 140,
         render: (value: number | null) => formatNumber(value, 4),
       },
       {
-        title: "落雷数",
+        title: t("落雷数"),
         dataIndex: "strike_count",
         width: 90,
         render: (value: number | null) => (value === null || value === undefined ? "-" : value),
       },
       {
-        title: "经度",
+        title: t("经度"),
         dataIndex: "longitude",
         width: 120,
         render: (value: number | null) => formatNumber(value, 6),
       },
       {
-        title: "纬度",
+        title: t("纬度"),
         dataIndex: "latitude",
         width: 120,
         render: (value: number | null) => formatNumber(value, 6),
@@ -2028,10 +2029,10 @@ function TowerNgDrawer({
       <div ref={tableScrollAnchorRef} className="admin-lightning-density-drawer-pane">
         <div className="admin-filter-bar" style={{ marginBottom: 12 }}>
           <Form layout="inline">
-            <Form.Item label={"杆塔号"} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
+            <Form.Item label={t("杆塔号")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
               <Input
                 allowClear
-                placeholder={"按杆塔号筛选"}
+                placeholder={t("按杆塔号筛选")}
                 value={keywordInput}
                 onChange={(event) => setKeywordInput(event.target.value)}
                 onPressEnter={handleSearch}
@@ -2070,7 +2071,7 @@ function TowerNgDrawer({
             emptyText: towersQuery.isLoading ? (
               <Spin size="small" />
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"该线路无回填杆塔数据"} />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("该线路无回填杆塔数据")} />
             ),
           }}
         />
@@ -2090,6 +2091,7 @@ function NgImageDrawer({
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const { message: messageApi } = App.useApp();
 
   // 按回填任务读取各自生成的「沿线圆」图（每次回填一张，互不覆盖）；
@@ -2130,7 +2132,7 @@ function NgImageDrawer({
       .catch((error: unknown) => {
         if (cancelled) return;
         setFailed(true);
-        setErrorText(error instanceof Error ? error.message : "加载失败");
+        setErrorText(error instanceof Error ? error.message : t("加载失败"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -2164,7 +2166,7 @@ function NgImageDrawer({
       anchor.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "下载失败");
+      messageApi.error(error instanceof Error ? error.message : t("下载失败"));
     }
   };
 
@@ -2183,18 +2185,18 @@ function NgImageDrawer({
     >
       <div style={{ textAlign: "center", minHeight: 240 }}>
         {loading ? (
-          <Spin tip="加载中…" style={{ marginTop: 80 }}>
+          <Spin tip={t("加载中…")} style={{ marginTop: 80 }}>
             <div style={{ height: 160 }} />
           </Spin>
         ) : failed ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={errorText || "暂无沿线圆密度图（回填线路后生成）"}
+            description={errorText || t("暂无沿线圆密度图（回填线路后生成）")}
           />
         ) : imageUrl ? (
-          <Image src={imageUrl} alt={"沿线圆密度图"} style={{ maxWidth: "100%" }} />
+          <Image src={imageUrl} alt={t("沿线圆密度图")} style={{ maxWidth: "100%" }} />
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"暂无沿线圆密度图（回填线路后生成）"} />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无沿线圆密度图（回填线路后生成）")} />
         )}
       </div>
     </Drawer>
@@ -2214,8 +2216,9 @@ function DrawLpModal({
   fetchWithAuth: (path: string, init?: RequestInit, retryOnUnauthorized?: boolean) => Promise<Response>;
   onSubmitted: (taskId: string, fileName: string) => void;
 }) {
+  const { t } = useI18n();
   return (
-    <Modal title={"线路回填"} open={open} onCancel={onClose} footer={null} width={560} destroyOnHidden>
+    <Modal title={t("线路回填")} open={open} onCancel={onClose} footer={null} width={560} destroyOnHidden>
       {/* key 随分布记录变化强制重挂载，避免残留上一分布选中的线路 / 提交结果 */}
       <DrawLpBody key={data?.id ?? "empty"} open={open} data={data} fetchWithAuth={fetchWithAuth} onSubmitted={onSubmitted} />
     </Modal>
@@ -2283,7 +2286,7 @@ function DrawLpBody({
         // 两种「选了也回填不了」的线路，直接在下拉里给出原因并禁用，避免选完才报错：
         //   ① 线路没有杆塔 → 后端 400「当前线路没有可回填的杆塔数据」
         //   ② 杆塔不在本次落雷数据范围内 → 无落雷可采样
-        const reason = noTower ? "无杆塔数据" : outOfRange ? "杆塔不在落雷数据范围内" : null;
+        const reason = noTower ? t("无杆塔数据") : outOfRange ? t("杆塔不在落雷数据范围内") : null;
         return {
           label: (
             <Space size={6} style={{ width: "100%", justifyContent: "space-between" }}>
@@ -2308,7 +2311,7 @@ function DrawLpBody({
 
   const drawMutation = useMutation({
     mutationFn: async () => {
-      if (!lineId) throw new Error("请先选择线路");
+      if (!lineId) throw new Error(t("请先选择线路"));
       const body = { line_id: lineId, distribution_id: data?.id };
       const results: string[] = [];
 
@@ -2323,7 +2326,7 @@ function DrawLpBody({
           results.push(`绘图任务已提交（ID: ${p.task_id}）`);
         }
       } catch {
-        results.push("绘图任务提交失败");
+        results.push(t("绘图任务提交失败"));
       }
 
       // 2. 线路密度回填（异步，立即返回 task_id，计算由 Worker 执行）
@@ -2336,10 +2339,10 @@ function DrawLpBody({
           const p = (await densityResp.json()) as LightningDensityPreparationAsyncResponse;
           results.push(`密度回填任务已提交（ID: ${p.task_id}），请稍后在回填记录中查看进度`);
         } else {
-          results.push("密度回填任务提交失败");
+          results.push(t("密度回填任务提交失败"));
         }
       } catch {
-        results.push("密度回填提交失败");
+        results.push(t("密度回填提交失败"));
       }
 
       return results.join("；");
@@ -2347,27 +2350,27 @@ function DrawLpBody({
     onSuccess: (msg) => {
       setError("");
       setSuccess(msg);
-      onSubmitted("", data?.source_file_name || "回填");
+      onSubmitted("", data?.source_file_name || t("回填"));
     },
     onError: (e) => {
       setSuccess("");
-      setError(e instanceof Error ? e.message : "绘图任务提交失败");
+      setError(e instanceof Error ? e.message : t("绘图任务提交失败"));
     },
   });
 
   return (
     <>
       <Form layout="vertical">
-        <Form.Item required label={"选择线路"}>
+        <Form.Item required label={t("选择线路")}>
           <Select
             showSearch
-            placeholder={"选择线路（按该线路杆塔分组绘图）"}
+            placeholder={t("选择线路（按该线路杆塔分组绘图）")}
             filterOption={false}
             onSearch={setLineSearchText}
             notFoundContent={
               linesQuery.isLoading
                 ? <Spin size="small" />
-                : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"无可用线路"} />
+                : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("无可用线路")} />
             }
             value={lineId}
             onChange={setLineId}
