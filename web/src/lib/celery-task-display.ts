@@ -20,7 +20,7 @@ const TASK_NAME_LABELS: Record<string, string> = {
   "app.tasks.worker_registry_tasks.flush_task_log_buffers": "任务日志缓冲落库",
 };
 
-export function getTaskDisplayName(taskName: string | null | undefined): string {
+export function getTaskDisplayName(taskName: string | null | undefined, t: (s: string) => string): string {
   const normalized = (taskName || "").trim();
   if (!normalized) {
     return "-";
@@ -28,9 +28,9 @@ export function getTaskDisplayName(taskName: string | null | undefined): string 
   const label = TASK_NAME_LABELS[normalized];
   if (!label) {
     if (normalized.startsWith("app.tasks.")) {
-      return "未识别任务";
+      return t("未识别任务");
     }
     return normalized;
   }
-  return label;
+  return t(label);
 }

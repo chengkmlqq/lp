@@ -254,7 +254,7 @@ export default function AdminTaskMonitorPage() {
         dataIndex: "name",
         key: "name",
         width: 242,
-        render: (value: string) => getTaskDisplayName(value),
+        render: (value: string) => getTaskDisplayName(value, t),
       },
       {
         title: t("状态"),
@@ -529,8 +529,8 @@ export default function AdminTaskMonitorPage() {
       onClick={() => handleViewLog(task.task_id)}
     >
       <div className="admin-task-monitor-task-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
-        <Typography.Text strong ellipsis={{ tooltip: getTaskDisplayName(task.name) }} className="truncate flex-1">
-          {getTaskDisplayName(task.name)}
+        <Typography.Text strong ellipsis={{ tooltip: getTaskDisplayName(task.name, t) }} className="truncate flex-1">
+          {getTaskDisplayName(task.name, t)}
         </Typography.Text>
         <div className="flex flex-shrink-0 items-center gap-2">
           {renderTaskStateTag(task.state, t)}

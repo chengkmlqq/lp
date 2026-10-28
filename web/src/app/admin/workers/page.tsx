@@ -211,7 +211,7 @@ export default function AdminWorkersPage() {
         dataIndex: "name",
         key: "name",
         width: 220,
-        render: (value: string) => getTaskDisplayName(value),
+        render: (value: string) => getTaskDisplayName(value, t),
       },
       {
         title: t("状态"),
