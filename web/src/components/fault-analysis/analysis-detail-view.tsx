@@ -91,27 +91,27 @@ interface ProcessViewModel {
   steps: ProcessViewModelStep[];
 }
 
-function groupReportSections(sections: ReportSection[]): ReportTabGroup[] {
+function groupReportSections(sections: ReportSection[], t: (s: string) => string): ReportTabGroup[] {
   const groups = new Map<string, ReportTabGroup>();
   const findGroup = (key: string): ReportTabGroup | undefined => groups.get(key);
 
   // 优先使用后端下发的 key/group；旧记录无该字段时回退到标题匹配。
   const resolve = (section: ReportSection): { key: string; label: string } => {
-    if (section.group === "wave") return { key: "wave", label: "分布式行波分析与故障原因融合" };
-    if (section.group === "appendix") return { key: "appendix", label: "附表A 输入信息汇总" };
+    if (section.group === "wave") return { key: "wave", label: t("分布式行波分析与故障原因融合") };
+    if (section.group === "appendix") return { key: "appendix", label: t("附表A 输入信息汇总") };
     const title = section.title ?? "";
-    if (section.key === "overview" || title.includes("报告总览")) return { key: "overview", label: "故障总览" };
-    if (section.key === "ground" || title.includes("接地故障及过渡电阻判别")) return { key: "ground", label: "接地故障及过渡电阻判别" };
-    if (section.key === "location" || title.includes("故障定位")) return { key: "location", label: "故障定位" };
-    if (section.key === "lightning" || title.includes("耐雷水平与雷击原因分析")) return { key: "lightning", label: "耐雷水平与雷击原因分析" };
+    if (section.key === "overview" || title.includes("报告总览")) return { key: "overview", label: t("故障总览") };
+    if (section.key === "ground" || title.includes("接地故障及过渡电阻判别")) return { key: "ground", label: t("接地故障及过渡电阻判别") };
+    if (section.key === "location" || title.includes("故障定位")) return { key: "location", label: t("故障定位") };
+    if (section.key === "lightning" || title.includes("耐雷水平与雷击原因分析")) return { key: "lightning", label: t("耐雷水平与雷击原因分析") };
     if (section.key === "wave_process" || section.key === "wave_fusion" || section.key === "recommendation") {
-      return { key: "wave", label: "分布式行波分析与故障原因融合" };
+      return { key: "wave", label: t("分布式行波分析与故障原因融合") };
     }
     // 旧记录标题回退（兼容 LP-537 之前的存储）
     if (title.startsWith("5.") || title.includes("分布式行波分析") || title.includes("故障原因融合") || title.includes("总体状态与后续意见")) {
-      return { key: "wave", label: "分布式行波分析与故障原因融合" };
+      return { key: "wave", label: t("分布式行波分析与故障原因融合") };
     }
-    if (title.startsWith("A.") || title.includes("附表A")) return { key: "appendix", label: "附表A 输入信息汇总" };
+    if (title.startsWith("A.") || title.includes("附表A")) return { key: "appendix", label: t("附表A 输入信息汇总") };
     return { key: title, label: title };
   };
 
@@ -130,7 +130,7 @@ function groupReportSections(sections: ReportSection[]): ReportTabGroup[] {
 }
 
 /** Build report sections from a FaultAnalysisDetail returned by the API. */
-function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]; station: string; fault_datetime: string; fault_id: string } {
+function buildSections(detail: FaultAnalysisDetail, t: (s: string) => string): { sections: ReportSection[]; station: string; fault_datetime: string; fault_id: string } {
   // If the backend already stored structured sections, use them.
   const storedSections = (detail.result_json?.sections as ReportSection[] | undefined);
   if (storedSections && storedSections.length > 0) {
@@ -153,71 +153,71 @@ function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]
   if (station || faultDatetime) {
     basics.push({
       type: "text",
-      text: `故障录波记录厂站: ${station}，故障时刻: ${faultDatetime}`,
+      text: `${t("故障录波记录厂站")}: ${station}，${t("故障时刻")}: ${faultDatetime}`,
     });
   }
   if (detail.fault_type) {
-    basics.push({ type: "text", text: `故障类型: ${detail.fault_type}` });
+    basics.push({ type: "text", text: `${t("故障类型")}: ${detail.fault_type}` });
   }
   if (detail.fault_phase) {
-    basics.push({ type: "text", text: `故障相: ${detail.fault_phase}` });
+    basics.push({ type: "text", text: `${t("故障相")}: ${detail.fault_phase}` });
   }
   if (detail.fault_duration_ms != null) {
-    basics.push({ type: "text", text: `故障持续时间: ${detail.fault_duration_ms} ms` });
+    basics.push({ type: "text", text: `${t("故障持续时间")}: ${detail.fault_duration_ms} ms` });
   }
   if (detail.reclosure_status) {
-    basics.push({ type: "text", text: `重合闸情况: ${detail.reclosure_status}` });
+    basics.push({ type: "text", text: `${t("重合闸情况")}: ${detail.reclosure_status}` });
   }
   if (basics.length > 0) {
-    sections.push({ title: "一、故障基本信息", key: "overview", group: "overview", content: basics });
+    sections.push({ title: t("一、故障基本信息"), key: "overview", group: "overview", content: basics });
   }
 
   // Section 2: electrical parameters
   const electrical: ReportSectionItem[] = [];
   if (detail.fault_voltage_v != null) {
-    electrical.push({ type: "text", text: `故障相电压: ${detail.fault_voltage_v} V` });
+    electrical.push({ type: "text", text: `${t("故障相电压")}: ${detail.fault_voltage_v} V` });
   }
   if (detail.fault_current_a != null) {
-    electrical.push({ type: "text", text: `故障相电流: ${detail.fault_current_a} A` });
+    electrical.push({ type: "text", text: `${t("故障相电流")}: ${detail.fault_current_a} A` });
   }
   if (detail.max_zero_current_a != null) {
-    electrical.push({ type: "text", text: `最大零序电流: ${detail.max_zero_current_a} A` });
+    electrical.push({ type: "text", text: `${t("最大零序电流")}: ${detail.max_zero_current_a} A` });
   }
   if (detail.zero_compensation != null) {
-    electrical.push({ type: "text", text: `零序补偿系数K: ${detail.zero_compensation}` });
+    electrical.push({ type: "text", text: `${t("零序补偿系数K")}: ${detail.zero_compensation}` });
   }
   if (detail.fault_resistance_ohm != null) {
-    electrical.push({ type: "text", text: `故障电阻: ${detail.fault_resistance_ohm} Ω` });
+    electrical.push({ type: "text", text: `${t("故障电阻")}: ${detail.fault_resistance_ohm} Ω` });
   }
   if (detail.line_length_km != null) {
-    electrical.push({ type: "text", text: `线路总长度: ${detail.line_length_km} km` });
+    electrical.push({ type: "text", text: `${t("线路总长度")}: ${detail.line_length_km} km` });
   }
   if (electrical.length > 0) {
-    sections.push({ title: "二、电气参数", key: "overview", group: "overview", content: electrical });
+    sections.push({ title: t("二、电气参数"), key: "overview", group: "overview", content: electrical });
   }
 
   // Section 3: lightning & location
   const location: ReportSectionItem[] = [];
   if (detail.lightning_current_ka != null) {
-    location.push({ type: "text", text: `雷电流幅值: ${detail.lightning_current_ka} kA` });
+    location.push({ type: "text", text: `${t("雷电流幅值")}: ${detail.lightning_current_ka} kA` });
   }
   if (detail.lightning_longitude != null && detail.lightning_latitude != null) {
-    location.push({ type: "text", text: `雷电定位: 经度 ${detail.lightning_longitude}°, 纬度 ${detail.lightning_latitude}°` });
+    location.push({ type: "text", text: `${t("雷电定位")}: ${t("经度")} ${detail.lightning_longitude}°, ${t("纬度")} ${detail.lightning_latitude}°` });
   }
   if (detail.wave_distance_km != null) {
-    location.push({ type: "text", text: `录波测距: ${detail.wave_distance_km} km` });
+    location.push({ type: "text", text: `${t("录波测距")}: ${detail.wave_distance_km} km` });
   }
   if (detail.traveling_wave_distance_km != null) {
-    location.push({ type: "text", text: `行波测距: ${detail.traveling_wave_distance_km} km` });
+    location.push({ type: "text", text: `${t("行波测距")}: ${detail.traveling_wave_distance_km} km` });
   }
   if (detail.optical_position) {
-    location.push({ type: "text", text: `光学接闪位置: ${detail.optical_position}` });
+    location.push({ type: "text", text: `${t("光学接闪位置")}: ${detail.optical_position}` });
   }
   if (detail.optical_device_location) {
-    location.push({ type: "text", text: `光学设备安装位置: ${detail.optical_device_location}` });
+    location.push({ type: "text", text: `${t("光学设备安装位置")}: ${detail.optical_device_location}` });
   }
   if (location.length > 0) {
-    sections.push({ title: "三、雷电定位与测距", key: "overview", group: "overview", content: location });
+    sections.push({ title: t("三、雷电定位与测距"), key: "overview", group: "overview", content: location });
   }
 
   // Section 4: conclusion
@@ -225,23 +225,23 @@ function buildSections(detail: FaultAnalysisDetail): { sections: ReportSection[]
   if (detail.confidence != null) {
     conclusion.push({
       type: "text",
-      text: `综合置信度: ${detail.confidence}%`,
+      text: `${t("综合置信度")}: ${detail.confidence}%`,
     });
   }
   if (detail.risk_level) {
-    const riskMap: Record<string, string> = { high: "高风险", medium: "中风险", low: "低风险" };
-    conclusion.push({ type: "text", text: `风险等级: ${riskMap[detail.risk_level] ?? detail.risk_level}` });
+    const riskMap: Record<string, string> = { high: t("高风险"), medium: t("中风险"), low: t("低风险") };
+    conclusion.push({ type: "text", text: `${t("风险等级")}: ${riskMap[detail.risk_level] ?? detail.risk_level}` });
   }
   conclusion.push({
     type: "card",
     text: detail.confidence != null && detail.confidence >= 90
-      ? "综合判定: 高置信度，可直接采纳分析结论。"
+      ? t("综合判定: 高置信度，可直接采纳分析结论。")
       : detail.confidence != null && detail.confidence >= 70
-        ? `综合判定: 置信度 S=${detail.confidence}%，建议人工复核后再做决策。`
-        : "综合判定: 置信度较低，建议结合现场情况综合分析。",
+        ? `${t("综合判定")}: ${t("置信度")} S=${detail.confidence}%，${t("建议人工复核后再做决策。")}`
+        : t("综合判定: 置信度较低，建议结合现场情况综合分析。"),
   });
   if (conclusion.length > 0) {
-    sections.push({ title: "四、综合判定", key: "overview", group: "overview", content: conclusion });
+    sections.push({ title: t("四、综合判定"), key: "overview", group: "overview", content: conclusion });
   }
 
   return { sections, station, fault_datetime: faultDatetime, fault_id: faultId };
@@ -286,34 +286,34 @@ function formatConfidence(value: unknown): string {
   return `${(num * 100).toFixed(1)}%`;
 }
 
-function buildComputationSteps(): ComputationStepDef[] {
+function buildComputationSteps(t: (s: string) => string): ComputationStepDef[] {
   return [
     {
       key: "ground",
-      title: "接地判断",
-      header: "步骤1：接地故障判断",
-      empty: "该记录未包含接地故障判断中间数据。",
+      title: t("接地判断"),
+      header: t("步骤1：接地故障判断"),
+      empty: t("该记录未包含接地故障判断中间数据。"),
       fields: [
-        { label: "最大零序电流", get: (rj) => rjText(rj, "ground_fault_decision.evidence", "-") },
-        { label: "故障相编码", get: (rj) => rjText(rj, "inputs.fault_record.fault_phase", "-") },
+        { label: t("最大零序电流"), get: (rj) => rjText(rj, "ground_fault_decision.evidence", "-") },
+        { label: t("故障相编码"), get: (rj) => rjText(rj, "inputs.fault_record.fault_phase", "-") },
         {
-          label: "故障类型",
+          label: t("故障类型"),
           get: (rj) => {
             const value = rjValue(rj, "ground_fault_decision.fault_kind");
             return <Tag color={value ? "green" : "default"}>{String(value ?? "-")}</Tag>;
           },
         },
-        { label: "判别置信度", get: (rj) => formatConfidence(rjValue(rj, "ground_fault_decision.confidence")) },
+        { label: t("判别置信度"), get: (rj) => formatConfidence(rjValue(rj, "ground_fault_decision.confidence")) },
         {
-          label: "判别状态",
+          label: t("判别状态"),
           get: (rj) => {
             const status = rjText(rj, "ground_fault_decision.status", "-");
-            const map: Record<string, string> = { decided: "已判定", uncertain: "不确定" };
+            const map: Record<string, string> = { decided: t("已判定"), uncertain: "不确定" };
             return map[status] ?? status;
           },
         },
         {
-          label: "判定依据",
+          label: t("判定依据"),
           get: (rj) => {
             const evidence = rjValue(rj, "ground_fault_decision.evidence");
             if (Array.isArray(evidence) && evidence.length > 0) {
@@ -332,20 +332,20 @@ function buildComputationSteps(): ComputationStepDef[] {
     },
     {
       key: "resistance",
-      title: "过渡电阻",
-      header: "步骤2：过渡电阻计算",
-      empty: "该记录未包含过渡电阻计算中间数据。",
+      title: t("过渡电阻"),
+      header: t("步骤2：过渡电阻计算"),
+      empty: t("该记录未包含过渡电阻计算中间数据。"),
       fields: [
-        { label: "零序阻抗 Zm", get: (rj) => rjText(rj, "transition_resistance.zm_ohm", "-") },
+        { label: t("零序阻抗 Zm"), get: (rj) => rjText(rj, "transition_resistance.zm_ohm", "-") },
         {
-          label: "过渡电阻",
+          label: t("过渡电阻"),
           get: (rj) => {
             const value = rjValue(rj, "transition_resistance.transition_resistance_ohm");
             return value == null ? "-" : `${value} Ω`;
           },
         },
         {
-          label: "分级",
+          label: t("分级"),
           get: (rj) => {
             const category = rjText(rj, "transition_resistance.category", "-");
             const colorMap: Record<string, string> = {
@@ -357,10 +357,10 @@ function buildComputationSteps(): ComputationStepDef[] {
             return <Tag color={colorMap[category] ?? "default"}>{category}</Tag>;
           },
         },
-        { label: "分类说明", get: (rj) => rjText(rj, "transition_resistance.category_report_text", "-") },
-        { label: "计算公式", get: (rj) => rjText(rj, "transition_resistance.formula_rf", "-") },
+        { label: t("分类说明"), get: (rj) => rjText(rj, "transition_resistance.category_report_text", "-") },
+        { label: t("计算公式"), get: (rj) => rjText(rj, "transition_resistance.formula_rf", "-") },
         {
-          label: "计算依据",
+          label: t("计算依据"),
           get: (rj) => {
             const evidence = rjValue(rj, "transition_resistance.evidence") ?? rjValue(rj, "transition_resistance.warnings");
             if (Array.isArray(evidence) && evidence.length > 0) {
@@ -379,22 +379,22 @@ function buildComputationSteps(): ComputationStepDef[] {
     },
     {
       key: "location",
-      title: "定位融合",
-      header: "步骤3：综合定位融合",
-      empty: "该记录未包含综合定位中间数据。",
+      title: t("定位融合"),
+      header: t("步骤3：综合定位融合"),
+      empty: t("该记录未包含综合定位中间数据。"),
       fields: [
-        { label: "融合结果", get: (rj) => rjText(rj, "fault_location.result_text", "-") },
+        { label: t("融合结果"), get: (rj) => rjText(rj, "fault_location.result_text", "-") },
         {
-          label: "状态",
+          label: t("状态"),
           get: (rj) => {
             const status = rjText(rj, "fault_location.status", "-");
-            const map: Record<string, string> = { located: "已定位", needs_review: "需复核", unavailable: "无法定位" };
+            const map: Record<string, string> = { located: t("已定位"), needs_review: "需复核", unavailable: "无法定位" };
             return map[status] ?? status;
           },
         },
-        { label: "融合置信度", get: (rj) => formatConfidence(rjValue(rj, "fault_location.confidence")) },
+        { label: t("融合置信度"), get: (rj) => formatConfidence(rjValue(rj, "fault_location.confidence")) },
         {
-          label: "数据源",
+          label: t("数据源"),
           get: (rj) => {
             const sources = rjValue(rj, "fault_location.sources");
             if (Array.isArray(sources) && sources.length > 0) {
@@ -408,7 +408,7 @@ function buildComputationSteps(): ComputationStepDef[] {
           },
         },
         {
-          label: "融合逻辑",
+          label: t("融合逻辑"),
           get: (rj) => {
             const evidence = rjValue(rj, "fault_location.evidence");
             if (Array.isArray(evidence) && evidence.length > 0) {
@@ -427,48 +427,48 @@ function buildComputationSteps(): ComputationStepDef[] {
     },
     {
       key: "ledger",
-      title: "台账匹配",
-      header: "步骤4：线路台账匹配",
-      empty: "该记录未包含台账匹配中间数据。",
+      title: t("台账匹配"),
+      header: t("步骤4：线路台账匹配"),
+      empty: t("该记录未包含台账匹配中间数据。"),
       fields: [
         {
-          label: "匹配结果",
+          label: t("匹配结果"),
           get: (rj) => {
             const matched = rjValue(rj, "inputs.line_ledger.matched");
-            return matched == null ? "-" : (matched ? <Tag color="green">{"已匹配"}</Tag> : <Tag color="red">{"未匹配"}</Tag>);
+            return matched == null ? "-" : (matched ? <Tag color="green">{t("已匹配")}</Tag> : <Tag color="red">{t("未匹配")}</Tag>);
           },
         },
-        { label: "匹配线路", get: (rj) => rjText(rj, "inputs.line_ledger.requested_line_name", "-") },
-        { label: "查询杆塔", get: (rj) => rjText(rj, "inputs.line_ledger.query_tower", "-") },
-        { label: "匹配杆塔", get: (rj) => rjText(rj, "inputs.line_ledger.record.tower_no", "-") },
-        { label: "耐雷水平（反击）", get: (rj) => rjText(rj, "inputs.line_ledger.record.backflashover_withstand_ka", "-") },
-        { label: "耐雷水平（绕击）", get: (rj) => rjText(rj, "inputs.line_ledger.record.shielding_failure_withstand_ka", "-") },
+        { label: t("匹配线路"), get: (rj) => rjText(rj, "inputs.line_ledger.requested_line_name", "-") },
+        { label: t("查询杆塔"), get: (rj) => rjText(rj, "inputs.line_ledger.query_tower", "-") },
+        { label: t("匹配杆塔"), get: (rj) => rjText(rj, "inputs.line_ledger.record.tower_no", "-") },
+        { label: t("耐雷水平（反击）"), get: (rj) => rjText(rj, "inputs.line_ledger.record.backflashover_withstand_ka", "-") },
+        { label: t("耐雷水平（绕击）"), get: (rj) => rjText(rj, "inputs.line_ledger.record.shielding_failure_withstand_ka", "-") },
         {
-          label: "匹配说明",
+          label: t("匹配说明"),
           get: (rj) => rjText(rj, "inputs.line_ledger.diagnostic", rjText(rj, "inputs.line_ledger.reason", "-")),
         },
       ],
     },
     {
       key: "lightning",
-      title: "雷击分析",
-      header: "步骤5：雷击原因分析",
-      empty: "该记录未包含雷击分析中间数据。",
+      title: t("雷击分析"),
+      header: t("步骤5：雷击原因分析"),
+      empty: t("该记录未包含雷击分析中间数据。"),
       fields: [
         {
-          label: "雷电流幅值",
+          label: t("雷电流幅值"),
           get: (rj) => {
             const value = rjValue(rj, "lightning_cause_analysis.lightning_current_ka") ?? rjValue(rj, "inputs.lightning.current_ka");
             return value == null ? "-" : `${value} kA`;
           },
         },
-        { label: "结论", get: (rj) => rjText(rj, "lightning_cause_analysis.conclusion", "-") },
-        { label: "机理", get: (rj) => rjText(rj, "lightning_cause_analysis.mechanism", "-") },
+        { label: t("结论"), get: (rj) => rjText(rj, "lightning_cause_analysis.conclusion", "-") },
+        { label: t("机理"), get: (rj) => rjText(rj, "lightning_cause_analysis.mechanism", "-") },
         {
-          label: "状态",
+          label: t("状态"),
           get: (rj) => {
             const status = rjText(rj, "lightning_cause_analysis.status", "-");
-            const map: Record<string, string> = { not_applicable: "不适用", unavailable: "不可用" };
+            const map: Record<string, string> = { not_applicable: t("不适用"), unavailable: "不可用" };
             return map[status] ?? status;
           },
         },
@@ -476,64 +476,64 @@ function buildComputationSteps(): ComputationStepDef[] {
     },
     {
       key: "wave",
-      title: "行波分析",
-      header: "步骤6：行波分析",
-      empty: "该记录未包含行波分析中间数据。",
+      title: t("行波分析"),
+      header: t("步骤6：行波分析"),
+      empty: t("该记录未包含行波分析中间数据。"),
       fields: [
         {
-          label: "引擎类型",
+          label: t("引擎类型"),
           get: (rj) => {
             const method = rjText(rj, "traveling_wave_analysis.analysis_method", "-");
             return method.includes("MATLAB") ? <Tag color="blue">MATLAB</Tag> : method;
           },
         },
         {
-          label: "行波记录数",
+          label: t("行波记录数"),
           get: (rj) => {
             const phases = rjValue(rj, "traveling_wave_analysis.phase_analyses");
             if (Array.isArray(phases)) return String(phases.length);
             return rjText(rj, "traveling_wave_analysis.active_phases", "-");
           },
         },
-        { label: "分类结论", get: (rj) => rjText(rj, "traveling_wave_analysis.classification", "-") },
-        { label: "机理", get: (rj) => rjText(rj, "traveling_wave_analysis.mechanism", "-") },
-        { label: "置信度", get: (rj) => formatConfidence(rjValue(rj, "traveling_wave_analysis.confidence")) },
-        { label: "模型预测结果", get: (rj) => rjText(rj, "traveling_wave_analysis.model_result.meaning", "-") },
-        { label: "详细判定依据", get: (rj) => rjText(rj, "traveling_wave_analysis.report_conclusion", "-") },
+        { label: t("分类结论"), get: (rj) => rjText(rj, "traveling_wave_analysis.classification", "-") },
+        { label: t("机理"), get: (rj) => rjText(rj, "traveling_wave_analysis.mechanism", "-") },
+        { label: t("置信度"), get: (rj) => formatConfidence(rjValue(rj, "traveling_wave_analysis.confidence")) },
+        { label: t("模型预测结果"), get: (rj) => rjText(rj, "traveling_wave_analysis.model_result.meaning", "-") },
+        { label: t("详细判定依据"), get: (rj) => rjText(rj, "traveling_wave_analysis.report_conclusion", "-") },
       ],
     },
     {
       key: "overall",
-      title: "综合判定",
-      header: "步骤7：综合判定",
-      empty: "该记录未包含综合判定中间数据。",
+      title: t("综合判定"),
+      header: t("步骤7：综合判定"),
+      empty: t("该记录未包含综合判定中间数据。"),
       fields: [
-        { label: "判定结论", get: (rj) => rjText(rj, "overall_recommendation.decision", "-") },
+        { label: t("判定结论"), get: (rj) => rjText(rj, "overall_recommendation.decision", "-") },
         {
-          label: "是否可自动通过",
+          label: t("是否可自动通过"),
           get: (rj) => {
             const canPass = rjValue(rj, "overall_recommendation.can_auto_pass");
-            return canPass == null ? "-" : (canPass ? <Tag color="green">{"可以自动通过"}</Tag> : <Tag color="orange">{"建议人工复核"}</Tag>);
+            return canPass == null ? "-" : (canPass ? <Tag color="green">{t("可以自动通过")}</Tag> : <Tag color="orange">{t("建议人工复核")}</Tag>);
           },
         },
         {
-          label: "综合置信度",
+          label: t("综合置信度"),
           get: (rj) => {
             const value = rjValue(rj, "confidence") ?? rjValue(rj, "overall_recommendation.confidence");
             return value == null ? "-" : `${value}%`;
           },
         },
         {
-          label: "风险等级",
+          label: t("风险等级"),
           get: (rj) => {
             const level = rjText(rj, "risk_level", "-");
-            const map: Record<string, string> = { low: "低风险", medium: "中风险", high: "高风险", critical: "极高风险" };
+            const map: Record<string, string> = { low: t("低风险"), medium: "中风险", high: "高风险", critical: "极高风险" };
             return map[level] ?? level;
           },
         },
-        { label: "汇总说明", get: (rj) => rjText(rj, "overall_recommendation.summary", "-") },
+        { label: t("汇总说明"), get: (rj) => rjText(rj, "overall_recommendation.summary", "-") },
         {
-          label: "未通过原因",
+          label: t("未通过原因"),
           get: (rj) => {
             const reasons = rjValue(rj, "overall_recommendation.reasons");
             if (Array.isArray(reasons) && reasons.length > 0) {
@@ -591,15 +591,15 @@ const ARTIFACT_SEGMENT_LABELS: Record<string, string> = {
 };
 
 /** 节点段翻译：记录 id 段显示为分析标题；run-* 显示为「运行记录 N」；已知固定段走映射；其余保留。 */
-function translateSegment(segment: string, analysisId?: string | null, analysisTitle?: string | null): string {
+function translateSegment(segment: string, t: (s: string) => string, analysisId?: string | null, analysisTitle?: string | null): string {
   if (analysisId && segment === analysisId) {
     return analysisTitle?.trim() || segment;
   }
   if (ARTIFACT_SEGMENT_LABELS[segment]) {
-    return ARTIFACT_SEGMENT_LABELS[segment];
+    return t(ARTIFACT_SEGMENT_LABELS[segment]);
   }
   if (segment.startsWith("run-")) {
-    return `运行记录 ${segment.slice(4)}`;
+    return `${t("运行记录")} ${segment.slice(4)}`;
   }
   return segment;
 }
@@ -607,10 +607,11 @@ function translateSegment(segment: string, analysisId?: string | null, analysisT
 function buildArtifactTree(
   artifacts: Record<string, unknown> | undefined,
   onDownload: (key: string) => void,
+  t: (s: string) => string,
   analysisId?: string | null,
   analysisTitle?: string | null,
 ): ArtifactTreeNode[] {
-  const root: ArtifactTreeNode = { title: "产物", key: "__root__", children: [] };
+  const root: ArtifactTreeNode = { title: t("产物"), key: "__root__", children: [] };
   const nodes = new Map<string, ArtifactTreeNode>();
   nodes.set("__root__", root);
   const insert = (parts: string[], fullKey: string) => {
@@ -619,7 +620,7 @@ function buildArtifactTree(
     for (let i = 0; i < parts.length; i++) {
       prefix = prefix ? `${prefix}/${parts[i]}` : parts[i];
       const isFile = i === parts.length - 1;
-      const label = translateSegment(parts[i], analysisId, analysisTitle);
+      const label = translateSegment(parts[i], t, analysisId, analysisTitle);
       if (!nodes.has(prefix)) {
         const node: ArtifactTreeNode = {
           title: isFile ? (
@@ -655,11 +656,11 @@ function buildArtifactTree(
   return root.children ?? [];
 }
 
-async function downloadObject(fetchWithAuth: (path: string, init?: RequestInit) => Promise<Response>, analysisId: string, objectKey: string) {
+async function downloadObject(fetchWithAuth: (path: string, init?: RequestInit) => Promise<Response>, analysisId: string, objectKey: string, t: (s: string) => string) {
   const encodedKey = objectKey.split("/").map(encodeURIComponent).join("/");
   const response = await fetchWithAuth(`/api/v1/fault-analysis/${analysisId}/artifacts/${encodedKey}`);
   if (!response.ok) {
-    const errMsg = await readApiError(response).catch(() => "下载失败");
+    const errMsg = await readApiError(response).catch(() => t("下载失败"));
     throw new Error(errMsg);
   }
   const blob = await response.blob();
@@ -831,7 +832,7 @@ function SectionContent({ content }: { content: ReportSectionItem[] }) {
 
 function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, onExportReport, onOpenLog }: ReportViewProps) {
   const { t } = useI18n();
-  const tabGroups = groupReportSections(sections.sections);
+  const tabGroups = groupReportSections(sections.sections, t);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   return (
     <div className="flex flex-1 min-h-0 py-4">
@@ -862,7 +863,7 @@ function ReportView({ tabKey, exportElementId, detail, sections, exportLoading, 
               {onOpenLog ? (
                 <Button
                   icon={<FileSearchOutlined />}
-                  onClick={() => onOpenLog(detail.task_id, "分析日志", detail.title ?? `FA-${detail.id?.slice(0, 12) ?? ""}`)}
+                  onClick={() => onOpenLog(detail.task_id, t("分析日志"), detail.title ?? `FA-${detail.id?.slice(0, 12) ?? ""}`)}
                 >
                   查看日志
                 </Button>
@@ -1061,10 +1062,11 @@ function ProcessView({ computationSteps, resultJson }: ProcessViewProps) {
 }
 
 function ArtifactsView({ onDownload, downloadingArtifact, artifactTree }: ArtifactsViewProps) {
+  const { t } = useI18n();
   return (
     <div className="py-4">
       {artifactTree.length === 0 ? (
-        <Alert type="info" showIcon message={"该记录暂无产物清单。"} />
+        <Alert type="info" showIcon message={t("该记录暂无产物清单。")} />
       ) : (
         <Tree showLine defaultExpandAll treeData={artifactTree} />
       )}
@@ -1158,15 +1160,16 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
     return <Alert type="info" showIcon message={t("未找到该故障分析记录")} />;
   }
 
-  const { sections, station, fault_datetime, fault_id } = buildSections(detail);
+  const { sections, station, fault_datetime, fault_id } = buildSections(detail, t);
 
   const resultJson = (detail.result_json ?? {}) as Record<string, unknown>;
   const artifacts = resultJson.artifacts as Record<string, unknown> | undefined;
-  const computationSteps = buildComputationSteps();
+  const computationSteps = buildComputationSteps(t);
   const viewModel = resultJson.view_model as ProcessViewModel | undefined;
   const artifactTree = buildArtifactTree(
     artifacts,
     (key) => handleDownloadArtifact(key),
+    t,
     detail.id,
     detail.title,
   );
@@ -1175,11 +1178,11 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
     if (!detail) return;
     setDownloadingArtifact(objectKey);
     try {
-      await downloadObject(fetchWithAuth, analysisId, objectKey);
-      messageApi.success("产物下载成功");
+      await downloadObject(fetchWithAuth, analysisId, objectKey, t);
+      messageApi.success(t("产物下载成功"));
     } catch (error) {
-      console.error("下载产物失败", error);
-      messageApi.error(error instanceof Error ? error.message : "下载失败，请重试");
+      console.error(t("下载产物失败"), error);
+      messageApi.error(error instanceof Error ? error.message : t("下载失败，请重试"));
     } finally {
       setDownloadingArtifact(null);
     }
@@ -1207,7 +1210,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
             tabKey={tabKey}
             exportElementId={exportElementId}
             detail={detail}
-            sections={buildSections(detail)}
+            sections={buildSections(detail, t)}
             exportLoading={exporting}
             onExportReport={handleExportReport}
             onOpenLog={onOpenLog}
