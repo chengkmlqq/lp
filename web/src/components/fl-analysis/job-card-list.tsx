@@ -123,7 +123,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
             disabled: !job.task_id,
             onClick: (event) => {
               event.stopPropagation();
-              onOpenLog?.(job.task_id, "任务执行日志", job.job_name || job.line_name || job.line_code || "防雷任务");
+              onOpenLog?.(job.task_id, t("任务执行日志"), job.job_name || job.line_name || job.line_code || t("防雷任务"));
             },
           });
         }
@@ -228,7 +228,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                           （如「杆塔 75 计算完成」）。进行中塔的 fractional 只参与
                           百分比，避免 22+0.95 进位成「23/23」。 */}
                       <Tooltip
-                        title={job.current_step_text || "正在计算"}
+                        title={job.current_step_text || t("正在计算")}
                         placement="top"
                       >
                         <Progress

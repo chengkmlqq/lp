@@ -133,55 +133,55 @@ export function TowerDensityView({
   const columns = useMemo<ColumnsType<LineTowerSummary>>(
     () => [
       {
-        title: "杆塔编号",
+        title: t("杆塔编号"),
         dataIndex: "tower_no",
         width: 120,
         render: (value: string) => value || "-",
       },
       {
-        title: "序号",
+        title: t("序号"),
         dataIndex: "seq_no",
         width: 70,
         render: (value: number) => value,
       },
       {
-        title: "经度",
+        title: t("经度"),
         dataIndex: "longitude",
         width: 110,
         render: (value: number | null) => formatGeo(value),
       },
       {
-        title: "纬度",
+        title: t("纬度"),
         dataIndex: "latitude",
         width: 110,
         render: (value: number | null) => formatGeo(value),
       },
       {
-        title: "海拔(m)",
+        title: t("海拔(m)"),
         dataIndex: "altitude_m",
         width: 90,
         render: (value: number | null) => (value === null || value === undefined ? "-" : value.toFixed(1)),
       },
       {
-        title: "地闪密度(次/km²·年)",
+        title: t("地闪密度(次/km²·年)"),
         dataIndex: "lightning_density",
         width: 150,
         render: (value: number | null) => formatDensity(value),
       },
       {
-        title: "倾角1(°)",
+        title: t("倾角1(°)"),
         dataIndex: "slope_1",
         width: 90,
         render: (value: number | null) => formatAngle(value),
       },
       {
-        title: "倾角2(°)",
+        title: t("倾角2(°)"),
         dataIndex: "slope_2",
         width: 90,
         render: (value: number | null) => formatAngle(value),
       },
       {
-        title: "风险等级",
+        title: t("风险等级"),
         dataIndex: "risk_level",
         width: 100,
         render: (value: string | null) => {
@@ -207,7 +207,7 @@ export function TowerDensityView({
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={linkedLinesQuery.error instanceof Error ? linkedLinesQuery.error.message : "关联线路加载失败"}
+        description={linkedLinesQuery.error instanceof Error ? linkedLinesQuery.error.message : t("关联线路加载失败")}
       />
     );
   }
@@ -216,7 +216,7 @@ export function TowerDensityView({
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={"该分布尚未回填任何线路"}
+        description={t("该分布尚未回填任何线路")}
       />
     );
   }
@@ -224,13 +224,13 @@ export function TowerDensityView({
   return (
     <Space direction="vertical" size={16} className="w-full">
       <Space wrap size={8}>
-        <Typography.Text type="secondary">{"线路"}</Typography.Text>
+        <Typography.Text type="secondary">{t("线路")}</Typography.Text>
         <Select
           style={{ minWidth: 240 }}
           value={effectiveSelectedLineId}
           options={lineOptions}
           onChange={setSelectedLineId}
-          placeholder={"选择线路"}
+          placeholder={t("选择线路")}
         />
         {selectedLine && (
           <Typography.Text type="secondary">
@@ -258,7 +258,7 @@ export function TowerDensityView({
           emptyText: (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={"该线路暂无杆塔数据"}
+              description={t("该线路暂无杆塔数据")}
             />
           ),
         }}
