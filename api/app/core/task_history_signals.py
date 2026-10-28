@@ -23,6 +23,9 @@ SYSTEM_TASK_NAMES: frozenset[str] = frozenset({
     "app.tasks.scheduled_task_tasks.dispatch_due_scheduled_tasks",
     # LP-283：日志清理任务不该记录自身日志（否则“越清越多”），加入黑名单
     "app.tasks.log_cleanup_tasks.cleanup_expired_task_logs",
+    # 雷电流临时文件清理：高频周期任务，不展示在任务监控页、不写入
+    # celery_task_history 监控表、不触发日志采集。在信号层源头拦截（LP-281 同源）。
+    "app.tasks.lightning_tasks.cleanup_lightning_temp_files",
 })
 
 
