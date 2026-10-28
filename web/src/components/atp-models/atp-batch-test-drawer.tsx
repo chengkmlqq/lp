@@ -329,7 +329,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                     style={{ minWidth: 420 }}
                     value={stageList}
                     onChange={setStageList}
-                    options={STAGES}
+                    options={STAGES.map((s) => ({ ...s, label: t(s.label) }))}
                   />
                 </Form.Item>
                 <Form.Item label={t("固定雷电流(kA)")} style={{ marginBottom: 0 }}>

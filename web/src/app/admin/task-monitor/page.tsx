@@ -218,7 +218,7 @@ export default function AdminTaskMonitorPage() {
         overviewQuery.refetch();
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "删除任务失败";
+      const message = error instanceof Error ? error.message : t("删除任务失败");
       Modal.error({ title: t("删除任务失败"), content: message });
     } finally {
       setDeletingTaskId(null);

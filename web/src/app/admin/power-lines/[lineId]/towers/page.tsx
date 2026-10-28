@@ -597,7 +597,7 @@ export default function AdminPowerLineTowersPage() {
             showIcon
             type="error"
             message={t("加载杆塔详情失败")}
-            description={towerDetailQuery.error instanceof Error ? towerDetailQuery.error.message : "未知错误"}
+            description={towerDetailQuery.error instanceof Error ? towerDetailQuery.error.message : t("未知错误")}
           />
         ) : towerDetailQuery.data ? (
           (() => {
