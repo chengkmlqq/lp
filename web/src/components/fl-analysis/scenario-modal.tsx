@@ -47,7 +47,7 @@ export function ScenarioModal({
   const { t } = useI18n();
   return (
     <Modal
-      title={selectedJob ? `加装避雷器复算 - ${selectedJob.job_name || selectedJob.line_name || selectedJob.line_code}` : "加装避雷器复算"}
+      title={selectedJob ? `${t("加装避雷器复算")} - ${selectedJob.job_name || selectedJob.line_name || selectedJob.line_code}` : t("加装避雷器复算")}
       open={open}
       width={1080}
       confirmLoading={submitting}
@@ -89,7 +89,7 @@ export function ScenarioModal({
               placeholder={t("选择已成功完成的普通计算或同跳计算任务")}
               options={baseJobs.map((item) => ({
                 value: item.id,
-                label: `${item.job_name || item.line_name || item.line_code || item.id} / ${formatJobType(item.job_type)} / ${formatDateTime(item.finished_at)}`,
+                label: `${item.job_name || item.line_name || item.line_code || item.id} / ${formatJobType(item.job_type, false, t)} / ${formatDateTime(item.finished_at)}`,
               }))}
             />
           </Form.Item>
@@ -126,7 +126,7 @@ export function ScenarioModal({
                   title: t("预期风险"),
                   dataIndex: "risk_level",
                   width: 120,
-                  render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
+                  render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value, t)}</Tag>,
                 },
                 {
                   title: t("高风险原因"),

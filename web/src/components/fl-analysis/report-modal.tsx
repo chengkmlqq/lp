@@ -43,7 +43,7 @@ export function ReportModal({
   const { t } = useI18n();
   return (
     <Modal
-      title={selectedJob ? `报告生成 - ${selectedJob.job_name || selectedJob.line_name || selectedJob.line_code}` : "报告生成"}
+      title={selectedJob ? `${t("报告生成")} - ${selectedJob.job_name || selectedJob.line_name || selectedJob.line_code}` : t("报告生成")}
       open={open}
       width={1080}
       confirmLoading={submitting}
@@ -101,7 +101,7 @@ export function ReportModal({
                   title: t("风险等级"),
                   dataIndex: "risk_level",
                   width: 120,
-                  render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
+                  render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value, t)}</Tag>,
                 },
                 {
                   title: t("高风险原因"),

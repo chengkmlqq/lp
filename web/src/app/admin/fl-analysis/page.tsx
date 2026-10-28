@@ -99,7 +99,7 @@ export default function AdminFlAnalysisPage() {
   const canReadLogs = hasPermission("celery.read") || hasPermission("celery.manage");
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logModalTaskId, setLogModalTaskId] = useState<string | null>(null);
-  const [logModalTitle, setLogModalTitle] = useState("任务执行日志");
+  const [logModalTitle, setLogModalTitle] = useState(t("任务执行日志"));
 
   const openLogViewer = useCallback((taskId: string | null | undefined, label: string, title: string) => {
     if (!taskId || !canReadLogs) {
@@ -347,11 +347,11 @@ export default function AdminFlAnalysisPage() {
       setError("");
       await invalidateFlAnalysisQueries();
       setCreateModalOpen(false);
-      messageApi.success(`${formatJobType(job.job_type, mitigationMode(job))}任务已创建并启动`);
+      messageApi.success(`${formatJobType(job.job_type, mitigationMode(job), t)}${t("任务已创建并启动")}`);
       createJobForm.setFieldsValue({ job_name: "" });
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "分析任务创建失败");
+      setError(candidate instanceof Error ? candidate.message : t("分析任务创建失败"));
     },
   });
 
@@ -371,7 +371,7 @@ export default function AdminFlAnalysisPage() {
       messageApi.success(`已删除防雷分析任务：${job.job_name || job.line_name || job.id}`);
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "防雷分析任务删除失败");
+      setError(candidate instanceof Error ? candidate.message : t("防雷分析任务删除失败"));
     },
   });
 
@@ -411,7 +411,7 @@ export default function AdminFlAnalysisPage() {
       }
     },
     onError: (candidate) => {
-      setError(candidate instanceof Error ? candidate.message : "任务取消失败");
+      setError(candidate instanceof Error ? candidate.message : t("任务取消失败"));
     },
   });
 
@@ -557,10 +557,10 @@ export default function AdminFlAnalysisPage() {
     onSuccess: async () => {
       await invalidateFlAnalysisQueries();
       setMitigationOpen(false);
-      messageApi.success("措施推荐任务已创建");
+      messageApi.success(t("措施推荐任务已创建"));
     },
     onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "措施推荐任务创建失败");
+      messageApi.error(candidate instanceof Error ? candidate.message : t("措施推荐任务创建失败"));
     },
   });
 
@@ -591,10 +591,10 @@ export default function AdminFlAnalysisPage() {
     onSuccess: async () => {
       await invalidateFlAnalysisQueries();
       setScenarioOpen(false);
-      messageApi.success("加装避雷器复算任务已创建");
+      messageApi.success(t("加装避雷器复算任务已创建"));
     },
     onError: (candidate) => {
-      messageApi.error(candidate instanceof Error ? candidate.message : "加装避雷器复算任务创建失败");
+      messageApi.error(candidate instanceof Error ? candidate.message : t("加装避雷器复算任务创建失败"));
     },
   });
 

@@ -385,7 +385,7 @@ export default function AdminLightningRetrofitPage() {
         dataIndex: "job_type",
         key: "job_type",
         width: 150,
-        render: (_value, job) => formatJobType(job.job_type, readMitigationMode(job)),
+        render: (_value, job) => formatJobType(job.job_type, readMitigationMode(job), t),
       },
       {
         title: t("状态"),
@@ -394,7 +394,7 @@ export default function AdminLightningRetrofitPage() {
         width: 140,
         render: (value, job) => (
           <Space direction="vertical" size={2} style={{ width: "100%" }}>
-            <span style={{ color: statusColor(value) }}>{formatJobStatus(value)}</span>
+            <span style={{ color: statusColor(value) }}>{formatJobStatus(value, t)}</span>
             {value === "running" ? (
               <Progress
                 percent={runningProgressPercent(job)}
@@ -488,7 +488,7 @@ export default function AdminLightningRetrofitPage() {
           <Alert
             type="error"
             showIcon
-            message={jobsQuery.error instanceof Error ? jobsQuery.error.message : "加载失败"}
+            message={jobsQuery.error instanceof Error ? jobsQuery.error.message : t("加载失败")}
           />
         )}
 
@@ -552,7 +552,7 @@ export default function AdminLightningRetrofitPage() {
                           </Typography.Text>
                           <div className="flex flex-shrink-0 items-center gap-2">
                             <Badge status={retrofitJobBadgeStatus(job.status)} />
-                            <Typography.Text type="secondary" className="text-xs">{formatJobStatus(job.status)}</Typography.Text>
+                            <Typography.Text type="secondary" className="text-xs">{formatJobStatus(job.status, t)}</Typography.Text>
                           </div>
                         </div>
                         <div className="flex flex-col gap-2 px-4 py-3">
@@ -566,7 +566,7 @@ export default function AdminLightningRetrofitPage() {
                             <ThunderboltOutlined className="text-xs text-gray-500" />
                             <Typography.Text type="secondary" className="text-xs">{t("类型：")}</Typography.Text>
                             <Tag color={readMitigationMode(job) ? "orange" : "blue"} className="text-xs">
-                              {formatJobType(job.job_type, readMitigationMode(job))}
+                              {formatJobType(job.job_type, readMitigationMode(job), t)}
                             </Tag>
                           </div>
                           <div className="flex items-center gap-2">
@@ -643,13 +643,13 @@ export default function AdminLightningRetrofitPage() {
 }
 
 // ── helpers ──────────────────────────────────────────────────────
-function formatJobType(jobType: string, nonConstruction = false): string {
-  if (jobType === "risk") return "风险评估";
-  if (jobType === "mitigation") return nonConstruction ? "措施推荐(非建线)" : "措施推荐";
-  if (jobType === "normal") return "普通计算";
-  if (jobType === "tongtiao") return "同跳计算";
-  if (jobType === "report") return "报告";
-  if (jobType === "scenario") return "加装避雷器复算";
+function formatJobType(jobType: string, nonConstruction = false, t: (s: string) => string = (s) => s): string {
+  if (jobType === "risk") return t("风险评估");
+  if (jobType === "mitigation") return nonConstruction ? t("措施推荐(非建线)") : t("措施推荐");
+  if (jobType === "normal") return t("普通计算");
+  if (jobType === "tongtiao") return t("同跳计算");
+  if (jobType === "report") return t("报告");
+  if (jobType === "scenario") return t("加装避雷器复算");
   return jobType || "-";
 }
 
@@ -832,10 +832,10 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
       <Alert
         type="info"
         showIcon
-        message={job ? (job.job_name || job.line_name || job.line_code || "防雷改造任务") : "加载中…"}
+        message={job ? (job.job_name || job.line_name || job.line_code || t("防雷改造任务")) : t("加载中…")}
         description={
           job
-            ? `${job.line_name || job.line_code || "-"} / ${formatJobType(job.job_type, readMitigationMode(job))} / ${job.status} / 创建：${formatDateTime(job.create_date)}`
+            ? `${job.line_name || job.line_code || "-"} / ${formatJobType(job.job_type, readMitigationMode(job), t)} / ${job.status} / ${t("创建")}：${formatDateTime(job.create_date)}`
             : undefined
         }
       />
@@ -875,7 +875,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
 
       {/* 优化过程弹窗：状态机逐轮计算过程（2026-09-30） */}
       <Modal
-        title={processRow ? `优化过程 - ${processRow.tower_no || processRow.tower_id}` : "优化过程"}
+        title={processRow ? `${t("优化过程")} - ${processRow.tower_no || processRow.tower_id}` : t("优化过程")}
         open={processRow !== null}
         onCancel={() => setProcessRow(null)}
         footer={<Button onClick={() => setProcessRow(null)}>{t("关闭")}</Button>}
@@ -914,7 +914,7 @@ function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
         type="info"
         showIcon
         message={`共 ${steps.length} 轮调参`}
-        description={`从「从轻到重试改参数，每轮用 ATP 重算验证」到${(lastStep.decision as string) || "完成"}；最终风险：${
+        description={`${t("从「从轻到重试改参数，每轮用 ATP 重算验证」到")}${(lastStep.decision as string) || t("完成")}；${t("最终风险")}：${
           typeof result.expected_risk_level === "string" ? result.expected_risk_level : "-"
         }`}
       />
@@ -922,7 +922,7 @@ function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
         items={(steps as Record<string, unknown>[]).map((step) => {
           const changes = Array.isArray(step.changes) ? (step.changes as Record<string, unknown>[]) : [];
           const recomputed = step.recomputed as Record<string, unknown> | null | undefined;
-          const decision = typeof step.decision === "string" && step.decision ? String(step.decision) : "继续下一轮加重措施";
+          const decision = typeof step.decision === "string" && step.decision ? String(step.decision) : t("继续下一轮加重措施");
           const grades = (step.grades as Record<string, unknown>) || {};
           const riskLevel = typeof recomputed?.risk_level === "string" ? String(recomputed.risk_level) : null;
           return {
@@ -933,7 +933,7 @@ function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
                   <Typography.Text strong>第 {String(step.step)} 轮</Typography.Text>
                   <Tag color="blue">{String(step.state ?? "-")}</Tag>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    分级：绝缘{String(grades.insulator ?? "-")} / 接地{String(grades.ground ?? "-")} / 保护角{String(grades.protection ?? "-")}
+                    {t("分级")}：{t("绝缘")}{String(grades.insulator ?? "-")} / {t("接地")}{String(grades.ground ?? "-")} / {t("保护角")}{String(grades.protection ?? "-")}
                   </Typography.Text>
                 </Space>
                 {changes.length > 0 ? (

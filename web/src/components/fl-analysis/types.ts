@@ -150,41 +150,41 @@ export const CREATE_JOB_DEFAULTS: CreateJobFormValues = {
   selected_tower_ids: [],
 };
 
-export function formatRiskLevel(value: string | null | undefined): string {
-  if (value === "high") return "高风险";
-  if (value === "medium") return "中风险";
-  if (value === "low") return "低风险";
+export function formatRiskLevel(value: string | null | undefined, t: (s: string) => string = (s) => s): string {
+  if (value === "high") return t("高风险");
+  if (value === "medium") return t("中风险");
+  if (value === "low") return t("低风险");
   return value || "-";
 }
 
-export function formatJobType(jobType: string, nonConstruction = false): string {
-  if (jobType === "risk") return "风险评估";
-  if (jobType === "mitigation") return nonConstruction ? "措施推荐(非建线)" : "措施推荐";
-  if (jobType === "normal") return "普通计算";
-  if (jobType === "tongtiao") return "同跳计算";
-  if (jobType === "report") return "报告";
-  if (jobType === "scenario") return "加装避雷器复算";
+export function formatJobType(jobType: string, nonConstruction = false, t: (s: string) => string = (s) => s): string {
+  if (jobType === "risk") return t("风险评估");
+  if (jobType === "mitigation") return nonConstruction ? t("措施推荐(非建线)") : t("措施推荐");
+  if (jobType === "normal") return t("普通计算");
+  if (jobType === "tongtiao") return t("同跳计算");
+  if (jobType === "report") return t("报告");
+  if (jobType === "scenario") return t("加装避雷器复算");
   return jobType || "-";
 }
 
-export function formatCurrentWaveform(value: string | null | undefined): string {
+export function formatCurrentWaveform(value: string | null | undefined, t: (s: string) => string = (s) => s): string {
   if (value === "heidler") return "Heidler";
-  if (value === "double_slope") return "双斜角";
-  if (value === "double_exponential") return "双指数";
+  if (value === "double_slope") return t("双斜角");
+  if (value === "double_exponential") return t("双指数");
   return value || "-";
 }
 
-export function formatFlashoverMethod(value: string | null | undefined): string {
-  if (value === "guideline") return "规程法";
-  if (value === "intersection") return "相交法";
-  if (value === "leader_development") return "先导发展法";
+export function formatFlashoverMethod(value: string | null | undefined, t: (s: string) => string = (s) => s): string {
+  if (value === "guideline") return t("规程法");
+  if (value === "intersection") return t("相交法");
+  if (value === "leader_development") return t("先导发展法");
   return value || "-";
 }
 
-export function formatAltitudeCorrection(value: string | null | undefined): string {
-  if (value === "none") return "无";
-  if (value === "formula1") return "推荐公式1";
-  if (value === "formula2") return "推荐公式2";
+export function formatAltitudeCorrection(value: string | null | undefined, t: (s: string) => string = (s) => s): string {
+  if (value === "none") return t("无");
+  if (value === "formula1") return t("推荐公式1");
+  if (value === "formula2") return t("推荐公式2");
   return value || "-";
 }
 
@@ -207,17 +207,17 @@ export function formatDimensionValue(
   return fallback(value);
 }
 
-export function formatInducedVoltageFormula(value: string | null | undefined): string {
-  if (value === "formula1") return "公式1";
-  if (value === "formula2") return "公式2";
+export function formatInducedVoltageFormula(value: string | null | undefined, t: (s: string) => string = (s) => s): string {
+  if (value === "formula1") return t("公式1");
+  if (value === "formula2") return t("公式2");
   return value || "-";
 }
 
-export function formatExternalAdapter(value: string | null | undefined): string {
+export function formatExternalAdapter(value: string | null | undefined, t: (s: string) => string = (s) => s): string {
   if (value === "wine") return "Wine / ATP";
-  if (value === "atp") return "原生 ATP";
-  if (value === "placeholder") return "规则近似";
-  if (value === "custom") return "自定义";
+  if (value === "atp") return t("原生 ATP");
+  if (value === "placeholder") return t("规则近似");
+  if (value === "custom") return t("自定义");
   return value || "-";
 }
 
@@ -278,7 +278,7 @@ export function isJobCancellable(job: FlAnalysisJobSummary | FlAnalysisJobDetail
 }
 
 /** 任务状态中文文案（含 cancelled/blocked），列表与卡片统一口径。 */
-export function formatJobStatus(value: string | null | undefined): string {
+export function formatJobStatus(value: string | null | undefined, t: (s: string) => string = (s) => s): string {
   const status = (value || "").trim();
   const map: Record<string, string> = {
     pending: "待处理",
@@ -289,7 +289,8 @@ export function formatJobStatus(value: string | null | undefined): string {
     failed: "失败",
     cancelled: "已取消",
   };
-  return map[status] || status || "-";
+  const label = map[status];
+  return label ? t(label) : status || "-";
 }
 
 export function formatDateTime(value: string | null | undefined): string {

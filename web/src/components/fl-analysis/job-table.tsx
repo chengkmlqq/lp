@@ -76,7 +76,7 @@ export function JobTable({
       title: t("任务类型"),
       key: "job_type",
       width: 150,
-      render: (_value, job) => formatJobType(job.job_type, mitigationMode(job)),
+      render: (_value, job) => formatJobType(job.job_type, mitigationMode(job), t),
     },
     {
       title: t("杆塔数"),
@@ -102,7 +102,7 @@ export function JobTable({
         job.status === "running" ? (
           <Progress percent={runningProgressPercent(job)} size="small" />
         ) : (
-          <Tag color={statusColor(job.status)}>{formatJobStatus(job.status)}</Tag>
+          <Tag color={statusColor(job.status)}>{formatJobStatus(job.status, t)}</Tag>
         ),
     },
     {
@@ -162,7 +162,7 @@ export function JobTable({
                       type="link"
                       size="small"
                       disabled={!job.task_id}
-                      onClick={() => onOpenLog(job.task_id, "任务执行日志", job.job_name || job.line_name || job.line_code || "防雷任务")}
+                      onClick={() => onOpenLog(job.task_id, t("任务执行日志"), job.job_name || job.line_name || job.line_code || t("防雷任务"))}
                     >
                       日志
                     </Button>

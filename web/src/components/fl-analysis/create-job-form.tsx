@@ -236,8 +236,8 @@ export function CreateJobForm({
             <Form.Item className="fl-span-2" name="job_name" label={t("任务名")} rules={[{ required: true, message: t("请输入任务名") }]}>
             <Input
               placeholder={selectedLine
-                ? `${selectedLine.name || selectedLine.code}-${formatJobType(selectedJobType)}`
-                : `${formatJobType(selectedJobType)}任务`}
+                ? `${selectedLine.name || selectedLine.code}-${formatJobType(selectedJobType, false, t)}`
+                : `${formatJobType(selectedJobType, false, t)}${t("任务")}`}
             />
           </Form.Item>
 
@@ -365,7 +365,7 @@ export function CreateJobForm({
                     type="error"
                     showIcon
                     message={t("杆塔列表加载失败")}
-                    description={towersQuery.error instanceof Error ? towersQuery.error.message : "未知错误"}
+                    description={towersQuery.error instanceof Error ? towersQuery.error.message : t("未知错误")}
                   />
                 ) : (
                   <Table<LineTowerSummary>

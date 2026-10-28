@@ -2620,6 +2620,12 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "分": "min",
   "时": "h",
   "秒": "s",
+  "从「从轻到重试改参数，每轮用 ATP 重算验证」到": "From \"adjust parameters from light to heavy, verifying with ATP recalculation each round\" to",
+  "任务已创建并启动": "task created and started",
+  "保护角": "Shielding Angle",
+  "接地": "Grounding",
+  "最终风险": "Final Risk",
+  "绝缘": "Insulation",
 };
 
 // ─────────────────────────── Context ───────────────────────────

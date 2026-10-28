@@ -69,13 +69,13 @@ export function ResultTable({
           title: t("当前风险"),
           key: "current_risk_level",
           width: 110,
-          render: (_value, row) => <Tag color={riskColor(readCurrentRisk(row))}>{formatRiskLevel(readCurrentRisk(row))}</Tag>,
+          render: (_value, row) => <Tag color={riskColor(readCurrentRisk(row))}>{formatRiskLevel(readCurrentRisk(row), t)}</Tag>,
         },
         {
           title: t("预期风险"),
           dataIndex: "risk_level",
           width: 110,
-          render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
+          render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value, t)}</Tag>,
         },
       );
     } else {
@@ -83,7 +83,7 @@ export function ResultTable({
         title: t("风险等级"),
         dataIndex: "risk_level",
         width: 120,
-        render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
+        render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value, t)}</Tag>,
       });
     }
 
@@ -227,7 +227,7 @@ export function ResultTable({
       <Alert
         type="error"
         showIcon
-        message={error instanceof Error ? error.message : "结果表加载失败"}
+        message={error instanceof Error ? error.message : t("结果表加载失败")}
       />
     );
   }

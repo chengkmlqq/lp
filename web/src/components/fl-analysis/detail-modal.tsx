@@ -123,7 +123,7 @@ const buildScanPointColumns = (t: (s: string) => string): ColumnsType<ScanPoint>
     title: t("风险"),
     dataIndex: "risk_level",
     width: 100,
-    render: (value: string | null | undefined) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
+    render: (value: string | null | undefined) => <Tag color={riskColor(value)}>{formatRiskLevel(value, t)}</Tag>,
   },
   { title: t("得分"), dataIndex: "score", width: 90, render: (value: number | null | undefined) => value ?? "-" },
   {
@@ -253,7 +253,7 @@ function buildComputationSteps(
       key: `${keyBase}-${target ?? "x"}`,
       header: `${prefix}（目标闪络相数 ≥ ${target ?? "?"}）`,
       summaryRows: [
-        { label: t("收敛"), value: converged ? t("是") : "否" },
+        { label: t("收敛"), value: converged ? t("是") : t("否") },
         { label: t("耐雷水平(kA)"), value: fmt(finalWithstand) },
         { label: t("扫描次数"), value: String(scanItems.length) },
       ],
@@ -379,7 +379,7 @@ export function TowerDetailView({
       <Space className="flex w-full" style={{ justifyContent: "space-between" }} align="center">
         <Typography.Text type="secondary" style={{ marginBottom: 0 }}>
           任务：{selectedJob?.job_name || selectedJob?.line_name || selectedJob?.line_code || "-"
-            }（{selectedJob ? formatJobType(selectedJob.job_type, mitigationMode(selectedJob)) : "-"}）
+            }（{selectedJob ? formatJobType(selectedJob.job_type, mitigationMode(selectedJob), t) : "-"}）
         </Typography.Text>
         {canReadLogs && onOpenLog ? (
           <Button
@@ -401,13 +401,13 @@ export function TowerDetailView({
       </Typography.Title>
       <Descriptions bordered size="small" column={2}>
         <Descriptions.Item label={t("当前结论")}>{detailRow.summary_text || "-"}</Descriptions.Item>
-        <Descriptions.Item label={selectedJob?.job_type === "mitigation" ? t("预期风险/风险等级") : "风险等级"}>
-          <Tag color={riskColor(detailRow.risk_level)}>{formatRiskLevel(detailRow.risk_level)}</Tag>
+        <Descriptions.Item label={selectedJob?.job_type === "mitigation" ? t("预期风险/风险等级") : t("风险等级")}>
+          <Tag color={riskColor(detailRow.risk_level)}>{formatRiskLevel(detailRow.risk_level, t)}</Tag>
         </Descriptions.Item>
         {selectedJob?.job_type === "mitigation" ? (
           <>
             <Descriptions.Item label={t("当前风险")}>
-              <Tag color={riskColor(readCurrentRisk(detailRow))}>{formatRiskLevel(readCurrentRisk(detailRow))}</Tag>
+              <Tag color={riskColor(readCurrentRisk(detailRow))}>{formatRiskLevel(readCurrentRisk(detailRow), t)}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label={t("改造结论")}>{readString(detailResultObject, "recommendation_result")}</Descriptions.Item>
           </>
@@ -422,11 +422,11 @@ export function TowerDetailView({
             <Descriptions.Item label={t("雷电流波形")}>{formatDimensionValue(detailWorkflow.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
             <Descriptions.Item label={t("绝缘子闪络判据")}>{formatDimensionValue(detailWorkflow.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
             <Descriptions.Item label={t("是否海拔修正")}>{formatDimensionValue(detailWorkflow.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
-            <Descriptions.Item label={t("感应电压公式")}>{formatInducedVoltageFormula(detailWorkflow.induced_voltage_formula)}</Descriptions.Item>
+            <Descriptions.Item label={t("感应电压公式")}>{formatInducedVoltageFormula(detailWorkflow.induced_voltage_formula, t)}</Descriptions.Item>
             <Descriptions.Item label={t("波头范围")}>{formatRangeSummary(detailWorkflow.head_time_range_us)}</Descriptions.Item>
             <Descriptions.Item label={t("波尾范围")}>{formatRangeSummary(detailWorkflow.tail_time_range_us)}</Descriptions.Item>
             <Descriptions.Item label={t("执行适配器")}>
-              {formatExternalAdapter(readOptionalString(detailExternalExecution, "adapter"))}
+              {formatExternalAdapter(readOptionalString(detailExternalExecution, "adapter"), t)}
             </Descriptions.Item>
             <Descriptions.Item label={t("ATP模型")}>
               {formatAtpModel(readOptionalString(detailExternalExecution, "model_name") || readOptionalString(detailExternalExecution, "model_code"), t)}

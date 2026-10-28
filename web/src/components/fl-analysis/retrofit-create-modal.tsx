@@ -107,7 +107,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
       }
       setBaseJobs(jobs);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "前置任务加载失败");
+      setErrorMessage(error instanceof Error ? error.message : t("前置任务加载失败"));
     } finally {
       setLoadingJobs(false);
     }
@@ -150,7 +150,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
         items.filter((row) => isHighRisk(row.risk_level)).map((row) => row.tower_id),
       );
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "杆塔结果加载失败");
+      setErrorMessage(error instanceof Error ? error.message : t("杆塔结果加载失败"));
     } finally {
       setLoadingRows(false);
     }
@@ -160,11 +160,11 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
     const values = form.getFieldsValue();
     const baseJob = baseJobs.find((job) => job.id === selectedBaseJobId);
     if (!baseJob) {
-      setErrorMessage("请选择前置防雷计算任务");
+      setErrorMessage(t("请选择前置防雷计算任务"));
       return;
     }
     if (selectedTowerIds.length === 0) {
-      setErrorMessage("请至少勾选一个杆塔");
+      setErrorMessage(t("请至少勾选一个杆塔"));
       return;
     }
     setSubmitting(true);
@@ -175,7 +175,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
         line_id: baseJob.line_id,
         job_name:
           values.job_name?.trim() ||
-          `${baseJob.job_name || baseJob.line_name || baseJob.line_code || "防雷任务"}-措施推荐`,
+          `${baseJob.job_name || baseJob.line_name || baseJob.line_code || t("防雷任务")}-${t("措施推荐")}`,
         job_type: "mitigation",
         execution_options_json: {
           non_construction: nonConstruction,
@@ -202,7 +202,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
       onCreated();
       onClose();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "措施推荐任务创建失败");
+      setErrorMessage(error instanceof Error ? error.message : t("措施推荐任务创建失败"));
     } finally {
       setSubmitting(false);
     }
@@ -214,7 +214,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
   const baseJobOptions = baseJobs.map((job) => {
     const { high, medium } = readRiskCounts(job);
     const hasRisk = high + medium > 0;
-    const name = `${job.job_name || job.line_name || job.line_code || "-"}（${formatJobType(job.job_type)}）`;
+    const name = `${job.job_name || job.line_name || job.line_code || "-"}（${formatJobType(job.job_type, false, t)}）`;
     return {
       value: job.id,
       label: (
@@ -327,7 +327,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
                   title: t("风险等级"),
                   dataIndex: "risk_level",
                   width: 110,
-                  render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
+                  render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value, t)}</Tag>,
                 },
                 {
                   title: t("高风险原因"),

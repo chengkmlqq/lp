@@ -190,7 +190,7 @@ export function JobDetailPanel({
           <Tag color={statusColor(selectedJobDetail.status)}>{JOB_STATUS_TEXT[selectedJobDetail.status] ? t(JOB_STATUS_TEXT[selectedJobDetail.status]) : selectedJobDetail.status}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label={t("线路")}>{selectedJobDetail.line_name || selectedJobDetail.line_code || "-"}</Descriptions.Item>
-        <Descriptions.Item label={t("任务类型")}>{formatJobType(selectedJobDetail.job_type, mitigationMode(selectedJobDetail))}</Descriptions.Item>
+        <Descriptions.Item label={t("任务类型")}>{formatJobType(selectedJobDetail.job_type, mitigationMode(selectedJobDetail), t)}</Descriptions.Item>
         <Descriptions.Item label={t("结果杆塔数")}>{selectedJobDetail.result_tower_count}</Descriptions.Item>
         <Descriptions.Item label={t("完成时间")}>{formatFinishedAt(selectedJobDetail.finished_at)}</Descriptions.Item>
         {selectedJobDetail.job_type === "mitigation" ? (
@@ -207,14 +207,14 @@ export function JobDetailPanel({
             <Descriptions.Item label={t("前驱措施任务")}>{sourceJobId || "-"}</Descriptions.Item>
             <Descriptions.Item label={t("选塔数")}>{String(selectedTowerCount(selectedJobDetail) || "-")}</Descriptions.Item>
             <Descriptions.Item label={t("复用计算口径")}>
-              {scenarioBaseJobType ? formatJobType(scenarioBaseJobType) : "-"}
+              {scenarioBaseJobType ? formatJobType(scenarioBaseJobType, false, t) : "-"}
             </Descriptions.Item>
             <Descriptions.Item label={t("基线计算任务")}>{scenarioBaseJobName || "-"}</Descriptions.Item>
           </>
         ) : selectedJobDetail.job_type === "report" ? (
           <>
             <Descriptions.Item label={t("报告来源")}>
-              {reportSourceJobType ? formatJobType(reportSourceJobType) : "-"}
+              {reportSourceJobType ? formatJobType(reportSourceJobType, false, t) : "-"}
               {reportSourceJobName ? ` / ${reportSourceJobName}` : ""}
             </Descriptions.Item>
             <Descriptions.Item label={t("选塔数")}>
@@ -249,7 +249,7 @@ export function JobDetailPanel({
             <Descriptions.Item label={t("雷电流波形")}>{formatDimensionValue(selectedJobWorkflow?.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
             <Descriptions.Item label={t("绝缘子闪络判据")}>{formatDimensionValue(selectedJobWorkflow?.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
             <Descriptions.Item label={t("是否海拔修正")}>{formatDimensionValue(selectedJobWorkflow?.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
-            <Descriptions.Item label={t("感应电压公式")}>{formatInducedVoltageFormula(selectedJobWorkflow?.induced_voltage_formula)}</Descriptions.Item>
+            <Descriptions.Item label={t("感应电压公式")}>{formatInducedVoltageFormula(selectedJobWorkflow?.induced_voltage_formula, t)}</Descriptions.Item>
             <Descriptions.Item label={t("波头范围")}>{formatRangeSummary(selectedJobWorkflow?.head_time_range_us)}</Descriptions.Item>
             <Descriptions.Item label={t("波尾范围")}>{formatRangeSummary(selectedJobWorkflow?.tail_time_range_us)}</Descriptions.Item>
           </Descriptions>
