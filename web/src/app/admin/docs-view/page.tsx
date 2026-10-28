@@ -299,9 +299,9 @@ export default function DocsViewPage() {
       )}
       {!isMobile && (
         <div className="admin-docs-view-sider-footer">
-          <Tooltip title={siderCollapsed ? "展开菜单" : "收起菜单"}>
+          <Tooltip title={siderCollapsed ? t("展开菜单") : t("收起菜单")}>
             <Button
-              aria-label={siderCollapsed ? "展开菜单" : "收起菜单"}
+              aria-label={siderCollapsed ? t("展开菜单") : t("收起菜单")}
               icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               type="text"
               onClick={() => setSiderCollapsed((prev) => !prev)}
@@ -422,7 +422,7 @@ export default function DocsViewPage() {
                                 icon={<CopyOutlined />}
                                 onClick={() => handleCopyCode(codeText, blockId)}
                               >
-                                {copiedCodeBlockId === blockId ? "已复制" : "复制"}
+                                {copiedCodeBlockId === blockId ? t("已复制") : t("复制")}
                               </Button>
                             </div>
                             <pre className="admin-docs-view-code-block">

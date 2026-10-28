@@ -166,10 +166,10 @@ export function JobDetailTabView({
       URL.revokeObjectURL(objectUrl);
     },
     onSuccess: () => {
-      messageApi.success("结果导出成功");
+      messageApi.success(t("结果导出成功"));
     },
     onError: (error) => {
-      messageApi.error(error instanceof Error ? error.message : "结果导出失败");
+      messageApi.error(error instanceof Error ? error.message : t("结果导出失败"));
     },
   });
 
@@ -194,10 +194,10 @@ export function JobDetailTabView({
       URL.revokeObjectURL(objectUrl);
     },
     onSuccess: () => {
-      messageApi.success("报告下载成功");
+      messageApi.success(t("报告下载成功"));
     },
     onError: (error) => {
-      messageApi.error(error instanceof Error ? error.message : "报告下载失败");
+      messageApi.error(error instanceof Error ? error.message : t("报告下载失败"));
     },
   });
 
@@ -276,7 +276,7 @@ export function JobDetailTabView({
 
       {/* 杆塔详情抽屉：版式参照线路管理详情页（宽 880、单一纵向滚动容器） */}
       <Drawer
-        title={towerDetailRow ? `杆塔详情 - ${towerDetailRow.tower_no}` : "杆塔详情"}
+        title={towerDetailRow ? `${t("杆塔详情")} - ${towerDetailRow.tower_no}` : t("杆塔详情")}
         open={towerDetailRow !== null}
         width={880}
         onClose={() => setTowerDetailRow(null)}

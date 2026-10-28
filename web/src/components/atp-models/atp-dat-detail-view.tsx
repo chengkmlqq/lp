@@ -46,7 +46,7 @@ const PHASE_MARKERS: Array<{ re: RegExp; label: string }> = [
   { re: /[DEFG]/, label: "避雷线" },
 ];
 
-function parseConductors(lines: string[]): { rows: ConductorRow[]; nodes: string[]; metric: boolean } {
+function parseConductors(lines: string[], t: (s: string) => string): { rows: ConductorRow[]; nodes: string[]; metric: boolean } {
   const rows: ConductorRow[] = [];
   const nodes: string[] = [];
   let metric = false;
@@ -86,7 +86,7 @@ function parseConductors(lines: string[]): { rows: ConductorRow[]; nodes: string
         key: `cond-${idx}`,
         index: idx,
         node,
-        kind: phase?.label ?? (idx > 3 ? "避雷线" : "相线"),
+        kind: phase ? t(phase.label) : (idx > 3 ? t("避雷线") : t("相线")),
         // 常见 LCC 导体卡(METRIC): 相序 半径(m) 单位电阻(Ω/km) 分裂数 水平位置 高度 ...
         radius: tokens[1] ?? "-",
         resistance: tokens[2] ?? "-",
@@ -121,7 +121,7 @@ export function AtpDatDetailView({ assetId, relativePath }: AtpDatDetailProps) {
     const data = contentQuery.data;
     if (!data || data.content_type !== "text") return null;
     const lines = (data.preview_lines?.length ? data.preview_lines : data.content.split("\n")) as string[];
-    return parseConductors(lines);
+    return parseConductors(lines, t);
   }, [contentQuery.data]);
 
   if (contentQuery.isLoading) {

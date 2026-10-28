@@ -416,7 +416,7 @@ export default function AdminWorkersPage() {
               {workerItem.worker}
             </Typography.Text>
             <span className={`admin-workers-worker-card-status${online ? " is-online" : ""}`}>
-              {online ? "在线" : "离线"}
+              {online ? t("在线") : t("离线")}
             </span>
           </Space>
         }
@@ -433,7 +433,7 @@ export default function AdminWorkersPage() {
           <div className="admin-workers-worker-card-row">
             <Typography.Text type="secondary">{t("空闲状态")}</Typography.Text>
             <Tag color={idle ? "green" : "default"} bordered={false}>
-              {idle ? "空闲" : "忙碌"}
+              {idle ? t("空闲") : t("忙碌")}
             </Tag>
           </div>
           <div className="admin-workers-worker-card-row admin-workers-worker-card-row--divider">
@@ -566,7 +566,7 @@ export default function AdminWorkersPage() {
             <Button size="small" onClick={() => void workerTasksQuery.refetch()} loading={workerTasksQuery.isFetching}>
               {t("刷新任务")}
             </Button>
-            <Text type="secondary">{taskOverview ? `采集时间：${formatDateTime(taskOverview.generated_at)}` : "-"}</Text>
+            <Text type="secondary">{taskOverview ? `${t("采集时间：")}${formatDateTime(taskOverview.generated_at)}` : "-"}</Text>
           </Space>
         }
       >
@@ -574,7 +574,7 @@ export default function AdminWorkersPage() {
         {!workerTasksQuery.isLoading && !taskOverview ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={taskErrorMessage || "暂无任务数据"}
+            description={taskErrorMessage || t("暂无任务数据")}
           />
         ) : null}
         {taskOverview ? (
