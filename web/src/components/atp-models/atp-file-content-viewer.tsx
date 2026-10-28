@@ -174,7 +174,7 @@ export function AtpFileContentViewer({ assetId, relativePath, name }: AtpFileCon
           margin: 0,
         }}
       >
-        {loadedLines.length === 0 ? "（空文件）" : loadedLines.join("\n")}
+        {loadedLines.length === 0 ? t("（空文件）") : loadedLines.join("\n")}
       </pre>
       {showMore && (
         <div style={{ textAlign: "center", marginTop: 8 }}>

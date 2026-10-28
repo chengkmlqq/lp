@@ -43,7 +43,7 @@ export function MitigationModal({
   const { t } = useI18n();
   return (
     <Modal
-      title={selectedJob ? `措施推荐 - ${selectedJob.job_name || selectedJob.line_name || selectedJob.line_code}` : "措施推荐"}
+      title={selectedJob ? `${t("措施推荐")} - ${selectedJob.job_name || selectedJob.line_name || selectedJob.line_code}` : t("措施推荐")}
       open={open}
       width={1080}
       confirmLoading={submitting}

@@ -293,7 +293,7 @@ export function TaskLogViewerDrawer({
         {lines.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={status === "no-log" ? "暂无日志" : "等待日志..."}
+            description={status === "no-log" ? t("暂无日志") : t("等待日志...")}
           />
         ) : (
           (() => {
@@ -333,11 +333,11 @@ export function TaskLogViewerDrawer({
           })()
         )}
         {streaming && !status && (
-          <div className="task-log-streaming-indicator" role="status" aria-label={"任务运行中"}>
+          <div className="task-log-streaming-indicator" role="status" aria-label={t("任务运行中")}>
             <span className="task-log-dot" />
             <span className="task-log-dot" />
             <span className="task-log-dot" />
-            任务运行中
+            {t("任务运行中")}
           </div>
         )}
       </div>

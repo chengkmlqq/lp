@@ -2,6 +2,7 @@
 
 import { DownOutlined } from "@ant-design/icons";
 import { Button, Dropdown, Typography, type MenuProps } from "antd";
+import { useI18n } from "@/lib/i18n";
 
 type RowActionMenuColor = "gray" | "red" | "indigo" | string;
 
@@ -21,9 +22,10 @@ type RowActionMenuProps = {
 
 export function RowActionMenu({
   items,
-  triggerLabel = "操作",
+  triggerLabel,
   align = "end",
 }: RowActionMenuProps) {
+  const { t } = useI18n();
   if (items.length === 0) {
     return <Typography.Text type="secondary">-</Typography.Text>;
   }
@@ -50,7 +52,7 @@ export function RowActionMenu({
   return (
     <Dropdown menu={{ items: menuItems }} placement={placement} trigger={["click"]}>
       <Button size="small">
-        {triggerLabel}
+        {triggerLabel ?? t("操作")}
         <DownOutlined />
       </Button>
     </Dropdown>

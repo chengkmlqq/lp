@@ -11,10 +11,12 @@
 import { useAuth } from "@/components/auth-provider";
 import { AtpTestSetTab } from "@/components/atp-models/atp-test-set-tab";
 import { AdminPageLoading } from "@/components/admin-page-loading";
+import { useI18n } from "@/lib/i18n";
 import { Card, Empty, Typography } from "antd";
 
 export default function AtpTestSetsPage() {
   const { user, initializing, hasPermission } = useAuth();
+  const { t } = useI18n();
 
   if (initializing) {
     return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
@@ -30,8 +32,8 @@ export default function AtpTestSetsPage() {
           description={
             <Typography.Text type="secondary">
               {!user
-                ? "请先登录后再访问测试集管理。"
-                : "当前账号无 ATP 模块权限（需要 atp.read/atp.run/atp.manage）。"}
+                ? t("请先登录后再访问测试集管理。")
+                : t("当前账号无 ATP 模块权限（需要 atp.read/atp.run/atp.manage）。")}
             </Typography.Text>
           }
         />

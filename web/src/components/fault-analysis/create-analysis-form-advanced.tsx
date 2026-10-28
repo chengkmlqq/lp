@@ -67,8 +67,9 @@ function toReclosureCode(value: unknown): string | undefined {
   return "not_applicable";
 }
 
-export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit, submitText = "提交分析", submitting, open = false }: CreateAnalysisFormAdvancedProps) {
+export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit, submitText, submitting, open = false }: CreateAnalysisFormAdvancedProps) {
   const { t } = useI18n();
+  const submitLabel = submitText ?? t("提交分析");
   const { message: messageApi, modal: modalApi } = App.useApp();
   const { user, fetchWithAuth } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);

@@ -54,7 +54,7 @@ const DIMENSIONS_TABLE_VIEWPORT_GAP = 40;
 const DIMENSIONS_TABLE_FALLBACK_RESERVE = 220;
 
 function statusLabel(enabled: boolean, t: (s: string) => string): string {
-  return enabled ? "启用" : "禁用";
+  return enabled ? t("启用") : t("禁用");
 }
 
 function flattenTypeOptions(types: DimensionTypeTreeItem[] | undefined | null, level: number = 0): { value: string; label: string }[] {

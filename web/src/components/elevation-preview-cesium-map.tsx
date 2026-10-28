@@ -97,7 +97,7 @@ export function ElevationPreviewCesiumMap({
     [terrainRenderState],
   );
   const previewHint = useMemo(() => {
-    return "地形模式加载真实三维瓦片，并保留少量参考点用于定位。";
+    return t("地形模式加载真实三维瓦片，并保留少量参考点用于定位。");
   }, []);
   const terrainErrorMessage = useMemo(() => {
     if (!terrainError) {

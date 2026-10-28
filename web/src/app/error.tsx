@@ -44,8 +44,8 @@ export default function AppError({ error, reset }: AppErrorProps) {
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{t("页面加载失败")}</h1>
         <p style={{ margin: "12px 0 0", lineHeight: 1.6, color: "var(--fquiz-theme-text-secondary, var(--ant-color-text-secondary))" }}>
           {chunkError
-            ? "检测到前端静态资源已更新，页面将尝试自动刷新恢复。"
-            : "页面发生运行时错误，请重试或手动刷新。"}
+            ? t("检测到前端静态资源已更新，页面将尝试自动刷新恢复。")
+            : t("页面发生运行时错误，请重试或手动刷新。")}
         </p>
         <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
