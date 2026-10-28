@@ -18,17 +18,17 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
   const { t } = useI18n();
   const groupedOptions = useMemo(() => {
     return ICON_CATEGORIES.map((cat) => ({
-      label: cat.label,
+      label: t(cat.label),
       options: cat.icons.map((icon) => {
         const IconComp = icon.component;
         return {
           value: icon.name,
           name: icon.name,
-          labelText: `${icon.label} ${icon.name}`,
+          labelText: `${t(icon.label)} ${icon.name}`,
           label: (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               <IconComp style={{ fontSize: 16 }} />
-              <span>{icon.label}</span>
+              <span>{t(icon.label)}</span>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {icon.name}
               </Typography.Text>
@@ -37,7 +37,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
         };
       }),
     }));
-  }, []);
+  }, [t]);
 
   return (
     <Select

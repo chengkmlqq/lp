@@ -28,7 +28,7 @@ export default function AdminIconsPage() {
   return (
     <div className="p-6">
       <Title level={4} style={{ marginBottom: 16 }}>
-        图标参考
+        {t("图标参考")}
       </Title>
       <Input
         placeholder={t("搜索图标名称...")}
@@ -41,7 +41,7 @@ export default function AdminIconsPage() {
       {categories.map((cat) => (
         <div key={cat.key} style={{ marginBottom: 24 }}>
           <Title level={5} style={{ marginBottom: 12 }}>
-            {cat.label}
+            {t(cat.label)}
           </Title>
           <div
             style={{
@@ -55,7 +55,7 @@ export default function AdminIconsPage() {
               return (
                 <div
                   key={icon.name}
-                  title={`${icon.label} (${icon.name})`}
+                  title={`${t(icon.label)} (${icon.name})`}
                   style={{
                     display: "flex",
                     flexDirection: "column",
@@ -97,7 +97,7 @@ export default function AdminIconsPage() {
       ))}
       {categories.length === 0 && (
         <div style={{ color: "var(--ant-color-text-secondary)" }}>
-          没有找到匹配的图标
+          {t("没有找到匹配的图标")}
         </div>
       )}
     </div>
