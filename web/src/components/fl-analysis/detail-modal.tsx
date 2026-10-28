@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Collapse, Descriptions, Empty, Space, Table, Tag, Typography } from "antd";
+import { useI18n } from "@/lib/i18n";
 
 const ATP_TOWER_TEXT: Record<string, string> = {
   guxing: "鼓型", maotou: "猫头型", ganzi: "干字型", jiubei: "酒杯型",
@@ -11,7 +12,7 @@ const ATP_SCENE_TEXT: Record<string, string> = {
 };
 
 /** ATP 模型编码 → 中文（如 atp500-guxing-fanji-M1 → 500kV 鼓型 反击 避雷器组合 M1） */
-function formatAtpModel(src?: string | null) {
+function formatAtpModel(src: string | null | undefined, t: (s: string) => string) {
   const text = (src || "").trim();
   if (!text) return "-";
   const parts = text.split("-").filter(Boolean);
@@ -21,10 +22,10 @@ function formatAtpModel(src?: string | null) {
     .filter((part) => part !== kv && !/^atp\d*$/i.test(part))
     .map((part) => {
       const key = part.toLowerCase();
-      if (ATP_TOWER_TEXT[key]) return ATP_TOWER_TEXT[key];
-      if (ATP_SCENE_TEXT[key]) return ATP_SCENE_TEXT[key];
+      if (ATP_TOWER_TEXT[key]) return t(ATP_TOWER_TEXT[key]);
+      if (ATP_SCENE_TEXT[key]) return t(ATP_SCENE_TEXT[key]);
       const arrester = /^M\d+/i.exec(part);
-      if (arrester) return `避雷器组合 ${arrester[0].toUpperCase()}`;
+      if (arrester) return `${t("避雷器组合")} ${arrester[0].toUpperCase()}`;
       return part;
     });
   return [label, ...rest].filter(Boolean).join(" ") || "-";
@@ -72,119 +73,119 @@ import {
 } from "./types";
 import { useFlDimensionOptions } from "./use-fl-dimensions";
 
-const reasonDetailColumns: ColumnsType<ReasonDetail> = [
-  { title: "因子", dataIndex: "label", width: 180 },
+const buildReasonDetailColumns = (t: (s: string) => string): ColumnsType<ReasonDetail> => [
+  { title: t("因子"), dataIndex: "label", width: 180 },
   {
-    title: "当前值",
+    title: t("当前值"),
     key: "value",
     render: (_value, row) => (row.value === undefined || row.value === null ? "-" : String(row.value)),
   },
   {
-    title: "标准值",
+    title: t("标准值"),
     key: "standard_value",
     render: (_value, row) => (row.standard_value === undefined || row.standard_value === null ? "-" : String(row.standard_value)),
   },
   {
-    title: "档次",
+    title: t("档次"),
     dataIndex: "grade",
     width: 90,
     render: (value: number | null | undefined) => value ?? "-",
   },
   {
-    title: "是否命中",
+    title: t("是否命中"),
     dataIndex: "triggered",
     width: 100,
-    render: (value: boolean | undefined) => (value ? <Tag color="red">{"是"}</Tag> : <Tag>{"否"}</Tag>),
+    render: (value: boolean | undefined) => (value ? <Tag color="red">{t("是")}</Tag> : <Tag>{t("否")}</Tag>),
   },
 ];
 
-const mitigationActionColumns: ColumnsType<MitigationAction> = [
-  { title: "动作", dataIndex: "label", width: 160 },
-  { title: "建议", dataIndex: "summary" },
+const buildMitigationActionColumns = (t: (s: string) => string): ColumnsType<MitigationAction> => [
+  { title: t("动作"), dataIndex: "label", width: 160 },
+  { title: t("建议"), dataIndex: "summary" },
   {
-    title: "当前值",
+    title: t("当前值"),
     key: "current_value",
     render: (_value, row) => (row.current_value === undefined || row.current_value === null ? "-" : String(row.current_value)),
     width: 100,
   },
   {
-    title: "目标值",
+    title: t("目标值"),
     key: "target_value",
     render: (_value, row) => (row.target_value === undefined || row.target_value === null ? "-" : String(row.target_value)),
     width: 100,
   },
 ];
 
-const scanPointColumns: ColumnsType<ScanPoint> = [
-  { title: "波头(μs)", dataIndex: "head_time_us", width: 100, render: (value: number | null | undefined) => value ?? "-" },
-  { title: "波尾(μs)", dataIndex: "tail_time_us", width: 100, render: (value: number | null | undefined) => value ?? "-" },
+const buildScanPointColumns = (t: (s: string) => string): ColumnsType<ScanPoint> => [
+  { title: t("波头(μs)"), dataIndex: "head_time_us", width: 100, render: (value: number | null | undefined) => value ?? "-" },
+  { title: t("波尾(μs)"), dataIndex: "tail_time_us", width: 100, render: (value: number | null | undefined) => value ?? "-" },
   {
-    title: "风险",
+    title: t("风险"),
     dataIndex: "risk_level",
     width: 100,
     render: (value: string | null | undefined) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
   },
-  { title: "得分", dataIndex: "score", width: 90, render: (value: number | null | undefined) => value ?? "-" },
+  { title: t("得分"), dataIndex: "score", width: 90, render: (value: number | null | undefined) => value ?? "-" },
   {
-    title: "反击跳闸率",
+    title: t("反击跳闸率"),
     dataIndex: "counterstrike_trip_rate",
     width: 120,
     render: (value: number | null | undefined) => value ?? "-",
   },
   {
-    title: "绕击跳闸率",
+    title: t("绕击跳闸率"),
     dataIndex: "shielding_trip_rate",
     width: 120,
     render: (value: number | null | undefined) => value ?? "-",
   },
   {
-    title: "闪络相",
+    title: t("闪络相"),
     dataIndex: "flashover_phase",
     width: 160,
     render: (value: string | null | undefined) => value || "-",
   },
 ];
 
-const phaseResultColumns: ColumnsType<PhaseResult> = [
-  { title: "相别", dataIndex: "phase", width: 120 },
-  { title: "回路", dataIndex: "circuit", width: 90, render: (value: string | null | undefined) => value || "-" },
+const buildPhaseResultColumns = (t: (s: string) => string): ColumnsType<PhaseResult> => [
+  { title: t("相别"), dataIndex: "phase", width: 120 },
+  { title: t("回路"), dataIndex: "circuit", width: 90, render: (value: string | null | undefined) => value || "-" },
   {
-    title: "A/B/C绕击耐雷水平(kA)",
+    title: t("A/B/C绕击耐雷水平(kA)"),
     dataIndex: "shielding_withstand_ka",
     width: 180,
     render: (value: number | null | undefined) => value ?? "-",
   },
   {
-    title: "A/B/C绕击跳闸率",
+    title: t("A/B/C绕击跳闸率"),
     dataIndex: "shielding_trip_rate",
     width: 140,
     render: (value: number | null | undefined) => value ?? "-",
   },
   {
-    title: "反击耐雷水平(kA)",
+    title: t("反击耐雷水平(kA)"),
     dataIndex: "counterstrike_withstand_ka",
     width: 140,
     render: (value: number | null | undefined) => value ?? "-",
   },
   {
-    title: "反击跳闸率",
+    title: t("反击跳闸率"),
     dataIndex: "counterstrike_trip_rate",
     width: 120,
     render: (value: number | null | undefined) => value ?? "-",
   },
 ];
 
-const multiPhaseColumns: ColumnsType<MultiPhaseResult> = [
-  { title: "相数组合", dataIndex: "label", width: 100 },
-  { title: "闪络相", dataIndex: "flashover_phase", render: (value: string | null | undefined) => value || "-" },
+const buildMultiPhaseColumns = (t: (s: string) => string): ColumnsType<MultiPhaseResult> => [
+  { title: t("相数组合"), dataIndex: "label", width: 100 },
+  { title: t("闪络相"), dataIndex: "flashover_phase", render: (value: string | null | undefined) => value || "-" },
   {
-    title: "反击耐雷水平(kA)",
+    title: t("反击耐雷水平(kA)"),
     dataIndex: "counterstrike_withstand_ka",
     width: 140,
     render: (value: number | null | undefined) => value ?? "-",
   },
   {
-    title: "跳闸率",
+    title: t("跳闸率"),
     dataIndex: "trip_rate",
     width: 120,
     render: (value: number | null | undefined) => value ?? "-",
@@ -216,6 +217,7 @@ interface ComputationStepItem {
 function buildComputationSteps(
   resultObject: Record<string, unknown> | undefined,
   waveformType: string | null,
+  t: (s: string) => string,
 ): ComputationStepItem[] {
   const steps: ComputationStepItem[] = [];
   if (!resultObject) return steps;
@@ -251,9 +253,9 @@ function buildComputationSteps(
       key: `${keyBase}-${target ?? "x"}`,
       header: `${prefix}（目标闪络相数 ≥ ${target ?? "?"}）`,
       summaryRows: [
-        { label: "收敛", value: converged ? "是" : "否" },
-        { label: "耐雷水平(kA)", value: fmt(finalWithstand) },
-        { label: "扫描次数", value: String(scanItems.length) },
+        { label: t("收敛"), value: converged ? t("是") : "否" },
+        { label: t("耐雷水平(kA)"), value: fmt(finalWithstand) },
+        { label: t("扫描次数"), value: String(scanItems.length) },
       ],
       scanItems,
     });
@@ -262,7 +264,7 @@ function buildComputationSteps(
   // 反击二分（normal 单相 / tongtiao 主结果）
   const binarySearch = resultObject.binary_search as Record<string, unknown> | undefined;
   if (binarySearch) {
-    binarySearchSteps("反击二分", binarySearch, "counterstrike");
+    binarySearchSteps(t("反击二分"), binarySearch, "counterstrike");
   }
 
   // 同跳各相二分：完整 search_history 在 multi_phase_binary_search.phase_entries
@@ -296,12 +298,12 @@ function buildComputationSteps(
         key: `multi-${phase.phase_count ?? index}`,
         header: `${label}反击二分`,
         summaryRows: [
-          { label: "耐雷水平(kA)", value: fmt(withstand) },
+          { label: t("耐雷水平(kA)"), value: fmt(withstand) },
           {
-            label: "跳闸率",
+            label: t("跳闸率"),
             value: tripRate === null ? "-" : tripRate.toFixed(6),
           },
-          { label: "扫描次数", value: String(scanItems.length) },
+          { label: t("扫描次数"), value: String(scanItems.length) },
         ],
         scanItems,
       });
@@ -311,28 +313,28 @@ function buildComputationSteps(
   // 绕击二分
   const shieldingSearch = resultObject.shielding_binary_search as Record<string, unknown> | undefined;
   if (shieldingSearch) {
-    binarySearchSteps("绕击二分", shieldingSearch, "shielding");
+    binarySearchSteps(t("绕击二分"), shieldingSearch, "shielding");
   }
 
   // 结果回填/落库
   steps.push({
     key: "finalize",
-    header: "结果回填落库",
+    header: t("结果回填落库"),
     summaryRows: [
-      { label: "风险等级", value: typeof resultObject.risk_level === "string" ? resultObject.risk_level : "-" },
-      { label: "是否收敛", value: Boolean(binarySearch?.converged) ? "是" : "-" },
+      { label: t("风险等级"), value: typeof resultObject.risk_level === "string" ? resultObject.risk_level : "-" },
+      { label: t("是否收敛"), value: Boolean(binarySearch?.converged) ? t("是") : "-" },
     ],
     scanItems: [],
   });
   return steps;
 }
 
-const binaryScanColumns: ColumnsType<BinarySearchStepItem> = [
-  { title: "迭代", dataIndex: "iteration", width: 60 },
-  { title: "电流(kA)", dataIndex: "current_ka", width: 100, render: (v: number | null) => v ?? "-" },
-  { title: "闪络相数", dataIndex: "flashover_count", width: 90, render: (v: number | null) => v ?? "-" },
-  { title: "下限", dataIndex: "low", width: 100, render: (v: number | null) => v ?? "-" },
-  { title: "上限", dataIndex: "high", width: 100, render: (v: number | null) => v ?? "-" },
+const buildBinaryScanColumns = (t: (s: string) => string): ColumnsType<BinarySearchStepItem> => [
+  { title: t("迭代"), dataIndex: "iteration", width: 60 },
+  { title: t("电流(kA)"), dataIndex: "current_ka", width: 100, render: (v: number | null) => v ?? "-" },
+  { title: t("闪络相数"), dataIndex: "flashover_count", width: 90, render: (v: number | null) => v ?? "-" },
+  { title: t("下限"), dataIndex: "low", width: 100, render: (v: number | null) => v ?? "-" },
+  { title: t("上限"), dataIndex: "high", width: 100, render: (v: number | null) => v ?? "-" },
 ];
 
 /**
@@ -354,6 +356,7 @@ export function TowerDetailView({
   canReadLogs?: boolean;
   onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
 }): ReactNode {
+  const { t } = useI18n();
   const { labelMap } = useFlDimensionOptions();
   const detailResultObject = readObject(detailRow.result_json);
   const reasonDetails = readReasonDetails(detailRow);
@@ -368,7 +371,7 @@ export function TowerDetailView({
   // 计算过程：从已落库结果构建可展开步骤（仅普通/同跳波形任务展示）
   const computationSteps =
     selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao"
-      ? buildComputationSteps(detailResultObject, selectedJobDetailWaveformType)
+      ? buildComputationSteps(detailResultObject, selectedJobDetailWaveformType, t)
       : [];
 
   return (
@@ -384,11 +387,11 @@ export function TowerDetailView({
             disabled={!selectedJob?.task_id}
             onClick={() => onOpenLog(
               selectedJob?.task_id,
-              "任务执行日志",
-              selectedJob?.job_name || selectedJob?.line_name || selectedJob?.line_code || "防雷任务",
+              t("任务执行日志"),
+              selectedJob?.job_name || selectedJob?.line_name || selectedJob?.line_code || t("防雷任务"),
             )}
           >
-            查看日志
+            {t("查看日志")}
           </Button>
         ) : null}
       </Space>
@@ -397,41 +400,41 @@ export function TowerDetailView({
         基本信息
       </Typography.Title>
       <Descriptions bordered size="small" column={2}>
-        <Descriptions.Item label={"当前结论"}>{detailRow.summary_text || "-"}</Descriptions.Item>
-        <Descriptions.Item label={selectedJob?.job_type === "mitigation" ? "预期风险/风险等级" : "风险等级"}>
+        <Descriptions.Item label={t("当前结论")}>{detailRow.summary_text || "-"}</Descriptions.Item>
+        <Descriptions.Item label={selectedJob?.job_type === "mitigation" ? t("预期风险/风险等级") : "风险等级"}>
           <Tag color={riskColor(detailRow.risk_level)}>{formatRiskLevel(detailRow.risk_level)}</Tag>
         </Descriptions.Item>
         {selectedJob?.job_type === "mitigation" ? (
           <>
-            <Descriptions.Item label={"当前风险"}>
+            <Descriptions.Item label={t("当前风险")}>
               <Tag color={riskColor(readCurrentRisk(detailRow))}>{formatRiskLevel(readCurrentRisk(detailRow))}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label={"改造结论"}>{readString(detailResultObject, "recommendation_result")}</Descriptions.Item>
+            <Descriptions.Item label={t("改造结论")}>{readString(detailResultObject, "recommendation_result")}</Descriptions.Item>
           </>
         ) : selectedJobDetailWaveformType === "normal" || selectedJobDetailWaveformType === "tongtiao" ? (
           <>
-            <Descriptions.Item label={"最不利点(μs)"}>
+            <Descriptions.Item label={t("最不利点(μs)")}>
               {typeof detailSelectedCase.head_time_us === "number" && typeof detailSelectedCase.tail_time_us === "number"
                 ? `${detailSelectedCase.head_time_us}/${detailSelectedCase.tail_time_us}`
                 : "-"}
             </Descriptions.Item>
-            <Descriptions.Item label={"扫描点数"}>{String(detailWorkflow.scan_point_count ?? "-")}</Descriptions.Item>
-            <Descriptions.Item label={"雷电流波形"}>{formatDimensionValue(detailWorkflow.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
-            <Descriptions.Item label={"绝缘子闪络判据"}>{formatDimensionValue(detailWorkflow.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
-            <Descriptions.Item label={"是否海拔修正"}>{formatDimensionValue(detailWorkflow.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
-            <Descriptions.Item label={"感应电压公式"}>{formatInducedVoltageFormula(detailWorkflow.induced_voltage_formula)}</Descriptions.Item>
-            <Descriptions.Item label={"波头范围"}>{formatRangeSummary(detailWorkflow.head_time_range_us)}</Descriptions.Item>
-            <Descriptions.Item label={"波尾范围"}>{formatRangeSummary(detailWorkflow.tail_time_range_us)}</Descriptions.Item>
-            <Descriptions.Item label={"执行适配器"}>
+            <Descriptions.Item label={t("扫描点数")}>{String(detailWorkflow.scan_point_count ?? "-")}</Descriptions.Item>
+            <Descriptions.Item label={t("雷电流波形")}>{formatDimensionValue(detailWorkflow.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
+            <Descriptions.Item label={t("绝缘子闪络判据")}>{formatDimensionValue(detailWorkflow.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
+            <Descriptions.Item label={t("是否海拔修正")}>{formatDimensionValue(detailWorkflow.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
+            <Descriptions.Item label={t("感应电压公式")}>{formatInducedVoltageFormula(detailWorkflow.induced_voltage_formula)}</Descriptions.Item>
+            <Descriptions.Item label={t("波头范围")}>{formatRangeSummary(detailWorkflow.head_time_range_us)}</Descriptions.Item>
+            <Descriptions.Item label={t("波尾范围")}>{formatRangeSummary(detailWorkflow.tail_time_range_us)}</Descriptions.Item>
+            <Descriptions.Item label={t("执行适配器")}>
               {formatExternalAdapter(readOptionalString(detailExternalExecution, "adapter"))}
             </Descriptions.Item>
-            <Descriptions.Item label={"ATP模型"}>
-              {formatAtpModel(readOptionalString(detailExternalExecution, "model_name") || readOptionalString(detailExternalExecution, "model_code"))}
+            <Descriptions.Item label={t("ATP模型")}>
+              {formatAtpModel(readOptionalString(detailExternalExecution, "model_name") || readOptionalString(detailExternalExecution, "model_code"), t)}
             </Descriptions.Item>
             {selectedJobDetailWaveformType === "tongtiao" ? (
               <>
-                <Descriptions.Item label={"主导相组"}>{readOptionalString(detailResultObject, "dominant_phase_set") ?? "-"}</Descriptions.Item>
-                <Descriptions.Item label={"闪络相"}>{readOptionalString(detailResultObject, "flashover_phase") ?? "-"}</Descriptions.Item>
+                <Descriptions.Item label={t("主导相组")}>{readOptionalString(detailResultObject, "dominant_phase_set") ?? "-"}</Descriptions.Item>
+                <Descriptions.Item label={t("闪络相")}>{readOptionalString(detailResultObject, "flashover_phase") ?? "-"}</Descriptions.Item>
               </>
             ) : null}
             {/* 计算参数固定 11 项（同跳另加 2 项），均为奇数，会导致其后的整行项(span=2)
@@ -440,21 +443,21 @@ export function TowerDetailView({
             <Descriptions.Item label="">{""}</Descriptions.Item>
           </>
         ) : null}
-        <Descriptions.Item label={"综合结论"} span={2}>
+        <Descriptions.Item label={t("综合结论")} span={2}>
           {readOptionalString(detailRow, "summary_text") ?? "-"}
         </Descriptions.Item>
-        <Descriptions.Item label={"原因分析"} span={2}>
+        <Descriptions.Item label={t("原因分析")} span={2}>
           {readString(detailResultObject, "cause_analysis")}
         </Descriptions.Item>
-        <Descriptions.Item label={"措施建议"} span={2}>
+        <Descriptions.Item label={t("措施建议")} span={2}>
           {readString(detailResultObject, "mitigation_recommendation")}
         </Descriptions.Item>
-        <Descriptions.Item label={"当前得分"}>
+        <Descriptions.Item label={t("当前得分")}>
           {selectedJob?.job_type === "mitigation"
             ? String(readCurrentScore(detailRow) ?? "-")
             : String(readOptionalNumber(detailResultObject, "score") ?? "-")}
         </Descriptions.Item>
-        <Descriptions.Item label={"预期得分/得分"}>
+        <Descriptions.Item label={t("预期得分/得分")}>
           {selectedJob?.job_type === "mitigation"
             ? String(readOptionalNumber(detailResultObject, "expected_score") ?? "-")
             : String(readOptionalNumber(detailResultObject, "score") ?? "-")}
@@ -467,11 +470,11 @@ export function TowerDetailView({
         原因细项
       </Typography.Title>
       {reasonDetails.length === 0 ? (
-        <Empty description={"暂无细项分级"} />
+        <Empty description={t("暂无细项分级")} />
       ) : (
         <Table<ReasonDetail>
           rowKey="code"
-          columns={reasonDetailColumns}
+          columns={buildReasonDetailColumns(t)}
           dataSource={reasonDetails}
           pagination={false}
           size="small"
@@ -486,11 +489,11 @@ export function TowerDetailView({
             波形扫描
           </Typography.Title>
           {scanPoints.length === 0 ? (
-            <Empty description={"当前结果未生成扫描点"} />
+            <Empty description={t("当前结果未生成扫描点")} />
           ) : (
             <Table<ScanPoint>
               rowKey={(row) => `${row.head_time_us ?? "-"}-${row.tail_time_us ?? "-"}`}
-              columns={scanPointColumns}
+              columns={buildScanPointColumns(t)}
               dataSource={scanPoints}
               pagination={false}
               size="small"
@@ -508,11 +511,11 @@ export function TowerDetailView({
             相别结果
           </Typography.Title>
           {phaseResults.length === 0 ? (
-            <Empty description={"当前结果未生成相别结果"} />
+            <Empty description={t("当前结果未生成相别结果")} />
           ) : (
             <Table<PhaseResult>
               rowKey="phase"
-              columns={phaseResultColumns}
+              columns={buildPhaseResultColumns(t)}
               dataSource={phaseResults}
               pagination={false}
               size="small"
@@ -526,11 +529,11 @@ export function TowerDetailView({
             多相结果
           </Typography.Title>
           {multiPhaseResults.length === 0 ? (
-            <Empty description={"当前结果未生成多相结果"} />
+            <Empty description={t("当前结果未生成多相结果")} />
           ) : (
             <Table<MultiPhaseResult>
               rowKey="label"
-              columns={multiPhaseColumns}
+              columns={buildMultiPhaseColumns(t)}
               dataSource={multiPhaseResults}
               pagination={false}
               size="small"
@@ -563,7 +566,7 @@ export function TowerDetailView({
                   {step.scanItems.length > 0 ? (
                     <Table<BinarySearchStepItem>
                       rowKey={(row) => `${step.key}-${row.iteration}`}
-                      columns={binaryScanColumns}
+                      columns={buildBinaryScanColumns(t)}
                       dataSource={step.scanItems}
                       pagination={false}
                       size="small"
@@ -582,11 +585,11 @@ export function TowerDetailView({
         改造动作
       </Typography.Title>
       {mitigationActions.length === 0 ? (
-        <Empty description={"当前结果未生成改造动作"} />
+        <Empty description={t("当前结果未生成改造动作")} />
       ) : (
         <Table<MitigationAction>
           rowKey="code"
-          columns={mitigationActionColumns}
+          columns={buildMitigationActionColumns(t)}
           dataSource={mitigationActions}
           pagination={false}
           size="small"
