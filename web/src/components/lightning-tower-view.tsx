@@ -57,6 +57,8 @@ export function LightningTowerView({
     retryOnUnauthorized?: boolean,
   ) => Promise<Response>;
 }) {
+  const { t } = useI18n();
+
   // 线路基本信息
   const lineQuery = useQuery<LineSummary>({
     queryKey: ["lines", lineId],
@@ -85,14 +87,14 @@ export function LightningTowerView({
 
   const columns: ColumnsType<LineTowerSummary> = [
     {
-      title: "塔号",
+      title: t("塔号"),
       dataIndex: "tower_no",
       key: "tower_no",
       width: 110,
       render: (value: string | null) => value || "-",
     },
     {
-      title: "杆塔型号",
+      title: t("杆塔型号"),
       dataIndex: "tower_model",
       key: "tower_model",
       width: 120,
@@ -100,14 +102,14 @@ export function LightningTowerView({
       render: (value: string | null) => value || "-",
     },
     {
-      title: "经度",
+      title: t("经度"),
       dataIndex: "longitude",
       key: "longitude",
       width: 110,
       render: (value: number | null) => formatCoordinate(value),
     },
     {
-      title: "纬度",
+      title: t("纬度"),
       dataIndex: "latitude",
       key: "latitude",
       width: 110,
@@ -128,21 +130,21 @@ export function LightningTowerView({
       render: (value: number | null) => formatNumber(value, 3),
     },
     {
-      title: "峰值max(kA)",
+      title: t("峰值max(kA)"),
       dataIndex: ["lightning_current_preparation", "peak_max"],
       key: "peak_max",
       width: 110,
       render: (value: number | null) => formatNumber(value, 3),
     },
     {
-      title: "峰值min(kA)",
+      title: t("峰值min(kA)"),
       dataIndex: ["lightning_current_preparation", "peak_min"],
       key: "peak_min",
       width: 110,
       render: (value: number | null) => formatNumber(value, 3),
     },
     {
-      title: "采样数",
+      title: t("采样数"),
       dataIndex: ["lightning_current_preparation", "sampled_event_count"],
       key: "sampled_event_count",
       width: 80,
@@ -150,14 +152,14 @@ export function LightningTowerView({
         value == null ? "-" : value,
     },
     {
-      title: "回填时间",
+      title: t("回填时间"),
       dataIndex: ["lightning_current_preparation", "prepared_at"],
       key: "prepared_at",
       width: 150,
       render: (value: string | null | undefined) => formatDateTime(value),
     },
     {
-      title: "回填状态",
+      title: t("回填状态"),
       key: "backfill_status",
       width: 110,
       fixed: "right",
@@ -167,9 +169,9 @@ export function LightningTowerView({
           row.current_type === "line_prepared" &&
           (row.current_a != null || row.current_b != null);
         if (backfilled || (prep && prep.sampled_event_count > 0)) {
-          return <TagLightning color="blue">{"已回填"}</TagLightning>;
+          return <TagLightning color="blue">{t("已回填")}</TagLightning>;
         }
-        return <TagLightning color="default">{"未回填"}</TagLightning>;
+        return <TagLightning color="default">{t("未回填")}</TagLightning>;
       },
     },
   ];
@@ -188,15 +190,15 @@ export function LightningTowerView({
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       {line ? (
         <Descriptions size="small" column={4} bordered>
-          <Descriptions.Item label={"线路编号"}>{line.code || "-"}</Descriptions.Item>
-          <Descriptions.Item label={"线路名称"}>{line.name || "-"}</Descriptions.Item>
-          <Descriptions.Item label={"电压(kV)"}>
+          <Descriptions.Item label={t("线路编号")}>{line.code || "-"}</Descriptions.Item>
+          <Descriptions.Item label={t("线路名称")}>{line.name || "-"}</Descriptions.Item>
+          <Descriptions.Item label={t("电压(kV)")}>
             {line.voltage_kv ?? "-"}
           </Descriptions.Item>
-          <Descriptions.Item label={"杆塔数"}>{line.tower_count}</Descriptions.Item>
+          <Descriptions.Item label={t("杆塔数")}>{line.tower_count}</Descriptions.Item>
         </Descriptions>
       ) : (
-        <Typography.Text type="secondary">{"线路信息加载失败"}</Typography.Text>
+        <Typography.Text type="secondary">{t("线路信息加载失败")}</Typography.Text>
       )}
       <Table<LineTowerSummary>
         rowKey="id"
@@ -211,7 +213,7 @@ export function LightningTowerView({
           emptyText: (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={"该线路暂无杆塔数据"}
+              description={t("该线路暂无杆塔数据")}
             />
           ),
         }}
