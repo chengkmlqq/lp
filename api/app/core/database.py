@@ -1029,6 +1029,141 @@ def _ensure_system_message_link_url_column_compatibility() -> None:
             logger.info("system_messages.link_url column added")
 
 
+def _sync_missing_columns() -> None:
+    """Startup self-heal: add ORM columns that are missing from already-existing tables.
+
+    这是「字段新增部署不生效」根因的通用兜底：``Base.metadata.create_all`` 只建
+    **不存在**的表，对已存在表**绝不 ALTER**；而历史遗留的 19 个 ``_ensure_*_column_*
+    compatibility`` 函数一律 ``if not postgresql: return``，在 MySQL（33.2 现网）
+    下整体跳过，导致模型里新增的字段永远不会落到库里（实测 ``atp_asset.slots_json``
+    在 33.2 MySQL 缺失即此因）。
+
+    本函数遍历 ORM metadata，对每一个**已存在**的表，比对实际列，把差集（纯新增、
+    可安全追加的列）通过 ``ALTER TABLE ADD COLUMN`` 补齐。特点：
+
+    * 覆盖全部方言（PG / MySQL / SQLite），借助 ``dialect_text`` + ``mysqlize_sql``
+      做 PG→MySQL 语法转译，不再硬 ``return``。
+    * **只自动加「nullable 或带标量默认值」的列**。NOT NULL 且无默认值的列意味着
+      老行无可填充值，自动 ALTER 会把现网数据卡死——这类交给既有 ``_ensure_*``
+      （它们手写带默认/带 FK 的复杂列），本函数不碰，避免破坏现网。
+    * 列类型、nullable、默认值全部从 ORM ``Column`` 对象取，保证与模型一致。
+    * 幂等：差集为空时不发任何 DDL。
+    """
+    from ..models import (  # noqa: F401  (same import set as init_db, populates metadata)
+        atp_asset,
+        atp_param_definition,
+        audit_log,
+        auth_session,
+        dimension_item,
+        elevation,
+        fault_analysis,
+        file_storage,
+        fl_analysis,
+        lightning_amplitude,
+        lightning_distribution,
+        line,
+        line_tower,
+        menu,
+        object_group,
+        param_category,
+        rbac,
+        scheduled_task,
+        system_param,
+        task_history,
+        tower_analysis,
+        tower_circuit,
+        tower_lightning_result,
+        tower_model,
+        tower_profile,
+        user,
+        worker_registry,
+    )
+
+    schema = settings.resolved_db_schema if database_url.startswith("postgresql") else None
+    with engine.begin() as connection:
+        db_inspector = inspect(connection)
+
+        for table_name, table in Base.metadata.tables.items():
+            if not db_inspector.has_table(table_name, schema=schema):
+                continue  # 建表交给 create_all，本函数只处理已存在表
+
+            existing_cols = {
+                c["name"] for c in db_inspector.get_columns(table_name, schema=schema)
+            }
+
+            for column in table.columns:
+                col_name = column.name
+                if col_name in existing_cols:
+                    continue
+
+                # 安全约束：NOT NULL 且无默认值的新列会破坏老行，跳过，交 _ensure_* 处理。
+                # 注意 callable default（如 utcnow / dict / list）是应用层填值，无法直接落到 DDL。
+                # JSON 列 + dict/list 工厂是常见例外（ORM default=dict/list 语义即空结构），
+                # 显式补 DEFAULT '{}' / '[]'，与既有 PG 迁移（slots_json DEFAULT '{}'::json）一致。
+                has_server_default = column.server_default is not None
+                has_scalar_default = column.default is not None and getattr(
+                    column.default, "is_scalar", False
+                )
+                json_empty_default = None
+                if column.default is not None and not getattr(
+                    column.default, "is_scalar", False
+                ):
+                    fn = getattr(column.default, "arg", None)
+                    if fn is dict or (callable(fn) and getattr(fn, "__qualname__", "") == "dict"):
+                        json_empty_default = "{}"
+                    elif fn is list or (
+                        callable(fn) and getattr(fn, "__qualname__", "") == "list"
+                    ):
+                        json_empty_default = "[]"
+                is_json_col = isinstance(column.type, (JSON, JSONB))
+                if not column.nullable and not (
+                    has_server_default or has_scalar_default or json_empty_default
+                ):
+                    logger.warning(
+                        "Skipping auto ALTER for %s.%s: NOT NULL without a DB-defaultable value "
+                        "(would break existing rows or fail on MySQL); "
+                        "add it via a migration/_ensure_* instead.",
+                        table_name,
+                        col_name,
+                    )
+                    continue
+
+                # 列类型按当前方言编译（MySQL 下 JSONB 无对应编译器，历史模型直用 postgresql.JSONB，
+                # 兜底降级为通用 JSON，避免 UnsupportedCompilationError 卡死整个 init_db）
+                if isinstance(column.type, JSONB) and not database_url.startswith("postgresql"):
+                    col_type = "JSON"
+                else:
+                    col_type = column.type.compile(dialect=engine.dialect)
+
+                # 默认值：server_default > ORM 标量默认 > JSON 空结构字面量。
+                default_clause = ""
+                if has_server_default:
+                    default_clause = f" DEFAULT {column.server_default.arg}"
+                elif has_scalar_default:
+                    default_clause = f" DEFAULT {column.default.arg!r}"
+                elif json_empty_default and is_json_col:
+                    if database_url.startswith("postgresql"):
+                        # PG: JSON 默认值用显式 ::json 转换，与既有迁移写法一致
+                        default_clause = f" DEFAULT '{json_empty_default}'::json"
+                    else:
+                        # MySQL/SQLite: JSON 用表达式默认 / 直接字面量
+                        default_clause = f" DEFAULT ('{json_empty_default}')"
+
+                nullable_clause = "" if column.nullable else " NOT NULL"
+
+                ddl = (
+                    f"ALTER TABLE {table_name} "
+                    f"ADD COLUMN {col_name} {col_type}{nullable_clause}{default_clause}"
+                )
+                connection.execute(dialect_text(ddl))
+                logger.warning(
+                    "Auto-added missing column %s.%s (%s) for ORM compatibility.",
+                    table_name,
+                    col_name,
+                    col_type,
+                )
+
+
 def init_db() -> None:
     # Import models so metadata includes every table before create_all.
     from ..models import (
@@ -1080,6 +1215,12 @@ def init_db() -> None:
     _ensure_fault_analysis_progress_column_compatibility()
     _ensure_fault_analysis_task_id_column_compatibility()
     _ensure_system_message_link_url_column_compatibility()
+
+    # 通用兜底：把 ORM 新增、已存在表缺失的 nullable/带默认值列自动 ALTER 补齐
+    # （覆盖 MySQL/PG/SQLite；历史 _ensure_* 大多 PG-only，在 MySQL 下会被跳过——
+    # 这就是 33.2 上 atp_asset.slots_json 缺失的根因）。先补老表列，再建新表。
+    _sync_missing_columns()
+
     Base.metadata.create_all(bind=engine)
 
     # 自动播种：维度种子 + 参数分类（幂等缺失补齐，不覆盖手动改动；表缺失时静默跳过）。
