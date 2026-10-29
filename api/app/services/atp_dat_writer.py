@@ -101,6 +101,11 @@ def resolve_section(tower_type: str, voltage_kv) -> str:
     v = str(int(voltage_kv)) if voltage_kv else ""
     if v:
         for name in sections:
+            # 电压限定段名两种分隔：`guxing>-330750`（spec 实际写法，《guxing>-330750》
+            # 解析后是 `guxing>-330750`）与历史 `guxing-330750`。`>`/`-` 都视为 kind 与
+            # 电压组的分隔，电压组 330750 表示 330kV 与 750kV（子串匹配兼容两种形态）。
+            if name.startswith(kind + ">") and v in name.split(">", 1)[1]:
+                return name
             if name.startswith(kind + "-") and v in name.split("-", 1)[1]:
                 return name
     return kind if kind in sections else ""
@@ -408,7 +413,9 @@ def _zhiliu(ctx: dict) -> dict[str, float]:
 
 
 def build_values(section: str, **ctx) -> dict[str, float]:
-    kind = section.split("-", 1)[0]
+    # 电压限定段名形如 `guxing>-330750`（`>` 分隔）或历史 `guxing-330750`，
+    # 提取 kind 时两种分隔符都兼容，避免把 `guxing>` 当 kind 导致误报未移植。
+    kind = re.split(r"[>\-]", section, maxsplit=1)[0]
     if kind == "guxing":
         return _guxing(ctx)
     if kind in {"maotou", "jiubei", "ganzi", "menxing"}:
