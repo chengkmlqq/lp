@@ -983,7 +983,7 @@ export default function AdminRolesPage() {
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" onClick={startCreate}>
-              新建角色
+              {t("新建角色")}
             </Button>
           ) : null
         }
@@ -1229,7 +1229,7 @@ export default function AdminRolesPage() {
                 treeData={menuTreeOptions}
                 placeholder={t("请选择菜单与操作权限")}
                 maxTagCount={6}
-                maxTagPlaceholder={(omitted) => `+${omitted.length} 项`}
+                maxTagPlaceholder={(omitted) => `+${omitted.length} ${t("项")}`}
                 style={{ width: "100%" }}
               />
             </Form.Item>

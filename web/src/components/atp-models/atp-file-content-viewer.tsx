@@ -141,7 +141,7 @@ export function AtpFileContentViewer({ assetId, relativePath, name }: AtpFileCon
         type="warning"
         showIcon
         message={t("该文件是二进制格式，无法在线预览文本内容。")}
-        description={`${data.name || name}（${formatSize(data.size)}）${data.mime_type ? `，MIME：${data.mime_type}` : ""}。如需查看可下载后使用本地工具打开。`}
+        description={t(`${data.name || name}（${formatSize(data.size)}）${data.mime_type ? `，MIME：${data.mime_type}` : ""}。如需查看可下载后使用本地工具打开。`)}
       />
     );
   }

@@ -365,7 +365,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
 
       {/* 测试详情抽屉 */}
       <Drawer
-        title={`测试详情 · ${detail?.asset_name ?? detailRunId ?? ""}`}
+        title={`${t("测试详情")} · ${detail?.asset_name ?? detailRunId ?? ""}`}
         open={Boolean(detailRunId)}
         onClose={() => setDetailRunId(null)}
         width={760}
@@ -605,7 +605,7 @@ function StageDetailBody({ result, runId }: { result: AtpAssetTestStageResult; r
       {runId && viewPath ? (
         <Modal
           open
-          title={viewWave ? `波形：${viewPath}` : `产物：${viewPath}`}
+          title={viewWave ? `${t("波形")}：${viewPath}` : `${t("产物")}：${viewPath}`}
           width={viewWave ? 920 : 860}
           footer={null}
           onCancel={() => {

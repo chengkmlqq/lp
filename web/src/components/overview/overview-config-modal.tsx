@@ -178,7 +178,7 @@ export function OverviewConfigModal({
                 />
                 <Popconfirm title={t("删除该卡片？")} onConfirm={() => removeAt(index)} okText={t("删除")} cancelText={t("取消")}>
                   <Button size="small" danger>
-                    删除
+                    {t("删除")}
                   </Button>
                 </Popconfirm>
               </div>

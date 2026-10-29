@@ -216,14 +216,14 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
 
   return (
     <Modal
-      title={`发起测试 · ${asset.name || asset.code}`}
+      title={`${t("发起测试")} · ${asset.name || asset.code}`}
       open={open}
       onCancel={onClose}
       width={760}
       footer={
         <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
           <Button disabled={submitting} onClick={onClose}>
-            取消
+            {t("取消")}
           </Button>
           <Button type="primary" icon={<RocketOutlined />} loading={submitting} onClick={() => void handleSubmit()}>
             {t("确认测试")}

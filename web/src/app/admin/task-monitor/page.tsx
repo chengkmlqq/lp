@@ -790,7 +790,7 @@ export default function AdminTaskMonitorPage() {
 
       <TaskLogViewerDrawer
         taskId={logTaskId}
-        title={`任务执行日志 - ${logTaskId ?? ""}`}
+        title={`${t("任务执行日志")} - ${logTaskId ?? ""}`}
         open={logOpen}
         onClose={handleCloseLogModal}
       />

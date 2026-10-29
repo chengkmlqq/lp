@@ -624,7 +624,7 @@ export function AtpTestSetDetailDrawer({
           set ? (
             <Space size={8}>
               <span>{set.name}</span>
-              <Tag>{set.case_count} 用例</Tag>
+              <Tag>{set.case_count} {t("用例")}</Tag>
               {set.status === "disabled" ? <Tag>{t("已停用")}</Tag> : null}
             </Space>
           ) : (

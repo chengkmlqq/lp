@@ -367,7 +367,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
         </Space>
       ) : (
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Card size="small" title={`批量测试进度 · ${batch.batch_id}`}>
+          <Card size="small" title={`${t("批量测试进度")} · ${batch.batch_id}`}>
             <Space direction="vertical" size={8} style={{ width: "100%" }}>
               <Progress percent={progress} status={finished ? "success" : "active"} />
               <Space size={24}>
@@ -382,7 +382,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 <Alert
                   type="warning"
                   showIcon
-                  message={`${batch.errors!.length} 个资产发起失败(未生成 run)`}
+          message={`${batch.errors!.length} ${t("个资产发起失败")}(未生成 run)`}
                   description={batch.errors!.slice(0, 5).map((e) => `${e.code}: ${e.error}`).join("；")}
                 />
               ) : null}
@@ -404,7 +404,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                     <div>
                       <Typography.Text strong>{t("闪络相数分布:")}</Typography.Text>
                       {Object.entries(batch.report.flashover_count_distribution).map(([k, v]) => (
-                        <Tag key={k} color="purple">{k}相 × {v}</Tag>
+                        <Tag key={k} color="purple">{k}{t("相 ×")} {v}</Tag>
                       ))}
                     </div>
                   ) : null}

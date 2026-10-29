@@ -871,7 +871,7 @@ export default function AtpParamsPage() {
 
       {/* 详情弹窗（统一弹窗展示，与新建/编辑一致） */}
       <Modal
-        title={`参数详情 · ${detail?.code ?? ""}`}
+        title={`${t("参数详情")} · ${detail?.code ?? ""}`}
         open={detailOpen}
         onCancel={() => setDetailOpen(false)}
         width={520}
@@ -1163,7 +1163,7 @@ export default function AtpParamsPage() {
 
       {/* 试算结果抽屉：按塔分组展示参数解析值（过滤条固定顶部、表格区滚动、分页固定右下角） */}
       <Drawer
-        title={`参数试算结果（${trialResults.length} 座杆塔）`}
+        title={`${t("参数试算结果")}（${trialResults.length} ${t("座杆塔")}）`}
         open={trialResultOpen}
         onClose={() => setTrialResultOpen(false)}
         width={720}

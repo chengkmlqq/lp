@@ -393,7 +393,7 @@ export function CreateJobForm({
         <Button onClick={() => setAdvancedOpen(true)}>{t("高级参数")}</Button>
         <div className="flex items-center gap-2">
           <Button onClick={onCancel} disabled={submitting}>
-            取消
+            {t("取消")}
           </Button>
           <Button type="primary" loading={submitting} onClick={() => form.submit()}>
             {t("创建并启动任务")}

@@ -207,7 +207,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
 
       <Modal
         open={Boolean(datDetail)}
-        title={`DAT 文件详情：${datDetail?.name ?? ""}`}
+          title={`${t("DAT 文件详情")}：${datDetail?.name ?? ""}`}
         width={900}
         footer={null}
         onCancel={() => setDatDetail(null)}
@@ -217,7 +217,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
 
       <Drawer
         open={Boolean(previewFile)}
-        title={`文件内容：${previewFile?.name ?? ""}`}
+        title={`${t("文件内容")}：${previewFile?.name ?? ""}`}
         width={800}
         destroyOnHidden
         styles={{ body: { height: "75vh", overflow: "hidden", display: "flex", flexDirection: "column", padding: 16 } }}

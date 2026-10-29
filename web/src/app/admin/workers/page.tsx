@@ -557,7 +557,7 @@ export default function AdminWorkersPage() {
       />
 
       <Drawer
-        title={`执行节点任务明细 - ${selectedWorker || "-"}`}
+        title={`${t("执行节点任务明细")} - ${selectedWorker || "-"}`}
         open={Boolean(selectedWorker)}
         width={1260}
         onClose={() => setSelectedWorker(null)}
@@ -580,10 +580,10 @@ export default function AdminWorkersPage() {
         {taskOverview ? (
           <Space direction="vertical" size={16} style={{ width: "100%" }}>
             <Space size={8} wrap>
-              <Tag color="processing">运行中: {taskOverview.summary.active}</Tag>
-              <Tag color="gold">预留中: {taskOverview.summary.reserved}</Tag>
-              <Tag color="purple">已调度: {taskOverview.summary.scheduled}</Tag>
-              <Tag color="default">最近记录: {taskOverview.summary.recent}</Tag>
+              <Tag color="processing">{t("运行中")}: {taskOverview.summary.active}</Tag>
+              <Tag color="gold">{t("预留中")}: {taskOverview.summary.reserved}</Tag>
+              <Tag color="purple">{t("已调度")}: {taskOverview.summary.scheduled}</Tag>
+              <Tag color="default">{t("最近记录")}: {taskOverview.summary.recent}</Tag>
             </Space>
 
             <AntCard title={t("运行中任务")}>

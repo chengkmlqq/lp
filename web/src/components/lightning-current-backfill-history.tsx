@@ -826,7 +826,7 @@ export function LightningCurrentBackfillHistoryTable({
                 </Button>
                 {canManage && (
                   <Button onClick={openBackfillModal} disabled={backfillMutation.isPending}>
-                    回填
+                    {t("回填")}
                   </Button>
                 )}
               </Space>
@@ -873,7 +873,7 @@ export function LightningCurrentBackfillHistoryTable({
                 </Button>
                 {canManage && (
                   <Button onClick={openBackfillModal} disabled={backfillMutation.isPending}>
-                    回填
+                    {t("回填")}
                   </Button>
                 )}
               </Space>

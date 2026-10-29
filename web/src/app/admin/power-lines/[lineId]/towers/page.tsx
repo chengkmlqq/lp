@@ -442,7 +442,7 @@ export default function AdminPowerLineTowersPage() {
             <Space size={8}>
               {canTowerManage && (
                 <Button onClick={openImportModal}>
-                  导入
+                  {t("导入")}
                 </Button>
               )}
               {canTowerRead && (

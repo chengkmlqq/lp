@@ -799,7 +799,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
       render: (_value, row) => {
         const conclusion = (row.result_json ?? {}).recommendation_result;
         if (typeof conclusion === "string") {
-          return <Tag color={conclusion.includes("避雷器") ? "orange" : "green"}>{conclusion}</Tag>;
+          return <Tag color={conclusion.includes("避雷器") ? "orange" : "green"}>{t(conclusion)}</Tag>;
         }
         return "-";
       },
@@ -913,7 +913,7 @@ function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
       <Alert
         type="info"
         showIcon
-        message={`共 ${steps.length} 轮调参`}
+          message={`${t("共")} ${steps.length} ${t("轮调参")}`}
         description={`${t("从「从轻到重试改参数，每轮用 ATP 重算验证」到")}${(lastStep.decision as string) || t("完成")}；${t("最终风险")}：${
           typeof result.expected_risk_level === "string" ? result.expected_risk_level : "-"
         }`}

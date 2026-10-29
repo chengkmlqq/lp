@@ -343,16 +343,16 @@ export function AtpTestSetRunDrawer({
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   与上次执行对比：
                 </Typography.Text>
-                <Tag color="green">无变化 {regressionCounts.unchanged ?? 0}</Tag>
-                <Tag color="orange">有变更 {regressionCounts.changed ?? 0}</Tag>
+                <Tag color="green">{t("无变化")} {regressionCounts.unchanged ?? 0}</Tag>
+                <Tag color="orange">{t("有变更")} {regressionCounts.changed ?? 0}</Tag>
                 {regressionCounts.regressed ? (
-                  <Tag color="red">回归失败 {regressionCounts.regressed}</Tag>
+                  <Tag color="red">{t("回归失败")} {regressionCounts.regressed}</Tag>
                 ) : null}
                 {regressionCounts.improved ? (
-                  <Tag color="green">修复通过 {regressionCounts.improved}</Tag>
+                  <Tag color="green">{t("修复通过")} {regressionCounts.improved}</Tag>
                 ) : null}
                 {regressionCounts.flashover_changed ? (
-                  <Tag color="orange">闪络变化 {regressionCounts.flashover_changed}</Tag>
+                  <Tag color="orange">{t("闪络变化")} {regressionCounts.flashover_changed}</Tag>
                 ) : null}
               </div>
             ) : null}

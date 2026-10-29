@@ -556,7 +556,7 @@ function FaultRecurrenceResultView({
           key: "detail",
           label: t("详细数据"),
           children: (
-            <Card title={`基础数据预览 (${result.point_count} 条)`} className="surface-card">
+            <Card title={`${t("基础数据预览")} (${result.point_count} 条)`} className="surface-card">
               <Table<FaultRecurrenceDataPoint>
                 rowKey={(record, index) => `${record.head_time_us}-${record.tail_time_us}-${index ?? 0}`}
                 columns={columns}

@@ -643,7 +643,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
           {canTowerManage && (
             <Form.Item style={{ marginBottom: 0 }}>
               <Button onClick={openImportModal}>
-                导入
+                {t("导入")}
               </Button>
             </Form.Item>
           )}

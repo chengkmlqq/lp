@@ -1498,7 +1498,7 @@ export default function AtpModelsPage() {
       </Modal>
 
       <Modal
-        title={`编辑 ATP 模型${editingAsset ? ` - ${editingAsset.name || editingAsset.code}` : ""}`}
+        title={`${t("编辑 ATP 模型")}${editingAsset ? ` - ${editingAsset.name || editingAsset.code}` : ""}`}
         open={editModalOpen}
         forceRender
         onCancel={closeEditModal}

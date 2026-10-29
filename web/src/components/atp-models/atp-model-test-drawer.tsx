@@ -812,7 +812,7 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
       {runId && viewPath ? (
         <Modal
           open
-          title={viewWave ? `波形：${viewPath}` : `产物：${viewPath}`}
+          title={viewWave ? `${t("波形")}：${viewPath}` : `${t("产物")}：${viewPath}`}
           width={viewWave ? 920 : 860}
           footer={null}
           onCancel={() => {

@@ -224,7 +224,7 @@ function ParamsTraceBody({ runId }: { runId: string }) {
           style={{ marginTop: 12 }}
           type="warning"
           showIcon
-          message={`${unresolvedCount} 个槽位取不到值（已按 C# 口径填 "1." 占位）`}
+          message={`${unresolvedCount} ${t("个槽位取不到值")}（已按 C# 口径填 "1." 占位）`}
           description={Object.entries(unresolved)
             .map(([slot, names]) => `${slot} ← 缺 ${names.join("/")}`)
             .join("；")}
@@ -237,7 +237,7 @@ function ParamsTraceBody({ runId }: { runId: string }) {
 export function AtpParamTraceDrawer({ runId, open, onClose }: AtpParamTraceDrawerProps) {
   const { t } = useI18n();
   return (
-    <Drawer open={open} title={`参数溯源：run ${runId.slice(0, 8)}`} width={760} onClose={onClose} destroyOnClose>
+    <Drawer open={open} title={`${t("参数溯源")}：run ${runId.slice(0, 8)}`} width={760} onClose={onClose} destroyOnClose>
       <ParamsTraceBody runId={runId} />
     </Drawer>
   );

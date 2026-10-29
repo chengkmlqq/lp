@@ -297,7 +297,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
             type="success"
             showIcon
             message={t("已选择前置任务")}
-            description={`${selectedBaseJob.job_name || selectedBaseJob.line_name || selectedBaseJob.line_code || "-"} / 杆塔总数：${selectedBaseJob.total_tower_count}`}
+            description={`${selectedBaseJob.job_name || selectedBaseJob.line_name || selectedBaseJob.line_code || "-"} / ${t("杆塔总数")}：${selectedBaseJob.total_tower_count}`}
           />
         ) : null}
 

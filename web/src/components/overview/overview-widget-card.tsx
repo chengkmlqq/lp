@@ -80,7 +80,7 @@ function AssetStatsCard({ widget, data }: { widget: OverviewWidget; data: Overvi
   return (
     <Row gutter={[16, 16]}>
       {items.map((item) => {
-        const stat = <Statistic title={item.label} value={item.count} valueStyle={{ fontSize: 22 }} />;
+        const stat = <Statistic title={t(item.label)} value={item.count} valueStyle={{ fontSize: 22 }} />;
         return (
           <Col key={item.key} xs={12} sm={8} md={6} lg={6}>
             {item.route ? (
@@ -128,7 +128,7 @@ function TaskStatesCard({ data }: { data: OverviewData }) {
     <div className="flex flex-wrap gap-2">
       {data.tasks.state_buckets.map((bucket) => (
         <Tag key={bucket.key} color={STATE_COLORS[bucket.key] ?? "default"}>
-          {bucket.label} · {bucket.count}
+          {t(bucket.label)} · {bucket.count}
         </Tag>
       ))}
     </div>
@@ -156,7 +156,7 @@ function QuickLinksCard({ widget }: { widget: OverviewWidget }) {
           className="no-underline"
         >
           <Tag color="blue" style={{ cursor: "pointer", padding: "4px 10px", fontSize: 13 }}>
-            {link.label}
+            {t(link.label)}
           </Tag>
         </Link>
       ))}

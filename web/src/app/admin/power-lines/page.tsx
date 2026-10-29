@@ -664,7 +664,7 @@ export default function AdminPowerLinesPage() {
             <Select
               showSearch
               placeholder={t("请选择电压等级")}
-              options={[...LINE_VOLTAGE_OPTIONS].map((item) => ({ value: item.value, label: item.label }))}
+              options={[...LINE_VOLTAGE_OPTIONS].map((item) => ({ value: item.value, label: t(item.label) }))}
               filterOption={(input, option) =>
                 String(option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
             />

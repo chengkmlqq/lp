@@ -868,7 +868,7 @@ export default function AdminSystemMessagesPage() {
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" onClick={openCreateMessageModal}>
-              发送消息
+              {t("发送消息")}
             </Button>
           ) : null
         }

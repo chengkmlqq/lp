@@ -922,7 +922,7 @@ export default function AdminMenusPage() {
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" onClick={startCreate}>
-              新建菜单
+              {t("新建菜单")}
             </Button>
           ) : null
         }

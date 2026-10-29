@@ -592,14 +592,14 @@ export function PowerLineCesiumMap({
         <Alert
           type="warning"
           showIcon
-          message={`有 ${towersOutsideTerrainBounds} 个杆塔超出所选 DEM 覆盖范围`}
+          message={`有 ${towersOutsideTerrainBounds} ${t("个杆塔超出所选 DEM 覆盖范围")}`}
         />
       ) : null}
       {terrainError ? (
         <Alert
           type="warning"
           showIcon
-          message={`地形瓦片加载失败，已回退到平面模式：${terrainError}`}
+          message={`${t("地形瓦片加载失败，已回退到平面模式")}：${terrainError}`}
         />
       ) : null}
       {initError ? (

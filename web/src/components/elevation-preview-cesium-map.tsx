@@ -605,7 +605,7 @@ export function ElevationPreviewCesiumMap({
       <Alert
         type="error"
         showIcon
-        message={`预览地图加载失败：${error}`}
+        message={`${t("预览地图加载失败")}：${error}`}
       />
     );
   }
@@ -623,7 +623,7 @@ export function ElevationPreviewCesiumMap({
         <Alert
           type={terrainRenderState === "failed" ? "warning" : "info"}
           showIcon
-          message={`地形瓦片状态：${terrainRenderState}，暂以椭球底面显示参考点。`}
+          message={`${t("地形瓦片状态")}：${terrainRenderState}，${t("暂以椭球底面显示参考点")}。`}
         />
       ) : null}
       {terrainError ? (
