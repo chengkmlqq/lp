@@ -1071,19 +1071,21 @@ def init_db() -> None:
     _ensure_system_message_link_url_column_compatibility()
     Base.metadata.create_all(bind=engine)
 
-    # 自动播种：维度种子（幂等缺失补齐，不覆盖手动改动；表缺失时静默跳过）。
-    # 挂启动链路，保证新部署/重启后 ATP/FL 下拉枚举自动就位（与 seed-defaults 端点同源）。
-    _auto_seed_dimensions()
+    # 自动播种：维度种子 + 参数分类（幂等缺失补齐，不覆盖手动改动；表缺失时静默跳过）。
+    # 挂启动链路，保证新部署/重启后枚举与分类自动就位（与 seed-defaults 端点同源）。
+    _auto_seed_baseline()
 
 
-def _auto_seed_dimensions() -> None:
-    """启动时自动播种维度数据。幂等、守卫异常，不阻断服务启动。"""
+def _auto_seed_baseline() -> None:
+    """启动时自动播种基线数据（维度枚举 + 参数分类）。幂等、守卫异常，不阻断服务启动。"""
     from ..services.dimension_seed import seed_dimensions  # noqa: PLC0415
+    from ..services.param_category_seed import seed_param_categories  # noqa: PLC0415
 
     try:
         with SessionLocal() as db:
             seed_dimensions(db, force=False, operator="system")
+            seed_param_categories(db, force=False, operator="system")
             db.commit()
     except Exception:  # noqa: BLE001
-        # 维度表缺失/DB 未就绪等场景：不阻断启动，由 seed-defaults 端点或下次启动补
-        logger.exception("auto seed dimensions failed, will retry on next startup")
+        # 表缺失/DB 未就绪等场景：不阻断启动，由 seed-defaults 端点或下次启动补
+        logger.exception("auto seed baseline failed, will retry on next startup")

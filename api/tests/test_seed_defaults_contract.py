@@ -63,7 +63,7 @@ class InitDbContractTest(unittest.TestCase):
         ), patch("app.core.database.Base.metadata.create_all") as create_all, patch(
             "app.core.database.SessionLocal"
         ) as session_local, patch(
-            "app.core.database._auto_seed_dimensions"
+            "app.core.database._auto_seed_baseline"
         ) as auto_seed:
             init_db()
 

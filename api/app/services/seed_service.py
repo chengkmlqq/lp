@@ -27,6 +27,7 @@ SEED_RESULT_CATEGORIES = (
     "legacy_tower_models",
     "atp_param_definitions",
     "dimensions",
+    "param_categories",
 )
 
 
@@ -799,6 +800,10 @@ def seed_defaults(db: Session, *, force: bool = False) -> SeedDefaultsResult:
     _seed_dimensions(db, result=result, force=force)
     db.commit()
 
+    # 系统参数分类种子（4 分类 + 参数按前缀归类；幂等缺失补齐，force 才覆盖）
+    _seed_param_categories(db, result=result, force=force)
+    db.commit()
+
     return result
 
 
@@ -841,6 +846,27 @@ def _seed_dimensions(
     category.created += stats["created"]
     category.updated += stats["updated"]
     category.unchanged += stats["skipped"]
+
+
+def _seed_param_categories(
+    db: Session,
+    *,
+    result: SeedDefaultsResult,
+    force: bool,
+) -> None:
+    """系统参数分类种子（分类 + 参数按前缀归类）。"""
+    from .param_category_seed import seed_param_categories  # noqa: PLC0415
+
+    category = result.summary["param_categories"]
+    try:
+        stats = seed_param_categories(db, force=force, operator="seed")
+    except Exception:
+        # 表尚未创建时跳过，不阻断其它种子
+        db.rollback()
+        return
+    category.created += stats["categories_created"]
+    category.unchanged += stats["categories_skipped"] + stats["params_skipped"]
+    category.updated += stats["params_mapped"]
 
 
 def _seed_permissions(
