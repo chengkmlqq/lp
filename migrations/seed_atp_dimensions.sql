@@ -1,3 +1,7 @@
+-- ============================================================
+-- ⚠️ DEPRECATED：已被 api/app/services/dimension_seed.py 取代（代码化 ORM 种子，
+--    兼容 PG/MySQL/SQLite，启动自动播种），此 SQL 仅保留作历史参考，勿再手动执行。
+-- ============================================================
 -- Seed: ATP 模型管理下拉选枚举 → 维度管理数据
 -- 来源：web/src/app/admin/atp-models/page.tsx 的 DEFAULT_VOLTAGE_LEVELS /
 --       DEFAULT_TOWER_TYPES / DEFAULT_SCENE_TYPES / DEFAULT_ARRESTER_CONFIGS

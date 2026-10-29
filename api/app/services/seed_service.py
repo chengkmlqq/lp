@@ -26,6 +26,7 @@ SEED_RESULT_CATEGORIES = (
     "admin_users",
     "legacy_tower_models",
     "atp_param_definitions",
+    "dimensions",
 )
 
 
@@ -794,6 +795,10 @@ def seed_defaults(db: Session, *, force: bool = False) -> SeedDefaultsResult:
     _seed_atp_param_definitions(db, result=result, force=force)
     db.commit()
 
+    # 维度种子（ATP/FL 下拉枚举；幂等缺失补齐，force 才覆盖）
+    _seed_dimensions(db, result=result, force=force)
+    db.commit()
+
     return result
 
 
@@ -808,6 +813,27 @@ def _seed_atp_param_definitions(
     category = result.summary["atp_param_definitions"]
     try:
         stats = seed_param_definitions(db, force=force, operator="seed")
+    except Exception:
+        # 表尚未创建（首次 init_db 前）时跳过，不阻断其它种子
+        db.rollback()
+        return
+    category.created += stats["created"]
+    category.updated += stats["updated"]
+    category.unchanged += stats["skipped"]
+
+
+def _seed_dimensions(
+    db: Session,
+    *,
+    result: SeedDefaultsResult,
+    force: bool,
+) -> None:
+    """ATP/FL 维度种子（dimension_type / dimension_item）。"""
+    from .dimension_seed import seed_dimensions  # noqa: PLC0415
+
+    category = result.summary["dimensions"]
+    try:
+        stats = seed_dimensions(db, force=force, operator="seed")
     except Exception:
         # 表尚未创建（首次 init_db 前）时跳过，不阻断其它种子
         db.rollback()

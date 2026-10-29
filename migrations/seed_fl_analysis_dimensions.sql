@@ -1,3 +1,7 @@
+-- ============================================================
+-- ⚠️ DEPRECATED：已被 api/app/services/dimension_seed.py 取代（代码化 ORM 种子，
+--    兼容 PG/MySQL/SQLite，启动自动播种），此 SQL 仅保留作历史参考，勿再手动执行。
+-- ============================================================
 -- Seed: FL分析 / 杆塔拓扑等 8 组硬编码枚举 → 维度管理数据
 -- 来源：
 --   tower_topology_kind  → web/src/app/admin/power-lines/page.tsx TOWER_TOPOLOGY_KIND_OPTIONS

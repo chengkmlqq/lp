@@ -53,7 +53,7 @@ class DatabaseFixtureTestCase(unittest.TestCase):
 
 
 class InitDbContractTest(unittest.TestCase):
-    def test_init_db_does_not_open_a_seed_session(self) -> None:
+    def test_init_db_auto_seeds_dimensions_once(self) -> None:
         with patch("app.core.database._ensure_user_pk_column_compatibility"), patch(
             "app.core.database._ensure_user_timestamp_column_compatibility"
         ), patch("app.core.database._ensure_user_audit_column_compatibility"), patch(
@@ -62,10 +62,13 @@ class InitDbContractTest(unittest.TestCase):
             "app.core.database._ensure_tower_profile_column_compatibility"
         ), patch("app.core.database.Base.metadata.create_all") as create_all, patch(
             "app.core.database.SessionLocal"
-        ) as session_local:
+        ) as session_local, patch(
+            "app.core.database._auto_seed_dimensions"
+        ) as auto_seed:
             init_db()
 
         create_all.assert_called_once()
+        auto_seed.assert_called_once()
         session_local.assert_not_called()
 
     def test_quiz_legacy_tables_are_not_registered(self) -> None:
