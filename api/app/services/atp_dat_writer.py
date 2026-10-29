@@ -173,22 +173,36 @@ def _fmt(value: float, digits: int, width: int) -> str:
 
 
 def rewrite_dat_text(text: str, section: str, values: dict[str, float], *,
-                     span_km: float | None = None) -> str:
-    """把 values 写进 .dat（几何段 + 可选档距）。行尾原样保留。"""
+                     span_km: float | None = None,
+                     layout: dict | None = None) -> str:
+    """把 values 写进 .dat（几何段 + 可选档距）。行尾原样保留。
+
+    layout: 资产扫描缓存里的几何坐标（scanner 产出的 geometry[name]）。
+    提供时优先用缓存的 conductor_start / conductor_count / span_rows，
+    不再现场推导行号（架构统一 + 预计算）；缺失时回退现场推导（灰度兼容）。
+    标签→(导体号,列位,宽,F) 绑定仍从 txt spec 读取（数字推不出标签语义）。
+    """
     slots = load_spec().get(section)
     if not slots:
         raise RuntimeError(f"long_short_dat_model.txt 无塔型段 '{section}'，无法改写 .dat 几何")
     parts = re.split(r"(\r\n|\n)", text)
     lines = [ln.rstrip("\r") for ln in parts[0::2]]
 
-    conductor_offset = _conductor_line_offset(lines)
+    if layout:
+        # 缓存坐标：conductor_start 是 1-based 行号，转 0-based index
+        conductor_offset = int(layout.get("conductor_start", 8)) - 1
+        actual_conductor_lines = int(layout.get("conductor_count", 0))
+        span_indices = [int(r) - 1 for r in (layout.get("span_rows") or [])]
+    else:
+        conductor_offset = _conductor_line_offset(lines)
+        actual_conductor_lines = _count_conductor_lines(lines)
+        span_indices = _span_block(lines)
     # ⚠️ 2026-09-29 修复（sihuitano 无避雷线四回塔）：
     # 槽位表 <sihuita> 假定 14 导体（12 相 + 2 避雷线），但「无避雷线」变体
     # （sihuitano 等资产）的 .dat 只有 12 导体。旧实现把避雷线槽位
     # （导体 13/14）写到频率卡区域 → ATP `fmt: read unexpected character` rc=3。
     # 现按 dat 实际导体行数截断：只写导体号 ≤ 实际数的槽位，
     # 超出的（避雷线）槽位跳过 —— 对 14 导体资产行为不变（无 no-op）。
-    actual_conductor_lines = _count_conductor_lines(lines)
     if actual_conductor_lines:
         slots = [(name, s) for name, s in slots if s.conductor <= actual_conductor_lines]
 
@@ -208,7 +222,7 @@ def rewrite_dat_text(text: str, section: str, values: dict[str, float], *,
         if slot.is_span:
             if span_km is not None:
                 # 实测：档距写在「频率卡」块（CONDUCTOR 结束 → FREQUENCY 结束之间）的每一行
-                for idx0 in _span_block(lines):
+                for idx0 in span_indices:
                     _write(idx0, _SPAN_OFFSET, _SPAN_WIDTH, _fmt(span_km, slot.digits, slot.width))
             continue
         _write(slot.conductor + conductor_offset - 1, slot.offset, slot.width,

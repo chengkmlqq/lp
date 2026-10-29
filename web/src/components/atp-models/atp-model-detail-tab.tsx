@@ -11,6 +11,7 @@ import type { AtpAssetSummary, AtpAssetFileListResponse } from "@/types/auth";
 import { AtpDatDetailView } from "./atp-dat-detail-view";
 import { AtpFileContentViewer } from "./atp-file-content-viewer";
 import { AtpSceneViewer } from "./atp-scene-viewer";
+import { AtpModelSlotsPanel } from "./atp-model-slots-panel";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -140,6 +141,10 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
           <AtpSceneViewer assetId={assetId} />
         </div>
       ) : null}
+
+      <div style={{ marginTop: 16 }}>
+        <AtpModelSlotsPanel assetId={assetId} />
+      </div>
 
       <div>
         <Typography.Title level={5}>文件列表 ({files.length})</Typography.Title>

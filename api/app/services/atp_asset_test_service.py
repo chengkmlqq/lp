@@ -1185,6 +1185,9 @@ class _TestContext:
             ),
             env=env,
             timeout_seconds=int(self.payload.timeout_seconds or getattr(get_settings(), "atp_engine_default_timeout_seconds", 1800)),
+            # 目标 5：优先用模型扫描缓存的几何坐标（行号预计算）；
+            # 未扫描/缓存缺失时 rewrite_dat_text 回退现场推导（灰度兼容）。
+            layouts=(self.asset.slots_json or {}).get("geometry") or None,
         )
         log_lines.append(f"几何重生成处理文件：{processed}")
 

@@ -491,6 +491,17 @@ def _ensure_atp_asset_column_compatibility() -> None:
                 "Detected missing atp_asset.storage_root_path; added nullable storage root path column.",
             )
 
+        # 槽位扫描缓存（改造目标1）：{"work_atp": {"slots": {...}, "count": N},
+        # "geometry": {"long": {...}, ...}}——atp_slot_scanner 产出，供模型管理查看、
+        # 参数模板下拉取并集（目标2）、覆盖检测（目标3）使用。
+        if "slots_json" not in column_names:
+            connection.execute(
+                text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS slots_json JSON DEFAULT '{}'::json"),
+            )
+            logger.warning(
+                "Detected missing atp_asset.slots_json; added slot scan cache column (target-1 refactor).",
+            )
+
 
 def _ensure_atp_asset_run_column_compatibility() -> None:
     """

@@ -39,6 +39,9 @@ class AtpAsset(Base):
         index_kwargs={"mysql_length": 191},
     )
     tags_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # 槽位扫描缓存：{"scanned_at", "work_atp": {"slots": {...}, "count": N},
+    #                 "geometry": {"long": {...}, ...}}见 atp_slot_scanner.scan_model_slots
+    slots_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)
     update_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

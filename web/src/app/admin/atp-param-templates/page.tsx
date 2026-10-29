@@ -272,6 +272,29 @@ export default function AtpParamTemplatesPage() {
   const [editingForChild, setEditingForChild] = useState(false);
   const [slotRows, setSlotRows] = useState<SlotRow[]>([]);
   const [form] = Form.useForm();
+  const [slotOptions, setSlotOptions] = useState<string[]>([]);
+  const [slotOptionsLoading, setSlotOptionsLoading] = useState(false);
+
+  // 维度联动槽位并集：编辑态下按当前表单维度拉 /assets/slot-options
+  const refreshSlotOptions = useCallback(async () => {
+    const vals = form.getFieldsValue(["tower_type", "voltage_level", "scene_type", "arrester_config"]);
+    const params = new URLSearchParams();
+    if (vals.tower_type) params.set("tower_type", vals.tower_type);
+    if (vals.voltage_level) params.set("voltage_level", String(vals.voltage_level));
+    if (vals.scene_type) params.set("scene_type", vals.scene_type);
+    if (vals.arrester_config) params.set("arrester_config", vals.arrester_config);
+    setSlotOptionsLoading(true);
+    try {
+      const response = await fetchWithAuth(`/api/v1/atp/assets/slot-options?${params.toString()}`);
+      if (!response.ok) throw new Error(await readApiError(response));
+      const data = (await response.json()) as { slot_names: string[] };
+      setSlotOptions(data.slot_names ?? []);
+    } catch {
+      setSlotOptions([]);
+    } finally {
+      setSlotOptionsLoading(false);
+    }
+  }, [fetchWithAuth, form]);
   // 参数注册表 code（槽位「参数引用」模式用）
   const [paramCodes, setParamCodes] = useState<string[]>([]);
   // 槽位引用参数解析（详情接口返回）: {槽位名: [参数...]}
@@ -487,6 +510,7 @@ export default function AtpParamTemplatesPage() {
     form.setFieldsValue({ priority: 100, mode: "merge", fallback_enabled: true });
     setSlotRows([]);
     setEditing(true);
+    void refreshSlotOptions();
   };
 
   const openEditor = (inherited?: Record<string, string>) => {
@@ -520,6 +544,7 @@ export default function AtpParamTemplatesPage() {
       form.setFieldsValue({ fallback_enabled: true, priority: 100 });
     }
     setEditing(true);
+    void refreshSlotOptions();
   };
 
   const saveEditor = async () => {
@@ -1169,12 +1194,13 @@ export default function AtpParamTemplatesPage() {
                   allowClear
                   placeholder={t("选择杆塔类型")}
                   options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
+                  onChange={() => void refreshSlotOptions()}
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="voltage_level" label={t("电压等级")} tooltip={t("匹配条件；留空 = 通配所有电压等级")}>
-                <Select allowClear placeholder={t("选择电压等级")} options={(meta?.voltages ?? []).map((item) => ({ value: item, label: `${item}kV` }))} />
+                <Select allowClear placeholder={t("选择电压等级")} options={(meta?.voltages ?? []).map((item) => ({ value: item, label: `${item}kV` }))} onChange={() => void refreshSlotOptions()} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -1184,12 +1210,12 @@ export default function AtpParamTemplatesPage() {
             </Col>
             <Col span={12}>
               <Form.Item name="scene_type" label={t("场景")} tooltip={t("匹配条件；留空 = 通配")}>
-                <Select allowClear placeholder={t("选择场景")} options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: item.label }))} />
+                <Select allowClear placeholder={t("选择场景")} options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: item.label }))} onChange={() => void refreshSlotOptions()} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="arrester_config" label={t("避雷器组合")} tooltip={t("匹配条件；留空 = 通配")}>
-                <Select allowClear placeholder={t("选择避雷器组合")} options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: item.label }))} />
+                <Select allowClear placeholder={t("选择避雷器组合")} options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: item.label }))} onChange={() => void refreshSlotOptions()} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -1234,8 +1260,9 @@ export default function AtpParamTemplatesPage() {
                 <Select
                   showSearch
                   style={{ width: 120 }}
+                  loading={slotOptionsLoading}
                   value={value || undefined}
-                  options={(meta?.slot_names ?? []).map((item) => ({ value: item, label: item }))}
+                  options={(slotOptions.length > 0 ? slotOptions : meta?.slot_names ?? []).map((item) => ({ value: item, label: item }))}
                   onChange={(next) => setSlotRows((rows) => rows.map((item) => (item.key === row.key ? { ...item, slot: next, key: next } : item)))}
                 />
               ),

@@ -31,13 +31,17 @@ from ...services.atp_asset_service import (
     delete_asset,
     get_asset_by_id,
     get_asset_scene,
+    get_asset_slots_view,
+    check_asset_slot_coverage,
     get_engine_status,
     get_run_detail,
+    get_slot_options,
     list_asset_files,
     list_assets,
     list_asset_tree_children,
     list_runs,
     read_asset_file_content,
+    scan_asset_slots,
     serialize_asset,
     upload_asset_files,
     update_asset,
@@ -102,6 +106,25 @@ def get_atp_asset_tree_children(
         for item in list_asset_tree_children(db, path=path, keyword=keyword)
     ]
     return AtpAssetTreeChildrenResponse(items=children)
+
+
+@router.get("/assets/slot-options", response_model=dict)
+def get_atp_asset_slot_options_endpoint(
+    tower_type: str | None = Query(default=None),
+    voltage_level: str | None = Query(default=None),
+    scene_type: str | None = Query(default=None),
+    arrester_config: str | None = Query(default=None),
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """按维度过滤已扫描模型，返回 work.atp $PARAMETER 槽位并集（参数模板编辑下拉候选）。"""
+    return get_slot_options(
+        db,
+        tower_type=tower_type,
+        voltage_level=voltage_level,
+        scene_type=scene_type,
+        arrester_config=arrester_config,
+    )
 
 
 @router.post("/assets", response_model=AtpAssetDetail)
@@ -199,6 +222,40 @@ def get_atp_asset_detail(
         db=db,
     )
     return AtpAssetDetail(**detail.model_dump())
+
+
+# --- 目标 1：槽位扫描 / 查看 / 覆盖检测 ---
+
+
+@router.post("/assets/{asset_id}/scan-slots")
+def scan_atp_asset_slots_endpoint(
+    asset_id: str,
+    current_user: CurrentUser = Depends(require_permission("atp.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """扫描模型槽位（work.atp $PARAMETER + .dat 几何坐标），写回并返回缓存。"""
+    return scan_asset_slots(db, asset_id=asset_id, actor_user_id=current_user.user.id)
+
+
+@router.get("/assets/{asset_id}/slots")
+def get_atp_asset_slots_endpoint(
+    asset_id: str,
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """返回模型槽位缓存视图（未扫描时 slot_names 为空）。"""
+    return get_asset_slots_view(db, asset_id=asset_id)
+
+
+@router.get("/assets/{asset_id}/coverage")
+def get_atp_asset_coverage_endpoint(
+    asset_id: str,
+    template_id: str | None = Query(default=None),
+    _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """按参数模板检测模型槽位覆盖（目标 3）。template_id 缺省时按资产维度匹配取并集。"""
+    return check_asset_slot_coverage(db, asset_id=asset_id, template_id=template_id)
 
 
 @router.patch("/assets/{asset_id}", response_model=AtpAssetDetail)

@@ -45,6 +45,7 @@ from ..schemas.atp_asset import (
 )
 from .legacy_atp_adapter import build_legacy_atp_status_checks
 from .push_service import publish_topic
+from .atp_slot_scanner import DAT_GEOMETRY_NAMES, scan_model_slots
 from .storage_driver import (
     StorageDriver,
     StorageDriverError,
@@ -1836,3 +1837,215 @@ def get_asset_scene(db: Session, *, asset_id: str, entry_file: str = _ENTRY_ATP_
             detail=f"ATP entry file is not text: {entry_file}",
         )
     return parse_atp_scene(text, source_file=normalized_relative)
+
+
+# ---------------------------------------------------------------------------
+# 目标 1/2/3：ATP 模型槽位扫描、查看、覆盖检测
+# ---------------------------------------------------------------------------
+
+
+def _read_asset_text(db: Session, asset: AtpAsset, relative_path: str) -> str | None:
+    """从资产存储读取单个文本文件（UTF-8→GBK 兜底解码），找不到返回 None。"""
+    mount_code, storage_root_path = _resolve_asset_file_location(db, asset)
+    mount = _resolve_mount(db, mount_code)
+    driver = _build_driver_or_400(mount)
+    normalized_root = normalize_virtual_path(storage_root_path).rstrip("/")
+    target = join_virtual_path(normalized_root, relative_path)
+    if not target.startswith(f"{normalized_root}/"):
+        return None
+    try:
+        result = driver.read_file(target)
+    except StoragePathNotFoundError:
+        return None
+    except StorageDriverError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return _decode_text_file(result.content if hasattr(result, "content") else b"")
+
+
+def scan_asset_slots(db: Session, *, asset_id: str, actor_user_id: str | None = None) -> dict[str, Any]:
+    """扫描模型槽位（work.atp $PARAMETER + 各 .dat 几何坐标），写回 AtpAsset.slots_json。"""
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+
+    # 入口 .atp：优先 work.atp，缺失时从文件列表找唯一 .atp
+    work_atp_text = _read_asset_text(db, asset, _ENTRY_ATP_FILE)
+    if work_atp_text is None:
+        files_resp = list_asset_files(db, asset_id=asset_id)
+        atp_entries = [it for it in files_resp.items if it.relative_path.lower().endswith(".atp") and not it.is_dir]
+        if not atp_entries:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="资产目录下未找到 .atp 入口文件，无法扫描槽位",
+            )
+        work_atp_text = _read_asset_text(db, asset, atp_entries[0].relative_path)
+
+    dat_texts: dict[str, str] = {}
+    for name in DAT_GEOMETRY_NAMES:
+        text = _read_asset_text(db, asset, f"{name}.dat")
+        if text is not None:
+            dat_texts[name] = text
+
+    result = scan_model_slots(work_atp_text=work_atp_text, dat_texts=dat_texts)
+    asset.slots_json = result
+    if actor_user_id:
+        asset.update_user = actor_user_id
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return result
+
+
+def get_asset_slots_view(db: Session, *, asset_id: str) -> dict[str, Any]:
+    """返回缓存槽位 + 便捷视图（槽位名列表、几何模型清单）。"""
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    cache: dict[str, Any] = asset.slots_json or {}
+    work_atp = cache.get("work_atp") or {}
+    geometry = cache.get("geometry") or {}
+    slot_names = sorted((work_atp.get("slots") or {}).keys())
+    geometry_models = sorted(geometry.keys())
+    return {
+        "asset_id": asset_id,
+        "scanned_at": cache.get("scanned_at"),
+        "work_atp": work_atp,
+        "geometry": geometry,
+        "slot_names": slot_names,
+        "geometry_models": geometry_models,
+    }
+
+
+def check_asset_slot_coverage(
+    db: Session,
+    *,
+    asset_id: str,
+    template_id: str | None = None,
+) -> dict[str, Any]:
+    """检测模型槽位覆盖情况（目标 3）。
+
+    - 模型 work.atp $PARAMETER 槽位名集合 M
+    - 参数模板槽位名并集 T（template_id 给定→单模板；否则按资产维度匹配 enabled 模板取并集）
+    - missing = M - T：模型有、模板未映射 → 仿真时用 .atp 默认值（潜在风险）
+    - unused  = T - M：模板映射了、模型没有 → 废映射（配置错误）
+    """
+    from ..models.atp_param_template import AtpParamTemplate
+
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    cache: dict[str, Any] = asset.slots_json or {}
+    model_slots = set((cache.get("work_atp") or {}).get("slots", {}).keys())
+    if not model_slots:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="模型尚未扫描槽位，请先执行扫描",
+        )
+
+    templates_used: list[dict[str, Any]] = []
+    if template_id:
+        tmpl = db.get(AtpParamTemplate, template_id)
+        if not tmpl:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="参数模板不存在")
+        templates_used = [{"id": tmpl.id, "name": tmpl.name}]
+        template_slots = set((tmpl.slots_json or {}).keys())
+    else:
+        # 按资产维度匹配 enabled 模板，取槽位并集
+        stmt = select(AtpParamTemplate).where(AtpParamTemplate.enabled.is_(True))
+        matched: list[AtpParamTemplate] = []
+        for tmpl in db.execute(stmt).scalars():
+            if _template_matches_asset(tmpl, asset):
+                matched.append(tmpl)
+                templates_used.append({"id": tmpl.id, "name": tmpl.name})
+        template_slots = set()
+        for tmpl in matched:
+            template_slots |= set((tmpl.slots_json or {}).keys())
+
+    missing = sorted(model_slots - template_slots)
+    unused = sorted(template_slots - model_slots)
+    covered = sorted(model_slots & template_slots)
+    return {
+        "asset_id": asset_id,
+        "template_id": template_id,
+        "templates_used": templates_used,
+        "model_slots": sorted(model_slots),
+        "template_slots": sorted(template_slots),
+        "missing": missing,
+        "unused": unused,
+        "covered": covered,
+        "coverage_rate": round(len(covered) / max(1, len(model_slots)) * 100, 1),
+    }
+
+
+def _template_matches_asset(tmpl: Any, asset: AtpAsset) -> bool:
+    """模板维度字段匹配资产（None = 通配）。"""
+    pairs = (
+        (tmpl.tower_type, asset.tower_type),
+        (tmpl.voltage_level, asset.voltage_level),
+        (tmpl.scene_type, asset.scene_type),
+        (tmpl.arrester_config, asset.arrester_config),
+        (tmpl.structure_kind, None),
+    )
+    for tmpl_val, asset_val in pairs:
+        if tmpl_val and asset_val and tmpl_val != asset_val:
+            return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# 目标 2：维度过滤取模型槽位并集（参数模板编辑下拉候选）
+# ---------------------------------------------------------------------------
+
+
+def get_slot_options(
+    db: Session,
+    *,
+    tower_type: str | None = None,
+    voltage_level: str | None = None,
+    scene_type: str | None = None,
+    arrester_config: str | None = None,
+) -> dict[str, Any]:
+    """按维度过滤已扫描模型，返回 work.atp $PARAMETER 槽位名并集。
+
+    用于参数模板编辑时的槽位下拉候选——不再手敲槽位名，直接从
+    匹配维度的模型扫描缓存里取并集。返回每个槽位的出现次数和示例值。
+    """
+    stmt = select(AtpAsset).where(AtpAsset.slots_json.is_not(None))
+    matched: list[AtpAsset] = []
+    for asset in db.execute(stmt).scalars():
+        pairs = (
+            (tower_type, asset.tower_type),
+            (voltage_level, asset.voltage_level),
+            (scene_type, asset.scene_type),
+            (arrester_config, asset.arrester_config),
+        )
+        ok = True
+        for want, have in pairs:
+            if want and have and want != have:
+                ok = False
+                break
+        if ok:
+            matched.append(asset)
+
+    union: dict[str, list[dict[str, Any]]] = {}
+    for asset in matched:
+        cache = asset.slots_json or {}
+        slots = (cache.get("work_atp") or {}).get("slots") or {}
+        for name, value in slots.items():
+            union.setdefault(name, []).append({"asset_code": asset.code, "asset_name": asset.name, "value": value})
+
+    items = [
+        {"name": name, "count": len(sources), "sources": sources}
+        for name, sources in sorted(union.items())
+    ]
+    return {
+        "matched_assets": len(matched),
+        "total_slots": len(union),
+        "slots": items,
+        "dimensions": {
+            "tower_type": tower_type,
+            "voltage_level": voltage_level,
+            "scene_type": scene_type,
+            "arrester_config": arrester_config,
+        },
+    }

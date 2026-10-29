@@ -144,6 +144,14 @@ def build_dat_values(*, section: str, params: dict[str, str],
             raise RuntimeError(f"缺少 {name}，无法改写 .dat 几何")
         return v
 
+    def need_any(*names: str) -> float:
+        """按序取第一个存在的槽位（直流塔避雷线高度槽位是 HG 而非 REHG）。"""
+        for name in names:
+            v = _num(params, name)
+            if v is not None:
+                return v
+        raise RuntimeError(f"缺少 {'/'.join(names)}，无法改写 .dat 几何")
+
     lw = dict(profile.get("lightning_wire") or {})
     if not lw:
         # 快照里避雷线数据在 extra_profile_json / geometry_layers_json 下
@@ -185,6 +193,10 @@ def build_dat_values(*, section: str, params: dict[str, str],
             f"缺少杆塔几何 phase_spacing_m.{key} 且模板无 {rele}，无法改写 .dat 几何"
         )
 
+    dc_kinds = {"zj", "zx", "zxj", "ky", "nz", "zhiliu", "vzhiliu"}
+    kind = section.split("-", 1)[0]
+    is_dc = kind in dc_kinds
+
     return build_values(
         section,
         # ⚠️ 2026-09-20：shangzi 分支的「避雷线平均高度」用**原始避雷线高度**（C#
@@ -196,10 +208,12 @@ def build_dat_values(*, section: str, params: dict[str, str],
         sp_lower=_spacing("lower", "RELE03"),
         lw_left=abs(float(lw_left)),
         lw_right=abs(float(lw_right)),
-        rehc1=need("REHC1"),
-        rehc2=need("REHC2"),
-        rehc3=need("REHC3"),
-        rehg=need("REHG"),
+        rehc1=0.0 if is_dc else need("REHC1"),
+        rehc2=0.0 if is_dc else need("REHC2"),
+        rehc3=0.0 if is_dc else need("REHC3"),
+        # 直流塔模板避雷线高度槽位是 HG________（RELE 体系之外的直流专用槽）；
+        # 交流塔是 REHG______。need_any 按序兼容两种模板，直流塔不再因缺 REHG 而炸。
+        rehg=need_any("REHG", "HG") if is_dc else need_any("REHG", "HG"),
         h_upper=_num_or_none(_cg, "I", "height", "upper"),
         h_middle=_num_or_none(_cg, "I", "height", "middle"),
         h_lower=_num_or_none(_cg, "I", "height", "lower"),
@@ -247,8 +261,13 @@ def _regenerate_line_models_unlocked(
     build_command,
     env: dict[str, str],
     timeout_seconds: int,
+    layouts: dict[str, dict] | None = None,
 ) -> list[str]:
-    """改写 4 个 .dat 并重生成 .lib。返回处理过的文件名（供日志）。"""
+    """改写 4 个 .dat 并重生成 .lib。返回处理过的文件名（供日志）。
+
+    layouts: 资产扫描缓存的几何坐标 {name: geometry_dict}，提供时
+    rewrite_dat_text 优先用缓存行号（不再现场推导）；缺失时现场推导兜底。
+    """
     section = resolve_section(tower_kind, voltage_kv)
     values = build_dat_values(section=section, params=params, profile=profile,
                               base_tower=base_tower, voltage_kv=voltage_kv)
@@ -262,6 +281,7 @@ def _regenerate_line_models_unlocked(
         rewritten = rewrite_dat_text(
             original, section=section, values=values,
             span_km=span_km_for(name, base_tower),
+            layout=(layouts or {}).get(name),
         )
         dat_path.write_bytes(rewritten.encode("gbk", errors="replace"))
 
