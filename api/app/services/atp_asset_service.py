@@ -786,7 +786,7 @@ def list_assets(
     limit: int = 50,
     offset: int = 0,
 ) -> AtpAssetListResponse:
-    # 只查列表接口需要的 15 列（避开 description/tags_json 等列全行读取，400ms+ → 8ms，实测）
+    # 只查列表接口需要的列（避开 tags_json 等列全行读取，400ms+ → 8ms，实测）
     columns = (
         AtpAsset.id,
         AtpAsset.code,
@@ -797,6 +797,10 @@ def list_assets(
         AtpAsset.tower_type,
         AtpAsset.scene_type,
         AtpAsset.arrester_config,
+        # 多版本 + 生效 + 避雷线（2026-10-30：serialize_asset 访问这三列，缺则 AttributeError）
+        AtpAsset.version,
+        AtpAsset.is_active,
+        AtpAsset.shield_wire,
         AtpAsset.storage_mount_code,
         AtpAsset.storage_root_path,
         AtpAsset.create_date,
