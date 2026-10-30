@@ -342,7 +342,9 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-}/* ═══════════════════════════════════════════════════════════
+}
+
+/* ═══════════════════════════════════════════════════════════
  * 双列侧边导航（迁移自 kb_compilation：对齐 MODO narrow 菜单）
  * 第一列 80px 一级方块卡（图标上/文字下，60px 高、radius 8、
  * 选中 fill-2 #EFF4F9 + 图标主色）
@@ -5237,5 +5239,26 @@ h5.ant-typography,
 
 /* 白卡统一内边距（覆盖各页 list-pane 私有 padding，保证 40 页一致） */
 .modo-page-card {
+  padding: 12px 16px;
+}
+
+/* AntCard 形态的页面白卡（tower-models 等尚未改为 div 结构的页）：对齐 modo-page-card 口径 */
+.admin-tower-models-page-card {
+  border: none !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 5px 0 rgba(36, 46, 67, 0.1) !important;
+  background: #ffffff;
+}
+
+.admin-tower-models-page-card > .ant-card-head {
+  min-height: 38px;
+  padding: 0 16px;
+  border-bottom: 1px solid #eff4f9;
+  font-size: 14px;
+  font-weight: 600;
+  color: #242e43;
+}
+
+.admin-tower-models-page-card > .ant-card-body {
   padding: 12px 16px;
 }
