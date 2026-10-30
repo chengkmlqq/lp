@@ -10,14 +10,12 @@ import {
   Form,
   Input,
   Modal,
-  Pagination,
   Progress,
   Segmented,
   Select,
   Space,
   Spin,
   Table,
-  Tabs,
   Tree,
   Typography,
   Upload,
@@ -39,6 +37,8 @@ import type { DataNode } from "antd/es/tree";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent, type RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { AtpBatchHistoryTab } from "@/components/atp-models/atp-batch-history-tab";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
@@ -947,7 +947,7 @@ export default function AtpModelsPage() {
         ...previous,
         {
           key: asset.id,
-          label: <span className="admin-atp-models-tab-title">模型详情 - {asset.name || asset.id}</span>,
+          label: <>模型详情 - {asset.name || asset.id}</>,
           assetId: asset.id,
         },
       ];
@@ -973,7 +973,7 @@ export default function AtpModelsPage() {
         ...previous,
         {
           key,
-          label: <span className="admin-atp-models-tab-title">模型测试 - {asset.name || asset.id}</span>,
+          label: <>模型测试 - {asset.name || asset.id}</>,
           assetId: asset.id,
         },
       ];
@@ -992,7 +992,7 @@ export default function AtpModelsPage() {
         ...previous,
         {
           key,
-          label: <span className="admin-atp-models-tab-title">{t("批量测试记录")}</span>,
+          label: <>{t("批量测试记录")}</>,
         },
       ];
     });
@@ -1157,13 +1157,13 @@ export default function AtpModelsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey={activeTabKey}
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
-        className="admin-atp-models-tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           <Space size={8}>
             {canManage ? (
@@ -1190,10 +1190,10 @@ export default function AtpModelsPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-atp-models-tab-title">{t("ATP 模型管理")}</span>,
+            label: <>{t("ATP 模型管理")}</>,
             closable: false,
             children: (
-              <div className="admin-atp-models-list-pane">
+              <div className="modo-page-card admin-atp-models-list-pane">
                 <div ref={containerRef} className="admin-atp-models-page-body">
                   {/* Left: 维度树（电压等级 → 塔型 → 雷击方式 → 避雷器组合） */}
                   {!isMobile ? (
@@ -1372,7 +1372,7 @@ export default function AtpModelsPage() {
                             </div>
 
                             <div className="admin-atp-models-pagination">
-                              <Pagination
+                              <ModoPagination
                                 current={pagination.current}
                                 pageSize={pagination.pageSize}
                                 total={Math.max(assetTotal, 1)}
@@ -1394,7 +1394,7 @@ export default function AtpModelsPage() {
           },
           {
             key: "overview",
-            label: <span className="admin-atp-models-tab-title">{t("模型总览")}</span>,
+            label: <>{t("模型总览")}</>,
             closable: false,
             children: (
               <AtpModelOverviewTab />

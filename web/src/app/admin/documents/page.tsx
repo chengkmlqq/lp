@@ -19,7 +19,6 @@ import {
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
   Tooltip,
   Tree,
@@ -38,6 +37,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, type CSSPrope
 import type { DataNode } from "antd/es/tree";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -798,11 +798,11 @@ export default function AdminDocumentsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey="list"
-        className="admin-documents-tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           canManage && (
             <Space>
@@ -826,10 +826,10 @@ export default function AdminDocumentsPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-documents-tab-title">{t("文档管理")}</span>,
+            label: <>{t("文档管理")}</>,
             closable: false,
             children: (
-              <div ref={pageCardRef} className="admin-documents-list-pane">
+              <div ref={pageCardRef} className="modo-page-card admin-documents-list-pane">
         {/* ===== Body Area: Two-column layout ===== */}
         <div ref={containerRef} className="admin-documents-page-body">
           {/* Chapter sidebar (hidden on mobile) */}

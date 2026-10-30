@@ -17,7 +17,6 @@ import {
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -27,6 +26,7 @@ import {
 import { FileTextOutlined, SearchOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -627,18 +627,18 @@ export default function AdminTaskMonitorPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey="list"
-        className="admin_task_monitor_tabs"
+        className="modo-page-tabs"
         items={[
           {
             key: "list",
-            label: <span className="admin_task_monitor_tab_title">{t("任务监控")}</span>,
+            label: <>{t("任务监控")}</>,
             closable: false,
             children: (
-              <div ref={pageCardRef} className="admin_task_monitor_list_pane">
+              <div ref={pageCardRef} className="modo-page-card admin_task_monitor_list_pane">
         {viewMode === "card" ? (
           <div className="admin-filter-bar">
             <Form layout="inline">

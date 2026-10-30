@@ -9,6 +9,7 @@ import type { CSSProperties, ComponentType, RefAttributes } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -533,18 +534,18 @@ export default function AdminSyslogPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey="list"
-        className="admin_syslog_tabs"
+        className="modo-page-tabs"
         items={[
           {
             key: "list",
-            label: <span className="admin-syslog-tab-title">{t("系统日志")}</span>,
+            label: <>{t("系统日志")}</>,
             closable: false,
             children: (
-              <div ref={pageCardRef} className="admin_syslog_list_pane">
+              <div ref={pageCardRef} className="modo-page-card admin_syslog_list_pane">
                 {filterBar}
 
                 {viewMode === "table" ? (

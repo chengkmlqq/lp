@@ -23,6 +23,7 @@ import { CheckCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -412,7 +413,7 @@ export default function AdminFaultRecurrencePage() {
             items={[
               {
                 key: "result",
-                label: <span className="admin-fault-recurrence-tab-title">{t("复现结果")}</span>,
+                label: <>{t("复现结果")}</>,
                 closable: false,
                 children: (
                   <div className="admin-fault-recurrence-result-pane">
@@ -474,14 +475,14 @@ function FaultRecurrenceResultView({
   ];
 
   return (
-    <Tabs
+    <ModoTabs
       defaultActiveKey="overview"
       items={[
         {
           key: "overview",
           label: t("结果概览"),
           children: (
-            <Space direction="vertical" size={16} className="w-full">
+            <Space direction="vertical" size={16} className="modo-page-tabs">
               <Descriptions bordered column={{ xs: 1, sm: 1, md: 2, lg: 3 }}>
                 <Descriptions.Item label={t("结果状态")}>
                   <Tag color={resultTagColor(result.result.status)}>

@@ -7504,3 +7504,52 @@ body {
   border-bottom: none;
   margin-bottom: 0;
 }
+
+/* ═══════════════════════════════════════════════════════════
+ * MODO 补充规范（对齐 kb_compilation 视觉细节）
+ * ═══════════════════════════════════════════════════════════ */
+
+/* 页面白卡内的嵌套卡片：扁平化（MODO 嵌套面板无阴影 / 1px 描边 / 6px 圆角） */
+.modo-page-card .ant-card {
+  box-shadow: none !important;
+  border: 1px solid #e3e9ef !important;
+  border-radius: 6px !important;
+}
+
+/* 左树侧栏（各页 tree-card / sider-card 统一口径） */
+.modo-page-card .admin-menus-tree-card,
+.modo-page-card .admin-documents-tree-card,
+.modo-page-card .admin-matlab-tree-card,
+.modo-page-card .admin-system-params-sider-card {
+  border-radius: 6px !important;
+  border-color: #e3e9ef !important;
+  background: #f9fbfd;
+}
+
+/* antd Tree：MODO 行高 32px / 12px 字号 / 4px 圆角 hover */
+.modo-page-card .ant-tree {
+  font-size: 12px;
+  background: transparent;
+}
+.modo-page-card .ant-tree .ant-tree-treenode {
+  padding: 0;
+  width: 100%;
+}
+.modo-page-card .ant-tree .ant-tree-node-content-wrapper {
+  min-height: 32px;
+  height: 32px;
+  line-height: 32px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+/* 筛选条：MODO 扁平横条（无外框，仅底部 1px 分隔） */
+.modo-page-card .admin-filter-bar {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 0 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #eff4f9;
+}

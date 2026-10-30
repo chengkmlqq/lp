@@ -12,12 +12,10 @@ import {
   Empty,
   Form,
   Input,
-  Pagination,
   Select,
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
   Typography,
   type CardProps,
@@ -26,6 +24,8 @@ import {
 import { ClusterOutlined, EyeOutlined, SearchOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -461,18 +461,18 @@ export default function AdminWorkersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey={LIST_TAB_KEY}
-        className="admin_workers_tabs"
+        className="modo-page-tabs"
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin_workers_tab_title">{t("Worker监控")}</span>,
+            label: <>{t("Worker监控")}</>,
             closable: false,
             children: (
-              <div className="admin_workers_list_pane">
+              <div className="modo-page-card admin_workers_list_pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("执行节点")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -539,7 +539,7 @@ export default function AdminWorkersPage() {
                     共 {allFilteredWorkers.length} 个 Worker（筛选后）· {overview?.summary.total ?? 0} 总 · {overview?.summary.online ?? 0} 在线
                   </Text>
                   {allFilteredWorkers.length > WORKERS_CARD_LIMIT ? (
-                    <Pagination
+                    <ModoPagination
                       size="small"
                       current={workerPage}
                       pageSize={WORKERS_CARD_LIMIT}

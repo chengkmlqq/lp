@@ -16,7 +16,6 @@ import {
   Space,
   Spin,
   Table,
-  Tabs,
   Tooltip,
   TreeSelect,
   Typography,
@@ -28,6 +27,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { CSSProperties, ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -975,11 +975,11 @@ export default function AdminRolesPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey="list"
-        className="admin_roles_tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" onClick={startCreate}>
@@ -990,10 +990,10 @@ export default function AdminRolesPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-roles-tab-title">{t("角色管理")}</span>,
+            label: <>{t("角色管理")}</>,
             closable: false,
             children: (
-              <div ref={pageCardRef} className="admin_roles_list_pane">
+              <div ref={pageCardRef} className="modo-page-card admin_roles_list_pane">
                 {viewMode === "card" ? (
                   <div className="admin-filter-bar">
                     <Form layout="inline">

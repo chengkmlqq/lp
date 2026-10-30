@@ -15,12 +15,10 @@ import {
   Segmented,
   Space,
   Table,
-  Tabs,
   Tag,
   Typography,
   message,
   Input,
-  Pagination,
   type MenuProps,
 } from "antd";
 import { PlusOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
@@ -28,6 +26,8 @@ import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { AnalysisCardList } from "@/components/fault-analysis/analysis-card-list";
 import { AnalysisDetailView } from "@/components/fault-analysis/analysis-detail-view";
@@ -703,13 +703,13 @@ export default function AdminFaultAnalysisPage() {
     <>
       {contextHolder}
       <div className="flex min-h-0 flex-1 flex-col">
-        <Tabs
+        <ModoTabs
           type="editable-card"
           hideAdd
           activeKey={activeTabKey}
           onChange={setActiveTabKey}
           onEdit={handleTabsEdit}
-          className="admin-fault-analysis-tabs"
+          className="modo-page-tabs"
           tabBarExtraContent={
             canManage ? (
               <Button
@@ -724,10 +724,10 @@ export default function AdminFaultAnalysisPage() {
           items={[
             {
               key: LIST_TAB_KEY,
-              label: <span className="admin-fault-analysis-tab-title">{t("故障分析")}</span>,
+              label: <>{t("故障分析")}</>,
               closable: false,
               children: (
-                <div className="admin-fault-analysis-list-pane">
+                <div className="modo-page-card admin-fault-analysis-list-pane">
                   <div className="admin-filter-bar">
                     <Form layout="inline">
                       <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -827,7 +827,7 @@ export default function AdminFaultAnalysisPage() {
                       </div>
 
                       <div className="admin-fault-analysis-pagination">
-                        <Pagination
+                        <ModoPagination
                           current={pagination.current}
                           pageSize={pagination.pageSize}
                           total={Math.max(filteredAnalyses.length, 1)}

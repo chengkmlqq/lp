@@ -15,7 +15,6 @@ import {
   Spin,
   Switch,
   Table,
-  Tabs,
   Tag,
   Typography,
   type TableColumnsType,
@@ -23,6 +22,7 @@ import {
 import { SearchOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -486,18 +486,18 @@ export default function AdminScheduledTasksPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey={LIST_TAB_KEY}
-        className="admin_scheduled_tasks_tabs"
+        className="modo-page-tabs"
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin_scheduled_tasks_tab_title">{t("定时任务管理")}</span>,
+            label: <>{t("定时任务管理")}</>,
             closable: false,
             children: (
-              <div className="admin_scheduled_tasks_list_pane">
+              <div className="modo-page-card admin_scheduled_tasks_list_pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>

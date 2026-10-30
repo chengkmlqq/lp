@@ -14,14 +14,12 @@ import {
   Input,
   InputNumber,
   Modal,
-  Pagination,
   Popconfirm,
   Progress,
   Segmented,
   Select,
   Space,
   Table,
-  Tabs,
   Tag,
   Tooltip as AntTooltip,
   Typography,
@@ -57,6 +55,8 @@ const MultiReturnPeakChart = dynamic(() => import("@/components/lightning-curren
 });
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { LightningCurrentBackfillHistoryTable } from "@/components/lightning-current-backfill-history";
@@ -1087,13 +1087,13 @@ export default function AdminLightningCurrentsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey={activeTabKey}
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
-        className="admin-lightning-currents-tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           <Space size={8}>
             {canManage ? (
@@ -1106,10 +1106,10 @@ export default function AdminLightningCurrentsPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin-lightning-currents-tab-title">{t("雷电流幅值统计")}</span>,
+            label: <>{t("雷电流幅值统计")}</>,
             closable: false,
             children: (
-              <div className="admin-lightning-currents-list-pane">
+              <div className="modo-page-card admin-lightning-currents-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -1193,7 +1193,7 @@ export default function AdminLightningCurrentsPage() {
                           </div>
                         </div>
                         <div className="admin-lightning-events-pagination">
-                          <Pagination
+                          <ModoPagination
                             current={pagination.current}
                             pageSize={pagination.pageSize}
                             total={recordsQuery.data?.total ?? 0}

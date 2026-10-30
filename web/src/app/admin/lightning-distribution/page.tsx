@@ -16,7 +16,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Pagination,
   Progress,
   Segmented,
   Select,
@@ -24,7 +23,6 @@ import {
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -54,6 +52,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useBackfillTaskProgressSync, type BackfillTaskPatch } from "@/hooks/use-backfill-task-progress";
@@ -1157,13 +1157,13 @@ export default function AdminLightningDistributionPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey={activeTabKey}
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
-        className="admin-lightning-distribution-tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" onClick={() => setImportModalOpen(true)}>
@@ -1174,10 +1174,10 @@ export default function AdminLightningDistributionPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin-lightning-distribution-tab-title">{t("地闪密度统计")}</span>,
+            label: <>{t("地闪密度统计")}</>,
             closable: false,
             children: (
-              <div className="admin-lightning-distribution-list-pane">
+              <div className="modo-page-card admin-lightning-distribution-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -1227,7 +1227,7 @@ export default function AdminLightningDistributionPage() {
                     </div>
                     {records.length > 0 && (
                       <div className="admin-lightning-distribution-pagination">
-                        <Pagination
+                        <ModoPagination
                           current={pagination.current}
                           pageSize={pagination.pageSize}
                           total={total}

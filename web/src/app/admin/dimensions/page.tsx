@@ -20,7 +20,6 @@ import {
   Spin,
   Space,
   Table,
-  Tabs,
   Tag,
   Tooltip,
   Tree,
@@ -35,6 +34,7 @@ import type { DataNode } from "antd/es/tree";
 import type { ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -959,11 +959,11 @@ export default function AdminDimensionsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey="list"
-        className="admin_dimensions_tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           <Space>
             {canManage && (
@@ -999,10 +999,10 @@ export default function AdminDimensionsPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-dimensions-tab-title">{t("维度管理")}</span>,
+            label: <>{t("维度管理")}</>,
             closable: false,
             children: (
-              <div className="admin_dimensions_list_pane">
+              <div className="modo-page-card admin_dimensions_list_pane">
         {/* ===== Body Area: Two-column layout ===== */}
         <div ref={containerRef} className="admin-dimensions-page-body">
           {/* Type sidebar (hidden on mobile) */}

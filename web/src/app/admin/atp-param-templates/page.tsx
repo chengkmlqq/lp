@@ -17,7 +17,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Pagination,
   Row,
   Segmented,
   Select,
@@ -25,7 +24,6 @@ import {
   Spin,
   Switch,
   Table,
-  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -44,6 +42,8 @@ import {
 } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 
@@ -868,11 +868,11 @@ export default function AtpParamTemplatesPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         defaultActiveKey="list"
-        className="admin-atp-params-tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
@@ -884,13 +884,11 @@ export default function AtpParamTemplatesPage() {
           {
             key: "list",
             label: (
-              <span className="admin-atp-params-tab-title">
-                <FunctionOutlined /> {t("参数模板管理")}
-              </span>
+              <><FunctionOutlined /> {t("参数模板管理")}</>
             ),
             closable: false,
             children: (
-              <div className="admin-atp-params-list-pane">
+              <div className="modo-page-card admin-atp-params-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -985,7 +983,7 @@ export default function AtpParamTemplatesPage() {
                     ) : null}
                     {filteredRows.length > 0 ? (
                       <div className="admin-power-lines-pagination">
-                        <Pagination
+                        <ModoPagination
                           current={pagination.current}
                           pageSize={pagination.pageSize}
                           total={filteredRows.length}
