@@ -66,13 +66,8 @@ DIMENSION_ITEMS: dict[str, list[tuple[str, str, int, bool]]] = {
         ("sihuita", "四回路塔", 6, True),
         ("vzhiliu", "直流V型塔", 7, True),
         ("zhiliu", "直流塔", 8, True),
-        # 补充：无避雷线变体（对照 ATP 真实目录 110/220kV）
-        ("ganzino", "干字塔（无避雷线）", 10, True),
-        ("guxingno", "鼓型塔（无避雷线）", 11, True),
-        ("jiubeino", "酒杯塔（无避雷线）", 12, True),
-        ("maotouno", "猫头塔（无避雷线）", 13, True),
-        ("shangzino", "上字塔（无避雷线）", 14, True),
-        ("sihuitano", "四回路塔（无避雷线）", 15, True),
+        # 无避雷线变体(ganzino/guxingno/... )已于 2026-10-30 归一为 shield_wire=without 维度,
+        # 不再作为独立塔型。删除后同塔型的"无避雷线"由 shield_wire 字段表达。
     ],
     "scenario": [
         ("fanji", "反击", 0, True),
