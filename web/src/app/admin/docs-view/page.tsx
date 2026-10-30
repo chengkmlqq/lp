@@ -225,7 +225,7 @@ export default function DocsViewPage() {
   if (!user || !canRead) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        <AntCard className="admin-docs-view-page-card" title={t("操作文档")}>
+        <AntCard className="admin-docs-view-page-card modo-page-card" title={t("操作文档")}>
           <div className="flex items-center justify-center" style={{ minHeight: 300 }}>
             <Empty description={t("暂无权限访问")} />
           </div>

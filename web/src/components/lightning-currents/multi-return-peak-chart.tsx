@@ -52,7 +52,7 @@ export default function MultiReturnPeakChart({ peaks }: MultiReturnPeakChartProp
           labelFormatter={(label) => `回击 ${label}`}
         />
         <Legend />
-        <Line type="monotone" dataKey="current_ka" stroke="#1890ff" name={t("峰值电流 (kA)")} strokeWidth={2} dot={{ r: 4 }} />
+        <Line type="monotone" dataKey="current_ka" stroke="#3261ce" name={t("峰值电流 (kA)")} strokeWidth={2} dot={{ r: 4 }} />
       </LineChart>
     </ResponsiveContainer>
   );

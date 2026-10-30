@@ -6,6 +6,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Col, Empty, Row, Space, Spin, Typography, message } from "antd";
+import { AppstoreOutlined, SettingOutlined } from "@ant-design/icons";
 import { useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
@@ -104,14 +105,19 @@ export default function AdminOverviewPage() {
   const widgets = configQuery.data?.widgets ?? DEFAULT_WIDGETS;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="modo-page-card">
       {contextHolder}
-      <div className="flex justify-end">
-        <Button size="small" onClick={() => setConfigOpen(true)}>
+      <div className="modo-page-head">
+        <span className="modo-page-title">
+          <AppstoreOutlined />
+          {t("系统总览")}
+        </span>
+        <Button size="small" icon={<SettingOutlined />} onClick={() => setConfigOpen(true)}>
           {t("配置布局")}
         </Button>
       </div>
 
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pt-3">
       {widgets.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("未配置卡片，点击「配置布局」添加")} />
       ) : (
@@ -123,6 +129,7 @@ export default function AdminOverviewPage() {
           ))}
         </Row>
       )}
+      </div>
 
       <OverviewConfigModal
         key={configOpen ? "config-open" : "config-closed"}

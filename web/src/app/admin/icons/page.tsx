@@ -26,7 +26,7 @@ export default function AdminIconsPage() {
   }, [search]);
 
   return (
-    <div className="p-6">
+    <div className="modo-page-card">
       <Title level={4} style={{ marginBottom: 16 }}>
         {t("图标参考")}
       </Title>

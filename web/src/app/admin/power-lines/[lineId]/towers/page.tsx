@@ -14,7 +14,6 @@ import {
   Form,
   Input,
   Modal,
-  Pagination,
   Progress,
   Select,
   Space,
@@ -34,6 +33,7 @@ import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -384,7 +384,7 @@ export default function AdminPowerLineTowersPage() {
 
   if (lineError || !lineDetail) {
     return (
-      <div className="flex flex-1 flex-col p-4">
+      <div className="modo-page-card">
         <Card size="small" className="admin-power-line-detail-meta">
           <Space direction="vertical" size={12}>
             <Typography.Text type="danger">{lineError || t("加载线路失败")}</Typography.Text>
@@ -395,7 +395,7 @@ export default function AdminPowerLineTowersPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col p-4">
+    <div className="modo-page-card">
       <div className="admin-power-line-detail-meta mb-3 flex items-center justify-between gap-3">
         <Space size={8} wrap>
           <Typography.Text strong>{t("线路杆塔")}</Typography.Text>
@@ -480,7 +480,7 @@ export default function AdminPowerLineTowersPage() {
         {/* LP: 分页仅在表格有数据（total>0）时展示；空结果时不显示分页条 */}
         {(towersQuery.data?.total ?? 0) > 0 ? (
           <div className="admin-power-line-detail-pagination">
-            <Pagination
+            <ModoPagination
               current={towerPagination.current}
               pageSize={towerPagination.pageSize}
               total={towersQuery.data?.total ?? 0}

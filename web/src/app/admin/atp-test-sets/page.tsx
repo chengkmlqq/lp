@@ -42,7 +42,7 @@ export default function AtpTestSetsPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="modo-page-card">
       <AtpTestSetTab />
     </div>
   );
