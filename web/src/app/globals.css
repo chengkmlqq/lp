@@ -600,6 +600,49 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════
+ * MODO 页面级公共类（供各业务页复用，对齐 kb_compilation 范式）
+ * ═══════════════════════════════════════════════════════════ */
+
+/* 列表页白卡容器：页面内容统一包一层白卡（radius 6 + Tier1 阴影），
+   内部 flex 链撑满、表体滚动、分页钉底（配合 ModoPagination 使用） */
+.modo-page-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 2px 5px 0 rgba(36, 46, 67, 0.1);
+  padding: 12px 16px;
+}
+
+/* 页面级 Tabs（ModoTabs）：容器与内容区撑满高度 */
+.modo-page-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.modo-page-tabs > .ant-tabs-content-holder {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.modo-page-tabs > .ant-tabs-content-holder > .ant-tabs-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.modo-page-tabs .ant-tabs-tabpane-active {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* ═══════════════════════════════════════════════════════════
  * 双列侧边导航（迁移自 kb_compilation：对齐 MODO narrow 菜单）
  * 第一列 80px 一级方块卡（图标上/文字下，60px 高、radius 8、
  * 选中 fill-2 #EFF4F9 + 图标主色）

@@ -18,7 +18,6 @@ import {
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -26,6 +25,8 @@ import {
   type CardProps,
   type MenuProps,
 } from "antd";
+
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { CheckCircleOutlined, MoreOutlined, EditOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
@@ -1226,11 +1227,11 @@ export default function AdminUsersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         defaultActiveKey="list"
-        className="admin_users_tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           <Button type="primary" onClick={openCreateUserModal}>
             {t("新建用户")}
@@ -1239,10 +1240,10 @@ export default function AdminUsersPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin_users_tab_title">{t("用户管理")}</span>,
+            label: t("用户管理"),
             closable: false,
             children: (
-              <div ref={pageCardRef} className="admin_users_list_pane">
+              <div ref={pageCardRef} className="modo-page-card admin_users_list_pane">
             {viewMode === "card" ? (
               <div className="admin-filter-bar">
                 <Form layout="inline">
