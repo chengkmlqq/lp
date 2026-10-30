@@ -1176,6 +1176,9 @@ export type AtpAssetSummary = {
   scene_type_label?: string | null;
   arrester_config: string | null;
   arrester_config_label?: string | null;
+  version: string;
+  is_active: boolean;
+  shield_wire: string;
   storage_mount_code: string | null;
   storage_root_path: string | null;
   run_count: number;

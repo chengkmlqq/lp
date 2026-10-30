@@ -43,6 +43,7 @@ import { AdminPageLoading } from "@/components/admin-page-loading";
 import { AtpBatchHistoryTab } from "@/components/atp-models/atp-batch-history-tab";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
 import { AtpModelDetailTab } from "@/components/atp-models/atp-model-detail-tab";
+import { AtpModelOverviewTab } from "@/components/atp-models/atp-model-overview-tab";
 import { AtpModelTestTab } from "@/components/atp-models/atp-model-test-tab";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -58,6 +59,8 @@ type AssetFormValues = {
   tower_type: string;
   scene_type: string;
   arrester_config: string;
+  version: string;
+  description: string;
   files: File[];
 };
 
@@ -68,6 +71,8 @@ type AssetEditFormValues = {
   tower_type: string;
   scene_type: string;
   arrester_config: string;
+  version: string;
+  shield_wire: string;
   storage_mount_code: string;
   storage_root_path: string;
 };
@@ -77,6 +82,8 @@ const EMPTY_FORM: AssetFormValues = {
   tower_type: "",
   scene_type: "",
   arrester_config: "",
+  version: "v1",
+  description: "",
   files: [],
 };
 
@@ -254,7 +261,9 @@ export default function AtpModelsPage() {
       const payload = {
         code: generateCode(),
         name: generateName(values),
-        description: "",
+        description: values.description.trim() || "",
+        version: (values.version || "v1").trim() || "v1",
+        is_active: false,
         voltage_level: values.voltage_level.trim() || null,
         tower_type: values.tower_type.trim() || null,
         scene_type: values.scene_type.trim() || null,
@@ -327,6 +336,45 @@ export default function AtpModelsPage() {
     },
   });
 
+  // 设为生效 / 取消生效（多版本改造 P2：同维度组内至多一个生效，后端 activate 自动组内清零）
+  const activateMutation = useMutation({
+    mutationFn: async (assetId: string) => {
+      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/activate`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as AtpAssetSummary;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
+      setSuccess(t("已设为生效"));
+      setError(null);
+    },
+    onError: (candidate) => {
+      setSuccess("");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("设为生效失败")));
+    },
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: async (assetId: string) => {
+      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/deactivate`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as AtpAssetSummary;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
+      setSuccess(t("已取消生效"));
+      setError(null);
+    },
+    onError: (candidate) => {
+      setSuccess("");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("取消生效失败")));
+    },
+  });
+
   const updateAssetMutation = useMutation({
     mutationFn: async (values: AssetEditFormValues) => {
       if (!editingAsset) {
@@ -339,6 +387,8 @@ export default function AtpModelsPage() {
         tower_type: values.tower_type.trim() || null,
         scene_type: values.scene_type.trim() || null,
         arrester_config: values.arrester_config.trim() || null,
+        version: (values.version || "v1").trim() || "v1",
+        shield_wire: (values.shield_wire || "with").trim() || "with",
         storage_mount_code: values.storage_mount_code.trim() || null,
         storage_root_path: values.storage_root_path.trim() || null,
       };
@@ -488,6 +538,8 @@ export default function AtpModelsPage() {
       tower_type: asset.tower_type ?? "",
       scene_type: asset.scene_type ?? "",
       arrester_config: asset.arrester_config ?? "",
+      version: asset.version ?? "v1",
+      shield_wire: asset.shield_wire ?? "with",
       storage_mount_code: asset.storage_mount_code ?? "",
       storage_root_path: asset.storage_root_path ?? "",
     });
@@ -1311,6 +1363,9 @@ export default function AtpModelsPage() {
                                   onEdit={(asset) => openEditModal(asset)}
                                   onDelete={(id) => deleteMutation.mutate(id)}
                                   onTest={(asset) => openTestTab(asset)}
+                                  onActivate={(id) => activateMutation.mutate(id)}
+                                  onDeactivate={(id) => deactivateMutation.mutate(id)}
+                                  activeBusy={activateMutation.isPending || deactivateMutation.isPending}
                                   dimensionLabelMap={dimensionLabelMap}
                                 />
                               </Spin>
@@ -1335,6 +1390,14 @@ export default function AtpModelsPage() {
                   </div>
                 </div>
               </div>
+            ),
+          },
+          {
+            key: "overview",
+            label: <span className="admin-atp-models-tab-title">{t("模型总览")}</span>,
+            closable: false,
+            children: (
+              <AtpModelOverviewTab />
             ),
           },
           ...detailTabs.map((tab) => ({
@@ -1421,6 +1484,12 @@ export default function AtpModelsPage() {
               placeholder={t("请选择避雷器装设组合")}
               options={arresterConfigOptions}
             />
+          </Form.Item>
+          <Form.Item name="version" label={t("版本号")} rules={[{ required: true, message: t("请输入版本号") }]}>
+            <Input placeholder={t("如 v1 / v2-rev3")} maxLength={32} />
+          </Form.Item>
+          <Form.Item name="description" label={t("描述")} className="md:col-span-2" rules={[{ required: true, message: t("请输入模型描述") }]}>
+            <Input.TextArea rows={2} placeholder={t("模型描述（必填）")} maxLength={8000} />
           </Form.Item>
           <Form.Item label={t("上传模型文件")} required>
             <div>
@@ -1554,6 +1623,19 @@ export default function AtpModelsPage() {
                 allowClear
                 placeholder={t("请选择避雷器装设组合")}
                 options={arresterConfigOptions}
+              />
+            </Form.Item>
+            <Form.Item name="version" label={t("版本号")} rules={[{ required: true, message: t("请输入版本号") }]}>
+              <Input placeholder={t("如 v1 / v2-rev3")} maxLength={32} />
+            </Form.Item>
+            <Form.Item name="shield_wire" label={t("避雷线")}>
+              <Select
+                allowClear
+                placeholder={t("请选择避雷线配置")}
+                options={[
+                  { value: "with", label: t("有避雷线") },
+                  { value: "without", label: t("无避雷线") },
+                ]}
               />
             </Form.Item>
             <Form.Item name="storage_root_path" label={t("存储目录")} className="md:col-span-2" rules={[{ required: true, message: t("请输入存储目录") }]}>

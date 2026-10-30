@@ -25,6 +25,9 @@ class AtpAssetSummary(BaseModel):
     scene_type_label: str | None = None
     arrester_config: str | None = None
     arrester_config_label: str | None = None
+    version: str = "v1"
+    is_active: bool = False
+    shield_wire: str = "with"
     storage_mount_code: str | None = None
     storage_root_path: str | None = None
     run_count: int = 0
@@ -63,12 +66,15 @@ class AtpAssetDetail(AtpAssetSummary):
 class AtpAssetCreateRequest(BaseModel):
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=255)
-    description: str = Field(default="", max_length=8000)
+    description: str = Field(min_length=1, max_length=8000)  # 多版本改造: 上传必填
     status: AtpAssetStatus = "enabled"
     voltage_level: str | None = Field(default=None, max_length=16)
     tower_type: str | None = Field(default=None, max_length=64)
     scene_type: str | None = Field(default=None, max_length=32)
     arrester_config: str | None = Field(default=None, max_length=64)
+    version: str = Field(default="v1", max_length=32)
+    is_active: bool = False
+    shield_wire: str = Field(default="with", max_length=16)
     storage_mount_code: str | None = Field(default=None, max_length=64)
     storage_root_path: str | None = Field(default=None, max_length=2048)
 
@@ -81,6 +87,9 @@ class AtpAssetUpdateRequest(BaseModel):
     tower_type: str | None = Field(default=None, max_length=64)
     scene_type: str | None = Field(default=None, max_length=32)
     arrester_config: str | None = Field(default=None, max_length=64)
+    version: str | None = Field(default=None, max_length=32)
+    is_active: bool | None = None
+    shield_wire: str | None = Field(default=None, max_length=16)
     storage_mount_code: str | None = Field(default=None, max_length=64)
     storage_root_path: str | None = Field(default=None, max_length=2048)
 

@@ -20,6 +20,11 @@ class AtpAsset(Base):
         Index("idx_atp_asset_tower_type", "tower_type"),
         Index("idx_atp_asset_scene_type", "scene_type"),
         Index("idx_atp_asset_arrester_config", "arrester_config"),
+        # 多版本 + 生效：同维度组定位 + 版本唯一 + 生效过滤（2026-10-29 改造）
+        Index("idx_atp_asset_dim_version", "voltage_level", "tower_type",
+              "scene_type", "arrester_config", "shield_wire", "version"),
+        Index("idx_atp_asset_active", "voltage_level", "tower_type",
+              "scene_type", "arrester_config", "shield_wire", "is_active"),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: uuid4().hex)
@@ -31,6 +36,17 @@ class AtpAsset(Base):
     tower_type: Mapped[str | None] = mapped_column(String(64))
     scene_type: Mapped[str | None] = mapped_column(String(32))
     arrester_config: Mapped[str | None] = mapped_column(String(64))
+    # ===== 多版本 + 生效管理（2026-10-29 改造）=====
+    # 同一维度组合（电压/塔型/场景/避雷器/避雷线）下可存在多个版本，
+    # 由 is_active 唯一生效的版本参与仿真定位（_query 增加 is_active 过滤）。
+    # version: 版本号（同维度组内唯一，自由文本，如 "v1" / "v2-rev3"）
+    version: Mapped[str] = mapped_column(String(32), default="v1", nullable=False)
+    # is_active: 当前是否生效（仿真用）。同维度组内**至多 1 条**为 True，
+    # 唯一性由 activate/deactivate 事务保证（SELECT FOR UPDATE + 组内清零）。
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # shield_wire: 避雷线配置维度（with/without）。110kV 无避雷线变体（ganzino 等
+    # 塔型后缀）归一后落此处，塔型维度回归纯净。
+    shield_wire: Mapped[str] = mapped_column(String(16), default="with", nullable=False)
     storage_mount_code: Mapped[str | None] = mapped_column(String(64), index=True)
     storage_root_path: Mapped[str | None] = mapped_column(
         String(2048),

@@ -1066,6 +1066,9 @@ def _auto_resolve_asset(
     arrester = str(config.get("arrester_config") or "noM").strip()
     if not arrester:
         arrester = "noM"
+    # 避雷线维度（多版本归一后）：adapter_config 显式传 shield_wire（with/without）；
+    # 缺省不过滤——存量 4 段路径资产视为有避雷线，且回退取生效版，行为不变。
+    shield_wire = str(config.get("shield_wire") or "").strip() or None
     # 塔型归一：s500guxing / 500-guxing / guxing → guxing
     tower = _normalize_tower_shape_code(tower_type or "") or str(config.get("tower_type") or "").strip()
 
@@ -1078,6 +1081,14 @@ def _auto_resolve_asset(
         stmt = stmt.where(AtpAsset.scene_type == scene)
         if arrester_filter:
             stmt = stmt.where(AtpAsset.arrester_config == arrester_filter)
+        if shield_wire:
+            stmt = stmt.where(AtpAsset.shield_wire == shield_wire)
+        # 多版本改造：优先取「生效」版本；未设生效时回退任一 enabled（兼容存量/未激活）。
+        active = db.execute(
+            stmt.where(AtpAsset.is_active.is_(True)).limit(1)
+        ).scalar_one_or_none()
+        if active:
+            return active
         return db.execute(stmt.limit(1)).scalar_one_or_none()
 
     if tower:

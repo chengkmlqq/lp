@@ -27,9 +27,12 @@ from ...schemas.atp_asset import (
     AtpEngineStatusResponse,
 )
 from ...services.atp_asset_service import (
+    activate_asset,
     create_asset,
+    deactivate_asset,
     delete_asset,
     get_asset_by_id,
+    get_asset_overview_tree,
     get_asset_scene,
     get_asset_slots_view,
     check_asset_slot_coverage,
@@ -205,6 +208,15 @@ def read_atp_asset_file_content_endpoint(
     return read_asset_file_content(db, asset_id=asset_id, relative_path=path, offset=offset, limit=limit)
 
 
+@router.get("/assets/overview-tree")
+def get_atp_asset_overview_tree_endpoint(
+    _: CurrentUser = Depends(require_permission("atp.view")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """总览思维导图：电压→塔型→场景→避雷器→避雷线→版本（叶子标生效状态）。"""
+    return get_asset_overview_tree(db)
+
+
 @router.get("/assets/{asset_id}", response_model=AtpAssetDetail)
 def get_atp_asset_detail(
     asset_id: str,
@@ -268,6 +280,28 @@ def update_atp_asset_endpoint(
     updated = update_asset(db, asset_id, payload, actor_user_id=current_user.user.id)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    return AtpAssetDetail(**updated.model_dump())
+
+
+@router.post("/assets/{asset_id}/activate", response_model=AtpAssetDetail)
+def activate_atp_asset_endpoint(
+    asset_id: str,
+    current_user: CurrentUser = Depends(require_permission("atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetDetail:
+    """把该模型设为「生效」（同维度组其他版本自动失效）。"""
+    updated = activate_asset(db, asset_id=asset_id, actor_user_id=current_user.user.id)
+    return AtpAssetDetail(**updated.model_dump())
+
+
+@router.post("/assets/{asset_id}/deactivate", response_model=AtpAssetDetail)
+def deactivate_atp_asset_endpoint(
+    asset_id: str,
+    current_user: CurrentUser = Depends(require_permission("atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetDetail:
+    """取消该模型的生效状态。"""
+    updated = deactivate_asset(db, asset_id=asset_id, actor_user_id=current_user.user.id)
     return AtpAssetDetail(**updated.model_dump())
 
 

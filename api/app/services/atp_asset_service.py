@@ -18,7 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from ..core.config import get_settings
@@ -433,11 +433,15 @@ def _build_asset_storage_root_by_dimensions(
     tower_type: str | None,
     scene_type: str | None,
     arrester_config: str | None,
+    shield_wire: str = "with",
+    version: str = "v1",
     fallback_code: str,
 ) -> str:
-    """按 ATP 模型目录分层构建存储路径：/atp-assets/<电压>/<塔型>/<场景>/<避雷器组合>。
+    """按 ATP 模型目录分层构建存储路径：
+    /atp-assets/<电压>/<塔型>/<场景>/<避雷器组合>/<避雷线>/<version>。
 
-    与桌面版 ATP 模型目录结构一致（如 500/ganzi/fanji/M1）。
+    与桌面版 ATP 模型目录结构一致（如 500/ganzi/fanji/M1）。多版本改造（2026-10-29）
+    追加避雷线维度与版本段，使同一维度组合可共存多版本而不冲突。
     任一层缺失时回退到按 code 平铺，避免路径歧义。
     """
     segments = [
@@ -445,13 +449,35 @@ def _build_asset_storage_root_by_dimensions(
         _sanitize_storage_segment(tower_type or "", fallback=""),
         _sanitize_storage_segment(scene_type or "", fallback=""),
         _sanitize_storage_segment(arrester_config or "", fallback=""),
+        _sanitize_storage_segment(shield_wire or "", fallback=""),
+        _sanitize_storage_segment(version or "", fallback=""),
     ]
+    # 兼容存量 4 段路径：避雷线/版本缺省时仅保留维度前 4 段（旧资产不迁移路径）
+    if all(segments[:4]) and segments[4] in ("", "with") and segments[5] in ("", "v1"):
+        # 显式传入默认 with/v1 且维度齐全 → 仍用 4 段（保持旧资产路径稳定）
+        return normalize_virtual_path(f"{ATP_ASSET_FILES_ROOT}/{'/'.join(segments[:4])}")
     if all(segments):
         return normalize_virtual_path(f"{ATP_ASSET_FILES_ROOT}/{'/'.join(segments)}")
     return _build_asset_storage_root(fallback_code)
 
 
+def _asset_dim_group_where(*, voltage_level, tower_type, scene_type, arrester_config, shield_wire):
+    """构建同维度组（电压/塔型/场景/避雷器/避雷线）的查询条件——定位资产版本组用。"""
+    conds = []
+    for col, val in (
+        (AtpAsset.voltage_level, voltage_level),
+        (AtpAsset.tower_type, tower_type),
+        (AtpAsset.scene_type, scene_type),
+        (AtpAsset.arrester_config, arrester_config),
+        (AtpAsset.shield_wire, shield_wire),
+    ):
+        if val is not None:
+            conds.append(col == val)
+    return conds
+
+
 def _check_asset_storage_path_conflict(db: Session, storage_root_path: str, current_asset_id: str | None = None) -> None:
+    """同一存储路径 + 同一 version 才判冲突（多版本改造：同维度组允许不同版本共存）。"""
     asset_stmt = select(AtpAsset).where(AtpAsset.storage_root_path == storage_root_path)
     if current_asset_id:
         asset_stmt = asset_stmt.where(AtpAsset.id != current_asset_id)
@@ -460,7 +486,7 @@ def _check_asset_storage_path_conflict(db: Session, storage_root_path: str, curr
     if existing_asset:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"存储路径冲突：该路径已被模型 {existing_asset.code} 占用。",
+            detail=f"存储路径冲突：该路径已被模型 {existing_asset.code}（version={existing_asset.version}）占用。",
         )
 
 
@@ -642,6 +668,9 @@ def serialize_asset(
         scene_type_label=_resolve_label("scenario", item.scene_type),
         arrester_config=item.arrester_config,
         arrester_config_label=_resolve_label("arrester_combination", item.arrester_config),
+        version=item.version or "v1",
+        is_active=bool(item.is_active),
+        shield_wire=item.shield_wire or "with",
         storage_mount_code=item.storage_mount_code or "main",
         storage_root_path=item.storage_root_path,
         run_count=run_count,
@@ -1044,6 +1073,8 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
         return None
 
     now = utcnow()
+    version = (payload.version or "v1").strip() or "v1"
+    shield_wire = (payload.shield_wire or "with").strip() or "with"
     storage_mount_code = _normalize_optional_str(payload.storage_mount_code) or "main"
     storage_root_path = _normalize_optional_str(payload.storage_root_path)
     if storage_root_path is None:
@@ -1052,6 +1083,8 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
             tower_type=payload.tower_type,
             scene_type=payload.scene_type,
             arrester_config=payload.arrester_config,
+            shield_wire=shield_wire,
+            version=version,
             fallback_code=payload.code.strip(),
         )
     item = AtpAsset(
@@ -1063,6 +1096,9 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
         tower_type=_normalize_optional_str(payload.tower_type),
         scene_type=_normalize_optional_str(payload.scene_type),
         arrester_config=_normalize_optional_str(payload.arrester_config),
+        version=version,
+        is_active=bool(payload.is_active),
+        shield_wire=shield_wire,
         storage_mount_code=storage_mount_code,
         storage_root_path=storage_root_path,
         create_user=actor_user_id,
@@ -1080,6 +1116,149 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
 
     _publish_change("asset.created", {"action": "created", "asset_id": saved.id})
     return serialize_asset(saved, run_count=0, last_run_status=None, last_run_date=None, db=db)
+
+
+def activate_asset(db: Session, *, asset_id: str, actor_user_id: str | None = None) -> AtpAssetSummary:
+    """把指定资产设为「生效」（同维度组内其他版本自动失效）。
+
+    事务内：先 SELECT ... FOR UPDATE 锁定同维度组行，组内全部 is_active=0，
+    再置本资产 is_active=1。防止并发激活导致组内双生效（竞态）。
+    """
+    asset = db.scalar(
+        select(AtpAsset).where(AtpAsset.id == asset_id).with_for_update()
+    )
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    # 同维度组条件（维度字段可能为 None，逐项判定）
+    dims = dict(
+        voltage_level=asset.voltage_level,
+        tower_type=asset.tower_type,
+        scene_type=asset.scene_type,
+        arrester_config=asset.arrester_config,
+        shield_wire=asset.shield_wire or "with",
+    )
+    # 组内全部失效
+    db.execute(
+        update(AtpAsset)
+        .where(AtpAsset.id != asset_id)
+        .where(
+            *[
+                getattr(AtpAsset, key) == val
+                for key, val in dims.items() if val is not None
+            ]
+        )
+        .values(is_active=False)
+    )
+    asset.is_active = True
+    if actor_user_id:
+        asset.update_user = actor_user_id
+    asset.update_date = utcnow()
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    _publish_change("asset.activated", {"action": "activated", "asset_id": asset.id})
+    return serialize_asset(asset, run_count=0, last_run_status=None, last_run_date=None, db=db)
+
+
+def deactivate_asset(db: Session, *, asset_id: str, actor_user_id: str | None = None) -> AtpAssetSummary:
+    """取消指定资产的生效状态（组内可能无生效版本——由 _query 回退兜底）。"""
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    asset.is_active = False
+    if actor_user_id:
+        asset.update_user = actor_user_id
+    asset.update_date = utcnow()
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    _publish_change("asset.deactivated", {"action": "deactivated", "asset_id": asset.id})
+    return serialize_asset(asset, run_count=0, last_run_status=None, last_run_date=None, db=db)
+
+
+def get_asset_overview_tree(db: Session) -> dict[str, Any]:
+    """总览思维导图：电压→塔型→场景→避雷器→避雷线→版本，叶子标注生效状态。
+
+    一次查出全部资产（仅需要列），按维度逐层聚合，返回嵌套树结构。
+    """
+    rows = db.execute(
+        select(
+            AtpAsset.voltage_level,
+            AtpAsset.tower_type,
+            AtpAsset.scene_type,
+            AtpAsset.arrester_config,
+            AtpAsset.shield_wire,
+            AtpAsset.version,
+            AtpAsset.is_active,
+            AtpAsset.status,
+            AtpAsset.name,
+            AtpAsset.id,
+        )
+    ).all()
+
+    def _label(dim_type: str, code: str | None) -> str:
+        if not code:
+            return ""
+        return str(code)
+
+    # 逐层聚合：voltage → tower → scene → arrester → shield_wire → version
+    root: dict[str, Any] = {"label": "ATP 资产总览", "key": "root", "value": len(rows), "children": []}
+    by_voltage: dict[str, list] = {}
+    for r in rows:
+        vol = r.voltage_level or ""
+        bucket = by_voltage.setdefault(vol, [])
+        bucket.append(r)
+    for vol in sorted(by_voltage, reverse=True):
+        vol_rows = by_voltage[vol]
+        v_node = {"label": f"{vol} kV" if vol else "未知电压", "key": f"vl:{vol}",
+                  "value": len(vol_rows), "children": []}
+        by_tower: dict[str, list] = {}
+        for r in vol_rows:
+            by_tower.setdefault(r.tower_type or "", []).append(r)
+        for tw in sorted(by_tower):
+            tw_rows = by_tower[tw]
+            t_node = {"label": _label("tower_type", tw), "key": f"vl:{vol}|tw:{tw}",
+                      "value": len(tw_rows), "children": []}
+            by_scene: dict[str, list] = {}
+            for r in tw_rows:
+                by_scene.setdefault(r.scene_type or "", []).append(r)
+            for sc in sorted(by_scene):
+                sc_rows = by_scene[sc]
+                s_node = {"label": _label("scenario", sc), "key": f"vl:{vol}|tw:{tw}|sc:{sc}",
+                          "value": len(sc_rows), "children": []}
+                by_arr: dict[str, list] = {}
+                for r in sc_rows:
+                    by_arr.setdefault(r.arrester_config or "", []).append(r)
+                for ar in sorted(by_arr):
+                    ar_rows = by_arr[ar]
+                    a_node = {"label": _label("arrester_combination", ar),
+                              "key": f"vl:{vol}|tw:{tw}|sc:{sc}|ar:{ar}",
+                              "value": len(ar_rows), "children": []}
+                    by_sw: dict[str, list] = {}
+                    for r in ar_rows:
+                        by_sw.setdefault(r.shield_wire or "with", []).append(r)
+                    for sw in sorted(by_sw):
+                        sw_rows = by_sw[sw]
+                        sw_node = {"label": "有避雷线" if sw == "with" else "无避雷线",
+                                   "key": f"vl:{vol}|tw:{tw}|sc:{sc}|ar:{ar}|sw:{sw}",
+                                   "value": len(sw_rows), "children": []}
+                        for r in sorted(sw_rows, key=lambda x: x.version or ""):
+                            active = bool(r.is_active)
+                            sw_node["children"].append({
+                                "label": f"{r.version or 'v1'} ({'生效' if active else '未生效'})",
+                                "key": r.id,
+                                "value": 1,
+                                "is_active": active,
+                                "asset_id": r.id,
+                                "asset_name": r.name,
+                                "status": r.status,
+                            })
+                        a_node["children"].append(sw_node)
+                    s_node["children"].append(a_node)
+                t_node["children"].append(s_node)
+            v_node["children"].append(t_node)
+        root["children"].append(v_node)
+    return root
 
 
 def upload_asset_archive(
@@ -1210,6 +1389,28 @@ def update_asset(
         item.scene_type = _normalize_optional_str(update_data["scene_type"])
     if "arrester_config" in update_data:
         item.arrester_config = _normalize_optional_str(update_data["arrester_config"])
+    if "version" in update_data and update_data["version"] is not None:
+        item.version = str(update_data["version"]).strip() or "v1"
+    if "shield_wire" in update_data and update_data["shield_wire"] is not None:
+        item.shield_wire = str(update_data["shield_wire"]).strip() or "with"
+    if "is_active" in update_data and update_data["is_active"] is not None:
+        # 通过 PATCH 直接置生效 → 走与 activate 相同的组内清零事务，防双生效
+        if bool(update_data["is_active"]):
+            if not item.is_active:
+                activate_asset(db, asset_id=asset_id, actor_user_id=actor_user_id)
+                saved = get_asset_by_id(db, asset_id)
+                if not saved:
+                    return None
+                _publish_change("asset.updated", {"action": "updated", "asset_id": saved.id})
+                return serialize_asset(
+                    saved,
+                    run_count=len(saved.runs),
+                    last_run_status=saved.runs[0].status if saved.runs else None,
+                    last_run_date=saved.runs[0].create_date if saved.runs else None,
+                    db=db,
+                )
+        else:
+            item.is_active = False
     if "storage_mount_code" in update_data:
         item.storage_mount_code = _normalize_optional_str(update_data["storage_mount_code"])
     if "storage_root_path" in update_data:

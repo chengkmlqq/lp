@@ -3,6 +3,7 @@
 import { Badge, Button, Card, Dropdown, Modal, Progress, Space, Tooltip, Typography } from "antd";
 import {
   ApartmentOutlined,
+  CheckCircleOutlined,
   ClockCircleOutlined,
   DatabaseOutlined,
   DeleteOutlined,
@@ -10,6 +11,7 @@ import {
   ExperimentOutlined,
   EyeOutlined,
   MoreOutlined,
+  StopOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import { useCallback } from "react";
@@ -26,6 +28,9 @@ interface AtpModelCardProps {
   onEdit: (asset: AtpAssetSummary) => void;
   onDelete: (id: string) => void;
   onTest: (asset: AtpAssetSummary) => void;
+  onActivate: (id: string) => void;
+  onDeactivate: (id: string) => void;
+  activeBusy: boolean;
   dimensionLabelMap?: {
     voltage_level?: Map<string, string>;
     tower_type?: Map<string, string>;
@@ -57,9 +62,9 @@ function assetBadgeStatus(status: AtpAssetStatus, t: (s: string) => string): { b
   }
 }
 
-export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, dimensionLabelMap }: AtpModelCardProps) {
+export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onActivate, onDeactivate, activeBusy, dimensionLabelMap }: AtpModelCardProps) {
   const { t } = useI18n();
-  const rowBusy = deleteLoading;
+  const rowBusy = deleteLoading || activeBusy;
 
   const handleView = useCallback(() => {
     onView(asset);
@@ -98,6 +103,15 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
           <DatabaseOutlined className="text-base text-gray-500" />
           <Typography.Text strong className="truncate flex-1">{asset.name}</Typography.Text>
           <div className="flex flex-shrink-0 items-center gap-2">
+            {asset.is_active ? (
+              <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-green-50 text-green-600 border border-green-200">
+                {asset.version ? `${asset.version}·生效` : t("生效")}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-gray-50 text-gray-500 border border-gray-200">
+                {asset.version ? `${asset.version}·未生效` : t("未生效")}
+              </span>
+            )}
             <Badge status={statusBadge} />
             <Typography.Text type="secondary" className="text-xs">
               {statusText}
@@ -172,6 +186,39 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
                   },
                   ...(canManage
                     ? [
+                        ...(asset.is_active
+                          ? [
+                              {
+                                key: "deactivate",
+                                label: (
+                                  <Space size={4}>
+                                    <StopOutlined />
+                                    <span>{t("取消生效")}</span>
+                                  </Space>
+                                ),
+                                disabled: rowBusy,
+                                onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
+                                  event.domEvent.stopPropagation();
+                                  onDeactivate(asset.id);
+                                },
+                              },
+                            ]
+                          : [
+                              {
+                                key: "activate",
+                                label: (
+                                  <Space size={4}>
+                                    <CheckCircleOutlined />
+                                    <span>{t("设为生效")}</span>
+                                  </Space>
+                                ),
+                                disabled: rowBusy,
+                                onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
+                                  event.domEvent.stopPropagation();
+                                  onActivate(asset.id);
+                                },
+                              },
+                            ]),
                         {
                           key: "delete",
                           label: (
@@ -182,7 +229,7 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
                           ),
                           danger: true,
                           disabled: rowBusy,
-                          onClick: (event) => {
+                          onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
                             event.domEvent.stopPropagation();
                             handleDelete();
                           },

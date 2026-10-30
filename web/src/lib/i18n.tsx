@@ -2718,6 +2718,23 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "发起测试": "Start test",
   "DAT 文件详情": "DAT file details",
   "文件内容": "File content",
+  // ===== ATP 模型多版本 + 生效管理（2026-10-30 改造）=====
+  "已设为生效": "Set to active",
+  "已取消生效": "Removed from active",
+  "设为生效": "Set active",
+  "取消生效": "Remove active",
+  "设为生效失败": "Failed to set active",
+  "取消生效失败": "Failed to remove active",
+  "模型总览": "Model overview",
+  "ATP 模型总览": "ATP model overview",
+  "总览数据加载失败": "Failed to load overview data",
+  "按 电压等级 → 塔型 → 场景 → 避雷器组合 → 避雷线 → 版本 分层；绿色叶子为当前生效版本，灰色为未生效版本。": "Layered by voltage level → tower type → scene → arrester config → shield wire → version; green leaves are the active version, grey ones inactive.",
+  "有避雷线": "With shield wire",
+  "无避雷线": "Without shield wire",
+  "请选择避雷线配置": "Select shield wire config",
+  "请输入模型描述": "Please enter a model description",
+  "模型描述（必填）": "Model description (required)",
+  "如 v1 / v2-rev3": "e.g. v1 / v2-rev3",
 };
 
 // ─────────────────────────── Context ───────────────────────────

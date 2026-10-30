@@ -461,9 +461,6 @@ def _ensure_atp_asset_column_compatibility() -> None:
     """
     Keep `atp_asset` columns aligned with the current ORM mapping.
     """
-    if not database_url.startswith("postgresql"):
-        return
-
     schema = settings.resolved_db_schema
     with engine.begin() as connection:
         db_inspector = inspect(connection)
@@ -476,17 +473,27 @@ def _ensure_atp_asset_column_compatibility() -> None:
         }
 
         if "storage_mount_code" not in column_names:
-            connection.execute(
-                text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS storage_mount_code VARCHAR(64)"),
-            )
+            if DIALECT_IS_MYSQL:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN storage_mount_code VARCHAR(64)"),
+                )
+            else:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS storage_mount_code VARCHAR(64)"),
+                )
             logger.warning(
                 "Detected missing atp_asset.storage_mount_code; added nullable mount code column.",
             )
 
         if "storage_root_path" not in column_names:
-            connection.execute(
-                text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS storage_root_path VARCHAR(2048)"),
-            )
+            if DIALECT_IS_MYSQL:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN storage_root_path VARCHAR(2048)"),
+                )
+            else:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS storage_root_path VARCHAR(2048)"),
+                )
             logger.warning(
                 "Detected missing atp_asset.storage_root_path; added nullable storage root path column.",
             )
@@ -495,12 +502,56 @@ def _ensure_atp_asset_column_compatibility() -> None:
         # "geometry": {"long": {...}, ...}}——atp_slot_scanner 产出，供模型管理查看、
         # 参数模板下拉取并集（目标2）、覆盖检测（目标3）使用。
         if "slots_json" not in column_names:
-            connection.execute(
-                text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS slots_json JSON DEFAULT '{}'::json"),
-            )
+            if DIALECT_IS_MYSQL:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN slots_json JSON NOT NULL DEFAULT (JSON_OBJECT())"),
+                )
+            else:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS slots_json JSON DEFAULT '{}'::json"),
+                )
             logger.warning(
                 "Detected missing atp_asset.slots_json; added slot scan cache column (target-1 refactor).",
             )
+
+        # ===== 多版本 + 生效管理（2026-10-29 改造）=====
+        # PG 与 MySQL 语法差异：PG 用 ADD COLUMN IF NOT EXISTS；MySQL 8 不支持
+        # ADD COLUMN IF NOT EXISTS（8.0.29+ 语法不同），用 information_schema 判断后 ALTER。
+        # version: 同维度组内版本号（默认 v1）
+        if "version" not in column_names:
+            if DIALECT_IS_MYSQL:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN version VARCHAR(32) NOT NULL DEFAULT 'v1'"),
+                )
+            else:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS version VARCHAR(32) NOT NULL DEFAULT 'v1'"),
+                )
+            logger.warning("Detected missing atp_asset.version; added version column (multi-version refactor).")
+
+        # is_active: 生效标志（默认 False——存量数据由迁移脚本回填 True）
+        if "is_active" not in column_names:
+            if DIALECT_IS_MYSQL:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 0"),
+                )
+            else:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT FALSE"),
+                )
+            logger.warning("Detected missing atp_asset.is_active; added is_active column (multi-version refactor).")
+
+        # shield_wire: 避雷线配置维度（with/without，默认 with——存量 4 段路径资产视为有避雷线）
+        if "shield_wire" not in column_names:
+            if DIALECT_IS_MYSQL:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN shield_wire VARCHAR(16) NOT NULL DEFAULT 'with'"),
+                )
+            else:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS shield_wire VARCHAR(16) NOT NULL DEFAULT 'with'"),
+                )
+            logger.warning("Detected missing atp_asset.shield_wire; added shield wire dimension column.")
 
 
 def _ensure_atp_asset_run_column_compatibility() -> None:
