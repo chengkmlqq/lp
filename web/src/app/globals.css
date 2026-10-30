@@ -629,7 +629,7 @@ body {
 /* ---- Tree card with border (like system-params sider) ---- */
 .admin-menus-tree-card {
   border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 10px;
+  border-radius: 6px;
   overflow: hidden;
 }
 
@@ -955,7 +955,7 @@ body {
 
 .admin-documents-tree-card {
   border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 10px;
+  border-radius: 6px;
   overflow: hidden;
 }
 
@@ -1268,7 +1268,7 @@ body {
 
 .admin-matlab-tree-card {
   border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 10px;
+  border-radius: 6px;
   overflow: hidden;
 }
 
@@ -5261,4 +5261,11 @@ h5.ant-typography,
 
 .admin-tower-models-page-card > .ant-card-body {
   padding: 12px 16px;
+}
+
+/* 卡片标题排版（对齐 MODO 页面标题口径：14px/600） */
+.ant-card .ant-card-head {
+  font-size: 14px;
+  font-weight: 600;
+  color: #242e43;
 }

@@ -178,8 +178,8 @@ const IMAGE_LOAD_ERROR_FALLBACK =
   "data:image/svg+xml;charset=utf-8," +
   encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360">' +
-      '<rect width="100%" height="100%" fill="#fafafa"/>' +
-      '<g fill="#bfbfbf" font-family="sans-serif" text-anchor="middle">' +
+      '<rect width="100%" height="100%" fill="#f9fbfd"/>' +
+      '<g fill="#a9b4c4" font-family="sans-serif" text-anchor="middle">' +
       '<circle cx="320" cy="150" r="40"/>' +
       '<path d="M280 240c8-40 24-56 40-56s32 16 40 56z"/>' +
       '<text x="320" y="290" font-size="16">{t("图片加载失败")}</text>' +

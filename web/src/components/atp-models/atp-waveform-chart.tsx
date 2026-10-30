@@ -177,8 +177,8 @@ export function WaveformChart({ data }: WaveformChartProps) {
           const val = yMax - f * (yMax - yMin);
           return (
             <g key={f}>
-              <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="#eee" strokeWidth={1} />
-              <text x={PAD.left - 6} y={y + 3} textAnchor="end" fontSize={10} fill="#999">
+              <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="#eff4f9" strokeWidth={1} />
+              <text x={PAD.left - 6} y={y + 3} textAnchor="end" fontSize={10} fill="#79879c">
                 {val.toExponential(2)}
               </text>
             </g>
@@ -190,14 +190,14 @@ export function WaveformChart({ data }: WaveformChartProps) {
           const t = (times[0] ?? 0) + f * ((times[times.length - 1] ?? 0) - (times[0] ?? 0));
           return (
             <g key={f}>
-              <line x1={x} y1={PAD.top} x2={x} y2={H - PAD.bottom} stroke="#f5f5f5" strokeWidth={1} />
-              <text x={x} y={H - 8} textAnchor="middle" fontSize={10} fill="#999">
+              <line x1={x} y1={PAD.top} x2={x} y2={H - PAD.bottom} stroke="#f5f7fa" strokeWidth={1} />
+              <text x={x} y={H - 8} textAnchor="middle" fontSize={10} fill="#79879c">
                 {t.toExponential(2)}
               </text>
             </g>
           );
         })}
-        <text x={W / 2} y={H - 4} textAnchor="middle" fontSize={11} fill="#666">
+        <text x={W / 2} y={H - 4} textAnchor="middle" fontSize={11} fill="#4e5969">
           时间(s)
         </text>
         {series.map((s) => (
