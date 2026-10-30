@@ -403,20 +403,20 @@ export default function AdminFaultRecurrencePage() {
         ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <Tabs
+          <ModoTabs
             type="editable-card"
             hideAdd
             activeKey={activeTabKey}
             onChange={setActiveTabKey}
             onEdit={handleTabsEdit}
-            className="admin-fault-recurrence-tabs"
+            className="modo-page-tabs"
             items={[
               {
                 key: "result",
                 label: <>{t("复现结果")}</>,
                 closable: false,
                 children: (
-                  <div className="admin-fault-recurrence-result-pane">
+                  <div className="modo-page-card admin-fault-recurrence-result-pane">
                     {resultTabs.length === 0 ? (
                       <Empty description={t("选择基础数据文件并执行一次复现计算后，将在这里展示结果。")} />
                     ) : (
@@ -475,14 +475,14 @@ function FaultRecurrenceResultView({
   ];
 
   return (
-    <ModoTabs
+    <Tabs
       defaultActiveKey="overview"
       items={[
         {
           key: "overview",
           label: t("结果概览"),
           children: (
-            <Space direction="vertical" size={16} className="modo-page-tabs">
+            <Space direction="vertical" size={16} className="w-full">
               <Descriptions bordered column={{ xs: 1, sm: 1, md: 2, lg: 3 }}>
                 <Descriptions.Item label={t("结果状态")}>
                   <Tag color={resultTagColor(result.result.status)}>
