@@ -1853,7 +1853,6 @@ function BackfillRecordsView({
           showTotal: (totalCount) => `共 ${totalCount} 条`,
           hideOnSinglePage: false,
           // 与卡片视图独立分页组件尺寸一致（不随 Table size=small 缩到 24px）
-          size: "default",
           onChange: (nextPage, nextPageSize) => {
             setPagination({ current: nextPage, pageSize: nextPageSize });
           },
@@ -2062,7 +2061,6 @@ function TowerNgDrawer({
             showTotal: (totalCount) => `共 ${totalCount} 条`,
             hideOnSinglePage: false,
             // 与卡片视图独立分页组件尺寸一致（不随 Table size=small 缩到 24px）
-            size: "default",
             onChange: (nextPage, nextPageSize) => {
               setPagination({ current: nextPage, pageSize: nextPageSize });
             },

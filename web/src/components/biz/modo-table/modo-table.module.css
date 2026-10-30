@@ -1,0 +1,85 @@
+.modo-table {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin: 0 16px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+/* Ensure the wrapper fills its parent flex container */
+.modo-table :global(.ant-table-wrapper) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ant Design Table flex chain: Wrapper -> Spin -> Container -> Table -> Container
+   antd v6 结构（SSR 实证）：wrapper > div > .ant-spin > .ant-spin-container > .ant-table > .ant-table-container > (.ant-table-header + .ant-table-body)
+   注意：v6 已无 .ant-spin-nested-loading 与 .ant-table-content 层（v5 有），须按 v6 实际层级打穿 */
+.modo-table :global(.ant-table-wrapper) > :global(div),
+.modo-table :global(.ant-table-wrapper) :global(.ant-spin),
+.modo-table :global(.ant-table-wrapper) :global(.ant-spin-container),
+.modo-table :global(.ant-table-wrapper) :global(.ant-table),
+.modo-table :global(.ant-table-wrapper) :global(.ant-table-container) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Header - should NOT grow or shrink */
+.modo-table :global(.ant-table-wrapper .ant-table-header),
+.modo-table :global(.ant-table-wrapper .ant-table-thead-wrapper) {
+  flex: 0 0 auto !important;
+}
+
+/* Body - 数据少时 flex 拉伸撑满剩余空间（底部无空白）；
+   数据多时下方 overflow 滚动实现表体内滚动，分页常驻底部。
+   max-height:none 覆盖 scroll.y 的 inline max-height，使高度完全由 flex 链决定 */
+.modo-table :global(.ant-table-wrapper .ant-table-body) {
+  flex: 1 1 0px !important;
+  min-height: 0;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+}
+
+/* 无 scroll.y（ModoTable 只传 x）时，rc-table 走「一体化表格」分支：
+   .ant-table-container > .ant-table-content > table，不产出 .ant-table-body
+   （rc-table Table.js: fixHeader = scroll.y 存在；仅 x 时进 else 分支渲染 -content）。
+   此时上面的 .ant-table-body 规则全部落空，而 .ant-table-content 是 block 且
+   行内 overflow-y:hidden、高度=表格内容高度 —— 行数一多就顶出容器，表格溢出页面。
+   故把 .ant-table-content 也变成 flex 滚动容器：表体在容器内滚动，页面不滚动。 */
+.modo-table :global(.ant-table-wrapper .ant-table-content) {
+  flex: 1 1 0px !important;
+  min-height: 0;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+}
+
+/* 无 scroll.y 时 antd v6 为一体化结构：container > table（无 .ant-table-body 分离）。
+   表格高度默认=内容高度，行数不足时底部留空 → 须让 table 撑满 container，
+   使表格白底整体覆盖到容器底部（底部无空白） */
+.modo-table :global(.ant-table-wrapper .ant-table-container > table) {
+  flex: 1 1 0px;
+  min-height: 0;
+  height: 100%;
+}
+
+.modo-table :global(.ant-table-wrapper .ant-table-body > table) {
+  width: 100%;
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+/* Compact rows (default) */
+.modo-table :global(.ant-table-tbody > tr > td) {
+  padding: 6px 8px !important;
+}

@@ -855,7 +855,6 @@ export default function AtpParamsPage() {
                 showSizeChanger: true,
                 showTotal: (total) => `共 ${total} 条`,
                 // 与卡片视图独立分页组件尺寸一致（不随 Table size=small 缩到 24px）
-                size: "default",
                 onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
               }}
               scroll={{ x: 780, y: tableScrollY }}
@@ -1133,7 +1132,7 @@ export default function AtpParamsPage() {
               rowKey="id"
               size="small"
               dataSource={trialTowers}
-              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${t("共 ")}${total}${t(" 座杆塔")}`, size: "default" }}
+              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${t("共 ")}${total}${t(" 座杆塔")}` }}
               locale={{ emptyText: trialLineId ? t("该线路暂无杆塔") : t("请先选择线路") }}
               rowSelection={{
                 selectedRowKeys: trialSelected,

@@ -1,68 +1,68 @@
 @import "tailwindcss";
 
 :root {
-  /* AntD base fallbacks - Lightning theme */
-  --ant-color-primary: #8b5cf6;
-  --ant-color-text: rgba(0, 0, 0, 0.88);
-  --ant-color-text-secondary: rgba(0, 0, 0, 0.65);
-  --ant-color-bg-layout: #faf8ff;
+  /* AntD base fallbacks - MODO Design System (2026-10-30 迁移自 kb_compilation) */
+  --ant-color-primary: #3261ce;
+  --ant-color-text: #242e43;
+  --ant-color-text-secondary: #79879c;
+  --ant-color-bg-layout: #eff4f9;
   --ant-color-bg-container: #ffffff;
-  --ant-color-fill-alter: #f0ebff;
-  --ant-color-border-secondary: #d4c5ff;
-  --ant-border-radius: 6px;
+  --ant-color-fill-alter: #eff4f9;
+  --ant-color-border-secondary: #e3e9ef;
+  --ant-border-radius: 2px;
   --ant-border-radius-lg: 8px;
   --ant-padding: 16px;
   --ant-padding-lg: 24px;
   --ant-margin-lg: 24px;
-  --ant-box-shadow-tertiary: 0 1px 2px 0 rgba(139, 92, 246, 0.12);
+  --ant-box-shadow-tertiary: 0 8px 20px 0 rgba(36, 46, 67, 0.1);
 
   /* Legacy semantic vars (overridden by Theme token bridge at runtime) */
   --color-panel-solid: #ffffff;
-  --border: #d4c5ff;
+  --border: #e3e9ef;
 
   --gray-1: #ffffff;
-  --gray-2: #f0ebff;
-  --gray-6: #d4c5ff;
-  --gray-10: rgba(0, 0, 0, 0.45);
-  --gray-11: rgba(0, 0, 0, 0.65);
-  --gray-12: rgba(0, 0, 0, 0.88);
-  --gray-a2: rgba(139, 92, 246, 0.08);
-  --gray-a3: rgba(139, 92, 246, 0.14);
+  --gray-2: #eff4f9;
+  --gray-6: #e3e9ef;
+  --gray-10: #95a6ba;
+  --gray-11: #79879c;
+  --gray-12: #242e43;
+  --gray-a2: rgba(36, 46, 67, 0.04);
+  --gray-a3: rgba(36, 46, 67, 0.08);
 
-  --accent-6: #c4b5fd;
-  --accent-7: #a78bfa;
-  --accent-9: #8b5cf6;
-  --accent-10: #7c3aed;
-  --accent-11: #6d28d9;
-  --accent-12: #5b21b6;
-  --accent-a2: rgba(139, 92, 246, 0.12);
-  --accent-a3: rgba(139, 92, 246, 0.18);
+  --accent-6: #97b9eb;
+  --accent-7: #739ce2;
+  --accent-9: #3261ce;
+  --accent-10: #517ed8;
+  --accent-11: #2045ae;
+  --accent-12: #112e8d;
+  --accent-a2: rgba(50, 97, 206, 0.08);
+  --accent-a3: rgba(50, 97, 206, 0.14);
   --accent-contrast: #ffffff;
 
-  --indigo-2: #eef2ff;
-  --indigo-11: #3730a3;
-  --indigo-a2: rgba(79, 70, 229, 0.12);
+  --indigo-2: #e8f3ff;
+  --indigo-11: #2045ae;
+  --indigo-a2: rgba(50, 97, 206, 0.1);
 
-  --green-6: #95de64;
-  --green-9: #52c41a;
-  --green-11: #237804;
-  --green-a2: rgba(82, 196, 26, 0.14);
-  --green-a3: rgba(82, 196, 26, 0.2);
+  --green-6: #a6e4c0;
+  --green-9: #55bc8a;
+  --green-11: #36a071;
+  --green-a2: rgba(85, 188, 138, 0.14);
+  --green-a3: rgba(85, 188, 138, 0.2);
 
-  --red-2: #fff1f0;
-  --red-6: #ff7875;
-  --red-7: #ff4d4f;
-  --red-11: #cf1322;
-  --red-a2: rgba(255, 77, 79, 0.14);
-  --red-a3: rgba(255, 77, 79, 0.22);
+  --red-2: #ffede8;
+  --red-6: #e79f94;
+  --red-7: #db7a6f;
+  --red-11: #c3342f;
+  --red-a2: rgba(195, 52, 47, 0.1);
+  --red-a3: rgba(195, 52, 47, 0.16);
 
-  --orange-9: #faad14;
-  --orange-11: #ad6800;
-  --orange-a3: rgba(250, 173, 20, 0.24);
-  --amber-11: #ad6800;
+  --orange-9: #f5a623;
+  --orange-11: #cb7f16;
+  --orange-a3: rgba(245, 166, 35, 0.18);
+  --amber-11: #cb7f16;
 
-  --fquiz-scrollbar-thumb: var(--ant-color-fill-secondary, rgba(139, 92, 246, 0.2));
-  --fquiz-scrollbar-thumb-hover: var(--ant-color-fill, rgba(139, 92, 246, 0.35));
+  --fquiz-scrollbar-thumb: rgba(36, 46, 67, 0.18);
+  --fquiz-scrollbar-thumb-hover: rgba(36, 46, 67, 0.3);
 
   /* Theme semantic bridge vars (for pages/components avoid hard-coded colors) */
   --fquiz-theme-bg-layout: var(--ant-color-bg-layout);
@@ -84,9 +84,73 @@
   --fquiz-theme-shell-header-bg: var(--fquiz-theme-bg-elevated);
   --fquiz-theme-shell-sider-bg: var(--fquiz-theme-bg-elevated);
 
-  --fquiz-theme-shadow-card: 0 10px 24px color-mix(in srgb, var(--accent-9) 22%, transparent);
-  --fquiz-theme-shadow-soft: 0 2px 8px color-mix(in srgb, var(--accent-9) 12%, transparent);
-  --fquiz-table-border-color: #d4c5ff;
+  --fquiz-theme-shadow-card: 0 2px 5px 0 rgba(36, 46, 67, 0.1);
+  --fquiz-theme-shadow-soft: 0 2px 5px 0 rgba(36, 46, 67, 0.1);
+  --fquiz-table-border-color: #e3e9ef;
+}
+
+/* ============================================================
+ * MODO Design System 基线（迁移自 kb_compilation globals.css）
+ * 字体 12px 基准 / 控件 28px / 控件圆角 2px / 卡片圆角 6px + Tier1 阴影
+ * ============================================================ */
+
+body {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "Hiragino Sans GB", "noto sans", "Microsoft YaHei", "Helvetica Neue",
+    Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #242e43;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 卡片：去边框 + 6px 圆角 + Tier1 阴影 */
+.ant-card {
+  border: none !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 5px 0 rgba(36, 46, 67, 0.1);
+}
+
+/* 按钮零阴影 */
+.ant-btn {
+  box-shadow: none !important;
+}
+
+/* 表格：浅灰表头、紧凑内边距、无竖线、行 hover */
+.ant-table-wrapper .ant-table-thead > tr > th {
+  background: #f9fbfd !important;
+  font-weight: 500;
+  color: #4d5e7d;
+  padding: 7px 8px !important;
+  border-inline-end: none !important;
+}
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  padding: 7px 8px !important;
+  border-inline-end: none !important;
+}
+.ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: #f9fbfd !important;
+}
+
+/* Tabs 导航条贴合页面标题带 */
+.ant-tabs .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+/* 全局滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(50, 50, 50, 0.25);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(50, 50, 50, 0.4);
 }
 
 :root[data-fquiz-theme="dark"] {
@@ -374,19 +438,73 @@ body {
 }
 
 .admin-design-shell {
-  min-height: 100vh;
-  background: var(--ant-color-bg-layout);
+  height: 100vh;
+  overflow: hidden;
+  background: #eff4f9;
 }
 
+/* 顶栏：48px 白底 + 1px 下边框（MODO 规格） */
 .admin-design-header {
   position: sticky;
   top: 0;
   z-index: 50;
   display: flex;
   align-items: center;
-  background: var(--fquiz-theme-shell-header-bg);
-  border-bottom: 1px solid var(--ant-color-border-secondary);
-  box-shadow: var(--ant-box-shadow-tertiary);
+  justify-content: space-between;
+  height: 48px;
+  line-height: 48px;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #e3e9ef;
+  box-shadow: none;
+}
+
+.admin-design-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-design-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.admin-design-header-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #242e43;
+  line-height: 1;
+}
+
+.admin-design-header-divider {
+  width: 1px;
+  height: 14px;
+  background: #e3e9ef;
+  margin-left: 8px;
+}
+
+.admin-design-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-design-header-user {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding-right: 12px;
+}
+
+.admin-design-header-username {
+  color: #242e43;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .admin-design-header .ant-space {
@@ -418,32 +536,33 @@ body {
   vertical-align: middle;
 }
 
+/* 侧边栏：双列 rail 导航容器（kb-nav 样式见下） */
 .admin-design-sider {
-  position: sticky;
-  top: 64px;
-  height: calc(100vh - 64px);
-  overflow: auto;
-  border-right: 1px solid var(--ant-color-border-secondary);
+  position: relative;
+  flex-shrink: 0;
+  height: calc(100vh - 48px);
+  overflow: hidden;
+  background: transparent;
 }
 
-.admin-design-sider-inner {
+/* 右下角子菜单折叠按钮 */
+.admin-design-sider-collapse {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
   display: flex;
-  min-height: 100%;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 12px;
-}
-
-.admin-design-sider-menu {
-  min-height: 0;
-  flex: 1;
-}
-
-.admin-design-sider-footer {
-  display: flex;
+  align-items: center;
   justify-content: center;
-  border-top: 1px solid var(--ant-color-border-secondary);
-  padding-top: 12px;
+  background-color: #eff4f9;
+  border-radius: 50%;
+  transition: box-shadow 0.2s;
+  z-index: 10;
+}
+.admin-design-sider-collapse:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .admin-design-main {
@@ -453,13 +572,14 @@ body {
 .admin-design-content {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
+  height: calc(100vh - 48px);
   overflow: hidden;
   padding: 10px;
+  background: #eff4f9;
 }
 
 .admin-design-page-header {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .admin-design-page-title {
@@ -477,6 +597,121 @@ body {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * 双列侧边导航（迁移自 kb_compilation：对齐 MODO narrow 菜单）
+ * 第一列 80px 一级方块卡（图标上/文字下，60px 高、radius 8、
+ * 选中 fill-2 #EFF4F9 + 图标主色）
+ * + 第二列 160px 子菜单（白底、项 36px/radius 4/间距 8、选中 fill-2 + 主色）
+ * ═══════════════════════════════════════════════════════════ */
+.kb-nav {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+}
+.kb-nav-rail {
+  width: 80px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #f9fbfd;
+  border-right: 1px solid #e3e9ef;
+}
+.kb-nav-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 60px;
+  padding: 8px 4px;
+  row-gap: 4px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  background: #f9fbfd;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+.kb-nav-card:hover {
+  background: #eff4f9;
+}
+.kb-nav-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  font-size: 24px;
+  line-height: 24px;
+  color: #4d5e7d;
+}
+.kb-nav-card-label {
+  width: 100%;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  color: #4d5e7d;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kb-nav-card.is-active {
+  background: #eff4f9;
+}
+.kb-nav-card.is-active .kb-nav-card-icon {
+  color: #3261ce;
+}
+.kb-nav-card.is-active .kb-nav-card-label {
+  color: #4d5e7d;
+  font-weight: 600;
+}
+.kb-nav-sub {
+  width: 160px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  padding: 10px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #fff;
+  border-right: 1px solid #e3e9ef;
+}
+.kb-nav-sub-title {
+  padding: 8px 7px 4px;
+  font-size: 12px;
+  color: #95a6ba;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-nav-sub-item {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 7px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 36px;
+  color: #242e43;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.kb-nav-sub-item:hover {
+  background: #eff4f9;
+  color: #242e43;
+}
+.kb-nav-sub-item.is-active {
+  background: #eff4f9;
+  color: #3261ce;
 }
 
 .ant-message {

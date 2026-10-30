@@ -1019,7 +1019,6 @@ export default function AtpParamTemplatesPage() {
                         pageSizeOptions: [10, 20, 50, 100],
                         showTotal: () => `${t("共")} ${filteredRows.length} ${t("条")}`,
                         // 与卡片视图独立分页组件尺寸一致（default=32px，不随 Table size=small 缩到 24px）
-                        size: "default",
                         onChange: (page, pageSize) => {
                           setPagination({ current: page, pageSize });
                         },
