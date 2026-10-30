@@ -1089,7 +1089,14 @@ def _auto_resolve_asset(
         ).scalar_one_or_none()
         if active:
             return active
-        return db.execute(stmt.limit(1)).scalar_one_or_none()
+        # 回退兜底：组内无生效版（存量未激活/全部被 deactivate）时取任一 enabled。
+        # 按 update_date 最新优先，避免 limit(1) 无排序任取造成行为抖动；并记警告方便排查。
+        logger.warning(
+            "ATP 资产组内无 is_active 生效版（voltage=%s tower=%s scene=%s arrester=%s shield_wire=%s），"
+            "回退取任一 enabled（最近更新优先）",
+            voltage_kv, tower_filter, scene, arrester_filter, shield_wire or "不限",
+        )
+        return db.execute(stmt.order_by(AtpAsset.update_date.desc()).limit(1)).scalar_one_or_none()
 
     if tower:
         # ⚠️ 2026-09-13 修复：指定塔型时必须命中「该塔型」的资产；查不到就抛错，
