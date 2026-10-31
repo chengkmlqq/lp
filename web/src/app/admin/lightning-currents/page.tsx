@@ -1499,7 +1499,7 @@ function AmplitudeDetailView({
 }) {
   const { t } = useI18n();
   return (
-    <Space direction="vertical" size={24} className="w-full admin-lightning-currents-detail-pane">
+    <div className="admin-lightning-currents-detail-pane modo-page-card">
       <div>
         <Typography.Title level={5}>{t("基本信息")}</Typography.Title>
         <Descriptions bordered size="small" column={2} className="admin-lightning-currents-meta-table">
@@ -1608,6 +1608,6 @@ function AmplitudeDetailView({
           )}
         </div>
       )}
-    </Space>
+    </div>
   );
 }

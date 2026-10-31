@@ -260,7 +260,7 @@ export function AtpBatchHistoryTab() {
   }
 
   return (
-    <div className="admin-atp-batch-history-pane">
+    <div className="admin-atp-batch-history-pane modo-page-card">
       {/* 工具条:搜索 + 批量测试 + 刷新 */}
       <div className="admin-filter-bar">
         <Form layout="inline" onFinish={handleSearch}>

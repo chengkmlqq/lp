@@ -1475,7 +1475,7 @@ function DistributionDetailView({
   }, [imageQuery.data]);
 
   return (
-    <div className="admin-lightning-distribution-detail-view">
+    <div className="admin-lightning-distribution-detail-view modo-page-card">
       <Space direction="vertical" size={16} className="w-full">
       <Descriptions bordered size="small" column={3}>
         <Descriptions.Item label={t("城市")}>{record.city || "-"}</Descriptions.Item>
@@ -1776,7 +1776,7 @@ function BackfillRecordsView({
 
   return (
     <div
-      className="admin-lightning-distribution-backfill-view"
+      className="admin-lightning-distribution-backfill-view modo-page-card"
       ref={tableScrollAnchorRef}
       style={{ "--admin-lightning-distribution-backfill-table-body-min-height": `${tableScrollY}px` } as CSSProperties}
     >

@@ -27,7 +27,6 @@ import {
 
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
-import { Card } from "@/components/ui-antd";
 import { readApiError } from "@/lib/api";
 import type { FaultAnalysisDetail } from "@/types/auth";
 
@@ -1189,53 +1188,48 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
   };
 
   return (
-    <div className="flex flex-col gap-4 h-full">
-      <Card
-        className="flex-1 overflow-hidden"
-        styles={{ body: { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } }}
-      >
-        <div className="flex items-center justify-between gap-3 flex-shrink-0 px-4 py-3 border-b border-gray-200">
-          <Segmented
-            value={activeView}
-            onChange={(value) => setActiveView(value as "report" | "process" | "artifacts")}
-            options={[
-              { label: t("报告"), value: "report" },
-              { label: t("计算过程"), value: "process" },
-              { label: t("产物"), value: "artifacts" },
-            ]}
+    <div className="modo-page-card">
+      <div className="flex items-center justify-between gap-3 flex-shrink-0 px-4 py-3 border-b border-gray-200">
+        <Segmented
+          value={activeView}
+          onChange={(value) => setActiveView(value as "report" | "process" | "artifacts")}
+          options={[
+            { label: t("报告"), value: "report" },
+            { label: t("计算过程"), value: "process" },
+            { label: t("产物"), value: "artifacts" },
+          ]}
+        />
+      </div>
+      {activeView === "report" && (
+        <ReportView
+          tabKey={tabKey}
+          exportElementId={exportElementId}
+          detail={detail}
+          sections={buildSections(detail, t)}
+          exportLoading={exporting}
+          onExportReport={handleExportReport}
+          onOpenLog={onOpenLog}
+        />
+      )}
+      {activeView === "process" && (
+        <div className="flex-1 min-h-0 overflow-auto">
+          <ProcessView
+            tabKey={tabKey}
+            computationSteps={computationSteps}
+            resultJson={resultJson}
           />
         </div>
-        {activeView === "report" && (
-          <ReportView
+      )}
+      {activeView === "artifacts" && (
+        <div className="flex-1 min-h-0 overflow-auto">
+          <ArtifactsView
             tabKey={tabKey}
-            exportElementId={exportElementId}
-            detail={detail}
-            sections={buildSections(detail, t)}
-            exportLoading={exporting}
-            onExportReport={handleExportReport}
-            onOpenLog={onOpenLog}
+            artifactTree={artifactTree}
+            downloadingArtifact={downloadingArtifact}
+            onDownload={handleDownloadArtifact}
           />
-        )}
-        {activeView === "process" && (
-          <div className="flex-1 min-h-0 overflow-auto">
-            <ProcessView
-              tabKey={tabKey}
-              computationSteps={computationSteps}
-              resultJson={resultJson}
-            />
-          </div>
-        )}
-        {activeView === "artifacts" && (
-          <div className="flex-1 min-h-0 overflow-auto">
-            <ArtifactsView
-              tabKey={tabKey}
-              artifactTree={artifactTree}
-              downloadingArtifact={downloadingArtifact}
-              onDownload={handleDownloadArtifact}
-            />
-          </div>
-        )}
-      </Card>
+        </div>
+      )}
     </div>
   );
 }

@@ -311,7 +311,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col p-4">
+    <div className="modo-page-card">
       {/* 工具条：测试时间过滤 + 测试按钮 */}
       <div className="mb-4 flex items-center gap-3">
         <Space size={8} wrap>

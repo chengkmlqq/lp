@@ -105,7 +105,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
   }
 
   return (
-    <div className="admin-atp-models-detail-pane">
+    <div className="admin-atp-models-detail-pane modo-page-card">
       {assetQuery.isLoading ? (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
           <Spin />

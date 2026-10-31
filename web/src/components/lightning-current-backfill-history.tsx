@@ -805,7 +805,7 @@ export function LightningCurrentBackfillHistoryTable({
   const tableLoading = isAmplitudeMode ? amplitudeLinesQuery.isLoading : listQuery.isLoading;
 
   return (
-    <div className="admin-lightning-backfill-pane">
+    <div className="admin-lightning-backfill-pane modo-page-card">
       {isAmplitudeMode && (
         <div className="admin-filter-bar">
           <Form layout="inline" onFinish={handleSearch}>

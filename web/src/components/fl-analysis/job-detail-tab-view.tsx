@@ -218,7 +218,7 @@ export function JobDetailTabView({
   return (
     <>
       {contextHolder}
-      <div className="admin-fl-analysis-detail-pane">
+      <div className="admin-fl-analysis-detail-pane modo-page-card">
         <div>
           <JobDetailPanel
             selectedJob={liveJob}

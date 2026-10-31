@@ -55,7 +55,7 @@ export default function AdminLightningCurrentsBackfillHistoryPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="flex min-h-0 flex-1 flex-col">
       <LightningCurrentBackfillHistoryTable />
     </div>
   );

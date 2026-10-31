@@ -74,31 +74,35 @@ export default function AdminPowerLineMapPage() {
   }
   if (!user) {
     return (
-      <Card>
-        <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">{t("请先登录后再访问地图页面。")}</Typography.Text>
-          <Button>
-            <Link href="/">{t("返回首页")}</Link>
-          </Button>
-        </Space>
-      </Card>
+      <div className="modo-page-card admin-power-line-preview-pane">
+        <Card size="small">
+          <Space direction="vertical" size={12}>
+            <Typography.Text type="secondary">{t("请先登录后再访问地图页面。")}</Typography.Text>
+            <Button>
+              <Link href="/">{t("返回首页")}</Link>
+            </Button>
+          </Space>
+        </Card>
+      </div>
     );
   }
   if (!canTowerRead) {
     return (
-      <Card>
-        <Space direction="vertical" size={12}>
-          <Typography.Text type="secondary">{t("你没有访问该页面的权限（需要 `tower.read` 或 `line.read`）。")}</Typography.Text>
-          <Button>
-            <Link href="/admin/power-lines">{t("返回线路列表")}</Link>
-          </Button>
-        </Space>
-      </Card>
+      <div className="modo-page-card admin-power-line-preview-pane">
+        <Card size="small">
+          <Space direction="vertical" size={12}>
+            <Typography.Text type="secondary">{t("你没有访问该页面的权限（需要 `tower.read` 或 `line.read`）。")}</Typography.Text>
+            <Button>
+              <Link href="/admin/power-lines">{t("返回线路列表")}</Link>
+            </Button>
+          </Space>
+        </Card>
+      </div>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col">
+    <div className="modo-page-card admin-power-line-preview-pane">
       <div className="relative min-h-0 flex-1">
         <PowerLineMapPanel lineId={lineId} accessToken={getAccessToken() ?? ""} />
       </div>

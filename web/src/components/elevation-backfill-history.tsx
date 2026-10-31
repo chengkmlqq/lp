@@ -440,7 +440,7 @@ export function ElevationBackfillHistoryTable({
   }
 
   return (
-    <div className="admin-elevation-backfill-pane">
+    <div className="admin-elevation-backfill-pane modo-page-card">
       {/* 线路名称过滤 + 查询（点击查询后走后端 keyword 过滤） */}
       <div className="admin-filter-bar">
         <Form layout="inline" onFinish={handleSearch}>
