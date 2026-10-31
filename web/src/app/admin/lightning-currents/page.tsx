@@ -19,6 +19,7 @@ import {
   Segmented,
   Select,
   Space,
+  Spin,
   Table,
   Tag,
   Tooltip as AntTooltip,
@@ -1159,7 +1160,7 @@ export default function AdminLightningCurrentsPage() {
                   <div className="admin-lightning-events-card-view">
                     {recordsQuery.isLoading && records.length === 0 ? (
                       <div className="admin-lightning-events-card-view-state">
-                        <AdminPageLoading minHeightClassName="min-h-[180px]" />
+                        <Spin />
                       </div>
                     ) : records.length === 0 ? (
                       <div className="admin-lightning-events-card-view-state">

@@ -19,6 +19,7 @@ import {
   Progress,
   Select,
   Space,
+  Spin,
   Table,
   Tag,
   Tooltip,
@@ -29,7 +30,6 @@ import type { MenuProps } from "antd";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { MoreOutlined } from "@ant-design/icons";
-import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useBackfillTaskProgressSync, type BackfillTaskPatch } from "@/hooks/use-backfill-task-progress";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { readApiError } from "@/lib/api";
@@ -987,7 +987,9 @@ export function LightningCurrentBackfillHistoryTable({
         destroyOnHidden
       >
           {(detailLoading && !task) ? (
-            <AdminPageLoading minHeightClassName="min-h-[240px]" />
+            <div className="flex min-h-[240px] items-center justify-center">
+              <Spin />
+            </div>
           ) : task ? (
             <Space direction="vertical" size={16} className="w-full">
               <Descriptions bordered size="small" column={2}>

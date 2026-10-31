@@ -209,7 +209,7 @@ export function JobDetailTabView({
   // 避免 JobDetailPanel 和 ResultTable 各自返回裸 <Spin /> 在左上角堆两个图标。
   if (jobDetailQuery.isLoading || towerResultsQuery.isLoading) {
     return (
-      <div className="flex min-h-[280px] w-full flex-1 items-center justify-center">
+      <div className="modo-page-card flex min-h-[280px] w-full flex-1 items-center justify-center">
         <Spin size="large" />
       </div>
     );

@@ -423,19 +423,23 @@ export function ElevationBackfillHistoryTable({
 
   if (!user) {
     return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={t("请先登录后再访问回填记录。")}
-      />
+      <div className="modo-page-card">
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={t("请先登录后再访问回填记录。")}
+        />
+      </div>
     );
   }
 
   if (!canRead) {
     return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={t("暂无权限查看回填记录。")}
-      />
+      <div className="modo-page-card">
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={t("暂无权限查看回填记录。")}
+        />
+      </div>
     );
   }
 

@@ -1132,7 +1132,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
 
   if (detailQuery.isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="modo-page-card flex min-h-[280px] items-center justify-center">
         <Spin size="large" />
       </div>
     );
@@ -1140,23 +1140,29 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
 
   if (detailQuery.error) {
     return (
-      <Alert
-        type="error"
-        showIcon
-        message={t("加载失败")}
-        description={
-          detailQuery.error instanceof Error
-            ? detailQuery.error.message
-            : t("未知错误")
-        }
-      />
+      <div className="modo-page-card">
+        <Alert
+          type="error"
+          showIcon
+          message={t("加载失败")}
+          description={
+            detailQuery.error instanceof Error
+              ? detailQuery.error.message
+              : t("未知错误")
+          }
+        />
+      </div>
     );
   }
 
   const detail = detailQuery.data;
 
   if (!detail) {
-    return <Alert type="info" showIcon message={t("未找到该故障分析记录")} />;
+    return (
+      <div className="modo-page-card">
+        <Alert type="info" showIcon message={t("未找到该故障分析记录")} />
+      </div>
+    );
   }
 
   const { sections, station, fault_datetime, fault_id } = buildSections(detail, t);

@@ -2,12 +2,11 @@
 
 import { SearchOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Card, Form, Input, Space, Typography } from "antd";
+import { Button, Card, Form, Input, Space, Spin, Typography } from "antd";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
-import { AdminPageLoading } from "@/components/admin-page-loading";
 import { PowerLineCesiumMap } from "@/components/power-line-cesium-map";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
@@ -81,7 +80,11 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
   };
 
   if (initializing) {
-    return <AdminPageLoading minHeightClassName="min-h-[280px]" />;
+    return (
+      <div className="flex min-h-[280px] items-center justify-center">
+        <Spin />
+      </div>
+    );
   }
   if (!user) {
     return (
