@@ -5,6 +5,7 @@ import { Form, Row, Col, Tooltip, Tag } from "antd";
 import type { FormInstance } from "antd";
 import { ClearOutlined, FilterOutlined } from "@ant-design/icons";
 import ModoButton from "@/components/biz/modo-button";
+import { useI18n } from "@/lib/i18n";
 
 type FilterParams = Record<string, unknown>;
 type FilterValueRenderer = Record<string, React.ReactNode> | ((value: unknown) => React.ReactNode);
@@ -41,6 +42,7 @@ export function PageFilter<TFormValues extends object = object, TSearchParams ex
   valueMap = {},
   children,
 }: PageFilterProps<TFormValues, TSearchParams>) {
+  const { t } = useI18n();
   const [expand, setExpand] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -222,7 +224,7 @@ export function PageFilter<TFormValues extends object = object, TSearchParams ex
             </div>
 
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "flex-end", gap: 10, flexShrink: 0 }}>
-              <Tooltip title="重置">
+              <Tooltip title={t("重置")}>
                 <ModoButton
                   type="text"
                   shape="circle"
@@ -232,7 +234,7 @@ export function PageFilter<TFormValues extends object = object, TSearchParams ex
                 />
               </Tooltip>
               {items.length > 3 && (
-                <Tooltip title={expand ? "收起" : "展开筛选"}>
+                <Tooltip title={expand ? t("收起") : t("展开筛选")}>
                   <ModoButton
                     type="text"
                     shape="circle"

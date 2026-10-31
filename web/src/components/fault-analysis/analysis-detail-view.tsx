@@ -307,7 +307,7 @@ function buildComputationSteps(t: (s: string) => string): ComputationStepDef[] {
           label: t("判别状态"),
           get: (rj) => {
             const status = rjText(rj, "ground_fault_decision.status", "-");
-            const map: Record<string, string> = { decided: t("已判定"), uncertain: "不确定" };
+            const map: Record<string, string> = { decided: t("已判定"), uncertain: t("不确定") };
             return map[status] ?? status;
           },
         },
@@ -467,7 +467,7 @@ function buildComputationSteps(t: (s: string) => string): ComputationStepDef[] {
           label: t("状态"),
           get: (rj) => {
             const status = rjText(rj, "lightning_cause_analysis.status", "-");
-            const map: Record<string, string> = { not_applicable: t("不适用"), unavailable: "不可用" };
+            const map: Record<string, string> = { not_applicable: t("不适用"), unavailable: t("不可用") };
             return map[status] ?? status;
           },
         },
@@ -526,7 +526,7 @@ function buildComputationSteps(t: (s: string) => string): ComputationStepDef[] {
           label: t("风险等级"),
           get: (rj) => {
             const level = rjText(rj, "risk_level", "-");
-            const map: Record<string, string> = { low: t("低风险"), medium: "中风险", high: "高风险", critical: "极高风险" };
+            const map: Record<string, string> = { low: t("低风险"), medium: t("中风险"), high: t("高风险"), critical: t("极高风险") };
             return map[level] ?? level;
           },
         },
@@ -1123,7 +1123,7 @@ export function AnalysisDetailView({ analysisId, tabKey, defaultView, onOpenLog 
       URL.revokeObjectURL(url);
       messageApi.success(t("Word报告导出成功"));
     } catch (error) {
-      console.error("导出报告失败", error);
+      console.error(t("导出报告失败"), error);
       messageApi.error(error instanceof Error ? error.message : t("导出失败，请重试"));
     } finally {
       setExporting(false);

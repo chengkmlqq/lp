@@ -217,7 +217,7 @@ export function AtpTestSetDetailDrawer({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["atp-test-set-cases", set?.id] });
       void queryClient.invalidateQueries({ queryKey: ["atp-test-sets"] });
-      message.success(editingCase ? t("用例已更新") : "用例已添加");
+      message.success(editingCase ? t("用例已更新") : t("用例已添加"));
       setCaseModalOpen(false);
       onChanged();
     },
@@ -799,13 +799,13 @@ export function AtpTestSetDetailDrawer({
 
       {/* 用例编辑弹窗 */}
       <Modal
-        title={editingCase ? t("编辑用例") : "新增用例"}
+        title={editingCase ? t("编辑用例") : t("新增用例")}
         open={caseModalOpen}
         onCancel={() => setCaseModalOpen(false)}
         onOk={() => void caseForm.submit()}
         confirmLoading={saveCaseMutation.isPending}
         destroyOnHidden
-        okText={saveCaseMutation.isPending ? t("提交中...") : editingCase ? t("保存") : "添加"}
+        okText={saveCaseMutation.isPending ? t("提交中...") : editingCase ? t("保存") : t("添加")}
         cancelText={t("取消")}
         width={720}
       >

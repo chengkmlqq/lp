@@ -204,7 +204,7 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
           {
             key: "kind",
             label: t("类型"),
-            children: isLib ? "线路模型库(.lib)" : isLog ? "ATP 运行日志" : "文本",
+            children: isLib ? t("线路模型库(.lib)") : isLog ? t("ATP 运行日志") : t("文本"),
           },
         ]}
       />
