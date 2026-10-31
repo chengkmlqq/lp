@@ -23,7 +23,7 @@ import {
   type CardProps,
   type TableColumnsType,
 } from "antd";
-import { FileTextOutlined, SearchOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, FileTextOutlined, SearchOutlined, SyncOutlined, UnorderedListOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
@@ -49,6 +49,17 @@ const TASK_MONITOR_TABLE_VIEWPORT_GAP = 40;
 const TASK_MONITOR_TABLE_FALLBACK_RESERVE = 220;
 
 /** Response type from /api/v1/admin/task-monitor/overview */
+type OverviewStateBucketItem = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+type OverviewQueueItem = {
+  name: string;
+  pending_count: number;
+};
+
 type OverviewMonitorTaskItem = {
   task_id: string;
   name: string;
@@ -81,6 +92,24 @@ type TaskMonitorOverviewResponse = {
   workers: OverviewMonitorWorkerItem[];
   tasks: OverviewMonitorTaskItem[];
   total: number;
+  /** 全量（按关键词过滤后）任务状态分桶聚合 */
+  task_state_buckets?: OverviewStateBucketItem[];
+  /** Redis 队列中待消费消息总数 */
+  queue_pending_total?: number;
+  queues?: OverviewQueueItem[];
+};
+
+/** 顶部统计卡片数据（由 task_state_buckets 聚合得出） */
+type TaskMonitorStats = {
+  ready: boolean;
+  total: number;
+  running: number;
+  pending: number;
+  success: number;
+  failed: number;
+  share: (count: number) => string;
+  queueCount: number;
+  queuePending: number;
 };
 
 type TaskTableRow = {
@@ -200,6 +229,29 @@ export default function AdminTaskMonitorPage() {
   });
 
   const overviewData = overviewQuery.data;
+
+  // 顶部统计卡：表格/卡片视图共用（同一关键词下聚合口径一致，均来自后端全量分桶）
+  const activeOverview = viewMode === "table" ? overviewData : cardQuery.data;
+
+  const taskStats = useMemo<TaskMonitorStats>(() => {
+    const buckets = activeOverview?.task_state_buckets ?? [];
+    const countOf = (states: string[]) =>
+      buckets
+        .filter((bucket) => states.includes((bucket.key || "").toUpperCase()))
+        .reduce((sum, bucket) => sum + (Number(bucket.count) || 0), 0);
+    const total = activeOverview?.total ?? 0;
+    return {
+      ready: Boolean(activeOverview),
+      total,
+      running: countOf(["STARTED", "RUNNING"]),
+      pending: countOf(["PENDING", "RECEIVED", "SCHEDULED", "RETRY"]),
+      success: countOf(["SUCCESS"]),
+      failed: countOf(["FAILURE", "REVOKED"]),
+      share: (count: number) => (total > 0 ? `${((count / total) * 100).toFixed(1)}%` : "-"),
+      queueCount: activeOverview?.queues?.length ?? 0,
+      queuePending: activeOverview?.queue_pending_total ?? 0,
+    };
+  }, [activeOverview]);
 
   const handleDeleteTask = useCallback(async (taskId: string) => {
     setDeletingTaskId(taskId);
@@ -520,6 +572,59 @@ export default function AdminTaskMonitorPage() {
     };
   }, [updateTableScrollY, viewMode]);
 
+  const statCards = useMemo(
+    () => [
+      {
+        key: "total",
+        label: t("任务总数"),
+        value: taskStats.ready ? String(taskStats.total) : "—",
+        hint: taskStats.ready
+          ? `${t("队列")} ${taskStats.queueCount} · ${t("排队消息")} ${taskStats.queuePending}`
+          : "",
+        icon: <UnorderedListOutlined />,
+        tone: "#4d5e7d",
+        toneBg: "#eff4f9",
+      },
+      {
+        key: "running",
+        label: t("执行中"),
+        value: taskStats.ready ? String(taskStats.running) : "—",
+        hint: taskStats.ready ? `${t("占比")} ${taskStats.share(taskStats.running)}` : "",
+        icon: <SyncOutlined />,
+        tone: "#3261ce",
+        toneBg: "rgba(50, 97, 206, 0.08)",
+      },
+      {
+        key: "pending",
+        label: t("待执行"),
+        value: taskStats.ready ? String(taskStats.pending) : "—",
+        hint: taskStats.ready ? `${t("占比")} ${taskStats.share(taskStats.pending)}` : "",
+        icon: <ClockCircleOutlined />,
+        tone: "#cb7f16",
+        toneBg: "rgba(245, 166, 35, 0.12)",
+      },
+      {
+        key: "success",
+        label: t("成功"),
+        value: taskStats.ready ? String(taskStats.success) : "—",
+        hint: taskStats.ready ? `${t("占比")} ${taskStats.share(taskStats.success)}` : "",
+        icon: <CheckCircleOutlined />,
+        tone: "#36a071",
+        toneBg: "rgba(85, 188, 138, 0.14)",
+      },
+      {
+        key: "failed",
+        label: t("失败"),
+        value: taskStats.ready ? String(taskStats.failed) : "—",
+        hint: taskStats.ready ? `${t("占比")} ${taskStats.share(taskStats.failed)}` : "",
+        icon: <CloseCircleOutlined />,
+        tone: "#c3342f",
+        toneBg: "rgba(195, 52, 47, 0.1)",
+      },
+    ],
+    [t, taskStats],
+  );
+
   const renderTaskCard = (task: TaskTableRow) => (
     <AntCard
       key={task.key}
@@ -639,6 +744,23 @@ export default function AdminTaskMonitorPage() {
             closable: false,
             children: (
               <div ref={pageCardRef} className="modo-page-card admin_task_monitor_list_pane">
+        <div className="admin-task-monitor-stats">
+          {statCards.map((card) => (
+            <div key={card.key} className="admin-task-monitor-stat-card">
+              <div
+                className="admin-task-monitor-stat-icon"
+                style={{ color: card.tone, background: card.toneBg }}
+              >
+                {card.icon}
+              </div>
+              <div className="admin-task-monitor-stat-meta">
+                <div className="admin-task-monitor-stat-label">{card.label}</div>
+                <div className="admin-task-monitor-stat-value">{card.value}</div>
+                <div className="admin-task-monitor-stat-hint">{card.hint}</div>
+              </div>
+            </div>
+          ))}
+        </div>
         {viewMode === "card" ? (
           <div className="admin-filter-bar">
             <Form layout="inline">
