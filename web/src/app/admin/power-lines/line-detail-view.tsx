@@ -590,7 +590,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
 
   if (lineError || !lineDetail) {
     return (
-      <div className="flex flex-1 flex-col p-6">
+      <div className="modo-page-card admin-power-line-detail-pane">
         <Card size="small" className="admin-power-line-detail-meta">
           <Space direction="vertical" size={12}>
             <Typography.Text type="danger">{lineError || t("加载线路失败")}</Typography.Text>
@@ -601,7 +601,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
   }
 
   return (
-    <div className="flex flex-1 flex-col p-6">
+    <div className="modo-page-card admin-power-line-detail-pane">
       <div className="admin-filter-bar">
         <Form layout="inline" className="flex flex-wrap items-center gap-2">
           <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>

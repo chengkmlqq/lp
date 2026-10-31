@@ -407,7 +407,7 @@ export default function AdminPowerLinesPage() {
           label: `线路预览 - ${line.name || line.code}`,
           closable: true,
           children: (
-            <div className="flex flex-1 flex-col">
+            <div className="modo-page-card admin-power-line-preview-pane">
               <PowerLineMapPanel lineId={line.id} accessToken={getAccessToken() ?? ""} />
             </div>
           ),
