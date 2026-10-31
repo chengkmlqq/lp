@@ -4,5 +4,7 @@
   display: flex;
   justify-content: flex-start;
   padding: 10px 16px 8px;
-  background: #f9fbfd;
+  /* 去灰底：白卡内分页条改为透明 + 顶部发丝线（原 #f9fbfd 灰带观感脏） */
+  background: transparent;
+  border-top: 1px solid #eff4f9;
 }

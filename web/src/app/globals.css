@@ -5331,3 +5331,13 @@ h5.ant-typography,
   color: #3d8f99 !important;
   border-color: #d5e9eb !important;
 }
+
+/* ═══════════════════════════════════════════════════════════
+ * Descriptions（bordered）：标签列去灰底。
+ * 原 colorFillAlter 灰蓝色块大面积铺在详情抽屉里观感沉重，
+ * MODO 扁平口径：白底 + 灰字标签 + 发丝线分隔。
+ * ═══════════════════════════════════════════════════════════ */
+.ant-descriptions-bordered .ant-descriptions-item-label {
+  background: transparent !important;
+  color: #79879c;
+}
