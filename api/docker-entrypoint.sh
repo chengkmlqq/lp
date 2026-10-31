@@ -17,6 +17,27 @@ if [ -f "${STATIC_ROOT}/ATP/tpbig.exe" ]; then
     fi
 fi
 
+# --- mytpbig.exe (Wine 引擎入口, atp_engine_executable/atp_tpbig_executable 默认值均指向它) ---
+# ATP 官方 atpmingw 编译版(与 tpbig.exe 是两个不同程序, 不能互相替代), 必须随镜像分发,
+# 否则新环境部署时外部/legacy ATP 路径都会报 "ATP engine executable not found"。
+if [ -f "${STATIC_ROOT}/ATP/mytpbig.exe" ]; then
+    mkdir -p "${DATA_ROOT}/ATP"
+    if [ ! -f "${DATA_ROOT}/ATP/mytpbig.exe" ] || ! cmp -s "${STATIC_ROOT}/ATP/mytpbig.exe" "${DATA_ROOT}/ATP/mytpbig.exe"; then
+        cp "${STATIC_ROOT}/ATP/mytpbig.exe" "${DATA_ROOT}/ATP/mytpbig.exe"
+        echo "entrypoint: initialized ${DATA_ROOT}/ATP/mytpbig.exe"
+    fi
+fi
+
+# --- rjtzl.exe (绕击 EGM 单塔引擎, atp_rjtzl_executable 默认值) ---
+# 与 tpbig/mytpbig 同理随镜像分发; 缺失时 legacy_atp_adapter 报 "rjtzl.exe不存在"。
+if [ -f "${STATIC_ROOT}/ATP/rjtzl.exe" ]; then
+    mkdir -p "${DATA_ROOT}/ATP"
+    if [ ! -f "${DATA_ROOT}/ATP/rjtzl.exe" ] || ! cmp -s "${STATIC_ROOT}/ATP/rjtzl.exe" "${DATA_ROOT}/ATP/rjtzl.exe"; then
+        cp "${STATIC_ROOT}/ATP/rjtzl.exe" "${DATA_ROOT}/ATP/rjtzl.exe"
+        echo "entrypoint: initialized ${DATA_ROOT}/ATP/rjtzl.exe"
+    fi
+fi
+
 # --- tpbig.exe (atp-storage path: used by atp_engine_executable) ---
 if [ -f "${STATIC_ROOT}/atp/tpbig.exe" ]; then
     mkdir -p "${DATA_ROOT}/atp"
