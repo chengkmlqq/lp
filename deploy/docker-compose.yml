@@ -53,7 +53,6 @@ services:
   celery-worker:
     image: crpi-u265r07n4blchcqo.cn-shanghai.personal.cr.aliyuncs.com/ck-registry/fquiz-api:latest
     container_name: lp-celery-worker
-    entrypoint: [""]
     command:
       - celery
       - -A
