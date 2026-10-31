@@ -5204,6 +5204,63 @@ body {
   border-bottom: 1px solid #eff4f9;
 }
 
+/* ── 左右结构页（左树右表）：过滤带高度统一，左右底边线水平对齐 ──
+   左树搜索区（sider-search）与右侧筛选条（admin-filter-bar）原高度不一
+   （左 57px：12px padding + 输入框；右 37px：仅 8px 底 padding），
+   两条底边分隔线高低不齐，观感割裂。统一为 48px 高 + 控件垂直居中，
+   两条分隔线精确落在同一水平线上。仅作用于 5 个分栏页容器，
+   全站其余 filter-bar 页面不受影响。 */
+.admin-documents-page-body .admin-filter-bar,
+.admin-menus-page-body .admin-filter-bar,
+.admin-system-params-page-body .admin-filter-bar,
+.admin-dimensions-page-body .admin-filter-bar,
+.admin-atp-models-page-body .admin-filter-bar {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  /* 49px = 左树搜索区 48px + 树卡 1px 外边框，补齐两侧底边线的最后 1px */
+  min-height: 49px;
+  padding: 0;
+}
+
+/* 筛选条内的 inline Form 撑满宽度并允许换行 */
+.admin-documents-page-body .admin-filter-bar > .ant-form,
+.admin-menus-page-body .admin-filter-bar > .ant-form,
+.admin-system-params-page-body .admin-filter-bar > .ant-form,
+.admin-dimensions-page-body .admin-filter-bar > .ant-form,
+.admin-atp-models-page-body .admin-filter-bar > .ant-form {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 左树搜索区：与右侧筛选条同高、垂直居中 */
+.admin-documents-page-body .admin-documents-sider-search,
+.admin-menus-page-body .admin-menus-sider-search,
+.admin-system-params-page-body .admin-system-params-sider-card-search,
+.admin-dimensions-page-body .admin-system-params-sider-card-search,
+.admin-atp-models-page-body .admin-atp-models-sider-card-search {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 0 12px;
+}
+
+/* 搜索框输入控件撑满搜索区宽度 */
+.admin-documents-page-body .admin-documents-sider-search .ant-input-affix-wrapper,
+.admin-documents-page-body .admin-documents-sider-search .ant-input,
+.admin-menus-page-body .admin-menus-sider-search .ant-input-affix-wrapper,
+.admin-menus-page-body .admin-menus-sider-search .ant-input,
+.admin-system-params-page-body .admin-system-params-sider-card-search .ant-input-affix-wrapper,
+.admin-system-params-page-body .admin-system-params-sider-card-search .ant-input,
+.admin-dimensions-page-body .admin-system-params-sider-card-search .ant-input-affix-wrapper,
+.admin-dimensions-page-body .admin-system-params-sider-card-search .ant-input,
+.admin-atp-models-page-body .admin-atp-models-sider-card-search .ant-input-affix-wrapper,
+.admin-atp-models-page-body .admin-atp-models-sider-card-search .ant-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* 页面标题条（无 Tab 外壳的页面用：files / docs-view / atp-models [id] 等） */
 .modo-page-head {
   display: flex;
