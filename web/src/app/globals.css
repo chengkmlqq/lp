@@ -4616,6 +4616,35 @@ body {
   flex-direction: column;
 }
 
+/* antd v6：spin 包裹层只剩 .ant-spin 一层（v5 的 .ant-spin-nested-loading 已不存在），
+   旧 .admin-atp-params-tabs 选择器也已随 ModoTabs 改造失效 —— 补当前类名口径。
+   否则卡片/列表视图在 Spin 包裹下 flex 链断裂：卡片网格溢出卡片、分页被裁切不可见。 */
+.admin-atp-params-list-pane .ant-spin,
+.admin-atp-params-list-pane .ant-spin .ant-spin-container {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-atp-params-list-pane .admin-atp-params-table-view .ant-table-wrapper,
+.admin-atp-params-list-pane .admin-atp-params-table-view .ant-spin-nested-loading,
+.admin-atp-params-list-pane .admin-atp-params-table-view .ant-spin-container {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-atp-params-list-pane .admin-atp-params-table-view .ant-table {
+  flex: 0 0 auto;
+}
+
+.admin-atp-params-list-pane .admin-atp-params-table-view .ant-table-pagination {
+  margin: auto 0 8px !important;
+  flex-shrink: 0;
+}
+
 .admin-atp-params-tabs .admin-atp-params-table-view .ant-table {
   flex: 0 0 auto;
 }
@@ -5355,6 +5384,49 @@ h5.ant-typography,
  * ═══════════════════════════════════════════════════════════ */
 .admin-design-page-body .ant-table-pagination {
   margin-bottom: 8px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * 全站统一：列表页表格锚点撑满白卡，分页钉底 8px。
+ * 部分页面的 *-table-anchor / *-table-view 按内容自然高度（未撑满），
+ * 分页距卡底 11~46px 不等。统一为：锚点撑满 + antd v6 表格链
+ * （wrapper > div > .ant-spin > .ant-spin-container）打穿 +
+ * 分页 margin-top:auto 吸收剩余空间，全站分页距卡底 8px。
+ * ═══════════════════════════════════════════════════════════ */
+/* 注意：用 [class*=] 包含匹配而非 [class$=] —— 元素 class 属性常带 tailwind
+   附加类（如 "admin-xxx-table-view flex-1 min-h-0"），结尾匹配会失配。 */
+.modo-page-card [class*="-table-anchor"],
+.modo-page-card [class*="-table-view"] {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.modo-page-card [class*="-table-anchor"] .ant-table-wrapper,
+.modo-page-card [class*="-table-anchor"] .ant-spin,
+.modo-page-card [class*="-table-anchor"] .ant-spin-container,
+.modo-page-card [class*="-table-view"] .ant-table-wrapper,
+.modo-page-card [class*="-table-view"] .ant-spin,
+.modo-page-card [class*="-table-view"] .ant-spin-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.modo-page-card [class*="-table-anchor"] .ant-table-pagination,
+.modo-page-card [class*="-table-view"] .ant-table-pagination {
+  margin-top: auto !important;
+}
+
+/* 独立页（atp-test-sets）与 Tab 复用的批量历史 pane：撑满白卡，
+   否则内部表格视图无法撑满、分页停留在内容下方（卡内大片空白） */
+.modo-page-card > .admin-atp-batch-history-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ═══════════════════════════════════════════════════════════

@@ -559,7 +559,7 @@ export function LightningCurrentBackfillHistoryTable({
       {
         title: t("线路名称"),
         dataIndex: "line_name",
-        width: 200,
+        /* 弹性列：吸收表格拉伸宽度，保证操作列不被等比放大 */
         ellipsis: { showTitle: true },
         render: (value: string | null, row) =>
           value || row.line_code || "-",
@@ -593,7 +593,7 @@ export function LightningCurrentBackfillHistoryTable({
       {
         title: t("操作"),
         key: "actions",
-        width: 150,
+        width: 160,
         fixed: "right",
         align: "right" as const,
         render: (_: unknown, row) => {
@@ -669,7 +669,7 @@ export function LightningCurrentBackfillHistoryTable({
       {
         title: t("线路名称"),
         dataIndex: "line_name",
-        width: 200,
+        /* 弹性列：吸收表格拉伸宽度，保证操作列不被等比放大 */
         ellipsis: { showTitle: true },
         render: (value: string | null) => value || "-",
       },
@@ -708,13 +708,13 @@ export function LightningCurrentBackfillHistoryTable({
       {
         title: t("操作"),
         key: "actions",
-        width: 170,
+        width: 160,
         fixed: "right",
       align: "right" as const,
         render: (_: unknown, row) => (
           <Space size={4}>
             <Button size="small" onClick={() => openDetail(row)}>
-              查看详情
+              详情
             </Button>
             <Button
               size="small"

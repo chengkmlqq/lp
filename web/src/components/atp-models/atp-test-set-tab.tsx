@@ -9,12 +9,12 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  App,
   Button,
   Empty,
   Form,
   Input,
   Modal,
-  Popconfirm,
   Space,
   Table,
   Tag,
@@ -38,12 +38,14 @@ import { fetchWithAuth, readApiError } from "@/lib/api";
 import type { AtpTestSetListResponse, AtpTestSetSummary } from "@/types/auth";
 import { formatDateTime } from "@/components/atp-models/atp-batch-history-tab";
 import { AtpTestSetDetailDrawer } from "@/components/atp-models/atp-test-set-detail-drawer";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 
 const TABLE_MIN_SCROLL_Y = 260;
 
 export function AtpTestSetTab() {
   const { t } = useI18n();
   const { user, hasPermission } = useAuth();
+  const { modal: modalApi } = App.useApp();
   const queryClient = useQueryClient();
   const [keywordDraft, setKeywordDraft] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -249,61 +251,50 @@ export function AtpTestSetTab() {
       {
         title: t("操作"),
         key: "actions",
-        width: 200,
+        width: 160,
         fixed: "right" as const,
         render: (_, row) => (
-          <Space size={4}>
-            <Button
-              type="link"
-              size="small"
-              style={{ padding: 0 }}
-              icon={<SettingOutlined />}
-              onClick={() => openDetail(row)}
-            >
-              {t("管理")}
-            </Button>
-            <Button
-              type="link"
-              size="small"
-              style={{ padding: 0 }}
-              icon={<ExperimentOutlined />}
-              disabled={!canTest || row.case_count === 0}
-              onClick={() => openDetail(row)}
-            >
-              {t("执行")}
-            </Button>
-            {canManage ? (
-              <>
-                <Button
-                  type="link"
-                  size="small"
-                  style={{ padding: 0 }}
-                  icon={<EditOutlined />}
-                  onClick={() => openEdit(row)}
-                >
-                  编辑
-                </Button>
-                <Popconfirm
-                  title={t("删除测试集？")}
-                  description={t("将同时删除其全部用例与执行记录。")}
-                  okText={t("删除")}
-                  cancelText={t("取消")}
-                  okButtonProps={{ danger: true }}
-                  onConfirm={() => deleteSetMutation.mutate(row.id)}
-                >
-                  <Button
-                    type="link"
-                    size="small"
-                    danger
-                    style={{ padding: 0 }}
-                    icon={<DeleteOutlined />}
-                  >
-                    删除
-                  </Button>
-                </Popconfirm>
-              </>
-            ) : null}
-          </Space>
+          <ModoActionGroup
+            actions={[
+              {
+                key: "cases",
+                label: t("用例"),
+                icon: <SettingOutlined />,
+                onClick: () => openDetail(row),
+              },
+              {
+                key: "run",
+                label: t("执行"),
+                icon: <ExperimentOutlined />,
+                disabled: !canTest || row.case_count === 0,
+                title: !canTest ? t("无执行权限") : row.case_count === 0 ? t("暂无用例") : undefined,
+                onClick: () => openDetail(row),
+              },
+              {
+                key: "edit",
+                label: t("编辑"),
+                icon: <EditOutlined />,
+                visible: canManage,
+                onClick: () => openEdit(row),
+              },
+              {
+                key: "delete",
+                label: t("删除"),
+                icon: <DeleteOutlined />,
+                danger: true,
+                visible: canManage,
+                onClick: () =>
+                  modalApi.confirm({
+                    title: t("删除测试集？"),
+                    content: t("将同时删除其全部用例与执行记录。"),
+                    okText: t("删除"),
+                    cancelText: t("取消"),
+                    okButtonProps: { danger: true },
+                    onOk: () => deleteSetMutation.mutateAsync(row.id),
+                  }),
+              },
+            ]}
+          />
         ),
       },
     ],
