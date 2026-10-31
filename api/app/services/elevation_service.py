@@ -189,6 +189,30 @@ def _resolve_file_record_terrain_layer_path(record_id: str) -> str:
     return join_virtual_path(_resolve_file_record_terrain_dir(record_id), "layer.json")
 
 
+def _map_dataset_task_status(raw: str | None) -> str:
+    """归一化高程文件异步任务状态为对外响应枚举。
+
+    DB 内部状态（analysis_status / terrain_status）取值较杂：
+    not_started / pending / queued / running / completed / ready /
+    failed / not_supported，统一映射为对外 schema 的
+    queued / running / success / failed / unknown / not_found。
+    """
+    if not raw:
+        return "not_found"
+    r = raw.lower()
+    if r in ("queued", "pending", "not_started"):
+        return "queued"
+    if r == "running":
+        return "running"
+    if r in ("completed", "ready", "success"):
+        return "success"
+    if r == "failed":
+        return "failed"
+    if r == "not_supported":
+        return "unknown"
+    return "unknown"
+
+
 def _resolve_file_record_terrain_tile_path(*, record_id: str, z: int, x: int, y: int) -> str:
     return join_virtual_path(join_virtual_path(join_virtual_path(_resolve_file_record_terrain_dir(record_id), str(z)), str(x)), f"{y}.terrain")
 
