@@ -336,12 +336,19 @@ body {
   padding: 12px 16px;
 }
 
-/* 页面级 Tabs（ModoTabs）：容器与内容区撑满高度 */
+/* 页面级 Tabs（ModoTabs）：容器与内容区撑满高度。
+   容器统一承担白卡形态（radius 6 + Tier1 阴影 + 白底）：
+   标题条顶部与内容区底部由容器裁出圆角，二者交界处为直角无缝衔接，
+   消除"标题条直角 + 内容卡顶部圆角"造成的交界缺口。
+   overflow: hidden 由 ModoTabs 组件自身的 .modo-tabs 提供。 */
 .modo-page-tabs {
   display: flex;
   flex: 1;
   min-height: 0;
   flex-direction: column;
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 2px 5px 0 rgba(36, 46, 67, 0.1);
 }
 
 /* ═══════════════════════════════════════════════════════════
