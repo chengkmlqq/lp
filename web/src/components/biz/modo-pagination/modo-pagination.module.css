@@ -2,8 +2,10 @@
   width: 100%;
   flex-shrink: 0;
   display: flex;
-  justify-content: flex-start;
-  padding: 10px 16px 8px;
+  /* 统一规范：分页常驻右下角（与 antd Table 内建分页对齐口径一致） */
+  justify-content: flex-end;
+  /* 水平不额外加内边距：白卡自身已有 16px 内边距，避免比 antd 表格内建分页再内缩 16px */
+  padding: 10px 0 8px;
   /* 去灰底：白卡内分页条改为透明 + 顶部发丝线（原 #f9fbfd 灰带观感脏） */
   background: transparent;
   border-top: 1px solid #eff4f9;
