@@ -1651,7 +1651,7 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  padding: 12px 0 8px;
+  padding: 12px 0 0;
   flex-shrink: 0;
 }
 
@@ -2680,7 +2680,7 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  padding: 12px 0 8px;
+  padding: 12px 0 0;
   flex-shrink: 0;
 }
 
@@ -3048,7 +3048,7 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  padding: 12px 0 8px;
+  padding: 12px 0 0;
   flex-shrink: 0;
 }
 
@@ -3366,7 +3366,7 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  padding: 12px 0 8px;
+  padding: 12px 0 0;
   flex-shrink: 0;
 }
 
@@ -4177,7 +4177,7 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  padding: 12px 0 8px;
+  padding: 12px 0 0;
   flex-shrink: 0;
 }
 
@@ -4567,7 +4567,7 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  padding: 12px 0 8px;
+  padding: 12px 0 0;
   flex-shrink: 0;
 }
 
@@ -4593,7 +4593,7 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  padding: 12px 0 8px;
+  padding: 12px 0 0;
   flex-shrink: 0;
 }/* LP-322 对齐：列表视图分页贴面板底 8px（与线路管理一致）。
    页面级 Spin 包在 table-view 外层（打断 flex 链），故 list-pane 内 spin 容器
@@ -4736,7 +4736,7 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  padding: 12px 0 8px;
+  padding: 12px 0 0;
   flex-shrink: 0;
 }
 
@@ -5269,4 +5269,13 @@ h5.ant-typography,
   font-size: 14px;
   font-weight: 600;
   color: #242e43;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * 全局统一：表格内置分页距页面（卡片）底部间距固定 8px。
+ * 覆盖旧口径（12px 0 0 / antd 默认 16px 0 / flex 表格 auto 0 8px），
+ * 与 ModoPagination 组件自带 padding-bottom 8px 保持一致。
+ * ═══════════════════════════════════════════════════════════ */
+.admin-design-page-body .ant-table-pagination {
+  margin-bottom: 8px !important;
 }

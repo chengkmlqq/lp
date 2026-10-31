@@ -38,6 +38,7 @@ import type { DataNode } from "antd/es/tree";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -610,7 +611,6 @@ export default function AdminDocumentsPage() {
     {
       title: t("标题"),
       dataIndex: "title",
-      width: 200,
     },
     {
       title: t("状态"),
@@ -633,35 +633,38 @@ export default function AdminDocumentsPage() {
       title: t("操作"),
       key: "actions",
       fixed: "right",
-      width: 180,
+      width: 160,
       render: (_value, record) => {
         const deleteLoading = deletingDocumentId === record.id;
         const rowBusy = deleteLoading;
 
         return (
-          <Space wrap>
-            <Button
-              size="small"
-              disabled={rowBusy || !canManage}
-              onClick={() => handleEditDocument(record)}
-            >
-              编辑
-            </Button>
-
-            <Button danger size="small" loading={deleteLoading} disabled={rowBusy || !canManage}
-              onClick={() => {
-                Modal.confirm({
-                  title: `确认删除文档 ${record.title}？`,
-                  okText: t("删除"),
-                  cancelText: t("取消"),
-                  okButtonProps: { danger: true, loading: deleteLoading },
-                  onOk: () => deleteDocumentMutation.mutate(record.id),
-                });
-              }}
-            >
-              删除
-            </Button>
-          </Space>
+          <ModoActionGroup
+            actions={[
+              {
+                key: "edit",
+                label: t("编辑"),
+                disabled: rowBusy || !canManage,
+                onClick: () => handleEditDocument(record),
+              },
+              {
+                key: "delete",
+                label: t("删除"),
+                danger: true,
+                loading: deleteLoading,
+                disabled: rowBusy || !canManage,
+                onClick: () => {
+                  Modal.confirm({
+                    title: `确认删除文档 ${record.title}？`,
+                    okText: t("删除"),
+                    cancelText: t("取消"),
+                    okButtonProps: { danger: true, loading: deleteLoading },
+                    onOk: () => deleteDocumentMutation.mutate(record.id),
+                  });
+                },
+              },
+            ]}
+          />
         );
       },
     },

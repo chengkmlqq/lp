@@ -34,6 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { IconPicker } from "@/components/icon-picker";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -652,46 +653,46 @@ export default function AdminMenusPage() {
       title: t("操作"),
       key: "actions",
       fixed: "right",
-      width: 180,
+      width: 160,
       render: (_, record) => {
         const updatingLoading = updatingStatusMenuId === record.id;
         const deleteLoading = deletingMenuId === record.id;
         const menuBusy = updatingLoading || deleteLoading;
 
-        const moreMenuItems: MenuProps["items"] = [
-          {
-            key: "delete",
-            label: t("删除"),
-            danger: true,
-            disabled: menuBusy,
-            onClick: () => {
-              Modal.confirm({
-                title: `确认删除菜单 ${record.name}（${record.code}）？`,
-                okText: t("删除"),
-                cancelText: t("取消"),
-                okButtonProps: { danger: true, loading: deleteLoading },
-                onOk: () => deleteMenuMutation.mutate(record.id),
-              });
-            },
-          },
-        ];
-
         return (
-          <Space size="small" style={{ whiteSpace: "nowrap" }}>
-            <Button size="small" disabled={menuBusy} onClick={() => startEdit(record)}>
-              编辑
-            </Button>
-
-            <Button size="small" loading={updatingLoading} disabled={menuBusy}
-              onClick={() => void updateMenuStatus(record)}
-            >
-              {record.status === "enabled" ? t("禁用") : t("启用")}
-            </Button>
-
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button size="small" loading={deleteLoading} disabled={menuBusy} icon={<MoreOutlined />} />
-            </Dropdown>
-          </Space>
+          <ModoActionGroup
+            actions={[
+              {
+                key: "edit",
+                label: t("编辑"),
+                disabled: menuBusy,
+                onClick: () => startEdit(record),
+              },
+              {
+                key: "toggle-status",
+                label: record.status === "enabled" ? t("禁用") : t("启用"),
+                loading: updatingLoading,
+                disabled: menuBusy,
+                onClick: () => void updateMenuStatus(record),
+              },
+              {
+                key: "delete",
+                label: t("删除"),
+                danger: true,
+                loading: deleteLoading,
+                disabled: menuBusy,
+                onClick: () => {
+                  Modal.confirm({
+                    title: `确认删除菜单 ${record.name}（${record.code}）？`,
+                    okText: t("删除"),
+                    cancelText: t("取消"),
+                    okButtonProps: { danger: true, loading: deleteLoading },
+                    onOk: () => deleteMenuMutation.mutate(record.id),
+                  });
+                },
+              },
+            ]}
+          />
         );
       },
     } satisfies ColumnsType<MenuItem>[number]] : []),

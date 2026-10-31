@@ -35,6 +35,7 @@ import type { ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -730,63 +731,46 @@ export default function AdminDimensionsPage() {
       baseColumns.push({
         title: t("操作"),
         key: "actions",
-        width: 180,
+        width: 160,
         fixed: "right",
       render: (_, record) => {
           const deleteLoading = deletingId === record.id;
           const statusLoading = updatingId === record.id;
           const rowBusy = deleteLoading || statusLoading;
-          const moreMenuItems: MenuProps["items"] = [
-            {
-              key: "toggle-status",
-              label: record.is_enabled ? t("禁用") : t("启用"),
-              disabled: rowBusy,
-              onClick: () => toggleDimensionStatus(record),
-            },
-            {
-              key: "delete",
-              label: t("删除"),
-              danger: true,
-              disabled: rowBusy,
-              onClick: () => {
-                Modal.confirm({
-                  title: t("删除维度项"),
-                  content: `确认删除维度项 ${record.name}（${record.code}）吗？`,
-                  okText: t("删除"),
-                  cancelText: t("取消"),
-                  okButtonProps: { danger: true },
-                  onOk: () => void removeDimension(record.id),
-                });
-              },
-            },
-          ];
           return (
-            <Space wrap>
-              <Button size="small" disabled={rowBusy} onClick={() => openDimensionEdit(record)}>
-                编辑
-              </Button>
-              <Button
-                size="small"
-                danger
-                loading={deleteLoading}
-                disabled={rowBusy}
-                onClick={() => {
-                  Modal.confirm({
-                    title: t("删除维度项"),
-                    content: `确认删除维度项 ${record.name}（${record.code}）吗？`,
-                    okText: t("删除"),
-                    cancelText: t("取消"),
-                    okButtonProps: { danger: true, loading: deleteLoading },
-                    onOk: () => void removeDimension(record.id),
-                  });
-                }}
-              >
-                删除
-              </Button>
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button size="small" disabled={rowBusy} icon={<MoreOutlined />} />
-              </Dropdown>
-            </Space>
+            <ModoActionGroup
+              actions={[
+                {
+                  key: "edit",
+                  label: t("编辑"),
+                  disabled: rowBusy,
+                  onClick: () => openDimensionEdit(record),
+                },
+                {
+                  key: "delete",
+                  label: t("删除"),
+                  danger: true,
+                  loading: deleteLoading,
+                  disabled: rowBusy,
+                  onClick: () => {
+                    Modal.confirm({
+                      title: t("删除维度项"),
+                      content: `确认删除维度项 ${record.name}（${record.code}）吗？`,
+                      okText: t("删除"),
+                      cancelText: t("取消"),
+                      okButtonProps: { danger: true, loading: deleteLoading },
+                      onOk: () => void removeDimension(record.id),
+                    });
+                  },
+                },
+                {
+                  key: "toggle-status",
+                  label: record.is_enabled ? t("禁用") : t("启用"),
+                  disabled: rowBusy,
+                  onClick: () => toggleDimensionStatus(record),
+                },
+              ]}
+            />
           );
         },
       });

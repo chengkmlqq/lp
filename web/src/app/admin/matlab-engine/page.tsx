@@ -53,6 +53,7 @@ import type { ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -814,63 +815,51 @@ export default function AdminMatlabEnginePage() {
     baseColumns.push({
       title: t("操作"),
       key: "actions",
-      width: 150,
+      width: 160,
       fixed: "right",
       render: (_, record) => {
-        const moreMenuItems: MenuProps["items"] = [
-          // 下载紧随「生效」之后，收纳于三点菜单中
-          {
-            key: "download",
-            label: t("下载"),
-            icon: <DownloadOutlined />,
-            onClick: () => handleDownload(record),
-          } as const,
-          ...(canManage
-            ? [
-                {
-                  key: "delete",
-                  label: t("删除"),
-                  danger: true,
-                  onClick: () => {
-                    modalApi.confirm({
-                      title: t("删除版本"),
-                      content: `${t("确认删除版本")}"${record.version_tag}"（${record.version_hash}）${t("吗？删除后不可恢复。")}`,
-                      okText: t("删除"),
-                      cancelText: t("取消"),
-                      okButtonProps: { danger: true },
-                      onOk: () => deleteVersionMutation.mutateAsync(record),
-                    });
-                  },
-                } as const,
-              ]
-            : []),
-        ];
-
         return (
-          <Space wrap>
-            <Button
-              size="small"
-              onClick={() => openPreview(`${t("版本文件列表")} (${record.version_tag || record.version_hash})`, record.file_list || [])}
-            >
-              {t("查看")}
-            </Button>
-            {canManage && (
-              <Button
-                size="small"
-                type="primary"
-                loading={syncingHash === record.version_hash}
-                disabled={Boolean(record.is_active) || syncingHash === record.version_hash}
-                onClick={() => handleSyncVersion(record)}
-              >
-                {t("生效")}
-              </Button>
-            )}
-            {moreMenuItems.length > 0 && (
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button size="small" icon={<MoreOutlined />} />
-              </Dropdown>
-            )}
-          </Space>
+          <ModoActionGroup
+            actions={[
+              {
+                key: "view",
+                label: t("查看"),
+                onClick: () =>
+                  openPreview(`${t("版本文件列表")} (${record.version_tag || record.version_hash})`, record.file_list || []),
+              },
+              {
+                key: "activate",
+                label: t("生效"),
+                visible: canManage,
+                loading: syncingHash === record.version_hash,
+                disabled: Boolean(record.is_active) || syncingHash === record.version_hash,
+                onClick: () => handleSyncVersion(record),
+              },
+              // 下载紧随「生效」之后，收纳于三点菜单中
+              {
+                key: "download",
+                label: t("下载"),
+                icon: <DownloadOutlined />,
+                onClick: () => handleDownload(record),
+              },
+              {
+                key: "delete",
+                label: t("删除"),
+                danger: true,
+                visible: canManage,
+                onClick: () => {
+                  modalApi.confirm({
+                    title: t("删除版本"),
+                    content: `${t("确认删除版本")}"${record.version_tag}"（${record.version_hash}）${t("吗？删除后不可恢复。")}`,
+                    okText: t("删除"),
+                    cancelText: t("取消"),
+                    okButtonProps: { danger: true },
+                    onOk: () => deleteVersionMutation.mutateAsync(record),
+                  });
+                },
+              },
+            ]}
+          />
         );
       },
     });

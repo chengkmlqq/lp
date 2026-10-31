@@ -27,6 +27,7 @@ import {
 } from "antd";
 
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { CheckCircleOutlined, MoreOutlined, EditOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
@@ -951,7 +952,6 @@ export default function AdminUsersPage() {
     {
       title: t("用户名"),
       dataIndex: "username",
-      width: 140,
     },
     {
       title: t("角色"),
@@ -989,7 +989,7 @@ export default function AdminUsersPage() {
       title: t("操作"),
       key: "actions",
       fixed: "right",
-      width: 200,
+      width: 160,
       render: (_value, row) => {
         const updatingLoading = updatingStatusUserId === row.id;
         const resetLoading = resettingUserId === row.id;
@@ -997,62 +997,58 @@ export default function AdminUsersPage() {
         const savingLoading = savingUserId === row.id;
         const rowBusy = updatingLoading || resetLoading || deleteLoading || savingLoading;
 
-        const moreMenuItems: MenuProps["items"] = [
-          {
-            key: "assign-roles",
-            label: t("分配角色"),
-            disabled: rowBusy,
-            onClick: () => openAssignRolesModal(row),
-          },
-          {
-            key: "reset-password",
-            label: t("重置密码"),
-            disabled: rowBusy,
-            onClick: () => openResetPasswordModal(row),
-          },
-          {
-            key: "toggle-status",
-            label: row.status === "active" ? t("禁用") : t("启用"),
-            disabled: rowBusy || row.id === user?.id,
-            onClick: () => {
-              if (row.id === user?.id) {
-                setError(new ApiError(t("不能修改当前登录账号的状态")));
-                return;
-              }
-              const nextStatus: "active" | "disabled" = row.status === "active" ? "disabled" : "active";
-              updateUserProfileMutation.mutate({ userId: row.id, payload: { status: nextStatus } });
-            },
-          },
-        ];
-
         return (
-          <Space wrap>
-            <Button
-              size="small"
-              disabled={rowBusy}
-              onClick={() => openEditUserModal(row)}
-            >
-              编辑
-            </Button>
-
-            <Button danger size="small" loading={deleteLoading} disabled={rowBusy}
-              onClick={() => {
-                Modal.confirm({
-                  title: `确认删除用户 ${row.username}（${row.id}）？`,
-                  okText: t("删除"),
-                  cancelText: t("取消"),
-                  okButtonProps: { danger: true, loading: deleteLoading },
-                  onOk: () => deleteUserMutation.mutate(row.id),
-                });
-              }}
-            >
-              删除
-            </Button>
-
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button size="small" disabled={rowBusy} icon={<MoreOutlined />} />
-            </Dropdown>
-          </Space>
+          <ModoActionGroup
+            actions={[
+              {
+                key: "edit",
+                label: t("编辑"),
+                disabled: rowBusy,
+                onClick: () => openEditUserModal(row),
+              },
+              {
+                key: "delete",
+                label: t("删除"),
+                danger: true,
+                loading: deleteLoading,
+                disabled: rowBusy,
+                onClick: () => {
+                  Modal.confirm({
+                    title: `确认删除用户 ${row.username}（${row.id}）？`,
+                    okText: t("删除"),
+                    cancelText: t("取消"),
+                    okButtonProps: { danger: true, loading: deleteLoading },
+                    onOk: () => deleteUserMutation.mutate(row.id),
+                  });
+                },
+              },
+              {
+                key: "assign-roles",
+                label: t("分配角色"),
+                disabled: rowBusy,
+                onClick: () => openAssignRolesModal(row),
+              },
+              {
+                key: "reset-password",
+                label: t("重置密码"),
+                disabled: rowBusy,
+                onClick: () => openResetPasswordModal(row),
+              },
+              {
+                key: "toggle-status",
+                label: row.status === "active" ? t("禁用") : t("启用"),
+                disabled: rowBusy || row.id === user?.id,
+                onClick: () => {
+                  if (row.id === user?.id) {
+                    setError(new ApiError(t("不能修改当前登录账号的状态")));
+                    return;
+                  }
+                  const nextStatus: "active" | "disabled" = row.status === "active" ? "disabled" : "active";
+                  updateUserProfileMutation.mutate({ userId: row.id, payload: { status: nextStatus } });
+                },
+              },
+            ]}
+          />
         );
       },
     },

@@ -3,6 +3,6 @@
   flex-shrink: 0;
   display: flex;
   justify-content: flex-start;
-  padding: 10px 16px;
+  padding: 10px 16px 8px;
   background: #f9fbfd;
 }

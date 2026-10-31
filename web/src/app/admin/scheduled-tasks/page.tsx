@@ -23,6 +23,7 @@ import { SearchOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -361,21 +362,19 @@ export default function AdminScheduledTasksPage() {
         title: t("操作"),
         key: "actions",
         fixed: "right",
-      width: 150,
+      width: 160,
         render: (_, record) => (
-          <Space size="small">
-            <Button size="small" onClick={() => startEdit(record)}>
-              编辑
-            </Button>
-            <Button
-              size="small"
-              type="primary"
-              loading={runningId === record.id}
-              onClick={() => void runTask(record)}
-            >
-              {t("立即执行")}
-            </Button>
-          </Space>
+          <ModoActionGroup
+            actions={[
+              { key: "edit", label: t("编辑"), onClick: () => startEdit(record) },
+              {
+                key: "run",
+                label: t("执行"),
+                loading: runningId === record.id,
+                onClick: () => void runTask(record),
+              },
+            ]}
+          />
         ),
       });
     }

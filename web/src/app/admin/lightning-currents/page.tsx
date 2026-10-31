@@ -24,7 +24,6 @@ import {
   Tooltip as AntTooltip,
   Typography,
   Upload,
-  type MenuProps,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -57,6 +56,7 @@ const MultiReturnPeakChart = dynamic(() => import("@/components/lightning-curren
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { LightningCurrentBackfillHistoryTable } from "@/components/lightning-current-backfill-history";
@@ -900,7 +900,6 @@ export default function AdminLightningCurrentsPage() {
       {
         title: t("文件名称"),
         dataIndex: "source_file_name",
-        width: 200,
         render: (value: string) => value || "-",
       },
       {
@@ -971,78 +970,62 @@ export default function AdminLightningCurrentsPage() {
       {
         title: t("操作"),
         key: "actions",
-        width: 200,
+        width: 160,
         fixed: "right",
       render: (_: unknown, row) => {
           // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/回填），其余操作收进 ⋯ 三点下拉
-          const moreMenuItems: MenuProps["items"] = [
-            ...(canManage
-              ? [
-                  {
-                    key: "edit",
-                    label: t("编辑"),
-                    onClick: () => openEditModal(row),
-                    disabled: editMutation.isPending,
-                  },
-                ]
-              : []),
-            ...(canRead
-              ? [
-                  {
-                    key: "download-source",
-                    label: t("下载"),
-                    onClick: () => {
-                      void handleDownloadSource(row);
-                    },
-                  },
-                ]
-              : []),
-            ...(canReadLogs && row.task_id
-              ? [
-                  {
-                    key: "import-log",
-                    label: t("日志"),
-                    onClick: () => openLogViewer(row.task_id, t("日志"), row.source_file_name),
-                  },
-                ]
-              : []),
-            ...(canManage
-              ? [
-                  {
-                    key: "delete",
-                    label: t("删除"),
-                    danger: true,
-                    disabled: deleteMutation.isPending,
-                    onClick: () => {
-                      modalApi.confirm({
-                        title: t("删除记录"),
-                        content: `${t("确认删除记录")} ${row.source_file_name} ${t("吗？")}`,
-                        okText: t("删除"),
-                        cancelText: t("取消"),
-                        okButtonProps: { danger: true },
-                        onOk: async () => {
-                          await deleteMutation.mutateAsync(row);
-                        },
-                      });
-                    },
-                  },
-                ]
-              : []),
-          ];
           return (
-            <Space wrap>
-              <Button size="small" onClick={() => openDetail(row)}>
-                {t("详情")}
-              </Button>
-              {canManage && (
-                <Button size="small" onClick={() => openBackfillHistory(row)}>
-                  {t("回填")}
-                </Button>
-              )}
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button size="small" icon={<MoreOutlined />} />
-              </Dropdown>
-            </Space>
+            <ModoActionGroup
+              actions={[
+                { key: "detail", label: t("详情"), onClick: () => openDetail(row) },
+                {
+                  key: "backfill",
+                  label: t("回填"),
+                  visible: canManage,
+                  onClick: () => openBackfillHistory(row),
+                },
+                {
+                  key: "edit",
+                  label: t("编辑"),
+                  visible: canManage,
+                  disabled: editMutation.isPending,
+                  onClick: () => openEditModal(row),
+                },
+                {
+                  key: "download-source",
+                  label: t("下载"),
+                  visible: canRead,
+                  onClick: () => {
+                    void handleDownloadSource(row);
+                  },
+                },
+                {
+                  key: "import-log",
+                  label: t("日志"),
+                  visible: canReadLogs && Boolean(row.task_id),
+                  onClick: () => openLogViewer(row.task_id, t("日志"), row.source_file_name),
+                },
+                {
+                  key: "delete",
+                  label: t("删除"),
+                  danger: true,
+                  visible: canManage,
+                  disabled: deleteMutation.isPending,
+                  onClick: () => {
+                    modalApi.confirm({
+                      title: t("删除记录"),
+                      content: `${t("确认删除记录")} ${row.source_file_name} ${t("吗？")}`,
+                      okText: t("删除"),
+                      cancelText: t("取消"),
+                      okButtonProps: { danger: true },
+                      onOk: async () => {
+                        await deleteMutation.mutateAsync(row);
+                      },
+                    });
+                  },
+                },
+              ]}
+            />
           );
         },
       },
@@ -1395,7 +1378,6 @@ export default function AdminLightningCurrentsPage() {
                 title: t("线路名称"),
                 dataIndex: "line_name",
                 key: "line_name",
-                width: 150,
                 ellipsis: true,
                 render: (value: string | null) => value || "-",
               },

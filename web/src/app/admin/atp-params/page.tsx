@@ -53,6 +53,7 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -687,39 +688,22 @@ export default function AtpParamsPage() {
     columns.push({
       title: t("操作"),
       key: "actions",
-      width: 150,
+      width: 160,
       fixed: "right",
       render: (_, record) => (
-        <Space size={4}>
-          <Tooltip title={t("详情")}>
-            <Button size="small" type="text" icon={<EyeOutlined />} onClick={() => openDetail(record)} />
-          </Tooltip>
-          <Tooltip title={t("编辑")}>
-            <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEdit(record)} />
-          </Tooltip>
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: "delete",
-                  label: (
-                    <Space size={4}>
-                      <DeleteOutlined />
-                      <span>{t("删除")}</span>
-                    </Space>
-                  ),
-                  danger: true,
-                  onClick: () => removeDefinition(record),
-                },
-              ],
-            }}
-            trigger={["click"]}
-          >
-            <Tooltip title={t("更多")}>
-              <Button type="text" size="small" icon={<MoreOutlined />} />
-            </Tooltip>
-          </Dropdown>
-        </Space>
+        <ModoActionGroup
+          actions={[
+            { key: "detail", label: t("详情"), onClick: () => openDetail(record) },
+            { key: "edit", label: t("编辑"), onClick: () => openEdit(record) },
+            {
+              key: "delete",
+              label: t("删除"),
+              icon: <DeleteOutlined />,
+              danger: true,
+              onClick: () => removeDefinition(record),
+            },
+          ]}
+        />
       ),
     });
   }

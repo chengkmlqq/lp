@@ -8,7 +8,6 @@ import {
   App,
   Button,
   Drawer,
-  Dropdown,
   Empty,
   Form,
   Progress,
@@ -19,15 +18,15 @@ import {
   Typography,
   message,
   Input,
-  type MenuProps,
 } from "antd";
-import { PlusOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
+import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { AnalysisCardList } from "@/components/fault-analysis/analysis-card-list";
 import { AnalysisDetailView } from "@/components/fault-analysis/analysis-detail-view";
@@ -637,41 +636,29 @@ export default function AdminFaultAnalysisPage() {
       {
         title: t("操作"),
         key: "actions",
-        width: 190,
+        width: 160,
         fixed: "right",
       render: (_: unknown, row) => {
           // 详情/日志平铺为按钮直接展示；删除收进 ⋯ 三点下拉（日志不设权限/task_id 门控，始终可点）
-          const moreMenuItems: MenuProps["items"] = [
-            ...(canManage
-              ? [
-                  {
-                    key: "delete",
-                    label: t("删除"),
-                    danger: true,
-                    onClick: () => handleDelete(row.id),
-                  },
-                ]
-              : []),
-          ];
           return (
-            <Space size="small" style={{ whiteSpace: "nowrap" }}>
-              <Button size="small" onClick={() => openDetail(row)}>
-                详情
-              </Button>
-              <Button
-                size="small"
-                onClick={() =>
-                  openLogViewer(row.task_id, t("日志"), row.title ?? `FA-${row.id.slice(0, 8)}`)
-                }
-              >
-                日志
-              </Button>
-              {moreMenuItems.length > 0 ? (
-                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Button size="small" icon={<MoreOutlined />} />
-                </Dropdown>
-              ) : null}
-            </Space>
+            <ModoActionGroup
+              actions={[
+                { key: "detail", label: t("详情"), onClick: () => openDetail(row) },
+                {
+                  key: "log",
+                  label: t("日志"),
+                  onClick: () =>
+                    openLogViewer(row.task_id, t("日志"), row.title ?? `FA-${row.id.slice(0, 8)}`),
+                },
+                {
+                  key: "delete",
+                  label: t("删除"),
+                  danger: true,
+                  visible: canManage,
+                  onClick: () => handleDelete(row.id),
+                },
+              ]}
+            />
           );
         },
       },

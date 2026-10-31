@@ -44,6 +44,7 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 
@@ -739,7 +740,7 @@ export default function AtpParamTemplatesPage() {
       title: t("操作"),
       key: "actions",
       fixed: "right",
-      width: 150,
+      width: 160,
       render: (_v, row) => {
         const hasRule = Boolean(row.node.rule_id);
         const editTemplate = () => {
@@ -753,60 +754,57 @@ export default function AtpParamTemplatesPage() {
           if (ruleId) void loadDetail(ruleId).then(() => void deriveChild());
         };
 
-        const moreMenuItems: MenuProps["items"] = [
-          {
-            key: "preview",
-            label: t("试算"),
-            icon: <ExperimentOutlined />,
-            disabled: !hasRule,
-            onClick: () => void openPreviewDrawer(row),
-          },
-          ...(canManage
-            ? [
-                {
-                  key: "derive",
-                  label: t("细分"),
-                  icon: <PlusOutlined />,
-                  disabled: !hasRule,
-                  onClick: () => void deriveTemplate(),
-                },
-                {
-                  key: "delete",
-                  label: t("删除"),
-                  icon: <DeleteOutlined />,
-                  danger: true,
-                  disabled: !hasRule,
-                  onClick: () => void deleteTemplate(),
-                },
-              ]
-            : []),
-        ];
-
-        if (!canManage) {
-          return (
-            <Space wrap size={4}>
-              <Button size="small" disabled={!hasRule} onClick={() => void openDetailDrawer(row)}>
-                {t("详情")}
-              </Button>
-              <Button size="small" disabled={!hasRule} onClick={() => void openPreviewDrawer(row)}>
-                {t("试算")}
-              </Button>
-            </Space>
-          );
-        }
-
         return (
-          <Space wrap size={4}>
-            <Button size="small" disabled={!hasRule} onClick={() => void openDetailDrawer(row)}>
-              {t("详情")}
-            </Button>
-            <Button size="small" disabled={!hasRule} onClick={() => void editTemplate()}>
-              {t("编辑")}
-            </Button>
-            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-              <Button size="small" icon={<MoreOutlined />} aria-label={t("更多操作")} />
-            </Dropdown>
-          </Space>
+          <ModoActionGroup
+            actions={[
+              {
+                key: "detail",
+                label: t("详情"),
+                disabled: !hasRule,
+                onClick: () => void openDetailDrawer(row),
+              },
+              canManage
+                ? {
+                    key: "edit",
+                    label: t("编辑"),
+                    disabled: !hasRule,
+                    onClick: () => void editTemplate(),
+                  }
+                : {
+                    key: "preview",
+                    label: t("试算"),
+                    icon: <ExperimentOutlined />,
+                    disabled: !hasRule,
+                    onClick: () => void openPreviewDrawer(row),
+                  },
+              ...(canManage
+                ? [
+                    {
+                      key: "preview",
+                      label: t("试算"),
+                      icon: <ExperimentOutlined />,
+                      disabled: !hasRule,
+                      onClick: () => void openPreviewDrawer(row),
+                    },
+                    {
+                      key: "derive",
+                      label: t("细分"),
+                      icon: <PlusOutlined />,
+                      disabled: !hasRule,
+                      onClick: () => void deriveTemplate(),
+                    },
+                    {
+                      key: "delete",
+                      label: t("删除"),
+                      icon: <DeleteOutlined />,
+                      danger: true,
+                      disabled: !hasRule,
+                      onClick: () => void deleteTemplate(),
+                    },
+                  ]
+                : []),
+            ]}
+          />
         );
       },
     },

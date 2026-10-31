@@ -34,6 +34,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -632,55 +633,48 @@ export default function AdminTowerModelsPage() {
         title: t("操作"),
         key: "actions",
         fixed: "right",
-      width: 180,
+      width: 160,
         render: (_: unknown, row) => {
           const rowBusy = isDeletingModel || isSavingModel || isUploadingImage;
-          const moreMenuItems: MenuProps["items"] = [
-            {
-              key: "delete",
-              label: t("删除"),
-              danger: true,
-              disabled: rowBusy,
-            },
-          ];
 
           return (
-            <Space wrap>
-              {canManage && (
-                <Button size="small" disabled={rowBusy} onClick={() => openEdit(row)}>
-                  编辑
-                </Button>
-              )}
-              {canManage && (
-                <Button size="small" disabled={rowBusy} onClick={() => openUpload(row)}>
-                  上传图片
-                </Button>
-              )}
-              {canManage && (
-                <Dropdown
-                  menu={{
-                    items: moreMenuItems,
-                    onClick: ({ key }) => {
-                      if (key === "delete") {
-                        Modal.confirm({
-                          title: t("删除杆塔模型"),
-                          content: `确认删除模型 ${row.code} 吗？`,
-                          okText: t("删除"),
-                          cancelText: t("取消"),
-                          okButtonProps: { danger: true },
-                          onOk: async () => {
-                            await deleteModelAsync(row.id);
-                          },
-                        });
-                      }
-                    },
-                  }}
-                  trigger={["click"]}
-                >
-                  <Button size="small" disabled={rowBusy} icon={<MoreOutlined />} />
-                </Dropdown>
-              )}
-            </Space>
+            <ModoActionGroup
+              actions={[
+                {
+                  key: "edit",
+                  label: t("编辑"),
+                  visible: canManage,
+                  disabled: rowBusy,
+                  onClick: () => openEdit(row),
+                },
+                {
+                  key: "upload",
+                  label: t("上传"),
+                  visible: canManage,
+                  disabled: rowBusy,
+                  onClick: () => openUpload(row),
+                },
+                {
+                  key: "delete",
+                  label: t("删除"),
+                  danger: true,
+                  visible: canManage,
+                  disabled: rowBusy,
+                  onClick: () => {
+                    Modal.confirm({
+                      title: t("删除杆塔模型"),
+                      content: `确认删除模型 ${row.code} 吗？`,
+                      okText: t("删除"),
+                      cancelText: t("取消"),
+                      okButtonProps: { danger: true },
+                      onOk: async () => {
+                        await deleteModelAsync(row.id);
+                      },
+                    });
+                  },
+                },
+              ]}
+            />
           );
         },
       },

@@ -15,10 +15,8 @@ import {
   Typography,
   Upload,
   Progress,
-  Dropdown,
   message as antdMessage,
   type CardProps,
-  type MenuProps,
   type TableProps,
 } from "antd";
 import {
@@ -31,13 +29,13 @@ import {
   FileOutlined,
   PlusOutlined,
   UploadOutlined,
-  MoreOutlined,
 } from "@ant-design/icons";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { Button } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -705,80 +703,42 @@ export default function AdminFilesPage() {
         title: t("操作"),
         key: "actions",
         fixed: "right",
-      width: 150,
+      width: 160,
         render: (_value, item) => {
-          const menuItems: MenuProps["items"] = [
-            {
-              key: "move",
-              label: t("移动"),
-              icon: <DragOutlined />,
-              disabled: operationBusy,
-            },
-            {
-              type: "divider",
-            },
-            {
-              key: "delete",
-              label: t("删除"),
-              icon: <DeleteOutlined />,
-              danger: true,
-              disabled: deleteMutation.isPending,
-            },
-          ];
-
           return (
-            <Space wrap size="small">
-              <Button
-                type="button"
-                color="gray"
-                size="small"
-                variant="soft"
-                onClick={() => item.is_dir ? void handleDownloadDirectory(item) : void handleDownloadFile(item)}
-                icon={<DownloadOutlined />}
-              >
-                下载
-              </Button>
-
-              {canManage && (
-                <Button
-                  type="button"
-                  color="gray"
-                  size="small"
-                  variant="soft"
-                  onClick={() => startRename(item)}
-                  icon={<EditOutlined />}
-                  disabled={operationBusy}
-                >
-                  重命名
-                </Button>
-              )}
-
-              {canManage && (
-                <Dropdown
-                  menu={{
-                    items: menuItems,
-                    onClick: ({ key }) => {
-                      if (key === "move") {
-                        startMove(item);
-                        return;
-                      }
-                      if (key === "delete") {
-                        handleDelete(item);
-                      }
-                    },
-                  }}
-                  trigger={["click"]}
-                >
-                  <Button
-                    type="button"
-                    color="gray"
-                    size="small"
-                    variant="soft"
-                    icon={<MoreOutlined />}
-                  />
-                </Dropdown>
-              )}
-            </Space>
+            <ModoActionGroup
+              actions={[
+                {
+                  key: "download",
+                  label: t("下载"),
+                  onClick: () => item.is_dir ? void handleDownloadDirectory(item) : void handleDownloadFile(item),
+                },
+                {
+                  key: "rename",
+                  label: t("重命名"),
+                  visible: canManage,
+                  disabled: operationBusy,
+                  onClick: () => startRename(item),
+                },
+                {
+                  key: "move",
+                  label: t("移动"),
+                  icon: <DragOutlined />,
+                  visible: canManage,
+                  disabled: operationBusy,
+                  onClick: () => startMove(item),
+                },
+                {
+                  key: "delete",
+                  label: t("删除"),
+                  icon: <DeleteOutlined />,
+                  danger: true,
+                  visible: canManage,
+                  disabled: deleteMutation.isPending,
+                  onClick: () => handleDelete(item),
+                },
+              ]}
+            />
           );
         },
       },

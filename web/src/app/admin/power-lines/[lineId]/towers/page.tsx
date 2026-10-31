@@ -34,6 +34,7 @@ import Link from "next/link";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -364,16 +365,19 @@ export default function AdminPowerLineTowersPage() {
     {
       title: t("操作"),
       key: "actions",
-      width: 120,
-      fixed: "right" as const,
+      width: 160,
+      fixed: "right",
       render: (_: unknown, row) => (
-        <Space size="small">
-          {canTowerRead && (
-            <Button size="small" onClick={() => openTowerDetailDrawer(row)}>
-              查看详情
-            </Button>
-          )}
-        </Space>
+        <ModoActionGroup
+          actions={[
+            {
+              key: "detail",
+              label: t("详情"),
+              visible: canTowerRead,
+              onClick: () => openTowerDetailDrawer(row),
+            },
+          ]}
+        />
       ),
     },
   ];

@@ -46,6 +46,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { ElevationBackfillHistoryTable } from "@/components/elevation-backfill-history";
@@ -752,7 +753,7 @@ export default function ElevationRecordsPage() {
       title: t("操作"),
       key: "actions",
       fixed: "right",
-      width: 180,
+      width: 160,
       render: (_value, row) => {
         const analyzing = analyzeMutation.isPending && analyzingId === row.id;
         const deleting = deleteMutation.isPending && deletingId === row.id;
@@ -760,73 +761,53 @@ export default function ElevationRecordsPage() {
         const rowBusy = analyzing || deleting || editing;
 
         return canManage ? (
-          <Space wrap>
-            <Button
-              size="small"
-              disabled={rowBusy}
-              onClick={() => {
-                void handleDownloadSource(row);
-              }}
-            >
-              下载
-            </Button>
-
-            <Button
-              size="small"
-              disabled={rowBusy}
-              onClick={() => openApplyModal(row)}
-            >
-              回填
-            </Button>
-
-            <Button
-              size="small"
-              disabled={rowBusy}
-              onClick={() => openEditModal(row)}
-            >
-              编辑
-            </Button>
-
-            <Dropdown
-              menu={{
-                items: [
-                  {
-                    key: "backfill-history",
-                    label: t("回填记录"),
-                    icon: <HistoryOutlined />,
-                    disabled: rowBusy,
-                    onClick: () => openBackfillHistoryTab(row),
-                  },
-                  {
-                    key: "delete",
-                    label: t("删除"),
-                    icon: <DeleteOutlined />,
-                    danger: true,
-                    disabled: rowBusy,
-                    onClick: () => {
-                      Modal.confirm({
-                        title: `确认删除文件 "${row.file_name}"？`,
-                        okText: t("删除"),
-                        cancelText: t("取消"),
-                        okButtonProps: { danger: true, loading: deleting },
-                        onOk: () => deleteMutation.mutate(row.id),
-                      });
-                    },
-                  },
-                ],
-              }}
-              trigger={["click"]}
-            >
-              <Tooltip title={t("更多")}>
-                <Button
-                  type="text"
-                  size="small"
-                  disabled={rowBusy}
-                  icon={<MoreOutlined />}
-                />
-              </Tooltip>
-            </Dropdown>
-          </Space>
+          <ModoActionGroup
+            actions={[
+              {
+                key: "download",
+                label: t("下载"),
+                disabled: rowBusy,
+                onClick: () => {
+                  void handleDownloadSource(row);
+                },
+              },
+              {
+                key: "apply",
+                label: t("回填"),
+                disabled: rowBusy,
+                onClick: () => openApplyModal(row),
+              },
+              {
+                key: "edit",
+                label: t("编辑"),
+                disabled: rowBusy,
+                onClick: () => openEditModal(row),
+              },
+              {
+                key: "backfill-history",
+                label: t("回填记录"),
+                icon: <HistoryOutlined />,
+                disabled: rowBusy,
+                onClick: () => openBackfillHistoryTab(row),
+              },
+              {
+                key: "delete",
+                label: t("删除"),
+                icon: <DeleteOutlined />,
+                danger: true,
+                disabled: rowBusy,
+                onClick: () => {
+                  Modal.confirm({
+                    title: `确认删除文件 "${row.file_name}"？`,
+                    okText: t("删除"),
+                    cancelText: t("取消"),
+                    okButtonProps: { danger: true, loading: deleting },
+                    onOk: () => deleteMutation.mutate(row.id),
+                  });
+                },
+              },
+            ]}
+          />
         ) : (
           <span style={{ color: "rgba(0,0,0,0.25)" }}>—</span>
         );

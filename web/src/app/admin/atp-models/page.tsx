@@ -20,7 +20,6 @@ import {
   Typography,
   Upload,
   type CardProps,
-  type MenuProps,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -28,7 +27,6 @@ import {
   EditOutlined,
   ExperimentOutlined,
   InboxOutlined,
-  MoreOutlined,
   PlusOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
@@ -39,6 +37,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { AtpBatchHistoryTab } from "@/components/atp-models/atp-batch-history-tab";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
@@ -1035,63 +1034,49 @@ export default function AtpModelsPage() {
         title: t("操作"),
         key: "actions",
         fixed: "right",
-        width: 150,
+        width: 160,
         render: (_, item) => {
           const deleteLoading = deleteMutation.isPending;
           const rowBusy = deleteLoading;
 
           // 编辑收进 ⋯ 三点下拉，删除仅在具备管理权限时出现（对齐 power-lines 线路管理页操作列）
-          const moreMenuItems: MenuProps["items"] = [
-            {
-              key: "edit",
-              label: (
-                <Space size={4}>
-                  <EditOutlined />
-                  <span>{t("编辑")}</span>
-                </Space>
-              ),
-              disabled: !canManage || rowBusy,
-              onClick: () => openEditModal(item),
-            },
-            ...(canManage
-              ? [
-                  {
-                    key: "delete",
-                    label: (
-                      <Space size={4}>
-                        <DeleteOutlined />
-                        <span>{t("删除")}</span>
-                      </Space>
-                    ),
-                    danger: true,
-                    disabled: rowBusy,
-                    onClick: () => {
-                      Modal.confirm({
-                        title: t("删除模型"),
-                        content: t("这会同时删除其文件与运行记录。"),
-                        okText: t("删除"),
-                        cancelText: t("取消"),
-                        okButtonProps: { danger: true, loading: deleteLoading },
-                        onOk: () => deleteMutation.mutate(item.id),
-                      });
-                    },
-                  },
-                ]
-              : []),
-          ];
-
           return (
-            <Space size={4}>
-              <Button size="small" onClick={() => openDetailById(item.id)}>
-                详情
-              </Button>
-              <Button size="small" disabled={!canTest} onClick={() => openTestTab(item)}>
-                {t("测试")}
-              </Button>
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button size="small" type="text" icon={<MoreOutlined />} aria-label={t("更多操作")} />
-              </Dropdown>
-            </Space>
+            <ModoActionGroup
+              actions={[
+                { key: "detail", label: t("详情"), onClick: () => openDetailById(item.id) },
+                {
+                  key: "test",
+                  label: t("测试"),
+                  disabled: !canTest,
+                  onClick: () => openTestTab(item),
+                },
+                {
+                  key: "edit",
+                  label: t("编辑"),
+                  icon: <EditOutlined />,
+                  disabled: !canManage || rowBusy,
+                  onClick: () => openEditModal(item),
+                },
+                {
+                  key: "delete",
+                  label: t("删除"),
+                  icon: <DeleteOutlined />,
+                  danger: true,
+                  visible: canManage,
+                  disabled: rowBusy,
+                  onClick: () => {
+                    Modal.confirm({
+                      title: t("删除模型"),
+                      content: t("这会同时删除其文件与运行记录。"),
+                      okText: t("删除"),
+                      cancelText: t("取消"),
+                      okButtonProps: { danger: true, loading: deleteLoading },
+                      onOk: () => deleteMutation.mutate(item.id),
+                    });
+                  },
+                },
+              ]}
+            />
           );
         },
       },

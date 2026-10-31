@@ -1,10 +1,9 @@
 "use client";
 
 import React from "react";
-import { Space, Dropdown } from "antd";
+import { Button, Dropdown, Space } from "antd";
 import type { MenuProps } from "antd";
 import { MoreOutlined } from "@ant-design/icons";
-import ModoButton from "@/components/biz/modo-button";
 
 export interface ActionItem {
   key: string;
@@ -13,65 +12,65 @@ export interface ActionItem {
   danger?: boolean;
   disabled?: boolean;
   loading?: boolean;
+  /** 按钮原生 title 提示（如禁用原因说明） */
+  title?: string;
   onClick?: () => void;
   visible?: boolean;
 }
 
 export interface ModoActionGroupProps {
   actions: ActionItem[];
+  /** 直接平铺的最大按钮数，超出的收进「⋯」下拉，默认 2 */
   maxCount?: number;
 }
 
-/** ModoActionGroup — 操作列按钮组（对齐 data-synth）：超出 maxCount 的收进「更多」下拉 */
+/**
+ * ModoActionGroup — 表格操作列统一按钮组（对齐线路管理页范式）：
+ * - 最多平铺 maxCount 个 size="small" 文字按钮（文案以两字为宜）
+ * - 超出的动作收进右侧「⋯」三点下拉（危险动作用 danger 标红）
+ * - 未超出 maxCount 时不渲染「⋯」
+ * - action.visible === false 的动作整体隐藏（用于权限控制）
+ */
 export const ModoActionGroup: React.FC<ModoActionGroupProps> = ({ actions = [], maxCount = 2 }) => {
   const visibleActions = actions.filter((action) => action.visible !== false);
   if (visibleActions.length === 0) return null;
 
-  let primaryActions: ActionItem[] = [];
-  let secondaryActions: ActionItem[] = [];
-  if (visibleActions.length <= maxCount) {
-    primaryActions = visibleActions;
-  } else {
-    primaryActions = visibleActions.slice(0, maxCount);
-    secondaryActions = visibleActions.slice(maxCount);
-  }
-
-  const renderButton = (action: ActionItem) => (
-    <ModoButton
-      key={action.key}
-      type="link"
-      size="small"
-      danger={action.danger}
-      disabled={action.disabled || action.loading}
-      loading={action.loading}
-      onClick={action.onClick}
-      style={{ padding: "0 4px" }}
-    >
-      {action.label}
-    </ModoButton>
-  );
+  const primaryActions =
+    visibleActions.length <= maxCount ? visibleActions : visibleActions.slice(0, maxCount);
+  const secondaryActions =
+    visibleActions.length <= maxCount ? [] : visibleActions.slice(maxCount);
 
   const menuItems: MenuProps["items"] = secondaryActions.map((action) => ({
     key: action.key,
-    label: action.label,
+    label: (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+        {action.icon}
+        {action.label}
+      </span>
+    ),
     danger: action.danger,
-    disabled: action.disabled,
-    icon: action.icon,
+    disabled: action.disabled || action.loading,
     onClick: action.onClick,
   }));
 
   return (
-    <Space size={4} role="group">
-      {primaryActions.map(renderButton)}
+    <Space size={4} role="group" style={{ whiteSpace: "nowrap" }}>
+      {primaryActions.map((action) => (
+        <Button
+          key={action.key}
+          size="small"
+          danger={action.danger}
+          disabled={action.disabled || action.loading}
+          loading={action.loading}
+          title={action.title}
+          onClick={action.onClick}
+        >
+          {action.label}
+        </Button>
+      ))}
       {secondaryActions.length > 0 && (
         <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
-          <ModoButton
-            type="link"
-            size="small"
-            style={{ padding: "0 4px", display: "inline-flex", alignItems: "center" }}
-          >
-            <MoreOutlined style={{ fontSize: 14 }} />
-          </ModoButton>
+          <Button size="small" icon={<MoreOutlined />} aria-label="更多操作" />
         </Dropdown>
       )}
     </Space>

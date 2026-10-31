@@ -27,6 +27,7 @@ import { FileTextOutlined, SearchOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -291,23 +292,22 @@ export default function AdminTaskMonitorPage() {
       {
         title: t("操作"),
         key: "actions",
-        width: 130,
+        width: 160,
         fixed: "right",
         render: (_: unknown, record: TaskTableRow) => (
-          <Space wrap>
-            <Button size="small" onClick={() => handleViewLog(record.task_id)}>
-              日志
-            </Button>
-            <Button
-              size="small"
-              danger
-              loading={deletingTaskId === record.task_id}
-              disabled={!canManage}
-              onClick={() => confirmDeleteTask(record.task_id)}
-            >
-              删除
-            </Button>
-          </Space>
+          <ModoActionGroup
+            actions={[
+              { key: "log", label: t("日志"), onClick: () => handleViewLog(record.task_id) },
+              {
+                key: "delete",
+                label: t("删除"),
+                danger: true,
+                loading: deletingTaskId === record.task_id,
+                disabled: !canManage,
+                onClick: () => confirmDeleteTask(record.task_id),
+              },
+            ]}
+          />
         ),
       },
     ],

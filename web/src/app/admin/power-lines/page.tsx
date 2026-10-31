@@ -19,7 +19,6 @@ import {
   Table,
   Tooltip,
   Typography,
-  type MenuProps,
 } from "antd";
 import {
   ApartmentOutlined,
@@ -47,6 +46,7 @@ import { AdminPageLoading } from "@/components/admin-page-loading";
 import { PowerLineMapPanel } from "@/components/power-line-map-panel";
 import { Card } from "@/components/ui-antd";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -841,7 +841,6 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
       title: t("线路名称"),
       dataIndex: "name",
       key: "name",
-      width: 288,
       ellipsis: { showTitle: true },
     },
     {
@@ -876,51 +875,31 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
     {
       title: t("操作"),
       key: "actions",
-      width: 170,
+      width: 160,
       fixed: "right",
-      render: (_, line) => {
-        const menuItems: MenuProps["items"] = [
-          {
-            key: "edit",
-            label: (
-              <Space size={4}>
-                <EditOutlined />
-                <span>{t("编辑")}</span>
-              </Space>
-            ),
-            onClick: () => onEdit(line),
-          },
-          ...(canLineManage
-            ? [
-                {
-                  key: "delete",
-                  label: (
-                    <Space size={4}>
-                      <DeleteOutlined />
-                      <span>{t("删除")}</span>
-                    </Space>
-                  ),
-                  danger: true,
-                  onClick: () => onDelete(line),
-                },
-              ]
-            : []),
-        ];
-
-        return (
-          <Space size={4}>
-            <Button size="small" onClick={() => onDetail(line)}>
-              杆塔
-            </Button>
-            <Button size="small" onClick={() => onPreview(line)}>
-              预览
-            </Button>
-            <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
-              <Button size="small" icon={<MoreOutlined />} />
-            </Dropdown>
-          </Space>
-        );
-      },
+      render: (_, line) => (
+        <ModoActionGroup
+          actions={[
+            { key: "towers", label: t("杆塔"), onClick: () => onDetail(line) },
+            { key: "preview", label: t("预览"), onClick: () => onPreview(line) },
+            {
+              key: "edit",
+              label: t("编辑"),
+              icon: <EditOutlined />,
+              visible: canLineManage,
+              onClick: () => onEdit(line),
+            },
+            {
+              key: "delete",
+              label: t("删除"),
+              icon: <DeleteOutlined />,
+              danger: true,
+              visible: canLineManage,
+              onClick: () => onDelete(line),
+            },
+          ]}
+        />
+      ),
     },
   ];
 

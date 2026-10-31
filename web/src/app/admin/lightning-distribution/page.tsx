@@ -54,6 +54,7 @@ const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLD
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useBackfillTaskProgressSync, type BackfillTaskPatch } from "@/hooks/use-backfill-task-progress";
@@ -796,7 +797,6 @@ export default function AdminLightningDistributionPage() {
       {
         title: t("文件名"),
         dataIndex: "source_file_name",
-        width: 200,
         render: (value: string) => value || "-",
       },
       {
@@ -878,77 +878,59 @@ export default function AdminLightningDistributionPage() {
       {
         title: t("操作"),
         key: "actions",
-        width: 150,
+        width: 160,
         fixed: "right",
       render: (_: unknown, row) => {
           // 统一 UI 规范：默认仅展示 2 个直接按钮（详情/回填），其余操作收进 ⋯ 三点下拉（与雷电流幅值统计页一致）
-          const moreMenuItems: MenuProps["items"] = [
-            {
-              key: "backfill-history",
-              label: t("回填记录"),
-              onClick: () => openLinkedLinesModal(row),
-            },
-            ...(canRead
-              ? [
-                  {
-                    key: "download-source",
-                    label: t("下载源文件"),
-                    icon: <DownloadOutlined />,
-                    onClick: () => {
-                      void handleDownloadSource(row);
-                    },
-                  },
-                ]
-              : []),
-            ...(canReadLogs && row.task_id
-              ? [
-                  {
-                    key: "import-log",
-                    label: t("日志"),
-                    onClick: () => openLogViewer(row.task_id, t("日志"), row.source_file_name),
-                  },
-                ]
-              : []),
-            ...(canManage
-              ? [
-                  {
-                    key: "delete",
-                    label: t("删除"),
-                    danger: true,
-                    disabled: deleteMutation.isPending,
-                    onClick: () => {
-                      modalApi.confirm({
-                        title: t("确认删除该地闪分布记录？"),
-                        content: t("将同时删除 MinIO 上的原始文件与密度图，此操作不可恢复。"),
-                        onOk: () => deleteMutation.mutate(row),
-                        okText: t("确认删除"),
-                        cancelText: t("取消"),
-                        okButtonProps: { danger: true },
-                      });
-                    },
-                  },
-                ]
-              : []),
-          ];
-
           return (
-            <Space wrap>
-              <Button size="small" onClick={() => openDetail(row)}>
-                详情
-              </Button>
-              {canManage && (
-                <Button size="small" onClick={() => openLinkedLinesModal(row)}>
-                  回填
-                </Button>
-              )}
-              {moreMenuItems.length > 0 && (
-                <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                  <Tooltip title={t("更多操作")}>
-                    <Button size="small" icon={<MoreOutlined />} />
-                  </Tooltip>
-                </Dropdown>
-              )}
-            </Space>
+            <ModoActionGroup
+              actions={[
+                { key: "detail", label: t("详情"), onClick: () => openDetail(row) },
+                {
+                  key: "backfill",
+                  label: t("回填"),
+                  visible: canManage,
+                  onClick: () => openLinkedLinesModal(row),
+                },
+                {
+                  key: "backfill-history",
+                  label: t("回填记录"),
+                  onClick: () => openLinkedLinesModal(row),
+                },
+                {
+                  key: "download-source",
+                  label: t("下载源文件"),
+                  icon: <DownloadOutlined />,
+                  visible: canRead,
+                  onClick: () => {
+                    void handleDownloadSource(row);
+                  },
+                },
+                {
+                  key: "import-log",
+                  label: t("日志"),
+                  visible: canReadLogs && Boolean(row.task_id),
+                  onClick: () => openLogViewer(row.task_id, t("日志"), row.source_file_name),
+                },
+                {
+                  key: "delete",
+                  label: t("删除"),
+                  danger: true,
+                  visible: canManage,
+                  disabled: deleteMutation.isPending,
+                  onClick: () => {
+                    modalApi.confirm({
+                      title: t("确认删除该地闪分布记录？"),
+                      content: t("将同时删除 MinIO 上的原始文件与密度图，此操作不可恢复。"),
+                      onOk: () => deleteMutation.mutate(row),
+                      okText: t("确认删除"),
+                      cancelText: t("取消"),
+                      okButtonProps: { danger: true },
+                    });
+                  },
+                },
+              ]}
+            />
           );
         },
       },
@@ -1677,7 +1659,6 @@ function BackfillRecordsView({
       {
         title: t("线路名称"),
         dataIndex: "line_name",
-        width: 150,
         render: (value: string | null) => value || "-",
       },
       {
@@ -1753,50 +1734,39 @@ function BackfillRecordsView({
       {
         title: t("操作"),
         key: "actions",
-        width: 200,
+        width: 160,
         fixed: "right",
       render: (_: unknown, row: LightningDensityBackfillTaskSummary) => {
           const busy = row.status === "pending" || row.status === "processing";
+          const ngTooltip = busy
+            ? t("回填处理中，完成后可查看")
+            : !row.has_circle_image
+              ? t("该次回填未生成沿线圆图（历史数据），重新回填后可查看")
+              : undefined;
           return (
-            <Space size={4}>
-              <Button
-                type="link"
-                size="small"
-                style={{ padding: 0 }}
-                disabled={!canReadLogs}
-                onClick={() => onOpenLog(record.task_id, t("回填日志"), record.source_file_name)}
-              >
-                日志
-              </Button>
-              <Button
-                type="link"
-                size="small"
-                style={{ padding: 0 }}
-                disabled={busy}
-                onClick={() => setTowerDrawer(row)}
-              >
-                详情
-              </Button>
-              <Tooltip
-                title={
-                  busy
-                    ? t("回填处理中，完成后可查看")
-                    : !row.has_circle_image
-                      ? t("该次回填未生成沿线圆图（历史数据），重新回填后可查看")
-                      : undefined
-                }
-              >
-                <Button
-                  type="link"
-                  size="small"
-                  style={{ padding: 0 }}
-                  disabled={busy || !row.has_circle_image}
-                  onClick={() => setNgImageDrawer(row)}
-                >
-                  {t("Ng图")}
-                </Button>
-              </Tooltip>
-            </Space>
+            <ModoActionGroup
+              actions={[
+                {
+                  key: "log",
+                  label: t("日志"),
+                  disabled: !canReadLogs,
+                  onClick: () => onOpenLog(record.task_id, t("回填日志"), record.source_file_name),
+                },
+                {
+                  key: "detail",
+                  label: t("详情"),
+                  disabled: busy,
+                  onClick: () => setTowerDrawer(row),
+                },
+                {
+                  key: "ng-image",
+                  label: t("Ng图"),
+                  disabled: busy || !row.has_circle_image,
+                  title: ngTooltip,
+                  onClick: () => setNgImageDrawer(row),
+                },
+              ]}
+            />
           );
         },
       },

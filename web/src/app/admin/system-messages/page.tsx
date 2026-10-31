@@ -31,6 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -786,17 +787,27 @@ export default function AdminSystemMessagesPage() {
     {
       title: t("操作"),
       key: "actions",
-      width: 200,
+      width: 160,
       fixed: "right",
       render: (_, item) => {
         const isDeleting = deletingMessageId === item.id;
 
-        const moreMenuItems: MenuProps["items"] = canManage
-          ? [
+        return (
+          <ModoActionGroup
+            actions={[
+              { key: "view", label: t("查看"), onClick: () => setDetailMessage(item) },
+              {
+                key: "mark-read",
+                label: t("已读"),
+                disabled: item.is_read || isDeleting,
+                loading: markReadMutation.isPending && markReadMutation.variables?.includes(item.id),
+                onClick: () => markReadMutation.mutate([item.id]),
+              },
               {
                 key: "delete",
                 label: t("删除"),
                 danger: true,
+                visible: canManage,
                 disabled: isDeleting,
                 onClick: () => {
                   Modal.confirm({
@@ -809,29 +820,8 @@ export default function AdminSystemMessagesPage() {
                   });
                 },
               },
-            ]
-          : [];
-
-        return (
-          <Space size="small">
-            <Button size="small" type="link" onClick={() => setDetailMessage(item)}>
-              查看
-            </Button>
-            <Button
-              disabled={item.is_read || isDeleting}
-              loading={markReadMutation.isPending && markReadMutation.variables?.includes(item.id)}
-              size="small"
-              type="link"
-              onClick={() => markReadMutation.mutate([item.id])}
-            >
-              标记已读
-            </Button>
-            {moreMenuItems.length > 0 && (
-              <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-                <Button type="link" size="small" disabled={isDeleting} icon={<MoreOutlined />} />
-              </Dropdown>
-            )}
-          </Space>
+            ]}
+          />
         );
       },
     },

@@ -44,6 +44,7 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
@@ -431,21 +432,20 @@ export default function AdminLightningRetrofitPage() {
         title: t("操作"),
         key: "operation",
         width: 160,
-        fixed: "right" as const,
+        fixed: "right",
         render: (_value, job) => (
-          <Space size="small">
-            <Button size="small" onClick={() => handleViewDetail(job)}>
-              详情
-            </Button>
-            <Button
-              size="small"
-              danger
-              disabled={["queued", "running"].includes(job.status)}
-              onClick={() => handleDeleteJob(job)}
-            >
-              删除
-            </Button>
-          </Space>
+          <ModoActionGroup
+            actions={[
+              { key: "detail", label: t("详情"), onClick: () => handleViewDetail(job) },
+              {
+                key: "delete",
+                label: t("删除"),
+                danger: true,
+                disabled: ["queued", "running"].includes(job.status),
+                onClick: () => handleDeleteJob(job),
+              },
+            ]}
+          />
         ),
       },
     ];

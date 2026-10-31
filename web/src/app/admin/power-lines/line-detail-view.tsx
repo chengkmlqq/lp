@@ -12,7 +12,6 @@ import {
   Form,
   Input,
   Modal,
-  Pagination,
   Progress,
   Row,
   Col,
@@ -22,10 +21,8 @@ import {
   Table,
   Typography,
   Upload,
-  Dropdown,
-  type MenuProps,
 } from "antd";
-import { ApartmentOutlined, CheckCircleOutlined, InboxOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
+import { ApartmentOutlined, CheckCircleOutlined, InboxOutlined, SearchOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
@@ -36,6 +33,8 @@ import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { getApiBaseUrl, readApiError } from "@/lib/api";
 import { RiskLevelTag } from "@/lib/risk-level";
+import { ModoActionGroup } from "@/components/biz/modo-action-group";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import type {
   LineTowerImportResponse,
   LineTowerListResponse,
@@ -544,49 +543,42 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     {
       title: t("操作"),
       key: "actions",
-      width: 180,
-      fixed: "right" as const,
+      width: 160,
+      fixed: "right",
       render: (_: unknown, row) => {
-        const menuItems: MenuProps["items"] = [
-          ...(canTowerManage
-            ? [
-                {
-                  key: "delete",
-                  label: t("删除"),
-                  danger: true,
-                  onClick: () => {
-                    Modal.confirm({
-                      title: t("确认删除该杆塔？"),
-                      content: `将删除杆塔 ${row.tower_no}，此操作不可恢复。`,
-                      okText: t("确认删除"),
-                      cancelText: t("取消"),
-                      okButtonProps: { danger: true },
-                      onOk: () => deleteTowerMutation.mutate(row),
-                    });
-                  },
-                },
-              ]
-            : []),
-        ];
-
         return (
-          <Space size="small">
-            {canTowerReadLocal && (
-              <Button size="small" onClick={() => openTowerDetailDrawer(row)}>
-                详情
-              </Button>
-            )}
-            {canTowerManage && (
-              <Button size="small" onClick={() => openEditTowerModal(row)}>
-                编辑
-              </Button>
-            )}
-            {menuItems.length > 0 && (
-              <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
-                <Button size="small" icon={<MoreOutlined />} />
-              </Dropdown>
-            )}
-          </Space>
+          <ModoActionGroup
+            actions={[
+              {
+                key: "detail",
+                label: t("详情"),
+                visible: canTowerReadLocal,
+                onClick: () => openTowerDetailDrawer(row),
+              },
+              {
+                key: "edit",
+                label: t("编辑"),
+                visible: canTowerManage,
+                onClick: () => openEditTowerModal(row),
+              },
+              {
+                key: "delete",
+                label: t("删除"),
+                danger: true,
+                visible: canTowerManage,
+                onClick: () => {
+                  Modal.confirm({
+                    title: t("确认删除该杆塔？"),
+                    content: `将删除杆塔 ${row.tower_no}，此操作不可恢复。`,
+                    okText: t("确认删除"),
+                    cancelText: t("取消"),
+                    okButtonProps: { danger: true },
+                    onOk: () => deleteTowerMutation.mutate(row),
+                  });
+                },
+              },
+            ]}
+          />
         );
       },
     },
@@ -686,11 +678,10 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
         {/* LP: 分页仅在表格有数据（total>0）时展示；空结果时不显示分页条 */}
         {(towersQuery.data?.total ?? 0) > 0 ? (
           <div className="admin-power-line-detail-pagination">
-            <Pagination
+            <ModoPagination
               current={towerPagination.current}
               pageSize={towerPagination.pageSize}
               total={towersQuery.data?.total ?? 0}
-              showSizeChanger
               showTotal={(total) => `共 ${total} 条`}
               onChange={(page, pageSize) => {
                 setTowerPagination({ current: page, pageSize });
