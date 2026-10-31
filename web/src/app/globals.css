@@ -5261,6 +5261,19 @@ body {
   min-width: 0;
 }
 
+/* 过滤框尺寸统一：左树搜索框与右侧筛选条控件同一尺寸（28px 高 / 3px 11px 内边距）。
+   原各页搜索框高度不一（documents/menus/atp-models 32px、system-params 28px、
+   dimensions 24px），与右侧 28px 的输入框/下拉/按钮并排时大小参差。 */
+.admin-documents-page-body .admin-documents-sider-search .ant-input-affix-wrapper,
+.admin-menus-page-body .admin-menus-sider-search .ant-input-affix-wrapper,
+.admin-system-params-page-body .admin-system-params-sider-card-search .ant-input-affix-wrapper,
+.admin-dimensions-page-body .admin-system-params-sider-card-search .ant-input-affix-wrapper,
+.admin-atp-models-page-body .admin-atp-models-sider-card-search .ant-input-affix-wrapper {
+  height: 28px;
+  padding: 3px 11px;
+  box-sizing: border-box;
+}
+
 /* 页面标题条（无 Tab 外壳的页面用：files / docs-view / atp-models [id] 等） */
 .modo-page-head {
   display: flex;
