@@ -2,7 +2,7 @@
 
 :root {
   /* AntD base fallbacks - MODO Design System (2026-10-30 迁移自 kb_compilation) */
-  --ant-color-primary: #3261ce;
+  --ant-color-primary: #3261ce !important;
   --ant-color-text: #242e43;
   --ant-color-text-secondary: #79879c;
   --ant-color-bg-layout: #eff4f9;
@@ -31,7 +31,7 @@
 
   --accent-6: #97b9eb;
   --accent-7: #739ce2;
-  --accent-9: #3261ce;
+  --accent-9: #3261ce !important;
   --accent-10: #517ed8;
   --accent-11: #2045ae;
   --accent-12: #112e8d;
@@ -410,7 +410,7 @@ body {
   background: #eff4f9;
 }
 .kb-nav-card.is-active .kb-nav-card-icon {
-  color: #3261ce;
+  color: #3261ce !important;
 }
 .kb-nav-card.is-active .kb-nav-card-label {
   color: #4d5e7d;
@@ -457,7 +457,7 @@ body {
 }
 .kb-nav-sub-item.is-active {
   background: #eff4f9;
-  color: #3261ce;
+  color: #3261ce !important;
 }
 
 .ant-message {
@@ -5278,4 +5278,56 @@ h5.ant-typography,
  * ═══════════════════════════════════════════════════════════ */
 .admin-design-page-body .ant-table-pagination {
   margin-bottom: 8px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * MODO 统一标签（Tag）配色。
+ * antd 6 默认 preset 色饱和度高，与 MODO 灰蓝克制基调冲突
+ * （风险等级、状态标签铺满表格时尤其刺眼）。全部降饱和为
+ * 浅底 + 深字 + 同系浅描边，主蓝对齐主题色 #3261CE。
+ * ═══════════════════════════════════════════════════════════ */
+.ant-tag.ant-tag-blue {
+  background: #ebf2fc !important;
+  color: #3261ce !important;
+  border-color: #d7e4f8 !important;
+}
+.ant-tag.ant-tag-green {
+  background: #eff7f1 !important;
+  color: #4a9b6e !important;
+  border-color: #daede1 !important;
+}
+.ant-tag.ant-tag-orange {
+  background: #fbf4e7 !important;
+  color: #b5822c !important;
+  border-color: #f2e5cc !important;
+}
+.ant-tag.ant-tag-gold {
+  background: #fbf6e7 !important;
+  color: #a8892e !important;
+  border-color: #f1e9cd !important;
+}
+.ant-tag.ant-tag-red {
+  background: #faf0ee !important;
+  color: #be564c !important;
+  border-color: #f1dbd7 !important;
+}
+.ant-tag.ant-tag-magenta {
+  background: #f8eef2 !important;
+  color: #aa4f6d !important;
+  border-color: #edd8e1 !important;
+}
+.ant-tag.ant-tag-purple {
+  background: #f4f0fa !important;
+  color: #7b5ea7 !important;
+  border-color: #e6dff2 !important;
+}
+.ant-tag.ant-tag-geekblue {
+  background: #eff1fa !important;
+  color: #4e62b8 !important;
+  border-color: #dee2f4 !important;
+}
+.ant-tag.ant-tag-cyan {
+  background: #ecf6f7 !important;
+  color: #3d8f99 !important;
+  border-color: #d5e9eb !important;
 }
