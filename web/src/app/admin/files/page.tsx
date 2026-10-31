@@ -811,54 +811,45 @@ export default function AdminFilesPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="modo-page-card">
       {messageContextHolder}
 
-      <AntCard
-        title={
-          <div className="flex items-center gap-2">
-            <FolderFilled className="text-lg text-[var(--accent-11)]" />
-            <span className="text-base font-semibold">{t("文件管理")}</span>
-          </div>
-        }
-        extra={(
-          <Space wrap size="small">
+      <div className="modo-page-head">
+        <span className="modo-page-title">
+          <FolderFilled />
+          {t("文件管理")}
+        </span>
+        <Space wrap size="small">
+        
+                    {canManage && (
+                      <Upload
+                        showUploadList={false}
+                        maxCount={1}
+                        beforeUpload={(file) => {
+                          handleUploadFile(file as File);
+                          return false;
+                        }}
+                        disabled={uploadMutation.isPending || !activeMountCode}
+                      >
+                        <Button
+                          type="button"
+                          color="blue"
+                          size="small"
+                          variant="solid"
+                          disabled={uploadMutation.isPending || !activeMountCode}
+                          icon={<UploadOutlined />}
+                        >
+                          {uploadMutation.isPending ? t("上传中...") : t("上传文件")}
+                        </Button>
+                      </Upload>
+                    )}
+                  </Space>
+      </div>
 
-            {canManage && (
-              <Upload
-                showUploadList={false}
-                maxCount={1}
-                beforeUpload={(file) => {
-                  handleUploadFile(file as File);
-                  return false;
-                }}
-                disabled={uploadMutation.isPending || !activeMountCode}
-              >
-                <Button
-                  type="button"
-                  color="blue"
-                  size="small"
-                  variant="solid"
-                  disabled={uploadMutation.isPending || !activeMountCode}
-                  icon={<UploadOutlined />}
-                >
-                  {uploadMutation.isPending ? t("上传中...") : t("上传文件")}
-                </Button>
-              </Upload>
-            )}
-          </Space>
-        )}
-        styles={{
-          header: {
-            borderBottom: '1px solid var(--ant-color-border-secondary)',
-            padding: '16px 20px'
-          },
-          body: { padding: '20px' }
-        }}
-      >
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
         <div className="space-y-4">
           {uploadMutation.isPending && (
-            <div className="rounded-xl border border-[var(--accent-6)] bg-gradient-to-r from-[var(--accent-a2)] to-transparent p-4 shadow-sm">
+            <div className="rounded border border-[var(--ant-color-border-secondary)] bg-[#f9fbfd] p-3">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <UploadOutlined className="text-[var(--accent-11)] flex-shrink-0" />
@@ -883,7 +874,7 @@ export default function AdminFilesPage() {
             </div>
           )}
 
-          <div className="rounded-xl border border-[var(--gray-6)] bg-gradient-to-br from-[var(--gray-a2)] to-transparent px-4 py-3 shadow-sm [&_.ant-breadcrumb-link]:!text-[var(--gray-12)] [&_.ant-breadcrumb-separator]:!text-[var(--gray-10)]">
+          <div className="rounded border border-[var(--ant-color-border-secondary)] bg-[#f9fbfd] px-3 py-2 [&_.ant-breadcrumb-link]:!text-[var(--gray-12)] [&_.ant-breadcrumb-separator]:!text-[var(--gray-10)]">
             <Breadcrumb items={breadcrumbItems} separator="/" />
           </div>
 
@@ -919,7 +910,7 @@ export default function AdminFilesPage() {
             />
           </div>
         </div>
-      </AntCard>
+      </div>
 
       <Modal
         title={t("新建目录")}

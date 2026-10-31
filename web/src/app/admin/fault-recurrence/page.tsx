@@ -23,6 +23,7 @@ import { CheckCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -402,20 +403,20 @@ export default function AdminFaultRecurrencePage() {
         ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <Tabs
+          <ModoTabs
             type="editable-card"
             hideAdd
             activeKey={activeTabKey}
             onChange={setActiveTabKey}
             onEdit={handleTabsEdit}
-            className="admin-fault-recurrence-tabs"
+            className="modo-page-tabs"
             items={[
               {
                 key: "result",
-                label: <span className="admin-fault-recurrence-tab-title">{t("复现结果")}</span>,
+                label: <>{t("复现结果")}</>,
                 closable: false,
                 children: (
-                  <div className="admin-fault-recurrence-result-pane">
+                  <div className="modo-page-card admin-fault-recurrence-result-pane">
                     {resultTabs.length === 0 ? (
                       <Empty description={t("选择基础数据文件并执行一次复现计算后，将在这里展示结果。")} />
                     ) : (

@@ -11,15 +11,15 @@ import {
   Form,
   Input,
   Modal,
-  Pagination,
   Segmented,
   Space,
-  Tabs,
   Typography,
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
@@ -664,13 +664,13 @@ export default function AdminFlAnalysisPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey={activeTabKey}
         onChange={setActiveTabKey}
         onEdit={handleDetailTabsEdit}
-        className="admin-fl-analysis-tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           <Space>
             {canFlCreate && (
@@ -683,10 +683,10 @@ export default function AdminFlAnalysisPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin-fl-analysis-tab-title">{t("防雷计算")}</span>,
+            label: <>{t("防雷计算")}</>,
             closable: false,
             children: (
-              <div className="admin-fl-analysis-list-pane">
+              <div className="modo-page-card admin-fl-analysis-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("关键字")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -727,7 +727,7 @@ export default function AdminFlAnalysisPage() {
                       <JobCardList jobs={jobs} loading={jobsQuery.isFetching} onDeleteJob={handleDeleteJob} onCancelJob={handleCancelJob} canReadLogs={canReadLogs} onOpenLog={openLogViewer} onOpenDetail={openJobDetail} />
                     </div>
                     <div className="admin-power-lines-pagination">
-                      <Pagination
+                      <ModoPagination
                         current={pagination.current}
                         pageSize={pagination.pageSize}
                         total={total}
@@ -766,9 +766,7 @@ export default function AdminFlAnalysisPage() {
           ...detailTabs.map((tab) => ({
             key: tab.key,
             label: (
-              <span className="admin-fl-analysis-tab-title">
-                {tab.job.job_name || tab.job.line_name || tab.job.line_code || t("任务详情")}
-              </span>
+              <>{tab.job.job_name || tab.job.line_name || tab.job.line_code || t("任务详情")}</>
             ),
             closable: true,
             children: (

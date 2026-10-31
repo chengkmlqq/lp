@@ -14,14 +14,12 @@ import {
   Input,
   InputNumber,
   Modal,
-  Pagination,
   Progress,
   Segmented,
   Select,
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -46,6 +44,8 @@ import {
 import type { ColumnsType } from "antd/es/table";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { ElevationBackfillHistoryTable } from "@/components/elevation-backfill-history";
@@ -967,13 +967,13 @@ export default function ElevationRecordsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey={activeTabKey}
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
-        className="admin_elevation_tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
@@ -984,10 +984,10 @@ export default function ElevationRecordsPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin_elevation_tab_title">{t("高程数据管理")}</span>,
+            label: <>{t("高程数据管理")}</>,
             closable: false,
             children: (
-              <div className="admin_elevation_list_pane">
+              <div className="modo-page-card admin_elevation_list_pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline" style={{ flexWrap: "nowrap" }}>
                     <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -1091,7 +1091,7 @@ export default function ElevationRecordsPage() {
                           </div>
                         </div>
                         <div className="admin-power-lines-pagination">
-                          <Pagination
+                          <ModoPagination
                             current={pagination.current}
                             pageSize={pagination.pageSize}
                             total={Math.max(recordsData?.total ?? 0, 1)}

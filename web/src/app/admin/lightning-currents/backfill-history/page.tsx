@@ -39,7 +39,7 @@ export default function AdminLightningCurrentsBackfillHistoryPage() {
 
   if (!canRead) {
     return (
-      <div className="p-6">
+      <div className="modo-page-card">
         <Card>
           <Space direction="vertical" size={12}>
             <Typography.Text type="secondary">

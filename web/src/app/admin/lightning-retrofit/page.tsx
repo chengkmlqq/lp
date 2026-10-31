@@ -17,14 +17,12 @@ import {
   Input,
   message,
   Modal,
-  Pagination,
   Progress,
   Segmented,
   Select,
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
   Timeline,
   Tooltip,
@@ -44,6 +42,8 @@ import {
 } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { Card } from "@/components/ui-antd";
@@ -167,7 +167,7 @@ export default function AdminLightningRetrofitPage() {
         ...previous,
         {
           key,
-          label: <span className="admin-power-lines-tab-title">防雷改造详情 - {job.job_name || job.line_name || job.line_code || job.id}</span>,
+          label: <>防雷改造详情 - {job.job_name || job.line_name || job.line_code || job.id}</>,
           closable: true,
           children: <RetrofitJobDetail jobId={job.id} />,
         },
@@ -325,13 +325,13 @@ export default function AdminLightningRetrofitPage() {
     <>
       {contextHolder}
       <div className="flex min-h-0 flex-1 flex-col">
-        <Tabs
+        <ModoTabs
           type="editable-card"
           hideAdd
           activeKey={activeTabKey}
           onChange={setActiveTabKey}
           onEdit={handleTabsEdit}
-          className="admin-power-lines-tabs"
+          className="modo-page-tabs"
           tabBarExtraContent={
             <Space>
               {canManage ? (
@@ -344,7 +344,7 @@ export default function AdminLightningRetrofitPage() {
           items={[
             {
               key: LIST_TAB_KEY,
-              label: <span className="admin-power-lines-tab-title">{t("防雷改造任务")}</span>,
+              label: <>{t("防雷改造任务")}</>,
               closable: false,
               children: renderJobsPane(),
             },
@@ -451,7 +451,7 @@ export default function AdminLightningRetrofitPage() {
     ];
 
     return (
-      <div className="admin-power-lines-list-pane">
+      <div className="modo-page-card admin-power-lines-list-pane">
         <div className="admin-filter-bar">
           <Form layout="inline">
             <Form.Item label={t("关键字")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -623,7 +623,7 @@ export default function AdminLightningRetrofitPage() {
               </Spin>
             </div>
             <div className="admin-power-lines-pagination">
-              <Pagination
+              <ModoPagination
                 current={pagination.current}
                 pageSize={pagination.pageSize}
                 total={total}
@@ -828,7 +828,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
   ];
 
   return (
-    <div className="admin-power-lines-list-pane">
+    <div className="modo-page-card admin-power-lines-list-pane">
       <Alert
         type="info"
         showIcon

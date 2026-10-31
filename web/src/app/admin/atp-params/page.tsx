@@ -22,7 +22,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Pagination,
   Row,
   Segmented,
   Select,
@@ -52,6 +51,8 @@ import {
 } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -725,11 +726,11 @@ export default function AtpParamsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey="list"
-        className="admin-atp-params-tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           <Space size={8}>
             <Button icon={<ExperimentOutlined />} onClick={() => void openTrial()}>
@@ -746,13 +747,11 @@ export default function AtpParamsPage() {
           {
             key: "list",
             label: (
-              <span className="admin-atp-params-tab-title">
-                ATP 计算参数管理
-              </span>
+              <>ATP 计算参数管理</>
             ),
             closable: false,
             children: (
-              <div className="admin-atp-params-list-pane">
+              <div className="modo-page-card admin-atp-params-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("参数名称")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -828,7 +827,7 @@ export default function AtpParamsPage() {
               </div>
             ) : null}
             <div className="admin-atp-params-pagination">
-              <Pagination
+              <ModoPagination
                 current={pagination.current}
                 pageSize={pagination.pageSize}
                 total={list.length}
@@ -855,7 +854,6 @@ export default function AtpParamsPage() {
                 showSizeChanger: true,
                 showTotal: (total) => `共 ${total} 条`,
                 // 与卡片视图独立分页组件尺寸一致（不随 Table size=small 缩到 24px）
-                size: "default",
                 onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
               }}
               scroll={{ x: 780, y: tableScrollY }}
@@ -867,7 +865,7 @@ export default function AtpParamsPage() {
       ),
       },
     ]}>
-    </Tabs>
+    </ModoTabs>
 
       {/* 详情弹窗（统一弹窗展示，与新建/编辑一致） */}
       <Modal
@@ -1133,7 +1131,7 @@ export default function AtpParamsPage() {
               rowKey="id"
               size="small"
               dataSource={trialTowers}
-              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${t("共 ")}${total}${t(" 座杆塔")}`, size: "default" }}
+              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${t("共 ")}${total}${t(" 座杆塔")}` }}
               locale={{ emptyText: trialLineId ? t("该线路暂无杆塔") : t("请先选择线路") }}
               rowSelection={{
                 selectedRowKeys: trialSelected,
@@ -1263,7 +1261,7 @@ export default function AtpParamsPage() {
                     padding: "10px 0 12px",
                   }}
                 >
-                  <Pagination
+                  <ModoPagination
                     size="small"
                     current={page.current}
                     pageSize={page.pageSize}

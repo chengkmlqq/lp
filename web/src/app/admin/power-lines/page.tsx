@@ -11,14 +11,12 @@ import {
   Form,
   Input,
   Modal,
-  Pagination,
   Progress,
   Segmented,
   Select,
   Space,
   Spin,
   Table,
-  Tabs,
   Tooltip,
   Typography,
   type MenuProps,
@@ -48,6 +46,8 @@ import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { PowerLineMapPanel } from "@/components/power-line-map-panel";
 import { Card } from "@/components/ui-antd";
+import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { readApiError } from "@/lib/api";
@@ -379,7 +379,7 @@ export default function AdminPowerLinesPage() {
         ...previous,
         {
           key,
-          label: <span className="admin-power-lines-tab-title">线路详情 - {line.name || line.code}</span>,
+          label: `线路详情 - ${line.name || line.code}`,
           closable: true,
           children: (
             <AdminPowerLinesDetailView
@@ -404,7 +404,7 @@ export default function AdminPowerLinesPage() {
         ...previous,
         {
           key,
-          label: <span className="admin-power-lines-tab-title">线路预览 - {line.name || line.code}</span>,
+          label: `线路预览 - ${line.name || line.code}`,
           closable: true,
           children: (
             <div className="flex flex-1 flex-col">
@@ -473,13 +473,13 @@ export default function AdminPowerLinesPage() {
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
+        className="modo-page-tabs"
         activeKey={activeTabKey}
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
-        className="admin-power-lines-tabs"
         tabBarExtraContent={
           canCreateLine ? (
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreateLineModal}>
@@ -490,10 +490,10 @@ export default function AdminPowerLinesPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin-power-lines-tab-title">{t("线路列表")}</span>,
+            label: t("线路列表"),
             closable: false,
             children: (
-              <div className="admin-power-lines-list-pane">
+              <div className="modo-page-card admin-power-lines-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("线路名称")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -583,18 +583,15 @@ export default function AdminPowerLinesPage() {
                         <Spin />
                       </div>
                     ) : null}
-                    <div className="admin-power-lines-pagination">
-                      <Pagination
-                        current={pagination.current}
-                        pageSize={pagination.pageSize}
-                        total={total}
-                        onChange={(page, pageSize) => {
-                          setPagination({ current: page, pageSize });
-                        }}
-                        showSizeChanger
-                        showTotal={(total) => `共 ${total} 条`}
-                      />
-                    </div>
+                    <ModoPagination
+                      current={pagination.current}
+                      pageSize={pagination.pageSize}
+                      total={total}
+                      onChange={(page, pageSize) => {
+                        setPagination({ current: page, pageSize });
+                      }}
+                      style={{ flexShrink: 0, marginTop: "auto" }}
+                    />
                   </div>
                 ) : (
                   <div

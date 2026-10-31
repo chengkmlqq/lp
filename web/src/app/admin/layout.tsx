@@ -1,5 +1,10 @@
 "use client";
 
+// 后台外壳 —— 2026-10-30 UI 改造：参照 kb_compilation MODO 设计系统复刻。
+// 结构：48px 顶栏（logo + 用户区）+ 双列 rail 侧边导航（80px 一级方块卡 + 160px 子菜单）
+// + #EFF4F9 灰底内容区。菜单仍由后端 /api/v1/admin/me/menus 下发。
+// 主题切换已移除（仅浅色 MODO 主题）。
+
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 // 2026-10-02：消息触发时间格式统一 YYYY-MM-DD HH:mm:ss（横杠分隔，不用斜杠）
@@ -12,17 +17,13 @@ function formatMessageTime(value: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
-import { usePathname } from "next/navigation";
-import Icon, {
+import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import {
   BellOutlined,
+  CaretDownOutlined,
   LogoutOutlined,
-  MenuFoldOutlined,
   MenuOutlined,
-  MenuUnfoldOutlined,
-  MoonOutlined,
-  SunOutlined,
-  SyncOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { resolveIcon } from "@/lib/icon-registry";
@@ -36,7 +37,6 @@ import {
   Grid,
   Layout as AntLayout,
   List,
-  Menu as AntMenu,
   Popover,
   Result,
   Space,
@@ -56,27 +56,11 @@ import { readApiError, getApiBaseUrl } from "@/lib/api";
 import { normalizeAppRoutePath } from "@/lib/app-route-path";
 import { findFirstMenuPath } from "@/lib/menu-tree-path";
 import type { MenuTreeItem, SystemMessageListResponse, SystemMessageSummary } from "@/types/auth";
-import { useThemeAppearance } from "@/components/ui-theme";
 import { withBasePath } from "@/lib/base-path";
 
-const { Header, Sider, Content } = AntLayout;
+const { Header, Content } = AntLayout;
 const AntResult = Result as unknown as ComponentType<ResultProps>;
 const ADMIN_ME_MENUS_QUERY_KEY = ["/api/v1/admin/me/menus"] as const;
-
-const ThemeSvgIcon = (props: SVGProps<SVGSVGElement>) => (
-  <svg width={20} height={20} viewBox="0 0 24 24" fill="currentColor" {...props}>
-    <title>Theme icon</title>
-    <g fillRule="evenodd">
-      <g fillRule="nonzero">
-        <path d="M7.02 3.635l12.518 12.518a1.863 1.863 0 010 2.635l-1.317 1.318a1.863 1.863 0 01-2.635 0L3.068 7.588A2.795 2.795 0 117.02 3.635zm2.09 14.428a.932.932 0 110 1.864.932.932 0 010-1.864zm-.043-9.747L7.75 9.635l9.154 9.153 1.318-1.317-9.154-9.155zM3.52 12.473c.514 0 .931.417.931.931v.932h.932a.932.932 0 110 1.864h-.932v.931a.932.932 0 01-1.863 0l-.001-.931h-.93a.932.932 0 010-1.864h.93v-.932c0-.514.418-.931.933-.931zm15.374-3.727a1.398 1.398 0 110 2.795 1.398 1.398 0 010-2.795zM4.385 4.953a.932.932 0 000 1.317l2.046 2.047L7.75 7 5.703 4.953a.932.932 0 00-1.318 0zM14.701.36a.932.932 0 01.931.932v.931h.932a.932.932 0 010 1.864h-.933l.001.932a.932.932 0 11-1.863 0l-.001-.932h-.93a.932.932 0 110-1.864h.93v-.931a.932.932 0 01.933-.932z" />
-      </g>
-    </g>
-  </svg>
-);
-
-function ThemeIcon() {
-  return <Icon component={ThemeSvgIcon} />;
-}
 
 function normalizeAdminPath(path: string | null): string | null {
   return normalizeAppRoutePath(path);
@@ -97,25 +81,23 @@ function isActivePath(pathname: string, menuPath: string | null): boolean {
   return pathname === menuPath || pathname.startsWith(`${menuPath}/`);
 }
 
-type AntdMenuItems = NonNullable<MenuProps["items"]>;
-
 const LEGACY_ICON_ALIASES: Record<string, string> = {
-  Users: 'TeamOutlined',
-  ShieldCheck: 'SafetyCertificateOutlined',
-  MenuSquare: 'AppstoreOutlined',
-  Settings2: 'SettingOutlined',
-  Network: 'NodeIndexOutlined',
-  Zap: 'ThunderboltOutlined',
-  Map: 'GlobalOutlined',
-  RadarChart: 'RadarChartOutlined',
-  CalendarClock: 'CalendarOutlined',
-  Experiment: 'ExperimentOutlined',
-  Apartment: 'ApartmentOutlined',
-  FolderTree: 'FolderOpenOutlined',
-  Database: 'DatabaseOutlined',
-  FileText: 'FileTextOutlined',
-  Terminal: 'ConsoleSqlOutlined',
-  Bell: 'BellOutlined',
+  Users: "TeamOutlined",
+  ShieldCheck: "SafetyCertificateOutlined",
+  MenuSquare: "AppstoreOutlined",
+  Settings2: "SettingOutlined",
+  Network: "NodeIndexOutlined",
+  Zap: "ThunderboltOutlined",
+  Map: "GlobalOutlined",
+  RadarChart: "RadarChartOutlined",
+  CalendarClock: "CalendarOutlined",
+  Experiment: "ExperimentOutlined",
+  Apartment: "ApartmentOutlined",
+  FolderTree: "FolderOpenOutlined",
+  Database: "DatabaseOutlined",
+  FileText: "FileTextOutlined",
+  Terminal: "ConsoleSqlOutlined",
+  Bell: "BellOutlined",
 };
 
 function resolveMenuIcon(icon: string | null): ReactNode {
@@ -127,40 +109,6 @@ function resolveMenuIcon(icon: string | null): ReactNode {
     return <IconComponent />;
   }
   return null;
-}
-
-function buildMenuItems(
-  items: MenuTreeItem[],
-  menuLabel: (code: string | null | undefined, zhName: string) => string,
-): AntdMenuItems {
-  return items.map((item) => {
-    const children = buildMenuItems(item.children, menuLabel);
-    const displayName = menuLabel(item.code || item.id, item.name);
-    const label = item.path ? (
-      <Link href={item.path} prefetch={false}>
-        {displayName}
-      </Link>
-    ) : (
-      displayName
-    );
-    const icon = resolveMenuIcon(item.icon);
-
-    if (children.length > 0) {
-      return {
-        key: item.id,
-        label,
-        icon,
-        children,
-      };
-    }
-
-    return {
-      key: item.id,
-      label,
-      icon,
-      disabled: !item.path,
-    };
-  });
 }
 
 type ActiveMenuState = {
@@ -196,6 +144,50 @@ function findActiveMenuState(
   };
 }
 
+/** 找到目标菜单所属的一级分组 id（menu.id）。 */
+function findTopLevelGroupId(items: MenuTreeItem[], targetId: string): string | null {
+  for (const item of items) {
+    if (item.id === targetId) {
+      return item.id;
+    }
+    if (item.children.length > 0) {
+      const hit = findTopLevelGroupId(item.children, targetId);
+      if (hit) {
+        return item.id;
+      }
+    }
+  }
+  return null;
+}
+
+/** 收集一个分组下的叶子菜单（用于二级子菜单列与「跳第一个页面」）。 */
+function collectLeafMenus(items: MenuTreeItem[]): MenuTreeItem[] {
+  const leaves: MenuTreeItem[] = [];
+  for (const item of items) {
+    if (item.children.length > 0) {
+      leaves.push(...collectLeafMenus(item.children));
+    } else if (item.path) {
+      leaves.push(item);
+    }
+  }
+  return leaves;
+}
+
+/** 二级子菜单的渲染模型：分组标题 + 叶子项。 */
+type SubMenuSection = { title: string | null; leaves: MenuTreeItem[] };
+
+function buildSubMenuSections(children: MenuTreeItem[]): SubMenuSection[] {
+  const sections: SubMenuSection[] = [];
+  for (const child of children) {
+    if (child.children.length > 0) {
+      sections.push({ title: child.name, leaves: collectLeafMenus(child.children) });
+    } else {
+      sections.push({ title: null, leaves: [child] });
+    }
+  }
+  return sections.filter((s) => s.leaves.length > 0 || s.title);
+}
+
 function AdminCenteredState({ children }: { children: ReactNode }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--ant-color-bg-layout)] px-6 py-20">
@@ -207,19 +199,16 @@ function AdminCenteredState({ children }: { children: ReactNode }) {
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const rawPathname = usePathname();
   const pathname = normalizeAppRoutePath(rawPathname) ?? rawPathname;
+  const router = useRouter();
   const screens = Grid.useBreakpoint();
   const isDesktop = screens.md === true;
   const queryClient = useQueryClient();
   const { user, initializing, fetchWithAuth, logout } = useAuth();
   const { t, lang, setLang, menuLabel } = useI18n();
-  const {
-    themePrimaryMode,
-    setThemePrimaryMode,
-  } = useThemeAppearance();
-  const [menuOpenKeys, setMenuOpenKeys] = useState<string[]>([]);
-  const [siderCollapsed, setSiderCollapsed] = useState(false);
+  const [subCollapsed, setSubCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [groupOverride, setGroupOverride] = useState<string | null>(null);
   const emptyMenuTree = useMemo<MenuTreeItem[]>(() => [], []);
   const menusQueryKey = useMemo(
     () => [...ADMIN_ME_MENUS_QUERY_KEY, user?.id ?? "anonymous"] as const,
@@ -255,7 +244,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }, [queryClient, user]));
 
   const menuTree = menusQuery.data ?? emptyMenuTree;
-  const menuItems = useMemo(() => buildMenuItems(menuTree, menuLabel), [menuTree, menuLabel]);
   const firstMenuPath = useMemo(() => findFirstMenuPath(menuTree), [menuTree]);
   const activeMenuState = useMemo(() => findActiveMenuState(menuTree, pathname), [menuTree, pathname]);
   const routeAllowed = useMemo(() => {
@@ -265,39 +253,40 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     return activeMenuState.selectedKeys.length > 0;
   }, [activeMenuState.selectedKeys.length, pathname]);
 
-  useEffect(() => {
-    queueMicrotask(() => {
-      setMenuOpenKeys(activeMenuState.openKeys);
-    });
-  }, [activeMenuState.openKeys]);
+  const activeItemId = activeMenuState.selectedKeys[0] ?? null;
+  // 当前路由所属的一级分组（无命中时默认第一组）
+  const activeGroupId = useMemo(() => {
+    if (activeItemId) {
+      const hit = findTopLevelGroupId(menuTree, activeItemId);
+      if (hit) return hit;
+    }
+    return menuTree[0]?.id ?? null;
+  }, [menuTree, activeItemId]);
 
-  const themeBadge = useMemo(
-    () => <Badge color="var(--fquiz-theme-primary, var(--ant-color-primary))" style={{ marginTop: -1 }} />,
-    [],
+  const groupId = groupOverride ?? activeGroupId;
+  const currentGroup = menuTree.find((m) => m.id === groupId) ?? null;
+  const hasSub = (currentGroup?.children.length ?? 0) > 0;
+  const subSections = useMemo(
+    () => (hasSub && currentGroup ? buildSubMenuSections(currentGroup.children) : []),
+    [currentGroup, hasSub],
   );
-  const themeMenuItems = useMemo<NonNullable<MenuProps["items"]>>(
-    () => [
-      {
-        key: "auto",
-        icon: <SyncOutlined />,
-        label: t("跟随系统"),
-        extra: themePrimaryMode === "auto" ? themeBadge : null,
-      },
-      {
-        key: "light",
-        icon: <SunOutlined />,
-        label: t("浅色主题"),
-        extra: themePrimaryMode === "light" ? themeBadge : null,
-      },
-      {
-        key: "dark",
-        icon: <MoonOutlined />,
-        label: t("暗黑主题"),
-        extra: themePrimaryMode === "dark" ? themeBadge : null,
-      },
-    ],
-    [t, themeBadge, themePrimaryMode],
-  );
+
+  const handleGroupClick = (item: MenuTreeItem) => {
+    setGroupOverride(item.id);
+    const leaves = collectLeafMenus(item.children);
+    const target = leaves[0]?.path ?? item.path;
+    if (target) {
+      router.push(target);
+    }
+    setMobileMenuOpen(false);
+  };
+
+  const handleSubClick = (item: MenuTreeItem) => {
+    if (item.path) {
+      router.push(item.path);
+      setMobileMenuOpen(false);
+    }
+  };
 
   const accountMenuItems = useMemo<NonNullable<MenuProps["items"]>>(
     () => [
@@ -323,16 +312,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       },
     ],
     [t, user?.role_codes, user?.username],
-  );
-
-  const onThemeMenuClick = useCallback(
-    ({ key }: Parameters<NonNullable<MenuProps["onClick"]>>[0]) => {
-      if (key === "auto" || key === "light" || key === "dark") {
-        setThemePrimaryMode(key);
-        return;
-      }
-    },
-    [setThemePrimaryMode],
   );
 
   const onAccountMenuClick = useCallback(
@@ -414,16 +393,77 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
   }, [fetchWithAuth, loadMessages]);
 
-  const navigationMenu = (
-    <AntMenu
-      mode="inline"
-      items={menuItems}
-      openKeys={siderCollapsed && isDesktop ? [] : menuOpenKeys}
-      selectedKeys={activeMenuState.selectedKeys}
-      style={{ borderInlineEnd: "none", background: "transparent" }}
-      onClick={() => setMobileMenuOpen(false)}
-      onOpenChange={(keys: string[]) => setMenuOpenKeys(keys)}
-    />
+  /** 双列 rail 导航（桌面侧栏与移动端 Drawer 共用）。 */
+  const renderKbNav = () => (
+    <div className="kb-nav">
+      {/* 第一列：一级菜单方块卡片 */}
+      <div className="kb-nav-rail">
+        {menuTree.map((item) => {
+          const selected = item.id === groupId;
+          return (
+            <div
+              key={item.id}
+              className={`kb-nav-card${selected ? " is-active" : ""}`}
+              title={menuLabel(item.code || item.id, item.name)}
+              onClick={() => handleGroupClick(item)}
+            >
+              <span className="kb-nav-card-icon">
+                {resolveMenuIcon(item.icon) ?? <UserOutlined />}
+              </span>
+              <span className="kb-nav-card-label">
+                {menuLabel(item.code || item.id, item.name)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {/* 第二列：当前一级分组下的子菜单（无二级菜单时不渲染整列） */}
+      {isDesktop && !subCollapsed && hasSub && (
+        <div className="kb-nav-sub">
+          {subSections.map((section, sectionIdx) => (
+            <div key={section.title ?? `section-${sectionIdx}`}>
+              {section.title && (
+                <div className="kb-nav-sub-title">{section.title}</div>
+              )}
+              {section.leaves.map((leaf) => {
+                const selected = leaf.id === activeItemId;
+                return (
+                  <div
+                    key={leaf.id}
+                    className={`kb-nav-sub-item${selected ? " is-active" : ""}`}
+                    title={menuLabel(leaf.code || leaf.id, leaf.name)}
+                    onClick={() => handleSubClick(leaf)}
+                  >
+                    {menuLabel(leaf.code || leaf.id, leaf.name)}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+      {!isDesktop && hasSub && (
+        <div className="kb-nav-sub">
+          {subSections.map((section, sectionIdx) => (
+            <div key={section.title ?? `section-${sectionIdx}`}>
+              {section.title && <div className="kb-nav-sub-title">{section.title}</div>}
+              {section.leaves.map((leaf) => {
+                const selected = leaf.id === activeItemId;
+                return (
+                  <div
+                    key={leaf.id}
+                    className={`kb-nav-sub-item${selected ? " is-active" : ""}`}
+                    onClick={() => handleSubClick(leaf)}
+                  >
+                    {menuLabel(leaf.code || leaf.id, leaf.name)}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 
   if (initializing || (user && menusQuery.isLoading)) {
@@ -480,44 +520,34 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <AntLayout className="admin-design-shell">
       <Header className="admin-design-header">
-        {!isDesktop && (
-          <Button
-            aria-label={t("打开菜单")}
-            icon={<MenuOutlined />}
-            type="text"
-            onClick={() => setMobileMenuOpen(true)}
-          />
-        )}
+        <div className="admin-design-header-left">
+          {!isDesktop && (
+            <Button
+              aria-label={t("打开菜单")}
+              icon={<MenuOutlined />}
+              type="text"
+              onClick={() => setMobileMenuOpen(true)}
+            />
+          )}
 
-        <Link
-          href={firstMenuPath ?? "/dashboard"}
-          className="ml-2 flex items-center gap-2 text-inherit no-underline md:ml-0"
-        >
-          <img
-            src={withBasePath("/favicon.ico")}
-            alt={t("高压电塔图标")}
-            width={22}
-            height={22}
-            className="h-[22px] w-[22px]"
-          />
-          <Typography.Text strong style={{ marginBottom: 0 }}>
-            {t("防雷计算")}
-          </Typography.Text>
-        </Link>
-
-        <Space style={{ marginLeft: "auto" }}>
-          <LangSwitcher lang={lang} onChange={setLang} compact />
-
-          <Dropdown
-            menu={{ items: themeMenuItems, onClick: onThemeMenuClick }}
-            arrow={{ pointAtCenter: true }}
-            placement="bottomRight"
-            trigger={["click"]}
+          <Link
+            href={firstMenuPath ?? "/admin"}
+            className="admin-design-header-brand"
           >
-            <Tooltip title={t("主题")}>
-              <Button icon={<ThemeIcon />} type="text" />
-            </Tooltip>
-          </Dropdown>
+            <img
+              src={withBasePath("/favicon.ico")}
+              alt={t("高压电塔图标")}
+              width={24}
+              height={24}
+              className="h-6 w-6"
+            />
+            <span className="admin-design-header-title">{t("防雷计算")}</span>
+          </Link>
+          <div className="admin-design-header-divider" />
+        </div>
+
+        <div className="admin-design-header-right">
+          <LangSwitcher lang={lang} onChange={setLang} compact />
 
           <Tooltip title={t("系统消息")}>
             <Popover
@@ -603,10 +633,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               placement="bottomRight"
             >
               <Badge count={unreadMessageCount} size="small">
-                <Button
-                  icon={<BellOutlined />}
-                  type="text"
-                />
+                <Button icon={<BellOutlined />} type="text" />
               </Badge>
             </Popover>
           </Tooltip>
@@ -617,10 +644,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             placement="bottomRight"
             trigger={["click"]}
           >
-            <Button aria-label={t("用户菜单")} type="text">
+            <div className="admin-design-header-user">
               {user.avatar_url && !avatarError ? (
                 <Avatar
-                  size="small"
+                  size={28}
                   src={`${getApiBaseUrl()}${user.avatar_url}?t=${encodeURIComponent(user.updated_at ?? "")}`}
                   style={{ backgroundColor: "var(--ant-color-primary)" }}
                   onError={() => {
@@ -629,50 +656,50 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   }}
                 />
               ) : (
-                <Avatar size="small" style={{ backgroundColor: "var(--ant-color-primary)" }}>
+                <Avatar size={28} style={{ backgroundColor: "var(--ant-color-primary)" }}>
                   {user.username.trim().charAt(0).toUpperCase() || "U"}
                 </Avatar>
               )}
-            </Button>
+              <span className="admin-design-header-username">{user.username}</span>
+              <CaretDownOutlined style={{ fontSize: 12, color: "#4D5E7D" }} />
+            </div>
           </Dropdown>
-        </Space>
+        </div>
       </Header>
 
-      <AntLayout>
+      <AntLayout hasSider style={{ flex: 1, minHeight: 0 }}>
         {isDesktop && (
-          <Sider
+          <div
             className="admin-design-sider"
-            collapsed={siderCollapsed}
-            collapsedWidth={72}
-            theme="light"
-            trigger={null}
-            width={256}
+            style={{ width: !subCollapsed && hasSub ? 264 : 104 }}
           >
-            <div className="admin-design-sider-inner">
-              <div className="admin-design-sider-menu">
-                {navigationMenu}
-              </div>
-              <div className="admin-design-sider-footer">
-                <Button
-                  aria-label={siderCollapsed ? t("展开菜单") : t("收起菜单")}
-                  icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                  type="text"
-                  onClick={() => setSiderCollapsed((previous) => !previous)}
+            {renderKbNav()}
+            {hasSub && (
+              <div
+                className="admin-design-sider-collapse"
+                onClick={() => setSubCollapsed((v) => !v)}
+                title={subCollapsed ? t("展开子菜单") : t("收起子菜单")}
+              >
+                <CaretDownOutlined
+                  style={{ fontSize: 12, color: "#4D5E7D", transform: "rotate(90deg)" }}
                 />
               </div>
-            </div>
-          </Sider>
+            )}
+          </div>
         )}
 
-        <Drawer
-          title={null}
-          placement="left"
-          open={!isDesktop && mobileMenuOpen}
-          width={288}
-          onClose={() => setMobileMenuOpen(false)}
-        >
-          {navigationMenu}
-        </Drawer>
+        {!isDesktop && (
+          <Drawer
+            title={null}
+            placement="left"
+            open={mobileMenuOpen}
+            width={300}
+            onClose={() => setMobileMenuOpen(false)}
+            styles={{ body: { padding: 0 } }}
+          >
+            {renderKbNav()}
+          </Drawer>
+        )}
 
         <AntLayout className="admin-design-main">
           <Content className="admin-design-content">

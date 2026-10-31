@@ -22,7 +22,6 @@ import {
   Skeleton,
   Spin,
   Space,
-  Tabs,
   Table,
   Tag,
   Tooltip,
@@ -53,6 +52,7 @@ import type { UploadFile } from "antd/es/upload";
 import type { ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -1046,11 +1046,11 @@ export default function AdminMatlabEnginePage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey="list"
-        className="admin-matlab-tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           <Space>
             {activeRelease && (
@@ -1076,10 +1076,10 @@ export default function AdminMatlabEnginePage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-matlab-tab-title">{t("MATLAB 引擎管理")}</span>,
+            label: <>{t("MATLAB 引擎管理")}</>,
             closable: false,
             children: (
-              <div className="admin-matlab-list-pane">
+              <div className="modo-page-card admin-matlab-list-pane">
                 {/* ===== Body Area: Two-column layout ===== */}
                 <div ref={containerRef} className="admin-matlab-page-body">
                   {/* Module Sidebar */}

@@ -1,68 +1,68 @@
 @import "tailwindcss";
 
 :root {
-  /* AntD base fallbacks - Lightning theme */
-  --ant-color-primary: #8b5cf6;
-  --ant-color-text: rgba(0, 0, 0, 0.88);
-  --ant-color-text-secondary: rgba(0, 0, 0, 0.65);
-  --ant-color-bg-layout: #faf8ff;
+  /* AntD base fallbacks - MODO Design System (2026-10-30 迁移自 kb_compilation) */
+  --ant-color-primary: #3261ce;
+  --ant-color-text: #242e43;
+  --ant-color-text-secondary: #79879c;
+  --ant-color-bg-layout: #eff4f9;
   --ant-color-bg-container: #ffffff;
-  --ant-color-fill-alter: #f0ebff;
-  --ant-color-border-secondary: #d4c5ff;
-  --ant-border-radius: 6px;
+  --ant-color-fill-alter: #eff4f9;
+  --ant-color-border-secondary: #e3e9ef;
+  --ant-border-radius: 2px;
   --ant-border-radius-lg: 8px;
   --ant-padding: 16px;
   --ant-padding-lg: 24px;
   --ant-margin-lg: 24px;
-  --ant-box-shadow-tertiary: 0 1px 2px 0 rgba(139, 92, 246, 0.12);
+  --ant-box-shadow-tertiary: 0 8px 20px 0 rgba(36, 46, 67, 0.1);
 
   /* Legacy semantic vars (overridden by Theme token bridge at runtime) */
   --color-panel-solid: #ffffff;
-  --border: #d4c5ff;
+  --border: #e3e9ef;
 
   --gray-1: #ffffff;
-  --gray-2: #f0ebff;
-  --gray-6: #d4c5ff;
-  --gray-10: rgba(0, 0, 0, 0.45);
-  --gray-11: rgba(0, 0, 0, 0.65);
-  --gray-12: rgba(0, 0, 0, 0.88);
-  --gray-a2: rgba(139, 92, 246, 0.08);
-  --gray-a3: rgba(139, 92, 246, 0.14);
+  --gray-2: #eff4f9;
+  --gray-6: #e3e9ef;
+  --gray-10: #95a6ba;
+  --gray-11: #79879c;
+  --gray-12: #242e43;
+  --gray-a2: rgba(36, 46, 67, 0.04);
+  --gray-a3: rgba(36, 46, 67, 0.08);
 
-  --accent-6: #c4b5fd;
-  --accent-7: #a78bfa;
-  --accent-9: #8b5cf6;
-  --accent-10: #7c3aed;
-  --accent-11: #6d28d9;
-  --accent-12: #5b21b6;
-  --accent-a2: rgba(139, 92, 246, 0.12);
-  --accent-a3: rgba(139, 92, 246, 0.18);
+  --accent-6: #97b9eb;
+  --accent-7: #739ce2;
+  --accent-9: #3261ce;
+  --accent-10: #517ed8;
+  --accent-11: #2045ae;
+  --accent-12: #112e8d;
+  --accent-a2: rgba(50, 97, 206, 0.08);
+  --accent-a3: rgba(50, 97, 206, 0.14);
   --accent-contrast: #ffffff;
 
-  --indigo-2: #eef2ff;
-  --indigo-11: #3730a3;
-  --indigo-a2: rgba(79, 70, 229, 0.12);
+  --indigo-2: #e8f3ff;
+  --indigo-11: #2045ae;
+  --indigo-a2: rgba(50, 97, 206, 0.1);
 
-  --green-6: #95de64;
-  --green-9: #52c41a;
-  --green-11: #237804;
-  --green-a2: rgba(82, 196, 26, 0.14);
-  --green-a3: rgba(82, 196, 26, 0.2);
+  --green-6: #a6e4c0;
+  --green-9: #55bc8a;
+  --green-11: #36a071;
+  --green-a2: rgba(85, 188, 138, 0.14);
+  --green-a3: rgba(85, 188, 138, 0.2);
 
-  --red-2: #fff1f0;
-  --red-6: #ff7875;
-  --red-7: #ff4d4f;
-  --red-11: #cf1322;
-  --red-a2: rgba(255, 77, 79, 0.14);
-  --red-a3: rgba(255, 77, 79, 0.22);
+  --red-2: #ffede8;
+  --red-6: #e79f94;
+  --red-7: #db7a6f;
+  --red-11: #c3342f;
+  --red-a2: rgba(195, 52, 47, 0.1);
+  --red-a3: rgba(195, 52, 47, 0.16);
 
-  --orange-9: #faad14;
-  --orange-11: #ad6800;
-  --orange-a3: rgba(250, 173, 20, 0.24);
-  --amber-11: #ad6800;
+  --orange-9: #f5a623;
+  --orange-11: #cb7f16;
+  --orange-a3: rgba(245, 166, 35, 0.18);
+  --amber-11: #cb7f16;
 
-  --fquiz-scrollbar-thumb: var(--ant-color-fill-secondary, rgba(139, 92, 246, 0.2));
-  --fquiz-scrollbar-thumb-hover: var(--ant-color-fill, rgba(139, 92, 246, 0.35));
+  --fquiz-scrollbar-thumb: rgba(36, 46, 67, 0.18);
+  --fquiz-scrollbar-thumb-hover: rgba(36, 46, 67, 0.3);
 
   /* Theme semantic bridge vars (for pages/components avoid hard-coded colors) */
   --fquiz-theme-bg-layout: var(--ant-color-bg-layout);
@@ -84,309 +84,147 @@
   --fquiz-theme-shell-header-bg: var(--fquiz-theme-bg-elevated);
   --fquiz-theme-shell-sider-bg: var(--fquiz-theme-bg-elevated);
 
-  --fquiz-theme-shadow-card: 0 10px 24px color-mix(in srgb, var(--accent-9) 22%, transparent);
-  --fquiz-theme-shadow-soft: 0 2px 8px color-mix(in srgb, var(--accent-9) 12%, transparent);
-  --fquiz-table-border-color: #d4c5ff;
+  --fquiz-theme-shadow-card: 0 2px 5px 0 rgba(36, 46, 67, 0.1);
+  --fquiz-theme-shadow-soft: 0 2px 5px 0 rgba(36, 46, 67, 0.1);
+  --fquiz-table-border-color: #e3e9ef;
 }
 
-:root[data-fquiz-theme="dark"] {
-  --fquiz-theme-bg-layout: color-mix(in srgb, var(--ant-color-bg-container) 90%, black);
-  --fquiz-theme-bg-elevated: color-mix(in srgb, var(--ant-color-bg-container) 80%, black);
-  --fquiz-theme-table-header-bg: color-mix(in srgb, var(--ant-color-bg-container) 85%, black);
-  --fquiz-theme-shell-header-bg: color-mix(in srgb, var(--ant-color-bg-container) 82%, black);
-  --fquiz-theme-shell-sider-bg: color-mix(in srgb, var(--ant-color-bg-container) 82%, black);
-  --fquiz-theme-shadow-card: 0 10px 24px color-mix(in srgb, black 50%, transparent);
-  --fquiz-table-border-color: color-mix(in srgb, var(--ant-color-border-secondary) 80%, var(--accent-9) 20%);
-}
-
-:root[data-fquiz-theme="dark"] .admin-users-user-card,
-:root[data-fquiz-theme="dark"] .admin-menus-menu-card,
-:root[data-fquiz-theme="dark"] .admin-workers-worker-card,
-:root[data-fquiz-theme="dark"] .admin-power-lines-line-card,
-:root[data-fquiz-theme="dark"] .admin-lightning-events-card,
-:root[data-fquiz-theme="dark"] .admin-fault-analysis-card,
-:root[data-fquiz-theme="dark"] .admin-fl-analysis-job-card,
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-event-card,
-:root[data-fquiz-theme="dark"] .admin-elevation-record-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-users-user-card > .ant-card-head,
-:root[data-fquiz-theme="dark"] .admin-users-user-card-title,
-:root[data-fquiz-theme="dark"] .admin-menus-menu-card > .ant-card-head,
-:root[data-fquiz-theme="dark"] .admin-menus-menu-card-title,
-:root[data-fquiz-theme="dark"] .admin-workers-worker-card > .ant-card-head,
-:root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-head,
-:root[data-fquiz-theme="dark"] .admin-power-lines-line-card-title,
-:root[data-fquiz-theme="dark"] .admin-lightning-events-card > .ant-card-head,
-:root[data-fquiz-theme="dark"] .admin-lightning-events-card-title,
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-event-card-title,
-:root[data-fquiz-theme="dark"] .admin-fault-analysis-card-title,
-:root[data-fquiz-theme="dark"] .admin-fl-analysis-job-card-title,
-:root[data-fquiz-theme="dark"] .admin-elevation-record-card-title {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-users-user-card > .ant-card-body,
-:root[data-fquiz-theme="dark"] .admin-menus-menu-card > .ant-card-body,
-:root[data-fquiz-theme="dark"] .admin-workers-worker-card > .ant-card-body,
-:root[data-fquiz-theme="dark"] .admin-power-lines-line-card > .ant-card-body,
-:root[data-fquiz-theme="dark"] .admin-lightning-events-card > .ant-card-body,
-:root[data-fquiz-theme="dark"] .admin-fault-analysis-card > .ant-card-body,
-:root[data-fquiz-theme="dark"] .admin-fl-analysis-job-card > .ant-card-body,
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-event-card > .ant-card-body,
-:root[data-fquiz-theme="dark"] .admin-elevation-record-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-power-lines-line-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-power-lines-line-card-actions .ant-progress-text {
-  color: var(--ant-color-text-secondary) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-lightning-events-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-event-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-fault-analysis-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-elevation-record-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-fl-analysis-job-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-users-user-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-menus-menu-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-roles-role-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-fl-analysis-job-card-actions .ant-progress-text {
-  color: var(--ant-color-text-secondary) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-menus-card-view,
-:root[data-fquiz-theme="dark"] .admin-menus-card-view-content {
-  background: transparent !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-menus-card-view-state {
-  color: var(--ant-color-text-secondary) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-documents-document-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-documents-document-card-title,
-:root[data-fquiz-theme="dark"] .admin-documents-document-card-actions {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-documents-document-card-title {
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-documents-document-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-documents-card-view,
-:root[data-fquiz-theme="dark"] .admin-documents-card-view-content {
-  background: transparent !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-documents-card-view-state {
-  color: var(--ant-color-text-secondary) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-system-messages-message-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-system-messages-message-card-title,
-:root[data-fquiz-theme="dark"] .admin-system-messages-message-card-actions {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-system-messages-message-card-title {
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-system-messages-message-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-task-monitor-task-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-task-monitor-task-card-title,
-:root[data-fquiz-theme="dark"] .admin-task-monitor-task-card-actions {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-task-monitor-task-card-title {
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-task-monitor-task-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-system-params-param-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-system-params-param-card-title,
-:root[data-fquiz-theme="dark"] .admin-system-params-param-card-actions {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-system-params-param-card-title {
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-system-params-param-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-tower-models-model-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-tower-models-model-card > .ant-card-head {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-tower-models-model-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-matlab-version-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-matlab-module-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-matlab-version-card-title,
-:root[data-fquiz-theme="dark"] .admin-matlab-module-card-title {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-matlab-version-card-actions,
-:root[data-fquiz-theme="dark"] .admin-matlab-module-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-matlab-card-view,
-:root[data-fquiz-theme="dark"] .admin-matlab-card-view-content {
-  background: transparent !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-matlab-card-view-state {
-  color: var(--ant-color-text-secondary) !important;
-}
+/* ============================================================
+ * MODO Design System 基线（迁移自 kb_compilation globals.css）
+ * 字体 12px 基准 / 控件 28px / 控件圆角 2px / 卡片圆角 6px + Tier1 阴影
+ * ============================================================ */
 
 body {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "Hiragino Sans GB", "noto sans", "Microsoft YaHei", "Helvetica Neue",
+    Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #242e43;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 卡片：去边框 + 6px 圆角 + Tier1 阴影 */
+.ant-card {
+  border: none !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 5px 0 rgba(36, 46, 67, 0.1);
+}
+
+/* 按钮零阴影 */
+.ant-btn {
+  box-shadow: none !important;
+}
+
+/* 表格：浅灰表头、紧凑内边距、无竖线、行 hover */
+.ant-table-wrapper .ant-table-thead > tr > th {
+  background: #f9fbfd !important;
+  font-weight: 500;
+  color: #4d5e7d;
+  padding: 7px 8px !important;
+  border-inline-end: none !important;
+}
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  padding: 7px 8px !important;
+  border-inline-end: none !important;
+}
+.ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: #f9fbfd !important;
+}
+
+/* Tabs 导航条贴合页面标题带 */
+.ant-tabs .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+/* 全局滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(50, 50, 50, 0.25);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(50, 50, 50, 0.4);
+}body {
   min-height: 100vh;
   background: var(--ant-color-bg-layout);
   color: var(--ant-color-text);
 }
 
 .admin-design-shell {
-  min-height: 100vh;
-  background: var(--ant-color-bg-layout);
+  height: 100vh;
+  overflow: hidden;
+  background: #eff4f9;
 }
 
+/* 顶栏：48px 白底 + 1px 下边框（MODO 规格） */
 .admin-design-header {
   position: sticky;
   top: 0;
   z-index: 50;
   display: flex;
   align-items: center;
-  background: var(--fquiz-theme-shell-header-bg);
-  border-bottom: 1px solid var(--ant-color-border-secondary);
-  box-shadow: var(--ant-box-shadow-tertiary);
+  justify-content: space-between;
+  height: 48px;
+  line-height: 48px;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #e3e9ef;
+  box-shadow: none;
+}
+
+.admin-design-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-design-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.admin-design-header-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #242e43;
+  line-height: 1;
+}
+
+.admin-design-header-divider {
+  width: 1px;
+  height: 14px;
+  background: #e3e9ef;
+  margin-left: 8px;
+}
+
+.admin-design-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-design-header-user {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding-right: 12px;
+}
+
+.admin-design-header-username {
+  color: #242e43;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .admin-design-header .ant-space {
@@ -418,32 +256,33 @@ body {
   vertical-align: middle;
 }
 
+/* 侧边栏：双列 rail 导航容器（kb-nav 样式见下） */
 .admin-design-sider {
-  position: sticky;
-  top: 64px;
-  height: calc(100vh - 64px);
-  overflow: auto;
-  border-right: 1px solid var(--ant-color-border-secondary);
+  position: relative;
+  flex-shrink: 0;
+  height: calc(100vh - 48px);
+  overflow: hidden;
+  background: transparent;
 }
 
-.admin-design-sider-inner {
+/* 右下角子菜单折叠按钮 */
+.admin-design-sider-collapse {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
   display: flex;
-  min-height: 100%;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 12px;
-}
-
-.admin-design-sider-menu {
-  min-height: 0;
-  flex: 1;
-}
-
-.admin-design-sider-footer {
-  display: flex;
+  align-items: center;
   justify-content: center;
-  border-top: 1px solid var(--ant-color-border-secondary);
-  padding-top: 12px;
+  background-color: #eff4f9;
+  border-radius: 50%;
+  transition: box-shadow 0.2s;
+  z-index: 10;
+}
+.admin-design-sider-collapse:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .admin-design-main {
@@ -453,13 +292,14 @@ body {
 .admin-design-content {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
+  height: calc(100vh - 48px);
   overflow: hidden;
   padding: 10px;
+  background: #eff4f9;
 }
 
 .admin-design-page-header {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .admin-design-page-title {
@@ -477,6 +317,147 @@ body {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * MODO 页面级公共类（供各业务页复用，对齐 kb_compilation 范式）
+ * ═══════════════════════════════════════════════════════════ */
+
+/* 列表页白卡容器：页面内容统一包一层白卡（radius 6 + Tier1 阴影），
+   内部 flex 链撑满、表体滚动、分页钉底（配合 ModoPagination 使用） */
+.modo-page-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 2px 5px 0 rgba(36, 46, 67, 0.1);
+  padding: 12px 16px;
+}
+
+/* 页面级 Tabs（ModoTabs）：容器与内容区撑满高度 */
+.modo-page-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * 双列侧边导航（迁移自 kb_compilation：对齐 MODO narrow 菜单）
+ * 第一列 104px 一级方块卡（图标上/文字下，60px 高、radius 8、
+ * 选中 fill-2 #EFF4F9 + 图标主色；kb 原为 80px，因本系统一级菜单最长 6 字而加宽）
+ * + 第二列 160px 子菜单（白底、项 36px/radius 4/间距 8、选中 fill-2 + 主色）
+ * ═══════════════════════════════════════════════════════════ */
+.kb-nav {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+}
+.kb-nav-rail {
+  /* 一级菜单名最长 6 字（如「雷电幅值统计」），rail 需保证文字可用宽 ≥ 72px */
+  width: 104px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #f9fbfd;
+  border-right: 1px solid #e3e9ef;
+}
+.kb-nav-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 60px;
+  padding: 8px 4px;
+  row-gap: 4px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  background: #f9fbfd;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+.kb-nav-card:hover {
+  background: #eff4f9;
+}
+.kb-nav-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  font-size: 24px;
+  line-height: 24px;
+  color: #4d5e7d;
+}
+.kb-nav-card-label {
+  width: 100%;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  color: #4d5e7d;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kb-nav-card.is-active {
+  background: #eff4f9;
+}
+.kb-nav-card.is-active .kb-nav-card-icon {
+  color: #3261ce;
+}
+.kb-nav-card.is-active .kb-nav-card-label {
+  color: #4d5e7d;
+  font-weight: 600;
+}
+.kb-nav-sub {
+  width: 160px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  padding: 10px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #fff;
+  border-right: 1px solid #e3e9ef;
+}
+.kb-nav-sub-title {
+  padding: 8px 7px 4px;
+  font-size: 12px;
+  color: #95a6ba;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-nav-sub-item {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 7px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 36px;
+  color: #242e43;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.kb-nav-sub-item:hover {
+  background: #eff4f9;
+  color: #242e43;
+}
+.kb-nav-sub-item.is-active {
+  background: #eff4f9;
+  color: #3261ce;
 }
 
 .ant-message {
@@ -628,95 +609,13 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
-}
-
-/* LP-255: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
-   内部列表布局才能延续原有 flex 自适应滚动布局 */
-.admin_menus_tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin_menus_tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin_menus_tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-/* LP-255: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 */
-.admin_menus_tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_menus_tabs .ant-table-pagination {
-  /* LP-255: 与地闪密度页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-255: 主列表 Tab 栏底色统一为白底（colorBgContainer），
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 */
-.admin_menus_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
-  margin: 0;
-  /* 去掉选项卡标题栏底部自带的 1px 边框 */
-  border-bottom: none;
-  /* 标题栏四周内边距 */
-  padding: 12px;
-}
-
-/* 默认选项卡标题样式：参考地闪密度页 Card 标题（粗体 16px 标题色） */
+}/* LP-255: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 *//* LP-255: 主列表 Tab 栏底色统一为白底（colorBgContainer），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 *//* 默认选项卡标题样式：参考地闪密度页 Card 标题（粗体 16px 标题色） */
 .admin-menus-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin_menus_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin_menus_tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin_menus_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin_menus_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-255 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
-:root[data-fquiz-theme="dark"] .admin_menus_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin_menus_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-/* ---- Menus page two-column body ---- */
+}/* ---- Menus page two-column body ---- */
 .admin-menus-page-body {
   flex: 1;
   min-height: 0;
@@ -731,7 +630,7 @@ body {
 /* ---- Tree card with border (like system-params sider) ---- */
 .admin-menus-tree-card {
   border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 10px;
+  border-radius: 6px;
   overflow: hidden;
 }
 
@@ -877,94 +776,13 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
-}
-
-/* LP-253: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
-   内部列表 Tab 才能延续原有 flex 自适应滚动布局 */
-.admin_users_tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin_users_tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin_users_tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_users_tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_users_tabs .ant-table-pagination {
-  /* 与改造前 .admin-users-page-card .ant-table-pagination 一致 */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-253: 用户管理 Tab 栏底色统一为 colorBgContainer 白底；
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
-.admin_users_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
-  margin: 0;
-  /* 去掉选项卡标题栏底部自带的 1px 边框 */
-  border-bottom: none;
-  /* 标题栏四周内边距 */
-  padding: 12px;
-}
-
-/* 默认选项卡标题样式：粗体 16px 标题色，与改造前 Card 标题一致 */
+}/* LP-253: 用户管理 Tab 栏底色统一为 colorBgContainer 白底；
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 *//* 默认选项卡标题样式：粗体 16px 标题色，与改造前 Card 标题一致 */
 .admin_users_tab_title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin_users_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin_users_tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin_users_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin_users_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-253 深色模式：Tab 栏与内容区保持 colorBgContainer 一致的背景 */
-:root[data-fquiz-theme="dark"] .admin_users_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin_users_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-ai-chat-page-card {
+}.admin-ai-chat-page-card {
   display: flex;
   flex: 1;
   min-height: 0;
@@ -999,83 +817,8 @@ body {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-/* LP-257: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
-   内部列表 Tab 的列表才能延续原有 flex 自适应滚动布局 */
-.admin_system_messages_tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin_system_messages_tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin_system_messages_tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_system_messages_tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_system_messages_tabs .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-257: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
-.admin_system_messages_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-.admin_system_messages_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin_system_messages_tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin_system_messages_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin_system_messages_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-257 深色模式：主列表 Tab 栏与内容区保持一致的背景 */
-:root[data-fquiz-theme="dark"] .admin_system_messages_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin_system_messages_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-system-messages-card-view {
+}/* LP-257: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */.admin-system-messages-card-view {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -1213,7 +956,7 @@ body {
 
 .admin-documents-tree-card {
   border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 10px;
+  border-radius: 6px;
   overflow: hidden;
 }
 
@@ -1427,94 +1170,13 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
-}
-
-/* LP-258: 页面外层改为 editable-card Tabs，让 Tabs 容器/内容区撑满高度 */
-.admin-documents-tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-documents-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin-documents-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-/* LP-258: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 */
-.admin-documents-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-documents-tabs .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-258: 主列表 Tab 栏底色统一为 colorBgContainer 白底，
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 */
-.admin-documents-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
-  margin: 0;
-  /* 去掉选项卡标题栏底部自带的 1px 边框 */
-  border-bottom: none;
-  /* 标题栏四周内边距 */
-  padding: 12px;
-}
-
-/* 默认选项卡标题样式：参考地闪密度/雷电流幅值页面标题（粗体 16px 标题色） */
+}/* LP-258: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 *//* LP-258: 主列表 Tab 栏底色统一为 colorBgContainer 白底，
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 *//* 默认选项卡标题样式：参考地闪密度/雷电流幅值页面标题（粗体 16px 标题色） */
 .admin-documents-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin-documents-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin-documents-tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-documents-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin-documents-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-258 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
-:root[data-fquiz-theme="dark"] .admin-documents-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-documents-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-menus-card-view {
+}.admin-menus-card-view {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -1572,83 +1234,11 @@ body {
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
-}
-
-/* LP-484: MATLAB 管理页视觉与布局对齐线路管理页规范 */
-.admin-matlab-tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-matlab-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  background: var(--ant-color-bg-container);
-}
-
-.admin-matlab-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-matlab-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-matlab-tabs .ant-table-pagination {
-  margin: 12px 0 0 !important;
-}
-
-.admin-matlab-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-.admin-matlab-tab-title {
+}.admin-matlab-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin-matlab-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin-matlab-tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-matlab-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin-matlab-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-:root[data-fquiz-theme="dark"] .admin-matlab-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-matlab-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-matlab-list-pane {
+}.admin-matlab-list-pane {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -1679,7 +1269,7 @@ body {
 
 .admin-matlab-tree-card {
   border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 10px;
+  border-radius: 6px;
   overflow: hidden;
 }
 
@@ -2266,90 +1856,13 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
-}
-
-/* LP-251: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
-   内部 Worker 卡片列表才能延续原有 flex 自适应滚动布局 */
-.admin_workers_tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin_workers_tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin_workers_tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_workers_tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_workers_tabs .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-251: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
-.admin_workers_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-/* 默认选项卡标题样式：参考地闪密度/任务监控页面（粗体 16px 标题色） */
+}/* LP-251: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 *//* 默认选项卡标题样式：参考地闪密度/任务监控页面（粗体 16px 标题色） */
 .admin_workers_tab_title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin_workers_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin_workers_tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin_workers_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin_workers_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-251 深色模式：主列表 Tab 栏与内容区保持一致的背景 */
-:root[data-fquiz-theme="dark"] .admin_workers_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin_workers_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-task-monitor-table-anchor .ant-table-body {
+}.admin-task-monitor-table-anchor .ant-table-body {
   min-height: var(--admin-task-monitor-table-body-min-height, 180px);
 }
 
@@ -2362,90 +1875,13 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
-}
-
-/* LP-250: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
-   内部列表 Tab 的列表才能延续原有 flex 自适应滚动布局 */
-.admin_task_monitor_tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin_task_monitor_tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin_task_monitor_tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_task_monitor_tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_task_monitor_tabs .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-250: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
-.admin_task_monitor_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-/* 默认选项卡标题样式：参考地闪密度/系统消息页面（粗体 16px 标题色） */
+}/* LP-250: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 *//* 默认选项卡标题样式：参考地闪密度/系统消息页面（粗体 16px 标题色） */
 .admin_task_monitor_tab_title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin_task_monitor_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin_task_monitor_tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin_task_monitor_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin_task_monitor_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-250 深色模式：主列表 Tab 栏与内容区保持一致的背景 */
-:root[data-fquiz-theme="dark"] .admin_task_monitor_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin_task_monitor_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-task-monitor-card-view {
+}.admin-task-monitor-card-view {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -2544,81 +1980,7 @@ body {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-/* LP-254: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度 */
-.admin_roles_tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin_roles_tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin_roles_tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_roles_tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_roles_tabs .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-254: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底） */
-.admin_roles_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-.admin_roles_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin_roles_tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin_roles_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin_roles_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-254 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
-:root[data-fquiz-theme="dark"] .admin_roles_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin_roles_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-roles-card-view {
+}/* LP-254: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底） */.admin-roles-card-view {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -2670,29 +2032,7 @@ body {
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
-}
-
-:root[data-fquiz-theme="dark"] .admin-roles-role-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-roles-role-card > .ant-card-head {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-roles-role-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
-/* ======================================
+}/* ======================================
    system-params 布局样式 (redesigned)
    ====================================== */
 
@@ -2705,94 +2045,13 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
-}
-
-/* LP-256: 页面外层改为 editable-card Tabs，让 Tabs 容器/内容区撑满高度 */
-.admin-system-params-tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-system-params-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin-system-params-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-/* LP-256: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 */
-.admin-system-params-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-system-params-tabs .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-256: 主列表 Tab 栏底色统一为 colorBgContainer 白底，
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 */
-.admin-system-params-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
-  margin: 0;
-  /* 去掉选项卡标题栏底部自带的 1px 边框 */
-  border-bottom: none;
-  /* 标题栏四周内边距 */
-  padding: 12px;
-}
-
-/* 默认选项卡标题样式：参考地闪密度/雷电流幅值页面标题（粗体 16px 标题色） */
+}/* LP-256: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 *//* LP-256: 主列表 Tab 栏底色统一为 colorBgContainer 白底，
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 *//* 默认选项卡标题样式：参考地闪密度/雷电流幅值页面标题（粗体 16px 标题色） */
 .admin-system-params-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin-system-params-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin-system-params-tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-system-params-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin-system-params-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-256 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
-:root[data-fquiz-theme="dark"] .admin-system-params-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-system-params-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-/* ---- Page body (two-column) ---- */
+}/* ---- Page body (two-column) ---- */
 .admin-system-params-page-body {
   flex: 1;
   min-height: 0;
@@ -3130,90 +2389,13 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
-}
-
-/* LP-260: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
-   内部列表 Tab 的列表才能延续原有 flex 自适应滚动布局 */
-.admin_scheduled_tasks_tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin_scheduled_tasks_tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin_scheduled_tasks_tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_scheduled_tasks_tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_scheduled_tasks_tabs .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-260: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
-.admin_scheduled_tasks_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-/* 默认选项卡标题样式：参考地闪密度/系统消息页面（粗体 16px 标题色） */
+}/* LP-260: 主列表 Tab 栏底色与内容区一致（colorBgContainer 白底），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 *//* 默认选项卡标题样式：参考地闪密度/系统消息页面（粗体 16px 标题色） */
 .admin_scheduled_tasks_tab_title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin_scheduled_tasks_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin_scheduled_tasks_tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin_scheduled_tasks_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin_scheduled_tasks_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-260 深色模式：主列表 Tab 栏与内容区保持一致的背景 */
-:root[data-fquiz-theme="dark"] .admin_scheduled_tasks_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin_scheduled_tasks_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-scheduled-tasks-table-anchor .ant-table-body {
+}.admin-scheduled-tasks-table-anchor .ant-table-body {
   min-height: var(--admin-scheduled-tasks-table-body-min-height, 180px);
 }
 
@@ -3237,81 +2419,7 @@ body {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-/* LP-252: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度 */
-.admin_syslog_tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin_syslog_tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin_syslog_tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_syslog_tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_syslog_tabs .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-252: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底） */
-.admin_syslog_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-.admin_syslog_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin_syslog_tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin_syslog_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin_syslog_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-252 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
-:root[data-fquiz-theme="dark"] .admin_syslog_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin_syslog_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-syslog-card-view {
+}/* LP-252: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底） */.admin-syslog-card-view {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -3359,29 +2467,7 @@ body {
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
-}
-
-:root[data-fquiz-theme="dark"] .admin-syslog-log-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-syslog-log-card > .ant-card-head {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-syslog-log-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-files-table-anchor .ant-table-body {
+}.admin-files-table-anchor .ant-table-body {
   min-height: var(--admin-files-table-body-min-height, 180px);
 }
 
@@ -3487,130 +2573,16 @@ body {
   flex: 1;
   align-items: center;
   max-width: 160px;
-}
-
-/* 深色模式：杆塔模型卡片配色与其余管理页卡片一致
-   （主色混合边框、主色渐变背景、柔和阴影、头部主色淡背景） */
-:root[data-fquiz-theme="dark"] .admin-tower-models-model-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-tower-models-card-header {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-tower-models-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-tower-models-model-card > .ant-card-head {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-tower-models-model-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
-/* LP-278: 编辑/新建模型 Modal 内部分组为 Tabs（基本信息 / 默认参数），
+}/* LP-278: 编辑/新建模型 Modal 内部分组为 Tabs（基本信息 / 默认参数），
    与全系统“内容较多时使用动态选项卡”交互规范保持一致 */
 .admin-tower-models-modal-tabs .ant-tabs-nav {
   margin: 0 0 12px;
-}
-
-.admin-tower-models-modal-tabs .ant-tabs-tabpane {
-  min-height: 220px;
-}
-
-/* LP-315: 默认选项卡标题样式：粗体 16px 标题色，与用户管理页保持一致 */
+}/* LP-315: 默认选项卡标题样式：粗体 16px 标题色，与用户管理页保持一致 */
 .admin-atp-models-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-/* LP-248: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
-   内部列表 Tab 的列表才能延续原有 flex 自适应滚动布局 */
-.admin-atp-models-tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-atp-models-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin-atp-models-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-atp-models-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-atp-models-tabs .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-248: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底） */
-.admin-atp-models-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-.admin-atp-models-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin-atp-models-tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-atp-models-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin-atp-models-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-248 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
-:root[data-fquiz-theme="dark"] .admin-atp-models-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-atp-models-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-atp-models-card {
+}/* LP-248: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底） */.admin-atp-models-card {
   height: 100%;
   border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary));
   background:
@@ -3649,42 +2621,7 @@ body {
 .admin-atp-models-card-actions {
   border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 18%, var(--ant-color-border-secondary));
   flex-shrink: 0;
-}
-
-:root[data-fquiz-theme="dark"] .admin-atp-models-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-atp-models-card > .ant-card-head {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-atp-models-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-atp-models-card-title {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-atp-models-card-actions {
-  border-top-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-atp-models-card-actions .ant-progress-text {
-  color: var(--ant-color-text-secondary) !important;
-}
-
-.admin-atp-models-table-anchor {
+}.admin-atp-models-table-anchor {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -4032,96 +2969,14 @@ body {
 .admin-atp-models-detail-pane .admin-atp-models-files-table .ant-table-body {
   overflow-y: visible !important;
   max-height: none !important;
-}
-
-/* LP-246: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
-   内部列表 Tab 的布局才能延续原有 flex 自适应滚动布局 */
-.admin-lightning-currents-tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-lightning-currents-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin-lightning-currents-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-/* LP-246: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 */
-.admin-lightning-currents-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-lightning-currents-tabs .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-246: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
+}/* LP-246: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 *//* LP-246: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
    仅作用于外层主列表 Tabs（editable-card），避免误伤详情 Tab 内的 recharts/Descriptions；
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 */
-.admin-lightning-currents-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
-  margin: 0;
-  /* 去掉选项卡标题栏底部自带的 1px 边框 */
-  border-bottom: none;
-  /* 标题栏四周内边距 */
-  padding: 12px;
-}
-
-.admin-lightning-currents-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin-lightning-currents-tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-lightning-currents-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin-lightning-currents-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-311: 默认选项卡标题样式：粗体 16px 标题色，与线路管理页保持一致 */
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 *//* LP-311: 默认选项卡标题样式：粗体 16px 标题色，与线路管理页保持一致 */
 .admin-lightning-currents-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-/* LP-246 深色模式：主列表 Tab 栏与内容区保持与用户管理页标题栏一致的背景 */
-:root[data-fquiz-theme="dark"] .admin-lightning-currents-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-lightning-currents-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-lightning-events-card-view {
+}.admin-lightning-events-card-view {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -4292,96 +3147,14 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
-}
-
-/* LP-249: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
-   内部列表 Tab 的 Card 才能延续原有 flex 自适应滚动布局 */
-.admin_elevation_tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin_elevation_tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin_elevation_tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-/* 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 */
-.admin_elevation_tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_elevation_tabs .ant-table-pagination {
-  /* 覆盖 antd Table 内置分页默认 margin（16px 0），与用户管理页一致 */
-  margin: 12px 0 0 !important;
-}
-
-/* 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
+}/* 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 *//* 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
    仅作用于外层主列表 Tabs（editable-card），避免误伤详情弹窗内的 Tabs；
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
-.admin_elevation_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
-  margin: 0;
-  /* 去掉选项卡标题栏底部自带的 1px 边框 */
-  border-bottom: none;
-  /* 标题栏四周内边距 */
-  padding: 12px;
-}
-
-/* 默认选项卡标题样式：粗体 16px 标题色 */
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 *//* 默认选项卡标题样式：粗体 16px 标题色 */
 .admin_elevation_tab_title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin_elevation_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin_elevation_tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin_elevation_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin_elevation_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* 深色模式：主列表 Tab 栏与内容区保持与用户管理页标题栏一致的背景 */
-:root[data-fquiz-theme="dark"] .admin_elevation_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin_elevation_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-elevation-card-view {
+}.admin-elevation-card-view {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -4486,177 +3259,22 @@ body {
   justify-content: center;
   background: var(--ant-color-fill-alter);
   border-radius: var(--ant-border-radius);
-}
-
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-image-skeleton {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 80%, black);
-}
-
-/* LP-235: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
-   内部列表 Tab 的 Card 才能延续原有 flex 自适应滚动布局 */
-.admin-lightning-distribution-tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-lightning-distribution-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin-lightning-distribution-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-/* LP-243: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏，
-   否则详情 Tab 激活时默认列表页仍残留可见，无法被完整覆盖 */
-.admin-lightning-distribution-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-lightning-distribution-tabs .ant-table-pagination {
-  /* LP-229: 与用户管理页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-242: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
+}/* LP-235: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
+   内部列表 Tab 的 Card 才能延续原有 flex 自适应滚动布局 *//* LP-243: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏，
+   否则详情 Tab 激活时默认列表页仍残留可见，无法被完整覆盖 *//* LP-242: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
    仅作用于外层主列表 Tabs（editable-card），避免误伤详情弹窗内的 Tabs；
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与 Card 头部连成一条白带 */
-.admin-lightning-distribution-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
-  margin: 0;
-  /* 去掉选项卡标题栏底部自带的 1px 边框 */
-  border-bottom: none;
-  /* 标题栏四周内边距 */
-  padding: 12px;
-}
-
-/* 默认选项卡标题样式：参考雷电流幅值页面 Card 标题（粗体 16px 标题色） */
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与 Card 头部连成一条白带 *//* 默认选项卡标题样式：参考雷电流幅值页面 Card 标题（粗体 16px 标题色） */
 .admin-lightning-distribution-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-242 深色模式：主列表 Tab 栏与 Card 头部保持与用户管理页标题栏一致的背景 */
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-/* LP-274: 防雷分析页详情从大尺寸 Modal 改造为动态选项卡（editable-card）。
+}/* LP-274: 防雷分析页详情从大尺寸 Modal 改造为动态选项卡（editable-card）。
    复用地闪密度统计页的 Tabs 布局约定：列表主 Tab 撑满高度、详情 Tab 平铺在 tabBar 后，
-   Tab 栏与 Card 头部连成一条白带。 */
-.admin-fl-analysis-tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-fl-analysis-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  background: var(--ant-color-bg-container);
-}
-
-.admin-fl-analysis-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-fl-analysis-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-fl-analysis-tabs .ant-table-pagination {
-  margin: 12px 0 0 !important;
-}
-
-.admin-fl-analysis-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-.admin-fl-analysis-tab-title {
+   Tab 栏与 Card 头部连成一条白带。 */.admin-fl-analysis-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-:root[data-fquiz-theme="dark"] .admin-fl-analysis-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-fl-analysis-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-/* LP-274: 结果列表区容器，在 Tab 内容区内提供内边距；
+}/* LP-274: 结果列表区容器，在 Tab 内容区内提供内边距；
    LP-375: 去掉外层 Tabs 后作为页面主体列表容器，补齐 flex 布局以撑满剩余高度 */
 .admin-fl-analysis-list-pane {
   display: flex;
@@ -4790,37 +3408,12 @@ body {
 
 .admin-lightning-distribution-event-card > .ant-card-body {
   padding: 0;
-}
-
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-card-view,
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-card-view-content {
-  background: transparent !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-card-view-state {
-  color: var(--ant-color-text-secondary) !important;
-}
-
-.login-page-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary));
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--fquiz-theme-bg-container) 96%, var(--fquiz-theme-primary) 4%) 0%,
-      var(--fquiz-theme-bg-container) 100%
-    );
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--fquiz-theme-text-primary) 8%, transparent);
-}
-
-:root[data-fquiz-theme="dark"] .login-page-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
+}.login-page-card {
+  border: none;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgba(36, 46, 67, 0.12);
+  padding: 8px 4px;
 }
 
 /* 文档查看页面样式 */
@@ -5050,24 +3643,7 @@ body {
 
 .admin-docs-view-table tr:hover {
   background: color-mix(in srgb, var(--ant-color-primary) 4%, transparent);
-}
-
-/* 暗色主题适配 */
-:root[data-fquiz-theme="dark"] .admin-docs-view-document-card {
-  background: var(--ant-color-bg-container);
-  box-shadow: 0 2px 8px color-mix(in srgb, black 30%, transparent);
-}
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 70%, black);
-  border-color: color-mix(in srgb, var(--ant-color-border-secondary) 60%, transparent);
-}
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-table th {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 85%, black);
-}
-
-/* 移动端适配 */
+}/* 移动端适配 */
 @media (max-width: 767px) {
   .admin-docs-view-content {
     padding: 16px;
@@ -5357,31 +3933,6 @@ body {
 }
 
 /* 暗色主题适配 */
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block-header {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 80%, black);
-  border-bottom-color: color-mix(in srgb, var(--ant-color-border-secondary) 50%, transparent);
-}
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-table tbody tr:nth-child(even) {
-  background: color-mix(in srgb, black 15%, transparent);
-}
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-table tbody tr:hover {
-  background: color-mix(in srgb, var(--ant-color-primary) 12%, transparent);
-}
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-image-placeholder {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 80%, black);
-}
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-blockquote {
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--ant-color-primary) 10%, transparent) 0%,
-    color-mix(in srgb, var(--ant-color-primary) 4%, transparent) 100%
-  );
-}
-
 /* 移动端增强 */
 @media (max-width: 767px) {
   .admin-docs-view-document-header {
@@ -5462,45 +4013,6 @@ body {
 .admin-docs-view-code-block .hljs-meta { color: #005cc5; }
 
 /* Dark theme */
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs {
-  color: #e6e6e6;
-}
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-keyword,
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-selector-tag,
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-type { color: #ff7b72; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-string,
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-addition { color: #a5d6ff; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-number,
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-literal { color: #79c0ff; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-comment,
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-quote { color: #8b949e; font-style: italic; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-built_in,
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-title.class_ { color: #ffa657; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-title.function_,
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-title { color: #d2a8ff; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-attr,
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-attribute { color: #79c0ff; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-variable,
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-template-variable { color: #ffa657; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-regexp { color: #a5d6ff; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-tag { color: #7ee787; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-name { color: #7ee787; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-selector-class { color: #d2a8ff; }
-
-:root[data-fquiz-theme="dark"] .admin-docs-view-code-block .hljs-meta { color: #79c0ff; }
-
 /* 内联引用：侧栏当前文档高亮增强 */
 .ant-menu-item-selected {
   position: relative;
@@ -5533,91 +4045,7 @@ body {
 .ant-table-wrapper .ant-table.ant-table-bordered {
   border: 1px solid var(--fquiz-table-border-color);
   border-radius: var(--ant-border-radius-lg);
-}
-
-/* AI 问答页面暗黑主题适配 */
-:root[data-fquiz-theme="dark"] .ai-chat-sidebar {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 82%, black) !important;
-  border-right-color: color-mix(in srgb, var(--ant-color-border-secondary) 70%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-sidebar-header {
-  border-bottom-color: color-mix(in srgb, var(--ant-color-border-secondary) 70%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-conversation-item {
-  transition: background 0.2s ease;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-conversation-item:hover {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 70%, var(--ant-color-primary) 10%) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-conversation-item-active {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 65%, var(--ant-color-primary) 15%) !important;
-  border-left-color: var(--ant-color-primary) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-main-area {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 90%, black) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-header {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 85%, black) !important;
-  border-bottom-color: color-mix(in srgb, var(--ant-color-border-secondary) 70%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-messages-area {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 90%, black) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-message-bubble-user {
-  background: var(--ant-color-primary) !important;
-  color: var(--accent-contrast) !important;
-  box-shadow: 0 1px 3px color-mix(in srgb, black 35%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-message-bubble-assistant {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 75%, black) !important;
-  color: var(--ant-color-text) !important;
-  border: 1px solid color-mix(in srgb, var(--ant-color-border-secondary) 50%, transparent);
-  box-shadow: 0 1px 3px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-message-timestamp {
-  opacity: 0.5;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-input-area {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 85%, black) !important;
-  border-top-color: color-mix(in srgb, var(--ant-color-border-secondary) 70%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-textarea {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 70%, black) !important;
-  border-color: color-mix(in srgb, var(--ant-color-border-secondary) 60%, transparent) !important;
-  color: var(--ant-color-text) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-textarea:hover {
-  border-color: color-mix(in srgb, var(--ant-color-primary) 60%, var(--ant-color-border-secondary) 40%) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-textarea:focus {
-  background: color-mix(in srgb, var(--ant-color-bg-container) 65%, black) !important;
-  border-color: var(--ant-color-primary) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ant-color-primary) 20%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-send-button {
-  box-shadow: 0 2px 4px color-mix(in srgb, black 30%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .ai-chat-send-button:hover:not(:disabled) {
-  box-shadow: 0 4px 8px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-.admin-dimensions-table-anchor .ant-table-body {
+}.admin-dimensions-table-anchor .ant-table-body {
   min-height: var(--admin-dimensions-table-body-min-height, 180px);
 }
 
@@ -5630,94 +4058,13 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
-}
-
-/* LP-259: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度 */
-.admin_dimensions_tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin_dimensions_tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin_dimensions_tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-/* LP-259: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 */
-.admin_dimensions_tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin_dimensions_tabs .ant-table-pagination {
-  /* LP-259: 与地闪密度页一致，覆盖 antd Table 内置分页默认 margin（16px 0） */
-  margin: 12px 0 0 !important;
-}
-
-/* LP-259: 主列表 Tab 栏底色统一为白底（colorBgContainer），
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 */
-.admin_dimensions_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
-  margin: 0;
-  /* 去掉选项卡标题栏底部自带的 1px 边框 */
-  border-bottom: none;
-  /* 标题栏四周内边距 */
-  padding: 12px;
-}
-
-/* 默认选项卡标题样式：参考地闪密度页 Card 标题（粗体 16px 标题色） */
+}/* LP-259: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 *//* LP-259: 主列表 Tab 栏底色统一为白底（colorBgContainer），
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 *//* 默认选项卡标题样式：参考地闪密度页 Card 标题（粗体 16px 标题色） */
 .admin-dimensions-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin_dimensions_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin_dimensions_tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin_dimensions_tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin_dimensions_tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-259 深色模式：主列表 Tab 栏与内容区保持与标题栏一致的背景 */
-:root[data-fquiz-theme="dark"] .admin_dimensions_tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin_dimensions_tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-/* ---- Dimensions page two-column body ---- */
+}/* ---- Dimensions page two-column body ---- */
 .admin-dimensions-page-body {
   flex: 1;
   min-height: 0;
@@ -5776,114 +4123,13 @@ body {
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
-}
-
-:root[data-fquiz-theme="dark"] .admin-dimensions-dimension-card {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ant-color-bg-container) 92%, var(--fquiz-theme-primary) 8%) 0%,
-      var(--ant-color-bg-container) 100%
-    ) !important;
-  box-shadow: 0 8px 18px color-mix(in srgb, black 40%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-dimensions-dimension-card > .ant-card-head {
-  border-bottom-color: color-mix(in srgb, var(--fquiz-theme-primary) 25%, var(--ant-color-border-secondary)) !important;
-  background: color-mix(in srgb, var(--fquiz-theme-primary) 10%, transparent) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-dimensions-dimension-card > .ant-card-body {
-  background: var(--ant-color-bg-container) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-dimensions-card-view,
-:root[data-fquiz-theme="dark"] .admin-dimensions-card-view-content {
-  background: transparent !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-dimensions-card-view-state {
-  color: var(--ant-color-text-secondary) !important;
-}
-
-/* LP-275: 故障分析页详情从全页视图/大尺寸 Modal 改造为动态选项卡（editable-card）。
+}/* LP-275: 故障分析页详情从全页视图/大尺寸 Modal 改造为动态选项卡（editable-card）。
    复用地闪密度统计/防雷分析页的 Tabs 布局约定：列表主 Tab 撑满高度、详情 Tab 平铺在 tabBar 后，
-   Tab 栏与 Card 头部连成一条白带。 */
-.admin-fault-analysis-tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-fault-analysis-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  background: var(--ant-color-bg-container);
-}
-
-.admin-fault-analysis-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-fault-analysis-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-fault-analysis-tabs .ant-table-pagination {
-  margin: 12px 0 0 !important;
-}
-
-.admin-fault-analysis-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-.admin-fault-analysis-tab-title {
+   Tab 栏与 Card 头部连成一条白带。 */.admin-fault-analysis-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin-fault-analysis-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin-fault-analysis-tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-fault-analysis-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin-fault-analysis-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-:root[data-fquiz-theme="dark"] .admin-fault-analysis-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-fault-analysis-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-/* LP-275: 列表主 Tab 内容区容器 */
+}/* LP-275: 列表主 Tab 内容区容器 */
 .admin-fault-analysis-list-pane {
   display: flex;
   min-height: 0;
@@ -5974,31 +4220,7 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-}
-
-.admin-fault-recurrence-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  background: var(--ant-color-bg-container);
-}
-
-.admin-fault-recurrence-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-fault-recurrence-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-fault-recurrence-tabs > .ant-tabs-nav {
+}.admin-fault-recurrence-tabs > .ant-tabs-nav {
   background: var(--ant-color-bg-container);
   margin: 0;
   border-bottom: none;
@@ -6038,17 +4260,7 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 12px;
-}
-
-:root[data-fquiz-theme="dark"] .admin-fault-recurrence-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-fault-recurrence-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-/* LP-348: 动态选项卡内新建/编辑表单纵向分区 */
+}/* LP-348: 动态选项卡内新建/编辑表单纵向分区 */
 .admin-fault-analysis-form-tab-pane {
   display: flex;
   min-height: 0;
@@ -6101,14 +4313,7 @@ body {
   padding-top: 16px;
   margin-top: 8px;
   border-top: 1px solid var(--ant-color-border-secondary);
-}
-
-:root[data-fquiz-theme="dark"] .admin-fault-analysis-form-section-title {
-  background: color-mix(in srgb, var(--ant-color-primary) 15%, var(--ant-color-bg-container));
-  border-color: color-mix(in srgb, var(--ant-color-primary) 25%, var(--ant-color-border-secondary));
-}
-
-.fault-analysis-step-header {
+}.fault-analysis-step-header {
   background: var(--fquiz-theme-bg-active);
   color: var(--ant-color-text);
   border: 1px solid var(--ant-color-border-secondary);
@@ -6124,26 +4329,7 @@ body {
   color: var(--ant-color-primary) !important;
   border-color: var(--ant-color-primary) !important;
   background: var(--fquiz-theme-bg-active) !important;
-}
-
-:root[data-fquiz-theme="dark"] .fault-analysis-step-header {
-  background: color-mix(in srgb, var(--ant-color-primary) 15%, var(--ant-color-bg-container));
-  color: var(--ant-color-text);
-  border-color: color-mix(in srgb, var(--ant-color-primary) 25%, var(--ant-color-border-secondary));
-}
-
-:root[data-fquiz-theme="dark"] .fault-analysis-step-button {
-  color: var(--ant-color-text) !important;
-  border-color: color-mix(in srgb, var(--ant-color-primary) 25%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .fault-analysis-step-button:hover {
-  color: var(--ant-color-primary) !important;
-  border-color: var(--ant-color-primary) !important;
-  background: color-mix(in srgb, var(--ant-color-primary) 20%, transparent) !important;
-}
-
-/* 标题栏内的操作按钮：标题栏自带底色，透明按钮会被吞掉，改用容器底色+实边框突出 */
+}/* 标题栏内的操作按钮：标题栏自带底色，透明按钮会被吞掉，改用容器底色+实边框突出 */
 .admin-fault-analysis-form-section-title .fault-analysis-step-button {
   background: var(--ant-color-bg-container) !important;
   border-color: var(--ant-color-border-secondary) !important;
@@ -6161,150 +4347,15 @@ body {
 .admin-power-line-detail-tabs {
   display: flex;
   flex-direction: column;
-}
-
-.admin-power-line-detail-tabs > .ant-tabs-content-holder {
-  display: flex;
-  flex-direction: column;
+}.admin-power-line-detail-meta {
   background: var(--ant-color-bg-container);
-}
-
-.admin-power-line-detail-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.admin-power-line-detail-tabs .ant-table-pagination {
-  margin: 12px 0 0 !important;
-}
-
-.admin-power-line-detail-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-.admin-power-line-detail-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin-power-line-detail-tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-power-line-detail-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin-power-line-detail-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-:root[data-fquiz-theme="dark"] .admin-power-line-detail-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-power-line-detail-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-power-line-detail-meta {
-  background: var(--ant-color-bg-container);
-}
-
-/* ======================================
-   LP-297: 线路管理页视觉与滚动布局对齐用户管理页规范
-   ====================================== */
-
-/* LP-297: 页面外层改为 editable-card Tabs，需让 Tabs 容器/内容区撑满高度，
-   内部列表 Tab 的列表才能延续原有 flex 自适应滚动布局 */
-.admin-power-lines-tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-power-lines-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  /* 内容区背景改为与 Tab 栏一致的白底 */
-  background: var(--ant-color-bg-container);
-}
-
-.admin-power-lines-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-power-lines-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-power-lines-tabs .ant-table-pagination {
-  margin: 12px 0 0 !important;
-}
-
-/* LP-297: 线路管理 Tab 栏底色统一为 colorBgContainer 白底；
-   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 */
-.admin-power-lines-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  /* 去掉 antd 默认 margin: 0 0 16px 0 的底部 16px 间距 */
-  margin: 0;
-  /* 去掉选项卡标题栏底部自带的 1px 边框 */
-  border-bottom: none;
-  /* 标题栏四周内边距 */
-  padding: 12px;
-}
-
-/* LP-297: 默认选项卡标题样式：粗体 16px 标题色，与用户管理页保持一致 */
+}/* LP-297: 线路管理 Tab 栏底色统一为 colorBgContainer 白底；
+   选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与内容区连成一条白带 *//* LP-297: 默认选项卡标题样式：粗体 16px 标题色，与用户管理页保持一致 */
 .admin-power-lines-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin-power-lines-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  /* 去除 editable-card 每个 Tab 自带的 1px 卡片外框（含 left/right/top），标题栏无边框 */
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin-power-lines-tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-power-lines-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin-power-lines-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-/* LP-297 深色模式：Tab 栏与内容区保持 colorBgContainer 一致的背景 */
-:root[data-fquiz-theme="dark"] .admin-power-lines-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-power-lines-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-/* LP-297: 用户管理页去外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
+}/* LP-297: 用户管理页去外层 Card 后，用 list-pane 容器替代 ant-card-body 职责（padding/滚动/flex 布局） */
 .admin-power-lines-list-pane {
   display: flex;
   min-height: 0;
@@ -6412,18 +4463,7 @@ body {
 .admin-lightning-distribution-event-card.ant-card-hoverable:hover,
 .admin-fault-analysis-card.ant-card-hoverable:not(.selected):hover {
   border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary)) !important;
-}
-
-:root[data-fquiz-theme="dark"] .admin-power-lines-line-card.ant-card-hoverable:hover,
-:root[data-fquiz-theme="dark"] .admin-atp-models-card.ant-card-hoverable:hover,
-:root[data-fquiz-theme="dark"] .admin-atp-params-card.ant-card-hoverable:hover,
-:root[data-fquiz-theme="dark"] .admin-lightning-events-card.ant-card-hoverable:hover,
-:root[data-fquiz-theme="dark"] .admin-lightning-distribution-event-card.ant-card-hoverable:hover,
-:root[data-fquiz-theme="dark"] .admin-fault-analysis-card.ant-card-hoverable:not(.selected):hover {
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 35%, var(--ant-color-border-secondary)) !important;
-}
-
-/* LP-297: 表格视图容器 */
+}/* LP-297: 表格视图容器 */
 .admin-power-lines-table-view {
   display: flex;
   min-height: 0;
@@ -6555,41 +4595,7 @@ body {
   gap: 12px;
   padding: 12px 0 8px;
   flex-shrink: 0;
-}
-
-/* ======================================
-   atp-params 骨架对齐线路管理（Tabs 容器 + list-pane + 动态表体高度）
-   ====================================== */
-.admin-atp-params-tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.admin-atp-params-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  background: var(--ant-color-bg-container);
-}
-
-.admin-atp-params-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.admin-atp-params-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-/* LP-322 对齐：列表视图分页贴面板底 8px（与线路管理一致）。
+}/* LP-322 对齐：列表视图分页贴面板底 8px（与线路管理一致）。
    页面级 Spin 包在 table-view 外层（打断 flex 链），故 list-pane 内 spin 容器
    也纳入 flex 列；margin-top:auto 吸收剩余空间，分页固定在右下角。 */
 .admin-atp-params-tabs .admin-atp-params-list-pane .ant-spin-nested-loading,
@@ -6610,49 +4616,11 @@ body {
 .admin-atp-params-tabs .admin-atp-params-table-view .ant-table-pagination {
   margin: auto 0 8px !important;
   flex-shrink: 0;
-}
-
-.admin-atp-params-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-  margin: 0;
-  border-bottom: none;
-  padding: 12px;
-}
-
-.admin-atp-params-tab-title {
+}.admin-atp-params-tab-title {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}
-
-.admin-atp-params-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-  border-color: transparent !important;
-  border-top-color: transparent !important;
-  border-inline-color: transparent !important;
-}
-
-.admin-atp-params-tabs > .ant-tabs-nav .ant-tabs-tab-active {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-atp-params-tabs > .ant-tabs-nav .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
-}
-
-.admin-atp-params-tabs > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
-  color: var(--ant-color-text-secondary);
-}
-
-:root[data-fquiz-theme="dark"] .admin-atp-params-tabs > .ant-tabs-nav {
-  background: var(--ant-color-bg-container);
-}
-
-:root[data-fquiz-theme="dark"] .admin-atp-params-tabs > .ant-tabs-nav .ant-tabs-tab {
-  background: var(--ant-color-bg-container) !important;
-}
-
-.admin-atp-params-list-pane {
+}.admin-atp-params-list-pane {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -6783,41 +4751,7 @@ body {
   padding: 10px;
   overflow-y: auto;
   overflow-x: hidden;
-}
-
-/* LP-541: 故障分析详情页报告内部 Tabs —— 外层固定高度不滚动，tab 内容区自身滚动。
-   标题区自然置于顶部，Tabs 撑满剩余高度，content-holder flex 布局，激活 pane 内部滚动。 */
-.fault-analysis-report-tabs {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.fault-analysis-report-tabs > .ant-tabs-content-holder {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.fault-analysis-report-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.fault-analysis-report-tabs .ant-tabs-tabpane-active {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  overflow-y: auto;
-}
-
-/* ===== 故障分析详情页（报告/计算过程）统一排版 ===== */
+}/* ===== 故障分析详情页（报告/计算过程）统一排版 ===== */
 .fa-detail-text-secondary { color: var(--ant-color-text-secondary); }
 .fa-detail-text-value { color: var(--ant-color-text); }
 
@@ -7063,20 +4997,7 @@ body {
 }
 .admin-fl-analysis-detail-pane .ant-descriptions-item-content {
   width: 380px !important;
-}
-/* 详情面板内的 Tabs：内容自然展开（滚动交给外层详情面板），避免出现第二根滚动条 */
-.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs,
-.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs > .ant-tabs-content-holder,
-.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs > .ant-tabs-content-holder > .ant-tabs-content,
-.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs .ant-tabs-tabpane,
-.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs .ant-tabs-tabpane-active {
-  display: block;
-  flex: none;
-  min-height: auto;
-  overflow: visible;
-}
-
-.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs > .ant-tabs-nav {
+}.admin-fl-analysis-detail-pane .admin-fl-analysis-tabs > .ant-tabs-nav {
   padding: 0;
   background: transparent;
 }
@@ -7225,4 +5146,127 @@ body {
 .admin-tower-detail-section:last-child {
   border-bottom: none;
   margin-bottom: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * MODO 补充规范（对齐 kb_compilation 视觉细节）
+ * ═══════════════════════════════════════════════════════════ */
+
+/* 页面白卡内的嵌套卡片：扁平化（MODO 嵌套面板无阴影 / 1px 描边 / 6px 圆角） */
+.modo-page-card .ant-card {
+  box-shadow: none !important;
+  border: 1px solid #e3e9ef !important;
+  border-radius: 6px !important;
+}
+
+/* 左树侧栏（各页 tree-card / sider-card 统一口径） */
+.modo-page-card .admin-menus-tree-card,
+.modo-page-card .admin-documents-tree-card,
+.modo-page-card .admin-matlab-tree-card,
+.modo-page-card .admin-system-params-sider-card {
+  border-radius: 6px !important;
+  border-color: #e3e9ef !important;
+  background: #f9fbfd;
+}
+
+/* antd Tree：MODO 行高 32px / 12px 字号 / 4px 圆角 hover */
+.modo-page-card .ant-tree {
+  font-size: 12px;
+  background: transparent;
+}
+.modo-page-card .ant-tree .ant-tree-treenode {
+  padding: 0;
+  width: 100%;
+}
+.modo-page-card .ant-tree .ant-tree-node-content-wrapper {
+  min-height: 32px;
+  height: 32px;
+  line-height: 32px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+/* 筛选条：MODO 扁平横条（无外框，仅底部 1px 分隔） */
+.modo-page-card .admin-filter-bar {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 0 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #eff4f9;
+}
+
+/* 页面标题条（无 Tab 外壳的页面用：files / docs-view / atp-models [id] 等） */
+.modo-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 0 0 10px;
+  border-bottom: 1px solid #eff4f9;
+}
+
+.modo-page-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #242e43;
+}
+
+.modo-page-title .anticon {
+  color: #4e5969;
+  font-size: 16px;
+}
+
+/* 章节小标题（MODO：13px/600） */
+h5.ant-typography,
+.ant-typography h5 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #242e43;
+  margin: 4px 0 10px;
+}
+
+/* ── ModoTabs 内容区撑满（antd v6：.ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content）── */
+.modo-page-tabs .ant-tabs-content:not(.ant-tabs-content-hidden) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 白卡统一内边距（覆盖各页 list-pane 私有 padding，保证 40 页一致） */
+.modo-page-card {
+  padding: 12px 16px;
+}
+
+/* AntCard 形态的页面白卡（tower-models 等尚未改为 div 结构的页）：对齐 modo-page-card 口径 */
+.admin-tower-models-page-card {
+  border: none !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 5px 0 rgba(36, 46, 67, 0.1) !important;
+  background: #ffffff;
+}
+
+.admin-tower-models-page-card > .ant-card-head {
+  min-height: 38px;
+  padding: 0 16px;
+  border-bottom: 1px solid #eff4f9;
+  font-size: 14px;
+  font-weight: 600;
+  color: #242e43;
+}
+
+.admin-tower-models-page-card > .ant-card-body {
+  padding: 12px 16px;
+}
+
+/* 卡片标题排版（对齐 MODO 页面标题口径：14px/600） */
+.ant-card .ant-card-head {
+  font-size: 14px;
+  font-weight: 600;
+  color: #242e43;
 }

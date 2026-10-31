@@ -19,7 +19,6 @@ import {
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
   Tooltip,
   Tree,
@@ -34,6 +33,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { IconPicker } from "@/components/icon-picker";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -914,11 +914,11 @@ export default function AdminMenusPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         defaultActiveKey="list"
-        className="admin_menus_tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" onClick={startCreate}>
@@ -929,10 +929,10 @@ export default function AdminMenusPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-menus-tab-title">{t("菜单管理")}</span>,
+            label: <>{t("菜单管理")}</>,
             closable: false,
             children: (
-              <div className="admin_menus_list_pane">
+              <div className="modo-page-card admin_menus_list_pane">
                 <div ref={containerRef} className="admin-menus-page-body">
           {/* Left: Tree panel with keyword filter */}
           {!isMobile ? (

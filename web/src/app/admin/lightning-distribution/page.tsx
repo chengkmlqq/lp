@@ -16,7 +16,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Pagination,
   Progress,
   Segmented,
   Select,
@@ -24,7 +23,6 @@ import {
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -54,6 +52,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, 
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
+import { ModoPagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
 import { useBackfillTaskProgressSync, type BackfillTaskPatch } from "@/hooks/use-backfill-task-progress";
@@ -178,8 +178,8 @@ const IMAGE_LOAD_ERROR_FALLBACK =
   "data:image/svg+xml;charset=utf-8," +
   encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360">' +
-      '<rect width="100%" height="100%" fill="#fafafa"/>' +
-      '<g fill="#bfbfbf" font-family="sans-serif" text-anchor="middle">' +
+      '<rect width="100%" height="100%" fill="#f9fbfd"/>' +
+      '<g fill="#a9b4c4" font-family="sans-serif" text-anchor="middle">' +
       '<circle cx="320" cy="150" r="40"/>' +
       '<path d="M280 240c8-40 24-56 40-56s32 16 40 56z"/>' +
       '<text x="320" y="290" font-size="16">{t("图片加载失败")}</text>' +
@@ -1157,13 +1157,13 @@ export default function AdminLightningDistributionPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey={activeTabKey}
         onChange={setActiveTabKey}
         onEdit={handleTabsEdit}
-        className="admin-lightning-distribution-tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" onClick={() => setImportModalOpen(true)}>
@@ -1174,10 +1174,10 @@ export default function AdminLightningDistributionPage() {
         items={[
           {
             key: LIST_TAB_KEY,
-            label: <span className="admin-lightning-distribution-tab-title">{t("地闪密度统计")}</span>,
+            label: <>{t("地闪密度统计")}</>,
             closable: false,
             children: (
-              <div className="admin-lightning-distribution-list-pane">
+              <div className="modo-page-card admin-lightning-distribution-list-pane">
                 <div className="admin-filter-bar">
                   <Form layout="inline">
                     <Form.Item label={t("关键词")} className="admin-filter-keyword-item" style={{ marginBottom: 0 }}>
@@ -1227,7 +1227,7 @@ export default function AdminLightningDistributionPage() {
                     </div>
                     {records.length > 0 && (
                       <div className="admin-lightning-distribution-pagination">
-                        <Pagination
+                        <ModoPagination
                           current={pagination.current}
                           pageSize={pagination.pageSize}
                           total={total}
@@ -1853,7 +1853,6 @@ function BackfillRecordsView({
           showTotal: (totalCount) => `共 ${totalCount} 条`,
           hideOnSinglePage: false,
           // 与卡片视图独立分页组件尺寸一致（不随 Table size=small 缩到 24px）
-          size: "default",
           onChange: (nextPage, nextPageSize) => {
             setPagination({ current: nextPage, pageSize: nextPageSize });
           },
@@ -2062,7 +2061,6 @@ function TowerNgDrawer({
             showTotal: (totalCount) => `共 ${totalCount} 条`,
             hideOnSinglePage: false,
             // 与卡片视图独立分页组件尺寸一致（不随 Table size=small 缩到 24px）
-            size: "default",
             onChange: (nextPage, nextPageSize) => {
               setPagination({ current: nextPage, pageSize: nextPageSize });
             },

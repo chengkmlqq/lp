@@ -6,7 +6,26 @@
 
 import { useI18n } from "@/lib/i18n";
 import Link from "next/link";
-import { Card, Col, Row, Statistic, Tag, Typography } from "antd";
+import { Card, Col, Row, Tag, Typography } from "antd";
+import {
+  AreaChartOutlined,
+  BlockOutlined,
+  ClockCircleOutlined,
+  ColumnHeightOutlined,
+  DatabaseOutlined,
+  ExperimentOutlined,
+  FileImageOutlined,
+  FileTextOutlined,
+  FolderOpenOutlined,
+  HistoryOutlined,
+  NodeIndexOutlined,
+  ProfileOutlined,
+  SafetyCertificateOutlined,
+  ScheduleOutlined,
+  SlidersOutlined,
+  ThunderboltOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
 
 import type { ComponentType, ReactNode, RefAttributes } from "react";
 import type { CardProps } from "antd";
@@ -58,6 +77,23 @@ const STATE_COLORS: Record<string, string> = {
   REVOKED: "default",
 };
 
+// 资产图标映射（与后端 overview_service._ASSET_SOURCES 的 key 对应；未命中回落 DatabaseOutlined）
+const ASSET_ICONS: Record<string, ReactNode> = {
+  line: <NodeIndexOutlined />,
+  line_tower: <ColumnHeightOutlined />,
+  tower_model: <BlockOutlined />,
+  atp_asset: <ExperimentOutlined />,
+  atp_param_template: <ProfileOutlined />,
+  atp_param_definition: <SlidersOutlined />,
+  lightning_amplitude: <ThunderboltOutlined />,
+  lightning_distribution: <AreaChartOutlined />,
+  elevation_file_record: <FileImageOutlined />,
+  file_index: <FolderOpenOutlined />,
+  document: <FileTextOutlined />,
+  user: <UserOutlined />,
+  role: <SafetyCertificateOutlined />,
+};
+
 export const WIDGET_TYPE_META: Record<OverviewWidgetType, { label: string; defaultTitle: string; hint: string }> = {
   asset_stats: { label: "资产统计", defaultTitle: "系统资产统计", hint: "各业务对象的数量，可勾选要展示的类别" },
   task_summary: { label: "任务总览", defaultTitle: "任务总览", hint: "历史任务总数 / 队列积压 / 定时任务" },
@@ -70,6 +106,47 @@ export function widgetDefaultTitle(type: OverviewWidgetType, t: (s: string) => s
   return meta ? t(meta.defaultTitle) : t("卡片");
 }
 
+/** MODO 统计瓦片：图标徽标 + 数值，可点击的带 hover 反馈。 */
+function StatTile({
+  label,
+  value,
+  icon,
+  href,
+}: {
+  label: string;
+  value: number;
+  icon: ReactNode;
+  href?: string | null;
+}) {
+  const body = (
+    <div
+      className={`flex h-full items-center gap-3 rounded-md bg-[var(--ant-color-fill-quaternary)] px-4 py-3 ${
+        href ? "transition-colors hover:bg-[var(--ant-color-fill-tertiary)]" : ""
+      }`}
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--ant-color-primary-bg)] text-[18px] text-[var(--ant-color-primary)]">
+        {icon}
+      </span>
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate text-xs leading-5 text-[var(--ant-color-text-tertiary)]">{label}</span>
+        <span
+          className={`text-2xl font-semibold leading-8 text-[var(--ant-color-text-heading)] ${
+            href ? "transition-colors group-hover:text-[var(--ant-color-primary)]" : ""
+          }`}
+        >
+          {value}
+        </span>
+      </span>
+    </div>
+  );
+  if (!href) return body;
+  return (
+    <Link href={href} className="group block h-full no-underline" prefetch={false}>
+      {body}
+    </Link>
+  );
+}
+
 function AssetStatsCard({ widget, data }: { widget: OverviewWidget; data: OverviewData }) {
   const { t } = useI18n();
   const selectedKeys = Array.isArray(widget.props.asset_keys)
@@ -78,25 +155,17 @@ function AssetStatsCard({ widget, data }: { widget: OverviewWidget; data: Overvi
   const items = data.assets.filter((item) => selectedKeys.includes(item.key));
 
   return (
-    <Row gutter={[16, 16]}>
-      {items.map((item) => {
-        const stat = <Statistic title={t(item.label)} value={item.count} valueStyle={{ fontSize: 22 }} />;
-        return (
-          <Col key={item.key} xs={12} sm={8} md={6} lg={6}>
-            {item.route ? (
-              <Link href={item.route} className="block !text-inherit no-underline" prefetch={false}>
-                <div className="rounded-lg border border-solid border-[var(--ant-color-border-secondary)] p-3 transition-colors hover:bg-[var(--ant-color-fill-tertiary)]">
-                  {stat}
-                </div>
-              </Link>
-            ) : (
-              <div className="rounded-lg border border-solid border-[var(--ant-color-border-secondary)] p-3">
-                {stat}
-              </div>
-            )}
-          </Col>
-        );
-      })}
+    <Row gutter={[12, 12]}>
+      {items.map((item) => (
+        <Col key={item.key} xs={12} sm={8} md={6} lg={6}>
+          <StatTile
+            label={t(item.label)}
+            value={item.count}
+            icon={ASSET_ICONS[item.key] ?? <DatabaseOutlined />}
+            href={item.route}
+          />
+        </Col>
+      ))}
       {items.length === 0 ? <Text type="secondary">{t("未选择任何资产类别")}</Text> : null}
     </Row>
   );
@@ -104,17 +173,18 @@ function AssetStatsCard({ widget, data }: { widget: OverviewWidget; data: Overvi
 
 function TaskSummaryCard({ data }: { data: OverviewData }) {
   const { t } = useI18n();
+  const items = [
+    { label: t("历史任务总数"), value: data.tasks.total, icon: <HistoryOutlined /> },
+    { label: t("队列积压任务数"), value: data.tasks.queue_pending_total, icon: <ClockCircleOutlined /> },
+    { label: t("定时任务数"), value: data.tasks.scheduled_tasks, icon: <ScheduleOutlined /> },
+  ];
   return (
-    <Row gutter={[16, 16]}>
-      <Col xs={12} sm={8} md={4}>
-        <Statistic title={t("历史任务总数")} value={data.tasks.total} />
-      </Col>
-      <Col xs={12} sm={8} md={4}>
-        <Statistic title={t("队列积压任务数")} value={data.tasks.queue_pending_total} />
-      </Col>
-      <Col xs={12} sm={8} md={4}>
-        <Statistic title={t("定时任务数")} value={data.tasks.scheduled_tasks} />
-      </Col>
+    <Row gutter={[12, 12]}>
+      {items.map((item) => (
+        <Col key={item.label} xs={24} sm={8}>
+          <StatTile label={item.label} value={item.value} icon={item.icon} />
+        </Col>
+      ))}
     </Row>
   );
 }

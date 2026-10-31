@@ -17,7 +17,6 @@ import {
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -31,6 +30,7 @@ import type { ComponentType, CSSProperties, ReactNode, RefAttributes } from "rea
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -861,10 +861,10 @@ export default function AdminSystemMessagesPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
-        className="admin_system_messages_tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" onClick={openCreateMessageModal}>
@@ -875,10 +875,10 @@ export default function AdminSystemMessagesPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-system-messages-tab-title">{t("消息列表")}</span>,
+            label: <>{t("消息列表")}</>,
             closable: false,
             children: (
-              <div ref={pageCardRef} className="admin_system_messages_list_pane">
+              <div ref={pageCardRef} className="modo-page-card admin_system_messages_list_pane">
                 {listQuery.isError && (
                   <Alert
                     showIcon

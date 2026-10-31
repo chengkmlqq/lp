@@ -20,7 +20,6 @@ import {
   Spin,
   Space,
   Switch,
-  Tabs,
   Table,
   Tag,
   Tooltip,
@@ -36,6 +35,7 @@ import type { DataNode } from "antd/es/tree";
 import type { ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -1118,11 +1118,11 @@ export default function AdminSystemParamsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs
+      <ModoTabs
         type="editable-card"
         hideAdd
         activeKey="list"
-        className="admin-system-params-tabs"
+        className="modo-page-tabs"
         tabBarExtraContent={
           <Space>
             {canManage && (
@@ -1135,10 +1135,10 @@ export default function AdminSystemParamsPage() {
         items={[
           {
             key: "list",
-            label: <span className="admin-system-params-tab-title">{t("系统参数管理")}</span>,
+            label: <>{t("系统参数管理")}</>,
             closable: false,
             children: (
-              <div className="admin-system-params-list-pane">
+              <div className="modo-page-card admin-system-params-list-pane">
         {/* ===== Body Area: Two-column layout ===== */}
         <div ref={containerRef} className="admin-system-params-page-body">
         {/* Category Sidebar */}

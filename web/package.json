@@ -11,10 +11,9 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@ant-design/icons": "^5.6.1",
-    "@ant-design/v5-patch-for-react-19": "^1.0.3",
+    "@ant-design/icons": "^6.3.4",
     "@tanstack/react-query": "^5.90.5",
-    "antd": "^5.29.3",
+    "antd": "^6.6.8",
     "cesium": "^1.140.0",
     "clsx": "^2.1.1",
     "echarts": "^6.1.0",
@@ -44,6 +43,8 @@
   },
   "optionalDependencies": {
     "@tailwindcss/oxide-linux-arm64-gnu": "4.2.2",
-    "lightningcss-linux-arm64-gnu": "1.32.0"
+    "lightningcss-linux-arm64-gnu": "1.32.0",
+    "@tailwindcss/oxide-win32-x64-msvc": "4.2.2",
+    "lightningcss-win32-x64-msvc": "1.32.0"
   }
 }
