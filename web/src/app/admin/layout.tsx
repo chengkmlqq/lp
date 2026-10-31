@@ -671,7 +671,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         {isDesktop && (
           <div
             className="admin-design-sider"
-            style={{ width: !subCollapsed && hasSub ? 240 : 80 }}
+            style={{ width: !subCollapsed && hasSub ? 264 : 104 }}
           >
             {renderKbNav()}
             {hasSub && (
@@ -693,7 +693,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             title={null}
             placement="left"
             open={mobileMenuOpen}
-            width={280}
+            width={300}
             onClose={() => setMobileMenuOpen(false)}
             styles={{ body: { padding: 0 } }}
           >

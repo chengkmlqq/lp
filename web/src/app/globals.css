@@ -346,8 +346,8 @@ body {
 
 /* ═══════════════════════════════════════════════════════════
  * 双列侧边导航（迁移自 kb_compilation：对齐 MODO narrow 菜单）
- * 第一列 80px 一级方块卡（图标上/文字下，60px 高、radius 8、
- * 选中 fill-2 #EFF4F9 + 图标主色）
+ * 第一列 104px 一级方块卡（图标上/文字下，60px 高、radius 8、
+ * 选中 fill-2 #EFF4F9 + 图标主色；kb 原为 80px，因本系统一级菜单最长 6 字而加宽）
  * + 第二列 160px 子菜单（白底、项 36px/radius 4/间距 8、选中 fill-2 + 主色）
  * ═══════════════════════════════════════════════════════════ */
 .kb-nav {
@@ -356,7 +356,8 @@ body {
   min-width: 0;
 }
 .kb-nav-rail {
-  width: 80px;
+  /* 一级菜单名最长 6 字（如「雷电幅值统计」），rail 需保证文字可用宽 ≥ 72px */
+  width: 104px;
   flex-shrink: 0;
   box-sizing: border-box;
   display: flex;
