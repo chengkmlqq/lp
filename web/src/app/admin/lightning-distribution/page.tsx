@@ -324,6 +324,9 @@ export default function AdminLightningDistributionPage() {
   const distributionsQuery = useQuery({
     queryKey: [distributionsPath],
     enabled: !!user && canRead,
+    // 查询/翻页时保留上一份数据作占位，列表不清空，仅叠加 loading 遮罩，避免闪空。
+    // 后台 5s 轮询属于同 key 静默刷新，不触发占位态，表格不会反复闪遮罩。
+    placeholderData: (previousData) => previousData,
     // 列表不再单点依赖 WebSocket：存在 pending/processing 记录时按 ~5s 轮询，
     // 保证 WS 断开/403 时进度也能推进到最终态；全部完成后停止轮询。
     refetchInterval: (query) => {
@@ -1202,9 +1205,12 @@ export default function AdminLightningDistributionPage() {
                           />
                         </div>
                       ) : (
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                          {records.map((record) => renderRecordCard(record))}
-                        </div>
+                        /* 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩（轮询静默刷新不显示） */
+                        <Spin spinning={distributionsQuery.isLoading || distributionsQuery.isPlaceholderData}>
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            {records.map((record) => renderRecordCard(record))}
+                          </div>
+                        </Spin>
                       )}
                     </div>
                     {records.length > 0 && (
@@ -1232,7 +1238,8 @@ export default function AdminLightningDistributionPage() {
                       rowKey="id"
                       columns={columns}
                       dataSource={records}
-                      loading={distributionsQuery.isFetching}
+                      // 轮询静默刷新不显示遮罩，仅在首载/换 key（查询、翻页）时显示
+                      loading={distributionsQuery.isLoading || distributionsQuery.isPlaceholderData}
                       tableLayout="fixed"
                       pagination={modoTablePagination({
                         current: pagination.current,
@@ -1597,6 +1604,8 @@ function BackfillRecordsView({
 
   const linkedLinesQuery = useQuery({
     queryKey: [linkedLinesPath],
+    // 查询/翻页时保留上一份数据作占位，列表不清空，仅叠加 loading 遮罩，避免闪空
+    placeholderData: (previousData) => previousData,
     // 不用 refetchInterval 轮询整表：进度由 useBackfillTaskProgressSync 按任务就地更新，
     // 只动对应那一行；列表仅在提交回填后刷新一次以带上新记录。
     queryFn: async () => {
@@ -1806,7 +1815,7 @@ function BackfillRecordsView({
         size="small"
         columns={linkedColumns}
         dataSource={linkedLines}
-        loading={linkedLinesQuery.isLoading}
+        loading={linkedLinesQuery.isFetching}
         tableLayout="fixed"
         scroll={{ x: 800, y: tableScrollY }}
         style={{ height: "100%" }}

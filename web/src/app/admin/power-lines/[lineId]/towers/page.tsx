@@ -438,6 +438,7 @@ export default function AdminPowerLineTowersPage() {
               icon={<SearchOutlined />}
               onClick={handleSearch}
               className="admin-search-btn"
+              loading={towersQuery.isFetching}
             >
               {t("查询")}
             </Button>

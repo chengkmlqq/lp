@@ -134,6 +134,8 @@ export default function AdminFilesPage() {
       return (await response.json()) as FileListResponse;
     },
     enabled: !!user && canRead,
+    // 切换目录时保留上一份列表作占位，仅叠加 loading 遮罩，避免闪空
+    placeholderData: (previousData) => previousData,
   });
 
   const activeMountCode = filesQuery.data?.current_mount.code ?? "";

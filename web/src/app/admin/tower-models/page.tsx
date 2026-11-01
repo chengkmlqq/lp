@@ -306,6 +306,8 @@ export default function AdminTowerModelsPage() {
   const towerModelsQuery = useQuery({
     queryKey: [listPath],
     enabled: !!user && canRead,
+    // 查询/翻页时保留上一份数据作占位，列表不清空，仅叠加 loading 遮罩，避免闪空
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       const response = await fetchWithAuth(listPath);
       if (!response.ok) {
@@ -948,7 +950,7 @@ export default function AdminTowerModelsPage() {
               rowKey={(row) => row.id}
               columns={tableColumns}
               dataSource={listItems}
-              loading={towerModelsQuery.isLoading}
+              loading={towerModelsQuery.isFetching}
               tableLayout="fixed"
               pagination={modoTablePagination({
                 current: tableCurrentPage,
@@ -983,15 +985,18 @@ export default function AdminTowerModelsPage() {
                 />
               </div>
             ) : (
-              <div className="admin-tower-models-card-view-content">
-                <Row gutter={[12, 12]}>
-                  {listItems.map((row) => (
-                    <Col key={row.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                      {renderTowerModelCard(row, t)}
-                    </Col>
-                  ))}
-                </Row>
-              </div>
+              /* 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */
+              <Spin spinning={towerModelsQuery.isFetching}>
+                <div className="admin-tower-models-card-view-content">
+                  <Row gutter={[12, 12]}>
+                    {listItems.map((row) => (
+                      <Col key={row.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                        {renderTowerModelCard(row, t)}
+                      </Col>
+                    ))}
+                  </Row>
+                </div>
+              </Spin>
             )}
             <ModoPagination
               current={tableCurrentPage}

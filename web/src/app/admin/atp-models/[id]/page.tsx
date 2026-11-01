@@ -136,7 +136,7 @@ function ATPAssetDetailPage() {
         ) : (
           <Table
             rowKey="key"
-            loading={filesQuery.isLoading}
+            loading={filesQuery.isFetching}
             dataSource={files.map(fileItemRow)}
             pagination={false}
             className="admin-atp-models-files-table"

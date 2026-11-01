@@ -590,6 +590,7 @@ export default function AdminWorkersPage() {
                 rowKey={(record) => `active-${record.task_id}`}
                 columns={taskColumns}
                 dataSource={taskOverview.active_tasks}
+                loading={workerTasksQuery.isFetching}
                 pagination={false}
                 locale={{ emptyText: t("暂无运行中任务") }}
                 scroll={{ x: 2200 }}
@@ -601,6 +602,7 @@ export default function AdminWorkersPage() {
                 rowKey={(record) => `reserved-${record.task_id}`}
                 columns={taskColumns}
                 dataSource={taskOverview.reserved_tasks}
+                loading={workerTasksQuery.isFetching}
                 pagination={false}
                 locale={{ emptyText: t("暂无保留任务") }}
                 scroll={{ x: 2200 }}
@@ -612,6 +614,7 @@ export default function AdminWorkersPage() {
                 rowKey={(record) => `scheduled-${record.task_id}`}
                 columns={taskColumns}
                 dataSource={taskOverview.scheduled_tasks}
+                loading={workerTasksQuery.isFetching}
                 pagination={false}
                 locale={{ emptyText: t("暂无定时任务") }}
                 scroll={{ x: 2200 }}
@@ -623,6 +626,7 @@ export default function AdminWorkersPage() {
                 rowKey={(record) => `recent-${record.task_id}`}
                 columns={taskColumns}
                 dataSource={taskOverview.recent_tasks}
+                loading={workerTasksQuery.isFetching}
                 pagination={false}
                 locale={{ emptyText: t("暂无最近任务") }}
                 scroll={{ x: 2200 }}

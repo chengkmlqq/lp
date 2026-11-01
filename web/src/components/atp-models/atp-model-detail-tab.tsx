@@ -155,7 +155,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
         ) : (
           <Table
             rowKey="key"
-            loading={filesQuery.isLoading}
+            loading={filesQuery.isFetching}
             dataSource={fileRows}
             pagination={false}
             className="admin-atp-models-files-table"

@@ -830,6 +830,7 @@ export default function AtpParamsPage() {
               size="small"
               columns={columns}
               dataSource={list}
+              loading={loading}
               pagination={modoTablePagination({
                 current: pagination.current,
                 pageSize: pagination.pageSize,

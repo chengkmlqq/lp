@@ -186,6 +186,8 @@ export default function AdminDocumentsPage() {
       return response.json() as Promise<DocumentListResponse>;
     },
     enabled: !!user && canRead,
+    // 查询/翻页时保留上一份数据作占位，列表不清空，仅叠加 loading 遮罩，避免闪空
+    placeholderData: (previousData) => previousData,
   });
 
   const documents = useMemo(() => documentsData?.items ?? [], [documentsData?.items]);
@@ -957,7 +959,7 @@ export default function AdminDocumentsPage() {
                   rowKey="id"
                   dataSource={documents}
                   columns={columns}
-                  loading={documentsLoading}
+                  loading={documentsFetching}
                   tableLayout="fixed"
                   pagination={modoTablePagination({
                     current: pagination.current,
@@ -992,15 +994,18 @@ export default function AdminDocumentsPage() {
                     />
                   </div>
                 ) : (
-                  <div className="admin-documents-card-view-content">
-                    <Row gutter={[12, 12]}>
-                      {documents.map((doc) => (
-                        <Col key={doc.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                          {renderDocumentCard(doc)}
-                        </Col>
-                      ))}
-                    </Row>
-                  </div>
+                  /* 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */
+                  <Spin spinning={documentsFetching}>
+                    <div className="admin-documents-card-view-content">
+                      <Row gutter={[12, 12]}>
+                        {documents.map((doc) => (
+                          <Col key={doc.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                            {renderDocumentCard(doc)}
+                          </Col>
+                        ))}
+                      </Row>
+                    </div>
+                  </Spin>
                 )}
                 <ModoPagination
                   current={pagination.current}

@@ -220,6 +220,8 @@ export default function AdminLightningCurrentsPage() {
     queryKey: [listPath],
     enabled: !!user && canRead,
     refetchInterval: false,
+    // 查询/翻页时保留上一份数据作占位，列表不清空，仅叠加 loading 遮罩，避免闪空
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       const response = await fetchWithAuth(listPath);
       if (!response.ok) {
@@ -1168,9 +1170,12 @@ export default function AdminLightningCurrentsPage() {
                     ) : (
                       <>
                         <div className="admin-lightning-events-card-scroll">
-                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                            {records.map((record) => renderRecordCard(record))}
-                          </div>
+                          {/* 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
+                          <Spin spinning={recordsQuery.isFetching}>
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                              {records.map((record) => renderRecordCard(record))}
+                            </div>
+                          </Spin>
                         </div>
                         <div className="admin-lightning-events-pagination">
                           <ModoPagination
