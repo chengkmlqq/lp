@@ -1809,34 +1809,6 @@ def execute_asset_run_job(*, run_id: str, payload_data: dict[str, Any], actor_us
         run.working_dir = str(materialized.working_dir)
         run.engine_command = "\n".join(" ".join(step.command) for step in materialized.command_steps)
 
-        if payload.dry_run:
-            run.status = "success"
-            run.exit_code = 0
-            run.stdout_text = json.dumps(
-                {
-                    "dry_run": True,
-                    "commands": [
-                        {"label": step.label, "command": step.command, "cwd": str(step.cwd)}
-                        for step in materialized.command_steps
-                    ],
-                    "materialized_root_path": str(materialized.payload_root),
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            run.stderr_text = ""
-            run.output_manifest_json = _collect_output_manifest(materialized.payload_root)
-            run.finished_at = utcnow()
-            run.duration_ms = 0
-            run.update_user = actor_user_id
-            run.update_date = utcnow()
-            db.commit()
-            _publish_change(
-                "run.finished",
-                {"action": "dry_finished", "asset_id": asset.id, "run_id": run.id, "status": run.status},
-            )
-            return
-
         env = os.environ.copy()
         env.update(payload.environment)
         started_perf = time.perf_counter()

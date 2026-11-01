@@ -59,7 +59,6 @@ const STAGE_LABEL: Record<AtpAssetTestStage, string> = {
 };
 
 type TestResultSummary = {
-  dry_run?: boolean;
   requested_stages?: string[];
   failed_stage?: string | null;
   stages?: Record<string, AtpAssetTestStageResult>;
@@ -375,7 +374,6 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
           <Space direction="vertical" size={12} style={{ width: "100%" }}>
             <Space size={8} wrap>
               {statusTag(detail.status, t)}
-              {detailSummary.dry_run ? <Tag color="orange">{t("试跑")}</Tag> : null}
               <Typography.Text type="secondary">
                 {t("用时")}{" "}
                 {detail.duration_ms != null ? `${(detail.duration_ms / 1000).toFixed(1)}s` : "-"}

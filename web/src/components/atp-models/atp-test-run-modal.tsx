@@ -86,7 +86,6 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
 
   const [stages, setStages] = useState<AtpAssetTestStage[]>(ALL_STAGES);
   const [currentKa, setCurrentKa] = useState<number>(31);
-  const [dryRun, setDryRun] = useState(false);
   const [paramsSource, setParamsSource] = useState<ParamsSource>("template");
   const [allowIncomplete, setAllowIncomplete] = useState(false);
   const [towerKind, setTowerKind] = useState("");
@@ -107,7 +106,6 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
     if (!open) return;
     setStages(ALL_STAGES);
     setCurrentKa(31);
-    setDryRun(false);
     setParamsSource("template");
     setAllowIncomplete(false);
     setTowerKind(asset?.tower_type ?? "");
@@ -164,7 +162,6 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
         profile: parsedProfile,
         params_raw: paramsRaw.trim() || null,
         current_ka: currentKa,
-        dry_run: dryRun,
       };
       await submit(payload);
       return;
@@ -182,7 +179,6 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
         line_tower_id: selectedTowerIds[0],
         params_raw: paramsRaw.trim() || null,
         current_ka: currentKa,
-        dry_run: dryRun,
       };
       await submit(payload);
       return;
@@ -195,7 +191,6 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
       scene: scene.trim() || null,
       params_raw: paramsRaw.trim() || null,
       current_ka: currentKa,
-      dry_run: dryRun,
       allow_incomplete_defaults: allowIncomplete,
     };
     await submit(payload);
@@ -205,7 +200,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
     setSubmitting(true);
     try {
       const run = await postJson<AtpAssetRunDetail>(`/api/v1/atp/assets/${asset.id}/test-runs`, payload);
-      message.success(dryRun ? t("已发起试跑（只列命令，不执行）") : t("测试已发起"));
+      message.success(t("测试已发起"));
       onCreated(run);
       onClose();
     } catch (error) {
@@ -268,14 +263,6 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
               </Space.Compact>
               <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
                 {t("与 C# 侧必须同值")}
-              </Typography.Text>
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item label={t("试跑")} style={{ marginBottom: 8 }}>
-              <Switch checked={dryRun} onChange={setDryRun} />
-              <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
-                {t("只列命令不执行")}
               </Typography.Text>
             </Form.Item>
           </Col>

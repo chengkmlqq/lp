@@ -177,7 +177,6 @@ class AtpTestSetExecuteRequest(BaseModel):
 
     case_ids: list[str] = Field(default_factory=list, max_length=2000)
     timeout_seconds: int | None = Field(default=None, ge=1)
-    dry_run: bool = False
 
 
 class AtpTestSetExecuteResponse(BaseModel):

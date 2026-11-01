@@ -385,42 +385,6 @@ def execute_test_run_job(
         stderr_parts: list[str] = []
         failed_stage: str | None = None
 
-        if payload.dry_run:
-            planned = ctx.planned_commands()
-            run.engine_command = "\n".join(" ".join(item) for item in planned)
-            run.status = "success"
-            run.exit_code = 0
-            run.stdout_text = json.dumps(
-                {
-                    "dry_run": True,
-                    "commands": [{"command": item} for item in planned],
-                    "run_dir": str(run_dir),
-                    "engine_dir": str(engine_dir),
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            run.stderr_text = ""
-            run.duration_ms = 0
-            run.finished_at = utcnow()
-            run.result_summary_json = {
-                "schema": COMPARE_SCHEMA,
-                "kind": "atp_asset_test",
-                "dry_run": True,
-                "requested_stages": stages,
-                "stages": {},
-                **(_batch_id_keep(run)),
-            }
-            run.update_user = actor_user_id
-            run.update_date = utcnow()
-            db.commit()
-            # 任务终态清理：删本 run 的运行结果目录（成功路径）
-            try:
-                cleanup_test_run_dir(run.id)
-            except Exception as exc:  # noqa: BLE001 - 清理是 best-effort
-                logger.warning("[ATP测试] 清理运行目录失败 run=%s err=%s", run.id, exc)
-            return
-
         try:
             for stage in stages:
                 if failed_stage is not None:
@@ -844,15 +808,6 @@ class _TestContext:
             input_path=target,
             extra_args=list(self.resolved_job.extra_args or []),
         )
-
-    def planned_commands(self) -> list[list[str]]:
-        entry = Path(self.resolved_job.entry_file)
-        commands = [
-            self._build_command(input_path=Path(f"{name}.dat"), relative=True)
-            for name in ("long", "short", "dahao", "xiaohao")
-        ]
-        commands.append(self._build_command(input_path=entry, relative=True))
-        return commands
 
     def _engine_env(self) -> dict[str, str]:
         env = os.environ.copy()
@@ -1714,7 +1669,6 @@ def create_batch_test_runs(
         params_raw=payload.params_raw,
         current_ka=payload.current_ka,
         timeout_seconds=payload.timeout_seconds,
-        dry_run=payload.dry_run,
         params_source=payload.params_source,
         allow_incomplete_defaults=payload.allow_incomplete_defaults,
     )

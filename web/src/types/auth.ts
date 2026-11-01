@@ -1261,7 +1261,6 @@ export type AtpAssetTestRunRequest = {
   params_raw?: string | null;
   current_ka?: number | null;
   timeout_seconds?: number | null;
-  dry_run?: boolean;
   allow_incomplete_defaults?: boolean;
 };
 

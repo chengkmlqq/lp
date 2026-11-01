@@ -321,19 +321,17 @@ def reorder_cases(
 
 
 def _build_case_run_payload(
-    case: AtpTestSetCase, *, timeout_seconds: int | None, dry_run: bool
+    case: AtpTestSetCase, *, timeout_seconds: int | None
 ) -> AtpAssetTestRunRequest:
     """把用例参数快照还原成单模型测试请求。
 
     缺省值与单模型测试保持一致（stages 默认全跑、current_ka 默认 31），
-    显式给过的字段不允许被覆盖。execute 级 timeout/dry_run 仅在用例未显式
+    显式给过的字段不允许被覆盖。execute 级 timeout 仅在用例未显式
     指定时生效。
     """
     params = dict(case.params_json or {})
     if timeout_seconds is not None and not params.get("timeout_seconds"):
         params["timeout_seconds"] = int(timeout_seconds)
-    if dry_run:
-        params["dry_run"] = True
     return AtpAssetTestRunRequest.model_validate(params)
 
 
@@ -416,7 +414,7 @@ def execute_set(
     for case in target_cases:
         try:
             single_payload = _build_case_run_payload(
-                case, timeout_seconds=payload.timeout_seconds, dry_run=payload.dry_run
+                case, timeout_seconds=payload.timeout_seconds
             )
             create_test_run(
                 db,

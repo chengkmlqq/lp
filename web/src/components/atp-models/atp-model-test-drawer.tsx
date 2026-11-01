@@ -85,7 +85,6 @@ const ALL_STAGES: AtpAssetTestStage[] = STAGE_META.map((item) => item.stage);
 
 type TestResultSummary = {
   schema?: string;
-  dry_run?: boolean;
   requested_stages?: string[];
   failed_stage?: string | null;
   stages?: Record<string, AtpAssetTestStageResult>;
@@ -157,7 +156,6 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
   const canRun = hasPermission("atp.run") || hasPermission("atp.manage");
 
   const [currentKa, setCurrentKa] = useState<number>(31);
-  const [dryRun, setDryRun] = useState(false);
   // 参数来源：template = 无杆塔（资产维度 + 参数模板默认值，默认）；tower = 手工给杆塔数据
   const [paramsSource, setParamsSource] = useState<"template" | "tower">("template");
   const [allowIncomplete, setAllowIncomplete] = useState(false);
@@ -236,11 +234,10 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
           allow_incomplete_defaults: allowIncomplete,
           params_raw: paramsRaw.trim() || null,
           current_ka: currentKa,
-          dry_run: dryRun,
         },
       );
       setActiveRunId(run.id);
-      message.success(dryRun ? t("已发起试跑（只列命令，不执行）") : t("测试已发起，结果自动刷新"));
+      message.success(t("测试已发起，结果自动刷新"));
       void historyQuery.refetch();
     } catch (error) {
       message.error(error instanceof Error ? error.message : t("发起测试失败"));
@@ -326,13 +323,6 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                   />
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {t("与 C# 侧必须同值")}
-                  </Typography.Text>
-                </Space>
-                <Space size={8}>
-                  <Typography.Text>{t("试跑")}</Typography.Text>
-                  <Switch checked={dryRun} onChange={setDryRun} />
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {t("只列命令不执行")}
                   </Typography.Text>
                 </Space>
               </Space>
@@ -450,7 +440,6 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                     : "-"}
                 </Typography.Text>
                 <Typography.Text type="secondary">run {activeRun.id.slice(0, 8)}</Typography.Text>
-                {summary.dry_run ? <Tag color="orange">{t("试跑")}</Tag> : null}
               </Space>
               {compareParamsSource ? (
                 <div style={{ marginTop: 6 }}>

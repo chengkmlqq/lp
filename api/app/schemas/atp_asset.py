@@ -182,7 +182,6 @@ class AtpAssetRunRequest(BaseModel):
     timeout_seconds: int | None = Field(default=None, ge=1)
     extra_args: list[str] = Field(default_factory=list, max_length=32)
     environment: dict[str, str] = Field(default_factory=dict, max_length=16)
-    dry_run: bool = False
 
 
 class AtpEngineStatusResponse(BaseModel):
@@ -230,7 +229,6 @@ class AtpAssetTestRunRequest(BaseModel):
     params_raw: str | None = None
     current_ka: float | None = Field(default=31.0, gt=0)
     timeout_seconds: int | None = Field(default=None, ge=1)
-    dry_run: bool = False
     # 参数来源：template = 无杆塔（资产维度 + 参数模板默认值，默认）；tower = 用传入的杆塔数据
     params_source: AtpAssetTestParamsSource = "template"
     # 模板默认值不完整时是否仍继续（默认 False → 显式报错，禁止静默算无意义结果）
@@ -256,7 +254,6 @@ class AtpBatchTestRunRequest(BaseModel):
     params_raw: str | None = None
     current_ka: float | None = Field(default=31.0, gt=0)
     timeout_seconds: int | None = Field(default=None, ge=1)
-    dry_run: bool = False
     params_source: AtpAssetTestParamsSource = "template"
     allow_incomplete_defaults: bool = False
 

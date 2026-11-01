@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 测试集详情抽屉：用例管理（增/改/删/启禁用/排序）+ 执行（全部/勾选/dry_run）+ 执行历史。
+ * 测试集详情抽屉：用例管理（增/改/删/启禁用/排序）+ 执行（全部/勾选）+ 执行历史。
  * 用例参数表单：常用字段（计算类型/雷电流/场景）+ 高级 JSON（params_json / expected_json）。
  */
 import { useCallback, useMemo, useState } from "react";
@@ -16,7 +16,6 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
-  Radio,
   Select,
   Space,
   Switch,
@@ -286,15 +285,14 @@ export function AtpTestSetDetailDrawer({
   // ------- 执行 ---------
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const [runOptionsOpen, setRunOptionsOpen] = useState(false);
-  const [executeDryRun, setExecuteDryRun] = useState(false);
   const [executing, setExecuting] = useState(false);
 
   const executeSet = useCallback(
-    async (dryRun: boolean) => {
+    async () => {
       if (!set) return;
       setExecuting(true);
       try {
-        const body: Record<string, unknown> = { dry_run: dryRun };
+        const body: Record<string, unknown> = {};
         if (selectedCaseIds.length > 0) body.case_ids = selectedCaseIds;
         const response = await fetchWithAuth(`/api/v1/atp/test-sets/${set.id}/runs`, {
           method: "POST",
@@ -642,7 +640,7 @@ export function AtpTestSetDetailDrawer({
               icon={<ExperimentOutlined />}
               disabled={!canTest || !set || set.case_count === 0}
               loading={executing}
-              onClick={() => void executeSet(false)}
+              onClick={() => void executeSet()}
             >
               {t("执行测试集")}
             </Button>
@@ -720,21 +718,11 @@ export function AtpTestSetDetailDrawer({
                         >
                           {t("全选启用的用例")}
                         </Checkbox>
-                        <Radio.Group
-                          value={executeDryRun}
-                          onChange={(event) => setExecuteDryRun(event.target.value === true)}
-                          optionType="button"
-                          buttonStyle="solid"
-                          options={[
-                            { value: false, label: t("真实仿真") },
-                            { value: true, label: t("试运行(dry-run)") },
-                          ]}
-                        />
                         <Button
                           type="primary"
                           size="small"
                           loading={executing}
-                          onClick={() => void executeSet(executeDryRun)}
+                          onClick={() => void executeSet()}
                         >
                           {t("开始执行")}
                         </Button>
