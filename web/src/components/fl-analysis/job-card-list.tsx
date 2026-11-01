@@ -177,7 +177,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                   </div>
                   <div className="flex flex-shrink-0 items-center gap-2">
                     <Badge status={badgeStatusMap[job.status] ?? "default"} />
-                    <Text type="secondary" className="text-xs">{statusTextMap[job.status] ?? job.status}</Text>
+                    <Text type="secondary" className="text-xs">{statusTextMap[job.status] ? t(statusTextMap[job.status]) : job.status}</Text>
                   </div>
                 </div>
               </div>

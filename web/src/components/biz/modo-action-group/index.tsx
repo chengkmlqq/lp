@@ -4,6 +4,7 @@ import React from "react";
 import { Button, Dropdown, Space } from "antd";
 import type { MenuProps } from "antd";
 import { MoreOutlined } from "@ant-design/icons";
+import { useI18n } from "@/lib/i18n";
 
 export interface ActionItem {
   key: string;
@@ -32,6 +33,7 @@ export interface ModoActionGroupProps {
  * - action.visible === false 的动作整体隐藏（用于权限控制）
  */
 export const ModoActionGroup: React.FC<ModoActionGroupProps> = ({ actions = [], maxCount = 2 }) => {
+  const { t } = useI18n();
   const visibleActions = actions.filter((action) => action.visible !== false);
   if (visibleActions.length === 0) return null;
 
@@ -70,7 +72,7 @@ export const ModoActionGroup: React.FC<ModoActionGroupProps> = ({ actions = [], 
       ))}
       {secondaryActions.length > 0 && (
         <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
-          <Button size="small" icon={<MoreOutlined />} aria-label="更多操作" />
+          <Button size="small" icon={<MoreOutlined />} aria-label={t("更多操作")} />
         </Dropdown>
       )}
     </Space>

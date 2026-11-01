@@ -66,7 +66,7 @@ export function CreateAnalysisForm({ form, lines, linesLoading, onSubmit }: Crea
       >
         <Select
           placeholder={t("请选择分析类型")}
-          options={analysisTypes}
+          options={analysisTypes.map((opt) => ({ value: opt.value, label: t(opt.label) }))}
         />
       </Form.Item>
 

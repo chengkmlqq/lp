@@ -2738,6 +2738,13 @@ export const MENU_LABELS_EN: Record<string, string> = {
   "请输入模型描述": "Please enter a model description",
   "模型描述（必填）": "Model description (required)",
   "如 v1 / v2-rev3": "e.g. v1 / v2-rev3",
+  "展开子菜单": "Expand submenu",
+  "收起子菜单": "Collapse submenu",
+  "无执行权限": "No permission to execute",
+  "暂无用例": "No test cases yet",
+  "系统总览": "System Overview",
+  "收起": "Collapse",
+  "展开筛选": "Expand filters",
 };
 
 // ─────────────────────────── Context ───────────────────────────
