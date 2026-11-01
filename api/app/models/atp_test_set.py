@@ -96,6 +96,11 @@ class AtpTestSetCase(Base):
     # 测试参数快照（与 AtpAssetTestRunRequest 同语义：stages/tower_kind/voltage_kv/
     # scene/current_ka/params_source/execution_options/base_tower/profile/timeout_seconds...）
     params_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # 绑定的测试线路（单塔基准）。非空时执行期由后端装配 base_tower/profile，
+    # 优先级高于 params_json 里的 base_tower/profile（params_json 只留覆盖项）。
+    test_line_id: Mapped[str | None] = mapped_column(String(32), index=True)
+    # 生成用例时测试线路的快照指纹：与当前快照 hash 不一致 → 报告标注「基准已变更」
+    test_line_snapshot_hash: Mapped[str | None] = mapped_column(String(64))
     # 预期结果（可选，回归断言用）：如 {"flashover_count": 2, "pass": true}
     expected_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

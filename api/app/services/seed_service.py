@@ -400,6 +400,22 @@ DEFAULT_MENUS: list[dict[str, object]] = [
         "permission_code": "atp.read",
     },
     {
+        # 测试线路（单塔基准）：模型测试的默认输入源。
+        # API 侧 /api/v1/atp/test-lines 的菜单守卫同时接受本菜单与 admin.atp_models，
+        # 避免"只给了测试线路菜单却调不通接口"。
+        "code": "admin.atp_test_lines",
+        "name": "测试线路管理",
+        "path": "/admin/atp-test-lines",
+        "icon": "ClusterOutlined",
+        "parent_code": "admin.basic_data",
+        "type": "menu",
+        "sort_order": 22,
+        "status": "enabled",
+        "visible": True,
+        "cacheable": False,
+        "permission_code": "atp.read",
+    },
+    {
         "code": "admin.atp_param_templates",
         "name": "参数模板管理",
         "path": "/admin/atp-param-templates",

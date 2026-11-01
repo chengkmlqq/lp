@@ -286,6 +286,34 @@ def _mark_run_failed(
     db.commit()
 
 
+def _test_line_geometry_usable(base_tower: dict[str, Any], profile: dict[str, Any]) -> bool:
+    """测试线路快照的几何是否足以让几何管线跑通。
+
+    判据对齐 ``atp_geometry_pipeline.build_dat_values`` 的硬前置：
+    - 避雷线左/右中距（缺即 raise，与有无避雷线无关）
+    - I 回上相中距（缺则 .dat 相几何错位或回退到 RELE 槽位）
+
+    自动反查路径宁可退回模板模式，也不要把原本能跑的测试打挂。
+    """
+    if not base_tower or not profile:
+        return False
+    geometry = base_tower.get("circuit_geometry_json") or {}
+    if not isinstance(geometry, dict):
+        return False
+    lightning_wire = geometry.get("lightning_wire") or {}
+    if not isinstance(lightning_wire, dict):
+        return False
+    if (
+        lightning_wire.get("left_mid_distance_m") is None
+        or lightning_wire.get("right_mid_distance_m") is None
+    ):
+        return False
+    phase_spacing = (geometry.get("I") or {}).get("phase_spacing_m") or {}
+    if not isinstance(phase_spacing, dict) or phase_spacing.get("upper") is None:
+        return False
+    return True
+
+
 # ─────────────────────────────── Worker 执行 ───────────────────────────────
 
 
@@ -302,9 +330,56 @@ def execute_test_run_job(
         if run is None or run.status in {"success", "failed"}:
             return
         payload = AtpAssetTestRunRequest.model_validate(payload_data)
+        # 「测试线路（单塔基准）」绑定信息，写进 compare.json 的 case.test_line，
+        # 让回归报告能回答「这次到底用的哪套几何基准、基准有没有变」。
+        test_line_meta: dict[str, Any] | None = None
+        # 优先级：test_line_id > line_tower_id > 显式 base_tower/profile > 模板默认值。
+        if payload.test_line_id:
+            from .atp_test_line_service import (  # noqa: PLC0415
+                assemble_payload_from_test_line,
+                build_run_meta,
+                mark_used,
+            )
+            from .atp_test_line_service import resolve_test_line  # noqa: PLC0415
+
+            try:
+                test_line, matched_by = resolve_test_line(
+                    db, test_line_id=payload.test_line_id, asset=run.asset
+                )
+            except HTTPException as exc:
+                _mark_run_failed(
+                    db, run=run, actor_user_id=actor_user_id, reason=str(exc.detail)
+                )
+                return
+            if test_line is None:  # pragma: no cover - resolve 内部已抛 404
+                _mark_run_failed(
+                    db, run=run, actor_user_id=actor_user_id,
+                    reason=f"测试线路不存在：{payload.test_line_id}",
+                )
+                return
+            base_tower, profile = assemble_payload_from_test_line(test_line)
+            if not profile:
+                _mark_run_failed(
+                    db, run=run, actor_user_id=actor_user_id,
+                    reason=f"测试线路 {test_line.code} 没有可用的几何快照，请先在测试线路页补全并保存",
+                )
+                return
+            payload.base_tower = base_tower
+            payload.profile = profile
+            # 复用既有「tower 模式」通道（几何/参数/渲染全部走同一条路径，保证口径一致）
+            payload.params_source = "tower"
+            if not payload.tower_kind:
+                payload.tower_kind = test_line.tower_type
+            if payload.voltage_kv is None:
+                try:
+                    payload.voltage_kv = int(str(test_line.voltage_level))
+                except (TypeError, ValueError):
+                    payload.voltage_kv = None
+            test_line_meta = build_run_meta(test_line, matched_by=matched_by)
+            mark_used(db, test_line)
         # 从线路杆塔选择（line_tower_id）：后端按塔组装 base_tower/profile，
         # 口径与「ATP 参数试算」preview_resolve_by_towers 完全一致（快照同款组装函数）。
-        if payload.line_tower_id:
+        elif payload.line_tower_id:
             from .fl_analysis_service import (  # noqa: PLC0415
                 _build_base_tower_json,
                 _build_profile_json,
@@ -332,6 +407,59 @@ def execute_test_run_job(
             if payload.voltage_kv is None and tower.line is not None:
                 payload.voltage_kv = tower.line.voltage_kv
             payload.params_source = "tower"
+
+        # 未显式指定来源时的「默认走测试线路」：模板模式且未提供任何几何 →
+        # 按资产维度反查一条基准。命中且几何可用才切换（几何不完整时保持模板模式，
+        # 避免把原本能跑的合成几何测试搞挂），并记录 auto_resolved 便于追溯。
+        if (
+            test_line_meta is None
+            and not payload.line_tower_id
+            and payload.params_source == "template"
+            and not (payload.base_tower or payload.profile)
+        ):
+            from .atp_test_line_service import (  # noqa: PLC0415
+                assemble_payload_from_test_line,
+                build_run_meta,
+                mark_used,
+                resolve_test_line,
+            )
+
+            auto_line = None
+            auto_matched = "none"
+            try:
+                auto_line, auto_matched = resolve_test_line(
+                    db,
+                    asset=run.asset,
+                    voltage_level=str(payload.voltage_kv) if payload.voltage_kv else None,
+                    tower_type=payload.tower_kind,
+                )
+            except HTTPException:  # pragma: no cover - 反查只读，不应抛
+                auto_line = None
+            if auto_line is not None:
+                base_tower, profile = assemble_payload_from_test_line(auto_line)
+                if _test_line_geometry_usable(base_tower, profile):
+                    payload.base_tower = base_tower
+                    payload.profile = profile
+                    payload.params_source = "tower"
+                    if not payload.tower_kind:
+                        payload.tower_kind = auto_line.tower_type
+                    if payload.voltage_kv is None:
+                        try:
+                            payload.voltage_kv = int(str(auto_line.voltage_level))
+                        except (TypeError, ValueError):
+                            payload.voltage_kv = None
+                    test_line_meta = build_run_meta(auto_line, matched_by=auto_matched)
+                    test_line_meta["auto_resolved"] = True
+                    mark_used(db, auto_line)
+                    logger.info(
+                        "[ATP测试] 自动匹配测试线路 %s（matched_by=%s）run=%s",
+                        auto_line.code, auto_matched, run.id,
+                    )
+                else:
+                    logger.warning(
+                        "[ATP测试] 测试线路 %s 几何快照不完整，本次回退模板模式 run=%s",
+                        auto_line.code, run.id,
+                    )
         stages = _normalize_stages(payload.stages)
 
         run.status = "running"
@@ -378,6 +506,7 @@ def execute_test_run_job(
             run_dir=run_dir,
             engine_dir=engine_dir,
             shim=_test_shim(run.id),
+            test_line_meta=test_line_meta,
         )
 
         stage_results: dict[str, Any] = {}
@@ -487,6 +616,7 @@ class _TestContext:
         run_dir: Path,
         engine_dir: Path,
         shim: SimpleNamespace,
+        test_line_meta: dict[str, Any] | None = None,
     ) -> None:
         self.db = db
         self.run_id = run_id
@@ -496,6 +626,9 @@ class _TestContext:
         self.run_dir = run_dir
         self.engine_dir = engine_dir
         self.shim = shim
+        # 本次使用的测试线路（单塔基准）元信息：写进 compare.json 的 case.test_line，
+        # None = 本次没有用测试线路（模板 / 真实杆塔 / 显式传入几何）
+        self.test_line_meta = test_line_meta
         self.command_log: list[list[str]] = []
         self.last_exit_code: int | None = None
         self.rendered_text: str = ""
@@ -724,6 +857,19 @@ class _TestContext:
             options.setdefault("line_voltage_kv", self.payload.voltage_kv)
         if self.payload.scene:
             options.setdefault("scene_type", self.payload.scene)
+        # ⚠️ 2026-11-01 修复（与 atp_param_resolver.build_context 的维度注入配套）：
+        # 参数模板的维度规则支持 scene_type / arrester_config / structure_kind，
+        # 但此前从未把这些值放进 execution_options → context 里根本没有这三个键，
+        # 规则永远匹配不上，「按场景/避雷器组合配参数」实际等于不存在。
+        asset = self.asset
+        if asset is not None:
+            if getattr(asset, "scene_type", None):
+                options.setdefault("scene_type", asset.scene_type)
+            if getattr(asset, "arrester_config", None):
+                options.setdefault("arrester_config", asset.arrester_config)
+        structure_kind = (self.payload.profile or {}).get("structure_kind")
+        if structure_kind:
+            options.setdefault("structure_kind", structure_kind)
         # 固定雷电流：让「单次 ATP」有可比口径（C# 侧同值）
         if self.payload.current_ka is not None:
             options = _with_binary_search_current(options, current_ka=float(self.payload.current_ka))
@@ -1355,6 +1501,8 @@ class _TestContext:
                 "storage_root_path": self.resolved_job.storage_root_path,
                 # 与 C# harness 原样对照的输入串（同一份输入 → 可比）
                 "params_raw": self.payload.params_raw,
+                # 本次是否用了「测试线路（单塔基准）」：回归报告据此判断基准是否变更
+                "test_line": self.test_line_meta,
                 "base_tower": dict(self.payload.base_tower or {}),
                 "profile": dict(self.payload.profile or {}),
                 "execution_options": {

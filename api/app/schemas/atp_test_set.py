@@ -69,6 +69,13 @@ class AtpTestSetCaseSummary(BaseModel):
     job_kind: AtpTestJobKind = "normal"
     name: str = ""
     description: str = ""
+    # 绑定的测试线路（单塔基准）：非空时执行期由后端装配 base_tower/profile，
+    # params_json 只承载覆盖项（current_ka / stages 等），不再塞几何
+    test_line_id: str | None = None
+    test_line_code: str | None = None
+    test_line_snapshot_hash: str | None = None
+    # 基准漂移：快照 hash 与当前测试线路不一致（回归结论不可直接比）
+    baseline_drifted: bool = False
     params_json: dict[str, Any] = Field(default_factory=dict)
     expected_json: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
@@ -87,6 +94,7 @@ class AtpTestSetCaseCreateRequest(BaseModel):
     job_kind: AtpTestJobKind = "normal"
     name: str = Field(default="", max_length=255)
     description: str = Field(default="", max_length=8000)
+    test_line_id: str | None = Field(default=None, max_length=32)
     params_json: dict[str, Any] = Field(default_factory=dict)
     expected_json: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
@@ -98,6 +106,7 @@ class AtpTestSetCaseUpdateRequest(BaseModel):
     job_kind: AtpTestJobKind | None = None
     name: str | None = Field(default=None, max_length=255)
     description: str | None = Field(default=None, max_length=8000)
+    test_line_id: str | None = Field(default=None, max_length=32)
     params_json: dict[str, Any] | None = None
     expected_json: dict[str, Any] | None = None
     enabled: bool | None = None

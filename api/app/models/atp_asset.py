@@ -55,6 +55,9 @@ class AtpAsset(Base):
         index_kwargs={"mysql_length": 191},
     )
     tags_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # 模型级绑定的测试线路（单塔基准）：非空时优先于几何维匹配，
+    # 用于「这个模型必须用专用样本」的场景（见 models/atp_test_line.py）
+    test_line_id: Mapped[str | None] = mapped_column(String(32), index=True)
     # 槽位扫描缓存：{"scanned_at", "work_atp": {"slots": {...}, "count": N},
     #                 "geometry": {"long": {...}, ...}}见 atp_slot_scanner.scan_model_slots
     slots_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

@@ -660,7 +660,61 @@ def build_context(
     # 相序重排后的完整几何（供注册表 script 用 pick("geometry_permuted", ...) 取数，
     # 口径与上面 h_u/sp_u/c1~c4 的取值一致 —— 由脚本显式引用，不再隐式依赖 runtime_key）
     context["geometry_permuted"] = geometry
+    # ⚠️ 2026-11-01 修复（「按场景/避雷器组合配参数」形同虚设的根因）：
+    # DIMENSION_KEYS 声明了 6 个维度，但 context 只填了 tower_type / voltage_level /
+    # circuit_count 三个 —— scene_type / arrester_config / structure_kind 永远不出现，
+    # 于是带这三类维度的参数规则**永远匹配不上**（_matching_voltage_rules 直接跳过）。
+    # 这里从 execution_options 透传（空值不注入，避免把 None 当成维度值参与比较）。
+    for dimension_key in ("scene_type", "arrester_config", "structure_kind"):
+        dimension_value = options.get(dimension_key)
+        if dimension_value not in (None, ""):
+            context[dimension_key] = dimension_value
     return context
+
+
+def collect_context_defaults(
+    *,
+    voltage_level: float | str | None,
+    tower_type: str | None,
+    circuit_count: int | None = None,
+    scene_type: str | None = None,
+    arrester_config: str | None = None,
+    structure_kind: str | None = None,
+    rules: MappingRules | None = None,
+) -> dict[str, Any]:
+    """按维度取规则链上的**上下文默认值**（h_u/sp_u/insul_m/shield_h/lw_l_eff…）。
+
+    供「测试线路派生」用：从维度组合推断「该维度组的工程参考值」，
+    与 ``allow_defaults=True`` 时 ``resolve_params`` 内部使用的合并口径完全一致
+    （全局 defaults → 塔型基础规则 → 维度细分规则，粗→细覆盖）。
+
+    取不到时回退到全局 defaults（不抛错，缺失由调用方记 warning）。
+    """
+    active = rules or load_mappings()
+    try:
+        canonical = normalize_tower_kind(tower_type, active)
+        base_rule, effective_kind, _chain = _resolve_rule_for(
+            active, canonical, allow_fallback=True
+        )
+        ctx: dict[str, Any] = {"tower_type": canonical}
+        if voltage_level not in (None, ""):
+            try:
+                ctx["voltage_level"] = float(voltage_level)
+                ctx["voltage"] = float(voltage_level)
+            except (TypeError, ValueError):
+                ctx["voltage_level"] = voltage_level
+        if circuit_count is not None:
+            ctx["circuit_count"] = int(circuit_count)
+        for key, value in (
+            ("scene_type", scene_type),
+            ("arrester_config", arrester_config),
+            ("structure_kind", structure_kind),
+        ):
+            if value not in (None, ""):
+                ctx[key] = value
+        return dict(_collect_defaults(active, base_rule, ctx, effective_kind))
+    except Exception:  # noqa: BLE001 - 默认值收集失败不应阻断派生
+        return dict(active.defaults or {})
 
 
 def compute_params_from_config(
@@ -715,6 +769,7 @@ __all__ = [
     "ResolvedParams",
     "Rule",
     "build_context",
+    "collect_context_defaults",
     "globals_from_rows",
     "compute_params_from_config",
     "compute_params_detailed",

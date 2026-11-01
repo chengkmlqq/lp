@@ -147,6 +147,21 @@ def _normalize_optional_str(value: str | None) -> str | None:
     return normalized or None
 
 
+def _validate_test_line_ref(db: Session, test_line_id: str | None) -> str | None:
+    """校验模型级绑定的测试线路（None/空 → 视为解绑）。"""
+    value = _normalize_optional_str(test_line_id)
+    if not value:
+        return None
+    from ..models.atp_test_line import AtpTestLine  # noqa: PLC0415
+
+    row = db.get(AtpTestLine, value)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"测试线路不存在：{value}"
+        )
+    return row.id
+
+
 def _normalize_relative_path(value: str | None) -> str | None:
     normalized = _normalize_optional_str(value)
     if normalized is None:
@@ -671,6 +686,7 @@ def serialize_asset(
         version=item.version or "v1",
         is_active=bool(item.is_active),
         shield_wire=item.shield_wire or "with",
+        test_line_id=item.test_line_id,
         storage_mount_code=item.storage_mount_code or "main",
         storage_root_path=item.storage_root_path,
         run_count=run_count,
@@ -1103,6 +1119,7 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
         version=version,
         is_active=bool(payload.is_active),
         shield_wire=shield_wire,
+        test_line_id=_validate_test_line_ref(db, payload.test_line_id),
         storage_mount_code=storage_mount_code,
         storage_root_path=storage_root_path,
         create_user=actor_user_id,
@@ -1397,6 +1414,9 @@ def update_asset(
         item.version = str(update_data["version"]).strip() or "v1"
     if "shield_wire" in update_data and update_data["shield_wire"] is not None:
         item.shield_wire = str(update_data["shield_wire"]).strip() or "with"
+    if "test_line_id" in update_data:
+        # 模型级绑定测试线路（单塔基准）：传 null 表示解绑
+        item.test_line_id = _validate_test_line_ref(db, update_data["test_line_id"])
     if "is_active" in update_data and update_data["is_active"] is not None:
         # 通过 PATCH 直接置生效 → 走与 activate 相同的组内清零事务，防双生效
         if bool(update_data["is_active"]):

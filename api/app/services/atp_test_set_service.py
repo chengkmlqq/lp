@@ -17,6 +17,7 @@ import io
 import json
 import zipfile
 from collections import Counter, defaultdict
+from typing import Any, Iterable
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -54,8 +55,10 @@ def get_case_by_id(db: Session, case_id: str) -> AtpTestSetCase | None:
     ).scalar_one_or_none()
 
 
-def _case_summary(case: AtpTestSetCase) -> dict[str, Any]:
+def _case_summary(case: AtpTestSetCase, *, test_line: Any | None = None) -> dict[str, Any]:
     asset = case.asset
+    stored_hash = case.test_line_snapshot_hash
+    current_hash = getattr(test_line, "snapshot_hash", None)
     return {
         "id": case.id,
         "set_id": case.set_id,
@@ -69,6 +72,13 @@ def _case_summary(case: AtpTestSetCase) -> dict[str, Any]:
         "job_kind": case.job_kind,
         "name": case.name or "",
         "description": case.description or "",
+        "test_line_id": case.test_line_id,
+        "test_line_code": getattr(test_line, "code", None),
+        "test_line_snapshot_hash": stored_hash,
+        # 基准漂移：生成用例时记的快照指纹与当前测试线路不一致 → 回归结论不可直接比
+        "baseline_drifted": bool(
+            stored_hash and current_hash and stored_hash != current_hash
+        ),
         "params_json": case.params_json or {},
         "expected_json": case.expected_json or {},
         "enabled": case.enabled,
@@ -76,6 +86,16 @@ def _case_summary(case: AtpTestSetCase) -> dict[str, Any]:
         "create_date": case.create_date,
         "update_date": case.update_date,
     }
+
+
+def _test_lines_by_id(db: Session, ids: Iterable[str | None]) -> dict[str, Any]:
+    from ..models.atp_test_line import AtpTestLine  # noqa: PLC0415
+
+    wanted = [i for i in {i for i in ids if i}]
+    if not wanted:
+        return {}
+    rows = db.execute(select(AtpTestLine).where(AtpTestLine.id.in_(wanted))).scalars().all()
+    return {row.id: row for row in rows}
 
 
 # ─────────────────────────── 测试集 CRUD ───────────────────────────
@@ -193,7 +213,32 @@ def list_cases(db: Session, *, set_id: str) -> dict[str, Any]:
         .where(AtpTestSetCase.set_id == set_id)
         .order_by(AtpTestSetCase.sort_order.asc(), AtpTestSetCase.create_date.asc())
     ).scalars().all()
-    return {"items": [_case_summary(c) for c in cases], "total": len(cases)}
+    test_lines = _test_lines_by_id(db, (c.test_line_id for c in cases))
+    return {
+        "items": [
+            _case_summary(c, test_line=test_lines.get(c.test_line_id or "")) for c in cases
+        ],
+        "total": len(cases),
+    }
+
+
+def _resolve_case_test_line(db: Session, test_line_id: str | None) -> tuple[Any | None, str | None]:
+    """校验用例绑定的测试线路，返回 (row, 生成时快照指纹)。"""
+    if not test_line_id:
+        return None, None
+    from ..models.atp_test_line import AtpTestLine  # noqa: PLC0415
+
+    test_line = db.get(AtpTestLine, test_line_id)
+    if test_line is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"测试线路不存在：{test_line_id}"
+        )
+    if test_line.status == "disabled":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"测试线路 {test_line.code} 已停用，请启用后再绑定",
+        )
+    return test_line, test_line.snapshot_hash
 
 
 def create_case(
@@ -218,12 +263,15 @@ def create_case(
         sort_order = int(max_order) + 1
     else:
         sort_order = int(payload.sort_order)
+    test_line, test_line_hash = _resolve_case_test_line(db, payload.test_line_id)
     case = AtpTestSetCase(
         set_id=set_id,
         asset_id=payload.asset_id,
         job_kind=payload.job_kind,
         name=(payload.name or "").strip(),
         description=payload.description or "",
+        test_line_id=test_line.id if test_line else None,
+        test_line_snapshot_hash=test_line_hash,
         params_json=dict(payload.params_json or {}),
         expected_json=dict(payload.expected_json or {}),
         enabled=payload.enabled,
@@ -240,7 +288,7 @@ def create_case(
         .options(joinedload(AtpTestSetCase.asset))
         .where(AtpTestSetCase.id == case.id)
     ).scalar_one()
-    return _case_summary(case)
+    return _case_summary(case, test_line=test_line)
 
 
 def update_case(
@@ -261,6 +309,14 @@ def update_case(
         case.name = (payload.name or "").strip()
     if payload.description is not None:
         case.description = payload.description
+    # test_line_id 支持显式解绑（传 null）→ 必须看 fields_set，不能只看 not None
+    resolved_test_line = None
+    if "test_line_id" in payload.model_fields_set:
+        resolved_test_line, resolved_hash = _resolve_case_test_line(db, payload.test_line_id)
+        case.test_line_id = resolved_test_line.id if resolved_test_line else None
+        case.test_line_snapshot_hash = resolved_hash
+    elif case.test_line_id:
+        resolved_test_line = _test_lines_by_id(db, [case.test_line_id]).get(case.test_line_id)
     if payload.params_json is not None:
         case.params_json = dict(payload.params_json)
     if payload.expected_json is not None:
@@ -277,7 +333,7 @@ def update_case(
         .options(joinedload(AtpTestSetCase.asset))
         .where(AtpTestSetCase.id == case_id)
     ).scalar_one()
-    return _case_summary(case)
+    return _case_summary(case, test_line=resolved_test_line)
 
 
 def delete_case(db: Session, *, case_id: str) -> None:
@@ -328,8 +384,14 @@ def _build_case_run_payload(
     缺省值与单模型测试保持一致（stages 默认全跑、current_ka 默认 31），
     显式给过的字段不允许被覆盖。execute 级 timeout 仅在用例未显式
     指定时生效。
+
+    绑定了测试线路时，``test_line_id`` 优先级高于 ``params_json`` 里的
+    ``base_tower``/``profile``：几何由测试线路快照提供，params_json 只留覆盖项。
     """
     params = dict(case.params_json or {})
+    if case.test_line_id:
+        params["test_line_id"] = case.test_line_id
+        params.pop("line_tower_id", None)
     if timeout_seconds is not None and not params.get("timeout_seconds"):
         params["timeout_seconds"] = int(timeout_seconds)
     return AtpAssetTestRunRequest.model_validate(params)

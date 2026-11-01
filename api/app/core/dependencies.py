@@ -43,12 +43,22 @@ MENU_ROUTE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/api/v1/admin/task-monitor", "/admin/task-monitor"),
     ("/api/v1/admin/scheduled-tasks", "/admin/scheduled-tasks"),
     ("/api/v1/admin/overview", "/admin/overview"),
+    # 测试线路单独成页（/admin/atp-test-lines），必须排在 /api/v1/atp 之前，
+    # 否则前缀匹配会先落到 /api/v1/atp → /admin/atp-models。
+    ("/api/v1/atp/test-lines", "/admin/atp-models"),
     ("/api/v1/atp", "/admin/atp-models"),
     ("/api/v1/tower-models", "/admin/tower-models"),
     ("/api/v1/admin/files", "/admin/files"),
     ("/api/v1/elevation", "/admin/elevation"),
     ("/api/v1/fault-matlab", "/admin/matlab-engine"),
 )
+
+# 同一 API 前缀可以被多个菜单"持有"时，用这里补可选菜单路径（任一个启用即放行）。
+# 典型场景：/api/v1/atp/test-lines 既服务「ATP模型管理」页，也服务独立的
+# 「测试线路管理」页；只给用户后者菜单时不应该 403。
+MENU_ROUTE_ALTERNATES: dict[str, tuple[str, ...]] = {
+    "/api/v1/atp/test-lines": ("/admin/atp-test-lines",),
+}
 
 
 def _load_user_with_rbac(db: Session, user_id: str) -> User | None:
@@ -71,32 +81,45 @@ def _path_matches_prefix(path: str, prefix: str) -> bool:
     return path == prefix or path.startswith(f"{prefix}/")
 
 
-def _menu_path_for_api_path(api_path: str) -> str | None:
+def _menu_paths_for_api_path(api_path: str) -> tuple[str, ...]:
+    """返回该 API 路径可接受的菜单路径集合（主菜单 + 可选别名）。
+
+    任一菜单启用即视为可见（空字符串表示「不绑菜单」，直接放行）。
+    AIP 风格的冒号动作（``/atp/test-lines:derive``）先剥掉后缀再匹配，
+    否则会退化成匹配更短的 ``/api/v1/atp`` 前缀。
+    """
     normalized_api_path = _normalize_path(api_path)
     if not normalized_api_path:
-        return None
+        return ()
+    match_path = normalized_api_path.split(":", 1)[0]
     for api_prefix, menu_path in MENU_ROUTE_PREFIXES:
-        if _path_matches_prefix(normalized_api_path, api_prefix):
-            return menu_path
-    return None
+        if _path_matches_prefix(match_path, api_prefix):
+            alternates = MENU_ROUTE_ALTERNATES.get(api_prefix, ())
+            return (menu_path, *alternates)
+    return ()
 
 
-def _enabled_menu_path_exists(db: Session, menu_path: str) -> bool:
-    normalized_menu_path = _normalize_path(menu_path)
-    if not normalized_menu_path:
+def _menu_paths_allow_access(db: Session, menu_paths: tuple[str, ...]) -> bool:
+    """多候选菜单路径的放行判定。
+
+    语义（保持与单路径版本向后兼容）：
+    - 候选里有空串 → 不绑菜单，直接放行
+    - 候选路径在库里一条记录都没有 → 放行（fresh install 还没 seed 菜单时不能把人挡在外面）
+    - 否则：任一候选是 enabled + visible 即放行
+    """
+    normalized_paths = [path for path in (_normalize_path(item) for item in menu_paths) if path]
+    if not normalized_paths:
         return True
     try:
-        menu = db.execute(
-            select(Menu.id, Menu.status, Menu.visible)
-            .where(Menu.path == normalized_menu_path)
-            .limit(1)
-        ).first()
+        rows = db.execute(
+            select(Menu.path, Menu.status, Menu.visible).where(Menu.path.in_(normalized_paths))
+        ).all()
     except SQLAlchemyError:
         db.rollback()
         return True
-    if not menu:
+    if not rows:
         return True
-    return menu.status == "enabled" and bool(menu.visible)
+    return any(row.status == "enabled" and bool(row.visible) for row in rows)
 
 
 def get_current_user(
@@ -161,8 +184,8 @@ def require_enabled_menu_route(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> CurrentUser:
-    menu_path = _menu_path_for_api_path(request.url.path)
-    if menu_path and not _enabled_menu_path_exists(db, menu_path):
+    menu_paths = _menu_paths_for_api_path(request.url.path)
+    if menu_paths and not _menu_paths_allow_access(db, menu_paths):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Menu is disabled",

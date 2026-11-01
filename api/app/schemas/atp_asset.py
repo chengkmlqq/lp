@@ -28,6 +28,8 @@ class AtpAssetSummary(BaseModel):
     version: str = "v1"
     is_active: bool = False
     shield_wire: str = "with"
+    # 模型级绑定的测试线路（单塔基准）：非空时测试默认用它
+    test_line_id: str | None = None
     storage_mount_code: str | None = None
     storage_root_path: str | None = None
     run_count: int = 0
@@ -75,6 +77,7 @@ class AtpAssetCreateRequest(BaseModel):
     version: str = Field(default="v1", max_length=32)
     is_active: bool = False
     shield_wire: str = Field(default="with", max_length=16)
+    test_line_id: str | None = Field(default=None, max_length=32)
     storage_mount_code: str | None = Field(default=None, max_length=64)
     storage_root_path: str | None = Field(default=None, max_length=2048)
 
@@ -90,6 +93,7 @@ class AtpAssetUpdateRequest(BaseModel):
     version: str | None = Field(default=None, max_length=32)
     is_active: bool | None = None
     shield_wire: str | None = Field(default=None, max_length=16)
+    test_line_id: str | None = Field(default=None, max_length=32)
     storage_mount_code: str | None = Field(default=None, max_length=64)
     storage_root_path: str | None = Field(default=None, max_length=2048)
 
@@ -220,6 +224,10 @@ class AtpAssetTestRunRequest(BaseModel):
     tower_no: str | None = None
     voltage_kv: int | None = None
     scene: str | None = None
+    # 用「测试线路（单塔基准）」执行：后端按快照装配 base_tower/profile，
+    # 优先级最高（高于 line_tower_id 与显式 base_tower/profile）。
+    # 留空时若 params_source=template 且未给几何，会自动按资产维度反查一条（见 worker）。
+    test_line_id: str | None = None
     # 从线路杆塔选择：由后端按塔组装 base_tower/profile（与「参数试算」同口径），
     # 优先级高于显式传入的 base_tower/profile
     line_tower_id: str | None = None
@@ -247,6 +255,7 @@ class AtpBatchTestRunRequest(BaseModel):
     tower_no: str | None = None
     voltage_kv: int | None = None
     scene: str | None = None
+    test_line_id: str | None = None
     line_tower_id: str | None = None
     base_tower: dict[str, Any] = Field(default_factory=dict)
     profile: dict[str, Any] = Field(default_factory=dict)

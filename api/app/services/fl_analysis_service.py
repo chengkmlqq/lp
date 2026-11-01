@@ -2747,33 +2747,14 @@ def _read_report_generated_at(job: FlAnalysisJob) -> datetime | None:
 
 
 def _build_base_tower_json(tower: LineTower, line: Line | None) -> dict[str, Any]:
-    return {
-        "tower_id": tower.id,
-        "line_id": tower.line_id,
-        "line_name": line.name if line else None,
-        "line_voltage_kv": line.voltage_kv if line else None,
-        "line_phase_sequence_json": (line.phase_sequence_json or {}) if line else {},
-        "line_arrester_install_json": (line.arrester_install_json or {}) if line else {},
-        "line_lightning_param_json": (line.lightning_param_json or {}) if line else {},
-        "seq_no": tower.seq_no,
-        "tower_no": tower.tower_no,
-        "tower_model": tower.tower_model,
-        "tower_type": tower.tower_type,
-        "longitude": tower.longitude,
-        "latitude": tower.latitude,
-        "altitude_m": tower.altitude_m,
-        "terrain": tower.terrain,
-        "ground_resistance_ohm": tower.ground_resistance_ohm,
-        "lightning_density": tower.lightning_density,
-        "span_small_m": tower.span_small_m,
-        "span_large_m": tower.span_large_m,
-        "slope_1": tower.slope_1,
-        "slope_2": tower.slope_2,
-        "risk_level": tower.risk_level,
-        "circuit_geometry_json": _build_legacy_geometry_from_circuits(tower.circuits),
-        "lightning_result_json": _build_legacy_lightning_result(tower.lightning_result),
-        "raw_extra_json": tower.raw_extra_json or {},
-    }
+    """真实线路杆塔 → base_tower。
+
+    ⚠️ 装配逻辑已下沉到 ``atp_line_snapshot``（测试线路走同一出口，保证口径一致）；
+    此函数保留为薄包装，避免改动既有调用点。
+    """
+    from .atp_line_snapshot import build_base_tower_from_line_tower
+
+    return build_base_tower_from_line_tower(tower, line)
 
 
 def _upsert_tower_lightning_result_from_graded(
@@ -2839,83 +2820,27 @@ def _normalize_risk_level_text(value: Any) -> str | None:
 
 
 def _build_legacy_geometry_from_circuits(circuits: list[TowerCircuit]) -> dict[str, Any]:
-    circuit_key_by_no = {1: "I", 2: "II", 3: "III", 4: "IV"}
-    result: dict[str, Any] = {}
-    for circuit in circuits:
-        circuit_key = circuit_key_by_no.get(circuit.circuit_no)
-        if circuit_key is None:
-            continue
-        result[circuit_key] = {
-            "phase_spacing_m": {
-                "upper": circuit.spacing_upper_m,
-                "middle": circuit.spacing_middle_m,
-                "lower": circuit.spacing_lower_m,
-            },
-            "phase_height_m": {
-                "upper": circuit.height_upper_m,
-                "middle": circuit.height_middle_m,
-                "lower": circuit.height_lower_m,
-            },
-        }
-    return result
+    """circuits → legacy 几何层结构（下沉到 atp_line_snapshot，此处为薄包装）。"""
+    from .atp_line_snapshot import build_geometry_layers
+
+    return build_geometry_layers(circuits)
 
 
 def _build_legacy_lightning_result(item: TowerLightningResult | None) -> dict[str, Any]:
-    if item is None:
-        return {}
-    return {
-        "counterstroke_indicator": item.counterstroke_indicator,
-        "counterstroke_withstand_ka": item.counterstroke_withstand_ka,
-        "counterstroke_trip_rate": item.counterstroke_trip_rate,
-        "shielding_withstand_ka": item.shielding_withstand_ka,
-        "shielding_trip_rate": item.shielding_trip_rate,
-        "angle_deg": item.angle_deg,
-        "current_a": item.current_a_ka,
-        "current_b": item.current_b_ka,
-        "risk_level": item.risk_level,
-    }
+    from .atp_line_snapshot import build_lightning_result_json
+
+    return build_lightning_result_json(item)
 
 
 def _build_profile_json(profile: TowerProfile | None, tower: LineTower | None = None) -> dict[str, Any]:
-    if profile is None:
-        return {}
-    result = {
-        "phase_sequence_1": profile.phase_sequence_1,
-        "phase_sequence_2": profile.phase_sequence_2,
-        "phase_sequence_3": profile.phase_sequence_3,
-        "phase_sequence_4": profile.phase_sequence_4,
-        "arrester_a": profile.arrester_a,
-        "arrester_b": profile.arrester_b,
-        "arrester_c": profile.arrester_c,
-        "protection_angle_left_deg": profile.protection_angle_left_deg,
-        "protection_angle_right_deg": profile.protection_angle_right_deg,
-        "shield_wire_height_m": profile.shield_wire_height_m,
-        "insulator_length_m": profile.insulator_length_m,
-        "call_height_m": profile.call_height_m,
-        "angle_deg": profile.angle_deg,
-        "current_a": profile.current_a,
-        "current_b": profile.current_b,
-        "structure_kind": profile.structure_kind,
-        "stroke_mode": profile.stroke_mode,
-        "current_type": profile.current_type,
-        "current_head_time_us": profile.current_head_time_us,
-        "current_tail_time_us": profile.current_tail_time_us,
-        "extra_profile_json": profile.extra_profile_json or {},
-    }
-    if tower is not None:
-        result["geometry_layers_json"] = _build_legacy_geometry_from_circuits(tower.circuits)
-        # LP-570 透传 extra_profile_json.lightning_wire（避雷线中距/高度），供
-        # _merge_geometry_layers 合并进计算几何——此前计算链路拿不到真实中距（回填 10m 默认值）
-        _lw = (profile.extra_profile_json or {}).get("lightning_wire")
-        if isinstance(_lw, dict):
-            _geo_layers = dict(result["geometry_layers_json"])
-            _geo_layers["lightning_wire"] = dict(_lw)
-            result["geometry_layers_json"] = _geo_layers
-        analysis = tower.analysis
-        if analysis is not None:
-            result["cause_analysis"] = analysis.cause_analysis
-            result["mitigation_recommendation"] = analysis.mitigation_recommendation
-    return result
+    """TowerProfile → profile（下沉到 atp_line_snapshot，此处为薄包装）。
+
+    ``tower`` 给定时附带 ``geometry_layers_json``（含避雷线中距合并）与
+    杆塔分析字段（cause_analysis / mitigation_recommendation）。
+    """
+    from .atp_line_snapshot import build_profile_from_tower_profile
+
+    return build_profile_from_tower_profile(profile, tower)
 
 
 def _grade_snapshot_payload(payload: dict[str, Any]) -> dict[str, Any]:
