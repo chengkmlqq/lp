@@ -1179,6 +1179,8 @@ export type AtpAssetSummary = {
   version: string;
   is_active: boolean;
   shield_wire: string;
+  /** 模型级绑定的测试线路（单塔基准）：非空时测试默认用它 */
+  test_line_id?: string | null;
   storage_mount_code: string | null;
   storage_root_path: string | null;
   run_count: number;
@@ -1253,6 +1255,8 @@ export type AtpAssetTestRunRequest = {
   tower_no?: string | null;
   voltage_kv?: number | null;
   scene?: string | null;
+  /** 测试线路（单塔基准）：后端按冻结快照装配 base_tower/profile，优先级最高 */
+  test_line_id?: string | null;
   /** 从线路杆塔选择：后端按塔组装 base_tower/profile（与「参数试算」同口径） */
   line_tower_id?: string | null;
   base_tower?: Record<string, unknown>;
