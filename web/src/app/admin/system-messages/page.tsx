@@ -31,6 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -993,14 +994,10 @@ export default function AdminSystemMessagesPage() {
                           />
                         ),
                       }}
-                      pagination={{
+                      pagination={modoTablePagination({
                         pageSize: 20,
-                        showSizeChanger: true,
-                        hideOnSinglePage: false,
-                        showTotal: (total) => `共 ${total} 条`,
                         total: listQuery.data?.total ?? 0,
-                        style: { marginBottom: 0 },
-                      }}
+                      })}
                       scroll={{ x: 1100, y: tableScrollY }}
                     />
                   </div>

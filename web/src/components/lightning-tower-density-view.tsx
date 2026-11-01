@@ -15,6 +15,7 @@ import { useMemo, useState } from "react";
 
 import { readApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import type {
   LightningLinkedLinesResponse,
   LineTowerListResponse,
@@ -250,11 +251,7 @@ export function TowerDensityView({
         columns={columns}
         dataSource={towers}
         loading={towersQuery.isFetching}
-        pagination={{
-          pageSize: 20,
-          showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
-        }}
+        pagination={modoTablePagination({ pageSize: 20 })}
         scroll={{ x: TOWER_TABLE_SCROLL_X }}
         locale={{
           emptyText: (

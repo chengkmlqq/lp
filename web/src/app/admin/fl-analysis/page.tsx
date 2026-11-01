@@ -73,7 +73,7 @@ export default function AdminFlAnalysisPage() {
   // 手动刷新计数：每次点击「查询」都自增并作为 queryKey 的一部分，强制走一次接口，
   // 即使关键词/分页未变化、或目标结果此前已被 react-query 缓存，也不会被缓存短路。
   const [searchNonce, setSearchNonce] = useState(0);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");

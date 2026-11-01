@@ -8,6 +8,7 @@ import { Alert, Descriptions, Spin, Table, Tag, Typography } from "antd";
 import { useMemo } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 
@@ -260,7 +261,7 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
             <Table
               rowKey="lineNo"
               size="small"
-              pagination={{ pageSize: 20, showSizeChanger: false }}
+              pagination={modoTablePagination({ pageSize: 20, showSizeChanger: false, showQuickJumper: false })}
               dataSource={logFeatures}
               columns={[
                 { title: t("行号"), dataIndex: "lineNo", width: 70 },

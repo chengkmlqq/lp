@@ -34,6 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { IconPicker } from "@/components/icon-picker";
@@ -1114,19 +1115,14 @@ export default function AdminMenusPage() {
                   loading={menusQuery.isFetching}
                   tableLayout="fixed"
                   scroll={{ y: tableScrollY }}
-                  pagination={{
+                  pagination={modoTablePagination({
                     current: pagination.current,
                     pageSize: pagination.pageSize,
                     total: Math.max(filteredTotal, 1),
-                    showSizeChanger: true,
-                    pageSizeOptions: [10, 20, 50, 100],
-                    showTotal: () => `共 ${filteredTotal} 条`,
-                    hideOnSinglePage: false,
-                    style: { marginBottom: 0 },
                     onChange: (page, pageSize) => {
                       setPagination({ current: page, pageSize });
                     },
-                  }}
+                  })}
                   locale={{
                     emptyText: (
                       <Empty

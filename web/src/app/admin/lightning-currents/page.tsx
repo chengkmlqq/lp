@@ -56,7 +56,7 @@ const MultiReturnPeakChart = dynamic(() => import("@/components/lightning-curren
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
@@ -1133,18 +1133,14 @@ export default function AdminLightningCurrentsPage() {
                       dataSource={records}
                       loading={recordsQuery.isFetching}
                       tableLayout="fixed"
-                      pagination={{
+                      pagination={modoTablePagination({
                         current: pagination.current,
                         pageSize: pagination.pageSize,
                         total: recordsQuery.data?.total ?? 0,
-                        showSizeChanger: true,
-                        pageSizeOptions: [10, 20, 50, 100],
-                        showTotal: () => `${t("共")} ${recordsQuery.data?.total ?? 0} ${t("条")}`,
-                        hideOnSinglePage: false,
                         onChange: (page, pageSize) => {
                           setPagination({ current: page, pageSize });
                         },
-                      }}
+                      })}
                       scroll={{ x: 1200, y: tableScrollY }}
                       locale={{
                         emptyText: (
@@ -1184,8 +1180,6 @@ export default function AdminLightningCurrentsPage() {
                             onChange={(page, pageSize) => {
                               setPagination({ current: page, pageSize });
                             }}
-                            showSizeChanger
-                            showTotal={(total) => `${t("共")} ${total} ${t("条")}`}
                           />
                         </div>
                       </>

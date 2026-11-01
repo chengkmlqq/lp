@@ -36,6 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { Button } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -847,13 +848,7 @@ export default function AdminFilesPage() {
               rowKey={(item) => `${item.path}-${item.id}`}
               columns={columns}
               dataSource={items}
-              pagination={{
-                pageSize: 20,
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: (total) => `共 ${total} 项`,
-                hideOnSinglePage: true,
-              }}
+              pagination={modoTablePagination({ pageSize: 20 })}
               loading={filesQuery.isLoading || filesQuery.isFetching}
               size="middle"
               scroll={{ x: 690, y: tableScrollY }}

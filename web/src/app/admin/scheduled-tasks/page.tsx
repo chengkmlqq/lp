@@ -23,6 +23,7 @@ import { SearchOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -541,14 +542,9 @@ export default function AdminScheduledTasksPage() {
                     dataSource={items}
                     columns={columns}
                     scroll={{ x: 1330, y: tableScrollY }}
-                    pagination={{
+                    pagination={modoTablePagination({
                       current: tablePagination.current,
                       pageSize: tablePagination.pageSize,
-                      showSizeChanger: true,
-                      pageSizeOptions: [10, 20, 50, 100],
-                      showTotal: (total) => `共 ${total} 条`,
-                      hideOnSinglePage: false,
-                      style: { marginBottom: 0 },
                       onChange: (nextPage, nextPageSize) => {
                         setTablePagination((previous) =>
                           nextPageSize !== previous.pageSize
@@ -556,7 +552,7 @@ export default function AdminScheduledTasksPage() {
                             : { current: nextPage, pageSize: nextPageSize },
                         );
                       },
-                    }}
+                    })}
                     locale={{
                       emptyText: <Empty description={t("暂无定时任务。")} image={Empty.PRESENTED_IMAGE_SIMPLE} />,
                     }}

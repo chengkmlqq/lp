@@ -27,6 +27,7 @@ import {
 } from "antd";
 
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { CheckCircleOutlined, MoreOutlined, EditOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
@@ -1344,19 +1345,14 @@ export default function AdminUsersPage() {
                   columns={columns}
                   loading={usersQuery.isFetching || rolesQuery.isLoading}
                   tableLayout="fixed"
-                  pagination={{
+                  pagination={modoTablePagination({
                     current: pagination.current,
                     pageSize: pagination.pageSize,
                     total: Math.max(usersQuery.data?.total ?? 0, 1),
-                    showSizeChanger: true,
-                    pageSizeOptions: [10, 20, 50, 100],
-                    showTotal: () => `共 ${usersQuery.data?.total ?? 0} 条`,
-                    hideOnSinglePage: false,
-                    style: { marginBottom: 0 },
                     onChange: (page, pageSize) => {
                       setPagination({ current: page, pageSize });
                     },
-                  }}
+                  })}
                   scroll={{ y: tableScrollY }}
                   locale={{
                     emptyText: (

@@ -52,7 +52,7 @@ import {
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
@@ -816,8 +816,6 @@ export default function AtpParamsPage() {
                 pageSize={pagination.pageSize}
                 total={list.length}
                 onChange={(page, pageSize) => setPagination({ current: page, pageSize })}
-                showSizeChanger
-                showTotal={(total) => `共 ${total} 条`}
               />
             </div>
           </div>
@@ -832,14 +830,11 @@ export default function AtpParamsPage() {
               size="small"
               columns={columns}
               dataSource={list}
-              pagination={{
+              pagination={modoTablePagination({
                 current: pagination.current,
                 pageSize: pagination.pageSize,
-                showSizeChanger: true,
-                showTotal: (total) => `共 ${total} 条`,
-                // 与卡片视图独立分页组件尺寸一致（不随 Table size=small 缩到 24px）
                 onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
-              }}
+              })}
               scroll={{ x: 780, y: tableScrollY }}
             />
           </div>
@@ -1115,7 +1110,7 @@ export default function AtpParamsPage() {
               rowKey="id"
               size="small"
               dataSource={trialTowers}
-              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `${t("共 ")}${total}${t(" 座杆塔")}` }}
+              pagination={modoTablePagination({ pageSize: 10 })}
               locale={{ emptyText: trialLineId ? t("该线路暂无杆塔") : t("请先选择线路") }}
               rowSelection={{
                 selectedRowKeys: trialSelected,
@@ -1246,12 +1241,10 @@ export default function AtpParamsPage() {
                   }}
                 >
                   <ModoPagination
-                    size="small"
                     current={page.current}
                     pageSize={page.pageSize}
                     total={total}
                     showSizeChanger
-                    showTotal={(t) => `共 ${t} 个参数`}
                     onChange={(current, pageSize) =>
                       setTrialResultPages((prev) => ({ ...prev, [active.tower_id]: { current, pageSize } }))
                     }

@@ -43,7 +43,7 @@ import {
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
@@ -101,7 +101,7 @@ export default function AdminLightningRetrofitPage() {
   const [keyword, setKeyword] = useState("");
   const [searchNonce, setSearchNonce] = useState(0);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const [tableScrollY, setTableScrollY] = useState(TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -512,18 +512,14 @@ export default function AdminLightningRetrofitPage() {
               dataSource={jobs}
               loading={jobsQuery.isFetching}
               tableLayout="fixed"
-              pagination={{
+              pagination={modoTablePagination({
                 current: pagination.current,
                 pageSize: pagination.pageSize,
                 total,
-                showSizeChanger: true,
-                pageSizeOptions: [6, 12, 24, 48],
-                showTotal: (totalCount) => `共 ${totalCount} 条`,
-                hideOnSinglePage: false,
                 onChange: (page, pageSize) => {
                   setPagination({ current: page, pageSize });
                 },
-              }}
+              })}
               scroll={{ x: 1200, y: tableScrollY }}
               locale={{
                 emptyText: (
@@ -849,18 +845,14 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
           dataSource={rows}
           loading={loading}
           tableLayout="fixed"
-          pagination={{
+          pagination={modoTablePagination({
             current: pagination.current,
             pageSize: pagination.pageSize,
             total,
-            showSizeChanger: true,
-            pageSizeOptions: [10, 20, 50, 100],
-            showTotal: (totalCount) => `共 ${totalCount} 条`,
-            hideOnSinglePage: false,
             onChange: (page, pageSize) => {
               setPagination({ current: page, pageSize });
             },
-          }}
+          })}
           scroll={{ x: 1000, y: 240 }}
           locale={{
             emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无杆塔结果")} />,

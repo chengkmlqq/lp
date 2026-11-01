@@ -1,5 +1,6 @@
 "use client";
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 
 import { Alert, Empty, Form, Input, Modal, Space, Table, Tag, Typography } from "antd";
 import type { FormInstance } from "antd";
@@ -88,7 +89,7 @@ export function ReportModal({
             <Table<FlAnalysisTowerResultSummary>
               rowKey="tower_id"
               size="small"
-              pagination={{ pageSize: 8, showSizeChanger: false, hideOnSinglePage: false }}
+              pagination={modoTablePagination({ pageSize: 8, showSizeChanger: false, showQuickJumper: false })}
               rowSelection={{
                 selectedRowKeys: selectedTowerIds,
                 onChange: (keys) => {

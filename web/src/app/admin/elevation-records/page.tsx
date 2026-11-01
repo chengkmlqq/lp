@@ -45,7 +45,7 @@ import type { ColumnsType } from "antd/es/table";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
@@ -1025,19 +1025,14 @@ export default function ElevationRecordsPage() {
                       columns={columns}
                       loading={isLoading}
                       tableLayout="fixed"
-                      pagination={{
+                      pagination={modoTablePagination({
                         current: pagination.current,
                         pageSize: pagination.pageSize,
                         total: Math.max(recordsData?.total ?? 0, 1),
-                        showSizeChanger: true,
-                        pageSizeOptions: [10, 20, 50],
-                        showTotal: () => `共 ${recordsData?.total ?? 0} 条`,
-                        hideOnSinglePage: false,
-                        style: { marginBottom: 0 },
                         onChange: (page, pageSize) => {
                           setPagination({ current: page, pageSize });
                         },
-                      }}
+                      })}
                       scroll={{ y: tableScrollY }}
                       locale={{
                         emptyText: (

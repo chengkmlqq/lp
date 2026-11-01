@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -560,7 +561,7 @@ export default function AdminSyslogPage() {
                       dataSource={logs}
                       loading={logsQuery.isFetching}
                       tableLayout="fixed"
-                      pagination={{
+                      pagination={modoTablePagination({
                         current: currentPage,
                         pageSize,
                         total: Math.max(total, 1),
@@ -568,12 +569,7 @@ export default function AdminSyslogPage() {
                           setPageSize(nextPageSize);
                           setOffset((page - 1) * nextPageSize);
                         },
-                        showSizeChanger: true,
-                        pageSizeOptions: [10, 20, 50, 100],
-                        showTotal: () => `${t("共")} ${total} ${t("条")}`,
-                        hideOnSinglePage: false,
-                        style: { marginBottom: 0 },
-                      }}
+                      })}
                       locale={{
                         emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("未找到符合筛选条件的日志记录。")} />,
                       }}

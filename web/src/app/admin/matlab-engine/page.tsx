@@ -53,6 +53,7 @@ import type { ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -1222,19 +1223,14 @@ export default function AdminMatlabEnginePage() {
                           columns={columns}
                           loading={versionsQuery.isFetching}
                           tableLayout="fixed"
-                          pagination={{
+                          pagination={modoTablePagination({
                             current: pagination.current,
                             pageSize: pagination.pageSize,
                             total: filteredVersions.length,
-                            showSizeChanger: true,
-                            pageSizeOptions: [10, 20, 50, 100],
-                            showTotal: () => `${t("共")} ${filteredVersions.length} ${t("条")}`,
-                            hideOnSinglePage: false,
-                            style: { marginBottom: 0 },
                             onChange: (page, pageSize) => {
                               setPagination({ current: page, pageSize });
                             },
-                          }}
+                          })}
                           scroll={{ x: 770, y: tableScrollY }}
                           locale={{
                             emptyText: (

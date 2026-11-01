@@ -33,6 +33,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, readApiError } from "@/lib/api";
 import type { AtpTestSetListResponse, AtpTestSetSummary } from "@/types/auth";
@@ -353,18 +354,14 @@ export function AtpTestSetTab() {
           columns={columns}
           tableLayout="fixed"
           scroll={{ y: tableScrollY, x: 1100 }}
-          pagination={{
+          pagination={modoTablePagination({
             current: pagination.current,
             pageSize: pagination.pageSize,
             total: listQuery.data?.total ?? 0,
-            showSizeChanger: true,
-            pageSizeOptions: [10, 20, 50],
-            showTotal: (total) => `共 ${total} 条`,
-            position: ["bottomRight"],
             onChange: (page, pageSize) => {
               setPagination({ current: page, pageSize });
             },
-          }}
+          })}
           locale={{
             emptyText: (
               <Empty

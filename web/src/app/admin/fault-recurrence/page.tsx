@@ -24,6 +24,7 @@ import type { ColumnsType } from "antd/es/table";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { Card } from "@/components/ui-antd";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -562,7 +563,7 @@ function FaultRecurrenceResultView({
                 rowKey={(record, index) => `${record.head_time_us}-${record.tail_time_us}-${index ?? 0}`}
                 columns={columns}
                 dataSource={result.data_points}
-                pagination={{ pageSize: 10, hideOnSinglePage: false }}
+                pagination={modoTablePagination({ pageSize: 10 })}
                 scroll={{ x: 720 }}
               />
             </Card>

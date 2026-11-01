@@ -45,7 +45,7 @@ import { useAuth } from "@/components/auth-provider";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { PowerLineMapPanel } from "@/components/power-line-map-panel";
 import { Card } from "@/components/ui-antd";
-import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -147,7 +147,7 @@ export default function AdminPowerLinesPage() {
   const [lineForm] = Form.useForm<LineFormValues>();
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const [lineModalOpen, setLineModalOpen] = useState(false);
   // 查询计数：每次点击「查询」自增并作为 queryKey 一部分强制触发接口；连点防堆叠由
@@ -910,12 +910,7 @@ function PowerLineTable({ lines, canLineManage, onEdit, onDetail, onPreview, onD
       dataSource={lines}
       loading={loading}
       sticky
-      pagination={{
-        hideOnSinglePage: false,
-        showSizeChanger: true,
-        pageSizeOptions: [6, 12, 24, 48],
-        showTotal: (total) => `共 ${total} 条`,
-      }}
+      pagination={modoTablePagination()}
       scroll={{ x: 820, y: scrollY }}
       tableLayout="fixed"
     />

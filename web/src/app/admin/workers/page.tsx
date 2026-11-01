@@ -540,12 +540,11 @@ export default function AdminWorkersPage() {
                   </Text>
                   {allFilteredWorkers.length > WORKERS_CARD_LIMIT ? (
                     <ModoPagination
-                      size="small"
                       current={workerPage}
                       pageSize={WORKERS_CARD_LIMIT}
                       total={allFilteredWorkers.length}
                       showSizeChanger={false}
-                      showTotal={(total) => `${Math.min(workerPage * WORKERS_CARD_LIMIT, total)}/${total}`}
+                      showQuickJumper={false}
                       onChange={setWorkerPage}
                     />
                   ) : null}

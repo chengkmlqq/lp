@@ -35,6 +35,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 
 import { useI18n } from "@/lib/i18n";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -90,7 +91,6 @@ const EMPTY_FORM: TowerModelFormValues = {
 const TOWER_MODEL_TABLE_MIN_SCROLL_Y = 180;
 const TOWER_MODEL_VIEWPORT_GAP = 40;
 const TOWER_MODEL_FALLBACK_RESERVE = 220;
-const TOWER_MODEL_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const TOWER_MODEL_DEFAULT_PAGE_SIZE = 20;
 
 function toEditValues(item: TowerModelSummary): TowerModelFormValues {
@@ -1022,19 +1022,14 @@ export default function AdminTowerModelsPage() {
               dataSource={listItems}
               loading={towerModelsQuery.isLoading}
               tableLayout="fixed"
-              pagination={{
+              pagination={modoTablePagination({
                 current: tableCurrentPage,
                 pageSize: pagination.pageSize,
                 total: Math.max(totalItems, 1),
-                showSizeChanger: true,
-                pageSizeOptions: TOWER_MODEL_PAGE_SIZE_OPTIONS,
-                showTotal: () => `共 ${totalItems} 条`,
-                hideOnSinglePage: false,
-                style: { marginBottom: 0 },
                 onChange: (page, pageSize) => {
                   setPagination({ current: page, pageSize });
                 },
-              }}
+              })}
               scroll={{ y: tableScrollY }}
               locale={{
                 emptyText: (

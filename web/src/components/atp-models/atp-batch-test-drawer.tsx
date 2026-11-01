@@ -7,6 +7,7 @@ import { DownloadOutlined, ExperimentOutlined, RocketOutlined } from "@ant-desig
 import type { ColumnsType } from "antd/es/table";
 
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, getJson, postJson, readApiError } from "@/lib/api";
 import type { AtpAssetListResponse, AtpAssetRunStatus, AtpAssetSummary, AtpBatchTestRunItem, AtpBatchTestRunSummary } from "@/types/auth";
@@ -301,7 +302,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
               <Table
                 size="small"
                 rowKey="id"
-                pagination={{ pageSize: 10, showSizeChanger: false }}
+                pagination={modoTablePagination({ pageSize: 10, showSizeChanger: false, showQuickJumper: false })}
                 dataSource={filtered}
                 scroll={{ y: 360 }}
                 rowSelection={{
@@ -433,7 +434,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 <Table
                   size="small"
                   rowKey="run_id"
-                  pagination={{ pageSize: 20, showSizeChanger: false }}
+                  pagination={modoTablePagination({ pageSize: 20, showSizeChanger: false, showQuickJumper: false })}
                   dataSource={batch.items}
                   columns={columns}
                 />
@@ -447,7 +448,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 <Table
                   size="small"
                   rowKey="run_id"
-                  pagination={{ pageSize: 20, showSizeChanger: false }}
+                  pagination={modoTablePagination({ pageSize: 20, showSizeChanger: false, showQuickJumper: false })}
                   dataSource={batch.items}
                   loading={polling}
                   columns={columns}

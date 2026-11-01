@@ -21,6 +21,7 @@ import { Alert, Empty, Form, Input, Modal, Select, Space, Table, Tag, Typography
 import { useCallback, useEffect, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import type {
@@ -314,7 +315,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
               rowKey="tower_id"
               size="small"
               loading={loadingRows}
-              pagination={{ pageSize: 8, showSizeChanger: false, hideOnSinglePage: false }}
+              pagination={modoTablePagination({ pageSize: 8, showSizeChanger: false, showQuickJumper: false })}
               rowSelection={{
                 selectedRowKeys: selectedTowerIds,
                 onChange: (keys) => {

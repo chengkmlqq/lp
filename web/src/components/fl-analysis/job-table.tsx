@@ -7,6 +7,7 @@ import { MoreOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import type { FlAnalysisJobSummary } from "@/types/auth";
 
 import {
@@ -197,18 +198,14 @@ export function JobTable({
       columns={columns}
       dataSource={jobs}
       loading={loading}
-      pagination={{
+      pagination={modoTablePagination({
         current: pagination.current,
         pageSize: pagination.pageSize,
         total,
-        showSizeChanger: true,
-        pageSizeOptions: [6, 12, 24, 48],
-        showTotal: (total) => `共 ${total} 条`,
-        hideOnSinglePage: false,
         onChange: (page, pageSize) => {
           onPaginationChange({ current: page, pageSize });
         },
-      }}
+      })}
       scroll={{ x: 1520, y: scrollY }}
       locale={{
         emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无防雷分析任务")} />,

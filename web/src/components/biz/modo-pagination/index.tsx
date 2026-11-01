@@ -43,4 +43,6 @@ export const ModoPagination: React.FC<ModoPaginationProps> = ({
   );
 };
 
+export { modoTablePagination, MODO_PAGE_SIZE_OPTIONS } from "./table-preset";
+
 export default ModoPagination;

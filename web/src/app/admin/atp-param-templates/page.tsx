@@ -43,7 +43,7 @@ import {
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
@@ -986,8 +986,6 @@ export default function AtpParamTemplatesPage() {
                           pageSize={pagination.pageSize}
                           total={filteredRows.length}
                           onChange={(page, pageSize) => setPagination({ current: page, pageSize })}
-                          showSizeChanger
-                          showTotal={(total) => `${t("共")} ${total} ${t("条")}`}
                         />
                       </div>
                     ) : null}
@@ -1006,19 +1004,14 @@ export default function AtpParamTemplatesPage() {
                       columns={tableColumns}
                       tableLayout="fixed"
                       scroll={{ x: 900, y: tableScrollY }}
-                      pagination={{
+                      pagination={modoTablePagination({
                         current: pagination.current,
                         pageSize: pagination.pageSize,
                         total: Math.max(filteredRows.length, 1),
-                        hideOnSinglePage: false,
-                        showSizeChanger: true,
-                        pageSizeOptions: [10, 20, 50, 100],
-                        showTotal: () => `${t("共")} ${filteredRows.length} ${t("条")}`,
-                        // 与卡片视图独立分页组件尺寸一致（default=32px，不随 Table size=small 缩到 24px）
                         onChange: (page, pageSize) => {
                           setPagination({ current: page, pageSize });
                         },
-                      }}
+                      })}
                       locale={{
                         emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("未找到符合筛选条件的模板节点。")} />,
                       }}

@@ -29,6 +29,7 @@ import {
 import { RocketOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { postJson, readApiError } from "@/lib/api";
 import type {
@@ -334,7 +335,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
                 rowKey="id"
                 size="small"
                 dataSource={towers}
-                pagination={{ pageSize: 8, showSizeChanger: true, showTotal: (total) => `共 ${total} 座杆塔` }}
+                pagination={modoTablePagination({ pageSize: 8 })}
                 locale={{ emptyText: lineId ? t("该线路暂无杆塔") : t("请先选择线路") }}
                 rowSelection={{
                   type: "radio",

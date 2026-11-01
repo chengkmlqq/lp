@@ -19,6 +19,7 @@ import type { ColumnsType } from "antd/es/table";
 import { SearchOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
 import type {
@@ -480,18 +481,14 @@ export function ElevationBackfillHistoryTable({
           columns={columns}
           tableLayout="fixed"
           scroll={{ y: tableScrollY }}
-          pagination={{
+          pagination={modoTablePagination({
             current: pagination.current,
             pageSize: pagination.pageSize,
             total: listQuery.data?.total ?? 0,
-            showSizeChanger: true,
-            pageSizeOptions: [10, 20, 50],
-            showTotal: (total) => `共 ${total} 条`,
-            position: ["bottomRight"],
             onChange: (page, pageSize) => {
               setPagination({ current: page, pageSize });
             },
-          }}
+          })}
           locale={{
             emptyText: (
               <Empty
@@ -573,17 +570,14 @@ export function ElevationBackfillHistoryTable({
                 size="small"
                 tableLayout="fixed"
                 scroll={{ x: 1160 }}
-                pagination={{
+                pagination={modoTablePagination({
                   current: towerPagination.current,
                   pageSize: towerPagination.pageSize,
                   total: detailTowersQuery.data?.total ?? 0,
-                  showSizeChanger: true,
-                  pageSizeOptions: [10, 20, 50, 100],
-                  showTotal: (total) => `共 ${total} 条`,
                   onChange: (page, pageSize) => {
                     setTowerPagination({ current: page, pageSize });
                   },
-                }}
+                })}
                 locale={{
                   emptyText: (
                     <Empty

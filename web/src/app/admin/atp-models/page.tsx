@@ -36,7 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { AtpBatchHistoryTab } from "@/components/atp-models/atp-batch-history-tab";
@@ -1307,18 +1307,14 @@ export default function AtpModelsPage() {
                               />
                             ),
                           }}
-                          pagination={{
+                          pagination={modoTablePagination({
                             current: pagination.current,
                             pageSize: pagination.pageSize,
                             total: Math.max(assetTotal, 1),
-                            showSizeChanger: true,
-                            pageSizeOptions: [10, 20, 50, 100],
-                            showTotal: () => `共 ${assetTotal} 条`,
-                            hideOnSinglePage: false,
                             onChange: (page, pageSize) => {
                               setPagination({ current: page, pageSize });
                             },
-                          }}
+                          })}
                           scroll={{ x: 900, y: tableScrollY }}
                         />
                       </div>
@@ -1364,8 +1360,6 @@ export default function AtpModelsPage() {
                                 onChange={(page, pageSize) => {
                                   setPagination({ current: page, pageSize });
                                 }}
-                                showSizeChanger
-                                showTotal={() => `共 ${assetTotal} 条`}
                               />
                             </div>
                           </>

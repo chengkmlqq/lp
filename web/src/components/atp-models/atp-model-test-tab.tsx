@@ -34,6 +34,7 @@ import {
 } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { getJson, readApiError } from "@/lib/api";
 import type {
@@ -346,7 +347,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
             dataSource={filteredRuns}
             loading={runsQuery.isLoading}
             columns={columns}
-            pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
+            pagination={modoTablePagination({ pageSize: 10 })}
             locale={{ emptyText: t("暂无测试记录，点击右上角「测试」发起") }}
             scroll={{ x: 900 }}
           />

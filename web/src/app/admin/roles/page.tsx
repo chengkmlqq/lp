@@ -28,6 +28,7 @@ import type { CSSProperties, ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -1049,19 +1050,14 @@ export default function AdminRolesPage() {
                       loading={rolesQuery.isFetching}
                       tableLayout="fixed"
                       scroll={{ y: tableScrollY }}
-                      pagination={{
+                      pagination={modoTablePagination({
                         current: paginationCurrent,
                         pageSize: paginationPageSize,
                         total: Math.max(rolesQuery.data?.roles_total ?? 0, 1),
-                        showSizeChanger: true,
-                        pageSizeOptions: [10, 20, 50, 100],
-                        showTotal: () => `共 ${rolesQuery.data?.roles_total ?? 0} 条`,
-                        hideOnSinglePage: false,
-                        style: { marginBottom: 0 },
                         onChange: (page, pageSize) => {
                           setPagination({ current: page, pageSize });
                         },
-                      }}
+                      })}
                       locale={{
                         emptyText: (
                           <Empty

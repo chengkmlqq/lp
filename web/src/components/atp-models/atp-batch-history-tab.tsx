@@ -32,6 +32,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, readApiError } from "@/lib/api";
 import type { AtpBatchTestRunListResponse, AtpBatchTestRunSummary } from "@/types/auth";
@@ -304,18 +305,14 @@ export function AtpBatchHistoryTab() {
           columns={columns}
           tableLayout="fixed"
           scroll={{ y: tableScrollY, x: 1080 }}
-          pagination={{
+          pagination={modoTablePagination({
             current: pagination.current,
             pageSize: pagination.pageSize,
             total: listQuery.data?.total ?? 0,
-            showSizeChanger: true,
-            pageSizeOptions: [10, 20, 50],
-            showTotal: (total) => `共 ${total} 条`,
-            position: ["bottomRight"],
             onChange: (page, pageSize) => {
               setPagination({ current: page, pageSize });
             },
-          }}
+          })}
           locale={{
             emptyText: (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无批量测试记录。")} />

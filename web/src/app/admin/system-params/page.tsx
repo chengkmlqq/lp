@@ -36,6 +36,7 @@ import type { ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -1283,19 +1284,14 @@ export default function AdminSystemParamsPage() {
                 // 接口返回后再更新，避免查询开始时清空表格
                 loading={listQuery.isFetching}
                 tableLayout="fixed"
-                pagination={{
+                pagination={modoTablePagination({
                   current: pagination.current,
                   pageSize: pagination.pageSize,
                   total: Math.max(listQuery.data?.total ?? 0, 1),
-                  showSizeChanger: true,
-                  pageSizeOptions: [10, 20, 50, 100],
-                  showTotal: () => `共 ${listQuery.data?.total ?? 0} 条`,
-                  hideOnSinglePage: false,
-                  style: { marginBottom: 0 },
                   onChange: (page, pageSize) => {
                     setPagination({ current: page, pageSize });
                   },
-                }}
+                })}
                 scroll={{ y: tableScrollY }}
                 locale={{
                   emptyText: (

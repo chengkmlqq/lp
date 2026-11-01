@@ -1,6 +1,7 @@
 import { App, Form, Input, Select, Button, FormInstance, Space, Steps, Alert, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { FileTextOutlined, TableOutlined, LineChartOutlined, CameraOutlined, DownloadOutlined } from "@ant-design/icons";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { CreateFaultAnalysisFormValues } from "./types";
 import { TempFileUpload } from "./temp-file-upload";
@@ -496,14 +497,15 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                   dataSource={towersQuery.data?.items ?? []}
                   loading={towersQuery.isFetching}
                   size="small"
-                  pagination={{
+                  pagination={modoTablePagination({
                     current: towerPage,
                     pageSize: TOWER_PAGE_SIZE,
                     total: towersQuery.data?.total ?? 0,
                     showSizeChanger: false,
+                    showQuickJumper: false,
                     hideOnSinglePage: true,
                     onChange: (page) => setTowerPage(page),
-                  }}
+                  })}
                   scroll={{ x: 760 }}
                 />
               )}

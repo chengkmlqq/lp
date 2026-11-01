@@ -25,7 +25,7 @@ import type { ColumnsType } from "antd/es/table";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { AnalysisCardList } from "@/components/fault-analysis/analysis-card-list";
@@ -173,7 +173,7 @@ export default function AdminFaultAnalysisPage() {
   // 手动刷新计数：每次点击「查询」都自增并作为列表查询 key 的一部分，强制走一次接口，
   // 即使关键词未变化、或该 key 此前已被 react-query 缓存，也不会被缓存/进行中的请求短路。
   const [searchNonce, setSearchNonce] = useState(0);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 12 });
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [detailTabs, setDetailTabs] = useState<DetailTabItem[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>(LIST_TAB_KEY);
   const [tableScrollY, setTableScrollY] = useState(FAULT_TABLE_MIN_SCROLL_Y);
@@ -771,18 +771,14 @@ export default function AdminFaultAnalysisPage() {
                         dataSource={filteredAnalyses}
                         loading={analysesQuery.isFetching}
                         tableLayout="fixed"
-                        pagination={{
+                        pagination={modoTablePagination({
                           current: pagination.current,
                           pageSize: pagination.pageSize,
                           total: Math.max(filteredAnalyses.length, 1),
-                          showSizeChanger: true,
-                          pageSizeOptions: [6, 12, 24, 48],
-                          showTotal: () => `共 ${filteredAnalyses.length} 条`,
-                          hideOnSinglePage: false,
                           onChange: (page, pageSize) => {
                             setPagination({ current: page, pageSize });
                           },
-                        }}
+                        })}
                         scroll={{ x: 900, y: tableScrollY }}
                         locale={{
                           emptyText: (
@@ -821,9 +817,6 @@ export default function AdminFaultAnalysisPage() {
                           onChange={(page, pageSize) => {
                             setPagination({ current: page, pageSize });
                           }}
-                          showSizeChanger
-                          showTotal={() => `共 ${filteredAnalyses.length} 条`}
-                          pageSizeOptions={[6, 12, 24, 48]}
                         />
                       </div>
                     </div>

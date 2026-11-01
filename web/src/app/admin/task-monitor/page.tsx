@@ -27,6 +27,7 @@ import { CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, FileText
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
@@ -842,19 +843,14 @@ export default function AdminTaskMonitorPage() {
               dataSource={allTaskRows}
               loading={overviewQuery.isFetching}
               tableLayout="fixed"
-              pagination={{
+              pagination={modoTablePagination({
                 current: paginationCurrent,
                 pageSize: paginationPageSize,
                 total: Math.max(taskTotal, 1),
-                showSizeChanger: true,
-                pageSizeOptions: [10, 20, 50, 100],
-                showTotal: () => `共 ${taskTotal} 条`,
-                hideOnSinglePage: false,
-                style: { marginBottom: 0 },
                 onChange: (page, pageSize) => {
                   setPagination({ current: page, pageSize });
                 },
-              }}
+              })}
               locale={{
                 emptyText: (
                   <Empty

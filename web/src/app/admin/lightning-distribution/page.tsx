@@ -53,7 +53,7 @@ const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLD
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { ModoPagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
@@ -1234,18 +1234,14 @@ export default function AdminLightningDistributionPage() {
                       dataSource={records}
                       loading={distributionsQuery.isFetching}
                       tableLayout="fixed"
-                      pagination={{
+                      pagination={modoTablePagination({
                         current: pagination.current,
                         pageSize: pagination.pageSize,
                         total,
-                        showSizeChanger: true,
-                        pageSizeOptions: [10, 20, 50, 100],
-                        showTotal: (totalCount) => `共 ${totalCount} 条`,
-                        hideOnSinglePage: false,
                         onChange: (page, pageSize) => {
                           setPagination({ current: page, pageSize });
                         },
-                      }}
+                      })}
                       scroll={{ x: 1000, y: tableScrollY }}
                       locale={{
                         emptyText: (
@@ -1814,19 +1810,14 @@ function BackfillRecordsView({
         tableLayout="fixed"
         scroll={{ x: 800, y: tableScrollY }}
         style={{ height: "100%" }}
-        pagination={{
+        pagination={modoTablePagination({
           current: page,
           pageSize,
           total,
-          showSizeChanger: true,
-          pageSizeOptions: [10, 20, 50, 100],
-          showTotal: (totalCount) => `共 ${totalCount} 条`,
-          hideOnSinglePage: false,
-          // 与卡片视图独立分页组件尺寸一致（不随 Table size=small 缩到 24px）
           onChange: (nextPage, nextPageSize) => {
             setPagination({ current: nextPage, pageSize: nextPageSize });
           },
-        }}
+        })}
         locale={{
           emptyText: linkedLinesQuery.isLoading ? (
             <Spin size="small" />
@@ -2022,19 +2013,14 @@ function TowerNgDrawer({
           loading={towersQuery.isFetching}
           tableLayout="fixed"
           scroll={{ x: 740, y: tableScrollY }}
-          pagination={{
+          pagination={modoTablePagination({
             current: page,
             pageSize,
             total,
-            showSizeChanger: true,
-            pageSizeOptions: [10, 20, 50, 100],
-            showTotal: (totalCount) => `共 ${totalCount} 条`,
-            hideOnSinglePage: false,
-            // 与卡片视图独立分页组件尺寸一致（不随 Table size=small 缩到 24px）
             onChange: (nextPage, nextPageSize) => {
               setPagination({ current: nextPage, pageSize: nextPageSize });
             },
-          }}
+          })}
           locale={{
             emptyText: towersQuery.isLoading ? (
               <Spin size="small" />

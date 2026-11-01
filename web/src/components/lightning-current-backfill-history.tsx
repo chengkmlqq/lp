@@ -28,6 +28,7 @@ import {
 import type { MenuProps } from "antd";
 
 import { useI18n } from "@/lib/i18n";
+import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { MoreOutlined } from "@ant-design/icons";
 import { useBackfillTaskProgressSync, type BackfillTaskPatch } from "@/hooks/use-backfill-task-progress";
@@ -901,18 +902,14 @@ export function LightningCurrentBackfillHistoryTable({
           loading={tableLoading}
           tableLayout="fixed"
           scroll={{ x: 900, y: tableScrollY }}
-          pagination={{
+          pagination={modoTablePagination({
             current: pagination.current,
             pageSize: pagination.pageSize,
             total: tableTotal,
-            showSizeChanger: true,
-            pageSizeOptions: [10, 20, 50],
-            showTotal: () => `共 ${tableTotal} 条`,
-            hideOnSinglePage: false,
             onChange: (page, pageSize) => {
               setPagination({ current: page, pageSize });
             },
-          }}
+          })}
           locale={{
             emptyText: (
               <Empty
