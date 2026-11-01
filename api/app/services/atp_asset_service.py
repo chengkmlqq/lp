@@ -817,6 +817,9 @@ def list_assets(
         AtpAsset.version,
         AtpAsset.is_active,
         AtpAsset.shield_wire,
+        # 2026-11-01：serialize_asset 访问 test_line_id（测试线路），缺则 500：
+        #   KeyError: 'test_line_id'（select 列白名单漏列 → Row.__getattr__ 抛 KeyError）
+        AtpAsset.test_line_id,
         AtpAsset.storage_mount_code,
         AtpAsset.storage_root_path,
         AtpAsset.create_date,
