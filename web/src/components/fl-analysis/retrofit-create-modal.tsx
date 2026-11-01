@@ -199,7 +199,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
       if (!startResponse.ok) {
         throw new Error(await readApiError(startResponse));
       }
-      message.success(`措施推荐任务已创建并启动：${created.job.job_name || created.job.id}`);
+      message.success(`${t("措施推荐任务已创建并启动：")}${created.job.job_name || created.job.id}`);
       onCreated();
       onClose();
     } catch (error) {
@@ -223,11 +223,11 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
           <span>{name}</span>
           {hasRisk ? (
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {high + medium} 座中高风险塔
+              {high + medium} {t("座中高风险塔")}
             </Typography.Text>
           ) : (
             <Tag color="warning" style={{ marginInlineEnd: 0 }}>
-              无中高风险杆塔
+              {t("无中高风险杆塔")}
             </Tag>
           )}
         </Space>
@@ -309,7 +309,7 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
         ) : (
           <>
             <Typography.Text type="secondary">
-              已命中 {rows.length} 座杆塔，其中高风险 {rows.filter((row) => isHighRisk(row.risk_level)).length} 座（默认选中，可按需调整）。
+              {t("已命中")} {rows.length} {t("座杆塔，其中高风险")} {rows.filter((row) => isHighRisk(row.risk_level)).length} {t("座（默认选中，可按需调整）。")}
             </Typography.Text>
             <Table<FlAnalysisTowerResultSummary>
               rowKey="tower_id"

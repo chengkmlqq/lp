@@ -136,7 +136,7 @@ export function CreateAnalysisFormTab({
         if (cancelled) {
           return;
         }
-        const messageText = error instanceof Error ? error.message : "加载故障分析详情失败";
+        const messageText = error instanceof Error ? error.message : t("加载故障分析详情失败");
         setLoadError(messageText);
         message.error(messageText);
         onLoadError?.();
@@ -176,7 +176,7 @@ export function CreateAnalysisFormTab({
         form={form}
         lines={linesQuery.data?.items ?? []}
         linesLoading={linesQuery.isLoading}
-        submitText={mode === "edit" ? "保存修改" : "提交分析"}
+        submitText={mode === "edit" ? t("保存修改") : t("提交分析")}
         submitting={mutation.isPending}
         open={open}
         onSubmit={(values) => mutation.mutate(values)}

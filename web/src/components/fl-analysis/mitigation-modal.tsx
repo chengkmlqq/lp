@@ -88,7 +88,7 @@ export function MitigationModal({
         ) : (
           <>
             <Typography.Text type="secondary">
-              已命中 {rows.length} 座中高风险杆塔。默认全选，可按需缩小推荐范围。
+              {t("已命中")} {rows.length} {t("座中高风险杆塔。默认全选，可按需缩小推荐范围。")}
             </Typography.Text>
             <Table<FlAnalysisTowerResultSummary>
               rowKey="tower_id"

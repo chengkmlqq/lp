@@ -296,7 +296,7 @@ export default function AdminPowerLineTowersPage() {
     },
     onSuccess: async (result) => {
       messageApi.success(
-        `导入完成：新增 ${result.imported_count} 条，更新 ${result.updated_count} 条，跳过 ${result.skipped_count} 条`,
+        `${t("导入完成：新增")} ${result.imported_count} ${t("条，更新")} ${result.updated_count} ${t("条，跳过")} ${result.skipped_count} ${t("条")}`,
       );
       closeImportModal();
       await refreshLines();
@@ -452,7 +452,7 @@ export default function AdminPowerLineTowersPage() {
               )}
               {canTowerRead && (
                 <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
-                  导出
+                  {t("导出")}
                 </Button>
               )}
             </Space>
@@ -490,7 +490,7 @@ export default function AdminPowerLineTowersPage() {
               pageSize={towerPagination.pageSize}
               total={towersQuery.data?.total ?? 0}
               showSizeChanger
-              showTotal={(total) => `共 ${total} 条`}
+              showTotal={(total) => `${t("共")} ${total} ${t("条")}`}
               onChange={(page, pageSize) => {
                 setTowerPagination({ current: page, pageSize });
               }}
@@ -521,11 +521,11 @@ export default function AdminPowerLineTowersPage() {
                   const allowedExts = ["csv", "xlsx"];
                   const ext = file.name.split(".").pop()?.toLowerCase() || "";
                   if (file.size > maxMB * 1024 * 1024) {
-                    messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                    messageApi.error(`${t("文件大小超过")} ${maxMB}MB ${t("限制，请压缩后重新上传")}`);
                     return Upload.LIST_IGNORE;
                   }
                   if (!allowedExts.includes(ext)) {
-                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                    messageApi.error(`${t("不支持的文件格式，仅支持")} .${allowedExts.join("/")}`);
                     return Upload.LIST_IGNORE;
                   }
                   return true;
@@ -545,7 +545,7 @@ export default function AdminPowerLineTowersPage() {
                       <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
                     ) : tempFileId ? (
                       <Typography.Text type="success">
-                        <CheckCircleOutlined /> 上传完成，可以确认导入
+                        <CheckCircleOutlined /> {t("上传完成，可以确认导入")}
                       </Typography.Text>
                     ) : (
                       <Typography.Text type="warning">{t("上传中…")}</Typography.Text>
@@ -558,10 +558,10 @@ export default function AdminPowerLineTowersPage() {
                     </p>
                     <p className="ant-upload-text">{t("点击或拖拽文件到此区域上传")}</p>
                     <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
-                      支持 .csv / .xlsx 格式，单文件不超过 50MB
+                      {t("支持 .csv / .xlsx 格式，单文件不超过 50MB")}
                     </p>
                     <Typography.Text type="secondary">
-                      选择文件后立即上传到临时存储，确认导入后开始解析。
+                      {t("选择文件后立即上传到临时存储，确认导入后开始解析。")}
                     </Typography.Text>
                   </>
                 )}
@@ -703,9 +703,9 @@ export default function AdminPowerLineTowersPage() {
                           <Descriptions.Item label={t("避雷线高度(m)")}>{tower.shield_wire_height_m ?? "-"}</Descriptions.Item>
                           <Descriptions.Item label={t("左保护角(°)")}>{tower.protection_angle_left_deg ?? "-"}</Descriptions.Item>
                           <Descriptions.Item label={t("右保护角(°)")}>{tower.protection_angle_right_deg ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label={t("A相避雷器")}>{detail.arrester?.A ? "是" : "否"}</Descriptions.Item>
-                          <Descriptions.Item label={t("B相避雷器")}>{detail.arrester?.B ? "是" : "否"}</Descriptions.Item>
-                          <Descriptions.Item label={t("C相避雷器")}>{detail.arrester?.C ? "是" : "否"}</Descriptions.Item>
+                          <Descriptions.Item label={t("A相避雷器")}>{detail.arrester?.A ? t("是") : t("否")}</Descriptions.Item>
+                          <Descriptions.Item label={t("B相避雷器")}>{detail.arrester?.B ? t("是") : t("否")}</Descriptions.Item>
+                          <Descriptions.Item label={t("C相避雷器")}>{detail.arrester?.C ? t("是") : t("否")}</Descriptions.Item>
                         </Descriptions>
                       </Space>
                     ),

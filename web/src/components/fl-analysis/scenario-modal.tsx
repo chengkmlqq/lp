@@ -109,7 +109,7 @@ export function ScenarioModal({
         ) : (
           <>
             <Typography.Text type="secondary">
-              已命中 {rows.length} 座仍为中高风险的杆塔。默认全选，可按需缩小复算范围。
+              {t("已命中")} {rows.length} {t("座仍为中高风险的杆塔。默认全选，可按需缩小复算范围。")}
             </Typography.Text>
             <Table<FlAnalysisTowerResultSummary>
               rowKey="tower_id"

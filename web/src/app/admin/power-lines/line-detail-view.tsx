@@ -475,7 +475,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
     },
     onSuccess: async (result) => {
       messageApi.success(
-        `导入完成：新增 ${result.imported_count} 条，更新 ${result.updated_count} 条，跳过 ${result.skipped_count} 条`,
+        `${t("导入完成：新增")} ${result.imported_count} ${t("条，更新")} ${result.updated_count} ${t("条，跳过")} ${result.skipped_count} ${t("条")}`,
       );
       closeImportModal();
       await refreshLines();
@@ -569,7 +569,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                 onClick: () => {
                   Modal.confirm({
                     title: t("确认删除该杆塔？"),
-                    content: `将删除杆塔 ${row.tower_no}，此操作不可恢复。`,
+                    content: `${t("将删除杆塔")} ${row.tower_no}，${t("此操作不可恢复")}`,
                     okText: t("确认删除"),
                     cancelText: t("取消"),
                     okButtonProps: { danger: true },
@@ -642,7 +642,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
           {canTowerRead && (
             <Form.Item style={{ marginBottom: 0 }}>
               <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending}>
-                导出
+                {t("导出")}
               </Button>
             </Form.Item>
           )}
@@ -682,7 +682,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
               current={towerPagination.current}
               pageSize={towerPagination.pageSize}
               total={towersQuery.data?.total ?? 0}
-              showTotal={(total) => `共 ${total} 条`}
+              showTotal={(total) => `${t("共")} ${total} ${t("条")}`}
               onChange={(page, pageSize) => {
                 setTowerPagination({ current: page, pageSize });
               }}
@@ -713,11 +713,11 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                   const allowedExts = ["csv", "xlsx"];
                   const ext = file.name.split(".").pop()?.toLowerCase() || "";
                   if (file.size > maxMB * 1024 * 1024) {
-                    messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                    messageApi.error(`${t("文件大小超过")} ${maxMB}MB ${t("限制，请压缩后重新上传")}`);
                     return Upload.LIST_IGNORE;
                   }
                   if (!allowedExts.includes(ext)) {
-                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                    messageApi.error(`${t("不支持的文件格式，仅支持")} .${allowedExts.join("/")}`);
                     return Upload.LIST_IGNORE;
                   }
                   return true;
@@ -737,7 +737,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                       <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
                     ) : tempFileId ? (
                       <Typography.Text type="success">
-                        <CheckCircleOutlined /> 上传完成，可以确认导入
+                        <CheckCircleOutlined /> {t("上传完成，可以确认导入")}
                       </Typography.Text>
                     ) : (
                       <Typography.Text type="warning">{t("上传中…")}</Typography.Text>
@@ -750,10 +750,10 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                     </p>
                     <p className="ant-upload-text">{t("点击或拖拽文件到此区域上传")}</p>
                     <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
-                      支持 .csv / .xlsx 格式，单文件不超过 50MB
+                      {t("支持 .csv / .xlsx 格式，单文件不超过 50MB")}
                     </p>
                     <Typography.Text type="secondary">
-                      选择文件后立即上传到临时存储，确认导入后开始解析。
+                      {t("选择文件后立即上传到临时存储，确认导入后开始解析。")}
                     </Typography.Text>
                   </>
                 )}
@@ -944,14 +944,14 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                 setEditingTower(null);
               }}
             >
-              取消
+              {t("取消")}
             </Button>
             <Button
               type="primary"
               loading={updateTowerMutation.isPending}
               onClick={() => updateTowerMutation.mutate()}
             >
-              保存
+              {t("保存")}
             </Button>
           </Space>
         </div>

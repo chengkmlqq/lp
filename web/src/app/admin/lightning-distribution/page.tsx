@@ -570,8 +570,8 @@ export default function AdminLightningDistributionPage() {
     if (activeStatus === "completed") {
       if (activeRecord) {
         setSuccess(
-          `导入完成：有效 ${activeRecord.valid_count} 条，跳过 ${activeRecord.skipped_count} 条，`
-          + `Ng=${formatNumber(activeRecord.overall_ng, 4)}，Imax=${formatNumber(activeRecord.max_abs_current, 2)}kA`,
+          `${t("导入完成：有效")} ${activeRecord.valid_count} ${t("条，跳过")} ${activeRecord.skipped_count} ${t("条，")}`
+          + `Ng=${formatNumber(activeRecord.overall_ng, 4)}, Imax=${formatNumber(activeRecord.max_abs_current, 2)}kA`,
         );
       } else {
         setSuccess(t("分布导入完成"));
@@ -833,7 +833,7 @@ export default function AdminLightningDistributionPage() {
       {
         title: (
           <span>
-            整体Ng
+            {t("整体Ng")}
             <FieldHelpTooltip content={t(FIELD_HELP_TOOLTIPS.overallNg)} />
           </span>
         ),
@@ -844,7 +844,7 @@ export default function AdminLightningDistributionPage() {
       {
         title: (
           <span style={{ whiteSpace: "nowrap" }}>
-            最大电流(kA)
+            {t("最大电流(kA)")}
             <FieldHelpTooltip content={t(FIELD_HELP_TOOLTIPS.maxCurrent)} />
           </span>
         ),
@@ -855,7 +855,7 @@ export default function AdminLightningDistributionPage() {
       {
         title: (
           <span style={{ whiteSpace: "nowrap" }}>
-            平均电流(kA)
+            {t("平均电流(kA)")}
             <FieldHelpTooltip content={t(FIELD_HELP_TOOLTIPS.avgCurrent)} />
           </span>
         ),
@@ -975,25 +975,25 @@ export default function AdminLightningDistributionPage() {
             <div className="flex items-center gap-2">
               <EnvironmentOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
-                城市：{record.city || "-"}
+                {t("城市：")}{record.city || "-"}
               </Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <TagOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
-                地点标签：{record.location_tag || "-"}
+                {t("地点标签：")}{record.location_tag || "-"}
               </Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <NumberOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
-                有效点数：{record.valid_count}
+                {t("有效点数：")}{record.valid_count}
               </Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <ThunderboltOutlined className="text-xs text-gray-500" />
               <Typography.Text type="secondary" className="text-xs min-w-0 truncate">
-                整体 Ng：{formatNumber(record.overall_ng, 4)}
+                {t("整体 Ng：")}{formatNumber(record.overall_ng, 4)}
               </Typography.Text>
             </div>
           </div>
@@ -1120,7 +1120,7 @@ export default function AdminLightningDistributionPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -1134,7 +1134,7 @@ export default function AdminLightningDistributionPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -1152,7 +1152,7 @@ export default function AdminLightningDistributionPage() {
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" onClick={() => setImportModalOpen(true)}>
-              导入
+              {t("导入")}
             </Button>
           ) : null
         }
@@ -1223,7 +1223,7 @@ export default function AdminLightningDistributionPage() {
                             setPagination({ current: page, pageSize });
                           }}
                           showSizeChanger
-                          showTotal={(totalCount) => `共 ${totalCount} 条`}
+                          showTotal={(totalCount) => `${t("共")} ${totalCount} ${t("条")}`}
                         />
                       </div>
                     )}
@@ -1389,11 +1389,11 @@ function ImportModal({
                   const allowedExts = ["csv", "txt"];
                   const ext = file.name.split(".").pop()?.toLowerCase() || "";
                   if (file.size > maxMB * 1024 * 1024) {
-                    messageApi.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                    messageApi.error(`${t("文件大小超过")} ${maxMB}MB ${t("限制，请压缩后重新上传")}`);
                     return Upload.LIST_IGNORE;
                   }
                   if (!allowedExts.includes(ext)) {
-                    messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                    messageApi.error(`${t("不支持的文件格式，仅支持")} .${allowedExts.join("/")}`);
                     return Upload.LIST_IGNORE;
                   }
                   return true;
@@ -1408,7 +1408,7 @@ function ImportModal({
                     <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
                   ) : tempFileId ? (
                     <Typography.Text type="success">
-                      <CheckCircleOutlined /> 上传完成，可以确认导入
+                      <CheckCircleOutlined /> {t("上传完成，可以确认导入")}
                     </Typography.Text>
                   ) : uploadError ? (
                     <Typography.Text type="danger">{t("格式校验未通过，请更换文件")}</Typography.Text>
@@ -1420,10 +1420,10 @@ function ImportModal({
                 <>
                   <InboxOutlined style={{ fontSize: 40, color: "#999" }} />
                   <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
-                    点击或拖拽文件到此区域上传
+                    {t("点击或拖拽文件到此区域上传")}
                   </p>
                   <Typography.Text type="secondary">
-                    支持包含经纬度和电流的 CSV 或 TXT 文件。选择文件后立即上传到临时存储。
+                    {t("支持包含经纬度和电流的 CSV 或 TXT 文件。选择文件后立即上传到临时存储。")}
                   </Typography.Text>
                 </>
               )}
@@ -1489,7 +1489,7 @@ function DistributionDetailView({
         <Descriptions.Item label={t("统计年限")}>{formatNumber(record.data_years, 3)}</Descriptions.Item>
         <Descriptions.Item label={
           <span>
-            整体 Ng
+            {t("整体 Ng")}
             <FieldHelpTooltip content={t(FIELD_HELP_TOOLTIPS.overallNg)} />
           </span>
         }>{formatNumber(record.overall_ng, 4)}</Descriptions.Item>
@@ -1686,7 +1686,7 @@ function BackfillRecordsView({
             value === "failed"
               ? row.error_message || t("回填失败")
               : isActive
-                ? `进度 ${percent}%`
+                ? `${t("进度")} ${percent}%`
                 : undefined;
           // 进度条直接落在表格行内：排队/处理中为动效，完成后绿色满格，失败红色
           return (
@@ -1803,7 +1803,7 @@ function BackfillRecordsView({
               </Button>
               {canManage && (
                 <Button htmlType="button" onClick={() => setBackfillModalOpen(true)}>
-                  回填
+                  {t("回填")}
                 </Button>
               )}
             </Space>
@@ -2142,7 +2142,7 @@ function NgImageDrawer({
       destroyOnHidden
       extra={
         <Button icon={<DownloadOutlined />} onClick={handleDownload} disabled={!imageUrl}>
-          下载
+          {t("下载")}
         </Button>
       }
     >
@@ -2260,7 +2260,7 @@ function DrawLpBody({
                 </Tag>
               ) : (
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {l.tower_count} 塔
+                  {l.tower_count} {t("塔")}
                 </Typography.Text>
               )}
             </Space>
@@ -2286,7 +2286,7 @@ function DrawLpBody({
         );
         if (drawResp.ok) {
           const p = (await drawResp.json()) as LightningLpDrawResponse;
-          results.push(`绘图任务已提交（ID: ${p.task_id}）`);
+          results.push(`${t("绘图任务已提交")}（ID: ${p.task_id}）`);
         }
       } catch {
         results.push(t("绘图任务提交失败"));
@@ -2300,7 +2300,7 @@ function DrawLpBody({
         );
         if (densityResp.ok) {
           const p = (await densityResp.json()) as LightningDensityPreparationAsyncResponse;
-          results.push(`密度回填任务已提交（ID: ${p.task_id}），请稍后在回填记录中查看进度`);
+          results.push(`${t("密度回填任务已提交")}（ID: ${p.task_id}），${t("请稍后在回填记录中查看进度")}`);
         } else {
           results.push(t("密度回填任务提交失败"));
         }

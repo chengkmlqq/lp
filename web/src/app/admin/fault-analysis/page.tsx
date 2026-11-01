@@ -535,10 +535,10 @@ export default function AdminFaultAnalysisPage() {
   const openDetail = useCallback((record: { id: string; title?: string; fault_type?: string }, defaultView?: "report" | "process" | "artifacts") => {
     const tabKey = defaultView ? `${record.id}-${defaultView}` : record.id;
     const tabLabel = defaultView
-      ? `${record.title || `故障分析 ${record.id.slice(0, 8)}`} - ${
+      ? `${record.title || `${t("故障分析")} ${record.id.slice(0, 8)}`} - ${
           defaultView === "process" ? t("计算过程") : defaultView === "artifacts" ? t("产物") : t("报告")
         }`
-      : record.title || `故障分析 ${record.id.slice(0, 8)}`;
+      : record.title || `${t("故障分析")} ${record.id.slice(0, 8)}`;
     setDetailTabs((previous) => {
       if (previous.some((tab) => tab.key === tabKey)) {
         return previous;

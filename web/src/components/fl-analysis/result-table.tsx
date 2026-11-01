@@ -205,7 +205,7 @@ export function ResultTable({
               onOpenDetail(row);
             }}
           >
-            查看详情
+            {t("查看详情")}
           </Button>
         ),
       },

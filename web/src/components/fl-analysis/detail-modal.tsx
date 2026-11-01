@@ -251,7 +251,7 @@ function buildComputationSteps(
     const target = readNum(search.target_flashover_phases);
     steps.push({
       key: `${keyBase}-${target ?? "x"}`,
-      header: `${prefix}（目标闪络相数 ≥ ${target ?? "?"}）`,
+      header: `${prefix}（${t("目标闪络相数")} ≥ ${target ?? "?"}）`,
       summaryRows: [
         { label: t("收敛"), value: converged ? t("是") : t("否") },
         { label: t("耐雷水平(kA)"), value: fmt(finalWithstand) },
@@ -281,7 +281,7 @@ function buildComputationSteps(
   const multiPhase = bsEntries ?? multiPhaseFallback;
   if (multiPhase.length > 0 && waveformType === "tongtiao") {
     multiPhase.forEach((phase, index) => {
-      const label = typeof phase.label === "string" ? phase.label : `第${index + 1}相`;
+      const label = typeof phase.label === "string" ? phase.label : `${t("第")}${index + 1}${t("相")}`;
       const withstand = readNum(phase.counterstrike_withstand_ka);
       const tripRate = readNum(phase.trip_rate);
       const phSearch = phase.search_history as Record<string, unknown>[] | undefined;
@@ -296,7 +296,7 @@ function buildComputationSteps(
         : [];
       steps.push({
         key: `multi-${phase.phase_count ?? index}`,
-        header: `${label}反击二分`,
+        header: `${label}${t("反击二分")}`,
         summaryRows: [
           { label: t("耐雷水平(kA)"), value: fmt(withstand) },
           {
@@ -378,7 +378,7 @@ export function TowerDetailView({
     <Space direction="vertical" size={24} className="flex w-full">
       <Space className="flex w-full" style={{ justifyContent: "space-between" }} align="center">
         <Typography.Text type="secondary" style={{ marginBottom: 0 }}>
-          任务：{selectedJob?.job_name || selectedJob?.line_name || selectedJob?.line_code || "-"
+          {t("任务：")}{selectedJob?.job_name || selectedJob?.line_name || selectedJob?.line_code || "-"
             }（{selectedJob ? formatJobType(selectedJob.job_type, mitigationMode(selectedJob), t) : "-"}）
         </Typography.Text>
         {canReadLogs && onOpenLog ? (
@@ -397,7 +397,7 @@ export function TowerDetailView({
       </Space>
       <div>
       <Typography.Title level={5}>
-        基本信息
+        {t("基本信息")}
       </Typography.Title>
       <Descriptions bordered size="small" column={2}>
         <Descriptions.Item label={t("当前结论")}>{detailRow.summary_text || "-"}</Descriptions.Item>
@@ -467,7 +467,7 @@ export function TowerDetailView({
 
       <div>
       <Typography.Title level={5}>
-        原因细项
+        {t("原因细项")}
       </Typography.Title>
       {reasonDetails.length === 0 ? (
         <Empty description={t("暂无细项分级")} />
@@ -486,7 +486,7 @@ export function TowerDetailView({
         <>
           <div>
           <Typography.Title level={5}>
-            波形扫描
+            {t("波形扫描")}
           </Typography.Title>
           {scanPoints.length === 0 ? (
             <Empty description={t("当前结果未生成扫描点")} />
@@ -508,7 +508,7 @@ export function TowerDetailView({
         <>
           <div>
           <Typography.Title level={5}>
-            相别结果
+            {t("相别结果")}
           </Typography.Title>
           {phaseResults.length === 0 ? (
             <Empty description={t("当前结果未生成相别结果")} />
@@ -526,7 +526,7 @@ export function TowerDetailView({
 
           <div>
           <Typography.Title level={5}>
-            多相结果
+            {t("多相结果")}
           </Typography.Title>
           {multiPhaseResults.length === 0 ? (
             <Empty description={t("当前结果未生成多相结果")} />
@@ -547,7 +547,7 @@ export function TowerDetailView({
       {computationSteps.length > 0 ? (
         <div>
           <Typography.Title level={5}>
-            计算过程
+            {t("计算过程")}
           </Typography.Title>
           <Collapse
             size="small"
@@ -582,7 +582,7 @@ export function TowerDetailView({
 
       <div>
       <Typography.Title level={5}>
-        改造动作
+        {t("改造动作")}
       </Typography.Title>
       {mitigationActions.length === 0 ? (
         <Empty description={t("当前结果未生成改造动作")} />

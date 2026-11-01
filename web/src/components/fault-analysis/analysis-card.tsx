@@ -93,7 +93,7 @@ export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: An
 
           <div className="flex items-center gap-2">
             <DeploymentUnitOutlined className="text-gray-500 text-xs" />
-            <Text type="secondary" className="text-xs">{t("重合闸")}：{analysis.reclosure_status ? (RECLOSURE_LABELS[analysis.reclosure_status] ?? analysis.reclosure_status) : '-'}</Text>
+            <Text type="secondary" className="text-xs">{t("重合闸")}：{analysis.reclosure_status ? t(RECLOSURE_LABELS[analysis.reclosure_status] ?? analysis.reclosure_status) : '-'}</Text>
           </div>
         </div>
 

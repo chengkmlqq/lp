@@ -104,7 +104,7 @@ function renderBackfillProgressCell(
   return (
     <Tooltip title={tip}>
       <Tag color={meta.tagColor} style={{ marginInlineEnd: 0 }}>
-        {meta.label}
+        {t(meta.label)}
       </Tag>
     </Tooltip>
   );
@@ -265,7 +265,7 @@ export function LightningCurrentBackfillHistoryTable({
       return;
     }
     setLogTaskId(taskId);
-    setLogTitle(`回填任务日志 - ${label}`);
+    setLogTitle(`${t("回填任务日志")} - ${label}`);
     setLogModalOpen(true);
   }, [canReadLogs]);
 
@@ -449,12 +449,12 @@ export function LightningCurrentBackfillHistoryTable({
       setBackfillLineIds([]);
       if (failures.length > 0) {
         messageApi.error(
-          `已提交 ${accepted.length} 条，失败 ${failures.length} 条：${failures
+          `${t("已提交")} ${accepted.length} ${t("条，失败")} ${failures.length} ${t("条：")}${failures
             .map((item) => item.message)
             .join("；")}`,
         );
       } else {
-        messageApi.success(`回填任务已提交（${accepted.length} 条线路）`);
+        messageApi.success(`${t("回填任务已提交")}（${accepted.length} ${t("条线路")}）`);
       }
       // 刷新列表：新提交的任务立即以「行进中 + 进度条」出现在对应记录行内
       void queryClient.invalidateQueries({ queryKey: ["lightning-currents"] });
@@ -618,7 +618,7 @@ export function LightningCurrentBackfillHistoryTable({
                     onClick: () => {
                       modalApi.confirm({
                         title: t("删除回填记录"),
-                        content: `确认删除线路「${row.line_name || row.line_code || "-"}」的回填记录吗？该操作仅删除记录，已写入塔的幅值数据不回滚。`,
+                        content: `${t("确认删除线路")}「${row.line_name || row.line_code || "-"}」${t("的回填记录吗？")}${t("该操作仅删除记录，已写入塔的幅值数据不回滚。")}`,
                         okText: t("删除"),
                         cancelText: t("取消"),
                         okButtonProps: { danger: true },
@@ -646,7 +646,7 @@ export function LightningCurrentBackfillHistoryTable({
                   setDetailOpen(true);
                 }}
               >
-                详情
+                {t("详情")}
               </Button>
               <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
                 <Button size="small" icon={<MoreOutlined />} />
@@ -715,14 +715,14 @@ export function LightningCurrentBackfillHistoryTable({
         render: (_: unknown, row) => (
           <Space size={4}>
             <Button size="small" onClick={() => openDetail(row)}>
-              详情
+              {t("详情")}
             </Button>
             <Button
               size="small"
               disabled={!row.task_id || !canReadLogs}
               onClick={() => openLogViewer(row.task_id, row.line_name || row.line_id || t("未知线路"))}
             >
-              日志
+              {t("日志")}
             </Button>
           </Space>
         ),
@@ -960,11 +960,11 @@ export function LightningCurrentBackfillHistoryTable({
                   <span>{`${line.code} - ${line.name}${line.voltage_kv ? ` (${line.voltage_kv}kV)` : ""}`}</span>
                   {noTower ? (
                     <Tag color="warning" style={{ marginInlineEnd: 0 }}>
-                      无杆塔数据
+                      {t("无杆塔数据")}
                     </Tag>
                   ) : (
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {line.tower_count} 塔
+                      {line.tower_count} {t("塔")}
                     </Typography.Text>
                   )}
                 </Space>

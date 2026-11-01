@@ -84,7 +84,7 @@ export function ReportModal({
         ) : (
           <>
             <Typography.Text type="secondary">
-              已命中 {rows.length} 座可纳入报告的杆塔。默认全选，可按需缩小报告范围。
+              {t("已命中")} {rows.length} {t("座可纳入报告的杆塔。默认全选，可按需缩小报告范围。")}
             </Typography.Text>
             <Table<FlAnalysisTowerResultSummary>
               rowKey="tower_id"

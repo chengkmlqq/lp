@@ -411,7 +411,7 @@ export function CreateJobForm({
         destroyOnHidden={false}
         footer={
           <Button type="primary" onClick={() => setAdvancedOpen(false)}>
-            确定
+            {t("确定")}
           </Button>
         }
       >
@@ -434,13 +434,13 @@ export function CreateJobForm({
           <Form.Item name="current_waveform" label={t("雷电流波形")}>
             <Select
               loading={dimensionsLoading}
-              options={currentWaveformOptions}
+              options={currentWaveformOptions.map((opt) => ({ ...opt, label: t(opt.label) }))}
             />
           </Form.Item>
           <Form.Item name="flashover_method" label={t("绝缘子闪络判据")}>
             <Select
               loading={dimensionsLoading}
-              options={flashoverMethodOptions}
+              options={flashoverMethodOptions.map((opt) => ({ ...opt, label: t(opt.label) }))}
             />
           </Form.Item>
           {/* 波头时间：Min/Max/步长 一行（对齐 C# 高级设置 Form_GJSZ_PuTongJiSuan） */}

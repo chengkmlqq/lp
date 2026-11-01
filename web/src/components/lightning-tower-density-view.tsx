@@ -239,8 +239,8 @@ export function TowerDensityView({
           <Typography.Text type="secondary">
             {selectedLine.line_code || selectedLine.line_name || selectedLine.line_id}
             {selectedLine.voltage_kv ? ` (${selectedLine.voltage_kv}kV)` : ""}
-            {" · "}引用杆塔 {selectedLine.tower_count} 座
-            {" · "}最近回填 {formatDateTime(selectedLine.prepared_at)}
+            {" · "}{t("引用杆塔")} {selectedLine.tower_count} {t("座")}
+            {" · "}{t("最近回填")} {formatDateTime(selectedLine.prepared_at)}
           </Typography.Text>
         )}
       </Space>
