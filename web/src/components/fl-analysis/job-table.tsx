@@ -155,7 +155,7 @@ export function JobTable({
                       disabled={isJobDetailLocked(job)}
                       onClick={() => onOpenDetail(job)}
                     >
-                      详情
+                      {t("详情")}
                     </Button>
                   ) : null}
                   {canReadLogs && onOpenLog ? (
@@ -165,7 +165,7 @@ export function JobTable({
                       disabled={!job.task_id}
                       onClick={() => onOpenLog(job.task_id, t("任务执行日志"), job.job_name || job.line_name || job.line_code || t("防雷任务"))}
                     >
-                      日志
+                      {t("日志")}
                     </Button>
                   ) : null}
                   {menuItems.length > 0 ? (

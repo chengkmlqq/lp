@@ -571,8 +571,8 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
   return (
     <div>
       <Typography.Title level={5}>
-        场景拓扑预览
-        {scene ? <Typography.Text type="secondary" style={{ fontSize: 13, marginLeft: 8 }}>入口 {scene.source_file}（schema {scene.schema}）</Typography.Text> : null}
+        {t("场景拓扑预览")}
+        {scene ? <Typography.Text type="secondary" style={{ fontSize: 13, marginLeft: 8 }}>{t("入口")} {scene.source_file}（schema {scene.schema}）</Typography.Text> : null}
       </Typography.Title>
 
       {sceneQuery.isLoading ? (
@@ -608,7 +608,7 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
           {selected ? (
             <div style={{ marginTop: 10 }}>
               <Typography.Title level={5}>
-                节点 {selected.id}
+                {t("节点")} {selected.id}
                 <Tag style={{ marginLeft: 8 }} color="blue">{t(KIND_LABELS[selected.kind] ?? selected.kind)}</Tag>
               </Typography.Title>
               {selected.branches.length > 0 ? (
@@ -633,7 +633,7 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
                 <Descriptions size="small" column={1} bordered style={{ marginBottom: 8 }}
                   items={selected.sources.map((src, index) => ({
                     key: `src${index}`,
-                    label: `电源 ${src.node}`,
+                    label: `${t("电源")} ${src.node}`,
                     children: `${t("幅值")}=${src.amplitude ?? "-"} ${t("频率")}=${src.freq ?? "-"} ${t("相位")}=${src.phase ?? "-"}`,
                   }))}
                 />
@@ -642,7 +642,7 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
                 <Descriptions size="small" column={1} bordered style={{ marginBottom: 8 }}
                   items={selected.includes.map((inc, index) => ({
                     key: `i${index}`,
-                    label: `线路段端口 (${inc.ports.length} 端口)`,
+                    label: `${t("线路段端口")} (${inc.ports.length} ${t("端口")})`,
                     children: inc.path,
                   }))}
                 />
@@ -659,7 +659,7 @@ export function AtpSceneViewer({ assetId }: AtpSceneViewerProps) {
               items={[
                 {
                   key: "params",
-                  label: `参数表（${scene.parameters.length}）`,
+                  label: `${t("参数表")}（${scene.parameters.length}）`,
                   children: (
                     <div style={{ maxHeight: 220, overflow: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "2px 12px", fontSize: 12 }}>
                       {scene.parameters.map((param) => (

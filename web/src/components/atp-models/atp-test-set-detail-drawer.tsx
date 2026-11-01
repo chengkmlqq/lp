@@ -306,7 +306,7 @@ export function AtpTestSetDetailDrawer({
         if (result.launched === 0) {
           message.warning(t("执行未启动（0 个用例派发成功）"));
         } else {
-          message.success(`已发起 ${result.launched} 个用例执行（批次 ${result.run_id.slice(0, 12)}…）`);
+          message.success(`${t("已发起")} ${result.launched} ${t("个用例执行")}（${t("批次")} ${result.run_id.slice(0, 12)}…）`);
         }
         void queryClient.invalidateQueries({ queryKey: ["atp-test-set-runs", set.id] });
         void queryClient.invalidateQueries({ queryKey: ["atp-test-sets"] });
@@ -426,10 +426,10 @@ export function AtpTestSetDetailDrawer({
         render: (_, row) => {
           const params = row.params_json ?? {};
           const parts: string[] = [];
-          if (params.current_ka) parts.push(`雷电流 ${params.current_ka}kA`);
-          if (params.scene) parts.push(`场景 ${params.scene}`);
+          if (params.current_ka) parts.push(`${t("雷电流")} ${params.current_ka}kA`);
+          if (params.scene) parts.push(`${t("场景")} ${params.scene}`);
           if (Array.isArray(params.stages) && !(params.stages as string[]).includes("all")) {
-            parts.push(`阶段 ${(params.stages as string[]).join(",")}`);
+            parts.push(`${t("阶段")} ${(params.stages as string[]).join(",")}`);
           }
           return (
             <Typography.Text style={{ fontSize: 12 }} type="secondary">
@@ -484,7 +484,7 @@ export function AtpTestSetDetailDrawer({
                   icon={<EditOutlined />}
                   onClick={() => openEditCase(row)}
                 >
-                  编辑
+                  {t("编辑")}
                 </Button>
                 <Popconfirm
                   title={t("删除该用例？")}
@@ -494,7 +494,7 @@ export function AtpTestSetDetailDrawer({
                   onConfirm={() => deleteCaseMutation.mutate(row.id)}
                 >
                   <Button type="link" size="small" danger style={{ padding: 0 }} icon={<DeleteOutlined />}>
-                    删除
+                  {t("删除")}
                   </Button>
                 </Popconfirm>
               </>
@@ -591,7 +591,7 @@ export function AtpTestSetDetailDrawer({
               icon={<EyeOutlined />}
               onClick={() => setViewRunId(row.run_id)}
             >
-              查看
+              {t("查看")}
             </Button>
             <Button
               type="link"
@@ -600,7 +600,7 @@ export function AtpTestSetDetailDrawer({
               icon={<DownloadOutlined />}
               onClick={() => void downloadRunReport(row.run_id)}
             >
-              报告
+              {t("报告")}
             </Button>
           </Space>
         ),
@@ -654,7 +654,7 @@ export function AtpTestSetDetailDrawer({
             items={[
               {
                 key: "cases",
-                label: `用例管理（${casesQuery.data?.total ?? 0}）`,
+                label: `${t("用例管理")}（${casesQuery.data?.total ?? 0}）`,
                 children: (
                   <Space direction="vertical" size={12} style={{ width: "100%" }}>
                     {/* 工具条：新增用例 + 勾选执行提示 */}
@@ -666,7 +666,7 @@ export function AtpTestSetDetailDrawer({
                             icon={<PlusOutlined />}
                             onClick={openCreateCase}
                           >
-                            新增用例
+                            {t("新增用例")}
                           </Button>
                         ) : null}
                         {canTest ? (
@@ -688,7 +688,7 @@ export function AtpTestSetDetailDrawer({
                             });
                           }}
                         >
-                          刷新
+                          {t("刷新")}
                         </Button>
                       </Space>
                     </div>
@@ -718,7 +718,7 @@ export function AtpTestSetDetailDrawer({
                             )
                           }
                         >
-                          全选启用的用例
+                          {t("全选启用的用例")}
                         </Checkbox>
                         <Radio.Group
                           value={executeDryRun}
@@ -739,8 +739,8 @@ export function AtpTestSetDetailDrawer({
                           {t("开始执行")}
                         </Button>
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {jobsOffered.normal ? `普通 ${jobsOffered.normal} 个 · ` : ""}
-                          {jobsOffered.tongtiao ? `同跳 ${jobsOffered.tongtiao} 个` : ""}
+                          {jobsOffered.normal ? `${t("普通")} ${jobsOffered.normal} ${t("个")} · ` : ""}
+                          {jobsOffered.tongtiao ? `${t("同跳")} ${jobsOffered.tongtiao} ${t("个")}` : ""}
                         </Typography.Text>
                       </div>
                     ) : null}
@@ -763,14 +763,14 @@ export function AtpTestSetDetailDrawer({
                       }}
                     />
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      用例自动按顺序执行 · 勾选「勾选执行」可只跑选中用例 · 试运行只检查命令与参数不真正仿真
+                      {t("用例自动按顺序执行")} · {t("勾选「勾选执行」可只跑选中用例")} · {t("试运行只检查命令与参数不真正仿真")}
                     </Typography.Text>
                   </Space>
                 ),
               },
               {
                 key: "history",
-                label: `执行历史（${runsQuery.data?.total ?? 0}）`,
+                label: `${t("执行历史")}（${runsQuery.data?.total ?? 0}）`,
                 children: (
                   <Table<AtpTestSetRunSummary>
                     rowKey="run_id"
@@ -856,14 +856,14 @@ export function AtpTestSetDetailDrawer({
             <Form.Item name="expected_extra" label={t("预期结果(JSON，可选)")} className="md:col-span-2">
               <Input.TextArea
                 rows={2}
-                placeholder='如 {"flashover_count": 2}（回归断言；可空）'
+                placeholder={`${t("如")} {"flashover_count": 2}（${t("回归断言；可空")}）`}
               />
             </Form.Item>
             <Form.Item
               name="params_extra"
               label={t("测试参数(JSON 高级，可选)")}
               className="md:col-span-2"
-              extra='如 {"params_source":"tower","execution_options":{"method_raoji":"egm"}}'
+              extra={`${t("如")} {"params_source":"tower","execution_options":{"method_raoji":"egm"}}`}
             >
               <Input.TextArea rows={2} placeholder={t("留空则只用上面的常用字段")} />
             </Form.Item>

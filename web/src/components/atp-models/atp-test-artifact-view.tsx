@@ -213,7 +213,7 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
       {isLib && libSummary ? (
         <>
           <Typography.Title level={5} style={{ marginTop: 12, fontSize: 14 }}>
-            线路模型库摘要(运维可读)
+            {t("线路模型库摘要(运维可读)")}
           </Typography.Title>
           <Descriptions
             size="small"
@@ -240,7 +240,7 @@ export function AtpTestArtifactView({ runId, path }: AtpTestArtifactViewProps) {
                   const inName = row.nodeIn.replace(/IN___/, "").replace(/OUT__.*/, "");
                   const m = inName.match(/^[A-Za-z0-9_]*?([A-Za-z])$/);
                   const phase = m ? m[1] : "";
-                  return phase ? `相线 ${phase}` : "-";
+                  return phase ? `${t("相线")} ${phase}` : "-";
                 },
               },
             ]}

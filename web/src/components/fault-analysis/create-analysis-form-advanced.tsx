@@ -226,14 +226,14 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       if (matchedLine) {
         if (currentLineId && currentLineId !== matchedLine.id) {
           patch.line_id = matchedLine.id;
-          messageApi.info(`已按录波识别结果自动选择线路「${matchedLine.name}」`);
+          messageApi.info(`${t("已按录波识别结果自动选择线路")}「${matchedLine.name}」`);
         } else if (!currentLineId) {
           patch.line_id = matchedLine.id;
         }
       } else if (currentLineId) {
         const currentLine = lines.find((line) => line.id === currentLineId);
         messageApi.warning(
-          `录波识别的线路「${extractedLineName}」不在系统线路列表中，` +
+          `${t("录波识别的线路")}「${extractedLineName}」${t("不在系统线路列表中")}，` +
             `${t("当前第一步选择的是")}「${currentLine ? `${currentLine.name} (${currentLine.code})` : t("未选择")}」，${t("请确认是否需要更换线路")}；` +
             t("否则判别时台账将按所选线路组装，无法匹配录波线路。"),
         );
@@ -271,16 +271,16 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
       XLSX.utils.book_append_sheet(wb, ws, '录波提取');
       XLSX.writeFile(wb, '录波提取结果.xlsx');
     } catch {
-      messageApi.error('下载录波提取结果失败');
+      messageApi.error(t("下载录波提取结果失败"));
     }
   }, []);
   // 下载录波数据模板（13 个字段，与分析程序实际使用的录波故障数据一致；填写后上传可自动回填）
   const handleDownloadWaveDataTemplate = () => {
     try {
       generateWaveDataTemplate();
-      messageApi.success('录波数据模板下载成功');
+      messageApi.success(t("录波数据模板下载成功"));
     } catch {
-      messageApi.error('录波数据模板下载失败');
+      messageApi.error(t("录波数据模板下载失败"));
     }
   };
 
@@ -288,9 +288,9 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
   const handleDownloadLightningTemplate = () => {
     try {
       generateLightningTemplate();
-      messageApi.success('雷电定位数据模板下载成功');
+      messageApi.success(t("雷电定位数据模板下载成功"));
     } catch {
-      messageApi.error('雷电定位数据模板下载失败');
+      messageApi.error(t("雷电定位数据模板下载失败"));
     }
   };
 
@@ -298,9 +298,9 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
   const handleDownloadWaveTemplate = () => {
     try {
       generateWaveTemplate();
-      messageApi.success('行波数据模板下载成功');
+      messageApi.success(t("行波数据模板下载成功"));
     } catch {
-      messageApi.error('行波数据模板下载失败');
+      messageApi.error(t("行波数据模板下载失败"));
     }
   };
 
@@ -308,9 +308,9 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
   const handleDownloadOpticalTemplate = () => {
     try {
       generateOpticalTemplate();
-      messageApi.success('光学监控数据模板下载成功');
+      messageApi.success(t("光学监控数据模板下载成功"));
     } catch {
-      messageApi.error('光学监控数据模板下载失败');
+      messageApi.error(t("光学监控数据模板下载失败"));
     }
   };
 
@@ -378,7 +378,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
     if (pendingChecks.length > 0) {
       modalApi.confirm({
         title: t("部分文件尚未完成内容校验"),
-        content: `${pendingChecks.map((p) => p.label).join("、")} 仍有文件在解析中或尚未校验，确定要提交吗？`,
+        content: `${pendingChecks.map((p) => t(p.label)).join(t("、"))} ${t("仍有文件在解析中或尚未校验，确定要提交吗？")}`,
         okText: t("仍要提交"),
         cancelText: t("等待校验"),
         onOk: () => onSubmit(values),
@@ -416,7 +416,7 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 {w}
               </div>
             ))}
-            {allWarnings.length > 10 && <div className="mt-1 text-gray-500">...等共 {allWarnings.length} 条提示</div>}
+            {allWarnings.length > 10 && <div className="mt-1 text-gray-500">{t("...等共")} {allWarnings.length} {t("条提示")}</div>}
             <div className="mt-2 text-gray-500">{t("仍要提交吗？")}</div>
           </div>
         ),
@@ -541,11 +541,11 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
                 onPdfExtracted={(item, response) => {
                   handlePdfExtracted(item, response);
                   if (response.missing.length === 13) {
-                    messageApi.warning('未识别到故障字段：请使用「下载模板」的格式（录波记录厂站/故障时刻/故障线路名称等表头）或上传录波故障报告 PDF');
+                    messageApi.warning(t("未识别到故障字段：请使用「下载模板」的格式（录波记录厂站/故障时刻/故障线路名称等表头）或上传录波故障报告 PDF"));
                   } else if (response.ok) {
-                    messageApi.success('已自动提取并回填表单字段');
+                    messageApi.success(t("已自动提取并回填表单字段"));
                   } else {
-                    messageApi.success(`已识别 ${13 - response.missing.length}/13 个字段，缺失字段已提示`);
+                    messageApi.success(`${t("已识别")} ${13 - response.missing.length}/13 ${t("个字段")}，${t("缺失字段已提示")}`);
                   }
                 }}
               />
@@ -554,9 +554,9 @@ export function CreateAnalysisFormAdvanced({ form, lines, linesLoading, onSubmit
               <div className="mt-1 w-full rounded bg-[var(--ant-color-primary-bg)] px-2 py-1 text-xs text-[var(--ant-color-text)]">
                 <div className="flex items-center justify-between">
                   <span>
-                    识别到 {13 - extractState.response.missing.length}/13 个字段
+                    {t("识别到")} {13 - extractState.response.missing.length}/13 {t("个字段")}
                     {extractState.response.missing.length > 0 && (
-                      <span className="ml-1 text-[var(--orange-9)]">（缺失 {extractState.response.missing.length} 个）</span>
+                      <span className="ml-1 text-[var(--orange-9)]">{t("（缺失")} {extractState.response.missing.length} {t("个）")}</span>
                     )}
                   </span>
                   <Button size="small" icon={<DownloadOutlined />} onClick={() => handleDownloadExtracted(extractState.response)}>

@@ -247,7 +247,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
       dataIndex: "flashover_count_distribution",
       render: (v: Record<string, number>) => {
         const entries = Object.entries(v ?? {});
-        return entries.length === 0 ? "-" : entries.map(([k, n]) => <Tag key={k}>{k}相×{n}</Tag>);
+        return entries.length === 0 ? "-" : entries.map(([k, n]) => <Tag key={k}>{k}{t("相×")}{n}</Tag>);
       },
     },
   ];
@@ -295,9 +295,9 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                   checked={filtered.length > 0 && selectedKeys.size >= filtered.length}
                   onChange={(e) => toggleSelectAll(e.target.checked)}
                 >
-                  全选当前筛选({filtered.length})
+                  {t("全选当前筛选")}({filtered.length})
                 </Checkbox>
-                <Typography.Text type="secondary">已选 {selectedKeys.size} 个</Typography.Text>
+                <Typography.Text type="secondary">{t("已选")} {selectedKeys.size} {t("个")}</Typography.Text>
               </Space>
               <Table
                 size="small"
@@ -349,7 +349,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 </Form.Item>
               </Space>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                对拍口径:雷电流幅值全部用同一值;依赖段(simulate→LCC→物化)自动补齐;判据看产物不看退出码。
+                {t("对拍口径")}:{t("雷电流幅值全部用同一值")};{t("依赖段(simulate→LCC→物化)自动补齐")};{t("判据看产物不看退出码")}。
               </Typography.Text>
             </Space>
           </Card>
@@ -383,7 +383,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 <Alert
                   type="warning"
                   showIcon
-          message={`${batch.errors!.length} ${t("个资产发起失败")}(未生成 run)`}
+          message={`${batch.errors!.length} ${t("个资产发起失败")}${t("未生成 run")}`}
                   description={batch.errors!.slice(0, 5).map((e) => `${e.code}: ${e.error}`).join("；")}
                 />
               ) : null}

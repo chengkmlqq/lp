@@ -147,7 +147,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
       </div>
 
       <div>
-        <Typography.Title level={5}>文件列表 ({files.length})</Typography.Title>
+        <Typography.Title level={5}>{t("文件列表")} ({files.length})</Typography.Title>
         {files.length === 0 && !filesQuery.isLoading ? (
           <div style={{ padding: "24px 0" }}>
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无文件")} />
@@ -181,7 +181,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
                             setDatDetail({ path: row.path, name: row.name });
                           }}
                         >
-                          查看详情
+                          {t("查看详情")}
                         </Button>
                       ) : null}
                       <Button
@@ -193,7 +193,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
                           setPreviewFile({ path: row.path, name: row.name });
                         }}
                       >
-                        查看
+                        {t("查看")}
                       </Button>
                     </Space>
                   ) : (

@@ -199,20 +199,20 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                   <div className="flex items-center gap-2">
                     <DeploymentUnitOutlined className="text-xs text-gray-500" />
                     <Typography.Text type="secondary" className="text-xs">
-                      杆塔数：{job.total_tower_count}
+                      {t("杆塔数")}：{job.total_tower_count}
                     </Typography.Text>
                   </div>
                   <div className="flex items-center gap-2">
                     <BarChartOutlined className="text-xs text-gray-500" />
                     <Typography.Text type="secondary" className="text-xs">
-                      结果数：{job.result_tower_count}
+                      {t("结果数")}：{job.result_tower_count}
                     </Typography.Text>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <ClockCircleOutlined className="text-xs text-gray-500" />
                   <Typography.Text type="secondary" className="text-xs">
-                    完成时间：{formatDateTime(job.finished_at)}
+                    {t("完成时间")}：{formatDateTime(job.finished_at)}
                   </Typography.Text>
                 </div>
               </div>

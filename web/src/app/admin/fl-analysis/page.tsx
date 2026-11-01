@@ -368,7 +368,7 @@ export default function AdminFlAnalysisPage() {
     onSuccess: async (job) => {
       setError("");
       await invalidateFlAnalysisQueries();
-      messageApi.success(`已删除防雷分析任务：${job.job_name || job.line_name || job.id}`);
+      messageApi.success(`${t("已删除防雷分析任务")}：${job.job_name || job.line_name || job.id}`);
     },
     onError: (candidate) => {
       setError(candidate instanceof Error ? candidate.message : t("防雷分析任务删除失败"));
@@ -379,7 +379,7 @@ export default function AdminFlAnalysisPage() {
   const handleDeleteJob = (job: FlAnalysisJobSummary) => {
     modalApi.confirm({
       title: t("删除防雷分析任务"),
-      content: `确认删除任务「${job.job_name || job.line_name || job.id}」吗？删除后不可恢复。`,
+      content: `${t("确认删除任务")}「${job.job_name || job.line_name || job.id}」${t("吗？删除后不可恢复。")}`,
       okText: t("删除"),
       cancelText: t("取消"),
       okButtonProps: { danger: true },
@@ -404,10 +404,10 @@ export default function AdminFlAnalysisPage() {
       await invalidateFlAnalysisQueries();
       const label = job.job_name || job.line_name || job.id;
       if (statusWritten) {
-        messageApi.success(`已取消任务：${label}`);
+        messageApi.success(`${t("已取消任务")}：${label}`);
       } else {
         // 任务正持有该行锁，状态由 worker 侧清理任务兜底写入（数秒内完成）
-        messageApi.warning(`已请求取消任务「${label}」，状态更新中，稍后自动刷新`);
+        messageApi.warning(`${t("已请求取消任务")}「${label}」，${t("状态更新中，稍后自动刷新")}`);
       }
     },
     onError: (candidate) => {
@@ -418,7 +418,7 @@ export default function AdminFlAnalysisPage() {
   const handleCancelJob = (job: FlAnalysisJobSummary) => {
     modalApi.confirm({
       title: t("取消任务"),
-      content: `确认取消任务「${job.job_name || job.line_name || job.id}」吗？正在执行的计算会被终止，已计算出的部分结果会保留。`,
+      content: `${t("确认取消任务")}「${job.job_name || job.line_name || job.id}」${t("吗？正在执行的计算会被终止，已计算出的部分结果会保留。")}`,
       okText: t("确认取消"),
       cancelText: t("再想想"),
       onOk: () => cancelJobMutation.mutate(job),
@@ -735,7 +735,7 @@ export default function AdminFlAnalysisPage() {
                           setPagination({ current: page, pageSize });
                         }}
                         showSizeChanger
-                        showTotal={(total) => `共 ${total} 条`}
+                        showTotal={(total) => `${t("共")} ${total} ${t("条")}`}
                       />
                     </div>
                   </>

@@ -70,7 +70,7 @@ export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: An
             </div>
             <div className="flex flex-shrink-0 items-center gap-2">
               <Badge status={status.color} />
-              <Text type="secondary" className="text-xs">{status.text}</Text>
+              <Text type="secondary" className="text-xs">{t(status.text)}</Text>
             </div>
           </div>
         </div>
@@ -78,22 +78,22 @@ export function AnalysisCard({ analysis, selected, onView, onDelete, onLog }: An
         <div className="flex flex-col gap-2 px-4 py-3">
           <div className="flex items-center gap-2">
             <ApartmentOutlined className="text-gray-500 text-xs" />
-            <Text type="secondary" className="text-xs">故障线路：{analysis.line_name || '-'}</Text>
+            <Text type="secondary" className="text-xs">{t("故障线路")}：{analysis.line_name || '-'}</Text>
           </div>
 
           <div className="flex items-center gap-2">
             <ClockCircleOutlined className="text-gray-500 text-xs" />
-            <Text type="secondary" className="text-xs">故障时刻：{formatDateTime(analysis.fault_time)}</Text>
+            <Text type="secondary" className="text-xs">{t("故障时刻")}：{formatDateTime(analysis.fault_time)}</Text>
           </div>
 
           <div className="flex items-center gap-2">
             <ThunderboltOutlined className="text-gray-500 text-xs" />
-            <Text type="secondary" className="text-xs">故障项：{analysis.fault_phase || '-'}</Text>
+            <Text type="secondary" className="text-xs">{t("故障项")}：{analysis.fault_phase || '-'}</Text>
           </div>
 
           <div className="flex items-center gap-2">
             <DeploymentUnitOutlined className="text-gray-500 text-xs" />
-            <Text type="secondary" className="text-xs">重合闸：{analysis.reclosure_status ? (RECLOSURE_LABELS[analysis.reclosure_status] ?? analysis.reclosure_status) : '-'}</Text>
+            <Text type="secondary" className="text-xs">{t("重合闸")}：{analysis.reclosure_status ? (RECLOSURE_LABELS[analysis.reclosure_status] ?? analysis.reclosure_status) : '-'}</Text>
           </div>
         </div>
 

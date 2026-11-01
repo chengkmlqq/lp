@@ -190,7 +190,7 @@ export function AtpTestSetTab() {
               {value}
             </Typography.Text>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              更新于 {formatDateTime(row.update_date)}
+              {t("更新于")} {formatDateTime(row.update_date)}
             </Typography.Text>
           </Space>
         ),
@@ -210,7 +210,7 @@ export function AtpTestSetTab() {
           <Space direction="vertical" size={0}>
             <Typography.Text strong>{row.case_count}</Typography.Text>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              启用 {row.enabled_case_count}
+              {t("启用")} {row.enabled_case_count}
             </Typography.Text>
           </Space>
         ),
@@ -230,7 +230,7 @@ export function AtpTestSetTab() {
                 {last.status === "success" ? t("全部通过") : last.status === "failed" ? t("有失败") : t("运行中")}
               </Tag>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {formatDateTime(last.create_date)} · {last.total_cases} 用例
+                {formatDateTime(last.create_date)} · {last.total_cases} {t("用例")}
               </Typography.Text>
             </Space>
           );
@@ -332,13 +332,13 @@ export function AtpTestSetTab() {
           {canManage ? (
             <Form.Item style={{ marginBottom: 0 }}>
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                新建测试集
+                {t("新建测试集")}
               </Button>
             </Form.Item>
           ) : null}
           <Form.Item style={{ marginBottom: 0 }}>
             <Button icon={<RedoOutlined />} onClick={refresh}>
-              刷新
+              {t("刷新")}
             </Button>
           </Form.Item>
         </Form>
@@ -370,8 +370,8 @@ export function AtpTestSetTab() {
                   <Space direction="vertical" size={4}>
                     <span>{t("暂无测试集。")}</span>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      创建测试集后，为其中模型添加「普通计算 / 同跳计算」用例，
-                      模型或程序更新时一键批量回归仿真测试。
+                      {t("创建测试集后，为其中模型添加「普通计算 / 同跳计算」用例，")}
+                      {t("模型或程序更新时一键批量回归仿真测试。")}
                     </Typography.Text>
                   </Space>
                 }
@@ -407,7 +407,7 @@ export function AtpTestSetTab() {
           <Form.Item name="status" label={t("状态")}>
             <Input.Group compact>
               <Typography.Text type="secondary" style={{ marginRight: 8 }}>
-                启用中（停用后仍可查看，不可执行）
+                {t("启用中（停用后仍可查看，不可执行）")}
               </Typography.Text>
             </Input.Group>
           </Form.Item>

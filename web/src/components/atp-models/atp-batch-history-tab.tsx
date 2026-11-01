@@ -235,7 +235,7 @@ export function AtpBatchHistoryTab() {
               icon={<EyeOutlined />}
               onClick={() => openView(row.batch_id)}
             >
-              查看
+              {t("查看")}
             </Button>
             <Button
               type="link"
@@ -289,7 +289,7 @@ export function AtpBatchHistoryTab() {
           ) : null}
           <Form.Item style={{ marginBottom: 0 }}>
             <Button icon={<RedoOutlined />} onClick={handleRefresh}>
-              刷新
+              {t("刷新")}
             </Button>
           </Form.Item>
         </Form>

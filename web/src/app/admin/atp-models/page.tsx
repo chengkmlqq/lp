@@ -630,7 +630,7 @@ export default function AtpModelsPage() {
     try {
       return await readApiError(response);
     } catch {
-      return `请求失败（${response.status}）`;
+      return `${t("请求失败")}（${response.status}）`;
     }
   }
 
@@ -946,7 +946,7 @@ export default function AtpModelsPage() {
         ...previous,
         {
           key: asset.id,
-          label: <>模型详情 - {asset.name || asset.id}</>,
+          label: <>{t("模型详情")} - {asset.name || asset.id}</>,
           assetId: asset.id,
         },
       ];
@@ -972,7 +972,7 @@ export default function AtpModelsPage() {
         ...previous,
         {
           key,
-          label: <>模型测试 - {asset.name || asset.id}</>,
+          label: <>{t("模型测试")} - {asset.name || asset.id}</>,
           assetId: asset.id,
         },
       ];
@@ -1158,7 +1158,7 @@ export default function AtpModelsPage() {
                 onClick={openCreateModal}
                 icon={<PlusOutlined />}
               >
-                新建模型
+                {t("新建模型")}
               </Button>
             ) : null}
             {canTest ? (
@@ -1491,20 +1491,20 @@ export default function AtpModelsPage() {
                   <>
                     <InboxOutlined style={{ fontSize: 40, color: "#999" }} />
                     <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
-                      点击或拖拽模型文件夹到此区域上传
+                      {t("点击或拖拽模型文件夹到此区域上传")}
                     </p>
                     <Typography.Text type="secondary">
-                      支持选择整个 ATP 模型目录（含 work.atp 与 lib 等文件），选择后自动打包上传到临时存储。
+                      {t("支持选择整个 ATP 模型目录（含 work.atp 与 lib 等文件），选择后自动打包上传到临时存储。")}
                     </Typography.Text>
                   </>
                 ) : (
                   <>
-                    <p className="ant-upload-text">已选择 {fileList.length} 个文件</p>
+                    <p className="ant-upload-text">{t("已选择")} {fileList.length} {t("个文件")}</p>
                     {uploadProgress > 0 && uploadProgress < 100 ? (
                       <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
                     ) : tempFileId ? (
                       <Typography.Text type="success">
-                        <CheckCircleOutlined /> 上传完成，可以创建模型
+                        <CheckCircleOutlined /> {t("上传完成，可以创建模型")}
                       </Typography.Text>
                     ) : (
                       <Typography.Text type="warning">{t("上传中…")}</Typography.Text>
