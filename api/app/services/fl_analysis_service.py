@@ -1702,7 +1702,25 @@ def execute_job(job_id: str) -> None:
             run.stdout_text = _truncate_output("\n\n".join(stdout_chunks))
         if stderr_chunks:
             run.stderr_text = _truncate_output("\n\n".join(stderr_chunks))
-        db.commit()
+
+        def _reapply_final_counts() -> None:
+            # 收尾计数写库带连接级重试（2026-10-31 实测撞 RDS 2006 公网超时被误标 failed）：
+            # rollback 后 session 内对象被 expire，重查后重设待提交字段，保证重试幂等。
+            _run = db.execute(select(FlAnalysisRun).where(FlAnalysisRun.id == run_id)).scalar_one_or_none()
+            _job = get_job_by_id(db, job_id)
+            if _run is None or _job is None:
+                return
+            _run.snapshot_tower_count = snapshot_count
+            _run.result_tower_count = result_count
+            if stdout_chunks:
+                _run.stdout_text = _truncate_output("\n\n".join(stdout_chunks))
+            if stderr_chunks:
+                _run.stderr_text = _truncate_output("\n\n".join(stderr_chunks))
+            _job.total_tower_count = len(towers)
+            _job.snapshotted_tower_count = snapshot_count
+            _job.result_tower_count = result_count
+
+        _commit_with_retry(db, label="execute_fl_analysis_job 收尾计数", reapply=_reapply_final_counts)
 
         _finish_rule_based_run(
             db,
@@ -1726,6 +1744,63 @@ def execute_job(job_id: str) -> None:
         clean_job_run_artifacts(job_id)
     finally:
         db.close()
+
+
+def _commit_with_retry(
+    db: Session,
+    *,
+    label: str,
+    reapply: Callable[[Session], None] | None = None,
+    attempts: int = 5,
+    base_delay: float = 2.0,
+) -> None:
+    """收尾写库连接级重试（防 RDS 2006 误判任务失败）。
+
+    背景（2026-10-31 实测）：500kV雁船线任务跑 6.7h、34/34 塔结果全部落库后，
+    收尾 ``UPDATE fl_analysis_job`` 撞公网 RDS ``TimeoutError(110)``（TCP 握手超时），
+    一次 commit 失败整任务被误标 failed。连接池 pre_ping/recycle 只覆盖取连探测，
+    挡不住 commit 瞬间连接被网络层丢弃。
+
+    此处捕获连接类 OperationalError（2006/2013/超时/重置），rollback 后按退避重试。
+    注意 rollback 会丢弃本事务的 pending 修改，调用方通过 ``reapply(db)``
+    在每次重试前重新查询对象并重新赋值。
+    """
+    from sqlalchemy.exc import InterfaceError, OperationalError
+
+    conn_markers = (
+        "2006",
+        "2013",
+        "server has gone away",
+        "connection timed out",
+        "connection reset",
+        "can't connect",
+        "lost connection",
+        "broken pipe",
+        "read timeout",
+        "write timeout",
+    )
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            if reapply is not None:
+                reapply(db)
+            db.commit()
+            return
+        except (OperationalError, InterfaceError) as exc:
+            last_exc = exc
+            msg = str(exc)
+            if not any(m in msg for m in conn_markers):
+                raise
+            logger.warning(
+                "[db] %s 收尾写库遇连接异常，重试 %d/%d：%s", label, attempt, attempts, msg
+            )
+            try:
+                db.rollback()
+            except Exception:
+                logger.debug("[db] %s rollback 忽略异常", label, exc_info=True)
+            time.sleep(base_delay * attempt)
+    assert last_exc is not None
+    raise last_exc
 
 
 def _dispatch_fl_analysis_task(*, job_id: str):
@@ -1776,7 +1851,34 @@ def _finish_rule_based_run(
         _notify_job_done(job, status="success")
     job.finished_at = now
     job.update_date = now
-    db.commit()
+
+    def _reapply_success() -> None:
+        # 成功收尾写库带连接级重试（2026-10-31 实测撞 RDS 2006 被误标 failed）：
+        # rollback 后对象被 expire，重查重设，保证重试幂等；取消终态不翻回 success。
+        _job = get_job_by_id(db, job_id)
+        _run = db.execute(select(FlAnalysisRun).where(FlAnalysisRun.id == run_id)).scalar_one_or_none()
+        if _job is None or _run is None:
+            return
+        _perf = time.perf_counter() - started_perf
+        _run.status = "success"
+        _run.error_message = None
+        _run.duration_ms = max(int(_perf * 1000), 0)
+        _run.finished_at = utcnow()
+        _run.update_date = utcnow()
+        if _job.status == "cancelled":
+            logger.info("任务已被取消，跳过 success 状态写回：job=%s", _job.id)
+        else:
+            _job.status = "success"
+            _job.error_message = None
+        _job.result_summary_json = {
+            **summary,
+            "adapter_status": adapter_status,
+            "external_adapter": _job.external_adapter,
+        }
+        _job.finished_at = utcnow()
+        _job.update_date = utcnow()
+
+    _commit_with_retry(db, label="finish_rule_based_run 成功收尾", reapply=_reapply_success)
 
     if cancelled:
         return
@@ -1821,7 +1923,28 @@ def _mark_run_failed(
         job.error_message = error_message
     job.finished_at = now
     job.update_date = now
-    db.commit()
+
+    def _reapply_failed() -> None:
+        # 失败收尾写库带连接级重试（2026-10-31 实测撞 RDS 2006 被误标 failed）。
+        _job = get_job_by_id(db, job_id)
+        _run = db.execute(select(FlAnalysisRun).where(FlAnalysisRun.id == run_id)).scalar_one_or_none()
+        if _job is None or _run is None:
+            return
+        _perf = time.perf_counter() - started_perf
+        _run.status = "failed"
+        _run.error_message = error_message
+        _run.duration_ms = max(int(_perf * 1000), 0)
+        _run.finished_at = utcnow()
+        _run.update_date = utcnow()
+        if _job.status == "cancelled":
+            pass  # 取消终态不覆盖
+        else:
+            _job.status = "failed"
+            _job.error_message = error_message
+        _job.finished_at = utcnow()
+        _job.update_date = utcnow()
+
+    _commit_with_retry(db, label="mark_run_failed 失败收尾", reapply=_reapply_failed)
 
     if cancelled:
         return
@@ -1847,7 +1970,21 @@ def _mark_job_failed_without_run(db: Session, *, job_id: str, error_message: str
         job.error_message = error_message
     job.finished_at = now
     job.update_date = now
-    db.commit()
+
+    def _reapply_failed_no_run() -> None:
+        # 失败收尾写库带连接级重试（2026-10-31 实测撞 RDS 2006 被误标 failed）。
+        _job = get_job_by_id(db, job_id)
+        if _job is None:
+            return
+        if _job.status == "cancelled":
+            pass  # 取消终态不覆盖
+        else:
+            _job.status = "failed"
+            _job.error_message = error_message
+        _job.finished_at = utcnow()
+        _job.update_date = utcnow()
+
+    _commit_with_retry(db, label="mark_job_failed_without_run 失败收尾", reapply=_reapply_failed_no_run)
 
     if cancelled:
         return
@@ -1966,7 +2103,20 @@ def _execute_report_job(
     job.total_tower_count = len(snapshot_pairs)
     job.snapshotted_tower_count = len(snapshot_pairs)
     job.result_tower_count = result_count
-    db.commit()
+
+    def _reapply_report_counts() -> None:
+        # report 收尾写库带连接级重试（2026-10-31 实测撞 RDS 2006 被误标 failed）。
+        _run = db.execute(select(FlAnalysisRun).where(FlAnalysisRun.id == run.id)).scalar_one_or_none()
+        _job = get_job_by_id(db, job.id)
+        if _run is None or _job is None:
+            return
+        _run.snapshot_tower_count = len(snapshot_pairs)
+        _run.result_tower_count = result_count
+        _job.total_tower_count = len(snapshot_pairs)
+        _job.snapshotted_tower_count = len(snapshot_pairs)
+        _job.result_tower_count = result_count
+
+    _commit_with_retry(db, label="execute_report_job 收尾计数", reapply=_reapply_report_counts)
 
     generated_at = utcnow()
     summary = build_report_summary_payload(
