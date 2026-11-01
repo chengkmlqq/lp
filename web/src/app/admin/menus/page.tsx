@@ -34,7 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { IconPicker } from "@/components/icon-picker";
@@ -182,9 +182,6 @@ export default function AdminMenusPage() {
   const [tableScrollY, setTableScrollY] = useState(MENU_TABLE_MIN_SCROLL_Y);
   const [viewModeOverride, setViewModeOverride] = useState<"card" | "table" | null>(null);
   const viewMode: "table" | "card" = viewModeOverride ?? (isMobile ? "card" : "table");
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedMenus, setAllLoadedMenus] = useState<MenuItem[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [treeFilterKeyword, setTreeFilterKeyword] = useState("");
   const [leftPanelWidth, setLeftPanelWidth] = useState(240);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -379,66 +376,6 @@ export default function AdminMenusPage() {
     await queryClient.invalidateQueries({ queryKey: ADMIN_ME_MENUS_QUERY_KEY });
   };
 
-  // Update allLoadedMenus when menus data changes in card view
-  useEffect(() => {
-    if (viewMode !== "card" || menusQuery.isLoading) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedMenus(() => menus);
-      } else {
-        setAllLoadedMenus((prev) => {
-          if (menus.length === 0) {
-            return prev;
-          }
-          const existingIds = new Set(prev.map(m => m.id));
-          const newMenus = menus.filter(m => !existingIds.has(m.id));
-          return [...prev, ...newMenus];
-        });
-      }
-      setIsLoadingMore(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [menus, menusQuery.isLoading, viewMode, cardViewPage]);
-
-  // Handle infinite scroll for card view
-  useEffect(() => {
-    if (viewMode !== "card") return;
-
-    const pageCard = pageCardRef.current;
-    if (!pageCard) return;
-
-    // LP-255: 外层 Card 已移除，滚动容器为 .admin-menus-main（overflow-y: auto）本身；
-    // 不再通过 .ant-card-body 选择器定位（该选择器会误匹配到菜单卡片 body）
-    const cardBody = pageCard;
-
-    const handleScroll = () => {
-      if (isLoadingMore || menusQuery.isLoading) return;
-
-      const scrollTop = cardBody.scrollTop;
-      const scrollHeight = cardBody.scrollHeight;
-      const clientHeight = cardBody.clientHeight;
-
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const loadedCount = allLoadedMenus.length;
-
-        if (loadedCount < filteredTotal) {
-          setIsLoadingMore(true);
-          setCardViewPage((prev) => prev + 1);
-          setPagination((prev) => ({ ...prev, current: prev.current + 1 }));
-        }
-      }
-    };
-
-    cardBody.addEventListener("scroll", handleScroll);
-    return () => cardBody.removeEventListener("scroll", handleScroll);
-  }, [allLoadedMenus.length, menusQuery.isLoading, isLoadingMore, filteredTotal, viewMode]);
-
   const handleKeywordChange = (value: string) => {
     setKeywordInput(value);
   };
@@ -447,19 +384,15 @@ export default function AdminMenusPage() {
     // 每次点击「查询」都强制触发一次接口请求：
     // searchNonce 作为 queryKey 的一部分自增，保证即便关键词/分页均未变化（旧实现只对
     // 这种情况 refetchQueries，且目标 key 若已被 react-query 缓存会短路不发请求）也会
-    // 产生新 key 重新拉取；关键词/分页照常提交并回到第 1 页。卡片视图不清空已加载列表，
-    // 由下方 Spin 遮罩保留现有卡片，接口返回后再更新，避免查询开始时闪空。
+    // 产生新 key 重新拉取；关键词/分页照常提交并回到第 1 页。
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    setCardViewPage(1);
     setSearchNonce((n) => n + 1);
   };
 
   const handleStatusFilterChange = (value?: "enabled" | "disabled") => {
     setStatusFilter(value);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    setCardViewPage(1);
-    setAllLoadedMenus([]);
   };
 
   const closeDialog = useCallback(() => {
@@ -561,7 +494,6 @@ export default function AdminMenusPage() {
       if (editingMenuId === menuId) {
         closeDialog();
       }
-      setAllLoadedMenus((previous) => previous.filter((item) => item.id !== menuId));
       await refreshData();
     },
     onError: (candidate) => {
@@ -1030,7 +962,6 @@ export default function AdminMenusPage() {
                     onChange={(value) => {
                       setViewModeOverride(value as "card" | "table");
                       setPagination((prev) => ({ ...prev, current: 1 }));
-                      setCardViewPage(1);
                     }}
                     options={[
                       { label: t("卡片视图"), value: "card" },
@@ -1089,7 +1020,6 @@ export default function AdminMenusPage() {
                     onChange={(value) => {
                       setViewModeOverride(value as "card" | "table");
                       setPagination((prev) => ({ ...prev, current: 1 }));
-                      setCardViewPage(1);
                     }}
                     options={[
                       { label: t("卡片视图"), value: "card" },
@@ -1135,11 +1065,11 @@ export default function AdminMenusPage() {
               </div>
             ) : (
               <div className="admin-menus-card-view">
-                {menusQuery.isFetching && allLoadedMenus.length === 0 ? (
+                {menusQuery.isFetching && filteredMenus.length === 0 ? (
                   <div className="admin-menus-card-view-state">
                     <Spin />
                   </div>
-                ) : allLoadedMenus.length === 0 ? (
+                ) : filteredMenus.length === 0 ? (
                   <div className="admin-menus-card-view-state">
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -1151,27 +1081,24 @@ export default function AdminMenusPage() {
                     {/* 查询/刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
                     <Spin spinning={menusQuery.isFetching}>
                       <Row gutter={[12, 12]}>
-                        {allLoadedMenus.map((menuItem) => (
+                        {filteredMenus.map((menuItem) => (
                           <Col key={menuItem.id} xs={24} sm={24} md={12} lg={8} xl={6}>
                             {renderMenuCard(menuItem)}
                           </Col>
                         ))}
                       </Row>
                     </Spin>
-                    {isLoadingMore && (
-                      <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Spin />
-                      </div>
-                    )}
-                    {allLoadedMenus.length >= filteredTotal && allLoadedMenus.length > 0 && (
-                      <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Typography.Text type="secondary">
-                          已加载全部 {allLoadedMenus.length} 条数据
-                        </Typography.Text>
-                      </div>
-                    )}
                   </div>
                 )}
+                <ModoPagination
+                  current={pagination.current}
+                  pageSize={pagination.pageSize}
+                  total={Math.max(filteredTotal, 1)}
+                  onChange={(page, pageSize) => {
+                    setPagination({ current: page, pageSize });
+                  }}
+                  style={{ flexShrink: 0, marginTop: "auto" }}
+                />
               </div>
             )}
           </div>

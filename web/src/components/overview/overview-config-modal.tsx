@@ -125,7 +125,7 @@ export function OverviewConfigModal({
         </Space>
       }
     >
-      <Divider orientation="start" plain>
+      <Divider titlePlacement="left" plain>
         {t("卡片库（点击添加）")}
       </Divider>
       <div className="flex flex-wrap gap-2">
@@ -139,7 +139,7 @@ export function OverviewConfigModal({
         ))}
       </div>
 
-      <Divider orientation="start" plain>
+      <Divider titlePlacement="left" plain>
         {t("已配置卡片")}（{draft.length}）
       </Divider>
 

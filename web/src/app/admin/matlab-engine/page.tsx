@@ -53,7 +53,7 @@ import type { ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -176,9 +176,6 @@ export default function AdminMatlabEnginePage() {
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [viewModeOverride, setViewModeOverride] = useState<"card" | "table" | null>(null);
   const viewMode: "table" | "card" = viewModeOverride ?? (isMobile ? "card" : "table");
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedVersions, setAllLoadedVersions] = useState<MatlabVersion[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
   const [leftPanelWidth, setLeftPanelWidth] = useState(240);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -219,8 +216,6 @@ export default function AdminMatlabEnginePage() {
   // 切换模块时统一重置版本列表相关状态（卡片视图、分页）
   const selectModule = useCallback((slug: string | null) => {
     setSelectedSlug(slug);
-    setCardViewPage(1);
-    setAllLoadedVersions([]);
     setPagination((prev) => ({ ...prev, current: 1 }));
   }, []);
 
@@ -462,59 +457,6 @@ export default function AdminMatlabEnginePage() {
     return filteredVersions.slice(start, start + paginationPageSize);
   }, [filteredVersions, paginationCurrent, paginationPageSize]);
 
-  useEffect(() => {
-    if (viewMode !== "card" || versionsQuery.isLoading) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedVersions(() => pageVersions);
-      } else {
-        setAllLoadedVersions((prev) => {
-          if (pageVersions.length === 0) {
-            return prev;
-          }
-          const existingHashes = new Set(prev.map((v) => v.version_hash));
-          const newVersions = pageVersions.filter((v) => !existingHashes.has(v.version_hash));
-          return [...prev, ...newVersions];
-        });
-      }
-      setIsLoadingMore(() => false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [pageVersions, versionsQuery.isLoading, viewMode, cardViewPage]);
-
-  useEffect(() => {
-    if (viewMode !== "card") return;
-
-    const scrollContainer = pageCardRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      if (isLoadingMore || versionsQuery.isLoading) return;
-
-      const scrollTop = scrollContainer.scrollTop;
-      const scrollHeight = scrollContainer.scrollHeight;
-      const clientHeight = scrollContainer.clientHeight;
-
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const loadedCount = allLoadedVersions.length;
-        if (loadedCount < filteredVersions.length) {
-          setIsLoadingMore(true);
-          setCardViewPage((prev) => prev + 1);
-          setPagination((prev) => ({ ...prev, current: prev.current + 1 }));
-        }
-      }
-    };
-
-    scrollContainer.addEventListener("scroll", handleScroll);
-    return () => scrollContainer.removeEventListener("scroll", handleScroll);
-  }, [viewMode, isLoadingMore, versionsQuery.isLoading, allLoadedVersions.length, filteredVersions.length]);
-
   const openPreview = (title: string, files: string[]) => {
     setPreviewTitle(title);
     setPreviewFiles(files);
@@ -641,11 +583,9 @@ export default function AdminMatlabEnginePage() {
     // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
     // 保证即使关键词/分页均未变化（旧实现只在两者均未变化时才手动 refetchQueries，
     // 且命中缓存时会短路不发请求）也会产生新 key 重新拉取最新数据；
-    // 关键词照常提交并回到第 1 页。卡片视图不在此清空已有卡片，由下方 effect 在
-    // 关键词提交后按第 1 页数据重建，刷新期间保留旧卡片并叠加 loading 遮罩。
+    // 关键词照常提交并回到第 1 页。
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    setCardViewPage(1);
     setSearchNonce((n) => n + 1);
   }, [keywordInput]);
 
@@ -1200,8 +1140,6 @@ export default function AdminMatlabEnginePage() {
                           onChange={(value) => {
                             setViewModeOverride(value as "card" | "table");
                             setPagination((prev) => ({ ...prev, current: 1 }));
-                            setCardViewPage(1);
-                            setAllLoadedVersions([]);
                           }}
                           options={[
                             { label: t("卡片视图"), value: "card" },
@@ -1244,7 +1182,7 @@ export default function AdminMatlabEnginePage() {
                       </div>
                     ) : selectedModule ? (
                       <div className="admin-matlab-card-view">
-                        {allLoadedVersions.length === 0 ? (
+                        {pageVersions.length === 0 ? (
                           versionsQuery.isFetching ? (
                             // 无卡片可展示且请求进行中（首载/切换模块/刷新）：整区居中加载指示
                             <div className="admin-matlab-card-view-state">
@@ -1259,31 +1197,28 @@ export default function AdminMatlabEnginePage() {
                             </div>
                           )
                         ) : (
-                          // 已有卡片：查询/刷新期间不清空，仅叠加 loading 遮罩，接口返回后再更新数据
+                          /* 已有卡片：查询/刷新期间不清空，仅叠加 loading 遮罩，接口返回后再更新数据 */
                           <Spin spinning={versionsQuery.isFetching}>
                             <div className="admin-matlab-card-view-content">
                               <Row gutter={[12, 12]}>
-                                {allLoadedVersions.map((item) => (
+                                {pageVersions.map((item) => (
                                   <Col key={item.version_hash} xs={24} sm={24} md={12} lg={8} xl={6}>
                                     {renderVersionCard(item)}
                                   </Col>
                                 ))}
                               </Row>
-                              {isLoadingMore && (
-                                <div style={{ textAlign: "center", padding: "20px 0" }}>
-                                  <Spin />
-                                </div>
-                              )}
-                              {allLoadedVersions.length >= filteredVersions.length && allLoadedVersions.length > 0 && (
-                                <div style={{ textAlign: "center", padding: "20px 0" }}>
-                                  <Typography.Text type="secondary">
-                                    {t("已加载全部")} {allLoadedVersions.length} {t("条数据")}
-                                  </Typography.Text>
-                                </div>
-                              )}
                             </div>
                           </Spin>
                         )}
+                        <ModoPagination
+                          current={pagination.current}
+                          pageSize={pagination.pageSize}
+                          total={Math.max(filteredVersions.length, 1)}
+                          onChange={(page, pageSize) => {
+                            setPagination({ current: page, pageSize });
+                          }}
+                          style={{ flexShrink: 0, marginTop: "auto" }}
+                        />
                       </div>
                     ) : (
                       <div className="admin-matlab-card-view-state">

@@ -35,7 +35,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 
 import { useI18n } from "@/lib/i18n";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
-import { modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
@@ -264,9 +264,6 @@ export default function AdminTowerModelsPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
   const [pagination, setPagination] = useState({ current: 1, pageSize: TOWER_MODEL_DEFAULT_PAGE_SIZE });
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedModels, setAllLoadedModels] = useState<TowerModelSummary[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [tableScrollY, setTableScrollY] = useState(TOWER_MODEL_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
@@ -344,65 +341,6 @@ export default function AdminTowerModelsPage() {
   useTopicSubscription("admin.tower-models", useCallback(() => {
     void refreshList();
   }, [refreshList]));
-
-  useEffect(() => {
-    if (viewMode !== "card" || towerModelsQuery.isLoading) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedModels(() => listItems);
-      } else {
-        setAllLoadedModels((previous) => {
-          if (listItems.length === 0) {
-            return previous;
-          }
-          const existingIds = new Set(previous.map((item) => item.id));
-          const newModels = listItems.filter((item) => !existingIds.has(item.id));
-          return [...previous, ...newModels];
-        });
-      }
-      setIsLoadingMore(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [cardViewPage, listItems, towerModelsQuery.isLoading, viewMode]);
-
-  // Handle infinite scroll for card view
-  useEffect(() => {
-    if (viewMode !== "card") return;
-
-    const pageCard = pageCardRef.current;
-    if (!pageCard) return;
-
-    const cardBody = pageCard.querySelector<HTMLElement>(".ant-card-body");
-    if (!cardBody) return;
-
-    const handleScroll = () => {
-      if (isLoadingMore || towerModelsQuery.isLoading) return;
-
-      const scrollTop = cardBody.scrollTop;
-      const scrollHeight = cardBody.scrollHeight;
-      const clientHeight = cardBody.clientHeight;
-
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const total = totalItems;
-        const loadedCount = allLoadedModels.length;
-
-        if (loadedCount < total) {
-          setIsLoadingMore(true);
-          setCardViewPage((prev) => prev + 1);
-          setPagination((prev) => ({ ...prev, current: prev.current + 1 }));
-        }
-      }
-    };
-
-    cardBody.addEventListener("scroll", handleScroll);
-    return () => cardBody.removeEventListener("scroll", handleScroll);
-  }, [viewMode, isLoadingMore, towerModelsQuery.isLoading, totalItems, allLoadedModels.length]);
 
   const saveMutation = useMutation({
     mutationFn: async (values: TowerModelFormValues) => {
@@ -933,8 +871,6 @@ export default function AdminTowerModelsPage() {
                   onPressEnter={() => {
                     setSearchKeyword(keywordInput);
                     setPagination((previous) => ({ ...previous, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedModels([]);
                   }}
                 />
               </Form.Item>
@@ -945,8 +881,6 @@ export default function AdminTowerModelsPage() {
                   onClick={() => {
                     setSearchKeyword(keywordInput);
                     setPagination((previous) => ({ ...previous, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedModels([]);
                     void queryClient.refetchQueries({ queryKey: [listPath] });
                   }}
                   className="admin-search-btn" loading={towerModelsQuery.isFetching}
@@ -968,8 +902,6 @@ export default function AdminTowerModelsPage() {
                   onPressEnter={() => {
                     setSearchKeyword(keywordInput);
                     setPagination((previous) => ({ ...previous, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedModels([]);
                   }}
                 />
               </Form.Item>
@@ -985,8 +917,6 @@ export default function AdminTowerModelsPage() {
                   onChange={(value) => {
                     setEnabledFilter(value);
                     setPagination((previous) => ({ ...previous, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedModels([]);
                   }}
                 />
               </Form.Item>
@@ -997,8 +927,6 @@ export default function AdminTowerModelsPage() {
                   onClick={() => {
                     setSearchKeyword(keywordInput);
                     setPagination((previous) => ({ ...previous, current: 1 }));
-                    setCardViewPage(1);
-                    setAllLoadedModels([]);
                     void queryClient.refetchQueries({ queryKey: [listPath] });
                   }}
                   className="admin-search-btn" loading={towerModelsQuery.isFetching}
@@ -1043,11 +971,11 @@ export default function AdminTowerModelsPage() {
           </div>
         ) : (
           <div className="admin-tower-models-card-view">
-            {towerModelsQuery.isLoading && allLoadedModels.length === 0 ? (
+            {towerModelsQuery.isLoading && listItems.length === 0 ? (
               <div className="admin-tower-models-card-view-state">
                 <Spin />
               </div>
-            ) : allLoadedModels.length === 0 ? (
+            ) : listItems.length === 0 ? (
               <div className="admin-tower-models-card-view-state">
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -1057,26 +985,23 @@ export default function AdminTowerModelsPage() {
             ) : (
               <div className="admin-tower-models-card-view-content">
                 <Row gutter={[12, 12]}>
-                  {allLoadedModels.map((row) => (
+                  {listItems.map((row) => (
                     <Col key={row.id} xs={24} sm={24} md={12} lg={8} xl={6}>
                       {renderTowerModelCard(row, t)}
                     </Col>
                   ))}
                 </Row>
-                {isLoadingMore && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Spin />
-                  </div>
-                )}
-                {allLoadedModels.length >= totalItems && allLoadedModels.length > 0 && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Typography.Text type="secondary">
-                      已加载全部 {allLoadedModels.length} 条数据
-                    </Typography.Text>
-                  </div>
-                )}
               </div>
             )}
+            <ModoPagination
+              current={tableCurrentPage}
+              pageSize={pagination.pageSize}
+              total={Math.max(totalItems, 1)}
+              onChange={(page, pageSize) => {
+                setPagination({ current: page, pageSize });
+              }}
+              style={{ flexShrink: 0, marginTop: "auto" }}
+            />
           </div>
         )}
       </AntCard>

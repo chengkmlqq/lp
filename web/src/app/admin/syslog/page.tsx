@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -111,9 +111,6 @@ export default function AdminSyslogPage() {
   const [tableScrollY, setTableScrollY] = useState(SYSLOG_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const viewMode: "table" | "card" = isMobile ? "card" : "table";
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedLogs, setAllLoadedLogs] = useState<AuditLogItem[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
 
   const [actionOptions, setActionOptions] = useState<{ label: string; value: string }[]>([]);
@@ -139,7 +136,6 @@ export default function AdminSyslogPage() {
       user_id: draftFilters.user_id.trim(),
     });
     setOffset(0);
-    setCardViewPage(1);
     setSearchNonce((n) => n + 1);
   };
 
@@ -217,78 +213,6 @@ export default function AdminSyslogPage() {
     clearError: () => setError(null),
     clearSuccess: () => setSuccess(""),
   });
-
-  // Update allLoadedLogs when logs data changes in card view
-  useEffect(() => {
-    // isPlaceholderData 期间展示的是上一份占位数据（新查询进行中），与 isLoading 一样
-    // 不能写入累积列表，否则翻页加载会被提前合并、打乱加载更多顺序
-    if (viewMode !== "card" || logsQuery.isLoading || logsQuery.isPlaceholderData) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedLogs(() => logs);
-      } else {
-        setAllLoadedLogs((prev) => {
-          if (logs.length === 0) {
-            return prev;
-          }
-          const existingIds = new Set(prev.map(l => l.id));
-          const newLogs = logs.filter(l => !existingIds.has(l.id));
-          return [...prev, ...newLogs];
-        });
-      }
-      setIsLoadingMore(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [logs, logsQuery.isLoading, logsQuery.isPlaceholderData, viewMode, cardViewPage]);
-
-  // Handle infinite scroll for card view
-  useEffect(() => {
-    if (viewMode !== "card") return;
-
-    // LP-252: pageCardRef 已迁到 list-pane 容器（admin_syslog_list_pane），
-    // 该容器自身即 overflow-y:auto 滚动容器，直接使用即可
-    const scrollContainer = pageCardRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      if (isLoadingMore || logsQuery.isLoading) return;
-
-      const scrollTop = scrollContainer.scrollTop;
-      const scrollHeight = scrollContainer.scrollHeight;
-      const clientHeight = scrollContainer.clientHeight;
-
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const loadedCount = allLoadedLogs.length;
-
-        if (loadedCount < total) {
-          setIsLoadingMore(true);
-          setCardViewPage((prev) => prev + 1);
-          setOffset((prev) => prev + pageSize);
-        }
-      }
-    };
-
-    scrollContainer.addEventListener("scroll", handleScroll);
-    return () => scrollContainer.removeEventListener("scroll", handleScroll);
-  }, [viewMode, isLoadingMore, logsQuery.isLoading, total, allLoadedLogs.length, pageSize]);
-
-  // Reset card view state when filters change
-  useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => {
-      setCardViewPage(1);
-      setAllLoadedLogs([]);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [filters.action, filters.user_id]);
 
   const columns = useMemo<ColumnsType<AuditLogItem>>(
     () => [
@@ -578,11 +502,11 @@ export default function AdminSyslogPage() {
                   </div>
                 ) : (
                   <div className="admin-syslog-card-view">
-                    {(logsQuery.isLoading || logsQuery.isFetching) && allLoadedLogs.length === 0 ? (
+                    {(logsQuery.isLoading || logsQuery.isFetching) && logs.length === 0 ? (
                       <div className="admin-syslog-card-view-state">
                         <Spin />
                       </div>
-                    ) : allLoadedLogs.length === 0 ? (
+                    ) : logs.length === 0 ? (
                       <div className="admin-syslog-card-view-state">
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -594,27 +518,25 @@ export default function AdminSyslogPage() {
                       <Spin spinning={logsQuery.isFetching}>
                         <div className="admin-syslog-card-view-content">
                           <Row gutter={[12, 12]}>
-                            {allLoadedLogs.map((log) => (
+                            {logs.map((log) => (
                               <Col key={log.id} xs={24} sm={24} md={12} lg={8} xl={6}>
                                 {renderLogCard(log)}
                               </Col>
                             ))}
                           </Row>
-                          {isLoadingMore && (
-                            <div style={{ textAlign: "center", padding: "20px 0" }}>
-                              <Spin />
-                            </div>
-                          )}
-                          {allLoadedLogs.length >= total && allLoadedLogs.length > 0 && (
-                            <div style={{ textAlign: "center", padding: "20px 0" }}>
-                              <Typography.Text type="secondary">
-                                {t("已加载全部")} {allLoadedLogs.length} {t("条数据")}
-                              </Typography.Text>
-                            </div>
-                          )}
                         </div>
                       </Spin>
                     )}
+                    <ModoPagination
+                      current={currentPage}
+                      pageSize={pageSize}
+                      total={Math.max(total, 1)}
+                      onChange={(page, nextPageSize) => {
+                        setPageSize(nextPageSize);
+                        setOffset((page - 1) * nextPageSize);
+                      }}
+                      style={{ flexShrink: 0, marginTop: "auto" }}
+                    />
                   </div>
                 )}
               </div>

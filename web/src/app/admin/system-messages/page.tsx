@@ -31,7 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -329,21 +329,15 @@ export default function AdminSystemMessagesPage() {
   const [tableScrollY, setTableScrollY] = useState(MESSAGES_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const viewMode: "table" | "card" = isMobile ? "card" : "table";
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedMessages, setAllLoadedMessages] = useState<SystemMessageSummary[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // 卡片视图客户端分页（与列表视图同口径：20 条/页）
+  const [cardPage, setCardPage] = useState(1);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
 
   const canManage = hasPermission("admin.system_message");
 
   const listPath = useMemo(() => {
     const params = new URLSearchParams();
-    if (viewMode === "card") {
-      params.set("limit", "20");
-      params.set("offset", String((cardViewPage - 1) * 20));
-    } else {
-      params.set("limit", "200");
-    }
+    params.set("limit", "200");
     if (readStatus) {
       params.set("read_status", readStatus);
     }
@@ -352,7 +346,7 @@ export default function AdminSystemMessagesPage() {
     }
     const qs = params.toString();
     return `/api/v1/system-messages/me?${qs}`;
-  }, [readStatus, viewMode, cardViewPage, messageTypeFilter]);
+  }, [readStatus, messageTypeFilter]);
 
   const listQuery = useQuery({
     queryKey: ["admin.system-messages", listPath, searchNonce],
@@ -547,70 +541,8 @@ export default function AdminSystemMessagesPage() {
   }, [updateTableScrollY]);
 
   const resetCardViewState = () => {
-    setCardViewPage(1);
-    setAllLoadedMessages([]);
-    setIsLoadingMore(false);
+    setCardPage(1);
   };
-
-  // Update allLoadedMessages when messages data changes in card view
-  useEffect(() => {
-    // isPlaceholderData 期间展示的是上一份占位数据（新查询进行中），与 isLoading 一样
-    // 不能写入累积列表，否则翻页加载会被提前合并、打乱加载更多顺序
-    if (viewMode !== "card" || listQuery.isLoading || listQuery.isPlaceholderData) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedMessages(() => messages);
-      } else {
-        setAllLoadedMessages((prev) => {
-          if (messages.length === 0) {
-            return prev;
-          }
-          const existingIds = new Set(prev.map((message) => message.id));
-          const newMessages = messages.filter((message) => !existingIds.has(message.id));
-          return [...prev, ...newMessages];
-        });
-      }
-      setIsLoadingMore(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [messages, listQuery.isLoading, listQuery.isPlaceholderData, viewMode, cardViewPage]);
-
-  // Handle infinite scroll for card view
-  useEffect(() => {
-    if (viewMode !== "card") return;
-
-    const pageCard = pageCardRef.current;
-    if (!pageCard) return;
-
-    const cardBody = pageCard as HTMLElement;
-
-    const handleScroll = () => {
-      if (isLoadingMore || listQuery.isLoading) return;
-
-      const scrollTop = cardBody.scrollTop;
-      const scrollHeight = cardBody.scrollHeight;
-      const clientHeight = cardBody.clientHeight;
-
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const total = listQuery.data?.total ?? 0;
-        const loadedCount = allLoadedMessages.length;
-
-        if (loadedCount < total) {
-          setIsLoadingMore(true);
-          setCardViewPage((prev) => prev + 1);
-        }
-      }
-    };
-
-    cardBody.addEventListener("scroll", handleScroll);
-    return () => cardBody.removeEventListener("scroll", handleScroll);
-  }, [viewMode, isLoadingMore, listQuery.isLoading, listQuery.data?.total, allLoadedMessages.length]);
 
   const openCreateMessageModal = () => {
     setError("");
@@ -1003,11 +935,11 @@ export default function AdminSystemMessagesPage() {
                   </div>
                 ) : (
                   <div className="admin-system-messages-card-view">
-                    {(listQuery.isLoading || listQuery.isFetching) && allLoadedMessages.length === 0 ? (
+                    {(listQuery.isLoading || listQuery.isFetching) && messages.length === 0 ? (
                       <div className="admin-system-messages-card-view-state">
                         <Spin />
                       </div>
-                    ) : allLoadedMessages.length === 0 ? (
+                    ) : messages.length === 0 ? (
                       <div className="admin-system-messages-card-view-state">
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -1019,27 +951,26 @@ export default function AdminSystemMessagesPage() {
                       <Spin spinning={listQuery.isFetching}>
                         <div className="admin-system-messages-card-view-content">
                           <Row gutter={[12, 12]}>
-                            {allLoadedMessages.map((item) => (
-                              <Col key={item.id} xs={24} sm={24} md={12} lg={8} xl={6}>
-                                {renderMessageCard(item)}
-                              </Col>
-                            ))}
+                            {messages
+                              .slice((cardPage - 1) * 20, cardPage * 20)
+                              .map((item) => (
+                                <Col key={item.id} xs={24} sm={24} md={12} lg={8} xl={6}>
+                                  {renderMessageCard(item)}
+                                </Col>
+                              ))}
                           </Row>
-                          {isLoadingMore && (
-                            <div style={{ textAlign: "center", padding: "20px 0" }}>
-                              <Spin />
-                            </div>
-                          )}
-                          {allLoadedMessages.length >= (listQuery.data?.total ?? 0) && allLoadedMessages.length > 0 && (
-                            <div style={{ textAlign: "center", padding: "20px 0" }}>
-                              <Typography.Text type="secondary">
-                                已加载全部 {allLoadedMessages.length} 条数据
-                              </Typography.Text>
-                            </div>
-                          )}
                         </div>
                       </Spin>
                     )}
+                    <ModoPagination
+                      current={cardPage}
+                      pageSize={20}
+                      total={Math.max(listQuery.data?.total ?? 0, 1)}
+                      onChange={(page) => {
+                        setCardPage(page);
+                      }}
+                      style={{ flexShrink: 0, marginTop: "auto" }}
+                    />
                   </div>
                 )}
               </div>

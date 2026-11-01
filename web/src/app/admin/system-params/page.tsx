@@ -36,7 +36,7 @@ import type { ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -138,9 +138,6 @@ export default function AdminSystemParamsPage() {
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [viewModeOverride, setViewModeOverride] = useState<"card" | "table" | null>(null);
   const viewMode: "table" | "card" = viewModeOverride ?? (isMobile ? "card" : "table");
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedParams, setAllLoadedParams] = useState<SystemParamSummary[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
   const paramKeyCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [paramKeyValidationError, setParamKeyValidationError] = useState("");
@@ -685,12 +682,9 @@ export default function AdminSystemParamsPage() {
     // 每次点击「查询」都强制触发一次接口请求：searchNonce 作为 queryKey 的一部分自增，
     // 即便关键词/分页均未变化（旧实现仅 refetchQueries，目标 key 已被 react-query 缓存时
     // 会短路不发请求）也会产生新 key 重新拉取；关键词/状态照常提交并回到第 1 页。
-    // 卡片累积列表不清空：新查询进行中旧卡片保留在 Spin 遮罩之下，接口返回后再由
-    // 累积 effect（cardViewPage===1）整体替换，避免查询开始时卡片闪空。
     setSearchKeyword(keywordInput);
     setStatusFilter(statusFilterInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    setCardViewPage(() => 1);
     setSearchNonce((n) => n + 1);
   };
 
@@ -711,64 +705,6 @@ export default function AdminSystemParamsPage() {
     clearError: () => setError(""),
     clearSuccess: () => setSuccess(""),
   });
-
-  useEffect(() => {
-    // isPlaceholderData 期间展示的是上一份占位数据（新查询进行中），与 isLoading 一样
-    // 不能写入累积列表，否则翻页加载会被提前合并、打乱加载更多顺序
-    if (viewMode !== "card" || listQuery.isLoading || listQuery.isPlaceholderData) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedParams(() => items);
-      } else {
-        setAllLoadedParams((prev) => {
-          if (items.length === 0) {
-            return prev;
-          }
-          const existingIds = new Set(prev.map((p) => p.id));
-          const newParams = items.filter((p) => !existingIds.has(p.id));
-          return [...prev, ...newParams];
-        });
-      }
-      setIsLoadingMore(() => false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [items, listQuery.isLoading, listQuery.isPlaceholderData, viewMode, cardViewPage]);
-
-  // Handle infinite scroll for card view
-  useEffect(() => {
-    if (viewMode !== "card") return;
-
-    const scrollContainer = pageCardRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      if (isLoadingMore || listQuery.isLoading) return;
-
-      const scrollTop = scrollContainer.scrollTop;
-      const scrollHeight = scrollContainer.scrollHeight;
-      const clientHeight = scrollContainer.clientHeight;
-
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const total = listQuery.data?.total ?? 0;
-        const loadedCount = allLoadedParams.length;
-
-        if (loadedCount < total) {
-          setIsLoadingMore(true);
-          setCardViewPage((prev) => prev + 1);
-          setPagination((prev) => ({ ...prev, current: prev.current + 1 }));
-        }
-      }
-    };
-
-    scrollContainer.addEventListener("scroll", handleScroll);
-    return () => scrollContainer.removeEventListener("scroll", handleScroll);
-  }, [viewMode, isLoadingMore, listQuery.isLoading, listQuery.data?.total, allLoadedParams.length]);
 
   useEffect(() => {
     return () => {
@@ -1259,8 +1195,6 @@ export default function AdminSystemParamsPage() {
                 onChange={(value) => {
                   setViewModeOverride(value as "card" | "table");
                   setPagination((prev) => ({ ...prev, current: 1 }));
-                  setCardViewPage(1);
-                  setAllLoadedParams([]);
                 }}
                 options={[
                   { label: t("卡片视图"), value: "card" },
@@ -1305,11 +1239,11 @@ export default function AdminSystemParamsPage() {
             </div>
           ) : (
             <div className="admin-system-params-card-view">
-              {(listQuery.isLoading || listQuery.isFetching) && allLoadedParams.length === 0 ? (
+              {(listQuery.isLoading || listQuery.isFetching) && items.length === 0 ? (
                 <div className="admin-system-params-card-view-state">
                   <Spin />
                 </div>
-              ) : allLoadedParams.length === 0 ? (
+              ) : items.length === 0 ? (
                 <div className="admin-system-params-card-view-state">
                   <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -1317,31 +1251,28 @@ export default function AdminSystemParamsPage() {
                   />
                 </div>
               ) : (
-                // 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据
+                /* 查询/加载期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */
                 <Spin spinning={listQuery.isFetching}>
                   <div className="admin-system-params-card-view-content">
                     <Row gutter={[12, 12]}>
-                      {allLoadedParams.map((param) => (
+                      {items.map((param) => (
                         <Col key={param.id} xs={24} sm={24} md={12} lg={8} xl={6}>
                           {renderParamCard(param)}
                         </Col>
                       ))}
                     </Row>
-                    {isLoadingMore && (
-                      <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Spin />
-                      </div>
-                    )}
-                    {allLoadedParams.length >= (listQuery.data?.total ?? 0) && allLoadedParams.length > 0 && (
-                      <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Typography.Text type="secondary">
-                          已加载全部 {allLoadedParams.length} 条数据
-                        </Typography.Text>
-                      </div>
-                    )}
                   </div>
                 </Spin>
               )}
+              <ModoPagination
+                current={paginationCurrent}
+                pageSize={paginationPageSize}
+                total={Math.max(listQuery.data?.total ?? 0, 1)}
+                onChange={(page, pageSize) => {
+                  setPagination({ current: page, pageSize });
+                }}
+                style={{ flexShrink: 0, marginTop: "auto" }}
+              />
             </div>
           )}
         </div>

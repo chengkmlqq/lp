@@ -28,7 +28,7 @@ import type { CSSProperties, ComponentType, RefAttributes } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -102,9 +102,6 @@ export default function AdminRolesPage() {
   const [tableScrollY, setTableScrollY] = useState(ROLE_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const viewMode: "table" | "card" = isMobile ? "card" : "table";
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedRoles, setAllLoadedRoles] = useState<RoleItem[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
 
   const canRead = hasPermission("role.read") || hasPermission("role.manage");
@@ -540,7 +537,6 @@ export default function AdminRolesPage() {
     // 产生新 key 重新拉取；关键词/分页照常提交并回到第 1 页。
     setSearchKeyword(keywordInput);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    setCardViewPage(1);
     setSearchNonce((n) => n + 1);
   };
 
@@ -553,65 +549,6 @@ export default function AdminRolesPage() {
     clearError: () => setError(null),
     clearSuccess: () => setSuccess(""),
   });
-
-  // Update allLoadedRoles when roles data changes in card view
-  useEffect(() => {
-    if (viewMode !== "card" || rolesQuery.isLoading) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedRoles(roles);
-      } else {
-        setAllLoadedRoles((prev) => {
-          if (roles.length === 0) {
-            return prev;
-          }
-          const existingIds = new Set(prev.map(r => r.id));
-          const newRoles = roles.filter(r => !existingIds.has(r.id));
-          return [...prev, ...newRoles];
-        });
-      }
-      setIsLoadingMore(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [roles, rolesQuery.isLoading, viewMode, cardViewPage]);
-
-  // Handle infinite scroll for card view
-  useEffect(() => {
-    if (viewMode !== "card") return;
-
-    // pageCardRef 已迁到 list-pane 容器（admin_roles_list_pane），
-    // 该容器自身即 overflow-y:auto 滚动容器，直接使用即可
-    const scrollContainer = pageCardRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      if (isLoadingMore || rolesQuery.isLoading) return;
-
-      const scrollTop = scrollContainer.scrollTop;
-      const scrollHeight = scrollContainer.scrollHeight;
-      const clientHeight = scrollContainer.clientHeight;
-
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const total = rolesQuery.data?.roles_total ?? 0;
-        const loadedCount = allLoadedRoles.length;
-
-        if (loadedCount < total) {
-          setIsLoadingMore(true);
-          setCardViewPage((prev) => prev + 1);
-          setPagination((prev) => ({ ...prev, current: prev.current + 1 }));
-        }
-      }
-    };
-
-    scrollContainer.addEventListener("scroll", handleScroll);
-    return () => scrollContainer.removeEventListener("scroll", handleScroll);
-  }, [viewMode, isLoadingMore, rolesQuery.isLoading, rolesQuery.data?.roles_total, allLoadedRoles.length]);
 
   const columns = useMemo<ColumnsType<RoleItem>>(() => {
     const base: ColumnsType<RoleItem> = [
@@ -1070,11 +1007,11 @@ export default function AdminRolesPage() {
                   </div>
                 ) : (
                   <div className="admin-roles-card-view">
-                    {rolesQuery.isFetching && allLoadedRoles.length === 0 ? (
+                    {rolesQuery.isFetching && roles.length === 0 ? (
                       <div className="admin-roles-card-view-state">
                         <Spin />
                       </div>
-                    ) : allLoadedRoles.length === 0 ? (
+                    ) : roles.length === 0 ? (
                       <div className="admin-roles-card-view-state">
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -1086,27 +1023,24 @@ export default function AdminRolesPage() {
                         {/* 查询/刷新期间不清空已有卡片，仅叠加 loading 遮罩，接口返回后再更新数据 */}
                         <Spin spinning={rolesQuery.isFetching}>
                           <Row gutter={[12, 12]}>
-                            {allLoadedRoles.map((role) => (
+                            {roles.map((role) => (
                               <Col key={role.id} xs={24} sm={24} md={12} lg={8} xl={6}>
                                 {renderRoleCard(role)}
                               </Col>
                             ))}
                           </Row>
                         </Spin>
-                        {isLoadingMore && (
-                          <div style={{ textAlign: "center", padding: "20px 0" }}>
-                            <Spin />
-                          </div>
-                        )}
-                        {allLoadedRoles.length >= (rolesQuery.data?.roles_total ?? 0) && allLoadedRoles.length > 0 && (
-                          <div style={{ textAlign: "center", padding: "20px 0" }}>
-                            <Typography.Text type="secondary">
-                              已加载全部 {allLoadedRoles.length} 条数据
-                            </Typography.Text>
-                          </div>
-                        )}
                       </div>
                     )}
+                    <ModoPagination
+                      current={paginationCurrent}
+                      pageSize={paginationPageSize}
+                      total={Math.max(rolesQuery.data?.roles_total ?? 0, 1)}
+                      onChange={(page, pageSize) => {
+                        setPagination({ current: page, pageSize });
+                      }}
+                      style={{ flexShrink: 0, marginTop: "auto" }}
+                    />
                   </div>
                 )}
               </div>

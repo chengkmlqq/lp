@@ -38,7 +38,7 @@ import type { DataNode } from "antd/es/tree";
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
@@ -105,9 +105,6 @@ export default function AdminDocumentsPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [viewModeOverride, setViewModeOverride] = useState<"card" | "table" | null>(null);
   const viewMode: "table" | "card" = viewModeOverride ?? (isMobile ? "card" : "table");
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedDocuments, setAllLoadedDocuments] = useState<Document[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // LP-230: 与系统参数/维度管理页一致的左侧栏拖拽宽度
   const [leftPanelWidth, setLeftPanelWidth] = useState(240);
@@ -507,65 +504,6 @@ export default function AdminDocumentsPage() {
     setTableScrollY((previous) => (Math.abs(previous - clampedHeight) <= 1 ? previous : clampedHeight));
   }, []);
 
-  // Update allLoadedDocuments when documents data changes in card view
-  useEffect(() => {
-    if (viewMode !== "card" || documentsLoading) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedDocuments(() => documents);
-      } else {
-        setAllLoadedDocuments((prev) => {
-          if (documents.length === 0) {
-            return prev;
-          }
-          const existingIds = new Set(prev.map(d => d.id));
-          const newDocs = documents.filter(d => !existingIds.has(d.id));
-          return [...prev, ...newDocs];
-        });
-      }
-      setIsLoadingMore(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [documents, documentsLoading, viewMode, cardViewPage]);
-
-  // Handle infinite scroll for card view
-  useEffect(() => {
-    if (viewMode !== "card") return;
-
-    // LP-258: 外层 AntCard 改为 Tabs 后，.ant-card-body 不再存在；
-    // pageCardRef 挂在 list-pane 滚动容器上，直接以容器自身作为滚动源
-    const listPane = pageCardRef.current;
-    if (!listPane) return;
-
-    const handleScroll = () => {
-      if (isLoadingMore || documentsLoading) return;
-
-      const scrollTop = listPane.scrollTop;
-      const scrollHeight = listPane.scrollHeight;
-      const clientHeight = listPane.clientHeight;
-
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const total = documentsData?.total ?? 0;
-        const loadedCount = allLoadedDocuments.length;
-
-        if (loadedCount < total) {
-          setIsLoadingMore(true);
-          setCardViewPage((prev) => prev + 1);
-          setPagination((prev) => ({ ...prev, current: prev.current + 1 }));
-        }
-      }
-    };
-
-    listPane.addEventListener("scroll", handleScroll);
-    return () => listPane.removeEventListener("scroll", handleScroll);
-  }, [viewMode, isLoadingMore, documentsLoading, documentsData?.total, allLoadedDocuments.length]);
-
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -914,8 +852,6 @@ export default function AdminDocumentsPage() {
                       onPressEnter={() => {
                         setSearchKeyword(keywordInput);
                         setPagination((prev) => ({ ...prev, current: 1 }));
-                        setCardViewPage(1);
-                        setAllLoadedDocuments([]);
                       }}
                     />
                   </Form.Item>
@@ -926,8 +862,6 @@ export default function AdminDocumentsPage() {
                       onClick={() => {
                         setSearchKeyword(keywordInput);
                         setPagination((prev) => ({ ...prev, current: 1 }));
-                        setCardViewPage(1);
-                        setAllLoadedDocuments([]);
                         void queryClient.refetchQueries({ queryKey: ["/api/v1/documents"] });
                       }}
                       className="admin-search-btn" loading={documentsFetching}
@@ -942,8 +876,6 @@ export default function AdminDocumentsPage() {
                     onChange={(value) => {
                       setViewModeOverride(value as "card" | "table");
                       setPagination((prev) => ({ ...prev, current: 1 }));
-                      setCardViewPage(1);
-                      setAllLoadedDocuments([]);
                     }}
                     options={[
                       { label: t("卡片视图"), value: "card" },
@@ -964,8 +896,6 @@ export default function AdminDocumentsPage() {
                       onPressEnter={() => {
                         setSearchKeyword(keywordInput);
                         setPagination((prev) => ({ ...prev, current: 1 }));
-                        setCardViewPage(1);
-                        setAllLoadedDocuments([]);
                       }}
                     />
                   </Form.Item>
@@ -982,8 +912,6 @@ export default function AdminDocumentsPage() {
                       onChange={(value) => {
                         setStatusFilter(value);
                         setPagination((prev) => ({ ...prev, current: 1 }));
-                        setCardViewPage(1);
-                        setAllLoadedDocuments([]);
                       }}
                     />
                   </Form.Item>
@@ -995,8 +923,6 @@ export default function AdminDocumentsPage() {
                       onClick={() => {
                         setSearchKeyword(keywordInput);
                         setPagination((prev) => ({ ...prev, current: 1 }));
-                        setCardViewPage(1);
-                        setAllLoadedDocuments([]);
                         void queryClient.refetchQueries({ queryKey: ["/api/v1/documents"] });
                       }}
                       className="admin-search-btn" loading={documentsFetching}
@@ -1011,8 +937,6 @@ export default function AdminDocumentsPage() {
                     onChange={(value) => {
                       setViewModeOverride(value as "card" | "table");
                       setPagination((prev) => ({ ...prev, current: 1 }));
-                      setCardViewPage(1);
-                      setAllLoadedDocuments([]);
                     }}
                     options={[
                       { label: t("卡片视图"), value: "card" },
@@ -1056,11 +980,11 @@ export default function AdminDocumentsPage() {
               </div>
             ) : (
               <div className="admin-documents-card-view">
-                {documentsLoading && allLoadedDocuments.length === 0 ? (
+                {documentsLoading && documents.length === 0 ? (
                   <div className="admin-documents-card-view-state">
                     <Spin />
                   </div>
-                ) : allLoadedDocuments.length === 0 ? (
+                ) : documents.length === 0 ? (
                   <div className="admin-documents-card-view-state">
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -1070,26 +994,23 @@ export default function AdminDocumentsPage() {
                 ) : (
                   <div className="admin-documents-card-view-content">
                     <Row gutter={[12, 12]}>
-                      {allLoadedDocuments.map((doc) => (
+                      {documents.map((doc) => (
                         <Col key={doc.id} xs={24} sm={24} md={12} lg={8} xl={6}>
                           {renderDocumentCard(doc)}
                         </Col>
                       ))}
                     </Row>
-                    {isLoadingMore && (
-                      <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Spin />
-                      </div>
-                    )}
-                    {allLoadedDocuments.length >= (documentsData?.total ?? 0) && allLoadedDocuments.length > 0 && (
-                      <div style={{ textAlign: "center", padding: "20px 0" }}>
-                        <Typography.Text type="secondary">
-                          已加载全部 {allLoadedDocuments.length} 条数据
-                        </Typography.Text>
-                      </div>
-                    )}
                   </div>
                 )}
+                <ModoPagination
+                  current={pagination.current}
+                  pageSize={pagination.pageSize}
+                  total={Math.max(documentsData?.total ?? 0, 1)}
+                  onChange={(page, pageSize) => {
+                    setPagination({ current: page, pageSize });
+                  }}
+                  style={{ flexShrink: 0, marginTop: "auto" }}
+                />
               </div>
             )}
           </div>

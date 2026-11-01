@@ -27,7 +27,7 @@ import { CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, FileText
 
 import { useI18n } from "@/lib/i18n";
 import { ModoTabs } from "@/components/biz/modo-tabs";
-import { modoTablePagination } from "@/components/biz/modo-pagination";
+import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { useAuth } from "@/components/auth-provider";
 import { TaskLogViewerDrawer } from "@/components/task-log-viewer";
@@ -161,9 +161,6 @@ export default function AdminTaskMonitorPage() {
   const [tableScrollY, setTableScrollY] = useState(TASK_MONITOR_TABLE_MIN_SCROLL_Y);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const viewMode: "table" | "card" = isMobile ? "card" : "table";
-  const [cardViewPage, setCardViewPage] = useState(1);
-  const [allLoadedTasks, setAllLoadedTasks] = useState<TaskTableRow[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageCardRef = useRef<HTMLDivElement | null>(null);
   const { current: paginationCurrent, pageSize: paginationPageSize } = pagination;
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
@@ -182,14 +179,11 @@ export default function AdminTaskMonitorPage() {
 
   const resetTaskListPagination = useCallback(() => {
     setPagination((prev) => ({ ...prev, current: 1 }));
-    setCardViewPage(1);
-    setAllLoadedTasks([]);
-    setIsLoadingMore(false);
   }, []);
 
   const overviewQuery = useQuery({
     queryKey: ["task-monitor-overview", paginationCurrent, paginationPageSize, taskKeyword, searchVersion],
-    enabled: Boolean(user) && canRead && viewMode === "table",
+    enabled: Boolean(user) && canRead,
     queryFn: async () => {
       const params = new URLSearchParams({
         offset: String((paginationCurrent - 1) * paginationPageSize),
@@ -208,31 +202,10 @@ export default function AdminTaskMonitorPage() {
     staleTime: 5_000,
   });
 
-  const cardQuery = useQuery({
-    queryKey: ["task-monitor-overview-card", cardViewPage, paginationPageSize, taskKeyword, searchVersion],
-    enabled: Boolean(user) && canRead && viewMode === "card",
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        offset: String((cardViewPage - 1) * paginationPageSize),
-        limit: String(paginationPageSize),
-      });
-      if (taskKeyword.trim()) {
-        params.set("keyword", taskKeyword.trim());
-      }
-      const response = await fetchWithAuth(`/api/v1/admin/task-monitor/overview?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as TaskMonitorOverviewResponse;
-    },
-    placeholderData: (previousData) => previousData,
-    staleTime: 5_000,
-  });
-
   const overviewData = overviewQuery.data;
 
   // 顶部统计卡：表格/卡片视图共用（同一关键词下聚合口径一致，均来自后端全量分桶）
-  const activeOverview = viewMode === "table" ? overviewData : cardQuery.data;
+  const activeOverview = overviewData;
 
   const taskStats = useMemo<TaskMonitorStats>(() => {
     const buckets = activeOverview?.task_state_buckets ?? [];
@@ -263,21 +236,14 @@ export default function AdminTaskMonitorPage() {
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
-      if (viewMode === "card") {
-        setCardViewPage(1);
-        setAllLoadedTasks([]);
-        setIsLoadingMore(false);
-        cardQuery.refetch();
-      } else {
-        overviewQuery.refetch();
-      }
+      overviewQuery.refetch();
     } catch (error) {
       const message = error instanceof Error ? error.message : t("删除任务失败");
       Modal.error({ title: t("删除任务失败"), content: message });
     } finally {
       setDeletingTaskId(null);
     }
-  }, [fetchWithAuth, overviewQuery, cardQuery, viewMode]);
+  }, [fetchWithAuth, overviewQuery]);
 
   const confirmDeleteTask = useCallback((taskId: string) => {
     Modal.confirm({
@@ -388,14 +354,14 @@ export default function AdminTaskMonitorPage() {
 
   // 删除/筛选后 total 缩小，若 current 超出最大页则回退到最后一页，避免空白页
   useEffect(() => {
-    if (viewMode !== "table" || taskTotal <= 0) {
+    if (taskTotal <= 0) {
       return;
     }
     const maxPage = Math.max(1, Math.ceil(taskTotal / paginationPageSize));
     if (paginationCurrent > maxPage) {
       setPagination((prev) => ({ ...prev, current: maxPage }));
     }
-  }, [viewMode, taskTotal, paginationPageSize, paginationCurrent]);
+  }, [taskTotal, paginationPageSize, paginationCurrent]);
 
   const handleSearch = useCallback(() => {
     setSearchVersion((prev) => prev + 1);
@@ -403,93 +369,18 @@ export default function AdminTaskMonitorPage() {
     resetTaskListPagination();
   }, [pendingKeyword, resetTaskListPagination]);
 
-  const overviewErrorMessage = (
-    viewMode === "table" ? overviewQuery.error : cardQuery.error
-  ) instanceof Error
-    ? formatTaskMonitorErrorMessage(
-        (viewMode === "table" ? overviewQuery.error : cardQuery.error)?.message ?? "",
-        t("任务监控概览数据加载失败，请稍后重试。"),
-        t,
-      )
-    : "";
+  const overviewErrorMessage =
+    overviewQuery.error instanceof Error
+      ? formatTaskMonitorErrorMessage(
+          overviewQuery.error?.message ?? "",
+          t("任务监控概览数据加载失败，请稍后重试。"),
+          t,
+        )
+      : "";
 
   useToastFeedback({
     errorMessage: overviewErrorMessage,
   });
-
-  useEffect(() => {
-    if (viewMode !== "card" || cardQuery.isFetching) {
-      return;
-    }
-
-    const pageTasks = (cardQuery.data?.tasks ?? []).map((task) => ({
-      task_id: task.task_id,
-      name: task.name,
-      state: task.state,
-      worker: task.worker || "-",
-      queue_name: task.queue_name,
-      started_at: task.started_at,
-      finished_at: task.done_at,
-      runtime_seconds: task.runtime_seconds,
-      key: `overview:${task.task_id}`,
-    }));
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (cardViewPage === 1) {
-        setAllLoadedTasks(() => pageTasks);
-      } else {
-        setAllLoadedTasks((prev) => {
-          if (pageTasks.length === 0) {
-            return prev;
-          }
-          const existingKeys = new Set(prev.map((task) => task.key));
-          const newTasks = pageTasks.filter((task) => !existingKeys.has(task.key));
-          return [...prev, ...newTasks];
-        });
-      }
-
-      setIsLoadingMore(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [cardQuery.isFetching, cardQuery.data, cardViewPage, viewMode]);
-
-  useEffect(() => {
-    if (viewMode !== "card") {
-      return;
-    }
-
-    const pageCard = pageCardRef.current;
-    if (!pageCard) {
-      return;
-    }
-
-    const cardBody = pageCard as HTMLElement;
-
-    const handleScroll = () => {
-      if (isLoadingMore || cardQuery.isFetching) {
-        return;
-      }
-
-      const { scrollTop, scrollHeight, clientHeight } = cardBody;
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
-        const total = cardQuery.data?.total ?? 0;
-        const loadedCount = allLoadedTasks.length;
-
-        if (loadedCount < total) {
-          setIsLoadingMore(true);
-          setCardViewPage((prev) => prev + 1);
-        }
-      }
-    };
-
-    cardBody.addEventListener("scroll", handleScroll);
-    return () => {
-      cardBody.removeEventListener("scroll", handleScroll);
-    };
-  }, [allLoadedTasks.length, cardQuery.isFetching, cardQuery.data?.total, isLoadingMore, viewMode]);
 
   const updateTableScrollY = useCallback(() => {
     if (typeof window === "undefined") {
@@ -812,7 +703,7 @@ export default function AdminTaskMonitorPage() {
                   htmlType="button"
                   icon={<SearchOutlined />}
                   onClick={handleSearch}
-                  className="admin-search-btn" loading={cardQuery.isFetching}
+                  className="admin-search-btn" loading={overviewQuery.isFetching}
                 >
                   {t("查询")}
                 </Button>
@@ -822,7 +713,7 @@ export default function AdminTaskMonitorPage() {
         )}
 
 
-        {viewMode === "table" && !overviewData && !overviewQuery.isFetching && (
+        {!overviewData && !overviewQuery.isFetching && (
           <div className="mt-4">
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -864,11 +755,11 @@ export default function AdminTaskMonitorPage() {
           </div>
         ) : (
           <div className="admin-task-monitor-card-view">
-            {cardQuery.isFetching && allLoadedTasks.length === 0 ? (
+            {overviewQuery.isFetching && allTaskRows.length === 0 ? (
               <div className="admin-task-monitor-card-view-state">
                 <Spin />
               </div>
-            ) : allLoadedTasks.length === 0 ? (
+            ) : allTaskRows.length === 0 ? (
               <div className="admin-task-monitor-card-view-state">
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -878,26 +769,23 @@ export default function AdminTaskMonitorPage() {
             ) : (
               <div className="admin-task-monitor-card-view-content">
                 <Row gutter={[12, 12]}>
-                  {allLoadedTasks.map((task) => (
+                  {allTaskRows.map((task) => (
                     <Col key={task.key} xs={24} sm={24} md={12} lg={8} xl={6}>
                       {renderTaskCard(task)}
                     </Col>
                   ))}
                 </Row>
-                {isLoadingMore && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Spin />
-                  </div>
-                )}
-                {allLoadedTasks.length >= (cardQuery.data?.total ?? 0) && allLoadedTasks.length > 0 && (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <Typography.Text type="secondary">
-                      已加载全部 {allLoadedTasks.length} 条数据
-                    </Typography.Text>
-                  </div>
-                )}
               </div>
             )}
+            <ModoPagination
+              current={paginationCurrent}
+              pageSize={paginationPageSize}
+              total={Math.max(taskTotal, 1)}
+              onChange={(page, pageSize) => {
+                setPagination({ current: page, pageSize });
+              }}
+              style={{ flexShrink: 0, marginTop: "auto" }}
+            />
           </div>
         )}
               </div>
