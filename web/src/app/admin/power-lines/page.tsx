@@ -379,7 +379,7 @@ export default function AdminPowerLinesPage() {
         ...previous,
         {
           key,
-          label: `线路详情 - ${line.name || line.code}`,
+          label: `${t("线路详情")} - ${line.name || line.code}`,
           closable: true,
           children: (
             <AdminPowerLinesDetailView
@@ -404,7 +404,7 @@ export default function AdminPowerLinesPage() {
         ...previous,
         {
           key,
-          label: `线路预览 - ${line.name || line.code}`,
+          label: `${t("线路预览")} - ${line.name || line.code}`,
           closable: true,
           children: (
             <div className="modo-page-card admin-power-line-preview-pane">
@@ -483,7 +483,7 @@ export default function AdminPowerLinesPage() {
         tabBarExtraContent={
           canCreateLine ? (
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreateLineModal}>
-              新建线路
+              {t("新建线路")}
             </Button>
           ) : null
         }
@@ -564,7 +564,7 @@ export default function AdminPowerLinesPage() {
                             onDelete={() => {
                               modalApi.confirm({
                                 title: t("删除线路"),
-                                content: `确认删除线路 ${line.name || line.code} 吗？`,
+                                content: `${t("确认删除线路")} ${line.name || line.code} ${t("吗？")}`,
                                 okText: t("删除"),
                                 cancelText: t("取消"),
                                 okButtonProps: { danger: true },
@@ -609,7 +609,7 @@ export default function AdminPowerLinesPage() {
                       onDelete={(line) => {
                         modalApi.confirm({
                           title: t("删除线路"),
-                          content: `确认删除线路 ${line.name || line.code} 吗？`,
+                          content: `${t("确认删除线路")} ${line.name || line.code} ${t("吗？")}`,
                           okText: t("删除"),
                           cancelText: t("取消"),
                           okButtonProps: { danger: true },
@@ -715,18 +715,18 @@ function PowerLineCard({ line, canLineManage, canUpdateLine, canDeleteLine, canM
           </div>
           <div className="flex items-center gap-2">
             <ApartmentOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" className="text-xs">杆塔总数：{line.tower_count}</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs">{t("杆塔总数")}：{line.tower_count}</Typography.Text>
           </div>
           <div className="flex items-center gap-2">
             <SwapOutlined className="text-xs text-gray-500" />
             <Typography.Text type="secondary" className="text-xs">
-              估算长度：{line.estimated_length_km != null && line.estimated_length_km > 0 ? `${line.estimated_length_km.toFixed(2)} km` : "-"}
+              {t("估算长度")}：{line.estimated_length_km != null && line.estimated_length_km > 0 ? `${line.estimated_length_km.toFixed(2)} km` : "-"}
             </Typography.Text>
           </div>
           <div className="flex items-center gap-2">
             <ClockCircleOutlined className="text-xs text-gray-500" />
             <Typography.Text type="secondary" className="text-xs">
-              更新时间：{formatDateTime(line.update_date)}
+              {t("更新时间")}：{formatDateTime(line.update_date)}
             </Typography.Text>
           </div>
         </div>
