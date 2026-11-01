@@ -29,6 +29,7 @@ import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { readApiError } from "@/lib/api";
+import { measureTableScrollY } from "@/lib/table-scroll-y";
 import type { ScheduledTaskListResponse, ScheduledTaskRunResponse, ScheduledTaskSummary } from "@/types/auth";
 
 type StatusFilter = "all" | "enabled" | "disabled" | ScheduledTaskSummary["status"];
@@ -63,7 +64,6 @@ const TIMEZONE_OPTIONS = [
 const LIST_TAB_KEY = "list";
 
 const TABLE_MIN_SCROLL_Y = 180;
-const TABLE_VIEWPORT_GAP = 40;
 const TABLE_FALLBACK_RESERVE = 220;
 const TABLE_EXTRA_HEIGHT = 15;
 
@@ -393,16 +393,14 @@ export default function AdminScheduledTasksPage() {
     }
 
     const anchorTop = anchor.getBoundingClientRect().top;
-    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
-    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
-
     let nextHeight = Math.floor(window.innerHeight - anchorTop - TABLE_FALLBACK_RESERVE);
-    if (tableWrapper) {
-      const wrapperRect = tableWrapper.getBoundingClientRect();
-      const bodyHeight = tableBody?.getBoundingClientRect().height ?? TABLE_MIN_SCROLL_Y;
-      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
-      const topGap = Math.max(0, wrapperRect.top - anchorTop);
-      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - TABLE_VIEWPORT_GAP);
+    // 站点级样式（globals.css）把表格锚点拉伸为撑满白卡的 flex 列，旧公式
+    // wrapper.height - body.height 会把拉伸空白误算成外围高度，导致表体被钳在
+    // 最小值、未占满剩余空间就出现纵向滚动条；改用统一测量工具按实际
+    // chrome（表头+分页+边框）与滚动容器底边计算，两种布局都稳定收敛
+    const measuredHeight = measureTableScrollY(anchor);
+    if (measuredHeight !== null) {
+      nextHeight = measuredHeight;
     }
 
     const clampedHeight = Math.max(TABLE_MIN_SCROLL_Y, nextHeight + TABLE_EXTRA_HEIGHT);

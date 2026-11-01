@@ -55,6 +55,7 @@ import type {
   DocumentUpdateRequest,
 } from "@/types/document";
 import Link from "next/link";
+import { measureTableScrollY } from "@/lib/table-scroll-y";
 
 const { TextArea } = Input;
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
@@ -75,7 +76,6 @@ type DocumentFormValues = {
 };
 
 const DOCUMENTS_TABLE_MIN_SCROLL_Y = 180;
-const DOCUMENTS_TABLE_VIEWPORT_GAP = 40;
 // LP-258: 移除外层 Card 改为 Tabs 后锚点位置上移，参照地闪密度（LP-245）与雷电流幅值（LP-246）
 // 统一 FALLBACK_RESERVE=220（去掉 EXTRA_HEIGHT 补量）
 const DOCUMENTS_TABLE_FALLBACK_RESERVE = 220;
@@ -490,16 +490,14 @@ export default function AdminDocumentsPage() {
     }
 
     const anchorTop = anchor.getBoundingClientRect().top;
-    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
-    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
-
     let nextHeight = Math.floor(window.innerHeight - anchorTop - DOCUMENTS_TABLE_FALLBACK_RESERVE);
-    if (tableWrapper) {
-      const wrapperRect = tableWrapper.getBoundingClientRect();
-      const bodyHeight = tableBody?.getBoundingClientRect().height ?? DOCUMENTS_TABLE_MIN_SCROLL_Y;
-      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
-      const topGap = Math.max(0, wrapperRect.top - anchorTop);
-      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - DOCUMENTS_TABLE_VIEWPORT_GAP);
+    // 站点级样式（globals.css）把表格锚点拉伸为撑满白卡的 flex 列，旧公式
+    // wrapper.height - body.height 会把拉伸空白误算成外围高度，导致表体被钳在
+    // 最小值、未占满剩余空间就出现纵向滚动条；改用统一测量工具按实际
+    // chrome（表头+分页+边框）与滚动容器底边计算，两种布局都稳定收敛
+    const measuredHeight = measureTableScrollY(anchor);
+    if (measuredHeight !== null) {
+      nextHeight = measuredHeight;
     }
 
     const clampedHeight = Math.max(DOCUMENTS_TABLE_MIN_SCROLL_Y, nextHeight);

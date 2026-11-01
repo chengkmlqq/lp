@@ -35,6 +35,7 @@ import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { readApiError } from "@/lib/api";
 import { getTaskDisplayName } from "@/lib/celery-task-display";
+import { measureTableScrollY } from "@/lib/table-scroll-y";
 import {
   formatTaskMonitorDuration,
   formatTaskMonitorErrorMessage,
@@ -46,7 +47,6 @@ const { Text } = Typography;
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 const TASK_MONITOR_TABLE_MIN_SCROLL_Y = 180;
-const TASK_MONITOR_TABLE_VIEWPORT_GAP = 40;
 const TASK_MONITOR_TABLE_FALLBACK_RESERVE = 220;
 
 /** Response type from /api/v1/admin/task-monitor/overview */
@@ -392,16 +392,14 @@ export default function AdminTaskMonitorPage() {
     }
 
     const anchorTop = anchor.getBoundingClientRect().top;
-    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
-    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
-
     let nextHeight = Math.floor(window.innerHeight - anchorTop - TASK_MONITOR_TABLE_FALLBACK_RESERVE);
-    if (tableWrapper) {
-      const wrapperRect = tableWrapper.getBoundingClientRect();
-      const bodyHeight = tableBody?.getBoundingClientRect().height ?? TASK_MONITOR_TABLE_MIN_SCROLL_Y;
-      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
-      const topGap = Math.max(0, wrapperRect.top - anchorTop);
-      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - TASK_MONITOR_TABLE_VIEWPORT_GAP);
+    // 站点级样式（globals.css）把表格锚点拉伸为撑满白卡的 flex 列，旧公式
+    // wrapper.height - body.height 会把拉伸空白误算成外围高度，导致表体被钳在
+    // 最小值、未占满剩余空间就出现纵向滚动条；改用统一测量工具按实际
+    // chrome（表头+分页+边框）与滚动容器底边计算，两种布局都稳定收敛
+    const measuredHeight = measureTableScrollY(anchor);
+    if (measuredHeight !== null) {
+      nextHeight = measuredHeight;
     }
 
     const clampedHeight = Math.max(TASK_MONITOR_TABLE_MIN_SCROLL_Y, nextHeight);

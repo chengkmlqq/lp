@@ -43,6 +43,7 @@ import { useToastFeedback } from "@/hooks/use-toast-feedback";
 import { useTopicSubscription } from "@/hooks/use-topic-subscription";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { readApiError } from "@/lib/api";
+import { measureTableScrollY } from "@/lib/table-scroll-y";
 import type { ParamCategoryTreeItem, SystemParamListResponse, SystemParamSummary } from "@/types/auth";
 
 type StatusFilter = "enabled" | "disabled" | undefined;
@@ -71,7 +72,6 @@ const ENCRYPTED_VALUE_MASK = "••••••••";
 const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 const PARAM_TABLE_MIN_SCROLL_Y = 180;
-const PARAM_TABLE_VIEWPORT_GAP = 40;
 const PARAM_TABLE_FALLBACK_RESERVE = 232;
 const PARAM_TABLE_EXTRA_HEIGHT = 14;
 
@@ -948,16 +948,14 @@ export default function AdminSystemParamsPage() {
     }
 
     const anchorTop = anchor.getBoundingClientRect().top;
-    const tableWrapper = anchor.querySelector<HTMLElement>(".ant-table-wrapper");
-    const tableBody = anchor.querySelector<HTMLElement>(".ant-table-body");
-
     let nextHeight = Math.floor(window.innerHeight - anchorTop - PARAM_TABLE_FALLBACK_RESERVE);
-    if (tableWrapper) {
-      const wrapperRect = tableWrapper.getBoundingClientRect();
-      const bodyHeight = tableBody?.getBoundingClientRect().height ?? PARAM_TABLE_MIN_SCROLL_Y;
-      const nonBodyHeight = Math.max(0, wrapperRect.height - bodyHeight);
-      const topGap = Math.max(0, wrapperRect.top - anchorTop);
-      nextHeight = Math.floor(window.innerHeight - anchorTop - topGap - nonBodyHeight - PARAM_TABLE_VIEWPORT_GAP);
+    // 站点级样式（globals.css）把表格锚点拉伸为撑满白卡的 flex 列，旧公式
+    // wrapper.height - body.height 会把拉伸空白误算成外围高度，导致表体被钳在
+    // 最小值、未占满剩余空间就出现纵向滚动条；改用统一测量工具按实际
+    // chrome（表头+分页+边框）与滚动容器底边计算，两种布局都稳定收敛
+    const measuredHeight = measureTableScrollY(anchor);
+    if (measuredHeight !== null) {
+      nextHeight = measuredHeight;
     }
 
     const clampedHeight = Math.max(PARAM_TABLE_MIN_SCROLL_Y, nextHeight + PARAM_TABLE_EXTRA_HEIGHT);
