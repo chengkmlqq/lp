@@ -127,19 +127,19 @@ function formatDateTime(value: string | null | undefined): string {
   return date.toLocaleString("zh-CN", { hour12: false });
 }
 
-function parseJsonObject(text: string, fieldLabel: string): Record<string, unknown> | null {
+function parseJsonObject(text: string, fieldLabel: string, t: (s: string) => string): Record<string, unknown> | null {
   const trimmed = text.trim();
   if (!trimmed) return {};
   try {
     const parsed = JSON.parse(trimmed) as unknown;
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      message.error(`${fieldLabel} 需要是一个 JSON 对象`);
+      message.error(`${fieldLabel} ${t("需要是一个 JSON 对象")}`);
       return null;
     }
     return parsed as Record<string, unknown>;
   } catch (error) {
     message.error(
-      `${fieldLabel} JSON 解析失败：${error instanceof Error ? error.message : String(error)}`,
+      `${fieldLabel} ${t("JSON 解析失败：")}${error instanceof Error ? error.message : String(error)}`,
     );
     return null;
   }
@@ -213,9 +213,9 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
     let baseTower: Record<string, unknown> = {};
     let profile: Record<string, unknown> = {};
     if (paramsSource === "tower") {
-      const parsedBase = parseJsonObject(baseTowerText, "base_tower");
+      const parsedBase = parseJsonObject(baseTowerText, "base_tower", t);
       if (parsedBase === null) return;
-      const parsedProfile = parseJsonObject(profileText, "profile");
+      const parsedProfile = parseJsonObject(profileText, "profile", t);
       if (parsedProfile === null) return;
       baseTower = parsedBase;
       profile = parsedProfile;
@@ -325,14 +325,14 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                     style={{ width: 140 }}
                   />
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    与 C# 侧必须同值
+                    {t("与 C# 侧必须同值")}
                   </Typography.Text>
                 </Space>
                 <Space size={8}>
                   <Typography.Text>{t("试跑")}</Typography.Text>
                   <Switch checked={dryRun} onChange={setDryRun} />
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    只列命令不执行
+                    {t("只列命令不执行")}
                   </Typography.Text>
                 </Space>
               </Space>
@@ -389,13 +389,13 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                               rows={4}
                               value={baseTowerText}
                               onChange={(event) => setBaseTowerText(event.target.value)}
-                              placeholder='base_tower（JSON 对象），如 {"line_voltage_kv":220,"ground_resistance":7}'
+                              placeholder={`${t("base_tower（JSON 对象），如 {")}{"line_voltage_kv":220,"ground_resistance":7}}`}
                             />
                             <Input.TextArea
                               rows={3}
                               value={profileText}
                               onChange={(event) => setProfileText(event.target.value)}
-                              placeholder='profile（JSON 对象），如 {"insulator_length_mm":2491.5}'
+                              placeholder={`${t("profile（JSON 对象），如 {")}{"insulator_length_mm":2491.5}}`}
                             />
                           </>
                         ) : (
@@ -403,7 +403,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                             <Typography.Text>{t("模板默认值不完整时仍继续")}</Typography.Text>
                             <Switch checked={allowIncomplete} onChange={setAllowIncomplete} />
                             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                              默认关闭：缺默认值会直接报错并列出缺哪些变量（避免算出无意义结果）
+                              {t("默认关闭：缺默认值会直接报错并列出缺哪些变量（避免算出无意义结果）")}
                             </Typography.Text>
                           </Space>
                         )}
@@ -430,7 +430,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                 </Button>
                 <Tooltip title={t("从头按 ①→②→③ 依次跑完整测试；依赖段会自动补齐")}>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    仅跑某一段时，前置段会自动补跑（产物必须先存在）。
+                    {t("仅跑某一段时，前置段会自动补跑（产物必须先存在）。")}
                   </Typography.Text>
                 </Tooltip>
               </Space>
@@ -444,7 +444,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                 <Typography.Text strong>{t("当前测试")}</Typography.Text>
                 {statusTag(activeRun.status, t)}
                 <Typography.Text type="secondary">
-                  用时{" "}
+                  {t("用时")}{" "}
                   {activeRun.duration_ms != null
                     ? `${(activeRun.duration_ms / 1000).toFixed(1)}s`
                     : "-"}
@@ -643,13 +643,13 @@ function StageCard({
         {runStatus && result ? (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {failedCount > 0
-              ? `${failedCount} 条判据未通过`
-              : `${result.verdicts.length} 条判据`}
+              ? `${failedCount} ${t("条判据未通过")}`
+              : `${result.verdicts.length} ${t("条判据")}`}
           </Typography.Text>
         ) : null}
         {!result && !running && runStatus ? (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            该段在本次运行中未执行（未勾选且非依赖段）。
+            {t("该段在本次运行中未执行（未勾选且非依赖段）。")}
           </Typography.Text>
         ) : null}
         {result ? <StageDetail result={result} runId={runId} /> : null}
@@ -734,7 +734,7 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
       {artifactRows.length > 0 ? (
         <>
           <Typography.Text strong style={{ fontSize: 12 }}>
-            计算产物
+            {t("计算产物")}
           </Typography.Text>
           <Table
             rowKey="key"
@@ -772,7 +772,7 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
                           setViewPath(row.path);
                         }}
                       >
-                        波形
+                        {t("波形")}
                       </Button>
                     );
                   }
@@ -795,7 +795,7 @@ function StageDetail({ result, runId }: { result: AtpAssetTestStageResult; runId
                           setViewWave(false);
                         }}
                       >
-                        查看
+                        {t("查看")}
                       </Button>
                     );
                   }

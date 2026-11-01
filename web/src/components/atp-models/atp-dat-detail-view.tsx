@@ -161,8 +161,8 @@ export function AtpDatDetailView({ assetId, relativePath }: AtpDatDetailProps) {
         items={[
           { key: "name", label: t("文件名"), children: data.name || "-" },
           { key: "size", label: t("文件大小"), children: `${data.size} B` },
-          { key: "model", label: t("线路模型"), children: "JMARTI(频率相关) / LCC 线路常数" },
-          { key: "unit", label: t("单位制"), children: parsed?.metric ? "公制(METRIC)" : "-" },
+          { key: "model", label: t("线路模型"), children: t("JMARTI(频率相关) / LCC 线路常数") },
+          { key: "unit", label: t("单位制"), children: parsed?.metric ? t("公制(METRIC)") : "-" },
           { key: "conductor_count", label: t("导体数"), children: String(parsed?.rows.length ?? "-") },
           {
             key: "ground_wire",
@@ -172,7 +172,7 @@ export function AtpDatDetailView({ assetId, relativePath }: AtpDatDetailProps) {
         ]}
       />
       <Typography.Title level={5} style={{ marginTop: 16, fontSize: 14 }}>
-        导线布置(运维可读)
+        {t("导线布置(运维可读)")}
       </Typography.Title>
       <Table
         rowKey="key"

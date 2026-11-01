@@ -3,6 +3,7 @@
 // ATP 测试波形视图:解析后端返回的 pl4 波形数据(通道/时间/采样),
 // 用纯 SVG 绘制多通道折线图,支持通道多选/全选。无第三方绘图依赖。
 import { useMemo, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 
 export interface WaveformChannel {
   name: string;
@@ -29,6 +30,7 @@ interface WaveformChartProps {
 }
 
 export function WaveformChart({ data }: WaveformChartProps) {
+  const { t } = useI18n();
   const [selected, setSelected] = useState<Set<number>>(() => {
     // 默认选前 3 个通道(通常是三相电压/电流),避免一上来 34 条线糊成一团
     const initial = new Set<number>();
@@ -151,7 +153,7 @@ export function WaveformChart({ data }: WaveformChartProps) {
           }}
           href="#"
         >
-          全选
+          {t("全选")}
         </a>
         <a
           style={{ fontSize: 12 }}
@@ -161,10 +163,10 @@ export function WaveformChart({ data }: WaveformChartProps) {
           }}
           href="#"
         >
-          清空
+          {t("清空")}
         </a>
         <span style={{ fontSize: 12, color: "#999" }}>
-          采样 {data.sample_count} 点(展示 {data.downsampled_count})
+          {t("采样")} {data.sample_count} {t("点")}({t("展示")} {data.downsampled_count})
         </span>
       </div>
       <svg
@@ -187,18 +189,18 @@ export function WaveformChart({ data }: WaveformChartProps) {
         {/* 时间轴刻度 */}
         {[0, 0.25, 0.5, 0.75, 1].map((f) => {
           const x = PAD.left + f * (W - PAD.left - PAD.right);
-          const t = (times[0] ?? 0) + f * ((times[times.length - 1] ?? 0) - (times[0] ?? 0));
+          const timeVal = (times[0] ?? 0) + f * ((times[times.length - 1] ?? 0) - (times[0] ?? 0));
           return (
             <g key={f}>
               <line x1={x} y1={PAD.top} x2={x} y2={H - PAD.bottom} stroke="#f5f7fa" strokeWidth={1} />
               <text x={x} y={H - 8} textAnchor="middle" fontSize={10} fill="#79879c">
-                {t.toExponential(2)}
+                {timeVal.toExponential(2)}
               </text>
             </g>
           );
         })}
         <text x={W / 2} y={H - 4} textAnchor="middle" fontSize={11} fill="#4e5969">
-          时间(s)
+          {t("时间(s)")}
         </text>
         {series.map((s) => (
           <polyline

@@ -317,7 +317,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
       <div className="mb-4 flex items-center gap-3">
         <Space size={8} wrap>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-            测试时间：
+            {t("测试时间")}：
           </Typography.Text>
           <DatePicker.RangePicker
             allowClear
@@ -377,12 +377,12 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
               {statusTag(detail.status, t)}
               {detailSummary.dry_run ? <Tag color="orange">{t("试跑")}</Tag> : null}
               <Typography.Text type="secondary">
-                用时{" "}
+                {t("用时")}{" "}
                 {detail.duration_ms != null ? `${(detail.duration_ms / 1000).toFixed(1)}s` : "-"}
               </Typography.Text>
               <Typography.Text type="secondary">run {detail.id.slice(0, 8)}</Typography.Text>
               <Typography.Text type="secondary">
-                发起于 {formatDateTime(detail.create_date)}
+                {t("发起于")} {formatDateTime(detail.create_date)}
               </Typography.Text>
             </Space>
 
@@ -537,7 +537,7 @@ function StageDetailBody({ result, runId }: { result: AtpAssetTestStageResult; r
       {artifactRows.length > 0 ? (
         <>
           <Typography.Text strong style={{ fontSize: 12 }}>
-            计算产物
+            {t("计算产物")}
           </Typography.Text>
           <Table
             rowKey="key"
@@ -566,7 +566,7 @@ function StageDetailBody({ result, runId }: { result: AtpAssetTestStageResult; r
                           setViewPath(row.path);
                         }}
                       >
-                        波形
+                        {t("波形")}
                       </Button>
                     );
                   }
@@ -589,7 +589,7 @@ function StageDetailBody({ result, runId }: { result: AtpAssetTestStageResult; r
                           setViewPath(row.path);
                         }}
                       >
-                        查看
+                        {t("查看")}
                       </Button>
                     );
                   }

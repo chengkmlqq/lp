@@ -267,7 +267,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
                 </Button>
               </Space.Compact>
               <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
-                与 C# 侧必须同值
+                {t("与 C# 侧必须同值")}
               </Typography.Text>
             </Form.Item>
           </Col>
@@ -275,7 +275,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
             <Form.Item label={t("试跑")} style={{ marginBottom: 8 }}>
               <Switch checked={dryRun} onChange={setDryRun} />
               <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
-                只列命令不执行
+                {t("只列命令不执行")}
               </Typography.Text>
             </Form.Item>
           </Col>
@@ -381,22 +381,22 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
             {paramsSource === "tower" ? (
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item label="base_tower（JSON）" style={{ marginBottom: 8 }}>
+                  <Form.Item label={t("base_tower（JSON）")} style={{ marginBottom: 8 }}>
                     <Input.TextArea
                       rows={4}
                       value={baseTowerText}
                       onChange={(event) => setBaseTowerText(event.target.value)}
-                      placeholder='如 {"line_voltage_kv":220,"ground_resistance":7}'
+                      placeholder={`${t("如")} {"line_voltage_kv":220,"ground_resistance":7}`}
                     />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item label="profile（JSON）" style={{ marginBottom: 8 }}>
+                  <Form.Item label={t("profile（JSON）")} style={{ marginBottom: 8 }}>
                     <Input.TextArea
                       rows={4}
                       value={profileText}
                       onChange={(event) => setProfileText(event.target.value)}
-                      placeholder='如 {"insulator_length_mm":2491.5}'
+                      placeholder={`${t("如")} {"insulator_length_mm":2491.5}`}
                     />
                   </Form.Item>
                 </Col>
@@ -406,7 +406,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
                 <Typography.Text>{t("模板默认值不完整时仍继续")}</Typography.Text>
                 <Switch checked={allowIncomplete} onChange={setAllowIncomplete} />
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  默认关闭：缺默认值会直接报错并列出缺哪些变量
+                  {t("默认关闭：缺默认值会直接报错并列出缺哪些变量")}
                 </Typography.Text>
               </Space>
             )}

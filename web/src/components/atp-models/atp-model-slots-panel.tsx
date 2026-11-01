@@ -198,7 +198,7 @@ export function AtpModelSlotsPanel({ assetId }: AtpModelSlotsPanelProps) {
                       items={[
                         { key: "start", label: t("导体起始行"), children: geo.conductor_start },
                         { key: "count", label: t("导体数"), children: geo.conductor_count },
-                        { key: "cols", label: "列位 (X/Y/Z)", children: `${geo.col_x ?? "-"} / ${geo.col_y ?? "-"} / ${geo.col_z ?? "-"}` },
+                        { key: "cols", label: t("列位 (X/Y/Z)"), children: `${geo.col_x ?? "-"} / ${geo.col_y ?? "-"} / ${geo.col_z ?? "-"}` },
                         { key: "span", label: t("档距行"), children: geo.span_rows.join(", ") || "-" },
                       ]}
                     />

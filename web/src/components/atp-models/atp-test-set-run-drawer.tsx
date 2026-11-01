@@ -184,7 +184,7 @@ export function AtpTestSetRunDrawer({
           const phases = row.flashover_phases?.length ? `（${row.flashover_phases.join(",")}）` : "";
           return (
             <Typography.Text strong={value > 0} style={value > 0 ? { color: "#cf1322" } : {}}>
-              {value} 相{phases}
+              {value} {t("相")}{phases}
             </Typography.Text>
           );
         },
@@ -207,7 +207,7 @@ export function AtpTestSetRunDrawer({
           if (flashoverChanged) {
             return (
               <Tag color="orange">
-                闪络 {prev.flashover_count ?? "-"}→{row.flashover_count ?? "-"}
+                {t("闪络")} {prev.flashover_count ?? "-"}→{row.flashover_count ?? "-"}
               </Tag>
             );
           }
@@ -341,7 +341,7 @@ export function AtpTestSetRunDrawer({
                 }}
               >
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  与上次执行对比：
+                  {t("与上次执行对比：")}
                 </Typography.Text>
                 <Tag color="green">{t("无变化")} {regressionCounts.unchanged ?? 0}</Tag>
                 <Tag color="orange">{t("有变更")} {regressionCounts.changed ?? 0}</Tag>

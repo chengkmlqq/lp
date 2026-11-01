@@ -155,7 +155,7 @@ function ParamsTraceBody({ runId }: { runId: string }) {
       {chain.length > 0 ? (
         <div style={{ marginBottom: 10 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            命中链（粗 → 细）：
+            {t("命中链（粗 → 细）：")}
           </Typography.Text>{" "}
           {chain.map((item, index) => (
             <Tag key={item} color={index === chain.length - 1 ? "blue" : "default"}>
@@ -192,7 +192,7 @@ function ParamsTraceBody({ runId }: { runId: string }) {
       {defaultsApplied.length > 0 ? (
         <div style={{ marginTop: 12 }}>
           <Typography.Text strong style={{ fontSize: 12 }}>
-            已用模板默认值补全的变量（{defaultsApplied.length}）：
+            {t("已用模板默认值补全的变量")}（{defaultsApplied.length}）：
           </Typography.Text>
           <div style={{ marginTop: 4 }}>
             {defaultsApplied.map((name) => (
@@ -207,7 +207,7 @@ function ParamsTraceBody({ runId }: { runId: string }) {
       {defaultsUsedCount > 0 ? (
         <div style={{ marginTop: 8 }}>
           <Typography.Text strong style={{ fontSize: 12 }}>
-            槽位命中默认值（{defaultsUsedCount}）：
+            {t("槽位命中默认值")}（{defaultsUsedCount}）：
           </Typography.Text>
           <div style={{ marginTop: 4 }}>
             {Object.entries(defaultsUsed).map(([slot, value]) => (
@@ -224,9 +224,9 @@ function ParamsTraceBody({ runId }: { runId: string }) {
           style={{ marginTop: 12 }}
           type="warning"
           showIcon
-          message={`${unresolvedCount} ${t("个槽位取不到值")}（已按 C# 口径填 "1." 占位）`}
+          message={`${unresolvedCount} ${t("个槽位取不到值")}（${t("已按 C# 口径填")} "1." ${t("占位")}）`}
           description={Object.entries(unresolved)
-            .map(([slot, names]) => `${slot} ← 缺 ${names.join("/")}`)
+            .map(([slot, names]) => `${slot} ← ${t("缺")} ${names.join("/")}`)
             .join("；")}
         />
       ) : null}

@@ -105,11 +105,11 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
           <div className="flex flex-shrink-0 items-center gap-2">
             {asset.is_active ? (
               <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-green-50 text-green-600 border border-green-200">
-                {asset.version ? `${asset.version}·生效` : t("生效")}
+                {asset.version ? `${asset.version}·${t("生效")}` : t("生效")}
               </span>
             ) : (
               <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-gray-50 text-gray-500 border border-gray-200">
-                {asset.version ? `${asset.version}·未生效` : t("未生效")}
+                {asset.version ? `${asset.version}·${t("未生效")}` : t("未生效")}
               </span>
             )}
             <Badge status={statusBadge} />
@@ -122,19 +122,19 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
         <div className="flex flex-col gap-2 px-4 py-3">
           <div className="flex items-center gap-2">
             <ThunderboltOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" className="text-xs">电压等级：{formatDimension(asset.voltage_level, dimensionLabelMap?.voltage_level)}</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs">{t("电压等级")}：{formatDimension(asset.voltage_level, dimensionLabelMap?.voltage_level)}</Typography.Text>
           </div>
           <div className="flex items-center gap-2">
             <ApartmentOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" className="text-xs">塔型：{formatDimension(asset.tower_type, dimensionLabelMap?.tower_type)}</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs">{t("塔型")}：{formatDimension(asset.tower_type, dimensionLabelMap?.tower_type)}</Typography.Text>
           </div>
           <div className="flex items-center gap-2">
             <ClockCircleOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" className="text-xs">场景：{formatDimension(asset.scene_type, dimensionLabelMap?.scene_type)}</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs">{t("场景")}：{formatDimension(asset.scene_type, dimensionLabelMap?.scene_type)}</Typography.Text>
           </div>
           <div className="flex items-center gap-2">
             <EyeOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" className="text-xs">避雷器组合：{formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config)}</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs">{t("避雷器组合")}：{formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config)}</Typography.Text>
           </div>
         </div>
 
