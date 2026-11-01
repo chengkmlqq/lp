@@ -149,4 +149,8 @@ ALTER TABLE atp_test_set_case ADD COLUMN test_line_snapshot_hash VARCHAR(64) NUL
 CREATE INDEX idx_atp_test_set_case_test_line ON atp_test_set_case (test_line_id);
 
 -- 维度项工程默认值载体：让「选 500kV」不只拿到标签，还能拿到工程参考值
-ALTER TABLE dimension_item ADD COLUMN extra_json JSON NOT NULL;
+-- ⚠️ 必须允许 NULL：MySQL 的 JSON 列不能带字面默认值，存量表执行
+--    ADD COLUMN ... JSON NOT NULL 会直接报 1138 Invalid use of NULL value 并中断迁移。
+--    业务侧统一按 `extra_json or {}` 读取（atp_test_line_service._dimension_extra_map），
+--    历史行留 NULL 不影响使用。
+ALTER TABLE dimension_item ADD COLUMN extra_json JSON NULL;

@@ -299,3 +299,145 @@ def test_list_assets_paginates_after_filtering(tmp_path) -> None:
         assert [item.arrester_config for item in result.items] == ["M123", "M123"]
     finally:
         session.close()
+
+
+# ───────────── 列表接口列清单：serialize_asset 需要的列必须都在（防 500） ─────────────
+
+
+def test_list_assets_columns_cover_serialize_asset_fields() -> None:
+    """``list_assets`` 只查固定几列，``serialize_asset`` 读到的每个字段都必须在清单里。
+
+    历史事故两次：2026-10-30 的 version/is_active/shield_wire、2026-11-01 的 test_line_id
+    ——漏一列，整个资产列表接口直接 500 AttributeError（线上就是「ATP 模型管理页打不开」）。
+    这条断言从源码层面兜住，新增字段忘了加列清单会立刻在这里失败。
+    """
+    import inspect
+    import re
+
+    from app.services import atp_asset_service as svc
+
+    serialize_src = inspect.getsource(svc.serialize_asset)
+    accessed = set(re.findall(r"\bitem\.([a-z_][a-z0-9_]*)", serialize_src))
+
+    list_src = inspect.getsource(svc.list_assets)
+    block = list_src[list_src.index("columns = (") : list_src.index("stmt = select(*columns)")]
+    provided = set(re.findall(r"AtpAsset\.([a-z_][a-z0-9_]*)", block))
+
+    missing = accessed - provided
+    assert not missing, f"list_assets 少查了 serialize_asset 需要的列：{sorted(missing)}"
+
+
+def test_list_assets_returns_test_line_id() -> None:
+    """真实跑一遍列表：绑定测试线路的资产能正常序列化，不抛 AttributeError。"""
+    from app.models.dimension_item import DimensionItem
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            User.__table__,
+            AtpAsset.__table__,
+            AtpAssetRun.__table__,
+            DimensionItem.__table__,
+        ],
+    )
+    session = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)()
+    try:
+        session.add(
+            AtpAsset(
+                code="TL-ASSET-1",
+                name="测试线路绑定资产",
+                status="enabled",
+                voltage_level="220",
+                tower_type="MT1",
+                scene_type="plain",
+                arrester_config="none",
+                test_line_id="tl_demo_0001",
+            )
+        )
+        session.commit()
+
+        response = atp_asset_service.list_assets(
+            session,
+            keyword=None,
+            status_filter=None,
+            voltage_level=None,
+            tower_type=None,
+            scene_type=None,
+        )
+
+        assert response.total == 1
+        assert response.items[0].test_line_id == "tl_demo_0001"
+    finally:
+        session.close()
+
+
+# ───────────── 列表接口列清单：serialize_asset 需要的列必须都在（防 500） ─────────────
+
+
+def test_list_assets_columns_cover_serialize_asset_fields() -> None:
+    """``list_assets`` 只查固定几列，``serialize_asset`` 读到的每个字段都必须在清单里。
+
+    历史事故两次：2026-10-30 的 version/is_active/shield_wire、2026-11-01 的 test_line_id
+    ——漏一列，整个资产列表接口直接 500 AttributeError（线上就是「ATP 模型管理页打不开」）。
+    这条断言从源码层面兜住，新增字段忘了加列清单会立刻在这里失败。
+    """
+    import inspect
+    import re
+
+    from app.services import atp_asset_service as svc
+
+    serialize_src = inspect.getsource(svc.serialize_asset)
+    accessed = set(re.findall(r"\bitem\.([a-z_][a-z0-9_]*)", serialize_src))
+
+    list_src = inspect.getsource(svc.list_assets)
+    block = list_src[list_src.index("columns = (") : list_src.index("stmt = select(*columns)")]
+    provided = set(re.findall(r"AtpAsset\.([a-z_][a-z0-9_]*)", block))
+
+    missing = accessed - provided
+    assert not missing, f"list_assets 少查了 serialize_asset 需要的列：{sorted(missing)}"
+
+
+def test_list_assets_returns_test_line_id() -> None:
+    """真实跑一遍列表：绑定测试线路的资产能正常序列化，不抛 AttributeError。"""
+    from app.models.dimension_item import DimensionItem
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            User.__table__,
+            AtpAsset.__table__,
+            AtpAssetRun.__table__,
+            DimensionItem.__table__,
+        ],
+    )
+    session = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)()
+    try:
+        session.add(
+            AtpAsset(
+                code="TL-ASSET-1",
+                name="测试线路绑定资产",
+                status="enabled",
+                voltage_level="220",
+                tower_type="MT1",
+                scene_type="plain",
+                arrester_config="none",
+                test_line_id="tl_demo_0001",
+            )
+        )
+        session.commit()
+
+        response = atp_asset_service.list_assets(
+            session,
+            keyword=None,
+            status_filter=None,
+            voltage_level=None,
+            tower_type=None,
+            scene_type=None,
+        )
+
+        assert response.total == 1
+        assert response.items[0].test_line_id == "tl_demo_0001"
+    finally:
+        session.close()
