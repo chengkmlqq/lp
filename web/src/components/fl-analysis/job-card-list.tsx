@@ -192,7 +192,7 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
                 <div className="flex items-center gap-2">
                   <DeploymentUnitOutlined className="text-xs text-gray-500" />
                   <Typography.Text type="secondary" className="text-xs">
-                    {formatJobType(job.job_type, mitigationMode(job))}
+                    {formatJobType(job.job_type, mitigationMode(job), t)}
                   </Typography.Text>
                 </div>
                 <div className="flex items-center gap-4">

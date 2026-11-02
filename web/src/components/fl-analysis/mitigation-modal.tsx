@@ -106,7 +106,7 @@ export function MitigationModal({
                   title: t("风险等级"),
                   dataIndex: "risk_level",
                   width: 120,
-                  render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value)}</Tag>,
+                  render: (value: string | null) => <Tag color={riskColor(value)}>{formatRiskLevel(value, t)}</Tag>,
                 },
                 {
                   title: t("高风险原因"),

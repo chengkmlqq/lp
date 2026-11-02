@@ -1,4 +1,5 @@
 import { Tag } from "antd";
+import { useI18n } from "@/lib/i18n";
 
 type RiskLevelDisplay = {
   label: string;
@@ -80,7 +81,8 @@ export function riskColor(value: string | null | undefined): string {
 
 /** 风险等级中文 Tag；空值/未识别显示 "-"。 */
 export function RiskLevelTag({ value }: { value: string | null | undefined }) {
+  const { t } = useI18n();
   const key = toRiskKey(value);
   if (!key) return "-";
-  return <Tag color={RISK_LEVEL_DISPLAYS[key].color}>{RISK_LEVEL_DISPLAYS[key].label}</Tag>;
+  return <Tag color={RISK_LEVEL_DISPLAYS[key].color}>{t(RISK_LEVEL_DISPLAYS[key].label)}</Tag>;
 }

@@ -423,8 +423,8 @@ export function TowerDetailView({
             <Descriptions.Item label={t("绝缘子闪络判据")}>{formatDimensionValue(detailWorkflow.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
             <Descriptions.Item label={t("是否海拔修正")}>{formatDimensionValue(detailWorkflow.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
             <Descriptions.Item label={t("感应电压公式")}>{formatInducedVoltageFormula(detailWorkflow.induced_voltage_formula, t)}</Descriptions.Item>
-            <Descriptions.Item label={t("波头范围")}>{formatRangeSummary(detailWorkflow.head_time_range_us)}</Descriptions.Item>
-            <Descriptions.Item label={t("波尾范围")}>{formatRangeSummary(detailWorkflow.tail_time_range_us)}</Descriptions.Item>
+            <Descriptions.Item label={t("波头范围")}>{formatRangeSummary(detailWorkflow.head_time_range_us, t)}</Descriptions.Item>
+            <Descriptions.Item label={t("波尾范围")}>{formatRangeSummary(detailWorkflow.tail_time_range_us, t)}</Descriptions.Item>
             <Descriptions.Item label={t("执行适配器")}>
               {formatExternalAdapter(readOptionalString(detailExternalExecution, "adapter"), t)}
             </Descriptions.Item>

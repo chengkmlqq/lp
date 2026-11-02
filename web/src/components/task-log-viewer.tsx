@@ -91,7 +91,7 @@ export function TaskLogViewerDrawer({
           } catch (error) {
             if (cancelledRef.current) return;
             const errorMessage = error instanceof Error ? error.message : t("获取日志失败");
-            setLines([`错误：${errorMessage}`]);
+            setLines([`${t("错误")}：${errorMessage}`]);
             setLoading(false);
             reconnectRef.current?.(cancelledRef, taskId);
           }
@@ -235,7 +235,7 @@ export function TaskLogViewerDrawer({
       } catch (error) {
         if (cancelledRef.current) return;
         const errorMessage = error instanceof Error ? error.message : t("获取日志失败");
-        setLines([`错误：${errorMessage}`]);
+        setLines([`${t("错误")}：${errorMessage}`]);
         setLoading(false);
       }
     })();

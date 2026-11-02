@@ -250,8 +250,8 @@ export function JobDetailPanel({
             <Descriptions.Item label={t("绝缘子闪络判据")}>{formatDimensionValue(selectedJobWorkflow?.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
             <Descriptions.Item label={t("是否海拔修正")}>{formatDimensionValue(selectedJobWorkflow?.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
             <Descriptions.Item label={t("感应电压公式")}>{formatInducedVoltageFormula(selectedJobWorkflow?.induced_voltage_formula, t)}</Descriptions.Item>
-            <Descriptions.Item label={t("波头范围")}>{formatRangeSummary(selectedJobWorkflow?.head_time_range_us)}</Descriptions.Item>
-            <Descriptions.Item label={t("波尾范围")}>{formatRangeSummary(selectedJobWorkflow?.tail_time_range_us)}</Descriptions.Item>
+            <Descriptions.Item label={t("波头范围")}>{formatRangeSummary(selectedJobWorkflow?.head_time_range_us, t)}</Descriptions.Item>
+            <Descriptions.Item label={t("波尾范围")}>{formatRangeSummary(selectedJobWorkflow?.tail_time_range_us, t)}</Descriptions.Item>
           </Descriptions>
         </section>
       ) : null}

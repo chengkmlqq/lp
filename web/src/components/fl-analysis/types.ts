@@ -464,7 +464,7 @@ export function selectedTowerCount(job: FlAnalysisJobDetail | null): number {
   return Array.isArray(value) ? value.length : 0;
 }
 
-export function formatRangeSummary(range: WorkflowRange | undefined): string {
+export function formatRangeSummary(range: WorkflowRange | undefined, t: (s: string) => string = (s) => s): string {
   if (!range) {
     return "-";
   }
@@ -474,5 +474,5 @@ export function formatRangeSummary(range: WorkflowRange | undefined): string {
   if (min === null || max === null || step === null) {
     return "-";
   }
-  return `${min} ~ ${max} / 步长 ${step}`;
+  return `${min} ~ ${max} / ${t("步长")} ${step}`;
 }
