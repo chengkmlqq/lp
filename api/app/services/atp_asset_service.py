@@ -400,7 +400,7 @@ def _validate_atp_model_members(relative_paths: list[str]) -> None:
     """校验上传的 ATP 模型文件清单（zip 成员或散文件，只读不写）。
 
     规则（2026-09-26 改造，见 _ALLOWED_ATP_MODEL_EXTENSIONS）：
-    1. 白名单：只允许 .atp / .dat；发现其他扩展名 → 400 并列出
+    1. 白名单：只允许 .atp / .dat / .pch；发现其他扩展名 → 400 并列出
     2. 入口：必须存在 work.atp，或恰好一个 .atp
     3. 几何：long/short/dahao/xiaohao 四个 .dat 必须齐全（缺一 → 400 并列出）
     校验失败时调用方保证零写入（本函数只读清单）。
@@ -414,7 +414,7 @@ def _validate_atp_model_members(relative_paths: list[str]) -> None:
         suffix = f" 等 {len(illegal)} 个" if len(illegal) > 8 else ""
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"ATP 模型只接受 .atp / .dat 文件，发现非法文件：{shown}{suffix}",
+            detail=f"ATP 模型只接受 .atp / .dat / .pch 文件，发现非法文件：{shown}{suffix}",
         )
     atp_files = sorted(path for path in relative_paths if path.lower().endswith(".atp"))
     if _ENTRY_ATP_FILE not in lower_map and len(atp_files) != 1:
