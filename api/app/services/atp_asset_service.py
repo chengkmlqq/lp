@@ -1914,13 +1914,23 @@ def _mark_run_failed(db: Session, *, run: AtpAssetRun, actor_user_id: str | None
     )
 
 
+# 资产包自带引擎时的取用优先级：大表版优先（2026-11-02 全局切 mytpbig 后补）。
+# 包里同时躺着两个 exe 时若取到 tpbig.exe（1.3MB 小表），四回路 / $PARAMETER 较多的
+# 模型会重新踩 List 8 溢出（KILL=1）与 JTOKEN 溢出（KONST=120），且退出码仍为 0。
+_ENGINE_PREFERENCE = ("mytpbig.exe", "tpbig.exe")
+
+
 def _resolve_engine_prefix(payload_root: Path, *, step_kind: str) -> list[str]:
     mode = _resolve_engine_mode()
     if step_kind == "egm":
         materialized_candidate = _find_materialized_engine(payload_root, "rjtzl.exe")
         configured = settings.atp_rjtzl_executable
     else:
-        materialized_candidate = _find_materialized_engine(payload_root, "tpbig.exe")
+        materialized_candidate = None
+        for engine_name in _ENGINE_PREFERENCE:
+            materialized_candidate = _find_materialized_engine(payload_root, engine_name)
+            if materialized_candidate:
+                break
         configured = settings.atp_tpbig_executable
 
     if mode == "wine":

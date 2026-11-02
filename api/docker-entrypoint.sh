@@ -38,23 +38,22 @@ if [ -f "${STATIC_ROOT}/ATP/rjtzl.exe" ]; then
     fi
 fi
 
-# --- tpbig.exe (atp-storage path: used by atp_engine_executable) ---
-if [ -f "${STATIC_ROOT}/atp/tpbig.exe" ]; then
-    mkdir -p "${DATA_ROOT}/atp"
-    if [ ! -f "${DATA_ROOT}/atp/tpbig.exe" ] || ! cmp -s "${STATIC_ROOT}/atp/tpbig.exe" "${DATA_ROOT}/atp/tpbig.exe"; then
-        cp "${STATIC_ROOT}/atp/tpbig.exe" "${DATA_ROOT}/atp/tpbig.exe"
-        echo "entrypoint: initialized ${DATA_ROOT}/atp/tpbig.exe"
-    fi
-fi
-
-# --- tpbig.exe (atp-models storage: atp_storage_root) ---
-if [ -f "${STATIC_ROOT}/ATP/tpbig.exe" ]; then
-    mkdir -p "${DATA_ROOT}/atp-models"
-    if [ ! -f "${DATA_ROOT}/atp-models/tpbig.exe" ] || ! cmp -s "${STATIC_ROOT}/ATP/tpbig.exe" "${DATA_ROOT}/atp-models/tpbig.exe"; then
-        cp "${STATIC_ROOT}/ATP/tpbig.exe" "${DATA_ROOT}/atp-models/tpbig.exe"
-        echo "entrypoint: initialized ${DATA_ROOT}/atp-models/tpbig.exe"
-    fi
-fi
+# --- 引擎副本（atp / atp-models 两处历史路径） ---
+# atp_engine_executable / atp_tpbig_executable 现默认指向 ATP/mytpbig.exe（大表版）。
+# 这两处副本是老版本按 atp_storage_root 解析引擎时留下的路径，保留以便回滚；
+# 两个引擎各放一份，避免任何解析路径拿到"目录里没有该引擎"的状态。
+for ENGINE in tpbig.exe mytpbig.exe; do
+    SRC_E="${STATIC_ROOT}/ATP/${ENGINE}"
+    [ -f "${SRC_E}" ] || continue
+    for DEST in atp atp-models; do
+        DST_E="${DATA_ROOT}/${DEST}/${ENGINE}"
+        mkdir -p "${DATA_ROOT}/${DEST}"
+        if [ ! -f "${DST_E}" ] || ! cmp -s "${SRC_E}" "${DST_E}"; then
+            cp "${SRC_E}" "${DST_E}"
+            echo "entrypoint: initialized ${DST_E}"
+        fi
+    done
+done
 
 # --- EGM 引擎（各电压的 rjtzl_egm*.exe）：绕击跳闸率计算用 ---
 # 与 tpbig.exe 同理：镜像里带（/app/static/wine/ATP/<v>/<v>egm/），启动时拷到运行时卷。

@@ -5,7 +5,9 @@
 
 流程（每塔一次，几何与雷电流无关，二分期间可复用）：
   1. rewrite_dat_text：用塔几何改写 long/short/dahao/xiaohao.dat
-  2. tpbig LCC：`both <name>.dat s -r` → <name>.pch
+  2. ATP LCC：`both <name>.dat s -r` → <name>.pch
+     （引擎取 settings.atp_tpbig_executable，2026-11-02 起为 mytpbig.exe 大表版；
+      LCC 输出与 tpbig.exe 仅末位浮点有效数字不同，量级 <1e-15，数值等价）
   3. pch_to_lib：<name>.pch → <name>.lib
 
 已逐字节对齐 C# 验证：.dat（500/110）、.lib（6/6 样本）。

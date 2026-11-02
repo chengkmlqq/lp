@@ -75,8 +75,14 @@ def _kill_task_tree(job_id: str) -> tuple[bool, int]:
     return killed > 0, killed
 
 
+# 引擎已全局切大表版 mytpbig.exe（2026-11-02）；老环境可能仍是 tpbig.exe，两者都要认。
+# ⚠️ 不要只判 "tpbig.exe"：它恰好是 "mytpbig.exe" 的子串，看着能匹配上，
+# 但一旦将来换名（如 atpbig.exe）就会静默漏清扫，孤儿 LCC 会一直写 GB 级 .tmp。
+_ENGINE_EXE_NAMES = ("mytpbig.exe", "tpbig.exe")
+
+
 def _kill_orphan_lcc_processes() -> int:
-    """清扫**孤儿 LCC 进程**（ppid=1 且 cmdline 是 `tpbig.exe both <x>.dat s -r`）。
+    """清扫**孤儿 LCC 进程**（ppid=1 且 cmdline 是 `<引擎> both <x>.dat s -r`）。
 
     这类进程是本任务取消/崩溃后泄漏的产物：它们的 celery 父进程已死、被 init 收养，
     之后既不在运行目录里也找不到父链，会一直跑下去并持续写数 GB 的 .tmp。
@@ -98,7 +104,10 @@ def _kill_orphan_lcc_processes() -> int:
                 cmdline = fh.read().replace(b"\x00", b" ").decode("utf-8", "replace")
         except (OSError, IndexError, ValueError):
             continue
-        if "tpbig.exe" in cmdline and " s -r" in cmdline and "tpbig.exe both" in cmdline:
+        lower_cmdline = cmdline.lower()
+        if " s -r" in lower_cmdline and any(
+            f"{name} both" in lower_cmdline for name in _ENGINE_EXE_NAMES
+        ):
             try:
                 _kill_process_tree(pid)
                 killed += 1
