@@ -367,6 +367,8 @@ export function AtpTestSetRunDrawer({
             <Table<AtpTestSetRunSummary["items"][number]>
               rowKey={(row) => row.case_id}
               size="small"
+              /* 全量回归集单次执行可达数百条用例结果，虚拟滚动避免一次性渲染全表 */
+              virtual
               loading={runQuery.isFetching}
               dataSource={data.items}
               columns={columns}

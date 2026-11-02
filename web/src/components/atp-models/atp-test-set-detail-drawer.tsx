@@ -735,6 +735,8 @@ export function AtpTestSetDetailDrawer({
                     <Table<AtpTestSetCase>
                       rowKey="id"
                       size="small"
+                      /* 用例可达数百条（全量回归集 439 条实测 12s+），开启虚拟滚动只渲染可视区 */
+                      virtual
                       loading={casesQuery.isFetching}
                       dataSource={casesQuery.data?.items ?? []}
                       columns={caseColumns}
