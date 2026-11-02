@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
+import { checkWarningCount, describeModelFormat } from "@/lib/atp-model-format";
 import type { AtpAssetSummary, AtpAssetFileListResponse } from "@/types/auth";
 import { AtpDatDetailView } from "./atp-dat-detail-view";
 import { AtpFileContentViewer } from "./atp-file-content-viewer";
@@ -104,6 +105,12 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
     return <Alert type="error" showIcon message={t("当前账号缺少 ATP 模型读取权限（需要 atp.read / atp.run / atp.manage）。")} />;
   }
 
+  // 模型形态与上传预检（2026-11-02）：形态决定仿真走 lib 还是 pch 链路，
+  // 预检的 warning 是「需要人工确认但不阻断仿真」的项（pch 目录不一致、模板缺小数点等）。
+  const formatMeta = describeModelFormat(asset?.model_format);
+  const warnCount = checkWarningCount(asset?.format_check);
+  const checkIssues = asset?.format_check?.issues ?? [];
+
   return (
     <div className="admin-atp-models-detail-pane modo-page-card">
       {assetQuery.isLoading ? (
@@ -130,9 +137,49 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
               { key: "run_count", label: t("运行次数"), children: asset.run_count },
               { key: "last_run", label: t("最近运行"), children: asset.last_run_status ? `${asset.last_run_status} · ${formatDateTime(asset.last_run_date)}` : "-" },
               { key: "storage", label: t("存储挂载"), children: asset.storage_mount_code || "-" },
+              {
+                key: "format",
+                label: t("模型形态"),
+                children: (
+                  <Space size={6}>
+                    <span style={{ color: formatMeta.color }}>{formatMeta.label}</span>
+                    {warnCount > 0 ? (
+                      <Typography.Text type="warning" style={{ fontSize: 12 }}>
+                        {warnCount} {t("条提示")}
+                      </Typography.Text>
+                    ) : null}
+                  </Space>
+                ),
+              },
               { key: "create_date", label: t("创建时间"), children: formatDateTime(asset.create_date) },
             ]}
           />
+
+          {/* 上传预检：error 级已在后端 400 拦掉，这里只剩「能跑但建议人工确认」的项 */}
+          {checkIssues.length > 0 ? (
+            <div style={{ marginTop: 16 }}>
+              <Alert
+                type="warning"
+                showIcon
+                message={t("模型检查：{n} 条提示（不影响仿真，建议人工确认）").replace("{n}", String(checkIssues.length))}
+                description={
+                  <div className="flex flex-col gap-2">
+                    {checkIssues.map((issue) => (
+                      <div key={issue.code} style={{ fontSize: 12 }}>
+                        <Typography.Text strong>[{issue.code}]</Typography.Text> {issue.message}
+                        {issue.file ? (
+                          <Typography.Text type="secondary">（{issue.file}）</Typography.Text>
+                        ) : null}
+                        <div className="text-gray-500" style={{ marginTop: 2 }}>
+                          → {issue.fix_hint}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                }
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
 

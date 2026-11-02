@@ -2060,10 +2060,18 @@ def _rewrite_includes(
         # → time-step loop = 0 → simulate 判 work.pl4 0 字节失败。
         # 这里与 $INCLUDE 同口径重写 $INSERT 的 D:\ATP\ 前缀（文件名原样保留）。
         if line.strip().upper().startswith("$INSERT") and ".pch" in line.lower():
-            new_line = _INCLUDE_PATH_RE.sub(
-                lambda m: priv_win + m.group(1), line
-            )
-            out_lines.append(new_line + ending)
+            # ⚠️ 2026-11-02：不再用 _INCLUDE_PATH_RE（它硬要求 `D:\ATP\` 前缀）。
+            # 7.2+ 的 pch 落在 ATPDraw.ini 的 `[Directories] ATP=` 目录，实测有
+            # `C:\ATP\work\results\` 与 `D:\ATP\work\results\` 两种盘符写法；
+            # 原正则对 C 盘不匹配 → 不重写 → 引擎去读共享目录里**别的工程**的 pch
+            # （204 个工程共用同 8 个文件名，最后写入者赢）→ 仿真照跑但几何是错的。
+            # $INSERT 只有一个路径参数，直接按文件名重构最稳。
+            head, sep, rest = line.partition(",")
+            name = rest.strip().replace("/", "\\").rsplit("\\", 1)[-1].strip()
+            if sep and name.lower().endswith(".pch"):
+                out_lines.append(f"{head},{priv_win}{name}" + ending)
+            else:
+                out_lines.append(line + ending)
         elif line.strip().upper().startswith("$INCLUDE") and ".lib" in line:
             new_line = _INCLUDE_PATH_RE.sub(
                 lambda m: priv_win + m.group(1), line

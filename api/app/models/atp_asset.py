@@ -61,6 +61,21 @@ class AtpAsset(Base):
     # 槽位扫描缓存：{"scanned_at", "work_atp": {"slots": {...}, "count": N},
     #                 "geometry": {"long": {...}, ...}}见 atp_slot_scanner.scan_model_slots
     slots_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # ===== 模型形态（2026-11-02 新增）=====
+    # 上传时按 work.atp 的几何引用形态判定，决定仿真走哪条链路：
+    #   legacy → `$INCLUDE ... .lib`（6.x/7.0/7.1，DBM）：每轮 dat→LCC→pch→lib 重算几何
+    #   insert → `$INSERT ... <name><序号>.pch`（7.2+）：几何随包，pch 不再重算，
+    #            但 $PARAMETER 段需规范化（去 $$ / 整数补点 / 中间变量内联）
+    #   embed  → 7.2+ Enbed，几何内嵌烧死，上传即拒（存量数据可能残留）
+    #   plain  → 无 LCC 的纯 RLC 工程 / 手写文件，无需重算几何
+    # 判定逻辑见 services/atp_model_format.detect_model_format（不按版本指纹大小写判）
+    model_format: Mapped[str] = mapped_column(String(16), default="legacy", nullable=False)
+    # 上传期预检报告（services/atp_model_format.PackageInspection.as_dict()）：
+    # {"model_format", "format_label", "error_count", "warning_count",
+    #  "issues": [{code, level, message, fix_hint, file}], "stats": {...}}
+    # error 级问题在上传口直接 400，不会落库；本字段存的是放行时的 warning 清单，
+    # 供前端「模型检查」面板展示给人工处理（如 pch 目录不一致、模板缺小数点建议）。
+    format_check_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)
     update_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

@@ -10,12 +10,15 @@ import {
   EditOutlined,
   ExperimentOutlined,
   EyeOutlined,
+  FileProtectOutlined,
   MoreOutlined,
   StopOutlined,
   ThunderboltOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import { useCallback } from "react";
 
+import { checkWarningCount, describeModelFormat } from "@/lib/atp-model-format";
 import { useI18n } from "@/lib/i18n";
 import type { AtpAssetStatus, AtpAssetSummary } from "@/types/auth";
 
@@ -90,6 +93,9 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
   }, [deleteLoading, onDelete, asset.id]);
 
   const { badge: statusBadge, text: statusText } = assetBadgeStatus(asset.status, t);
+  // 模型形态（2026-11-02）：新老模型的几何来源不同，列表必须能直接分辨
+  const formatMeta = describeModelFormat(asset.model_format);
+  const warnCount = checkWarningCount(asset.format_check);
 
   return (
     <Card
@@ -103,6 +109,19 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
           <DatabaseOutlined className="text-base text-gray-500" />
           <Typography.Text strong className="truncate flex-1">{asset.name}</Typography.Text>
           <div className="flex flex-shrink-0 items-center gap-2">
+            {/* 形态标记：新老模型的几何来源不同（pch 随包 vs dat 重算），必须能一眼分辨 */}
+            <Tooltip title={formatMeta.hint}>
+              <span
+                className="flex items-center rounded border px-1.5 py-0.5 text-xs font-medium"
+                style={{
+                  color: formatMeta.color,
+                  backgroundColor: formatMeta.background,
+                  borderColor: `${formatMeta.color}33`,
+                }}
+              >
+                {formatMeta.short}
+              </span>
+            </Tooltip>
             {asset.is_active ? (
               <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-green-50 text-green-600 border border-green-200">
                 {asset.version ? `${asset.version}·${t("生效")}` : t("生效")}
@@ -135,6 +154,21 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
           <div className="flex items-center gap-2">
             <EyeOutlined className="text-xs text-gray-500" />
             <Typography.Text type="secondary" className="text-xs">{t("避雷器组合")}：{formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config)}</Typography.Text>
+          </div>
+          <div className="flex items-center gap-2">
+            <FileProtectOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" className="text-xs">
+              {t("模型形态")}：
+              <span style={{ color: formatMeta.color }}>{formatMeta.label}</span>
+            </Typography.Text>
+            {warnCount > 0 ? (
+              <Tooltip title={t("上传预检有提示项，点开详情查看需要人工处理的内容")}>
+                <span className="flex items-center gap-0.5 text-xs" style={{ color: "#b45309" }}>
+                  <WarningOutlined />
+                  {warnCount}
+                </span>
+              </Tooltip>
+            ) : null}
           </div>
         </div>
 

@@ -48,7 +48,17 @@ COL_Z = 50   # 第三维
 SPAN_COL = 44
 SPAN_WIDTH = 10
 
-_PARAM_RE = re.compile(r"^\s*([A-Z][A-Z0-9_]*)\s*=\s*(\S+)\s*$")
+_PARAM_RE = re.compile(r"^\s*([A-Z][A-Z0-9_]*)\s*=\s*(\S+?)\s*(?:\$\$.*)?$")
+# 7.2+ 的「中间变量」行：`U2I =500 $$` / `REIAMPI =10000 $$`。
+# 命名特征是「以 I 结尾且不以 _ 结尾」，与槽位（下划线填充到固定宽度，如 `PHAGA_____`）区分。
+# ⚠️ 2026-11-02：若不排除，110/ganzi M123 的槽位表会混进 55 个假槽位（U2I / RELE01I ...），
+# 前端参数模板下拉里出现一堆引擎实际上不认的名字。
+_INTERMEDIATE_RE = re.compile(r"^[A-Z][A-Z0-9_]*I$")
+
+# 槽位名 → 是否 7.2+ 中间变量
+def is_intermediate_slot(name: str) -> bool:
+    upper = name.upper()
+    return bool(_INTERMEDIATE_RE.match(upper)) and not upper.endswith("_")
 
 
 def scan_work_atp_slots(text: str) -> dict[str, Any]:
@@ -66,7 +76,7 @@ def scan_work_atp_slots(text: str) -> dict[str, Any]:
         if up.upper().startswith("BLANK $PARAMETER") or up.upper() in ("$ENDBR", "BLANK"):
             break
         m = _PARAM_RE.match(line)
-        if m:
+        if m and not is_intermediate_slot(m.group(1)):
             slots[m.group(1)] = m.group(2)
     return {"slots": slots, "count": len(slots)}
 

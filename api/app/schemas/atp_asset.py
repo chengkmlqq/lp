@@ -9,6 +9,12 @@ AtpAssetStatus = Literal["draft", "enabled", "disabled", "archived"]
 AtpAssetRunnerKind = Literal["atp", "egm", "hybrid"]
 AtpAssetRunStatus = Literal["pending", "running", "success", "failed"]
 AtpAssetEngineMode = Literal["wine", "native"]
+# ATPDraw 产物形态（2026-11-02）：决定仿真走 dat→lib 还是 pch 随包链路
+#   legacy: $INCLUDE + .lib（6.x/7.0/7.1）
+#   insert: $INSERT + 序号 .pch（7.2+）
+#   embed : 7.2+ 内嵌（几何烧死，上传口拒收）
+#   plain : 无 LCC 的纯 RLC 工程
+AtpAssetModelFormat = Literal["legacy", "insert", "embed", "plain"]
 
 
 class AtpAssetSummary(BaseModel):
@@ -30,6 +36,11 @@ class AtpAssetSummary(BaseModel):
     shield_wire: str = "with"
     # 模型级绑定的测试线路（单塔基准）：非空时测试默认用它
     test_line_id: str | None = None
+    # ATPDraw 产物形态（上传时判定，2026-11-02）
+    model_format: AtpAssetModelFormat = "legacy"
+    model_format_label: str | None = None
+    # 上传预检报告（warning 清单 + 统计）；error 级问题在上传口已 400，不会落库
+    format_check: dict[str, Any] | None = None
     storage_mount_code: str | None = None
     storage_root_path: str | None = None
     run_count: int = 0

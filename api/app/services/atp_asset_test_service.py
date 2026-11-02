@@ -114,14 +114,27 @@ def _parse_named_values(path: Path) -> dict[str, float]:
 
 
 def _lis_has_halt(path: Path) -> list[str]:
-    """返回 LIS 里的致命行（``Halt in`` / ``KILL-code`` / ``error stop``）。"""
+    """返回 LIS 里的致命行（``Halt in`` / ``KILL`` / ``error stop`` / 缺文件）。
+
+    ⚠️ 2026-11-02 补齐两类此前漏判的失败行：
+      · `KILL = 12`（ATPMingw 实际写法，旧实现只认 `KILL-CODE`）——
+        实测 230/sihuita 就是 `KILL = 12`，漏判会让失败模型显示成"通过"；
+      · `Failure to connect disk file` —— `$INSERT` 引用的 pch 缺失时引擎返回
+        **rc=0、pl4 0 字节**，全部错误信息只在这一行里。
+    """
     if not path.is_file():
         return []
     hits: list[str] = []
     text = path.read_text(encoding="latin-1", errors="replace")
     for line in text.splitlines():
         upper = line.upper()
-        if "HALT IN" in upper or "KILL-CODE" in upper or "ERROR STOP" in upper:
+        if (
+            "HALT IN" in upper
+            or "KILL-CODE" in upper
+            or "ERROR STOP" in upper
+            or re.search(r"\bKILL\s*=", upper)
+            or "FAILURE TO CONNECT DISK FILE" in upper
+        ):
             hits.append(line.strip()[:200])
     return hits
 
@@ -1086,11 +1099,22 @@ class _TestContext:
         if angle is None:
             angle = base.get("angle_deg")
         angle_val = float(angle) if angle is not None else 0.0
-        text, a_ok = rewrite_electric_angle(text, angle_val)
-        log.append(
-            f"电角度 14XXSS = {angle_val - 90.0:.1f}/{angle_val - 210.0:.1f}/{angle_val - 330.0:.1f}"
-            + ("（已写入）" if a_ok else "（未找到 14XXSS 槽位，未写入）")
-        )
+        # ⚠️ 2026-11-02：7.2+（$INSERT 形态）的 SOURCE 卡相角列写的是 TACS 变量引用
+        # （实测 110/ganzi M123 第 398 行 `14XXSS2A  89814.6239       50.PHAGA_____ ...`），
+        # 电角度由 $PARAMETER 段的 `PHAGA_____=值` 控制，不再按固定列写数字。
+        # 此时仍套 rewrite_electric_angle 会把数字覆盖到 `50.` 所在的幅值/相序列上 → 错列。
+        is_insert_form = (getattr(self.asset, "model_format", "legacy") or "legacy") == "insert"
+        if is_insert_form:
+            log.append(
+                f"电角度 {angle_val - 90.0:.1f}/{angle_val - 210.0:.1f}/{angle_val - 330.0:.1f}"
+                "（7.2+ 模型由 $PARAMETER 的 PHAGA/PHAGB/PHAGC 控制，跳过 SOURCE 固定列写入）"
+            )
+        else:
+            text, a_ok = rewrite_electric_angle(text, angle_val)
+            log.append(
+                f"电角度 14XXSS = {angle_val - 90.0:.1f}/{angle_val - 210.0:.1f}/{angle_val - 330.0:.1f}"
+                + ("（已写入）" if a_ok else "（未找到 14XXSS 槽位，未写入）")
+            )
         return text, log
 
     # ---- 阶段 1：物化 + 引擎文件 ----
@@ -1105,21 +1129,56 @@ class _TestContext:
         self.rendered_text = self.rewrite_includes(self.render())
         self.rendered_text, slot_log = self.apply_runtime_slots(self.rendered_text)
         log_lines.extend(slot_log)
+
+        # ── $PARAMETER 段规范化（2026-11-02）──
+        # LP 引擎（tpbig/mytpbig，源码日期 2003-09-19）不认 ATPDraw 7.2+ 引入的三样东西：
+        #   ① 行尾 `$$` 注释（实测 → FMT 错误、不产 pl4）
+        #   ② $PARAMETER 段里的整数值（`1000` 按整数格式解析 → `KONST = N`）
+        #   ③ 中间变量引用（引用型变量数 > List31=10 → CIDEAL）
+        # 三步规范化后实测 rc=0、pl4 369665 字节（110/ganzi M123）。
+        # 老版模型该函数自动返回原文（无中间变量 → 不重写），对既有链路零影响。
+        from .atp_model_format import normalize_parameter_section
+
+        self.rendered_text, param_diag = normalize_parameter_section(self.rendered_text)
+        if param_diag.get("unresolved"):
+            preview = "；".join(
+                f"{item['name']} ← 缺 {item['ref']}" for item in param_diag["unresolved"][:6]
+            )
+            raise RuntimeError(
+                f"work.atp 的 $PARAMETER 段有 {len(param_diag['unresolved'])} 个参数引用不到定义："
+                f"{preview}。这类模板跑起来会让 TACS 报「变量找不到」，属于模型残缺，"
+                "请在 ATPDraw 里重新导出完整参数段后再跑"
+            )
+        if param_diag.get("rewritten"):
+            log_lines.append(
+                f"参数段已规范化：{param_diag['intermediates']} 条中间变量内联 → "
+                f"{param_diag['resolved']} 个参数（去 `$$`、整数补小数点）"
+            )
+        verdicts.append(_verdict(
+            "param_section",
+            True,
+            f"参数段 {param_diag['resolved']} 个参数"
+            + ("（已规范化）" if param_diag.get("rewritten") else "（原样，无中间变量）"),
+        ))
+
         self.entry_path.write_text(self.rendered_text, encoding="gbk", errors="replace")
         log_lines.append(f"已渲染 {self.entry_path.name}（{len(self.rendered_text)} 字节）")
 
         include_lines = [
             line.strip()
             for line in self.rendered_text.splitlines()
-            if line.strip().upper().startswith("$INCLUDE")
+            if line.strip().upper().startswith(("$INCLUDE", "$INSERT"))
         ]
         priv_win = f"D:\\ATP\\.runs\\{self.shim.id}"
         bad_includes = [line for line in include_lines if priv_win not in line]
+        # ⚠️ 2026-11-02：$INSERT 一并纳入重写校验。7.2+ 的 pch 原本指向全局共享目录
+        # （ATPDraw.ini [Directories] ATP=，实测 204 个工程共用 8 个文件名），
+        # 没重写到私有目录就会读到"别的工程"的几何 —— 仿真照跑、结果全错。
         verdicts.append(
             _verdict(
                 "include_rewritten",
                 not bad_includes,
-                f"{len(include_lines)} 条 $INCLUDE，未重写 {len(bad_includes)} 条"
+                f"{len(include_lines)} 条 $INCLUDE/$INSERT，未重写 {len(bad_includes)} 条"
                 + (f"：{bad_includes[:2]}" if bad_includes else ""),
             )
         )
@@ -1218,11 +1277,63 @@ class _TestContext:
         rendered_text = getattr(self, "rendered_text", "") or ""
         if not rendered_text:
             rendered_text = self.rewrite_includes(self.render())
+
+        # ── 7.2+（$INSERT 形态）：几何随 pch 上传，**不做** dat→LCC→lib ──
+        # 为什么必须跳过（2026-11-02 实测）：
+        #   · 7.3 的 pch 由 ATPDraw **内置** LCC 生成，节点名是真实塔名（X0133AXXSS2A），
+        #     而 LP 调的 LCC 产出占位名（IN___A）+ 标准文件名（long.pch）；
+        #   · $INSERT 引用的是序号名（long3.pch / short1.pch ...），LP 产出的 long.pch
+        #     根本不会被读到 —— 白跑一次 LCC 且可能因 7.3 dat 与老 dat 不同构而直接失败；
+        #   · 真正要保证的是「包里那些序号 pch 已物化到引擎目录」，缺一个引擎会
+        #     返回 rc=0 + pl4 0 字节（只在 .lis 里留 Failure to connect disk file）。
+        if (getattr(self.asset, "model_format", "legacy") or "legacy") == "insert":
+            from .atp_model_format import insert_pch_refs, missing_dependencies
+
+            refs = insert_pch_refs(rendered_text)
+            on_disk = sorted(p.name for p in self.engine_dir.glob("*.pch"))
+            missing = missing_dependencies(rendered_text, on_disk)
+            if missing:
+                raise RuntimeError(
+                    f"7.2+ 模型的 $INSERT 依赖 {len(refs)} 个 pch，引擎目录缺少 {len(missing)} 个："
+                    f"{', '.join(missing[:8])}。缺 pch 时引擎仍返回 rc=0 但不出波形，"
+                    "因此在这里直接中止。请把模型包里的这些 pch 一并上传（它们由 ATPDraw 写在"
+                    " ATPDraw.ini 的 [Directories] ATP= 目录下）"
+                )
+            for name in refs:
+                verdicts.append(_verdict(
+                    f"insert_pch_{name}",
+                    True,
+                    f"{name} 已就位（{self.engine_dir / name}）",
+                ))
+            verdicts.append(_verdict(
+                "geometry_skipped",
+                True,
+                f"7.2+ 几何随 pch（{len(refs)} 个），跳过 dat→LCC→lib 重算",
+            ))
+            log_lines.append(
+                f"$INSERT 形态：{len(refs)} 个 pch 已就位，跳过 LCC（几何由 ATPDraw 内置 LCC 生成，LP 不复现）"
+            )
+            return {
+                "stage": "geometry",
+                "status": "passed",
+                "verdicts": verdicts,
+                "artifacts": {},
+                "metrics": {
+                    "referenced_lib": True,
+                    "skipped": True,
+                    "model_format": "insert",
+                    "insert_pch": refs,
+                },
+                "log": "\n".join(log_lines),
+            }
+
         # ⚠️ 2026-09-29 修复（无避雷线变体 ganzino/guxingno/... 根因）：这些资产的
         # work.atp 用 `$INSERT, ...\short1.pch` 引用几何（**不是** $INCLUDE/.lib），
         # 旧判定只认 $INCLUDE/IN_/.lib → 把 $INSERT 资产误判为「内嵌」而跳过 LCC
         # → 引擎目录没有 .pch → simulate 时 ATP 读 $INSERT 打不开文件 → Halt。
         # 现在 $INSERT 也算「引用外部几何」，必须跑 LCC 生成 .pch。
+        # ⚠️ 2026-11-02：这条只适用于**老版 dat + 序号 pch**的混合变体（model_format=legacy），
+        # 7.3 的 $INSERT 已在上面提前分流，不会走到这里。
         include_lines = [
             ln for ln in rendered_text.splitlines()
             if "$INCLUDE" in ln.upper()
@@ -1477,12 +1588,22 @@ class _TestContext:
     def build_compare_payload(self, stage_results: dict[str, Any]) -> dict[str, Any]:
         # 参数级对比（**主判据**）：Web 端渲染出的 work.atp $PARAMETER 段（NAME=VALUE）
         atp_params = _parse_named_values(self.entry_path)
-        # 严格对比（附加）：四段 .lib 的 sha256（逐字节一致才算几何完全一致）
+        # 严格对比（附加）：几何文件的 sha256（逐字节一致才算几何完全一致）
+        # ⚠️ 2026-11-02：几何载体按形态分流 —— 老版比 long/short/dahao/xiaohao.lib，
+        # 7.2+ 比 $INSERT 引用的序号 pch（此时没有 lib，比对空字典等于不比对）。
         lib_hashes: dict[str, Any] = {}
-        for name in ("long", "short", "dahao", "xiaohao"):
-            digest = _sha256_file(self.engine_dir / f"{name}.lib")
-            if digest:
-                lib_hashes[f"{name}.lib"] = digest
+        if (getattr(self.asset, "model_format", "legacy") or "legacy") == "insert":
+            from .atp_model_format import insert_pch_refs
+
+            for name in insert_pch_refs(self.rendered_text or ""):
+                digest = _sha256_file(self.engine_dir / name)
+                if digest:
+                    lib_hashes[name] = digest
+        else:
+            for name in ("long", "short", "dahao", "xiaohao"):
+                digest = _sha256_file(self.engine_dir / f"{name}.lib")
+                if digest:
+                    lib_hashes[f"{name}.lib"] = digest
         artifacts_index: list[dict[str, Any]] = []
         for stage in stage_results.values():
             artifacts_index.extend((stage.get("artifacts") or {}).values())

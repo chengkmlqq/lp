@@ -553,6 +553,34 @@ def _ensure_atp_asset_column_compatibility() -> None:
                 )
             logger.warning("Detected missing atp_asset.shield_wire; added shield wire dimension column.")
 
+        # ===== 模型形态识别（2026-11-02 改造）=====
+        # model_format: legacy / insert / embed / plain —— 决定仿真走 dat→lib 还是 pch 随包。
+        # 存量数据默认 legacy（改造前上传的都是 $INCLUDE 形态，eng=embed 已在入口拒收）。
+        if "model_format" not in column_names:
+            if DIALECT_IS_MYSQL:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN model_format VARCHAR(16) NOT NULL DEFAULT 'legacy'"),
+                )
+            else:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS "
+                         "model_format VARCHAR(16) NOT NULL DEFAULT 'legacy'"),
+                )
+            logger.warning("Detected missing atp_asset.model_format; added ATPDraw form column.")
+
+        # format_check_json: 上传预检报告（warning 清单 + 统计），供前端展示人工待办。
+        if "format_check_json" not in column_names:
+            if DIALECT_IS_MYSQL:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN format_check_json JSON NOT NULL DEFAULT (JSON_OBJECT())"),
+                )
+            else:
+                connection.execute(
+                    text("ALTER TABLE atp_asset ADD COLUMN IF NOT EXISTS "
+                         "format_check_json JSON DEFAULT '{}'::json"),
+                )
+            logger.warning("Detected missing atp_asset.format_check_json; added upload check report column.")
+
 
 def _ensure_atp_asset_run_column_compatibility() -> None:
     """

@@ -1162,6 +1162,33 @@ export type AtpAssetStatus = "draft" | "enabled" | "disabled" | "archived" | "pr
 export type AtpAssetRunnerKind = "atp" | "egm" | "hybrid";
 export type AtpAssetRunStatus = "pending" | "running" | "success" | "failed";
 
+/** ATPDraw 产物形态，决定仿真走 lib 还是 pch 链路（见后端 atp_model_format.py） */
+export type AtpAssetModelFormat = "legacy" | "insert" | "embed" | "plain";
+
+/** 上传预检的一条结论。error 级会让上传直接 400，不会出现在已入库的模型上 */
+export type AtpAssetCheckIssue = {
+  code: string;
+  level: "error" | "warning";
+  /** 哪里不对 */
+  message: string;
+  /** 人工怎么改（可执行的具体动作） */
+  fix_hint: string;
+  file?: string | null;
+};
+
+/** 上传预检报告（atp_model_format.PackageInspection.as_dict） */
+export type AtpAssetFormatCheck = {
+  model_format: AtpAssetModelFormat;
+  format_label?: string;
+  entry_path?: string | null;
+  insert_refs?: string[];
+  include_refs?: string[];
+  error_count?: number;
+  warning_count?: number;
+  issues?: AtpAssetCheckIssue[];
+  stats?: Record<string, number | Record<string, number>>;
+};
+
 export type AtpAssetSummary = {
   id: string;
   code: string;
@@ -1179,6 +1206,17 @@ export type AtpAssetSummary = {
   version: string;
   is_active: boolean;
   shield_wire: string;
+  /**
+   * ATPDraw 产物形态（上传时按 work.atp 几何引用形态判定，2026-11-02）：
+   * - `legacy`：`$INCLUDE + .lib`（6.x/7.0/7.1），每轮 dat→LCC→pch→lib 重算几何
+   * - `insert`：`$INSERT + 序号 .pch`（7.2+），几何随包、pch 不再重算，参数段走规范化
+   * - `embed`：7.2+ 内嵌（几何烧死），上传口已拒收，仅存量可能残留
+   * - `plain`：无 LCC 的纯 RLC 工程
+   */
+  model_format?: AtpAssetModelFormat;
+  model_format_label?: string | null;
+  /** 上传预检报告（error 级已在上传口 400；此处是放行时的提示清单） */
+  format_check?: AtpAssetFormatCheck | null;
   /** 模型级绑定的测试线路（单塔基准）：非空时测试默认用它 */
   test_line_id?: string | null;
   storage_mount_code: string | null;
