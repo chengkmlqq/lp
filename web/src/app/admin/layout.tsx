@@ -547,7 +547,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </div>
 
         <div className="admin-design-header-right">
-          <LangSwitcher lang={lang} onChange={setLang} compact />
+          <LangSwitcher lang={lang} onChange={setLang} />
 
           <Tooltip title={t("系统消息")}>
             <Popover

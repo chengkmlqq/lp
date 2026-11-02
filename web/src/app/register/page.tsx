@@ -138,7 +138,7 @@ export default function RegisterPage() {
 
             <div className="flex items-center justify-between">
               <span />
-              <LangSwitcher lang={lang} onChange={setLang} compact />
+              <LangSwitcher lang={lang} onChange={setLang} />
             </div>
 
             <Button block size="large" type="primary" htmlType="submit" loading={busy}>

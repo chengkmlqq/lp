@@ -213,6 +213,17 @@ body {
   gap: 12px;
 }
 
+/* 语言切换：纯图标按钮 + 下拉（MODO 基线：控件 28px、圆角 2px） */
+.lang-switcher.ant-btn {
+  font-size: 16px;
+  color: #79879c;
+}
+
+.lang-switcher.ant-btn:hover,
+.lang-switcher.ant-btn:focus-visible {
+  color: #242e43;
+}
+
 .admin-design-header-user {
   display: flex;
   align-items: center;

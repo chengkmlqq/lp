@@ -338,7 +338,7 @@ export default function LoginPage() {
               >
                 {t("记住密码")}
               </Checkbox>
-              <LangSwitcher lang={lang} onChange={setLang} compact />
+              <LangSwitcher lang={lang} onChange={setLang} />
             </div>
 
             <Button block size="large" type="primary" htmlType="submit" loading={busy}>
