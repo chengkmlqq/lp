@@ -741,6 +741,22 @@ def _assert_script_path(path: str | None, *, tree: StorageTree, field_name: str)
     return normalized
 
 
+def _row_field(item: Any, name: str, default: Any = None) -> Any:
+    """安全读取 ORM 对象 / SQLAlchemy Row 上的字段，取不到返回 default。
+
+    ⚠️ 为什么需要这个：`list_assets` 为了避开 tags_json 等大列走显式列白名单
+    （`select(*columns)`），一旦某列忘了加进白名单，Row 取不到列时抛的是
+    **KeyError 而不是 AttributeError**，`getattr(..., default)` 兜不住 → 列表接口
+    直接 500（页面表现「加载失败」）。2026-11-01 的 test_line_id、2026-11-02 的
+    model_format 都是这么挂的，这里统一兜一层，新增列漏加白名单最多是显示回落，
+    不会再整页挂掉。
+    """
+    try:
+        return getattr(item, name)
+    except (AttributeError, KeyError):
+        return default
+
+
 def serialize_asset(
     item: AtpAsset,
     *,
@@ -794,9 +810,11 @@ def serialize_asset(
         test_line_id=item.test_line_id,
         # 形态标记（2026-11-02）：存量行没有该字段值时回落 legacy —— 改造前入口只放行
         # $INCLUDE 形态，历史数据必然是 legacy，不能显示成空。
-        model_format=(item.model_format or "legacy"),  # type: ignore[arg-type]
-        model_format_label=_MODEL_FORMAT_LABELS.get(item.model_format or "legacy"),
-        format_check=(item.format_check_json or None),
+        # 用 _row_field：本函数既接收 ORM 对象（详情/写接口）也接收列白名单 Row（列表接口），
+        # Row 里若没有该列必须回落而不是抛 KeyError（见 _row_field 注释）。
+        model_format=(_row_field(item, "model_format") or "legacy"),  # type: ignore[arg-type]
+        model_format_label=_MODEL_FORMAT_LABELS.get(_row_field(item, "model_format") or "legacy"),
+        format_check=(_row_field(item, "format_check_json") or None),
         storage_mount_code=item.storage_mount_code or "main",
         storage_root_path=item.storage_root_path,
         run_count=run_count,
@@ -930,6 +948,10 @@ def list_assets(
         # 2026-11-01：serialize_asset 访问 test_line_id（测试线路），缺则 500：
         #   KeyError: 'test_line_id'（select 列白名单漏列 → Row.__getattr__ 抛 KeyError）
         AtpAsset.test_line_id,
+        # 2026-11-02：serialize_asset 访问 model_format / format_check_json（形态标记 +
+        #   上传预检报告），漏加同样 500 → ATP 模型管理页「加载失败」。新增列务必同步此处。
+        AtpAsset.model_format,
+        AtpAsset.format_check_json,
         AtpAsset.storage_mount_code,
         AtpAsset.storage_root_path,
         AtpAsset.create_date,

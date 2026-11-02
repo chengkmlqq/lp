@@ -328,7 +328,12 @@ def test_list_assets_columns_cover_serialize_asset_fields() -> None:
     from app.services import atp_asset_service as svc
 
     serialize_src = inspect.getsource(svc.serialize_asset)
+    # 两种读取方式都要覆盖：
+    #   ① 直接属性访问 `item.xxx`
+    #   ② 容错读取 `_row_field(item, "xxx")` —— 2026-11-02 起新增列走这条，
+    #      若只匹配 ①，改动后就再也守不住「漏加列」这类事故
     accessed = set(re.findall(r"\bitem\.([a-z_][a-z0-9_]*)", serialize_src))
+    accessed |= set(re.findall(r'_row_field\(\s*item\s*,\s*"([a-z_][a-z0-9_]*)"', serialize_src))
 
     list_src = inspect.getsource(svc.list_assets)
     block = list_src[list_src.index("columns = (") : list_src.index("stmt = select(*columns)")]
@@ -384,34 +389,13 @@ def test_list_assets_returns_test_line_id() -> None:
         session.close()
 
 
-# ───────────── 列表接口列清单：serialize_asset 需要的列必须都在（防 500） ─────────────
+def test_list_assets_returns_model_format_and_check() -> None:
+    """列表接口必须带出形态标记与预检报告（2026-11-02 事故回归）。
 
-
-def test_list_assets_columns_cover_serialize_asset_fields() -> None:
-    """``list_assets`` 只查固定几列，``serialize_asset`` 读到的每个字段都必须在清单里。
-
-    历史事故两次：2026-10-30 的 version/is_active/shield_wire、2026-11-01 的 test_line_id
-    ——漏一列，整个资产列表接口直接 500 AttributeError（线上就是「ATP 模型管理页打不开」）。
-    这条断言从源码层面兜住，新增字段忘了加列清单会立刻在这里失败。
+    事故：新增 model_format / format_check_json 后忘了加进 list_assets 的列白名单，
+    Row 取不到列抛 KeyError → 列表 500 → 线上「ATP 模型管理页加载失败」。
+    这里既验证值能取到，也验证存量行（未写过该字段）回落 legacy 而不是空。
     """
-    import inspect
-    import re
-
-    from app.services import atp_asset_service as svc
-
-    serialize_src = inspect.getsource(svc.serialize_asset)
-    accessed = set(re.findall(r"\bitem\.([a-z_][a-z0-9_]*)", serialize_src))
-
-    list_src = inspect.getsource(svc.list_assets)
-    block = list_src[list_src.index("columns = (") : list_src.index("stmt = select(*columns)")]
-    provided = set(re.findall(r"AtpAsset\.([a-z_][a-z0-9_]*)", block))
-
-    missing = accessed - provided
-    assert not missing, f"list_assets 少查了 serialize_asset 需要的列：{sorted(missing)}"
-
-
-def test_list_assets_returns_test_line_id() -> None:
-    """真实跑一遍列表：绑定测试线路的资产能正常序列化，不抛 AttributeError。"""
     from app.models.dimension_item import DimensionItem
 
     engine = create_engine("sqlite+pysqlite:///:memory:")
@@ -426,17 +410,34 @@ def test_list_assets_returns_test_line_id() -> None:
     )
     session = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)()
     try:
-        session.add(
-            AtpAsset(
-                code="TL-ASSET-1",
-                name="测试线路绑定资产",
-                status="enabled",
-                voltage_level="220",
-                tower_type="MT1",
-                scene_type="plain",
-                arrester_config="none",
-                test_line_id="tl_demo_0001",
-            )
+        session.add_all(
+            [
+                AtpAsset(
+                    code="FMT-INSERT-1",
+                    name="7.3 INSERT 形态资产",
+                    status="enabled",
+                    voltage_level="110",
+                    tower_type="MT1",
+                    scene_type="plain",
+                    arrester_config="M123",
+                    model_format="insert",
+                    format_check_json={
+                        "model_format": "insert",
+                        "error_count": 0,
+                        "warning_count": 1,
+                        "issues": [{"code": "W001", "level": "warning", "message": "参数段有 $$", "fix_hint": "系统自动处理"}],
+                    },
+                ),
+                AtpAsset(
+                    code="FMT-STORE-1",
+                    name="存量资产（未写形态字段）",
+                    status="enabled",
+                    voltage_level="110",
+                    tower_type="MT1",
+                    scene_type="plain",
+                    arrester_config="none",
+                ),
+            ]
         )
         session.commit()
 
@@ -449,7 +450,15 @@ def test_list_assets_returns_test_line_id() -> None:
             scene_type=None,
         )
 
-        assert response.total == 1
-        assert response.items[0].test_line_id == "tl_demo_0001"
+        by_code = {item.code: item for item in response.items}
+        insert_item = by_code["FMT-INSERT-1"]
+        assert insert_item.model_format == "insert"
+        assert insert_item.model_format_label  # 有中文标签，不能是 None
+        assert insert_item.format_check is not None
+        assert insert_item.format_check["warning_count"] == 1
+
+        legacy_item = by_code["FMT-STORE-1"]
+        assert legacy_item.model_format == "legacy"
+        assert legacy_item.format_check is None
     finally:
         session.close()
