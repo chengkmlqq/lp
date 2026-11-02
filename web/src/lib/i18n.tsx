@@ -2724,7 +2724,7 @@ export const EN_DICT: Record<string, string> = {
   "...等共": "...and a total of",
   "仍有文件在解析中或尚未校验，确定要提交吗？": "file(s) are still being parsed or not yet validated. Submit anyway?",
   "点击或拖拽模型文件夹到此区域上传": "Click or drag the model folder here to upload",
-  "支持选择整个 ATP 模型目录（含 work.atp 与 lib 等文件），选择后自动打包上传到临时存储。": "Select an entire ATP model directory (including work.atp and lib files); it will be packaged and uploaded to temporary storage automatically.",
+  "支持选择整个 ATP 模型目录，系统仅上传 .atp 与 .dat 文件（lib/pch 等运行产物不需要）。模型须由老版 ATPDraw（7.2 之前）导出，新版导出的模型会被拒绝。": "Select an entire ATP model directory; only .atp and .dat files are uploaded (runtime artifacts such as lib/pch are not needed). Models must be exported with legacy ATPDraw (before 7.2); models produced by newer versions are rejected.",
   "已选择": "Selected",
   "个文件": "file(s)",
   "上传完成，可以创建模型": "Upload complete. You can now create the model",

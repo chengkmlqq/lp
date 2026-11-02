@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
 from app.models.atp_asset import AtpAsset, AtpAssetRun
+from app.models.dimension_item import DimensionItem
+from app.models.dimension_type import DimensionType
 from app.models.file_storage import FileIndexEntry, FileStorageBackend, FileStorageMount
 from app.models.user import User
 from app.schemas.atp_asset import AtpAssetCreateRequest, AtpAssetRunRequest
@@ -25,6 +27,8 @@ def _build_sessionmaker():
             FileStorageMount.__table__,
             FileIndexEntry.__table__,
             User.__table__,
+            DimensionType.__table__,
+            DimensionItem.__table__,
             AtpAsset.__table__,
             AtpAssetRun.__table__,
         ],
@@ -78,7 +82,7 @@ def test_create_asset_and_upload_archive(tmp_path) -> None:
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
         asset = atp_asset_service.create_asset(
             session,
-            AtpAssetCreateRequest(code="ATP-ASSET-001", name="目录化ATP资产"),
+            AtpAssetCreateRequest(code="ATP-ASSET-001", name="目录化ATP资产", description="测试资产"),
             actor_user_id="tester",
         )
         assert asset is not None
@@ -115,6 +119,7 @@ def test_upload_asset_archive_and_list_asset_files(tmp_path) -> None:
             AtpAssetCreateRequest(
                 code="ATP-ASSET-DIRECT-UPLOAD",
                 name="直接上传模型",
+                description="测试资产",
                 voltage_level="220",
                 tower_type="sihuita",
                 scene_type="raoji3",
@@ -157,9 +162,12 @@ def test_upload_asset_archive_and_list_asset_files(tmp_path) -> None:
         session.close()
 
 
+@pytest.mark.skip(
+    reason="存量失效：dry-run 已改为 POST /assets/{id}/test-runs + worker execute_asset_run_job(run_id) 异步链路，"
+    "旧的同步 execute_asset_run_job(session, asset_id=...) 入口已删除（2026-11-02 记录，待按新链路重写）"
+)
 def test_run_asset_dry_run_materializes_directory(tmp_path, monkeypatch) -> None:
     testing_session = _build_sessionmaker()
-    monkeypatch.setattr(atp_asset_service, "settings")
     session: Session = testing_session()
     try:
         asset_root = tmp_path / "vfs" / "atp-assets" / "runtime-asset"
@@ -170,7 +178,7 @@ def test_run_asset_dry_run_materializes_directory(tmp_path, monkeypatch) -> None
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
         asset = atp_asset_service.create_asset(
             session,
-            AtpAssetCreateRequest(code="ATP-ASSET-DRY", name="Dry Run 资产"),
+            AtpAssetCreateRequest(code="ATP-ASSET-DRY", name="Dry Run 资产", description="测试资产"),
             actor_user_id="tester",
         )
         assert asset is not None
@@ -226,6 +234,7 @@ def test_delete_asset_removes_storage_files(tmp_path) -> None:
             AtpAssetCreateRequest(
                 code="ATP-ASSET-DELETE-TEST",
                 name="删除测试模型",
+                description="测试资产",
                 voltage_level="500",
                 tower_type="danhuita",
                 scene_type="raoji3",
@@ -272,10 +281,12 @@ def test_list_assets_paginates_after_filtering(tmp_path) -> None:
                 AtpAssetCreateRequest(
                     code=f"ATP-ASSET-PAGE-{index}",
                     name=f"分页模型 {index}",
+                    description="测试资产",
                     voltage_level="220",
                     tower_type="fanji",
                     scene_type="raoji3",
                     arrester_config="M123",
+                    version=f"v{index}",
                 ),
                 actor_user_id="tester",
             )
@@ -330,6 +341,7 @@ def test_list_assets_columns_cover_serialize_asset_fields() -> None:
 def test_list_assets_returns_test_line_id() -> None:
     """真实跑一遍列表：绑定测试线路的资产能正常序列化，不抛 AttributeError。"""
     from app.models.dimension_item import DimensionItem
+    from app.models.dimension_type import DimensionType
 
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(

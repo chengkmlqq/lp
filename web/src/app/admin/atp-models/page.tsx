@@ -1477,7 +1477,12 @@ export default function AtpModelsPage() {
                 multiple
                 showUploadList={false}
                 beforeUpload={(file) => {
-                  setFileList((prev) => [...prev, file]);
+                  // 2026-11-02：后端白名单收紧为 .atp / .dat（lib/pch 等一律 400），
+                  // 前端同步过滤，整目录选择时只打包模型必需文件，避免整包被拒
+                  const lowerName = (file.name || "").toLowerCase();
+                  if (lowerName.endsWith(".atp") || lowerName.endsWith(".dat")) {
+                    setFileList((prev) => [...prev, file]);
+                  }
                   return false;
                 }}
                 onRemove={() => {
@@ -1494,7 +1499,7 @@ export default function AtpModelsPage() {
                       {t("点击或拖拽模型文件夹到此区域上传")}
                     </p>
                     <Typography.Text type="secondary">
-                      {t("支持选择整个 ATP 模型目录（含 work.atp 与 lib 等文件），选择后自动打包上传到临时存储。")}
+                      {t("支持选择整个 ATP 模型目录，系统仅上传 .atp 与 .dat 文件（lib/pch 等运行产物不需要）。模型须由老版 ATPDraw（7.2 之前）导出，新版导出的模型会被拒绝。")}
                     </Typography.Text>
                   </>
                 ) : (
