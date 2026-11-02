@@ -17,6 +17,7 @@ import io
 import json
 import zipfile
 from collections import Counter, defaultdict
+from collections.abc import Mapping
 from typing import Any, Iterable
 from uuid import uuid4
 
@@ -264,6 +265,8 @@ def create_case(
     else:
         sort_order = int(payload.sort_order)
     test_line, test_line_hash = _resolve_case_test_line(db, payload.test_line_id)
+    # 保存期校验：params_json 只允许有限覆盖键（旧几何来源字段直接 400）
+    validate_case_overrides(payload.params_json or {})
     case = AtpTestSetCase(
         set_id=set_id,
         asset_id=payload.asset_id,
@@ -318,6 +321,8 @@ def update_case(
     elif case.test_line_id:
         resolved_test_line = _test_lines_by_id(db, [case.test_line_id]).get(case.test_line_id)
     if payload.params_json is not None:
+        # 保存期校验：params_json 只允许有限覆盖键（旧几何来源字段直接 400）
+        validate_case_overrides(payload.params_json)
         case.params_json = dict(payload.params_json)
     if payload.expected_json is not None:
         case.expected_json = dict(payload.expected_json)
@@ -376,22 +381,79 @@ def reorder_cases(
 # ─────────────────────────── 执行测试集 ───────────────────────────
 
 
+# 用例级**允许覆盖**的运行参数（2026-11-03 来源收敛）：
+# 几何一律来自测试线路快照，用例只允许微调运行参数（电流/波形/档距类 options、
+# 阶段子集、超时等），保证同一条测试线路下的用例仍然可比。
+CASE_ALLOWED_OVERRIDE_KEYS: frozenset[str] = frozenset({
+    "stages", "tower_no", "scene", "voltage_kv",
+    "current_ka", "execution_options", "params_raw", "timeout_seconds",
+})
+# 用例 params_json 里出现即拒绝的旧来源字段（几何/来源必须来自测试线路）
+CASE_REJECTED_OVERRIDE_KEYS: tuple[str, ...] = (
+    "line_tower_id", "base_tower", "profile", "params_source",
+    "allow_incomplete_defaults", "tower_kind",
+)
+
+
+def validate_case_overrides(params_json: Mapping[str, Any]) -> None:
+    """用例保存期校验（比执行期更早暴露问题）：params_json 只允许有限覆盖键。
+
+    出现旧几何/来源字段（base_tower/profile/line_tower_id 等）或未知键 → 400，
+    与执行期 `_build_case_run_payload` 的白名单保持同一条口径。
+    """
+    unknown = sorted(set(params_json or {}) - CASE_ALLOWED_OVERRIDE_KEYS)
+    if not unknown:
+        return
+    rejected = [k for k in unknown if k in CASE_REJECTED_OVERRIDE_KEYS]
+    if rejected:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"params_json 含已弃用的几何/来源字段：{', '.join(rejected)}。"
+            "来源收敛后几何统一来自测试线路快照——请把几何固化到测试线路"
+            "（或给用例绑定 test_line_id），params_json 只保留运行参数覆盖",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"params_json 含不支持的键：{', '.join(unknown[:8])}。"
+        f"允许的覆盖键：{', '.join(sorted(CASE_ALLOWED_OVERRIDE_KEYS))}",
+    )
+
+
 def _build_case_run_payload(
     case: AtpTestSetCase, *, timeout_seconds: int | None
 ) -> AtpAssetTestRunRequest:
     """把用例参数快照还原成单模型测试请求。
 
+    来源收敛（2026-11-03）：
+    - 几何/工况唯一来源 = 测试线路快照（case.test_line_id，或执行时按资产维度反查）；
+    - params_json 只允许 ``CASE_ALLOWED_OVERRIDE_KEYS`` 内的运行参数覆盖
+      （有限覆盖：电流/波形/档距类 options/阶段子集/超时）；
+    - 出现旧几何来源字段（base_tower/profile/line_tower_id 等）→ 该用例派发失败，
+      错误里给出迁移方式，绝不静默忽略（否则用例会"看起来在跑、实际参数变了"）。
+
     缺省值与单模型测试保持一致（stages 默认全跑、current_ka 默认 31），
     显式给过的字段不允许被覆盖。execute 级 timeout 仅在用例未显式
     指定时生效。
-
-    绑定了测试线路时，``test_line_id`` 优先级高于 ``params_json`` 里的
-    ``base_tower``/``profile``：几何由测试线路快照提供，params_json 只留覆盖项。
     """
     params = dict(case.params_json or {})
+    unknown = sorted(set(params) - CASE_ALLOWED_OVERRIDE_KEYS)
+    if unknown:
+        rejected = [k for k in unknown if k in CASE_REJECTED_OVERRIDE_KEYS]
+        if rejected:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"用例 {case.id}（{case.name or '未命名'}）的 params_json 含已弃用的"
+                f"几何/来源字段：{', '.join(rejected)}。来源收敛后几何统一来自测试线路快照，"
+                "请把这些几何固化到测试线路（或给用例绑定 test_line_id），"
+                "params_json 只保留运行参数覆盖（电流/波形/档距类 execution_options 等）",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"用例 {case.id}（{case.name or '未命名'}）的 params_json 含不支持的键："
+            f"{', '.join(unknown[:8])}。允许的覆盖键：{', '.join(sorted(CASE_ALLOWED_OVERRIDE_KEYS))}",
+        )
     if case.test_line_id:
         params["test_line_id"] = case.test_line_id
-        params.pop("line_tower_id", None)
     if timeout_seconds is not None and not params.get("timeout_seconds"):
         params["timeout_seconds"] = int(timeout_seconds)
     return AtpAssetTestRunRequest.model_validate(params)

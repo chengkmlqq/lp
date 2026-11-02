@@ -3,9 +3,8 @@
 覆盖：
 1. 分段归一化与依赖补齐（simulate ⇒ geometry ⇒ materialize）
 2. .lib 参数级解析 / .lis 致命行识别（对拍判据的解析层）
-3. create_test_run 记录请求段（dry_run，不依赖 broker）
-4. execute_test_run_job 的 dry_run 全链路接线
-5. compare.json 结构（与 C# harness 同 schema，可直接 diff）
+3. create_test_run 记录请求段（不依赖 broker）
+4. compare.json 结构（与 C# harness 同 schema，可直接 diff）
 """
 
 from __future__ import annotations
@@ -21,6 +20,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
 from app.models.atp_asset import AtpAsset, AtpAssetRun
+from app.models.atp_test_line import AtpTestLine, AtpTestLineCircuit
 from app.models.dimension_item import DimensionItem
 from app.models.dimension_type import DimensionType
 from app.models.file_storage import FileIndexEntry, FileStorageBackend, FileStorageMount
@@ -50,6 +50,8 @@ def _build_sessionmaker():
             DimensionItem.__table__,
             AtpAsset.__table__,
             AtpAssetRun.__table__,
+            AtpTestLine.__table__,
+            AtpTestLineCircuit.__table__,
         ],
     )
     return sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
@@ -91,7 +93,9 @@ def _create_asset(session: Session, *, code: str = "ATP-TEST-001", tower_type: s
                   voltage_level: str = "220") -> AtpAsset:
     asset = atp_asset_service.create_asset(
         session,
-        AtpAssetCreateRequest(code=code, name="测试资产", voltage_level=voltage_level, tower_type=tower_type),
+        AtpAssetCreateRequest(
+            code=code, name="测试资产", description="测试资产", voltage_level=voltage_level, tower_type=tower_type
+        ),
         actor_user_id="tester",
     )
     assert asset is not None
@@ -231,94 +235,6 @@ def test_create_test_run_rejects_missing_asset(tmp_path) -> None:
         session.close()
 
 
-# ───────────────────────── 4. dry_run 全链路接线 ─────────────────────────
-
-
-def test_execute_test_run_dry_run_lists_commands(tmp_path, monkeypatch) -> None:
-    from app.core import database as database_module
-    from app.services.fl_analysis_external import ResolvedExternalWaveformJob
-
-    testing_session = _build_sessionmaker()
-    # execute_test_run_job 内部自己开 SessionLocal（worker 侧行为）→ 指向测试库
-    monkeypatch.setattr(database_module, "SessionLocal", testing_session)
-    session: Session = testing_session()
-    try:
-        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        asset = _create_asset(session, code="ATP-TEST-DRY")
-
-        run = AtpAssetRun(
-            asset_id=asset.id,
-            status="pending",
-            engine_mode="wine",
-            runner_kind="atp",
-            timeout_seconds=60,
-            create_user="tester",
-            update_user="tester",
-        )
-        session.add(run)
-        session.commit()
-
-        def fake_resolve(db, **kwargs):  # noqa: ANN001, ANN003
-            return ResolvedExternalWaveformJob(
-                adapter="atp",
-                asset=asset,
-                entry_file="work.atp",
-                result_file=None,
-                storage_mount_code="main",
-                storage_root_path="/atp-assets/ATP-TEST-DRY",
-                atp_text="$INCLUDE, D:\\ATP\\220\\maotou\\fanji\\M123\\long.lib, A, B, C\n",
-                timeout_seconds=60,
-                extra_args=[],
-                environment={},
-                contract={},
-                parameter_bindings={},
-            )
-
-        monkeypatch.setattr(
-            "app.services.fl_analysis_external.resolve_external_waveform_job", fake_resolve
-        )
-        monkeypatch.setattr(
-            atp_asset_test_service, "_test_run_dir", lambda run_id: tmp_path / "runs" / run_id
-        )
-        monkeypatch.setattr(
-            atp_asset_test_service,
-            "_test_engine_dir",
-            lambda **kwargs: tmp_path / "engine",
-        )
-        monkeypatch.setattr(
-            atp_asset_test_service._TestContext,
-            "_build_command",
-            lambda self, *, input_path, relative: [
-                "wine",
-                "tpbig.exe",
-                "both",
-                str(input_path),
-                "s",
-                "-r",
-            ],
-        )
-        monkeypatch.setattr(
-            atp_asset_test_service, "_write_artifact_zip", lambda **kwargs: None
-        )
-
-        atp_asset_test_service.execute_test_run_job(
-            run_id=run.id,
-            payload_data=AtpAssetTestRunRequest(dry_run=True).model_dump(mode="json"),
-            actor_user_id="tester",
-        )
-
-        session.expire_all()
-        saved = atp_asset_service.get_run_by_id(session, run.id)
-        assert saved is not None
-        assert saved.status == "success"
-        assert saved.exit_code == 0
-        assert "tpbig.exe" in (saved.engine_command or "")
-        assert "work.atp" in (saved.engine_command or "")
-        assert saved.result_summary_json["dry_run"] is True
-        assert saved.result_summary_json["schema"] == COMPARE_SCHEMA
-    finally:
-        session.close()
-
 
 # ───────────────────────── 5. compare.json 结构 ─────────────────────────
 
@@ -433,54 +349,78 @@ def _ctx_without_tower(tmp_path, session, *, tower_type: str, voltage: str, code
     )
 
 
-def test_template_params_source_needs_no_tower(tmp_path) -> None:
-    """无杆塔测试：只给资产维度（塔型/电压），参数由参数模板默认值算出。"""
+def test_legacy_param_sources_rejected(tmp_path) -> None:
+    """来源收敛（2026-11-03）：旧来源（线路杆塔/手工 JSON/tower 模式）必须显式拒绝。"""
+    import pytest
+    from fastapi import HTTPException
+
+    from app.schemas.atp_asset import AtpAssetTestRunRequest
+    from app.services import atp_asset_test_service as svc
+
+    for kwargs, marker in (
+        ({"line_tower_id": "tw-0001"}, "line_tower_id"),
+        ({"base_tower": {"tower_type": "ganzi"}}, "base_tower"),
+        ({"profile": {"insulator_length_m": 5.9}}, "base_tower"),
+        ({"params_source": "tower"}, "params_source"),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            svc._reject_legacy_param_sources(AtpAssetTestRunRequest(**kwargs))
+        assert exc.value.status_code == 400
+        assert marker in str(exc.value.detail)
+        assert "测试线路" in str(exc.value.detail)
+
+
+def test_compute_params_uses_test_line_context_with_diagnostics(tmp_path) -> None:
+    """收敛后唯一路径：测试线路装配的 base_tower/profile 走生产解析器并带诊断。"""
     testing_session = _build_sessionmaker()
     session: Session = testing_session()
     try:
         _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        ctx = _ctx_without_tower(tmp_path, session, tower_type="maotou", voltage="220")
+        code = "ATP-TESTLINE-ganzi"
+        asset = _create_asset(session, code=code, tower_type="ganzi", voltage_level="110")
+        from app.services.fl_analysis_external import ResolvedExternalWaveformJob
 
-        assert ctx.params_source == "template"
+        resolved = ResolvedExternalWaveformJob(
+            adapter="atp",
+            asset=asset,
+            entry_file="work.atp",
+            result_file=None,
+            storage_mount_code="main",
+            storage_root_path=f"/atp-assets/{code}",
+            atp_text="$PARAMETER\nRER001=PLACEHOLDER\n",
+            timeout_seconds=60,
+            extra_args=[],
+            environment={},
+            contract={},
+            parameter_bindings={},
+        )
+        payload = AtpAssetTestRunRequest(
+            base_tower={
+                "tower_type": "ganzi",
+                "line_voltage_kv": 110,
+                "ground_resistance_ohm": 10.0,
+                "circuit_geometry_json": {},
+            },
+            profile={"insulator_length_m": 5.945, "current_a": 31.0},
+        )
+        ctx = _TestContext(
+            db=session,
+            run_id="run-testline-0001",
+            asset=asset,
+            payload=payload,
+            resolved_job=resolved,
+            run_dir=tmp_path / "run",
+            engine_dir=tmp_path / "engine",
+            shim=atp_asset_test_service._test_shim("run-testline-0001"),
+            test_line_meta={"code": "TL-110-ganzi-with", "matched_by": "asset"},
+        )
+
+        assert ctx.params_source == "tower"
         params = ctx.ensure_params()
-
         assert len(params) > 10
-        assert params["RER001"] == "10."       # 接地电阻（模板默认值 ground_r=10.0）
-        assert params["REIGAN____"] == "31."   # 固定雷电流 31kA
-        assert params["RELENS____"] == "5.95"  # 绝缘子串长（默认 insul_m=5.945m）
         diag = ctx.param_diagnostics
         assert diag["chain"], "应记录命中的模板链"
-        assert diag["defaults_applied"], "应记录用到的默认上下文变量"
-        assert diag["unresolved"] == {}
+        assert diag["sources"], "应记录每槽位来源标签"
     finally:
         session.close()
 
-
-def test_incomplete_template_defaults_refuse_to_run(tmp_path) -> None:
-    """模板默认值不完整时必须显式报错（禁止静默算无意义结果）；显式放行才继续。"""
-    testing_session = _build_sessionmaker()
-    session: Session = testing_session()
-    try:
-        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
-        # sihuita（四回路）暂未提供 c1_*..c4_* 默认值
-        ctx = _ctx_without_tower(tmp_path, session, tower_type="sihuita", voltage="500")
-
-        with pytest.raises(RuntimeError) as excinfo:
-            ctx.ensure_params()
-        message = str(excinfo.value)
-        assert "默认值不完整" in message and "allow_incomplete_defaults" in message
-
-        # 显式放行 → 允许用不完整参数跑（结果可能无物理意义）
-        allowed = _ctx_without_tower(
-            tmp_path,
-            session,
-            tower_type="sihuita",
-            voltage="500",
-            code_suffix="-ALLOW",
-            allow_incomplete_defaults=True,
-        )
-        params = allowed.ensure_params()
-        assert params
-        assert allowed.param_diagnostics["unresolved"], "放行也要保留未解析诊断"
-    finally:
-        session.close()

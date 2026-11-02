@@ -216,6 +216,33 @@ def _skipped_stage(stage: str, reason: str) -> dict[str, Any]:
 # ─────────────────────────────── 请求入口 ───────────────────────────────
 
 
+def _reject_legacy_param_sources(payload: AtpAssetTestRunRequest) -> None:
+    """来源收敛（2026-11-03）：测试运行的几何/工况输入只接受「测试线路」。
+
+    旧来源（线路杆塔直选、手工 base_tower/profile JSON、无杆塔模板默认值）一律
+    显式拒绝 —— 拒绝而不是静默忽略，否则旧客户端会"看起来在跑、实际参数变了"。
+    历史已完成的 run 不受影响（不重算、不改写）。
+    """
+    if payload.line_tower_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="line_tower_id 已不再支持：测试参数统一从「测试线路（单塔基准）」装配。"
+            "请把对应杆塔固化为测试线路（测试线路页支持从线路杆塔派生），再用 test_line_id 发起测试",
+        )
+    if payload.base_tower or payload.profile:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="手工 base_tower/profile 已不再支持：几何与工况输入统一由测试线路快照提供。"
+            "请把这些字段固化成一条测试线路（人工新建或从杆塔派生），再用 test_line_id 发起测试",
+        )
+    if payload.params_source == "tower":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="params_source=tower 已不再支持：几何与工况输入统一由测试线路快照提供"
+            "（不传 test_line_id 时按资产维度自动匹配）",
+        )
+
+
 def create_test_run(
     db: Session,
     *,
@@ -230,6 +257,8 @@ def create_test_run(
     asset = get_asset_by_id(db, asset_id)
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ATP 资产不存在")
+    # 来源收敛前置校验（2026-11-03）：只接受测试线路来源
+    _reject_legacy_param_sources(payload)
     stages = _normalize_stages(payload.stages)
 
     settings = get_settings()
@@ -346,7 +375,21 @@ def execute_test_run_job(
         # 「测试线路（单塔基准）」绑定信息，写进 compare.json 的 case.test_line，
         # 让回归报告能回答「这次到底用的哪套几何基准、基准有没有变」。
         test_line_meta: dict[str, Any] | None = None
-        # 优先级：test_line_id > line_tower_id > 显式 base_tower/profile > 模板默认值。
+        # ── 来源收敛（2026-11-03）─────────────────────────────────────────
+        # 几何/工况输入的唯一来源 = 测试线路（单塔基准）：
+        #   ① 显式 test_line_id → 按快照装配；
+        #   ② 未指定 → 按资产维度（电压/塔型/避雷线）自动反查一条；
+        #   ③ 都拿不到 → 失败并引导去「测试线路」页创建，绝不静默回落模板默认值
+        #      （旧行为是拿默认值合成几何跑出一个"看起来成功"的结果）。
+        # line_tower_id / 手工 base_tower/profile 在 API 层已被拒绝，这里再防一道
+        # 直接入队（celery task 不走 HTTP）的旧载荷。
+        if payload.line_tower_id or payload.base_tower or payload.profile:
+            _mark_run_failed(
+                db, run=run, actor_user_id=actor_user_id,
+                reason="line_tower_id / 手工 base_tower/profile 已不再支持："
+                "几何与工况输入统一由测试线路快照提供，请改用 test_line_id（或不传、按维度自动匹配）",
+            )
+            return
         if payload.test_line_id:
             from .atp_test_line_service import (  # noqa: PLC0415
                 assemble_payload_from_test_line,
@@ -379,7 +422,6 @@ def execute_test_run_job(
                 return
             payload.base_tower = base_tower
             payload.profile = profile
-            # 复用既有「tower 模式」通道（几何/参数/渲染全部走同一条路径，保证口径一致）
             payload.params_source = "tower"
             if not payload.tower_kind:
                 payload.tower_kind = test_line.tower_type
@@ -390,46 +432,7 @@ def execute_test_run_job(
                     payload.voltage_kv = None
             test_line_meta = build_run_meta(test_line, matched_by=matched_by)
             mark_used(db, test_line)
-        # 从线路杆塔选择（line_tower_id）：后端按塔组装 base_tower/profile，
-        # 口径与「ATP 参数试算」preview_resolve_by_towers 完全一致（快照同款组装函数）。
-        elif payload.line_tower_id:
-            from .fl_analysis_service import (  # noqa: PLC0415
-                _build_base_tower_json,
-                _build_profile_json,
-            )
-            from .line_service import get_line_tower_by_id  # noqa: PLC0415
-
-            tower = get_line_tower_by_id(db, payload.line_tower_id)
-            if tower is None:
-                _mark_run_failed(
-                    db, run=run, actor_user_id=actor_user_id,
-                    reason=f"线路杆塔不存在：{payload.line_tower_id}",
-                )
-                return
-            assembled_profile = _build_profile_json(tower.profile, tower)
-            if not assembled_profile:
-                _mark_run_failed(
-                    db, run=run, actor_user_id=actor_user_id,
-                    reason=f"杆塔 {tower.tower_no} 无 profile 数据（未导入塔属性），无法按线路杆塔测试",
-                )
-                return
-            payload.base_tower = _build_base_tower_json(tower, tower.line)
-            payload.profile = assembled_profile
-            if not payload.tower_kind:
-                payload.tower_kind = tower.tower_type
-            if payload.voltage_kv is None and tower.line is not None:
-                payload.voltage_kv = tower.line.voltage_kv
-            payload.params_source = "tower"
-
-        # 未显式指定来源时的「默认走测试线路」：模板模式且未提供任何几何 →
-        # 按资产维度反查一条基准。命中且几何可用才切换（几何不完整时保持模板模式，
-        # 避免把原本能跑的合成几何测试搞挂），并记录 auto_resolved 便于追溯。
-        if (
-            test_line_meta is None
-            and not payload.line_tower_id
-            and payload.params_source == "template"
-            and not (payload.base_tower or payload.profile)
-        ):
+        else:
             from .atp_test_line_service import (  # noqa: PLC0415
                 assemble_payload_from_test_line,
                 build_run_meta,
@@ -448,31 +451,46 @@ def execute_test_run_job(
                 )
             except HTTPException:  # pragma: no cover - 反查只读，不应抛
                 auto_line = None
-            if auto_line is not None:
-                base_tower, profile = assemble_payload_from_test_line(auto_line)
-                if _test_line_geometry_usable(base_tower, profile):
-                    payload.base_tower = base_tower
-                    payload.profile = profile
-                    payload.params_source = "tower"
-                    if not payload.tower_kind:
-                        payload.tower_kind = auto_line.tower_type
-                    if payload.voltage_kv is None:
-                        try:
-                            payload.voltage_kv = int(str(auto_line.voltage_level))
-                        except (TypeError, ValueError):
-                            payload.voltage_kv = None
-                    test_line_meta = build_run_meta(auto_line, matched_by=auto_matched)
-                    test_line_meta["auto_resolved"] = True
-                    mark_used(db, auto_line)
-                    logger.info(
-                        "[ATP测试] 自动匹配测试线路 %s（matched_by=%s）run=%s",
-                        auto_line.code, auto_matched, run.id,
-                    )
-                else:
-                    logger.warning(
-                        "[ATP测试] 测试线路 %s 几何快照不完整，本次回退模板模式 run=%s",
-                        auto_line.code, run.id,
-                    )
+            if auto_line is None:
+                dim_hint = "/".join(
+                    part for part in (
+                        str(payload.voltage_kv or run.asset.voltage_level or ""),
+                        str(payload.tower_kind or run.asset.tower_type or ""),
+                        str(run.asset.shield_wire or ""),
+                    ) if part
+                )
+                _mark_run_failed(
+                    db, run=run, actor_user_id=actor_user_id,
+                    reason=f"未找到匹配的测试线路（维度：{dim_hint or '未指定'}）。"
+                    "测试参数统一由测试线路提供，请先在「测试线路」页创建该维度的单塔基准，"
+                    "或在测试时显式指定 test_line_id",
+                )
+                return
+            base_tower, profile = assemble_payload_from_test_line(auto_line)
+            if not _test_line_geometry_usable(base_tower, profile):
+                _mark_run_failed(
+                    db, run=run, actor_user_id=actor_user_id,
+                    reason=f"自动匹配到测试线路 {auto_line.code}，但几何快照不完整"
+                    "（缺避雷线中距或 I 回上相中距）。请在「测试线路」页补全快照后重试",
+                )
+                return
+            payload.base_tower = base_tower
+            payload.profile = profile
+            payload.params_source = "tower"
+            if not payload.tower_kind:
+                payload.tower_kind = auto_line.tower_type
+            if payload.voltage_kv is None:
+                try:
+                    payload.voltage_kv = int(str(auto_line.voltage_level))
+                except (TypeError, ValueError):
+                    payload.voltage_kv = None
+            test_line_meta = build_run_meta(auto_line, matched_by=auto_matched)
+            test_line_meta["auto_resolved"] = True
+            mark_used(db, auto_line)
+            logger.info(
+                "[ATP测试] 自动匹配测试线路 %s（matched_by=%s）run=%s",
+                auto_line.code, auto_matched, run.id,
+            )
         stages = _normalize_stages(payload.stages)
 
         run.status = "running"
@@ -640,7 +658,7 @@ class _TestContext:
         self.engine_dir = engine_dir
         self.shim = shim
         # 本次使用的测试线路（单塔基准）元信息：写进 compare.json 的 case.test_line，
-        # None = 本次没有用测试线路（模板 / 真实杆塔 / 显式传入几何）
+        # 来源收敛（2026-11-03）后必然非 None —— worker 入口已保证拿不到测试线路即失败
         self.test_line_meta = test_line_meta
         self.command_log: list[list[str]] = []
         self.last_exit_code: int | None = None
@@ -648,210 +666,67 @@ class _TestContext:
         self.entry_path: Path = run_dir / resolved_job.entry_file
         self.execution_options: dict[str, Any] = self._build_execution_options()
         self._lis_flashover: dict[str, Any] = {}
-        # 参数来源：template（无杆塔，用参数模板默认值）/ tower（用传入的杆塔数据）
-        self.params_source: str = (
-            "tower" if (payload.base_tower or payload.profile or payload.params_source == "tower") else "template"
-        )
+        # 来源收敛（2026-11-03）：几何/工况唯一来源 = 测试线路（worker 已装配进 payload），
+        # 旧 template（无杆塔模板默认值合成几何）模式已整体移除
+        self.params_source: str = "tower"
         self._params: dict[str, str] | None = None
         self.param_diagnostics: dict[str, Any] = {}
-        # 无杆塔模式：用模板 context 默认值显式合成的几何（None = 未合成/不需要）
-        self.synthetic_geometry: dict[str, Any] | None = None
-        self._geom_defaults: dict[str, Any] | None = None
+        # 行级去向（2026-11-03）：stage_materialize 渲染完成后由 trace_parameter_writes 填充
+        self.param_write_trace: dict[str, dict[str, Any]] = {}
+        # 运行期覆盖（11K0 / 14XXSS）：apply_runtime_slots 填充
+        # {slot: {"value": 最终值, "written": 是否写进文件, "note": 说明}}
+        self.runtime_overrides: dict[str, dict[str, Any]] = {}
         self._effective_geometry_cache: tuple[dict[str, Any], dict[str, Any]] | None = None
 
-    # ---- 无杆塔模式的几何补全（方案B：显式合成，禁止静默 fallback）----
-
-    def _template_defaults(self) -> dict[str, Any]:
-        """参数模板的 context 默认值（_common.json 顶层 defaults，DB 行可覆盖）。"""
-        if self._geom_defaults is None:
-            from .atp_param_config import get_rules
-
-            rules = get_rules()
-            self._geom_defaults = dict(getattr(rules, "defaults", None) or {}) if rules is not None else {}
-        return self._geom_defaults
-
-    def _synth_number(self, *names: str) -> float | None:
-        defaults = self._template_defaults()
-        for name in names:
-            raw = defaults.get(name)
-            if raw is None:
-                continue
-            try:
-                return abs(float(raw))
-            except (TypeError, ValueError):
-                continue
-        return None
-
     def effective_geometry(self) -> tuple[dict[str, Any], dict[str, Any]]:
-        """返回本次测试**实际使用**的 profile / base_tower。
-
-        ``params_source == "template"``（无杆塔）时，``build_dat_values`` 需要的
-        「避雷线左/右中距」在模板体系里没有承载槽位（各塔型 RELE09/RELE10 语义还不同），
-        因此用模板 context 默认值（``lw_l_eff``/``lw_r_eff``）**显式合成**，并把合成内容
-        记进 ``self.synthetic_geometry`` 供对拍产物标注。
-
-        生产路径（tower 模式）原样返回，不做任何补全 —— 缺数据仍然显式报错。
-        """
+        """返回本次测试实际使用的 profile / base_tower（测试线路快照装配结果）。"""
         if self._effective_geometry_cache is not None:
             return self._effective_geometry_cache
         profile = dict(self.payload.profile or {})
         base_tower = dict(self.payload.base_tower or {})
-        if self.params_source != "template":
-            self._effective_geometry_cache = (profile, base_tower)
-            return self._effective_geometry_cache
-
-        synth: dict[str, Any] = {}
-        lw = profile.get("lightning_wire")
-        if not (
-            isinstance(lw, dict)
-            and lw.get("left_mid_distance_m") is not None
-            and lw.get("right_mid_distance_m") is not None
-        ):
-            left = self._synth_number("lw_l_eff", "lw_l")
-            right = self._synth_number("lw_r_eff", "lw_r")
-            if left is None or right is None:
-                raise RuntimeError(
-                    "无杆塔模式需要避雷线左/右中距，但参数模板未提供默认值"
-                    "（defaults.lw_l_eff / lw_r_eff）。请补模板默认值，或在请求里显式传 "
-                    "profile.lightning_wire.{left,right}_mid_distance_m。"
-                )
-            profile["lightning_wire"] = {
-                "left_mid_distance_m": left,
-                "right_mid_distance_m": right,
-            }
-            synth["lightning_wire"] = dict(profile["lightning_wire"])
-
-        # 相中距 / 相高：⚠️ 2026-09-20 补（配合 atp_geometry_pipeline._spacing 的对拍修复）
-        # C# 口径下 .dat 的相中距取**杆塔几何**（circuit_geometry_json[*].phase_spacing_m），
-        # 无杆塔模式下该几何为空 → 必须用模板默认值显式合成；否则 _spacing 会回退到
-        # RELE 槽位，而单回塔型的 RELE09/03 并非相中距 → .dat 几何错位。
-        cg = base_tower.get("circuit_geometry_json")
-        cg_ok = (
-            isinstance(cg, dict)
-            and isinstance((cg.get("I") or {}).get("phase_spacing_m"), dict)
-            and (cg["I"]["phase_spacing_m"] or {}).get("upper") is not None
-        )
-        if not cg_ok:
-            sp_u = self._synth_number("sp_u")
-            sp_m = self._synth_number("sp_m")
-            sp_l = self._synth_number("sp_l")
-            if sp_u is None or sp_m is None or sp_l is None:
-                raise RuntimeError(
-                    "无杆塔模式需要相中距，但参数模板未提供默认值"
-                    "（defaults.sp_u / sp_m / sp_l）。请补模板默认值，或在请求里显式传 "
-                    "base_tower.circuit_geometry_json。"
-                )
-            entry: dict[str, Any] = {
-                "phase_spacing_m": {"upper": sp_u, "middle": sp_m, "lower": sp_l},
-            }
-            h_u = self._synth_number("h_u")
-            h_m = self._synth_number("h_m")
-            h_l = self._synth_number("h_l")
-            if h_u is not None and h_m is not None and h_l is not None:
-                entry["phase_height_m"] = {"upper": h_u, "middle": h_m, "lower": h_l}
-            # ⚠️ 2026-09-29 修复（sihuitano 无避雷线四回塔 LCC 失败根因）：
-            # 旧实现把 I 回几何（entry）复制到 I~IV 全部回路 —— 四回导体坐标重合
-            # （都取 I 回的 -12/65.5 等），但 12 导体是「4 回路 × 3 相」，每回路
-            # 应有自己的几何。实测后果：long.dat 导体 7-12（III/IV 回）高度全=65.5/53/42
-            # （I 回值），LCC 判定导体几何重合 → 不产出 .pch。
-            # 修复：I 回用 sp_*/h_*（与旧行为一致），II/III/IV 回用各自的 c2/c3/c4 默认值
-            # （_common.json defaults 已补 c1~c4，与 _synthetic_case 同口径）。
-            circuits_json: dict[str, Any] = {}
-            for idx, cid in enumerate(("I", "II", "III", "IV")):
-                if idx == 0:
-                    circuits_json[cid] = {
-                        kk: (dict(vv) if isinstance(vv, dict) else vv) for kk, vv in entry.items()
-                    }
-                    continue
-                c_sp_u = self._synth_number(f"c{idx + 1}_sp_u", f"c{idx + 1}_sp_m", f"c{idx + 1}_sp_l", "sp_u")
-                c_sp_m = self._synth_number(f"c{idx + 1}_sp_m", "sp_m")
-                c_sp_l = self._synth_number(f"c{idx + 1}_sp_l", "sp_l")
-                c_h_u = self._synth_number(f"c{idx + 1}_u", "h_u")
-                c_h_m = self._synth_number(f"c{idx + 1}_m", "h_m")
-                c_h_l = self._synth_number(f"c{idx + 1}_l", "h_l")
-                c_entry: dict[str, Any] = {
-                    "phase_spacing_m": {"upper": c_sp_u, "middle": c_sp_m, "lower": c_sp_l},
-                }
-                if c_h_u is not None and c_h_m is not None and c_h_l is not None:
-                    c_entry["phase_height_m"] = {"upper": c_h_u, "middle": c_h_m, "lower": c_h_l}
-                circuits_json[cid] = {
-                    kk: (dict(vv) if isinstance(vv, dict) else vv) for kk, vv in c_entry.items()
-                }
-            base_tower["circuit_geometry_json"] = circuits_json
-            synth["circuit_geometry_json"] = entry
-
-        if synth:
-            self.synthetic_geometry = {
-                **synth,
-                "source": "参数模板 context 默认值（无杆塔模式显式合成）",
-            }
         self._effective_geometry_cache = (profile, base_tower)
         return self._effective_geometry_cache
 
-    # ---- 参数（无杆塔测试的核心）----
-
-    def _voltage_kv(self) -> Any:
-        if self.payload.voltage_kv is not None:
-            return self.payload.voltage_kv
-        raw = (self.asset.voltage_level or "").strip()
-        try:
-            return int(raw)
-        except (TypeError, ValueError):
-            return None
-
     def compute_params(self) -> dict[str, str]:
-        """算出 work.atp 的 ``$PARAMETER`` 参数集。
+        """算出 work.atp 的 ``$PARAMETER`` 参数集（配置模板优先，代码公式兜底）。
 
-        - ``tower``：走生产函数 ``compute_csharp_atp_params``（内含 config_db 配置路径）
-        - ``template``：**无杆塔** —— 资产维度（塔型/电压）+ 参数模板默认值
-          （``allow_defaults=True``）。模板不可用或缺默认值时**显式报错**，
-          绝不静默回落成 "1." 占位（那样 ATP 照样跑完，但结果毫无物理意义）。
+        来源收敛（2026-11-03）后只有一条路径：用测试线路快照装配出的
+        base_tower/profile 走生产解析器 ``compute_params_detailed_from_runtime``
+        （与 C# 公式逐字节等价，由 golden 测试保证），同时拿到完整诊断
+        （命中链 / 每槽位来源标签）供参数溯源展示。
+        ``ATP_MAPPING_MODE=code`` 或模板缺失时回落代码公式路径（行为与改造前一致）。
         """
         from .atp_param_config import compute_params_detailed_from_runtime, mode as mapping_mode
         from .fl_analysis_external import compute_csharp_atp_params
 
-        if self.params_source == "tower":
-            return compute_csharp_atp_params(
-                base_tower=dict(self.payload.base_tower or {}),
-                profile=dict(self.payload.profile or {}),
-                execution_options=self.execution_options,
-            )
-
-        kind = str(self.payload.tower_kind or self.asset.tower_type or "").strip()
+        base_tower, profile = self.effective_geometry()
         detailed = compute_params_detailed_from_runtime(
-            base_tower={"tower_type": kind, "line_voltage_kv": self._voltage_kv()},
-            profile={},
-            execution_options={**self.execution_options, "tower_kind": kind},
-            allow_defaults=True,
+            base_tower=dict(base_tower),
+            profile=dict(profile),
+            execution_options=self.execution_options,
         )
-        if detailed is None:
-            raise RuntimeError(
-                f"参数模板不可用（ATP_MAPPING_MODE={mapping_mode()}：DB 无模板行且 JSON 映射缺失）。"
-                "无杆塔测试必须由参数模板提供默认值；禁止静默回落到需要杆塔上下文的代码路径。"
-            )
-        self.param_diagnostics = {
-            "chain": list(detailed.chain),
-            "tower_kind": detailed.tower_kind,
-            "defaults_applied": list(detailed.defaults_applied),
-            "defaults_used": dict(detailed.defaults_used),
-            "unresolved": {slot: list(names) for slot, names in detailed.unresolved.items()},
-            # 参数溯源(2026-09-23 新增)：槽位 → 来源标签 / 最终格式化值。
-            # sources 由解析器的 apply_slots 填写：规则名 / 继承 / 默认值 / 本级关闭 / 缺变量等，
-            # 前端「参数溯源」抽屉据此展示每个参数到底来自模板、系统默认还是用户输入。
-            "sources": dict(detailed.sources),
-            "resolved": dict(detailed.values),
-        }
-        if detailed.unresolved and not self.payload.allow_incomplete_defaults:
-            preview = "；".join(
-                f"{slot} ← 缺 {'/'.join(names)}"
-                for slot, names in list(detailed.unresolved.items())[:6]
-            )
-            raise RuntimeError(
-                f"参数模板默认值不完整（{len(detailed.unresolved)} 个槽位取不到值）：{preview}。"
-                "请补该塔型/电压的模板默认值；确要用不完整参数跑，请显式传 "
-                "allow_incomplete_defaults=true（结果可能无物理意义）。"
-            )
-        return detailed.as_dict()
+        if detailed is not None and detailed.values:
+            self.param_diagnostics = {
+                "mode": mapping_mode(),
+                "chain": list(detailed.chain),
+                "tower_kind": detailed.tower_kind,
+                "defaults_applied": list(detailed.defaults_applied),
+                "defaults_used": dict(detailed.defaults_used),
+                "unresolved": {slot: list(names) for slot, names in detailed.unresolved.items()},
+                # 参数溯源：槽位 → 来源标签 / 最终格式化值。sources 由解析器的
+                # apply_slots 填写（规则名 / 默认值 / 本级关闭 / 缺变量等），
+                # 前端「参数溯源」抽屉据此展示每个参数到底来自哪条规则。
+                "sources": dict(detailed.sources),
+                "resolved": dict(detailed.values),
+            }
+            return detailed.as_dict()
+        # 配置路径不可用（mode=code / 模板缺失）→ 代码公式兜底
+        self.param_diagnostics = {"mode": "code"}
+        return compute_csharp_atp_params(
+            base_tower=dict(base_tower),
+            profile=dict(profile),
+            execution_options=self.execution_options,
+        )
 
     def ensure_params(self) -> dict[str, str]:
         if self._params is None:
@@ -916,7 +791,6 @@ class _TestContext:
 
     def render(self) -> str:
         from .fl_analysis_external import (
-            PLACEHOLDER_PATTERN,
             _looks_like_csharp_equality_template,
             render_atp_template,
             render_csharp_equality_template,
@@ -924,14 +798,6 @@ class _TestContext:
 
         template_text = self.resolved_job.atp_text
         is_csharp_style = _looks_like_csharp_equality_template(template_text)
-        if self.params_source == "template" and not is_csharp_style and PLACEHOLDER_PATTERN.search(template_text):
-            # 占位符风格（{base_tower.xxx}）模板的参数来自杆塔上下文 → 无杆塔测试不适用。
-            # 明确报错而不是渲染出空值（禁止静默）。
-            raise RuntimeError(
-                "该 work.atp 是占位符风格（{...}）模板，其参数来自杆塔上下文；"
-                "无杆塔测试目前只支持 C# 等号风格（$PARAMETER 区 NAME=值）模板。"
-                "如需测这类模型，请传 base_tower/profile（params_source=tower）。"
-            )
 
         text = render_atp_template(
             template_text,
@@ -944,8 +810,6 @@ class _TestContext:
                 base_tower=dict(self.payload.base_tower or {}),
                 profile=dict(self.payload.profile or {}),
                 execution_options=self.execution_options,
-                # 无杆塔测试：直接用参数模板默认值算出的参数集，不再从空杆塔上下文计算
-                params_override=self.ensure_params() if self.params_source == "template" else None,
             )
         return text
 
@@ -1094,6 +958,11 @@ class _TestContext:
             f"耦合系数 11K0 = {k0 if k0 is None else round(k0, 6)}"
             + ("（已写入）" if k_ok else "（未找到 11K0 槽位，未写入）")
         )
+        self.runtime_overrides["11K0"] = {
+            "value": None if k0 is None else round(float(k0), 6),
+            "written": bool(k_ok),
+            "note": "运行期几何耦合系数（C# Update_work_atp1 对齐项）",
+        }
 
         angle = prof.get("angle_deg")
         if angle is None:
@@ -1109,12 +978,23 @@ class _TestContext:
                 f"电角度 {angle_val - 90.0:.1f}/{angle_val - 210.0:.1f}/{angle_val - 330.0:.1f}"
                 "（7.2+ 模型由 $PARAMETER 的 PHAGA/PHAGB/PHAGC 控制，跳过 SOURCE 固定列写入）"
             )
+            self.runtime_overrides["14XXSS"] = {
+                "value": round(angle_val, 3),
+                "written": False,
+                "note": "7.2+ 模型电角度由 $PARAMETER 的 PHAGA/PHAGB/PHAGC 控制，"
+                "SOURCE 固定列不写（写会错列）",
+            }
         else:
             text, a_ok = rewrite_electric_angle(text, angle_val)
             log.append(
                 f"电角度 14XXSS = {angle_val - 90.0:.1f}/{angle_val - 210.0:.1f}/{angle_val - 330.0:.1f}"
                 + ("（已写入）" if a_ok else "（未找到 14XXSS 槽位，未写入）")
             )
+            self.runtime_overrides["14XXSS"] = {
+                "value": round(angle_val, 3),
+                "written": bool(a_ok),
+                "note": "SOURCE 卡电角度 = 输入 − 90（B/C 相 −120/−240 叠加）",
+            }
         return text, log
 
     # ---- 阶段 1：物化 + 引擎文件 ----
@@ -1164,6 +1044,15 @@ class _TestContext:
         self.entry_path.write_text(self.rendered_text, encoding="gbk", errors="replace")
         log_lines.append(f"已渲染 {self.entry_path.name}（{len(self.rendered_text)} 字节）")
 
+        # 行级去向：渲染/覆盖/规范化全部完成后，记录每个槽位写进 work.atp 的行号与值
+        from .atp_model_format import trace_parameter_writes
+
+        self.param_write_trace = trace_parameter_writes(self.rendered_text)
+        if param_diag.get("rewritten"):
+            log_lines.append(
+                f"参数去向已记录：{len(self.param_write_trace)} 个槽位的 work.atp 行号"
+            )
+
         include_lines = [
             line.strip()
             for line in self.rendered_text.splitlines()
@@ -1206,28 +1095,19 @@ class _TestContext:
         verdicts.append(_verdict("engine_files", engine_ok, engine_detail))
         verdicts.extend(self._prepare_wine_env())
 
-        if self.params_source == "tower":
-            verdicts.append(
-                _verdict(
-                    "params_source",
-                    True,
-                    f"tower（传入杆塔数据：base_tower {len(self.payload.base_tower or {})} 字段 / "
-                    f"profile {len(self.payload.profile or {})} 字段）",
-                )
+        # 来源收敛（2026-11-03）：参数唯一来源 = 测试线路快照
+        meta = self.test_line_meta or {}
+        verdicts.append(
+            _verdict(
+                "params_source",
+                bool(meta),
+                f"test_line（{meta.get('code') or '-'}"
+                + (f"，{meta.get('matched_by')}" if meta.get("matched_by") else "")
+                + ("，自动匹配" if meta.get("auto_resolved") else "")
+                + f"）：base_tower {len(self.payload.base_tower or {})} 字段 / "
+                f"profile {len(self.payload.profile or {})} 字段",
             )
-        else:
-            # 无杆塔：参数由「资产维度 + 参数模板默认值」算出；缺默认值会在这里抛错（禁止静默）
-            params = self.ensure_params()
-            diag = self.param_diagnostics
-            verdicts.append(
-                _verdict(
-                    "params_source",
-                    True,
-                    f"template（无杆塔）：模板链 {' → '.join(diag.get('chain') or []) or '-'}；"
-                    f"用默认值的上下文变量 {len(diag.get('defaults_applied') or [])} 个；"
-                    f"解析出 {len(params)} 个参数",
-                )
-            )
+        )
 
         artifacts = {
             name: _artifact_entry(self.run_dir / name)
@@ -1377,8 +1257,6 @@ class _TestContext:
         params = self.ensure_params()
         env = self._engine_env()
         profile, base_tower = self.effective_geometry()
-        if self.synthetic_geometry:
-            log_lines.append(f"无杆塔几何合成：{json.dumps(self.synthetic_geometry, ensure_ascii=False)}")
         # ⚠️ 这里不要再套 GEOMETRY_LOCK：regenerate_line_models 内部已经加锁，
         # 而 GEOMETRY_LOCK 是 threading.Lock（不可重入）→ 同线程二次获取会永久死锁
         # （2026-09-19 实测：geometry 段挂起、celery 子进程卡在 futex_wait）。
@@ -1440,19 +1318,6 @@ class _TestContext:
                 "至少一个 .lib 发生变化" if recomputed_any else "四个 .lib 哈希全未变：几何未生效或指纹缓存命中",
             )
         )
-        if self.params_source == "template":
-            verdicts.append(
-                _verdict(
-                    "geometry_source",
-                    True,
-                    (
-                        "无杆塔：避雷线中距由参数模板默认值显式合成 → "
-                        f"{json.dumps(self.synthetic_geometry.get('lightning_wire'), ensure_ascii=False)}"
-                        if self.synthetic_geometry
-                        else "无杆塔：请求已显式提供避雷线中距（未合成）"
-                    ),
-                )
-            )
         metrics = {
             "params_count": len(params),
             "params_sha256": _sha256_text(
@@ -1607,6 +1472,25 @@ class _TestContext:
         artifacts_index: list[dict[str, Any]] = []
         for stage in stage_results.values():
             artifacts_index.extend((stage.get("artifacts") or {}).values())
+
+        # 参数「来源 → 去向」全链路（2026-11-03）：
+        # 来源 = 解析器 sources（规则名/默认值/关闭/缺变量），去向 = 行级写入位置
+        # （work.atp 行号 + 实际写入值），再加运行期覆盖（11K0/14XXSS）与 7.3 规范化标记。
+        diag = self.param_diagnostics or {}
+        sources: dict[str, str] = dict(diag.get("sources") or {})
+        param_trace: dict[str, dict[str, Any]] = {}
+        for slot, value in (atp_params or {}).items():
+            entry: dict[str, Any] = {"value": value}
+            entry["source"] = sources.get(slot) or ("代码公式" if diag.get("mode") == "code" else None)
+            write = (self.param_write_trace or {}).get(slot)
+            if write:
+                entry["work_atp_line"] = write["line_no"]
+                entry["written"] = write["written"]
+            override = self.runtime_overrides.get(slot)
+            if override:
+                entry["runtime_override"] = override
+            param_trace[slot] = entry
+
         return {
             "schema": COMPARE_SCHEMA,
             "side": "web",
@@ -1640,10 +1524,11 @@ class _TestContext:
                 "engine_dir": str(self.engine_dir),
             },
             "stages": stage_results,
-            "params_source": self.params_source,
+            # 来源收敛（2026-11-03）：值恒为 test_line（前端按此渲染「测试线路快照」标签）
+            "params_source": "test_line",
             "params_diagnostics": self.param_diagnostics,
-            # 无杆塔模式下用模板默认值显式合成的几何（None = 未合成）；对拍时须注意
-            "synthetic_geometry": self.synthetic_geometry,
+            # 来源 → 去向 全链路：{slot: {value, source, work_atp_line, written, runtime_override}}
+            "params_trace": param_trace,
             "atp_params": atp_params,
             "lib_hashes": lib_hashes,
             "simulate": dict(self._lis_flashover or {}),
@@ -1923,6 +1808,15 @@ def create_batch_test_runs(
             )
         assets[asset_id] = asset
 
+    # 来源收敛前置校验（2026-11-03）：只接受测试线路来源
+    _reject_legacy_param_sources(AtpAssetTestRunRequest(
+        stages=payload.stages,
+        line_tower_id=payload.line_tower_id,
+        base_tower=payload.base_tower,
+        profile=payload.profile,
+        params_source=payload.params_source,
+    ))
+
     batch_id = f"{_BATCH_ID_PREFIX}-{uuid4().hex[:16]}"
     # 单测请求(公共参数)
     single_payload = AtpAssetTestRunRequest(
@@ -1931,15 +1825,11 @@ def create_batch_test_runs(
         tower_no=payload.tower_no,
         voltage_kv=payload.voltage_kv,
         scene=payload.scene,
-        line_tower_id=payload.line_tower_id,
-        base_tower=payload.base_tower,
-        profile=payload.profile,
+        test_line_id=payload.test_line_id,
         execution_options=payload.execution_options,
         params_raw=payload.params_raw,
         current_ka=payload.current_ka,
         timeout_seconds=payload.timeout_seconds,
-        params_source=payload.params_source,
-        allow_incomplete_defaults=payload.allow_incomplete_defaults,
     )
 
     items: list[dict[str, Any]] = []

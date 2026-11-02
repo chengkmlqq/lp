@@ -12,10 +12,8 @@ import {
   Input,
   InputNumber,
   Modal,
-  Radio,
   Space,
   Spin,
-  Switch,
   Table,
   Tag,
   Tooltip,
@@ -126,24 +124,6 @@ function formatDateTime(value: string | null | undefined): string {
   return date.toLocaleString("zh-CN", { hour12: false });
 }
 
-function parseJsonObject(text: string, fieldLabel: string, t: (s: string) => string): Record<string, unknown> | null {
-  const trimmed = text.trim();
-  if (!trimmed) return {};
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      message.error(`${fieldLabel} ${t("需要是一个 JSON 对象")}`);
-      return null;
-    }
-    return parsed as Record<string, unknown>;
-  } catch (error) {
-    message.error(
-      `${fieldLabel} ${t("JSON 解析失败：")}${error instanceof Error ? error.message : String(error)}`,
-    );
-    return null;
-  }
-}
-
 interface AtpModelTestDrawerProps {
   asset: AtpAssetSummary | null;
   open: boolean;
@@ -156,13 +136,10 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
   const canRun = hasPermission("atp.run") || hasPermission("atp.manage");
 
   const [currentKa, setCurrentKa] = useState<number>(31);
-  // 参数来源：template = 无杆塔（资产维度 + 参数模板默认值，默认）；tower = 手工给杆塔数据
-  const [paramsSource, setParamsSource] = useState<"template" | "tower">("template");
-  const [allowIncomplete, setAllowIncomplete] = useState(false);
+  // 来源收敛（2026-11-03）：几何/工况唯一来源 = 测试线路（不传时按资产维度自动匹配），
+  // 旧的 template（模板默认值）/ tower（手工 JSON）入口已下线
   const [towerKind, setTowerKind] = useState("");
   const [scene, setScene] = useState("");
-  const [baseTowerText, setBaseTowerText] = useState("{}");
-  const [profileText, setProfileText] = useState("{}");
   const [paramsRaw, setParamsRaw] = useState("");
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   // 当前正在提交的段：null=无；"all"=全部执行；否则为单段
@@ -208,16 +185,6 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
 
   const handleSubmit = async (stages: AtpAssetTestStage[], marker: AtpAssetTestStage | "all") => {
     if (!asset) return;
-    let baseTower: Record<string, unknown> = {};
-    let profile: Record<string, unknown> = {};
-    if (paramsSource === "tower") {
-      const parsedBase = parseJsonObject(baseTowerText, "base_tower", t);
-      if (parsedBase === null) return;
-      const parsedProfile = parseJsonObject(profileText, "profile", t);
-      if (parsedProfile === null) return;
-      baseTower = parsedBase;
-      profile = parsedProfile;
-    }
 
     setSubmittingStage(marker);
     try {
@@ -225,13 +192,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
         `/api/v1/atp/assets/${asset.id}/test-runs`,
         {
           stages,
-          tower_kind: towerKind.trim() || null,
-          voltage_kv: asset.voltage_level ? Number(asset.voltage_level) : null,
           scene: scene.trim() || null,
-          base_tower: baseTower,
-          profile,
-          params_source: paramsSource,
-          allow_incomplete_defaults: allowIncomplete,
           params_raw: paramsRaw.trim() || null,
           current_ka: currentKa,
         },
@@ -327,30 +288,25 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                 </Space>
               </Space>
 
-              <Space size={16} wrap>
-                <Space size={8}>
-                  <Typography.Text>{t("参数来源")}</Typography.Text>
-                  <Radio.Group
-                    value={paramsSource}
-                    onChange={(event) => setParamsSource(event.target.value as "template" | "tower")}
-                    options={[
-                      { value: "template", label: t("参数模板默认值（无需杆塔）") },
-                      { value: "tower", label: t("手工杆塔数据") },
-                    ]}
-                    optionType="button"
-                  />
-                </Space>
-              </Space>
+              <Alert
+                type="info"
+                showIcon
+                message={t("几何与工况输入统一来自「测试线路（单塔基准）」")}
+                description={
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {t(
+                      "未显式指定时按资产维度（电压/塔型/避雷线）自动匹配一条共享基准；匹配不到会直接报错并引导创建。塔型/场景仅作展示与标签，几何以测试线路快照为准。",
+                    )}
+                  </Typography.Text>
+                }
+              />
 
               <Collapse
                 size="small"
                 items={[
                   {
                     key: "params",
-                    label:
-                      paramsSource === "template"
-                        ? t("高级：塔型/场景、C# 参数串、默认值不完整时放行")
-                        : t("高级：杆塔数据（base_tower / profile）"),
+                    label: t("高级：场景、C# 参数串"),
                     children: (
                       <Space direction="vertical" size={8} style={{ width: "100%" }}>
                         <Space wrap size={8}>
@@ -358,7 +314,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                             <Button disabled style={{ pointerEvents: "none", fontWeight: 400 }}>{t("塔型")}</Button>
                             <Input
                               value={towerKind}
-                              placeholder={t("如 d220maotou")}
+                              placeholder={t("留空 = 跟随测试线路")}
                               onChange={(event) => setTowerKind(event.target.value)}
                               style={{ width: "calc(100% - 64px)" }}
                             />
@@ -373,30 +329,6 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                             />
                           </Space.Compact>
                         </Space>
-                        {paramsSource === "tower" ? (
-                          <>
-                            <Input.TextArea
-                              rows={4}
-                              value={baseTowerText}
-                              onChange={(event) => setBaseTowerText(event.target.value)}
-                              placeholder={`${t("base_tower（JSON 对象），如 {")}{"line_voltage_kv":220,"ground_resistance":7}}`}
-                            />
-                            <Input.TextArea
-                              rows={3}
-                              value={profileText}
-                              onChange={(event) => setProfileText(event.target.value)}
-                              placeholder={`${t("profile（JSON 对象），如 {")}{"insulator_length_mm":2491.5}}`}
-                            />
-                          </>
-                        ) : (
-                          <Space size={8}>
-                            <Typography.Text>{t("模板默认值不完整时仍继续")}</Typography.Text>
-                            <Switch checked={allowIncomplete} onChange={setAllowIncomplete} />
-                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                              {t("默认关闭：缺默认值会直接报错并列出缺哪些变量（避免算出无意义结果）")}
-                            </Typography.Text>
-                          </Space>
-                        )}
                         <Input
                           value={paramsRaw}
                           onChange={(event) => setParamsRaw(event.target.value)}
@@ -445,9 +377,11 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                 <div style={{ marginTop: 6 }}>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {t("参数来源")}：
-                    {compareParamsSource === "template"
-                      ? `${t("参数模板默认值")}（${t("链")}：${(compareDiagnostics?.chain ?? []).join(" → ") || "-"}）`
-                      : t("手工杆塔数据")}
+                    {compareParamsSource === "test_line"
+                      ? t("测试线路快照（几何与工况统一来源）")
+                      : compareParamsSource === "template"
+                        ? `${t("参数模板默认值")}（${t("链")}：${(compareDiagnostics?.chain ?? []).join(" → ") || "-"}）`
+                        : t("手工杆塔数据")}
                     {defaultsApplied.length > 0
                       ? `；${t("用默认值的变量")} ${defaultsApplied.length} ${t("个")}：${defaultsApplied.slice(0, 8).join(", ")}`
                       : ""}

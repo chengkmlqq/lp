@@ -379,6 +379,48 @@ def normalize_parameter_section(text: str) -> tuple[str, dict[str, Any]]:
     return "".join(out), diagnostics
 
 
+# ── 行级去向追踪（2026-11-03）───────────────────────────────────────────
+# 槽位名允许数字开头（实测 11K0 / 14XXSS），但必须含字母或下划线（排除纯数字行）
+_WRITE_LINE_RE = re.compile(r"^[ \t]*([A-Za-z0-9_]+)[ \t]*=[ \t]*(\S.*)$")
+
+
+def _looks_like_slot_name(name: str) -> bool:
+    return any(ch.isalpha() or ch == "_" for ch in name)
+
+
+def trace_parameter_writes(text: str) -> dict[str, dict[str, Any]]:
+    """扫描渲染后的 work.atp，记录 $PARAMETER 段每个槽位的实际写入位置。
+
+    参数「去向」追踪：渲染 + 运行期槽位覆盖 + 规范化全部做完之后调用，
+    回答「这个参数最终写进了 work.atp 的第几行、写入值是多少」。
+    与来源侧（``atp_param_resolver.ResolvedParams.sources`` 的规则标签）合并后
+    构成完整的 来源 → 去向 链路，供 compare.json 的 ``params_trace`` 使用。
+
+    返回 ``{slot: {"line_no": 1-based 行号, "written": 写入值字符串}}``。
+    只认 `$PARAMETER` 段内 `NAME=值` 形态的行；段外同名卡（如 SOURCE 里的
+    `14XXSS2A`）不属于参数写入，不收。
+    """
+    trace: dict[str, dict[str, Any]] = {}
+    in_params = False
+    for line_no, raw in enumerate(text.splitlines(), start=1):
+        stripped = raw.strip()
+        upper = stripped.upper()
+        if upper == "$PARAMETER":
+            in_params = True
+            continue
+        if not in_params:
+            continue
+        if upper.startswith("BLANK $PARAMETER") or upper in ("$ENDBR", "BLANK"):
+            break
+        if not stripped or stripped.startswith(("C ", "$")):
+            continue
+        match = _WRITE_LINE_RE.match(raw.rstrip("\r\n"))
+        if not match or not _looks_like_slot_name(match.group(1)):
+            continue
+        trace[match.group(1)] = {"line_no": line_no, "written": match.group(2).strip()}
+    return trace
+
+
 # ── 上传包预检 ──────────────────────────────────────────────────────────
 def _basename(path: str) -> str:
     return path.replace("\\", "/").rsplit("/", 1)[-1]

@@ -235,10 +235,13 @@ class AtpAssetTestRunRequest(BaseModel):
     tower_no: str | None = None
     voltage_kv: int | None = None
     scene: str | None = None
-    # 用「测试线路（单塔基准）」执行：后端按快照装配 base_tower/profile，
-    # 优先级最高（高于 line_tower_id 与显式 base_tower/profile）。
-    # 留空时若 params_source=template 且未给几何，会自动按资产维度反查一条（见 worker）。
+    # 用「测试线路（单塔基准）」执行：后端按快照装配 base_tower/profile。
+    # 2026-11-03 起这是**唯一**几何/工况来源；留空时按资产维度自动反查，
+    # 反查不到直接失败并引导去「测试线路」页创建。
     test_line_id: str | None = None
+    # ⚠️ 以下字段 2026-11-03 起弃用（来源收敛为测试线路，见 create_test_run 校验）：
+    # 保留字段是为了让旧客户端/旧用例 params_json 能被解析，服务层会显式拒绝并
+    # 给出迁移提示，而不是静默忽略造成"看起来在跑、实际参数变了"。
     # 从线路杆塔选择：由后端按塔组装 base_tower/profile（与「参数试算」同口径），
     # 优先级高于显式传入的 base_tower/profile
     line_tower_id: str | None = None
@@ -248,9 +251,9 @@ class AtpAssetTestRunRequest(BaseModel):
     params_raw: str | None = None
     current_ka: float | None = Field(default=31.0, gt=0)
     timeout_seconds: int | None = Field(default=None, ge=1)
-    # 参数来源：template = 无杆塔（资产维度 + 参数模板默认值，默认）；tower = 用传入的杆塔数据
+    # ⚠️ 弃用：template（无杆塔模板默认值）模式已移除，字段仅保留解析兼容
     params_source: AtpAssetTestParamsSource = "template"
-    # 模板默认值不完整时是否仍继续（默认 False → 显式报错，禁止静默算无意义结果）
+    # ⚠️ 弃用：随 template 模式移除，字段仅保留解析兼容
     allow_incomplete_defaults: bool = False
 
 
@@ -267,6 +270,7 @@ class AtpBatchTestRunRequest(BaseModel):
     voltage_kv: int | None = None
     scene: str | None = None
     test_line_id: str | None = None
+    # ⚠️ 以下字段 2026-11-03 起弃用（来源收敛为测试线路），保留解析兼容、服务层显式拒绝
     line_tower_id: str | None = None
     base_tower: dict[str, Any] = Field(default_factory=dict)
     profile: dict[str, Any] = Field(default_factory=dict)

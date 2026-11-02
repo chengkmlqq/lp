@@ -4,8 +4,10 @@
 // 每个槽位的值 + 来源分类（模板规则 / 系统默认 / 模板默认值 / 缺变量 / 关闭），
 // 以及命中链、用默认值补全的变量、未解析槽位。
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Descriptions, Drawer, Spin, Table, Tag, Typography } from "antd";
+import { Alert, Descriptions, Drawer, Spin, Table, Tag, Tooltip, Typography } from "antd";
 import { useMemo } from "react";
+
+import type { ColumnsType } from "antd/es/table";
 
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
@@ -21,9 +23,25 @@ interface ParamsDiagnostics {
   resolved?: Record<string, string>;
 }
 
+interface RuntimeOverride {
+  value?: number | string | null;
+  written?: boolean;
+  note?: string;
+}
+
+/** 行级去向（2026-11-03）：compare.json 的 params_trace，见 stage_materialize / trace_parameter_writes */
+interface ParamTraceEntry {
+  value?: string;
+  source?: string | null;
+  work_atp_line?: number;
+  written?: string;
+  runtime_override?: RuntimeOverride;
+}
+
 interface ComparePayload {
   params_source?: string;
   params_diagnostics?: ParamsDiagnostics;
+  params_trace?: Record<string, ParamTraceEntry>;
   atp_params?: Record<string, unknown>;
 }
 
@@ -31,6 +49,20 @@ export interface AtpParamTraceDrawerProps {
   runId: string;
   open: boolean;
   onClose: () => void;
+}
+
+interface TraceRow {
+  key: string;
+  slot: string;
+  value: string;
+  sourceText: string;
+  kind: SourceKind;
+  kindLabel: string;
+  workAtpLine?: number;
+  written?: string;
+  overridden: boolean;
+  overrideNote?: string;
+  overrideWritten?: boolean;
 }
 
 type SourceKind = "template" | "system" | "default" | "unresolved" | "disabled" | "else" | "unknown";
@@ -70,25 +102,38 @@ function ParamsTraceBody({ runId }: { runId: string }) {
     },
   });
 
-  const rows = useMemo(() => {
+  const rows = useMemo<TraceRow[]>(() => {
+    const trace = compareQuery.data?.params_trace ?? {};
     const diag = compareQuery.data?.params_diagnostics;
-    if (!diag) return [];
-    const sources = diag.sources ?? {};
-    const resolved = diag.resolved ?? {};
-    const keys = new Set<string>([...Object.keys(sources), ...Object.keys(resolved)]);
+    const sources = diag?.sources ?? {};
+    const resolved = diag?.resolved ?? {};
+    const atpParams = compareQuery.data?.atp_params ?? {};
+    const keys = new Set<string>([
+      ...Object.keys(trace),
+      ...Object.keys(sources),
+      ...Object.keys(resolved),
+      ...Object.keys(atpParams),
+    ]);
     return [...keys].sort().map((slot) => {
-      const sourceText = sources[slot] ?? "-";
+      const entry = trace[slot];
+      const sourceText = entry?.source ?? sources[slot] ?? "-";
       const cls = classifySource(sourceText, t);
+      const override = entry?.runtime_override;
       return {
         key: slot,
         slot,
-        value: resolved[slot] ?? compareQuery.data?.atp_params?.[slot] ?? "-",
+        value: entry?.value ?? resolved[slot] ?? atpParams[slot] ?? "-",
         sourceText,
         kind: cls.kind,
         kindLabel: cls.label,
+        workAtpLine: entry?.work_atp_line,
+        written: entry?.written,
+        overridden: Boolean(override),
+        overrideNote: override?.note,
+        overrideWritten: override?.written,
       };
     });
-  }, [compareQuery.data]);
+  }, [compareQuery.data, t]);
 
   if (compareQuery.isLoading) {
     return (
@@ -133,10 +178,12 @@ function ParamsTraceBody({ runId }: { runId: string }) {
             key: "source",
             label: t("参数来源"),
             children:
-              paramSource === "tower" ? (
-                <Tag color="purple">{t("手工杆塔数据（base_tower / profile）")}</Tag>
+              paramSource === "test_line" ? (
+                <Tag color="green">{t("测试线路快照（唯一来源）")}</Tag>
+              ) : paramSource === "tower" ? (
+                <Tag color="purple">{t("手工杆塔数据（已弃用）")}</Tag>
               ) : (
-                <Tag color="blue">{t("参数模板默认值（无杆塔）")}</Tag>
+                <Tag color="blue">{t("参数模板默认值（已弃用）")}</Tag>
               ),
           },
           {
@@ -171,22 +218,54 @@ function ParamsTraceBody({ runId }: { runId: string }) {
         pagination={false}
         scroll={{ y: 380 }}
         dataSource={rows}
-        columns={[
-          { title: t("槽位"), dataIndex: "slot", width: 130, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
+        columns={(
+          [
+          { title: t("槽位"), dataIndex: "slot", width: 120, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
           {
             title: t("值"),
             dataIndex: "value",
-            width: 130,
+            width: 110,
             render: (v: string) => <Typography.Text strong>{v}</Typography.Text>,
           },
           {
             title: t("来源分类"),
             dataIndex: "kind",
-            width: 110,
+            width: 96,
             render: (kind: SourceKind, row: { kindLabel: string }) => <Tag color={KIND_COLOR[kind]}>{row.kindLabel}</Tag>,
           },
-          { title: t("原始来源"), dataIndex: "sourceText", render: (v: string) => <Typography.Text type="secondary" style={{ fontSize: 12 }}>{v}</Typography.Text> },
-        ]}
+          {
+            title: t("原始来源"),
+            dataIndex: "sourceText",
+            render: (v: string) => <Typography.Text type="secondary" style={{ fontSize: 12 }}>{v}</Typography.Text>,
+          },
+          {
+            title: t("去向（work.atp）"),
+            width: 150,
+            render: (_: unknown, row: { workAtpLine?: number; written?: string }) =>
+              row.workAtpLine ? (
+                <span>
+                  <Typography.Text code style={{ fontSize: 12 }}>
+                    #{row.workAtpLine}
+                  </Typography.Text>{" "}
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {row.written ?? "-"}
+                  </Typography.Text>
+                </span>
+              ) : (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>-</Typography.Text>
+              ),
+          },
+          {
+            title: t("标记"),
+            width: 96,
+            render: (_: unknown, row: { overridden: boolean; overrideNote?: string; overrideWritten?: boolean }) =>
+              row.overridden ? (
+                <Tooltip title={row.overrideNote ?? t("运行期覆盖")}>
+                  <Tag color="volcano">{t("运行期覆盖")}{row.overrideWritten === false ? t("（未落盘）") : ""}</Tag>
+                </Tooltip>
+              ) : null,
+          },
+        ] as ColumnsType<TraceRow>)}
       />
 
       {defaultsApplied.length > 0 ? (

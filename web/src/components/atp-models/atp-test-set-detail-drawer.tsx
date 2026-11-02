@@ -173,13 +173,23 @@ export function AtpTestSetDetailDrawer({
       if (stagesRaw && stagesRaw !== "all") {
         params.stages = stagesRaw.split(",").map((s: string) => s.trim()).filter(Boolean);
       }
-      // 高级 JSON 合并（覆盖同名键）
+      // 高级 JSON 合并（覆盖同名键）；键范围与后端 CASE_ALLOWED_OVERRIDE_KEYS 一致
+      const ALLOWED_OVERRIDE_KEYS = new Set([
+        "stages", "tower_no", "scene", "voltage_kv",
+        "current_ka", "execution_options", "params_raw", "timeout_seconds",
+      ]);
       let paramsExtra: Record<string, unknown> = {};
       try {
         const raw = (values.params_extra as string)?.trim();
         if (raw) paramsExtra = JSON.parse(raw);
       } catch {
         throw new Error(t("测试参数(高级)不是合法 JSON"));
+      }
+      const illegalKeys = Object.keys(paramsExtra).filter((k) => !ALLOWED_OVERRIDE_KEYS.has(k));
+      if (illegalKeys.length) {
+        throw new Error(
+          `${t("测试参数(高级)含不支持的键")}：${illegalKeys.join(", ")}。${t("几何一律来自测试线路快照，用例只允许覆盖运行参数")}`,
+        );
       }
       let expectedExtra: Record<string, unknown> = {};
       try {
@@ -853,7 +863,7 @@ export function AtpTestSetDetailDrawer({
               name="params_extra"
               label={t("测试参数(JSON 高级，可选)")}
               className="md:col-span-2"
-              extra={`${t("如")} {"params_source":"tower","execution_options":{"method_raoji":"egm"}}`}
+              extra={`${t("仅允许运行参数覆盖：current_ka / scene / stages / timeout_seconds / execution_options / params_raw / voltage_kv / tower_no；几何一律来自测试线路快照")}。${t("如")} {"execution_options":{"method_raoji":"egm"}}`}
             >
               <Input.TextArea rows={2} placeholder={t("留空则只用上面的常用字段")} />
             </Form.Item>
