@@ -1,28 +1,21 @@
 "use client";
 
-import { Badge, Button, Card, Dropdown, Modal, Progress, Space, Tooltip, Typography } from "antd";
+import { Button, Card, Dropdown, Modal, Progress, Tooltip, Typography } from "antd";
 import {
-  ApartmentOutlined,
   CheckCircleOutlined,
-  ClockCircleOutlined,
-  DatabaseOutlined,
   DeleteOutlined,
   EditOutlined,
   ExperimentOutlined,
   EyeOutlined,
-  LoadingOutlined,
-  FileProtectOutlined,
   MoreOutlined,
   StopOutlined,
   SyncOutlined,
-  ThunderboltOutlined,
-  WarningOutlined,
 } from "@ant-design/icons";
 import { useCallback } from "react";
 
-import { checkWarningCount, describeModelFormat, MODEL_ANALYZING_META } from "@/lib/atp-model-format";
 import { useI18n } from "@/lib/i18n";
 import type { AtpAssetStatus, AtpAssetSummary } from "@/types/auth";
+import { AtpModelFormatTag } from "./atp-model-format-tag";
 
 interface AtpModelCardProps {
   asset: AtpAssetSummary;
@@ -47,29 +40,41 @@ interface AtpModelCardProps {
   };
 }
 
-function formatDimension(
-  value: string | null,
-  map: Map<string, string> | undefined,
-): string {
-  if (!value) return "-";
+function formatDimension(value: string | null, map: Map<string, string> | undefined): string | null {
+  if (!value) return null;
   return map?.get(value) ?? value;
 }
 
-function assetBadgeStatus(status: AtpAssetStatus, t: (s: string) => string): { badge: "success" | "processing" | "error" | "warning" | "default"; text: string } {
+function formatDateShort(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** 资产运行状态的展示文案与色调（enabled 正常态不显示，避免每张卡片都挂着「正常」） */
+function statusMeta(status: AtpAssetStatus, t: (s: string) => string): { text: string; className: string } | null {
   switch (status) {
     case "processing":
-      return { badge: "processing", text: t("处理中") };
+      return { text: t("处理中"), className: "admin-atp-models-state-chip is-processing" };
     case "disabled":
-      return { badge: "error", text: t("已停用") };
+      return { text: t("已停用"), className: "admin-atp-models-state-chip is-danger" };
     case "archived":
-      return { badge: "warning", text: t("已归档") };
+      return { text: t("已归档"), className: "admin-atp-models-state-chip is-warning" };
     case "draft":
-      return { badge: "default", text: t("草稿") };
+      return { text: t("草稿"), className: "admin-atp-models-state-chip is-muted" };
     default:
-      return { badge: "success", text: t("正常") };
+      return null;
   }
 }
 
+/**
+ * 模型卡片（2026-11-03 重设计）：
+ * 一行主信息（名称 + 形态标记 + 菜单），一行维度链，一行元信息（生效/异常/时间），
+ * 底部动作行。原先四个维度各占一行加图标 label，卡片高近 300px、一屏放不下几张，
+ * 属于信息堆砌 —— 维度本来就有左侧树做导航，卡片里合并成一条链即可。
+ */
 export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onActivate, onDeactivate, onRecheckFormat, recheckBusy, activeBusy, dimensionLabelMap }: AtpModelCardProps) {
   const { t } = useI18n();
   const rowBusy = deleteLoading || activeBusy;
@@ -86,7 +91,9 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
     onTest(asset);
   }, [onTest, asset]);
 
-  const handleDelete = useCallback(() => {
+  // 不用 useCallback：Modal.confirm 稳定，包一层 memo 反而触发 React Compiler
+  // 的 preserve-manual-memoization 编译跳过（error）。
+  const handleDelete = () => {
     Modal.confirm({
       title: t("删除模型"),
       content: t("这会同时删除其文件与运行记录。"),
@@ -95,17 +102,20 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
       okButtonProps: { danger: true, loading: deleteLoading },
       onOk: () => onDelete(asset.id),
     });
-  }, [deleteLoading, onDelete, asset.id]);
+  };
 
-  const { badge: statusBadge, text: statusText } = assetBadgeStatus(asset.status, t);
-  // 模型形态（2026-11-02）：新老模型的几何来源不同，列表必须能直接分辨。
-  // 2026-11-03：没有预检报告 = 从未判定过（存量默认值 / 刚建未传文件），显示「待检测」
-  // 异步分析中（pending/running）也显示「检测中」——结果要等后台任务回写。
-  const formatChecked = Boolean(asset.format_check?.model_format);
-  const analysisRunning = asset.analysis_status === "pending" || asset.analysis_status === "running";
-  const analysisFailed = asset.analysis_status === "failed";
-  const formatMeta = analysisRunning ? MODEL_ANALYZING_META : describeModelFormat(asset.model_format, formatChecked);
-  const warnCount = checkWarningCount(asset.format_check);
+  const dimensionText = [
+    formatDimension(asset.voltage_level, dimensionLabelMap?.voltage_level),
+    formatDimension(asset.tower_type, dimensionLabelMap?.tower_type),
+    formatDimension(asset.scene_type, dimensionLabelMap?.scene_type),
+    formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config),
+    asset.shield_wire === "without" ? t("无避雷线") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const abnormal = statusMeta(asset.status, t);
+  const updateTime = formatDateShort(asset.update_date);
 
   return (
     <Card
@@ -113,132 +123,28 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
       hoverable
       className="admin-atp-models-card"
       onClick={handleView}
+      styles={{ body: { padding: "12px 14px 10px", height: "100%" } }}
     >
-      <div className="flex flex-col">
-        <div className="admin-atp-models-card-title flex items-center gap-2 px-4 py-3 border-b border-gray-200">
-          <DatabaseOutlined className="text-base text-gray-500" />
-          <Typography.Text strong className="truncate flex-1">{asset.name}</Typography.Text>
-          <div className="flex flex-shrink-0 items-center gap-2">
-            {/* 形态标记：新老模型的几何来源不同（pch 随包 vs dat 重算），必须能一眼分辨 */}
-            <Tooltip title={formatMeta.hint}>
-              <span
-                className="flex items-center rounded border px-1.5 py-0.5 text-xs font-medium"
-                style={{
-                  color: formatMeta.color,
-                  backgroundColor: formatMeta.background,
-                  borderColor: `${formatMeta.color}33`,
-                }}
-              >
-                {formatMeta.short}
-              </span>
-            </Tooltip>
-            {/* 检测中 / 检测失败：后台分析状态与形态标记并列，避免把上一次的形态当结论 */}
-            {analysisRunning ? (
-              <Tooltip title={t("后台分析中：正在按存储里的真实文件重判形态并扫描槽位")}>
-                <span className="flex items-center gap-1 rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-xs font-medium text-sky-600">
-                  <LoadingOutlined />
-                  {t("检测中")}
-                </span>
-              </Tooltip>
-            ) : null}
-            {analysisFailed ? (
-              <Tooltip title={asset.analysis_error || t("后台分析失败，可点菜单里的「重新检测形态」重试")}>
-                <span className="flex items-center gap-1 rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-600">
-                  {t("检测失败")}
-                </span>
-              </Tooltip>
-            ) : null}
-            {asset.is_active ? (
-              <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-green-50 text-green-600 border border-green-200">
-                {asset.version ? `${asset.version}·${t("生效")}` : t("生效")}
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-gray-50 text-gray-500 border border-gray-200">
-                {asset.version ? `${asset.version}·${t("未生效")}` : t("未生效")}
-              </span>
-            )}
-            <Badge status={statusBadge} />
-            <Typography.Text type="secondary" className="text-xs">
-              {statusText}
-            </Typography.Text>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <ThunderboltOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" className="text-xs">{t("电压等级")}：{formatDimension(asset.voltage_level, dimensionLabelMap?.voltage_level)}</Typography.Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <ApartmentOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" className="text-xs">{t("塔型")}：{formatDimension(asset.tower_type, dimensionLabelMap?.tower_type)}</Typography.Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <ClockCircleOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" className="text-xs">{t("场景")}：{formatDimension(asset.scene_type, dimensionLabelMap?.scene_type)}</Typography.Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <EyeOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" className="text-xs">{t("避雷器组合")}：{formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config)}</Typography.Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <FileProtectOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" className="text-xs">
-              {t("模型形态")}：
-              <span style={{ color: formatMeta.color }}>{formatMeta.label}</span>
-            </Typography.Text>
-            {warnCount > 0 ? (
-              <Tooltip title={t("上传预检有提示项，点开详情查看需要人工处理的内容")}>
-                <span className="flex items-center gap-0.5 text-xs" style={{ color: "#b45309" }}>
-                  <WarningOutlined />
-                  {warnCount}
-                </span>
-              </Tooltip>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="admin-atp-models-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
-          {asset.status === "processing" ? (
-            <Progress percent={asset.progress ?? 0} size="small" className="flex-1 max-w-40" />
-          ) : (
-            <div />
-          )}
-          <Space size="small" className="shrink-0">
-            <Tooltip title={canTest ? t("模型测试") : t("缺少测试权限（需要 atp.run / atp.manage）")}>
-              <Button
-                type="text"
-                size="small"
-                icon={<ExperimentOutlined />}
-                disabled={!canTest}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleTest();
-                }}
-              />
-            </Tooltip>
-            <Tooltip title={t("详情")}>
-              <Button
-                type="text"
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleView();
-                }}
-              />
-            </Tooltip>
+      <div className="flex h-full flex-col gap-2">
+        {/* 主行：名称 + 形态标记 + 菜单 */}
+        <div className="flex items-start gap-2">
+          <Typography.Text strong ellipsis className="admin-atp-models-card-name">
+            {asset.name || asset.code}
+          </Typography.Text>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <AtpModelFormatTag asset={asset} />
             <Dropdown
               menu={{
                 items: [
                   {
                     key: "edit",
                     label: (
-                      <Space size={4}>
+                      <span className="inline-flex items-center gap-1.5">
                         <EditOutlined />
-                        <span>{t("编辑")}</span>
-                      </Space>
+                        {t("编辑")}
+                      </span>
                     ),
+                    disabled: !canManage,
                     onClick: (event) => {
                       event.domEvent.stopPropagation();
                       handleEdit();
@@ -246,46 +152,42 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
                   },
                   ...(canManage
                     ? [
-                        ...(asset.is_active
-                          ? [
-                              {
-                                key: "deactivate",
-                                label: (
-                                  <Space size={4}>
-                                    <StopOutlined />
-                                    <span>{t("取消生效")}</span>
-                                  </Space>
-                                ),
-                                disabled: rowBusy,
-                                onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
-                                  event.domEvent.stopPropagation();
-                                  onDeactivate(asset.id);
-                                },
+                        asset.is_active
+                          ? {
+                              key: "deactivate",
+                              label: (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <StopOutlined />
+                                  {t("取消生效")}
+                                </span>
+                              ),
+                              disabled: rowBusy,
+                              onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
+                                event.domEvent.stopPropagation();
+                                onDeactivate(asset.id);
                               },
-                            ]
-                          : [
-                              {
-                                key: "activate",
-                                label: (
-                                  <Space size={4}>
-                                    <CheckCircleOutlined />
-                                    <span>{t("设为生效")}</span>
-                                  </Space>
-                                ),
-                                disabled: rowBusy,
-                                onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
-                                  event.domEvent.stopPropagation();
-                                  onActivate(asset.id);
-                                },
+                            }
+                          : {
+                              key: "activate",
+                              label: (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <CheckCircleOutlined />
+                                  {t("设为生效")}
+                                </span>
+                              ),
+                              disabled: rowBusy,
+                              onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
+                                event.domEvent.stopPropagation();
+                                onActivate(asset.id);
                               },
-                            ]),
+                            },
                         {
                           key: "recheck-format",
                           label: (
-                            <Space size={4}>
+                            <span className="inline-flex items-center gap-1.5">
                               <SyncOutlined spin={recheckBusy} />
-                              <span>{t("重新检测形态")}</span>
-                            </Space>
+                              {t("重新检测形态")}
+                            </span>
                           ),
                           disabled: recheckBusy,
                           onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
@@ -293,13 +195,14 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
                             onRecheckFormat(asset.id);
                           },
                         },
+                        { type: "divider" as const },
                         {
                           key: "delete",
                           label: (
-                            <Space size={4}>
+                            <span className="inline-flex items-center gap-1.5">
                               <DeleteOutlined />
-                              <span>{t("删除")}</span>
-                            </Space>
+                              {t("删除")}
+                            </span>
                           ),
                           danger: true,
                           disabled: rowBusy,
@@ -314,16 +217,72 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
               }}
               trigger={["click"]}
             >
-              <Tooltip title={t("更多")}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<MoreOutlined />}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              </Tooltip>
+              <Button
+                type="text"
+                size="small"
+                icon={<MoreOutlined />}
+                className="-mr-2"
+                onClick={(event) => event.stopPropagation()}
+              />
             </Dropdown>
-          </Space>
+          </div>
+        </div>
+
+        {/* 维度链：电压 · 塔型 · 场景 · 避雷器 · 避雷线（+ 版本） */}
+        <Typography.Text type="secondary" ellipsis className="text-xs leading-5">
+          {dimensionText || "-"}
+          {asset.version ? ` · ${asset.version}` : ""}
+        </Typography.Text>
+
+        {/* 元信息行：生效状态 + 异常状态 + 更新时间 */}
+        <div className="flex min-h-5 items-center gap-2 text-xs">
+          {asset.is_active ? (
+            <span className="admin-atp-models-state-chip is-active">
+              <span className="admin-atp-models-state-chip-dot" />
+              {t("生效中")}
+            </span>
+          ) : (
+            <span className="admin-atp-models-state-chip is-muted">{t("未生效")}</span>
+          )}
+          {abnormal ? <span className={abnormal.className}>{abnormal.text}</span> : null}
+          {updateTime ? (
+            <Typography.Text type="secondary" className="ml-auto text-xs">
+              {updateTime}
+            </Typography.Text>
+          ) : null}
+        </div>
+
+        {asset.status === "processing" ? (
+          <Progress percent={asset.progress ?? 0} size="small" />
+        ) : null}
+
+        {/* 动作行 */}
+        <div className="mt-auto flex items-center justify-end gap-1 border-t pt-2" style={{ borderColor: "color-mix(in srgb, var(--fquiz-theme-primary) 14%, var(--ant-color-border-secondary))" }}>
+          <Tooltip title={canTest ? t("模型测试") : t("缺少测试权限（需要 atp.run / atp.manage）")}>
+            <Button
+              type="text"
+              size="small"
+              icon={<ExperimentOutlined />}
+              disabled={!canTest}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleTest();
+              }}
+            >
+              {t("测试")}
+            </Button>
+          </Tooltip>
+          <Button
+            type="text"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleView();
+            }}
+          >
+            {t("详情")}
+          </Button>
         </div>
       </div>
     </Card>

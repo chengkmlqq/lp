@@ -5,7 +5,6 @@ import {
   Alert,
   Button,
   Card,
-  Dropdown,
   Empty,
   Form,
   Input,
@@ -42,6 +41,7 @@ import { AdminPageLoading } from "@/components/admin-page-loading";
 import { AtpBatchHistoryTab } from "@/components/atp-models/atp-batch-history-tab";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
 import { AtpModelDetailTab } from "@/components/atp-models/atp-model-detail-tab";
+import { AtpModelFormatTag } from "@/components/atp-models/atp-model-format-tag";
 import { AtpModelOverviewTab } from "@/components/atp-models/atp-model-overview-tab";
 import { AtpModelTestTab } from "@/components/atp-models/atp-model-test-tab";
 import { useAuth } from "@/components/auth-provider";
@@ -1039,33 +1039,69 @@ export default function AtpModelsPage() {
   const columns = useMemo<ColumnsType<AtpAssetSummary>>(
     () => [
       {
-        title: t("电压等级"),
-        dataIndex: "voltage_level",
-        width: 140,
-        render: (value: string | null) => formatDimensionValue(value, "voltage_level"),
+        title: t("模型"),
+        dataIndex: "name",
+        key: "model",
+        width: 220,
+        fixed: "left",
+        render: (_, item) => (
+          <div className="min-w-0">
+            <div className="truncate font-medium">{item.name || item.code}</div>
+            <Typography.Text type="secondary" className="text-xs">
+              {item.code}
+            </Typography.Text>
+          </div>
+        ),
       },
       {
-        title: t("塔型"),
-        dataIndex: "tower_type",
-        width: 140,
-        render: (value: string | null) => formatDimensionValue(value, "tower_type"),
+        title: t("维度"),
+        key: "dimensions",
+        width: 300,
+        render: (_, item) => {
+          const parts = [
+            formatDimensionValue(item.voltage_level, "voltage_level"),
+            formatDimensionValue(item.tower_type, "tower_type"),
+            formatDimensionValue(item.scene_type, "scene_type"),
+            formatDimensionValue(item.arrester_config, "arrester_config"),
+          ].filter((part) => part !== "-");
+          return (
+            <Typography.Text type="secondary" ellipsis className="block max-w-full">
+              {parts.length > 0 ? parts.join(" · ") : "-"}
+            </Typography.Text>
+          );
+        },
       },
       {
-        title: t("场景"),
-        dataIndex: "scene_type",
-        width: 140,
-        render: (value: string | null) => formatDimensionValue(value, "scene_type"),
+        title: t("形态"),
+        key: "format",
+        width: 110,
+        render: (_, item) => <AtpModelFormatTag asset={item} compact />,
       },
       {
-        title: t("避雷器组合"),
-        dataIndex: "arrester_config",
-        width: 140,
-        render: (value: string | null) => formatDimensionValue(value, "arrester_config"),
+        title: t("状态"),
+        key: "state",
+        width: 110,
+        render: (_, item) => (
+          <span className="inline-flex items-center gap-2">
+            {item.is_active ? (
+              <span className="admin-atp-models-state-chip is-active">
+                <span className="admin-atp-models-state-chip-dot" />
+                {t("生效中")}
+              </span>
+            ) : (
+              <span className="admin-atp-models-state-chip is-muted">{t("未生效")}</span>
+            )}
+            {item.status === "processing" ? <span className="admin-atp-models-state-chip is-processing">{t("处理中")}</span> : null}
+            {item.status === "disabled" ? <span className="admin-atp-models-state-chip is-danger">{t("已停用")}</span> : null}
+            {item.status === "archived" ? <span className="admin-atp-models-state-chip is-warning">{t("已归档")}</span> : null}
+            {item.status === "draft" ? <span className="admin-atp-models-state-chip is-muted">{t("草稿")}</span> : null}
+          </span>
+        ),
       },
       {
         title: t("更新时间"),
         dataIndex: "update_date",
-        width: 190,
+        width: 160,
         render: (value: string) => formatDateTime(value),
       },
       {
@@ -1353,7 +1389,7 @@ export default function AtpModelsPage() {
                               setPagination({ current: page, pageSize });
                             },
                           })}
-                          scroll={{ x: 900, y: tableScrollY }}
+                          scroll={{ x: 1080, y: tableScrollY }}
                         />
                       </div>
                     ) : (
