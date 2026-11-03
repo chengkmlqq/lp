@@ -387,7 +387,14 @@ export default function AtpModelsPage() {
     onSuccess: (updated) => {
       void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/v1/atp/assets", updated.id] });
-      setSuccess(t("已重新检测模型形态"));
+      // 2026-11-03：检测改成后台任务，请求返回的是 pending；这里只提示「已提交」，
+      // 列表在有 pending/running 时每 2 秒自刷，出结果后自动更新形态标记。
+      if (updated.analysis_status === "failed") {
+        setSuccess("");
+        setError(new ApiError(updated.analysis_error || t("检测任务入队失败，请稍后重试")));
+        return;
+      }
+      setSuccess(t("已提交后台检测，完成后列表会自动刷新"));
       setError(null);
     },
     onError: (candidate) => {
@@ -757,6 +764,15 @@ export default function AtpModelsPage() {
       return (await response.json()) as AtpAssetListResponse;
     },
     placeholderData: (previousData) => previousData,
+    // 异步分析（2026-11-03）：上传/重判后后台任务在读 OSS 重判形态 + 扫槽位
+    // （单资产 1~3 秒），有 pending/running 时每 2 秒刷一次，出终态自动停。
+    refetchInterval: (query) => {
+      const items = (query.state.data as AtpAssetListResponse | undefined)?.items ?? [];
+      const busy = items.some(
+        (item) => item.analysis_status === "pending" || item.analysis_status === "running",
+      );
+      return busy ? 2000 : false;
+    },
   });
 
   // 全库资产总数：树「全部」节点计数 + 「批量测试」按钮可用性（一次轻量请求只取 total）

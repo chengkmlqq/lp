@@ -44,8 +44,8 @@ from ...services.atp_asset_service import (
     list_asset_tree_children,
     list_runs,
     read_asset_file_content,
-    recheck_asset_format,
-    scan_asset_slots,
+    # 2026-11-03：形态识别与槽位扫描合并为异步分析任务，接口只做入队
+    schedule_asset_analysis,
     serialize_asset,
     upload_asset_files,
     update_asset,
@@ -174,12 +174,13 @@ def recheck_atp_asset_format_endpoint(
     current_user: CurrentUser = Depends(require_permission("atp.manage")),
     db: Session = Depends(get_db),
 ) -> AtpAssetDetail:
-    """按存储里的真实模型文件重判形态（$INCLUDE / $INSERT / 内嵌 / 无线路）。
+    """重新检测模型形态（形态识别 + 槽位扫描，异步执行）。
 
-    存量资产在形态列上线前入库时只有列默认值，不重判就会把 7.2+ 的 $INSERT 模型
-    显示成「老版」。上传口会判定，但不会回头改存量，故留这条显式重判入口。
+    2026-11-03 起改为后台任务：判定本身只有毫秒级，但读模型包要走 OSS，同步执行会
+    把请求按住 2~3 秒。接口立即返回当前状态（analysis_status=pending），前端轮询
+    列表/详情刷新；失败原因落在 analysis_error。
     """
-    updated = recheck_asset_format(
+    updated = schedule_asset_analysis(
         db,
         asset_id=asset_id,
         actor_user_id=current_user.user.id,
@@ -265,8 +266,13 @@ def scan_atp_asset_slots_endpoint(
     current_user: CurrentUser = Depends(require_permission("atp.manage")),
     db: Session = Depends(get_db),
 ) -> dict:
-    """扫描模型槽位（work.atp $PARAMETER + .dat 几何坐标），写回并返回缓存。"""
-    return scan_asset_slots(db, asset_id=asset_id, actor_user_id=current_user.user.id)
+    """触发槽位扫描（异步）：与形态识别合并成一个后台分析任务。
+
+    立即返回当前缓存视图（含 analysis_status），前端轮询 slots 接口等新结果；
+    这样「扫槽位」也不会因为要读 OSS 而卡住 2~3 秒。
+    """
+    schedule_asset_analysis(db, asset_id=asset_id, actor_user_id=current_user.user.id)
+    return get_asset_slots_view(db, asset_id=asset_id)
 
 
 @router.get("/assets/{asset_id}/slots")

@@ -10,6 +10,7 @@ import {
   EditOutlined,
   ExperimentOutlined,
   EyeOutlined,
+  LoadingOutlined,
   FileProtectOutlined,
   MoreOutlined,
   StopOutlined,
@@ -19,7 +20,7 @@ import {
 } from "@ant-design/icons";
 import { useCallback } from "react";
 
-import { checkWarningCount, describeModelFormat } from "@/lib/atp-model-format";
+import { checkWarningCount, describeModelFormat, MODEL_ANALYZING_META } from "@/lib/atp-model-format";
 import { useI18n } from "@/lib/i18n";
 import type { AtpAssetStatus, AtpAssetSummary } from "@/types/auth";
 
@@ -99,8 +100,11 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
   const { badge: statusBadge, text: statusText } = assetBadgeStatus(asset.status, t);
   // 模型形态（2026-11-02）：新老模型的几何来源不同，列表必须能直接分辨。
   // 2026-11-03：没有预检报告 = 从未判定过（存量默认值 / 刚建未传文件），显示「待检测」
+  // 异步分析中（pending/running）也显示「检测中」——结果要等后台任务回写。
   const formatChecked = Boolean(asset.format_check?.model_format);
-  const formatMeta = describeModelFormat(asset.model_format, formatChecked);
+  const analysisRunning = asset.analysis_status === "pending" || asset.analysis_status === "running";
+  const analysisFailed = asset.analysis_status === "failed";
+  const formatMeta = analysisRunning ? MODEL_ANALYZING_META : describeModelFormat(asset.model_format, formatChecked);
   const warnCount = checkWarningCount(asset.format_check);
 
   return (
@@ -128,6 +132,22 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
                 {formatMeta.short}
               </span>
             </Tooltip>
+            {/* 检测中 / 检测失败：后台分析状态与形态标记并列，避免把上一次的形态当结论 */}
+            {analysisRunning ? (
+              <Tooltip title={t("后台分析中：正在按存储里的真实文件重判形态并扫描槽位")}>
+                <span className="flex items-center gap-1 rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-xs font-medium text-sky-600">
+                  <LoadingOutlined />
+                  {t("检测中")}
+                </span>
+              </Tooltip>
+            ) : null}
+            {analysisFailed ? (
+              <Tooltip title={asset.analysis_error || t("后台分析失败，可点菜单里的「重新检测形态」重试")}>
+                <span className="flex items-center gap-1 rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-600">
+                  {t("检测失败")}
+                </span>
+              </Tooltip>
+            ) : null}
             {asset.is_active ? (
               <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-green-50 text-green-600 border border-green-200">
                 {asset.version ? `${asset.version}·${t("生效")}` : t("生效")}

@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
-import { checkWarningCount, describeModelFormat } from "@/lib/atp-model-format";
+import { checkWarningCount, describeModelFormat, MODEL_ANALYZING_META } from "@/lib/atp-model-format";
 import type { AtpAssetSummary, AtpAssetFileListResponse } from "@/types/auth";
 import { AtpDatDetailView } from "./atp-dat-detail-view";
 import { AtpFileContentViewer } from "./atp-file-content-viewer";
@@ -56,6 +56,11 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
         throw new Error(await readApiError(response));
       }
       return (await response.json()) as AtpAssetSummary;
+    },
+    // 后台分析（形态 + 槽位）进行中时轮询，出终态自动停
+    refetchInterval: (query) => {
+      const status = (query.state.data as AtpAssetSummary | undefined)?.analysis_status;
+      return status === "pending" || status === "running" ? 2000 : false;
     },
   });
 
@@ -107,7 +112,11 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
 
   // 模型形态与上传预检（2026-11-02）：形态决定仿真走 lib 还是 pch 链路，
   // 预检的 warning 是「需要人工确认但不阻断仿真」的项（pch 目录不一致、模板缺小数点等）。
-  const formatMeta = describeModelFormat(asset?.model_format, Boolean(asset?.format_check?.model_format));
+  // 2026-11-03：上传后自动触发的后台分析进行中时，库里还是上一次的形态，显示「检测中」。
+  const analysisRunning = asset?.analysis_status === "pending" || asset?.analysis_status === "running";
+  const formatMeta = analysisRunning
+    ? MODEL_ANALYZING_META
+    : describeModelFormat(asset?.model_format, Boolean(asset?.format_check?.model_format));
   const warnCount = checkWarningCount(asset?.format_check);
   const checkIssues = asset?.format_check?.issues ?? [];
 
@@ -122,6 +131,15 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
       ) : asset ? (
         <div>
           <Typography.Title level={5}>{t("基本信息")}</Typography.Title>
+          {asset.analysis_status === "failed" ? (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message={t("后台检测失败（形态识别 / 槽位扫描）")}
+              description={asset.analysis_error || t("可点模型菜单里的「重新检测形态」重试；若提示目录为空，请先上传模型文件。")}
+            />
+          ) : null}
           <Descriptions
             bordered
             size="small"

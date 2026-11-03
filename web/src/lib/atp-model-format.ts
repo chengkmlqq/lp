@@ -84,6 +84,23 @@ export function describeModelFormat(
   return META[format ?? "legacy"] ?? META.legacy;
 }
 
+/**
+ * 异步分析进行中（analysis_status = pending / running）。
+ *
+ * 2026-11-03：形态识别 + 槽位扫描改成上传后自动触发的后台任务（读 OSS 要 1~3 秒），
+ * 这期间库里还是上一次的形态值，直接展示等于拿旧结论冒充新结果，统一显示「检测中」。
+ */
+export const MODEL_ANALYZING_META: ModelFormatMeta = {
+  label: "检测中 · 后台分析",
+  short: "检测中",
+  color: "#0369a1",
+  background: "#f0f9ff",
+  tone: "other",
+  hint:
+    "上传模型后自动触发的后台任务：按存储里的真实 work.atp 重判形态并扫描槽位。" +
+    "走的是对象存储（每次 list/get 一次网络往返），单资产约 1~3 秒，列表会自动刷新。",
+};
+
 /** 预检报告里有几条需要人工看的提示（warning）。error 级已在后端 400，不会入库。 */
 export function checkWarningCount(check?: { warning_count?: number; issues?: unknown[] } | null): number {
   if (!check) return 0;

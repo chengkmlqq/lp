@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import io
 import json
+import logging
 import mimetypes
 import os
 from pathlib import Path, PurePosixPath
@@ -14,6 +15,7 @@ import sys
 import time
 import zipfile
 from dataclasses import dataclass
+from datetime import timezone
 from typing import Any
 from uuid import uuid4
 
@@ -468,6 +470,8 @@ def _find_entry_atp_content(members: list[tuple[str, bytes]]) -> tuple[str, byte
 # 参与预检的扩展名（.pch 会整份读入做分支头检查，单文件 8~16KB，量级可忽略）
 _CHECKED_SUFFIXES: tuple[str, ...] = (".atp", ".dat", ".pch")
 
+logger = logging.getLogger(__name__)
+
 
 def _zip_members_for_check(archive_content: bytes) -> dict[str, bytes]:
     """从 ZIP 中只读取参与预检的成员（.atp/.dat/.pch），避免把大文件全解进内存。
@@ -757,6 +761,33 @@ def _row_field(item: Any, name: str, default: Any = None) -> Any:
         return default
 
 
+def _analysis_fields_for_display(item: Any) -> tuple[str | None, str | None]:
+    """返回 (analysis_status, analysis_error)，把「卡死的 pending/running」降级成失败。
+
+    队列没有消费者（worker 挂了 / 部署忘了重启）时任务永远不会跑，库里会一直停在
+    pending —— 前端会 2 秒轮询不止。超过 10 分钟没回写就按失败展示，提示人工重试，
+    轮询也随之停止。DB 取回的时间可能没时区（MySQL DATETIME），按 UTC 补齐后再比。
+    """
+    status = _row_field(item, "analysis_status") or None
+    error = _row_field(item, "analysis_error") or None
+    if status not in (ANALYSIS_STATUS_PENDING, ANALYSIS_STATUS_RUNNING):
+        return status, error
+    reference = _row_field(item, "analysis_started_at") or _row_field(item, "update_date")
+    if reference is None:
+        return status, error
+    try:
+        if reference.tzinfo is None:
+            reference = reference.replace(tzinfo=timezone.utc)
+        if (utcnow() - reference).total_seconds() > ANALYSIS_STALE_SECONDS:
+            return (
+                ANALYSIS_STATUS_FAILED,
+                "分析任务超过 10 分钟未回写（队列可能没有消费者或任务已丢失），请重新检测",
+            )
+    except TypeError:  # 时区信息不一致时不影响展示，按原状态返回
+        pass
+    return status, error
+
+
 def serialize_asset(
     item: AtpAsset,
     *,
@@ -789,7 +820,9 @@ def serialize_asset(
         )
         dimension_label_cache[cache_key] = label if label else code
         return dimension_label_cache[cache_key]
-    
+
+    _analysis_status, _analysis_error = _analysis_fields_for_display(item)
+
     return AtpAssetSummary(
         id=item.id,
         code=item.code,
@@ -815,6 +848,11 @@ def serialize_asset(
         model_format=(_row_field(item, "model_format") or "legacy"),  # type: ignore[arg-type]
         model_format_label=_MODEL_FORMAT_LABELS.get(_row_field(item, "model_format") or "legacy"),
         format_check=(_row_field(item, "format_check_json") or None),
+        # 异步分析状态（2026-11-03）：上传后自动触发的形态识别 + 槽位扫描
+        analysis_status=_analysis_status,
+        analysis_error=_analysis_error,
+        analysis_started_at=_row_field(item, "analysis_started_at") or None,
+        analysis_finished_at=_row_field(item, "analysis_finished_at") or None,
         storage_mount_code=item.storage_mount_code or "main",
         storage_root_path=item.storage_root_path,
         run_count=run_count,
@@ -952,6 +990,12 @@ def list_assets(
         #   上传预检报告），漏加同样 500 → ATP 模型管理页「加载失败」。新增列务必同步此处。
         AtpAsset.model_format,
         AtpAsset.format_check_json,
+        # 2026-11-03：异步分析状态（形态识别 + 槽位扫描），serialize_asset 会读，
+        # 漏列同样抛 KeyError（见上方 2026-11-02 的同款事故）。
+        AtpAsset.analysis_status,
+        AtpAsset.analysis_error,
+        AtpAsset.analysis_started_at,
+        AtpAsset.analysis_finished_at,
         AtpAsset.storage_mount_code,
         AtpAsset.storage_root_path,
         AtpAsset.create_date,
@@ -1519,6 +1563,9 @@ def upload_asset_archive(
         },
     )
 
+    # 上传后自动触发异步分析（形态复检 + 槽位扫描），与散文件上传同一口径
+    schedule_asset_analysis(db, asset_id=asset.id, actor_user_id=actor_user_id)
+
     return AtpAssetFileUploadResponse(
         asset_id=asset.id,
         storage_mount_code=storage_mount_code,
@@ -1867,13 +1914,9 @@ def upload_asset_files(
     saved = get_asset_by_id(db, asset_id)
     if not saved:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Asset load failed")
-    return serialize_asset(
-        saved,
-        run_count=len(saved.runs),
-        last_run_status=saved.runs[0].status if saved.runs else None,
-        last_run_date=saved.runs[0].create_date if saved.runs else None,
-        db=db,
-    )
+    # 上传后自动触发异步分析（2026-11-03）：形态预检已在内存里算过并落库（毫秒级），
+    # 这里补「按存储真实文件复检 + 槽位扫描」——要读 OSS，放后台跑，别拖慢上传响应。
+    return schedule_asset_analysis(db, asset_id=asset_id, actor_user_id=actor_user_id)
 
 
 def collect_check_members_from_storage(
@@ -1899,36 +1942,36 @@ def collect_check_members_from_storage(
     return members
 
 
-def recheck_asset_format(
+def _analyze_asset_storage(
     db: Session,
+    asset: AtpAsset,
     *,
-    asset_id: str,
-    actor_user_id: str | None = None,
-) -> AtpAssetSummary:
-    """按存储里的真实模型文件重判形态，回写 model_format 与预检报告。
+    include_slots: bool = True,
+) -> dict[str, Any]:
+    """把资产目录读一遍，同时算出形态预检报告（可选槽位扫描结果）。
 
-    存在的理由（2026-11-03 生产事故）：`model_format` 列是 2026-11-02 上传预检上线时
-    才加的，DB 迁移给存量行统一填了默认值 `legacy`，而存量里本来就有 $INSERT（7.2+）
-    模型 —— 于是「老版」标记是**列默认值**而不是判定结果，与文件真实形态不符。
-    上传口只在上传/更新文件时判定，存量不会自动重判，故提供这条显式重判路径
-    （单资产接口 + 批量回填脚本共用）。
+    I/O 只做一次：形态判定要用 work.atp 全文 + 被 $INSERT 引用的 pch，槽位扫描要用
+    work.atp 的 $PARAMETER 段 + 四个几何 .dat —— 两边都要读同一批文件，合并成一趟，
+    避免「重判形态」和「扫槽位」各读一遍（存储是 OSS，每个文件一次 HTTPS 往返）。
 
-    与上传不同：这里**不因 error 级问题抛 400**，而是把报告原样落库 —— 存量模型可能
-    本来就有缺 pch / 混合形态等问题，需要显示给人工去修，而不是让重判本身失败。
+    返回 {"report": PackageInspection, "slots": dict | None}；目录空/读不动直接 409。
     """
-    asset = get_asset_by_id(db, asset_id)
-    if not asset:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
-
     mount_code, storage_root_path = _resolve_asset_file_location(db, asset)
     mount = _resolve_mount(db, mount_code)
     driver = _build_driver_or_400(mount)
     try:
         tree = _walk_storage_tree(driver, storage_root_path)
     except HTTPException as exc:
+        # 从未上传过文件的资产，存储目录根本不存在：这是「还没传模型」而不是存储故障，
+        # 给人工一句能照做的提示，别把 404 原样抛给前端。
+        if exc.status_code == status.HTTP_404_NOT_FOUND:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="资产目录不存在（尚未上传模型文件），无法分析模型；请先上传模型文件",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"资产目录读取失败，无法重新检测形态：{exc.detail}",
+            detail=f"资产目录读取失败，无法分析模型：{exc.detail}",
         ) from exc
 
     members = collect_check_members_from_storage(driver, storage_root_path, tree)
@@ -1939,7 +1982,50 @@ def recheck_asset_format(
         )
 
     report = inspect_package(members)
-    _apply_format_report(asset, report)
+    slots: dict[str, Any] | None = None
+    if include_slots and report.entry_path and report.entry_path in members:
+        work_atp_text = _decode_text_file(members[report.entry_path])
+        dat_texts: dict[str, str] = {}
+        for name in DAT_GEOMETRY_NAMES:
+            wanted = f"{name}.dat"
+            for relative_path, content in members.items():
+                if relative_path.rsplit("/", 1)[-1].lower() != wanted:
+                    continue
+                text = _decode_text_file(content)
+                if text is not None:
+                    dat_texts[name] = text
+                break
+        if work_atp_text is not None:
+            slots = scan_model_slots(work_atp_text=work_atp_text, dat_texts=dat_texts)
+    return {"report": report, "slots": slots}
+
+
+def recheck_asset_format(
+    db: Session,
+    *,
+    asset_id: str,
+    actor_user_id: str | None = None,
+) -> AtpAssetSummary:
+    """按存储里的真实模型文件重判形态，回写 model_format 与预检报告（同步）。
+
+    存在的理由（2026-11-03 生产事故）：`model_format` 列是 2026-11-02 上传预检上线时
+    才加的，DB 迁移给存量行统一填了默认值 `legacy`，而存量里本来就有 $INSERT（7.2+）
+    模型 —— 于是「老版」标记是**列默认值**而不是判定结果，与文件真实形态不符。
+    上传口只在上传/更新文件时判定，存量不会自动重判，故提供这条显式重判路径。
+
+    与上传不同：这里**不因 error 级问题抛 400**，而是把报告原样落库 —— 存量模型可能
+    本来就有缺 pch / 混合形态等问题，需要显示给人工去修，而不是让重判本身失败。
+
+    ⚠️ 接口层不再直接调用本函数（会阻塞请求，单资产 2~3 秒），改走
+    `schedule_asset_analysis` 异步任务；本函数保留给批量回填脚本
+    （scripts/backfill_atp_model_format.py）与需要同步结果的运维场景。
+    """
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+
+    analyzed = _analyze_asset_storage(db, asset, include_slots=False)
+    _apply_format_report(asset, analyzed["report"])
     asset.update_user = actor_user_id or asset.update_user
     asset.update_date = utcnow()
     db.commit()
@@ -1962,6 +2048,172 @@ def recheck_asset_format(
         last_run_date=saved.runs[0].create_date if saved.runs else None,
         db=db,
     )
+
+
+# ===== 异步分析：形态识别 + 槽位扫描（2026-11-03）=====
+# 为什么异步：判定本身 7ms，但读模型包走 OSS，单资产端到端 2~3 秒（实测 10 文件
+# 1.37MB：walk 0.28s + read 0.73s + 客户端初始化约 1s）。同步跑会把上传响应和
+# 「重新检测」按钮一起拖住，资产越多越明显。改为 Celery 任务（默认队列，worker 已消费
+# celery/scheduled/default）+ 前端轮询 analysis_status。
+# 超过这个时长还没有回写就按失败展示（队列无消费者时前端会一直轮询）
+ANALYSIS_STALE_SECONDS = 600
+ANALYSIS_STATUS_PENDING = "pending"
+ANALYSIS_STATUS_RUNNING = "running"
+ANALYSIS_STATUS_SUCCESS = "success"
+ANALYSIS_STATUS_FAILED = "failed"
+
+
+def _enqueue_asset_analysis(asset_id: str, token: str) -> str | None:
+    """投递分析任务；broker 不可用时返回 None（由调用方落成 failed，不让请求 500）。"""
+    try:
+        # 延迟导入：tasks 模块反向依赖本服务，顶层导入会成环
+        from ..tasks.atp_asset_tasks import analyze_atp_asset_job
+
+        result = analyze_atp_asset_job.delay(asset_id, token)
+        return getattr(result, "id", None)
+    except Exception:  # noqa: BLE001 - 入队失败不能影响上传/重判本身
+        logger.exception("ATP 资产分析任务入队失败 asset_id=%s", asset_id)
+        return None
+
+
+def schedule_asset_analysis(
+    db: Session,
+    *,
+    asset_id: str,
+    actor_user_id: str | None = None,
+) -> AtpAssetSummary:
+    """把「形态识别 + 槽位扫描」丢给后台任务，立即返回当前资产状态。
+
+    token 防覆盖：每次调度换新 token，任务回写前比对；上传/重判期间若又来了新调度，
+    旧任务直接放弃，不会把新结果覆盖成旧结论。
+    """
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+
+    token = uuid4().hex
+    asset.analysis_status = ANALYSIS_STATUS_PENDING
+    asset.analysis_error = None
+    asset.analysis_token = token
+    asset.analysis_started_at = None
+    asset.analysis_finished_at = None
+    if actor_user_id:
+        asset.update_user = actor_user_id
+    asset.update_date = utcnow()
+    db.commit()
+
+    task_id = _enqueue_asset_analysis(asset_id, token)
+    if task_id is None:
+        asset.analysis_status = ANALYSIS_STATUS_FAILED
+        asset.analysis_error = "分析任务入队失败：消息队列不可用，请稍后重试"
+        asset.analysis_finished_at = utcnow()
+        db.commit()
+    else:
+        _publish_change(
+            "asset.analysis_scheduled",
+            {"action": "analysis_scheduled", "asset_id": asset_id, "task_id": task_id},
+        )
+
+    saved = get_asset_by_id(db, asset_id)
+    if not saved:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Asset load failed")
+    return serialize_asset(
+        saved,
+        run_count=len(saved.runs),
+        last_run_status=saved.runs[0].status if saved.runs else None,
+        last_run_date=saved.runs[0].create_date if saved.runs else None,
+        db=db,
+    )
+
+
+def run_asset_analysis(*, asset_id: str, token: str) -> dict[str, Any]:
+    """任务主体：形态识别 + 槽位扫描，一次读包，结果整体回写。
+
+    状态机：pending → running → success | failed；任一步失败都落 failed + 原因，
+    不抛给 Celery（避免无意义重试把一个坏包反复读十几次）。
+    """
+    from ..core.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        asset = get_asset_by_id(db, asset_id)
+        if asset is None:
+            return {"status": "skipped", "reason": "asset_not_found"}
+        if (asset.analysis_token or "") != token:
+            # 入队后用户又传了新文件 / 又点了一次重判，这次的结果已经过期
+            return {"status": "skipped", "reason": "stale_token"}
+
+        asset.analysis_status = ANALYSIS_STATUS_RUNNING
+        asset.analysis_started_at = utcnow()
+        asset.analysis_error = None
+        asset.analysis_finished_at = None
+        db.commit()
+
+        try:
+            analyzed = _analyze_asset_storage(db, asset, include_slots=True)
+        except HTTPException as exc:
+            return _finish_analysis_failed(db, asset_id, token, str(exc.detail))
+        except Exception as exc:  # noqa: BLE001 - 分析失败要落库给人工看，不能只留在日志
+            logger.exception("ATP 资产分析异常 asset_id=%s", asset_id)
+            return _finish_analysis_failed(db, asset_id, token, f"{type(exc).__name__}: {exc}")
+
+        # 分析期间可能又有新调度（上传了新文件），此时本次结果作废
+        db.refresh(asset)
+        if (asset.analysis_token or "") != token:
+            return {"status": "skipped", "reason": "stale_token"}
+
+        report = analyzed["report"]
+        _apply_format_report(asset, report)
+        if analyzed["slots"]:
+            asset.slots_json = analyzed["slots"]
+        asset.analysis_status = ANALYSIS_STATUS_SUCCESS
+        asset.analysis_error = None
+        asset.analysis_finished_at = utcnow()
+        asset.update_date = utcnow()
+        db.commit()
+
+        _publish_change(
+            "asset.analysis_finished",
+            {
+                "action": "analysis_finished",
+                "asset_id": asset_id,
+                "model_format": asset.model_format,
+                "status": ANALYSIS_STATUS_SUCCESS,
+            },
+        )
+        return {
+            "status": ANALYSIS_STATUS_SUCCESS,
+            "model_format": report.model_format,
+            "errors": len(report.errors),
+            "slots": (analyzed["slots"] or {}).get("work_atp", {}).get("count"),
+        }
+    finally:
+        db.close()
+
+
+def _finish_analysis_failed(db: Session, asset_id: str, token: str, message: str) -> dict[str, Any]:
+    """把失败落库（不改形态、不动槽位缓存），返回给任务日志。"""
+    asset = get_asset_by_id(db, asset_id)
+    if asset is None:
+        return {"status": "skipped", "reason": "asset_not_found"}
+    if (asset.analysis_token or "") != token:
+        return {"status": "skipped", "reason": "stale_token"}
+    asset.analysis_status = ANALYSIS_STATUS_FAILED
+    asset.analysis_error = (message or "分析失败")[:512]
+    asset.analysis_finished_at = utcnow()
+    asset.update_date = utcnow()
+    db.commit()
+    _publish_change(
+        "asset.analysis_finished",
+        {
+            "action": "analysis_finished",
+            "asset_id": asset_id,
+            "status": ANALYSIS_STATUS_FAILED,
+            "error": asset.analysis_error,
+        },
+    )
+    return {"status": ANALYSIS_STATUS_FAILED, "error": asset.analysis_error}
+
 
 
 def _infer_asset_file_role(asset: AtpAsset, relative_path: str, is_dir: bool) -> str | None:
@@ -2357,6 +2609,9 @@ def get_asset_slots_view(db: Session, *, asset_id: str) -> dict[str, Any]:
         "geometry": geometry,
         "slot_names": slot_names,
         "geometry_models": geometry_models,
+        # 异步分析状态：前端据此显示「扫描中」并在 pending/running 时轮询
+        "analysis_status": asset.analysis_status,
+        "analysis_error": asset.analysis_error,
     }
 
 

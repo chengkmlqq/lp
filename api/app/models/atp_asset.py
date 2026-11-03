@@ -76,6 +76,19 @@ class AtpAsset(Base):
     # error 级问题在上传口直接 400，不会落库；本字段存的是放行时的 warning 清单，
     # 供前端「模型检查」面板展示给人工处理（如 pch 目录不一致、模板缺小数点建议）。
     format_check_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # ===== 异步分析状态（2026-11-03 新增）=====
+    # 「形态识别 + 槽位扫描」改为上传后自动触发的 Celery 任务：
+    #   判定本身只有毫秒级，但读模型包要走 OSS（每次 list/get 一次 HTTPS 往返），
+    #   同步执行会把上传响应与「重新检测」按钮拖到 2~3 秒，且资产越多越慢。
+    # analysis_status: pending → running → success | failed（NULL = 从未分析过）
+    # analysis_token : 入队时生成的随机串，任务回写前校验；上传/重判会换 token，
+    #                  旧任务发现 token 不符就直接放弃，避免慢任务覆盖新结果
+    # analysis_error : 失败原因（截断 512 字），成功时清空
+    analysis_status: Mapped[str | None] = mapped_column(String(20))
+    analysis_error: Mapped[str | None] = mapped_column(String(512))
+    analysis_token: Mapped[str | None] = mapped_column(String(32))
+    analysis_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    analysis_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)
     update_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

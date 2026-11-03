@@ -1165,6 +1165,9 @@ export type AtpAssetRunStatus = "pending" | "running" | "success" | "failed";
 /** ATPDraw 产物形态，决定仿真走 lib 还是 pch 链路（见后端 atp_model_format.py） */
 export type AtpAssetModelFormat = "legacy" | "insert" | "embed" | "plain";
 
+/** 异步分析（形态识别 + 槽位扫描）状态：上传后自动触发，前端据此轮询 */
+export type AtpAssetAnalysisStatus = "pending" | "running" | "success" | "failed";
+
 /** 上传预检的一条结论。error 级会让上传直接 400，不会出现在已入库的模型上 */
 export type AtpAssetCheckIssue = {
   code: string;
@@ -1217,6 +1220,17 @@ export type AtpAssetSummary = {
   model_format_label?: string | null;
   /** 上传预检报告（error 级已在上传口 400；此处是放行时的提示清单） */
   format_check?: AtpAssetFormatCheck | null;
+  /**
+   * 异步分析状态（2026-11-03）：上传后自动触发的「形态识别 + 槽位扫描」任务。
+   * 读模型包要走 OSS，同步跑要 2~3 秒，故放后台执行，前端按此轮询。
+   * - `pending` / `running`：检测中（列表每 2 秒刷新一次）
+   * - `success`：已完成；`failed`：看 analysis_error
+   * - `null`：从未分析过（改造前入库或还没传文件）
+   */
+  analysis_status?: AtpAssetAnalysisStatus | null;
+  analysis_error?: string | null;
+  analysis_started_at?: string | null;
+  analysis_finished_at?: string | null;
   /** 模型级绑定的测试线路（单塔基准）：非空时测试默认用它 */
   test_line_id?: string | null;
   storage_mount_code: string | null;

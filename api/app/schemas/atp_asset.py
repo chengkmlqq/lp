@@ -15,6 +15,10 @@ AtpAssetEngineMode = Literal["wine", "native"]
 #   embed : 7.2+ 内嵌（几何烧死，上传口拒收）
 #   plain : 无 LCC 的纯 RLC 工程
 AtpAssetModelFormat = Literal["legacy", "insert", "embed", "plain"]
+# 异步分析（形态识别 + 槽位扫描）状态（2026-11-03）
+#   pending: 已入队待执行；running: 执行中；success/failed: 终态
+#   None: 从未分析过（改造前入库、或新建未传文件）
+AtpAssetAnalysisStatus = Literal["pending", "running", "success", "failed"]
 
 
 class AtpAssetSummary(BaseModel):
@@ -41,6 +45,11 @@ class AtpAssetSummary(BaseModel):
     model_format_label: str | None = None
     # 上传预检报告（warning 清单 + 统计）；error 级问题在上传口已 400，不会落库
     format_check: dict[str, Any] | None = None
+    # 异步分析（形态识别 + 槽位扫描）状态：上传后自动触发，前端据此显示「检测中」
+    analysis_status: AtpAssetAnalysisStatus | None = None
+    analysis_error: str | None = None
+    analysis_started_at: datetime | None = None
+    analysis_finished_at: datetime | None = None
     storage_mount_code: str | None = None
     storage_root_path: str | None = None
     run_count: int = 0

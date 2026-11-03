@@ -31,6 +31,9 @@ type SlotsView = {
   geometry: Record<string, GeometryView>;
   slot_names: string[];
   geometry_models: string[];
+  /** 异步分析状态（2026-11-03）：pending/running 时扫描还没回写，面板要轮询 */
+  analysis_status?: "pending" | "running" | "success" | "failed" | null;
+  analysis_error?: string | null;
 };
 
 type CoverageView = {
@@ -78,6 +81,11 @@ export function AtpModelSlotsPanel({ assetId }: AtpModelSlotsPanelProps) {
       }
       return (await response.json()) as SlotsView;
     },
+    // 后台分析进行中（扫描任务在读 OSS）时轮询，出终态自动停
+    refetchInterval: (query) => {
+      const status = (query.state.data as SlotsView | undefined)?.analysis_status;
+      return status === "pending" || status === "running" ? 2000 : false;
+    },
   });
 
   const coverageQuery = useQuery({
@@ -100,10 +108,16 @@ export function AtpModelSlotsPanel({ assetId }: AtpModelSlotsPanelProps) {
       }
       return (await response.json()) as SlotsView;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ["/api/v1/atp/assets", assetId, "slots"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/v1/atp/assets", assetId, "coverage"] });
-      void messageApi.success(t("槽位扫描完成"));
+      // 2026-11-03：扫描改为后台任务（读 OSS 要 1~3 秒），接口先返回 pending；
+      // 面板按 analysis_status 轮询，结果回写后自动出现。
+      if (data.analysis_status === "failed") {
+        void messageApi.error(data.analysis_error || t("槽位扫描任务入队失败，请稍后重试"));
+        return;
+      }
+      void messageApi.success(t("已提交槽位扫描，完成后自动刷新"));
     },
     onError: (error: Error) => {
       void messageApi.error(error.message || t("槽位扫描失败"));
@@ -133,6 +147,15 @@ export function AtpModelSlotsPanel({ assetId }: AtpModelSlotsPanelProps) {
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               {t("扫描时间")}: {formatScannedAt(slotsQuery.data.scanned_at)}
             </Typography.Text>
+          ) : null}
+          {/* 后台分析进行中：扫描结果还没回写，明确告诉人工在等什么 */}
+          {slotsQuery.data?.analysis_status === "pending" || slotsQuery.data?.analysis_status === "running" ? (
+            <Tag color="processing" icon={<Spin size="small" />}>
+              {t("扫描中")}
+            </Tag>
+          ) : null}
+          {slotsQuery.data?.analysis_status === "failed" ? (
+            <Tag color="red">{t("扫描失败")}</Tag>
           ) : null}
         </Space>
       }

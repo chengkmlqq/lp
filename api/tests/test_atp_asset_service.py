@@ -556,3 +556,246 @@ def test_recheck_asset_format_without_model_files_reports_conflict(tmp_path) -> 
         assert "没有 .atp" in str(excinfo.value.detail)
     finally:
         session.close()
+
+
+# ===== 异步分析（形态识别 + 槽位扫描）=====
+# 2026-11-03：上传后自动触发的 Celery 任务。这组用例覆盖四个关键行为：
+#   1) 调度后立刻落 pending + 换 token；2) broker 不可用时落 failed 而不是 500；
+#   3) 任务主体一次读包同时写形态与槽位；4) token 被换掉后旧任务不覆盖新结果。
+
+
+def _make_asset_with_insert_package(session: Session, root_dir: Path, code: str) -> AtpAsset:
+    _seed_vfs_mount(session, root_dir=root_dir)
+    asset = atp_asset_service.create_asset(
+        session,
+        AtpAssetCreateRequest(
+            code=code,
+            name="异步分析样本",
+            description="7.3 $INSERT 形态",
+            voltage_level="110",
+            tower_type="M123",
+            scene_type="fanji",
+        ),
+        actor_user_id="tester",
+    )
+    assert asset is not None
+    mount = atp_asset_service._resolve_mount(session, "main")
+    driver = atp_asset_service._build_driver_or_400(mount)
+    storage_root = asset.storage_root_path or ""
+    driver.ensure_directory(storage_root)
+    driver.write_file(f"{storage_root}/work.atp", content=_INSERT_FORM_ATP, content_type="text/plain")
+    driver.write_file(f"{storage_root}/long3.pch", content=_INSERT_FORM_PCH, content_type="text/plain")
+    driver.write_file(f"{storage_root}/long.dat", content=b"  1.000     0.000\n", content_type="text/plain")
+    # create_asset 返回的是 pydantic 摘要，这里取 ORM 行以便用例直接改分析状态
+    db_asset = session.get(AtpAsset, asset.id)
+    assert db_asset is not None
+    return db_asset
+
+
+def test_schedule_asset_analysis_marks_pending(monkeypatch, tmp_path) -> None:
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        asset = _make_asset_with_insert_package(session, tmp_path / "vfs", "ATP-ASYNC-PENDING")
+        calls: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            atp_asset_service,
+            "_enqueue_asset_analysis",
+            lambda asset_id, token: calls.append((asset_id, token)) or "task-1",
+        )
+
+        summary = atp_asset_service.schedule_asset_analysis(
+            session, asset_id=asset.id, actor_user_id="tester"
+        )
+
+        assert summary.analysis_status == "pending"
+        assert summary.analysis_error is None
+        assert len(calls) == 1 and calls[0][0] == asset.id
+        persisted = session.get(AtpAsset, asset.id)
+        assert persisted is not None
+        # token 必须落库，任务回写前要拿它比对
+        assert persisted.analysis_token == calls[0][1]
+    finally:
+        session.close()
+
+
+def test_schedule_asset_analysis_marks_failed_when_broker_unavailable(monkeypatch, tmp_path) -> None:
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        asset = _make_asset_with_insert_package(session, tmp_path / "vfs", "ATP-ASYNC-BROKER")
+        monkeypatch.setattr(atp_asset_service, "_enqueue_asset_analysis", lambda asset_id, token: None)
+
+        summary = atp_asset_service.schedule_asset_analysis(session, asset_id=asset.id)
+
+        # broker 挂了不能让上传/重判请求 500，要落成可读的失败态
+        assert summary.analysis_status == "failed"
+        assert "入队失败" in (summary.analysis_error or "")
+        assert summary.analysis_finished_at is not None
+    finally:
+        session.close()
+
+
+def test_run_asset_analysis_writes_format_and_slots(monkeypatch, tmp_path) -> None:
+    import app.core.database as database_module
+
+    testing_session = _build_sessionmaker()
+    monkeypatch.setattr(database_module, "SessionLocal", testing_session)
+    session: Session = testing_session()
+    try:
+        asset = _make_asset_with_insert_package(session, tmp_path / "vfs", "ATP-ASYNC-RUN")
+        asset.analysis_status = "pending"
+        asset.analysis_token = "tok-run"
+        session.commit()
+
+        outcome = atp_asset_service.run_asset_analysis(asset_id=asset.id, token="tok-run")
+
+        assert outcome["status"] == "success"
+        persisted = session.get(AtpAsset, asset.id)
+        assert persisted is not None
+        session.refresh(persisted)
+        assert persisted.analysis_status == "success"
+        assert persisted.analysis_error is None
+        assert persisted.analysis_finished_at is not None
+        # 形态与槽位在同一次读包里产出
+        assert persisted.model_format == "insert"
+        assert (persisted.slots_json or {}).get("work_atp", {}).get("count")
+    finally:
+        session.close()
+
+
+def test_run_asset_analysis_skips_stale_token(monkeypatch, tmp_path) -> None:
+    import app.core.database as database_module
+
+    testing_session = _build_sessionmaker()
+    monkeypatch.setattr(database_module, "SessionLocal", testing_session)
+    session: Session = testing_session()
+    try:
+        asset = _make_asset_with_insert_package(session, tmp_path / "vfs", "ATP-ASYNC-STALE")
+        asset.analysis_status = "pending"
+        asset.analysis_token = "tok-new"  # 已经被更新的调度换过
+        session.commit()
+
+        outcome = atp_asset_service.run_asset_analysis(asset_id=asset.id, token="tok-old")
+
+        assert outcome == {"status": "skipped", "reason": "stale_token"}
+        persisted = session.get(AtpAsset, asset.id)
+        assert persisted is not None
+        session.refresh(persisted)
+        # 旧任务不得改写状态与形态
+        assert persisted.analysis_status == "pending"
+        assert persisted.model_format == "legacy"
+    finally:
+        session.close()
+
+
+def test_run_asset_analysis_marks_failed_without_files(monkeypatch, tmp_path) -> None:
+    import app.core.database as database_module
+
+    testing_session = _build_sessionmaker()
+    monkeypatch.setattr(database_module, "SessionLocal", testing_session)
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        asset = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(
+                code="ATP-ASYNC-EMPTY",
+                name="空目录",
+                description="没有模型文件",
+                voltage_level="110",
+                tower_type="M123",
+                scene_type="fanji",
+            ),
+            actor_user_id="tester",
+        )
+        assert asset is not None
+        db_asset = session.get(AtpAsset, asset.id)
+        assert db_asset is not None
+        db_asset.analysis_status = "pending"
+        db_asset.analysis_token = "tok-empty"
+        session.commit()
+
+        outcome = atp_asset_service.run_asset_analysis(asset_id=asset.id, token="tok-empty")
+
+        assert outcome["status"] == "failed"
+        # 从未传过文件 → 目录不存在；空目录 → 没有 .atp。两种情况都要引导「先传文件」
+        assert "请先上传模型文件" in outcome["error"]
+        persisted = session.get(AtpAsset, asset.id)
+        assert persisted is not None
+        session.refresh(persisted)
+        assert persisted.analysis_status == "failed"
+        assert "请先上传模型文件" in (persisted.analysis_error or "")
+    finally:
+        session.close()
+
+
+def test_upload_asset_files_triggers_async_analysis(monkeypatch, tmp_path) -> None:
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        asset = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(
+                code="ATP-ASYNC-UPLOAD",
+                name="上传触发",
+                description="上传后应自动入队",
+                voltage_level="110",
+                tower_type="M123",
+                scene_type="fanji",
+            ),
+            actor_user_id="tester",
+        )
+        assert asset is not None
+        calls: list[str] = []
+        monkeypatch.setattr(
+            atp_asset_service,
+            "_enqueue_asset_analysis",
+            lambda asset_id, token: calls.append(asset_id) or "task-upload",
+        )
+
+        summary = atp_asset_service.upload_asset_files(
+            session,
+            asset_id=asset.id,
+            files=[_DummyUploadFile("work.atp", _INSERT_FORM_ATP), _DummyUploadFile("long3.pch", _INSERT_FORM_PCH)],
+            actor_user_id="tester",
+        )
+
+        assert calls == [asset.id]
+        assert summary.analysis_status == "pending"
+        # 上传口仍然同步落形态（内容已在内存，毫秒级），异步任务负责复检 + 槽位
+        assert summary.model_format == "insert"
+    finally:
+        session.close()
+
+
+def test_stale_pending_analysis_is_downgraded_to_failed(tmp_path) -> None:
+    """队列没有消费者时 pending 会永远挂着，列表会无限轮询 —— 超时按失败展示。"""
+    from datetime import datetime, timedelta, timezone
+
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        asset = _make_asset_with_insert_package(session, tmp_path / "vfs", "ATP-ASYNC-STALE-PENDING")
+        asset.analysis_status = "pending"
+        asset.analysis_token = "tok-slow"
+        asset.analysis_started_at = datetime.now(timezone.utc) - timedelta(minutes=11)
+        session.commit()
+
+        summary = atp_asset_service.serialize_asset(
+            asset, run_count=0, last_run_status=None, last_run_date=None, db=session
+        )
+
+        assert summary.analysis_status == "failed"
+        assert "10 分钟" in (summary.analysis_error or "")
+
+        # 刚入队的 pending 不受影响
+        asset.analysis_started_at = datetime.now(timezone.utc)
+        session.commit()
+        fresh = atp_asset_service.serialize_asset(
+            asset, run_count=0, last_run_status=None, last_run_date=None, db=session
+        )
+        assert fresh.analysis_status == "pending"
+    finally:
+        session.close()

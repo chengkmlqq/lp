@@ -71,4 +71,31 @@ def _upload_test_log(task_id: str, log_content: str) -> None:
         pass
 
 
+@celery_app.task(name="app.tasks.atp_asset_tasks.analyze_atp_asset_job", bind=True)
+def analyze_atp_asset_job(self, asset_id: str, token: str) -> dict:
+    """资产异步分析：形态识别 + 槽位扫描（上传后自动触发，也可手动重判/扫槽位）。
+
+    不需要 wine（只读 OSS + 纯 Python 解析），走默认队列，由通用 worker 消费。
+    token 用于防覆盖：入队后若用户又传了文件或再次重判，旧任务直接放弃。
+    """
+    from ..services.atp_asset_service import run_asset_analysis
+
+    task_id = self.request.id
+    try:
+        outcome = run_asset_analysis(asset_id=asset_id, token=token)
+        _upload_test_log(
+            task_id,
+            f"[{task_id}] ATP asset analysis {asset_id} -> {outcome}",
+        )
+        return outcome
+    except Exception as exc:  # noqa: BLE001 - 兜底：任务主体内部已落 failed，这里只记录
+        import traceback
+
+        _upload_test_log(
+            task_id,
+            f"[{task_id}] ATP asset analysis {asset_id} crashed: {exc}\n{traceback.format_exc()}",
+        )
+        raise
+
+
 
