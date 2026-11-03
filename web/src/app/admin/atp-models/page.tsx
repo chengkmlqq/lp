@@ -5,7 +5,6 @@ import {
   Alert,
   Button,
   Card,
-  Drawer,
   Empty,
   Form,
   Input,
@@ -208,8 +207,8 @@ export default function AtpModelsPage() {
   // 批量测试历史记录 Tab(页内动态选项卡,2026-09-29 改造)
   const [batchTabs, setBatchTabs] = useState<{ key: string; label: React.ReactNode }[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>("list");
-  // 模型总览：改为按钮 + 抽屉（不再占用固定选项卡位）
-  const [overviewOpen, setOverviewOpen] = useState(false);
+  // 模型总览：不在初始 Tab 中出现，点按钮才打开（同详情/测试 Tab 的动态选项卡）
+  const [overviewTabs, setOverviewTabs] = useState<{ key: string; label: React.ReactNode }[]>([]);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(ATP_TABLE_MIN_SCROLL_Y);
   const [error, setError] = useState<ApiError | null>(null);
@@ -1022,6 +1021,18 @@ export default function AtpModelsPage() {
     setActiveTabKey(key);
   }, []);
 
+  /** 打开「模型总览」Tab（已打开则直接切过去）。 */
+  const openOverviewTab = useCallback(() => {
+    const key = "overview";
+    setOverviewTabs((previous) => {
+      if (previous.some((tab) => tab.key === key)) {
+        return previous;
+      }
+      return [...previous, { key, label: <>{t("模型总览")}</> }];
+    });
+    setActiveTabKey(key);
+  }, [t]);
+
   /** 打开「批量测试记录」历史 Tab(同一 Tab 已开则直接切过去)。 */
   const openBatchTab = useCallback(() => {
     const key = "batch-history";
@@ -1200,6 +1211,14 @@ export default function AtpModelsPage() {
       });
       return next;
     });
+    setOverviewTabs((previous) => {
+      const next = previous.filter((tab) => tab.key !== key);
+      if (next.length === previous.length) {
+        return previous;
+      }
+      setActiveTabKey((current) => (current === key ? "list" : current));
+      return next;
+    });
   }, []);
 
   if (initializing) {
@@ -1242,7 +1261,7 @@ export default function AtpModelsPage() {
             {canRead ? (
               <Button
                 icon={<ApartmentOutlined />}
-                onClick={() => setOverviewOpen(true)}
+                onClick={openOverviewTab}
               >
                 {t("模型总览")}
               </Button>
@@ -1459,6 +1478,14 @@ export default function AtpModelsPage() {
               </div>
             ),
           },
+          ...overviewTabs.map((tab) => ({
+            key: tab.key,
+            label: tab.label,
+            closable: true,
+            children: (
+              <AtpModelOverviewTab />
+            ),
+          })),
           ...detailTabs.map((tab) => ({
             key: tab.key,
             label: tab.label,
@@ -1489,19 +1516,6 @@ export default function AtpModelsPage() {
           })),
         ]}
         />
-
-      {/* 模型总览抽屉：按需打开，不占固定选项卡位 */}
-      <Drawer
-        title={t("模型总览")}
-        placement="right"
-        width="min(1080px, 92vw)"
-        open={overviewOpen}
-        onClose={() => setOverviewOpen(false)}
-        destroyOnHidden
-        styles={{ body: { paddingTop: 12 } }}
-      >
-        <AtpModelOverviewTab />
-      </Drawer>
 
       <Modal
         title={t("新建 ATP 模型")}
