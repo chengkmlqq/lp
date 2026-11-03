@@ -2930,6 +2930,19 @@ body {
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--ant-color-primary) 22%, transparent);
 }
 
+/* ---- 新建模型弹窗：紧凑上传区 ---- */
+.admin-atp-model-create-form .ant-form-item {
+  margin-bottom: 16px;
+}
+
+.admin-atp-model-upload-dragger .ant-upload-drag {
+  border-radius: 8px;
+}
+
+.admin-atp-model-upload-dragger .ant-upload-btn {
+  padding: 10px 12px;
+}
+
 /* ---- 树滚动容器 ---- */
 .admin-atp-models-sider-menu {
   flex: 1;

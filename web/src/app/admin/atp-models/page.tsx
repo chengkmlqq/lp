@@ -16,6 +16,7 @@ import {
   Spin,
   Table,
   Tree,
+  Tooltip,
   Typography,
   Upload,
   type CardProps,
@@ -27,6 +28,7 @@ import {
   ExperimentOutlined,
   InboxOutlined,
   PlusOutlined,
+  QuestionCircleOutlined,
   SearchOutlined,
   ApartmentOutlined,
 } from "@ant-design/icons";
@@ -185,6 +187,8 @@ export default function AtpModelsPage() {
   const [editingAsset, setEditingAsset] = useState<AtpAssetSummary | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [fileList, setFileList] = useState<File[]>([]);
+  // 上传文件清单默认折叠，避免几十个 pch 把弹窗撑长
+  const [fileListExpanded, setFileListExpanded] = useState(false);
   const [tempFileId, setTempFileId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
@@ -312,6 +316,7 @@ export default function AtpModelsPage() {
       setTempFileId(null);
       setUploadProgress(0);
       setUploadError("");
+      setFileListExpanded(false);
       form.resetFields();
     },
     onError: (candidate) => {
@@ -588,6 +593,7 @@ export default function AtpModelsPage() {
     if (createAssetMutation.isPending) return;
     setModalOpen(false);
     setFileList([]);
+    setFileListExpanded(false);
     setTempFileId(null);
     setUploadProgress(0);
     setUploadError("");
@@ -1528,6 +1534,7 @@ export default function AtpModelsPage() {
         okText={createAssetMutation.isPending ? t("提交中...") : t("创建模型")}
         cancelText={t("取消")}
         okButtonProps={{ disabled: !tempFileId }}
+        width={760}
       >
         <Form
           form={form}
@@ -1538,51 +1545,82 @@ export default function AtpModelsPage() {
             void createAssetMutation.mutateAsync(values);
           }}
           autoComplete="off"
+          className="admin-atp-model-create-form"
         >
-          <Form.Item name="voltage_level" label={t("电压等级")} rules={[{ required: true, message: t("请选择电压等级") }]}>
-            <Select
-              showSearch
-              allowClear
-              placeholder={t("请选择电压等级")}
-              options={voltageLevelOptions}
-            />
-          </Form.Item>
-          <Form.Item name="tower_type" label={t("塔型")} rules={[{ required: true, message: t("请选择塔型") }]}>
-            <Select
-              showSearch
-              allowClear
-              placeholder={t("请选择塔型")}
-              options={towerTypeOptions}
-            />
-          </Form.Item>
-          <Form.Item name="scene_type" label={t("场景")} rules={[{ required: true, message: t("请选择场景") }]}>
-            <Select
-              showSearch
-              allowClear
-              placeholder={t("请选择场景")}
-              options={sceneTypeOptions}
-            />
-          </Form.Item>
-          <Form.Item name="arrester_config" label={t("避雷器装设组合")} rules={[{ required: true, message: t("请选择避雷器装设组合") }]}>
-            <Select
-              showSearch
-              allowClear
-              placeholder={t("请选择避雷器装设组合")}
-              options={arresterConfigOptions}
-            />
-          </Form.Item>
-          <Form.Item name="version" label={t("版本号")} rules={[{ required: true, message: t("请输入版本号") }]}>
-            <Input placeholder={t("如 v1 / v2-rev3")} maxLength={32} />
-          </Form.Item>
-          <Form.Item name="description" label={t("描述")} className="md:col-span-2" rules={[{ required: true, message: t("请输入模型描述") }]}>
-            <Input.TextArea rows={2} placeholder={t("模型描述（必填）")} maxLength={8000} />
-          </Form.Item>
-          <Form.Item label={t("上传模型文件")} required>
+          {/* 维度四要素 + 版本号：两列排布，一屏内可完成 */}
+          <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+            <Form.Item name="voltage_level" label={t("电压等级")} rules={[{ required: true, message: t("请选择电压等级") }]}>
+              <Select
+                showSearch
+                allowClear
+                placeholder={t("请选择电压等级")}
+                options={voltageLevelOptions}
+              />
+            </Form.Item>
+            <Form.Item name="tower_type" label={t("塔型")} rules={[{ required: true, message: t("请选择塔型") }]}>
+              <Select
+                showSearch
+                allowClear
+                placeholder={t("请选择塔型")}
+                options={towerTypeOptions}
+              />
+            </Form.Item>
+            <Form.Item name="scene_type" label={t("场景")} rules={[{ required: true, message: t("请选择场景") }]}>
+              <Select
+                showSearch
+                allowClear
+                placeholder={t("请选择场景")}
+                options={sceneTypeOptions}
+              />
+            </Form.Item>
+            <Form.Item name="arrester_config" label={t("避雷器装设组合")} rules={[{ required: true, message: t("请选择避雷器装设组合") }]}>
+              <Select
+                showSearch
+                allowClear
+                placeholder={t("请选择避雷器装设组合")}
+                options={arresterConfigOptions}
+              />
+            </Form.Item>
+            <Form.Item
+              name="version"
+              label={t("版本号")}
+              rules={[{ required: true, message: t("请输入版本号") }]}
+              extra={t("同维度组合内唯一，如 v1 / v2-rev3")}
+            >
+              <Input placeholder={t("如 v1 / v2-rev3")} maxLength={32} />
+            </Form.Item>
+            <div className="hidden items-start pt-8 text-xs leading-5 text-[var(--ant-color-text-tertiary)] sm:flex">
+              {t("维度组合 + 版本号决定模型目录，创建后可在列表里切换生效版本。")}
+            </div>
+            <Form.Item
+              name="description"
+              label={t("描述")}
+              className="sm:col-span-2"
+              rules={[{ required: true, message: t("请输入模型描述") }]}
+            >
+              <Input.TextArea rows={2} placeholder={t("模型描述（必填）")} maxLength={8000} />
+            </Form.Item>
+          </div>
+
+          <Form.Item
+            label={
+              <Space size={6}>
+                <span>{t("上传模型文件")}</span>
+                <Tooltip
+                  title={t("支持选择整个 ATP 模型目录，系统只上传 .atp / .dat / .pch 文件。老版模型（$INCLUDE）传 work.atp + 四个 .dat；新版模型（$INSERT，ATPDraw 7.2+）必须连序号 .pch 一起传，否则仿真会因缺几何依赖而拒绝执行。")}
+                >
+                  <QuestionCircleOutlined className="text-[var(--ant-color-text-tertiary)]" />
+                </Tooltip>
+              </Space>
+            }
+            required
+          >
             <div>
               <Upload.Dragger
                 directory
                 multiple
                 showUploadList={false}
+                className="admin-atp-model-upload-dragger"
                 beforeUpload={(file) => {
                   // 2026-11-03：白名单是 .atp / .dat / .pch —— 7.2+ 的 $INSERT 模型几何
                   // 全在序号 pch 里，漏掉 pch 会让新版模型必然缺依赖（后端 E010 拒收）。
@@ -1604,15 +1642,15 @@ export default function AtpModelsPage() {
                 }}
               >
                 {fileList.length === 0 ? (
-                  <>
-                    <InboxOutlined style={{ fontSize: 40, color: "#999" }} />
-                    <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
+                  <div className="py-2">
+                    <InboxOutlined style={{ fontSize: 30, color: "var(--ant-color-text-tertiary)" }} />
+                    <p className="mb-0 mt-2 text-sm text-[var(--ant-color-text-secondary)]">
                       {t("点击或拖拽模型文件夹到此区域上传")}
                     </p>
-                    <Typography.Text type="secondary">
-                      {t("支持选择整个 ATP 模型目录，系统只上传 .atp / .dat / .pch 文件。老版模型（$INCLUDE）传 work.atp + 四个 .dat；新版模型（$INSERT，ATPDraw 7.2+）必须连序号 .pch 一起传，否则仿真会因缺几何依赖而拒绝执行。")}
-                    </Typography.Text>
-                  </>
+                    <p className="mb-0 mt-1 text-xs text-[var(--ant-color-text-tertiary)]">
+                      {t("仅接收 .atp / .dat / .pch")}
+                    </p>
+                  </div>
                 ) : (
                   <>
                     <p className="ant-upload-text">{t("已选择")} {fileList.length} {t("个文件")}</p>
@@ -1634,26 +1672,27 @@ export default function AtpModelsPage() {
                 )}
               </Upload.Dragger>
               {fileList.length > 0 && (
-                <div style={{
-                  marginTop: 8,
-                  maxHeight: '200px',
-                  overflowY: 'auto',
-                  border: '1px solid var(--ant-color-border)',
-                  borderRadius: '4px',
-                  padding: '8px',
-                  backgroundColor: 'var(--ant-color-bg-container)'
-                }}>
-                  {fileList.map((file, index) => (
-                    <div key={index} style={{
-                      padding: '4px 0',
-                      fontSize: '13px',
-                      color: 'var(--ant-color-text-secondary)',
-                      borderBottom: index < fileList.length - 1 ? '1px solid var(--ant-color-border-secondary)' : 'none',
-                      wordBreak: 'break-all'
-                    }}>
-                      {getUploadRelativePath(file)}
+                <div className="mt-2">
+                  <Button
+                    type="link"
+                    size="small"
+                    className="!px-0"
+                    onClick={() => setFileListExpanded((prev) => !prev)}
+                  >
+                    {fileListExpanded ? t("收起文件清单") : `${t("查看文件清单")}（${fileList.length}）`}
+                  </Button>
+                  {fileListExpanded ? (
+                    <div className="max-h-[140px] overflow-y-auto rounded border border-[var(--ant-color-border-secondary)] px-2 py-1">
+                      {fileList.map((file, index) => (
+                        <div
+                          key={`${getUploadRelativePath(file)}-${index}`}
+                          className="break-all border-b border-[var(--ant-color-border-secondary)] py-1 text-xs text-[var(--ant-color-text-secondary)] last:border-b-0"
+                        >
+                          {getUploadRelativePath(file)}
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : null}
                 </div>
               )}
             </div>
