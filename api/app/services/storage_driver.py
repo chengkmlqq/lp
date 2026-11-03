@@ -371,6 +371,9 @@ class S3StorageDriver:
         self._access_key_id = _coerce_non_empty_string(config.get("access_key_id"))
         self._root_prefix = _normalize_s3_prefix(mount_root_path)
         self._should_write_directory_markers = bool(config.get("write_directory_markers", False))
+        # 批量删除（DeleteObjects）在部分 S3 兼容实现上不可用，首次失败后置 False
+        # 并降级为逐个 delete_object，避免每次删除都先吃一次失败往返。
+        self._batch_delete_supported = True
 
     def list_dir(self, path: str) -> list[StorageObject]:
         normalized = normalize_virtual_path(path)
@@ -695,13 +698,35 @@ class S3StorageDriver:
             raise StorageDriverError(f"S3 stat failed: {exc}") from exc
 
     def _delete_keys(self, keys: list[str]) -> None:
+        """删除一批对象，批量接口不可用时降级为逐个删除。
+
+        阿里云 OSS 的 DeleteMultipleObjects 会对 boto3 的 `DeleteObjects` 请求返回
+        `MissingArgument`（该接口额外要求 Content-MD5，而 botocore 在
+        `request_checksum_calculation="when_required"` 下不再自动补这个头）。
+        文件管理的删目录/删文件、模型删除、重命名/移动的收尾、临时文件消费删除
+        全都走这里，批量失败若直接冒泡，OSS 环境里这些操作会统一报 502。
+        """
         chunk_size = 1000
         for index in range(0, len(keys), chunk_size):
             chunk = keys[index : index + chunk_size]
-            self._client.delete_objects(
-                Bucket=self._bucket,
-                Delete={"Objects": [{"Key": key} for key in chunk], "Quiet": True},
-            )
+            if self._batch_delete_supported:
+                try:
+                    self._client.delete_objects(
+                        Bucket=self._bucket,
+                        Delete={"Objects": [{"Key": key} for key in chunk], "Quiet": True},
+                    )
+                    continue
+                except Exception as exc:  # noqa: BLE001 - 兼容各家实现，统一降级处理
+                    if _is_s3_not_found(exc):
+                        continue
+                    self._batch_delete_supported = False
+            for key in chunk:
+                try:
+                    self._client.delete_object(Bucket=self._bucket, Key=key)
+                except Exception as exc:  # noqa: BLE001 - 兼容各家实现
+                    if _is_s3_not_found(exc):
+                        continue
+                    raise StorageDriverError(f"S3 delete failed: {exc}") from exc
 
     def _describe_s3_write_failure(self, exc: Exception) -> str:
         """Build a diagnostic message for an S3 put_object failure.
