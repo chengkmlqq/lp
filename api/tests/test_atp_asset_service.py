@@ -109,6 +109,62 @@ def test_create_asset_and_upload_archive(tmp_path) -> None:
         session.close()
 
 
+def test_create_asset_auto_increments_version_per_dimension_group(tmp_path) -> None:
+    """未传 version 时按同维度组合递增（表单已去掉版本号，2026-11-03）。"""
+    testing_session = _build_sessionmaker()
+    session: Session = testing_session()
+    try:
+        _seed_vfs_mount(session, root_dir=tmp_path / "vfs")
+        dims = {
+            "voltage_level": "110kV",
+            "tower_type": "猫头塔",
+            "scene_type": "反击",
+            "arrester_config": "双侧",
+        }
+        first = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(code="ATP-AUTO-V1", name="自动版本 1", description="测试", **dims),
+            actor_user_id="tester",
+        )
+        second = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(code="ATP-AUTO-V2", name="自动版本 2", description="测试", **dims),
+            actor_user_id="tester",
+        )
+        other_group = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(
+                code="ATP-AUTO-OTHER",
+                name="其它组合",
+                description="测试",
+                **{**dims, "voltage_level": "220kV"},
+            ),
+            actor_user_id="tester",
+        )
+        # 显式指定版本仍然尊重入参，不参与自动递增
+        explicit = atp_asset_service.create_asset(
+            session,
+            AtpAssetCreateRequest(
+                code="ATP-AUTO-EXPLICIT",
+                name="显式版本",
+                description="测试",
+                version="v9-rc1",
+                **dims,
+            ),
+            actor_user_id="tester",
+        )
+
+        assert first is not None and second is not None
+        assert other_group is not None and explicit is not None
+        assert first.version == "v1"
+        assert second.version == "v2"
+        assert other_group.version == "v1"
+        assert explicit.version == "v9-rc1"
+        assert second.storage_root_path != first.storage_root_path
+    finally:
+        session.close()
+
+
 def test_upload_asset_archive_and_list_asset_files(tmp_path) -> None:
     testing_session = _build_sessionmaker()
     session: Session = testing_session()

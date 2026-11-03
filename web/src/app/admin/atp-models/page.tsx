@@ -61,7 +61,6 @@ type AssetFormValues = {
   tower_type: string;
   scene_type: string;
   arrester_config: string;
-  version: string;
   description: string;
   files: File[];
 };
@@ -84,7 +83,6 @@ const EMPTY_FORM: AssetFormValues = {
   tower_type: "",
   scene_type: "",
   arrester_config: "",
-  version: "v1",
   description: "",
   files: [],
 };
@@ -118,6 +116,25 @@ function generateName(values: AssetFormValues): string {
 
 function generateCode(): string {
   return `atp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * 版本号已从新建表单移除（2026-11-03）：按同维度组合内已有版本取下一个 vN。
+ * 前端先算一遍是为了兼容尚未升级的后端（后端也有同样的自动递增兜底），
+ * 避免同组合第二次上传直接撞「存储路径冲突」。
+ */
+function nextVersion(existingVersions: (string | null | undefined)[]): string {
+  const existing = new Set(existingVersions.filter((v): v is string => Boolean(v && v.trim())));
+  const numbers = Array.from(existing)
+    .map((version) => /^v(\d+)$/i.exec(version.trim()))
+    .filter((match): match is RegExpExecArray => Boolean(match))
+    .map((match) => Number(match[1]));
+  let candidate = `v${(numbers.length > 0 ? Math.max(...numbers) : 0) + 1}`;
+  while (existing.has(candidate)) {
+    numbers.push(Number(candidate.slice(1)));
+    candidate = `v${Math.max(...numbers) + 1}`;
+  }
+  return candidate;
 }
 
 // ATP 页面字段名 → 维度管理类型 code 的映射
@@ -264,11 +281,28 @@ export default function AtpModelsPage() {
         throw new Error(t("模型文件尚未上传完成，请等待上传完成后再创建模型"));
       }
 
+      // 版本号自动生成：查同维度组合已有版本，取下一个 vN
+      const versionQuery = new URLSearchParams({ limit: "200", offset: "0" });
+      if (values.voltage_level.trim()) versionQuery.set("voltage_level", values.voltage_level.trim());
+      if (values.tower_type.trim()) versionQuery.set("tower_type", values.tower_type.trim());
+      if (values.scene_type.trim()) versionQuery.set("scene_type", values.scene_type.trim());
+      if (values.arrester_config.trim()) versionQuery.set("arrester_config", values.arrester_config.trim());
+      let version = "v1";
+      try {
+        const versionResponse = await fetchWithAuth(`/api/v1/atp/assets?${versionQuery.toString()}`);
+        if (versionResponse.ok) {
+          const versionPayload = (await versionResponse.json()) as AtpAssetListResponse;
+          version = nextVersion((versionPayload.items ?? []).map((item) => item.version));
+        }
+      } catch {
+        // 查询失败不阻塞创建：后端会按同组合再兜一次自动递增
+      }
+
       const payload = {
         code: generateCode(),
         name: generateName(values),
         description: values.description.trim() || "",
-        version: (values.version || "v1").trim() || "v1",
+        version,
         is_active: false,
         voltage_level: values.voltage_level.trim() || null,
         tower_type: values.tower_type.trim() || null,
@@ -1582,17 +1616,6 @@ export default function AtpModelsPage() {
               />
             </Form.Item>
             <Form.Item
-              name="version"
-              label={t("版本号")}
-              rules={[{ required: true, message: t("请输入版本号") }]}
-              extra={t("同维度组合内唯一，如 v1 / v2-rev3")}
-            >
-              <Input placeholder={t("如 v1 / v2-rev3")} maxLength={32} />
-            </Form.Item>
-            <div className="hidden items-start pt-8 text-xs leading-5 text-[var(--ant-color-text-tertiary)] sm:flex">
-              {t("维度组合 + 版本号决定模型目录，创建后可在列表里切换生效版本。")}
-            </div>
-            <Form.Item
               name="description"
               label={t("描述")}
               className="sm:col-span-2"
@@ -1601,6 +1624,9 @@ export default function AtpModelsPage() {
               <Input.TextArea rows={2} placeholder={t("模型描述（必填）")} maxLength={8000} />
             </Form.Item>
           </div>
+          <Typography.Text type="secondary" className="mb-3 block text-xs">
+            {t("版本号按同维度组合自动递增（v1、v2…），创建后可在列表里切换生效版本。")}
+          </Typography.Text>
 
           <Form.Item
             label={

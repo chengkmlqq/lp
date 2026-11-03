@@ -94,7 +94,8 @@ class AtpAssetCreateRequest(BaseModel):
     tower_type: str | None = Field(default=None, max_length=64)
     scene_type: str | None = Field(default=None, max_length=32)
     arrester_config: str | None = Field(default=None, max_length=64)
-    version: str = Field(default="v1", max_length=32)
+    # 2026-11-03：版本号从新建表单移除，未传则服务端按同维度组合递增生成（v1/v2/...）
+    version: str | None = Field(default=None, max_length=32)
     is_active: bool = False
     shield_wire: str = Field(default="with", max_length=16)
     test_line_id: str | None = Field(default=None, max_length=32)

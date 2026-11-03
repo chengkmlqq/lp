@@ -1267,13 +1267,36 @@ def get_asset_by_code(db: Session, code: str) -> AtpAsset | None:
     return db.execute(select(AtpAsset).where(func.lower(AtpAsset.code) == normalized)).scalar_one_or_none()
 
 
+def _next_asset_version(db: Session, payload: AtpAssetCreateRequest, shield_wire: str) -> str:
+    """未显式指定版本号时，按同维度组合内已有版本自动取下一个 vN。
+
+    版本号从表单里去掉后（2026-11-03），同一维度组合重复上传不能都落 v1
+    —— 否则存储路径冲突直接 400。这里按 v1/v2... 递增，非 vN 格式的版本
+    （如 v2-rev3）不参与计数，只保证不与现有版本重名。
+    """
+    stmt = select(AtpAsset.version).where(
+        AtpAsset.voltage_level == _normalize_optional_str(payload.voltage_level),
+        AtpAsset.tower_type == _normalize_optional_str(payload.tower_type),
+        AtpAsset.scene_type == _normalize_optional_str(payload.scene_type),
+        AtpAsset.arrester_config == _normalize_optional_str(payload.arrester_config),
+        AtpAsset.shield_wire == shield_wire,
+    )
+    existing = {v for v in db.scalars(stmt).all() if v}
+    numbers = [int(m.group(1)) for v in existing if (m := re.fullmatch(r"v(\d+)", v.strip(), re.IGNORECASE))]
+    candidate = f"v{max(numbers, default=0) + 1}"
+    while candidate in existing:
+        numbers.append(int(candidate[1:]))
+        candidate = f"v{max(numbers) + 1}"
+    return candidate
+
+
 def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: str) -> AtpAssetSummary | None:
     if get_asset_by_code(db, payload.code):
         return None
 
     now = utcnow()
-    version = (payload.version or "v1").strip() or "v1"
     shield_wire = (payload.shield_wire or "with").strip() or "with"
+    version = (payload.version or "").strip() or _next_asset_version(db, payload, shield_wire)
     storage_mount_code = _normalize_optional_str(payload.storage_mount_code) or "main"
     storage_root_path = _normalize_optional_str(payload.storage_root_path)
     if storage_root_path is None:
