@@ -1,7 +1,7 @@
 "use client";
 
 // ATP 模型「测试记录」页内 Tab（参照地闪密度回填列表）。
-//   · 顶部工具条：模型信息 + 「测试」按钮 → AtpTestRunModal 弹窗填参数（三来源）
+//   · 顶部工具条：模型信息 + 「测试」按钮 → AtpTestRunModal 弹窗填参数（唯一来源：测试线路）
 //   · 记录表格：状态带进度条回显（跑批时轮询），操作列「测试详情」→ 抽屉
 //   · 详情抽屉：复用各产物子组件（AtpTestArtifactView / AtpParamTraceDrawer / WaveformChart）
 import { useCallback, useMemo, useState } from "react";
@@ -267,12 +267,17 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
         render: (_: unknown, record) => {
           const summary = record.result_summary_json as TestResultSummary | undefined;
           const source = summary?.compare?.params_source;
+          // 来源收敛（2026-11-03）：新运行的 params_source 恒为 test_line；
+          // 旧值（template/tower/line-tower）只出现在历史记录里，保留识别便于翻旧账
+          if (source === "test_line") {
+            return <Tag color="green">{t("测试线路")}</Tag>;
+          }
           return source === "template" ? (
-            <Tag>{t("模板默认值")}</Tag>
+            <Tag>{t("模板默认值（已下线）")}</Tag>
           ) : source === "tower" ? (
-            <Tag color="purple">{t("手工杆塔")}</Tag>
+            <Tag color="purple">{t("手工杆塔（已下线）")}</Tag>
           ) : source === "line-tower" ? (
-            <Tag color="geekblue">{t("线路杆塔")}</Tag>
+            <Tag color="geekblue">{t("线路杆塔（已下线）")}</Tag>
           ) : (
             "-"
           );
@@ -387,11 +392,13 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
             {detailSummary.compare?.params_source ? (
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {t("参数来源：")}
-                {detailSummary.compare.params_source === "template"
-                  ? `${t("模板默认值（链：")}${(detailSummary.compare.params_diagnostics?.chain ?? []).join(" → ") || "-"}）`
-                  : detailSummary.compare.params_source === "line-tower"
-                    ? t("线路杆塔（按塔组装）")
-                    : t("手工杆塔数据")}
+                {detailSummary.compare.params_source === "test_line"
+                  ? t("测试线路快照（几何与工况统一来源）")
+                  : detailSummary.compare.params_source === "template"
+                    ? `${t("模板默认值（已下线，链：")}${(detailSummary.compare.params_diagnostics?.chain ?? []).join(" → ") || "-"}）`
+                    : detailSummary.compare.params_source === "line-tower"
+                      ? t("线路杆塔（已下线，按塔组装）")
+                      : t("手工杆塔数据（已下线）")}
               </Typography.Text>
             ) : null}
 
