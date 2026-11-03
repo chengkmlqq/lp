@@ -1,11 +1,11 @@
 "use client";
 
 // ATP 模型「测试参数」弹窗。
-// 参数来源四种（默认走测试线路）：
-//   · test-line  —— 单塔基准测试线路（同一条线路 = 逐字节相同输入，可回归对比）
-//   · template   —— 参数模板默认值（无需杆塔）
-//   · tower      —— 手工杆塔数据（base_tower / profile JSON）
-//   · line-tower —— 从线路杆塔选择（后端按塔组装上下文，与「参数试算」同口径）
+// 来源收敛（2026-11-03）：几何/工况唯一来源 = 测试线路（单塔基准）——
+//   · 默认按资产维度自动解析（模型绑定 → 几何维 → 降级），也可手动挑候选；
+//   · 没有线路就一键派生，派生完直接绑定该模型；
+//   · 旧的 template（模板默认值）/ tower（手工 JSON）/ line-tower（线路杆塔选择）
+//     入口已下线，后端对旧来源会显式 400 并给迁移提示。
 // 确认后触发测试任务（POST /atp/assets/{id}/test-runs）。
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -19,20 +19,16 @@ import {
   Input,
   InputNumber,
   Modal,
-  Radio,
   Row,
   Select,
   Space,
   Spin,
-  Switch,
-  Table,
   Tag,
   Typography,
 } from "antd";
 import { RocketOutlined } from "@ant-design/icons";
 
 import { useI18n } from "@/lib/i18n";
-import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { AtpTestLineDeriveModal } from "@/components/atp-test-lines/atp-test-line-derive-modal";
 import { postJson, readApiError } from "@/lib/api";
@@ -52,28 +48,11 @@ import type {
 
 const ALL_STAGES: AtpAssetTestStage[] = ["materialize", "geometry", "simulate"];
 
-export type ParamsSource = "test-line" | "template" | "tower" | "line-tower";
-
 const MATCHED_BY_LABEL: Record<AtpTestLineMatchedBy, { label: string; color: string }> = {
   bound: { label: "模型绑定", color: "purple" },
   geometry: { label: "几何维匹配", color: "blue" },
   degraded: { label: "降级匹配（仅电压+塔型）", color: "gold" },
   none: { label: "无匹配", color: "default" },
-};
-
-type LineOption = {
-  id: string;
-  name: string;
-  code?: string | null;
-  voltage_kv?: number | null;
-};
-
-type TowerOption = {
-  id: string;
-  tower_no: string;
-  tower_type?: string | null;
-  tower_model?: string | null;
-  altitude_m?: number | null;
 };
 
 type AtpTestRunModalProps = {
@@ -83,20 +62,6 @@ type AtpTestRunModalProps = {
   onCreated: (run: AtpAssetRunDetail) => void;
 };
 
-function parseJsonObject(text: string): Record<string, unknown> | null {
-  const trimmed = text.trim();
-  if (!trimmed) return {};
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunModalProps) {
   const { t } = useI18n();
   const { message } = App.useApp();
@@ -104,21 +69,10 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
 
   const [stages, setStages] = useState<AtpAssetTestStage[]>(ALL_STAGES);
   const [currentKa, setCurrentKa] = useState<number>(31);
-  const [paramsSource, setParamsSource] = useState<ParamsSource>("test-line");
-  const [allowIncomplete, setAllowIncomplete] = useState(false);
-  const [towerKind, setTowerKind] = useState("");
   const [scene, setScene] = useState("");
-  const [baseTowerText, setBaseTowerText] = useState("{}");
-  const [profileText, setProfileText] = useState("{}");
   const [paramsRaw, setParamsRaw] = useState("");
-  // 线路杆塔选择
-  const [lines, setLines] = useState<LineOption[]>([]);
-  const [lineId, setLineId] = useState<string | undefined>(undefined);
-  const [towers, setTowers] = useState<TowerOption[]>([]);
-  const [towersLoading, setTowersLoading] = useState(false);
-  const [selectedTowerIds, setSelectedTowerIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  // 测试线路（单塔基准）
+  // 测试线路（单塔基准）：唯一几何/工况来源
   const [resolveLoading, setResolveLoading] = useState(false);
   const [resolveInfo, setResolveInfo] = useState<AtpTestLineResolveResponse | null>(null);
   const [manualTestLineId, setManualTestLineId] = useState<string | undefined>(undefined);
@@ -184,113 +138,26 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
     if (!open) return;
     setStages(ALL_STAGES);
     setCurrentKa(31);
-    setParamsSource("test-line");
-    setAllowIncomplete(false);
-    setTowerKind(asset?.tower_type ?? "");
     setScene(asset?.scene_type ?? "");
-    setBaseTowerText("{}");
-    setProfileText("{}");
     setParamsRaw("");
-    setLineId(undefined);
-    setTowers([]);
-    setSelectedTowerIds([]);
     setManualTestLineId(undefined);
     setCandidateLines([]);
-    if (asset?.tower_type) setTowerKind(asset.tower_type);
-    if (asset?.scene_type) setScene(asset.scene_type);
     if (asset?.id) void resolveTestLine(asset.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, asset]);
 
-  // 加载线路列表（首次打开缓存）
-  const linesLoaded = useMemo(() => lines.length > 0, [lines.length]);
-
-  const handleLineChange = async (value: string) => {
-    setLineId(value);
-    setSelectedTowerIds([]);
-    setTowers([]);
-    if (!value) return;
-    setTowersLoading(true);
-    try {
-      const response = await fetchWithAuth(`/api/v1/lines/${value}/towers?limit=1000`);
-      if (!response.ok) throw new Error(await readApiError(response));
-      const data: { items: TowerOption[] } = await response.json();
-      setTowers(data.items ?? []);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : t("加载杆塔失败"));
-    } finally {
-      setTowersLoading(false);
-    }
-  };
-
   const handleSubmit = async () => {
-    if (paramsSource === "test-line") {
-      if (!activeTestLine) {
-        message.warning(t("当前模型没有可用测试线路，请先派生或手动选择一条"));
-        return;
-      }
-      const payload: AtpAssetTestRunRequest = {
-        stages,
-        tower_kind: towerKind.trim() || null,
-        voltage_kv: asset.voltage_level ? Number(asset.voltage_level) : null,
-        scene: scene.trim() || null,
-        test_line_id: activeTestLine.id,
-        params_raw: paramsRaw.trim() || null,
-        current_ka: currentKa,
-      };
-      await submit(payload);
+    if (!activeTestLine) {
+      message.warning(t("当前模型没有可用测试线路，请先派生或手动选择一条"));
       return;
     }
-    if (paramsSource === "tower") {
-      const parsedBase = parseJsonObject(baseTowerText);
-      if (parsedBase === null) {
-        message.error(t("base_tower 不是合法 JSON 对象"));
-        return;
-      }
-      const parsedProfile = parseJsonObject(profileText);
-      if (parsedProfile === null) {
-        message.error(t("profile 不是合法 JSON 对象"));
-        return;
-      }
-      const payload: AtpAssetTestRunRequest = {
-        stages,
-        tower_kind: towerKind.trim() || null,
-        voltage_kv: asset.voltage_level ? Number(asset.voltage_level) : null,
-        scene: scene.trim() || null,
-        base_tower: parsedBase,
-        profile: parsedProfile,
-        params_raw: paramsRaw.trim() || null,
-        current_ka: currentKa,
-      };
-      await submit(payload);
-      return;
-    }
-    if (paramsSource === "line-tower") {
-      if (selectedTowerIds.length === 0) {
-        message.warning(t("请先选择线路并勾选至少一根杆塔"));
-        return;
-      }
-      const payload: AtpAssetTestRunRequest = {
-        stages,
-        tower_kind: towerKind.trim() || null,
-        voltage_kv: asset.voltage_level ? Number(asset.voltage_level) : null,
-        scene: scene.trim() || null,
-        line_tower_id: selectedTowerIds[0],
-        params_raw: paramsRaw.trim() || null,
-        current_ka: currentKa,
-      };
-      await submit(payload);
-      return;
-    }
-    // template
     const payload: AtpAssetTestRunRequest = {
       stages,
-      tower_kind: towerKind.trim() || null,
       voltage_kv: asset.voltage_level ? Number(asset.voltage_level) : null,
       scene: scene.trim() || null,
+      test_line_id: activeTestLine.id,
       params_raw: paramsRaw.trim() || null,
       current_ka: currentKa,
-      allow_incomplete_defaults: allowIncomplete,
     };
     await submit(payload);
   };
@@ -357,7 +224,7 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
       title={`${t("发起测试")} · ${asset.name || asset.code}`}
       open={open}
       onCancel={onClose}
-      width={760}
+      width={720}
       footer={
         <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
           <Button disabled={submitting} onClick={onClose}>
@@ -408,239 +275,106 @@ export function AtpTestRunModal({ asset, open, onClose, onCreated }: AtpTestRunM
               </Typography.Text>
             </Form.Item>
           </Col>
-          <Col span={24}>
-            <Form.Item label={t("参数来源")} style={{ marginBottom: 8 }}>
-              <Radio.Group
-                value={paramsSource}
-                onChange={(event) => setParamsSource(event.target.value as ParamsSource)}
-                options={[
-                  { value: "test-line", label: t("测试线路（单塔基准）") },
-                  { value: "line-tower", label: t("从线路杆塔选择") },
-                  { value: "tower", label: t("手工杆塔数据") },
-                  { value: "template", label: t("参数模板默认值") },
-                ]}
-                optionType="button"
+          <Col span={12}>
+            <Form.Item label={t("场景")} style={{ marginBottom: 8 }}>
+              <Input
+                value={scene}
+                placeholder={t("如 fanji")}
+                onChange={(event) => setScene(event.target.value)}
               />
             </Form.Item>
           </Col>
-        </Row>
-
-        {paramsSource === "test-line" ? (
-          <Space direction="vertical" size={8} style={{ width: "100%" }}>
-            <Alert
-              type="info"
-              showIcon
-              message={t("用同一条测试线路跑测试：输入逐字节一致，结果可直接与历史对比")}
-              description={t("解析顺序：模型绑定 → 同几何维共享基准 → 降级（仅电压+塔型）")}
-            />
-            <Spin spinning={resolveLoading}>
-              {activeTestLine ? (
-                <div>
-                  <Space size={6} wrap>
-                    <Typography.Text strong>{activeTestLine.code}</Typography.Text>
-                    <Tag color={MATCHED_BY_LABEL[manualTestLineId ? "geometry" : resolveInfo?.matched_by ?? "none"].color}>
-                      {t(manualTestLineId ? "手动选择" : MATCHED_BY_LABEL[resolveInfo?.matched_by ?? "none"].label)}
-                    </Tag>
-                    {activeTestLine.asset_id ? (
-                      <Tag color="purple">{t("模型专用")}</Tag>
-                    ) : (
-                      <Tag color="blue">{t("共享基准")}</Tag>
-                    )}
-                    <Tag color="geekblue">{activeTestLine.voltage_level} kV</Tag>
-                    <Tag>{activeTestLine.tower_type}</Tag>
-                    <Tag color={activeTestLine.shield_wire === "with" ? "cyan" : "default"}>
-                      {activeTestLine.shield_wire === "with" ? t("双避雷线") : t("单避雷线")}
-                    </Tag>
-                  </Space>
-                  <div style={{ marginTop: 4 }}>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {t("名称")}：{activeTestLine.name}
-                      {activeTestLine.snapshot_hash
-                        ? ` ・ ${t("快照")} ${activeTestLine.snapshot_hash.slice(0, 8)}`
-                        : ""}
-                      {activeTestLine.insulator_length_m != null
-                        ? ` ・ ${t("串长")} ${activeTestLine.insulator_length_m} m`
-                        : ""}
-                      {activeTestLine.call_height_m != null ? ` ・ ${t("呼高")} ${activeTestLine.call_height_m} m` : ""}
-                    </Typography.Text>
+          <Col span={24}>
+            <Form.Item label={t("测试线路（几何与工况唯一来源）")} style={{ marginBottom: 8 }}>
+              <Spin spinning={resolveLoading}>
+                {activeTestLine ? (
+                  <div>
+                    <Space size={6} wrap>
+                      <Typography.Text strong>{activeTestLine.code}</Typography.Text>
+                      <Tag color={MATCHED_BY_LABEL[manualTestLineId ? "geometry" : resolveInfo?.matched_by ?? "none"].color}>
+                        {t(manualTestLineId ? "手动选择" : MATCHED_BY_LABEL[resolveInfo?.matched_by ?? "none"].label)}
+                      </Tag>
+                      {activeTestLine.asset_id ? (
+                        <Tag color="purple">{t("模型专用")}</Tag>
+                      ) : (
+                        <Tag color="blue">{t("共享基准")}</Tag>
+                      )}
+                      <Tag color="geekblue">{activeTestLine.voltage_level} kV</Tag>
+                      <Tag>{activeTestLine.tower_type}</Tag>
+                      <Tag color={activeTestLine.shield_wire === "with" ? "cyan" : "default"}>
+                        {activeTestLine.shield_wire === "with" ? t("双避雷线") : t("单避雷线")}
+                      </Tag>
+                    </Space>
+                    <div style={{ marginTop: 4 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {t("名称")}：{activeTestLine.name}
+                        {activeTestLine.snapshot_hash
+                          ? ` ・ ${t("快照")} ${activeTestLine.snapshot_hash.slice(0, 8)}`
+                          : ""}
+                        {activeTestLine.insulator_length_m != null
+                          ? ` ・ ${t("串长")} ${activeTestLine.insulator_length_m} m`
+                          : ""}
+                        {activeTestLine.call_height_m != null ? ` ・ ${t("呼高")} ${activeTestLine.call_height_m} m` : ""}
+                      </Typography.Text>
+                    </div>
+                    {!manualTestLineId && resolveInfo?.matched_by === "degraded" ? (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        style={{ marginTop: 8 }}
+                        message={t("这是降级匹配（只对上电压与塔型，避雷线/几何可能不一致）")}
+                        description={t("建议为该模型派生一条准确样本，或手动选择更贴近的线路。")}
+                      />
+                    ) : null}
                   </div>
-                  {!manualTestLineId && resolveInfo?.matched_by === "degraded" ? (
-                    <Alert
-                      type="warning"
-                      showIcon
-                      style={{ marginTop: 8 }}
-                      message={t("这是降级匹配（只对上电压与塔型，避雷线/几何可能不一致）")}
-                      description={t("建议为该模型派生一条准确样本，或手动选择更贴近的线路。")}
-                    />
-                  ) : null}
-                </div>
-              ) : (
-                <Alert
-                  type="warning"
-                  showIcon
-                  message={t("当前模型没有可用的测试线路")}
-                  description={resolveInfo?.hint ?? t("可以先派生一条：按模型维度 + 历史成功运行派生最准。")}
+                ) : (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message={t("当前模型没有可用的测试线路")}
+                    description={resolveInfo?.hint ?? t("可以先派生一条：按模型维度 + 历史成功运行派生最准。")}
+                  />
+                )}
+              </Spin>
+
+              <Space wrap style={{ marginTop: 8 }}>
+                <Button size="small" onClick={() => setDeriveOpen(true)}>
+                  {t("一键派生")}
+                </Button>
+                <Button
+                  size="small"
+                  loading={candidatesLoading}
+                  onClick={() => {
+                    void loadCandidates(asset);
+                  }}
+                >
+                  {t("加载候选线路")}
+                </Button>
+                <Select
+                  size="small"
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  style={{ minWidth: 300 }}
+                  placeholder={t("或手动选择一条同几何维线路")}
+                  value={manualTestLineId}
+                  onChange={(value) => setManualTestLineId(value)}
+                  options={candidateLines.map((item) => ({
+                    value: item.id,
+                    label: `${item.code}｜${item.name}`,
+                  }))}
                 />
-              )}
-            </Spin>
-
-            <Space wrap>
-              <Button size="small" onClick={() => setDeriveOpen(true)}>
-                {t("一键派生")}
-              </Button>
-              <Button
-                size="small"
-                loading={candidatesLoading}
-                onClick={() => {
-                  void loadCandidates(asset);
-                }}
-              >
-                {t("加载候选线路")}
-              </Button>
-              <Select
-                size="small"
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                style={{ minWidth: 300 }}
-                placeholder={t("或手动选择一条同几何维线路")}
-                value={manualTestLineId}
-                onChange={(value) => setManualTestLineId(value)}
-                options={candidateLines.map((item) => ({
-                  value: item.id,
-                  label: `${item.code}｜${item.name}`,
-                }))}
-              />
-            </Space>
-
+              </Space>
+            </Form.Item>
+          </Col>
+          <Col span={24}>
             <Input
               value={paramsRaw}
               onChange={(event) => setParamsRaw(event.target.value)}
               placeholder={t("C# javaParams 原始串（可选，原样进 compare.json）")}
             />
-          </Space>
-        ) : paramsSource === "line-tower" ? (
-          <Space direction="vertical" size={8} style={{ width: "100%" }}>
-            <Alert
-              type="warning"
-              showIcon
-              message={t("按选中杆塔的真实台账数据测试（与「ATP 参数试算」同口径，后端按塔组装上下文）")}
-            />
-            <Form layout="vertical">
-              <Form.Item label={t("线路")} style={{ marginBottom: 8 }}>
-                <Select
-                  showSearch
-                  placeholder={t("选择线路")}
-                  value={lineId}
-                  onChange={(value) => void handleLineChange(String(value))}
-                  optionFilterProp="label"
-                  onOpenChange={async (visible) => {
-                    if (visible && !linesLoaded) {
-                      try {
-                        const response = await fetchWithAuth("/api/v1/lines?limit=1000");
-                        if (response.ok) {
-                          const data: { items: LineOption[] } = await response.json();
-                          setLines(data.items ?? []);
-                        }
-                      } catch {
-                        // 忽略
-                      }
-                    }
-                  }}
-                  options={lines.map((line) => ({
-                    value: line.id,
-                    label: `${line.name}${line.voltage_kv ? `（${line.voltage_kv}kV）` : ""}`,
-                  }))}
-                />
-              </Form.Item>
-            </Form>
-            <Spin spinning={towersLoading}>
-              <Table
-                rowKey="id"
-                size="small"
-                dataSource={towers}
-                pagination={modoTablePagination({ pageSize: 8 })}
-                locale={{ emptyText: lineId ? t("该线路暂无杆塔") : t("请先选择线路") }}
-                rowSelection={{
-                  type: "radio",
-                  selectedRowKeys: selectedTowerIds,
-                  onChange: (keys) => setSelectedTowerIds(keys.map(String)),
-                }}
-                columns={[
-                  { title: t("塔号"), dataIndex: "tower_no", width: 110 },
-                  { title: t("塔型"), dataIndex: "tower_type", width: 120, render: (value: string | null) => value || "-" },
-                  { title: t("杆塔模型"), dataIndex: "tower_model", render: (value: string | null) => value || "-" },
-                  {
-                    title: t("海拔(m)"),
-                    dataIndex: "altitude_m",
-                    width: 90,
-                    render: (value: number | null) => (value == null ? "-" : String(value)),
-                  },
-                ]}
-              />
-            </Spin>
-          </Space>
-        ) : (
-          <Space direction="vertical" size={8} style={{ width: "100%" }}>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item label={t("塔型")} style={{ marginBottom: 8 }}>
-                  <Input
-                    value={towerKind}
-                    placeholder={t("如 d220maotou")}
-                    onChange={(event) => setTowerKind(event.target.value)}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item label={t("场景")} style={{ marginBottom: 8 }}>
-                  <Input
-                    value={scene}
-                    placeholder={t("如 fanji")}
-                    onChange={(event) => setScene(event.target.value)}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-            {paramsSource === "tower" ? (
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item label={t("base_tower（JSON）")} style={{ marginBottom: 8 }}>
-                    <Input.TextArea
-                      rows={4}
-                      value={baseTowerText}
-                      onChange={(event) => setBaseTowerText(event.target.value)}
-                      placeholder={`${t("如")} {"line_voltage_kv":220,"ground_resistance":7}`}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item label={t("profile（JSON）")} style={{ marginBottom: 8 }}>
-                    <Input.TextArea
-                      rows={4}
-                      value={profileText}
-                      onChange={(event) => setProfileText(event.target.value)}
-                      placeholder={`${t("如")} {"insulator_length_mm":2491.5}`}
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-            ) : (
-              <Space size={8}>
-                <Typography.Text>{t("模板默认值不完整时仍继续")}</Typography.Text>
-                <Switch checked={allowIncomplete} onChange={setAllowIncomplete} />
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {t("默认关闭：缺默认值会直接报错并列出缺哪些变量")}
-                </Typography.Text>
-              </Space>
-            )}
-            <Input
-              value={paramsRaw}
-              onChange={(event) => setParamsRaw(event.target.value)}
-              placeholder={t("C# javaParams 原始串（原样进 compare.json，供对拍）")}
-            />
-          </Space>
-        )}
+          </Col>
+        </Row>
       </Space>
     </Modal>
 

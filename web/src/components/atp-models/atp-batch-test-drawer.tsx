@@ -41,7 +41,6 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
   const [twFilter, setTwFilter] = useState<string>("");
   const [stageList, setStageList] = useState<string[]>(["materialize", "geometry", "simulate"]);
   const [currentKa, setCurrentKa] = useState<number>(31.0);
-  const [paramsSource, setParamsSource] = useState<string>("template");
   const [submitting, setSubmitting] = useState(false);
   const [batch, setBatch] = useState<AtpBatchTestRunSummary | null>(null);
   const [polling, setPolling] = useState(false);
@@ -117,7 +116,6 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
       setTwFilter("");
       setStageList(["materialize", "geometry", "simulate"]);
       setCurrentKa(31.0);
-      setParamsSource("template");
       setBatch(null);
       setSubmitError("");
       setPolling(false);
@@ -156,7 +154,9 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
         asset_ids: [...selectedKeys],
         stages: stageList,
         current_ka: currentKa,
-        params_source: paramsSource,
+        // 来源收敛（2026-11-03）：几何/工况唯一来源 = 测试线路。
+        // 不传 test_line_id 时后端按各资产维度自动匹配（模型绑定 → 几何维 → 降级），
+        // 需要指定线路时在单模型测试里手动选。
       });
       setBatch(data);
       setPolling(true);
@@ -336,18 +336,10 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 <Form.Item label={t("固定雷电流(kA)")} style={{ marginBottom: 0 }}>
                   <InputNumber min={0.1} value={currentKa} onChange={(v) => setCurrentKa(Number(v ?? 31))} />
                 </Form.Item>
-                <Form.Item label={t("参数来源")} style={{ marginBottom: 0 }}>
-                  <Select
-                    style={{ width: 150 }}
-                    value={paramsSource}
-                    onChange={setParamsSource}
-                    options={[
-                      { value: "template", label: t("无杆塔(模板链)") },
-                      { value: "tower", label: t("杆塔数据") },
-                    ]}
-                  />
-                </Form.Item>
               </Space>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {t("参数来源：几何与工况统一来自测试线路（按各模型维度自动匹配，可在单模型测试中手动指定）")}
+              </Typography.Text>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {t("对拍口径")}:{t("雷电流幅值全部用同一值")};{t("依赖段(simulate→LCC→物化)自动补齐")};{t("判据看产物不看退出码")}。
               </Typography.Text>
