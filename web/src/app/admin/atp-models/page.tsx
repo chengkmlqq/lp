@@ -5,6 +5,7 @@ import {
   Alert,
   Button,
   Card,
+  Drawer,
   Empty,
   Form,
   Input,
@@ -28,6 +29,7 @@ import {
   InboxOutlined,
   PlusOutlined,
   SearchOutlined,
+  ApartmentOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
@@ -206,6 +208,8 @@ export default function AtpModelsPage() {
   // 批量测试历史记录 Tab(页内动态选项卡,2026-09-29 改造)
   const [batchTabs, setBatchTabs] = useState<{ key: string; label: React.ReactNode }[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>("list");
+  // 模型总览：改为按钮 + 抽屉（不再占用固定选项卡位）
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(ATP_TABLE_MIN_SCROLL_Y);
   const [error, setError] = useState<ApiError | null>(null);
@@ -1235,6 +1239,14 @@ export default function AtpModelsPage() {
                 {t("新建模型")}
               </Button>
             ) : null}
+            {canRead ? (
+              <Button
+                icon={<ApartmentOutlined />}
+                onClick={() => setOverviewOpen(true)}
+              >
+                {t("模型总览")}
+              </Button>
+            ) : null}
             {canTest ? (
               <Button
                 icon={<ExperimentOutlined />}
@@ -1447,14 +1459,6 @@ export default function AtpModelsPage() {
               </div>
             ),
           },
-          {
-            key: "overview",
-            label: <>{t("模型总览")}</>,
-            closable: false,
-            children: (
-              <AtpModelOverviewTab />
-            ),
-          },
           ...detailTabs.map((tab) => ({
             key: tab.key,
             label: tab.label,
@@ -1485,6 +1489,19 @@ export default function AtpModelsPage() {
           })),
         ]}
         />
+
+      {/* 模型总览抽屉：按需打开，不占固定选项卡位 */}
+      <Drawer
+        title={t("模型总览")}
+        placement="right"
+        width="min(1080px, 92vw)"
+        open={overviewOpen}
+        onClose={() => setOverviewOpen(false)}
+        destroyOnHidden
+        styles={{ body: { paddingTop: 12 } }}
+      >
+        <AtpModelOverviewTab />
+      </Drawer>
 
       <Modal
         title={t("新建 ATP 模型")}

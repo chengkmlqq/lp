@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Card, Empty, Space, Spin, Typography } from "antd";
+import { Alert, Card, Empty, Spin, Typography } from "antd";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
 import { useQuery } from "@tanstack/react-query";
@@ -115,14 +115,9 @@ export function AtpModelOverviewTab() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Card size="small" className="mb-3">
-        <Space direction="vertical" size={4}>
-          <Typography.Text strong>{t("ATP 模型总览")}</Typography.Text>
-          <Typography.Text type="secondary">
-            {t("按 电压等级 → 塔型 → 场景 → 避雷器组合 → 避雷线 → 版本 分层；绿色叶子为当前生效版本，灰色为未生效版本。")}
-          </Typography.Text>
-        </Space>
-      </Card>
+      <Typography.Text type="secondary" className="mb-3">
+        {t("按 电压等级 → 塔型 → 场景 → 避雷器组合 → 避雷线 → 版本 分层；绿色叶子为当前生效版本，灰色为未生效版本。")}
+      </Typography.Text>
       {overviewQuery.isLoading ? (
         <div className="flex items-center justify-center py-16">
           <Spin />
