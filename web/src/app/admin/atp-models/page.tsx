@@ -374,6 +374,28 @@ export default function AtpModelsPage() {
     },
   });
 
+  // 形态重新检测（2026-11-03）：存量资产的 model_format 是列默认值而非判定结果，
+  // 上传口只在传文件时判定，故提供显式重判——按存储里的真实 work.atp 重新定形态。
+  const recheckFormatMutation = useMutation({
+    mutationFn: async (assetId: string) => {
+      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/format-check`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as AtpAssetSummary;
+    },
+    onSuccess: (updated) => {
+      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/v1/atp/assets", updated.id] });
+      setSuccess(t("已重新检测模型形态"));
+      setError(null);
+    },
+    onError: (candidate) => {
+      setSuccess("");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("重新检测失败")));
+    },
+  });
+
   const updateAssetMutation = useMutation({
     mutationFn: async (values: AssetEditFormValues) => {
       if (!editingAsset) {
@@ -1346,6 +1368,8 @@ export default function AtpModelsPage() {
                                   onTest={(asset) => openTestTab(asset)}
                                   onActivate={(id) => activateMutation.mutate(id)}
                                   onDeactivate={(id) => deactivateMutation.mutate(id)}
+                                  onRecheckFormat={(id) => recheckFormatMutation.mutate(id)}
+                                  recheckBusy={recheckFormatMutation.isPending}
                                   activeBusy={activateMutation.isPending || deactivateMutation.isPending}
                                   dimensionLabelMap={dimensionLabelMap}
                                 />
@@ -1477,10 +1501,14 @@ export default function AtpModelsPage() {
                 multiple
                 showUploadList={false}
                 beforeUpload={(file) => {
-                  // 2026-11-02：后端白名单收紧为 .atp / .dat（lib/pch 等一律 400），
-                  // 前端同步过滤，整目录选择时只打包模型必需文件，避免整包被拒
+                  // 2026-11-03：白名单是 .atp / .dat / .pch —— 7.2+ 的 $INSERT 模型几何
+                  // 全在序号 pch 里，漏掉 pch 会让新版模型必然缺依赖（后端 E010 拒收）。
                   const lowerName = (file.name || "").toLowerCase();
-                  if (lowerName.endsWith(".atp") || lowerName.endsWith(".dat")) {
+                  if (
+                    lowerName.endsWith(".atp") ||
+                    lowerName.endsWith(".dat") ||
+                    lowerName.endsWith(".pch")
+                  ) {
                     setFileList((prev) => [...prev, file]);
                   }
                   return false;
@@ -1499,7 +1527,7 @@ export default function AtpModelsPage() {
                       {t("点击或拖拽模型文件夹到此区域上传")}
                     </p>
                     <Typography.Text type="secondary">
-                      {t("支持选择整个 ATP 模型目录，系统仅上传 .atp 与 .dat 文件（lib/pch 等运行产物不需要）。模型须由老版 ATPDraw（7.2 之前）导出，新版导出的模型会被拒绝。")}
+                      {t("支持选择整个 ATP 模型目录，系统只上传 .atp / .dat / .pch 文件。老版模型（$INCLUDE）传 work.atp + 四个 .dat；新版模型（$INSERT，ATPDraw 7.2+）必须连序号 .pch 一起传，否则仿真会因缺几何依赖而拒绝执行。")}
                     </Typography.Text>
                   </>
                 ) : (

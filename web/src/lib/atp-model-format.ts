@@ -21,7 +21,7 @@ export type ModelFormatMeta = {
   tone: "legacy" | "insert" | "other";
 };
 
-const META: Record<AtpAssetModelFormat, ModelFormatMeta> = {
+const META: Record<AtpAssetModelFormat | "unknown", ModelFormatMeta> = {
   legacy: {
     label: "老版 · $INCLUDE + .lib",
     short: "老版",
@@ -60,10 +60,27 @@ const META: Record<AtpAssetModelFormat, ModelFormatMeta> = {
     tone: "other",
     hint: "work.atp 里没有 $INCLUDE/$INSERT，也没有 7.x 指纹：纯 RLC 工程或手写文件，没有几何需要重算。",
   },
+  unknown: {
+    label: "待检测 · 尚未判定",
+    short: "待检测",
+    color: "#6b7280",
+    background: "#f9fafb",
+    tone: "other",
+    hint:
+      "这条资产还没有形态预检报告：可能是刚创建还没上传模型文件，或存量数据在形态列上线前入库。" +
+      "上传模型文件会自动判定；已有文件的话点「重新检测形态」按存储里的 work.atp 重新判定。",
+  },
 };
 
-export function describeModelFormat(format?: AtpAssetModelFormat | null): ModelFormatMeta {
-  // 后端对存量行会回落 legacy，这里再兜一次，避免 UI 出现空白标记
+export function describeModelFormat(
+  format?: AtpAssetModelFormat | null,
+  /** 是否已有预检报告。false = 从未判定过，不能显示成「老版」 */
+  checked = true,
+): ModelFormatMeta {
+  // 后端对存量行会回落 legacy（列默认值），但「列默认值」不等于「判定结果」：
+  // 2026-11-03 生产事故就是 7.2+ 的 $INSERT 模型因默认值显示成「老版」。
+  // 没有预检报告的资产一律显示「待检测」，避免把默认值伪装成结论。
+  if (!checked) return META.unknown;
   return META[format ?? "legacy"] ?? META.legacy;
 }
 

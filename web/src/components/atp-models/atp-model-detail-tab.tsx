@@ -107,7 +107,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
 
   // 模型形态与上传预检（2026-11-02）：形态决定仿真走 lib 还是 pch 链路，
   // 预检的 warning 是「需要人工确认但不阻断仿真」的项（pch 目录不一致、模板缺小数点等）。
-  const formatMeta = describeModelFormat(asset?.model_format);
+  const formatMeta = describeModelFormat(asset?.model_format, Boolean(asset?.format_check?.model_format));
   const warnCount = checkWarningCount(asset?.format_check);
   const checkIssues = asset?.format_check?.issues ?? [];
 

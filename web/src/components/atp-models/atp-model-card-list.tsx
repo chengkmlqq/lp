@@ -12,6 +12,8 @@ interface AtpModelCardListProps {
   onTest: (asset: AtpAssetSummary) => void;
   onActivate: (id: string) => void;
   onDeactivate: (id: string) => void;
+  onRecheckFormat: (id: string) => void;
+  recheckBusy: boolean;
   activeBusy: boolean;
   dimensionLabelMap?: {
     voltage_level?: Map<string, string>;
@@ -21,7 +23,7 @@ interface AtpModelCardListProps {
   };
 }
 
-export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onActivate, onDeactivate, activeBusy, dimensionLabelMap }: AtpModelCardListProps) {
+export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onActivate, onDeactivate, onRecheckFormat, recheckBusy, activeBusy, dimensionLabelMap }: AtpModelCardListProps) {
 
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -38,6 +40,8 @@ export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, on
           onTest={onTest}
           onActivate={onActivate}
           onDeactivate={onDeactivate}
+          onRecheckFormat={onRecheckFormat}
+          recheckBusy={recheckBusy}
           activeBusy={activeBusy}
           dimensionLabelMap={dimensionLabelMap}
         />

@@ -1876,6 +1876,94 @@ def upload_asset_files(
     )
 
 
+def collect_check_members_from_storage(
+    driver: Any,
+    storage_root_path: str,
+    tree: StorageTree,
+) -> dict[str, bytes]:
+    """从资产存储目录收集参与预检的成员（相对路径 → 原始字节）。
+
+    只取 .atp / .dat / .pch（与上传预检同口径），单文件读失败跳过而不是整条失败：
+    存量目录里可能有历史残留的坏文件，个别读不出来不应挡住其余文件的判定。
+    返回的 key 是**相对**存储根的路径，与 upload 侧 members 语义一致。
+    """
+    root = storage_root_path.rstrip("/")
+    members: dict[str, bytes] = {}
+    for relative_path in sorted(tree.file_paths):
+        if not relative_path.lower().endswith(_CHECKED_SUFFIXES):
+            continue
+        try:
+            members[relative_path] = driver.read_file(f"{root}/{relative_path}").content
+        except Exception:  # noqa: BLE001 - 单个成员读失败不阻断其余成员
+            continue
+    return members
+
+
+def recheck_asset_format(
+    db: Session,
+    *,
+    asset_id: str,
+    actor_user_id: str | None = None,
+) -> AtpAssetSummary:
+    """按存储里的真实模型文件重判形态，回写 model_format 与预检报告。
+
+    存在的理由（2026-11-03 生产事故）：`model_format` 列是 2026-11-02 上传预检上线时
+    才加的，DB 迁移给存量行统一填了默认值 `legacy`，而存量里本来就有 $INSERT（7.2+）
+    模型 —— 于是「老版」标记是**列默认值**而不是判定结果，与文件真实形态不符。
+    上传口只在上传/更新文件时判定，存量不会自动重判，故提供这条显式重判路径
+    （单资产接口 + 批量回填脚本共用）。
+
+    与上传不同：这里**不因 error 级问题抛 400**，而是把报告原样落库 —— 存量模型可能
+    本来就有缺 pch / 混合形态等问题，需要显示给人工去修，而不是让重判本身失败。
+    """
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+
+    mount_code, storage_root_path = _resolve_asset_file_location(db, asset)
+    mount = _resolve_mount(db, mount_code)
+    driver = _build_driver_or_400(mount)
+    try:
+        tree = _walk_storage_tree(driver, storage_root_path)
+    except HTTPException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"资产目录读取失败，无法重新检测形态：{exc.detail}",
+        ) from exc
+
+    members = collect_check_members_from_storage(driver, storage_root_path, tree)
+    if not members:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="资产目录里没有 .atp / .dat / .pch 文件，无法判定形态；请先上传模型文件",
+        )
+
+    report = inspect_package(members)
+    _apply_format_report(asset, report)
+    asset.update_user = actor_user_id or asset.update_user
+    asset.update_date = utcnow()
+    db.commit()
+
+    saved = get_asset_by_id(db, asset_id)
+    if not saved:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Asset load failed")
+    _publish_change(
+        "asset.format_rechecked",
+        {
+            "action": "format_rechecked",
+            "asset_id": asset_id,
+            "model_format": saved.model_format,
+        },
+    )
+    return serialize_asset(
+        saved,
+        run_count=len(saved.runs),
+        last_run_status=saved.runs[0].status if saved.runs else None,
+        last_run_date=saved.runs[0].create_date if saved.runs else None,
+        db=db,
+    )
+
+
 def _infer_asset_file_role(asset: AtpAsset, relative_path: str, is_dir: bool) -> str | None:
     if is_dir:
         return None

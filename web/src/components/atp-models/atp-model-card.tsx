@@ -13,6 +13,7 @@ import {
   FileProtectOutlined,
   MoreOutlined,
   StopOutlined,
+  SyncOutlined,
   ThunderboltOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
@@ -33,6 +34,9 @@ interface AtpModelCardProps {
   onTest: (asset: AtpAssetSummary) => void;
   onActivate: (id: string) => void;
   onDeactivate: (id: string) => void;
+  /** 按存储里的真实 work.atp 重判形态（存量资产默认值不被当成结论） */
+  onRecheckFormat: (id: string) => void;
+  recheckBusy: boolean;
   activeBusy: boolean;
   dimensionLabelMap?: {
     voltage_level?: Map<string, string>;
@@ -65,7 +69,7 @@ function assetBadgeStatus(status: AtpAssetStatus, t: (s: string) => string): { b
   }
 }
 
-export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onActivate, onDeactivate, activeBusy, dimensionLabelMap }: AtpModelCardProps) {
+export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onActivate, onDeactivate, onRecheckFormat, recheckBusy, activeBusy, dimensionLabelMap }: AtpModelCardProps) {
   const { t } = useI18n();
   const rowBusy = deleteLoading || activeBusy;
 
@@ -93,8 +97,10 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
   }, [deleteLoading, onDelete, asset.id]);
 
   const { badge: statusBadge, text: statusText } = assetBadgeStatus(asset.status, t);
-  // 模型形态（2026-11-02）：新老模型的几何来源不同，列表必须能直接分辨
-  const formatMeta = describeModelFormat(asset.model_format);
+  // 模型形态（2026-11-02）：新老模型的几何来源不同，列表必须能直接分辨。
+  // 2026-11-03：没有预检报告 = 从未判定过（存量默认值 / 刚建未传文件），显示「待检测」
+  const formatChecked = Boolean(asset.format_check?.model_format);
+  const formatMeta = describeModelFormat(asset.model_format, formatChecked);
   const warnCount = checkWarningCount(asset.format_check);
 
   return (
@@ -253,6 +259,20 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
                                 },
                               },
                             ]),
+                        {
+                          key: "recheck-format",
+                          label: (
+                            <Space size={4}>
+                              <SyncOutlined spin={recheckBusy} />
+                              <span>{t("重新检测形态")}</span>
+                            </Space>
+                          ),
+                          disabled: recheckBusy,
+                          onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
+                            event.domEvent.stopPropagation();
+                            onRecheckFormat(asset.id);
+                          },
+                        },
                         {
                           key: "delete",
                           label: (

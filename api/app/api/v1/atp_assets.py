@@ -44,6 +44,7 @@ from ...services.atp_asset_service import (
     list_asset_tree_children,
     list_runs,
     read_asset_file_content,
+    recheck_asset_format,
     scan_asset_slots,
     serialize_asset,
     upload_asset_files,
@@ -162,6 +163,25 @@ def upload_atp_asset_files_endpoint(
         asset_id=asset_id,
         files=files or [],
         temp_file_id=temp_file_id,
+        actor_user_id=current_user.user.id,
+    )
+    return AtpAssetDetail(**updated.model_dump())
+
+
+@router.post("/assets/{asset_id}/format-check", response_model=AtpAssetDetail)
+def recheck_atp_asset_format_endpoint(
+    asset_id: str,
+    current_user: CurrentUser = Depends(require_permission("atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetDetail:
+    """按存储里的真实模型文件重判形态（$INCLUDE / $INSERT / 内嵌 / 无线路）。
+
+    存量资产在形态列上线前入库时只有列默认值，不重判就会把 7.2+ 的 $INSERT 模型
+    显示成「老版」。上传口会判定，但不会回头改存量，故留这条显式重判入口。
+    """
+    updated = recheck_asset_format(
+        db,
+        asset_id=asset_id,
         actor_user_id=current_user.user.id,
     )
     return AtpAssetDetail(**updated.model_dump())
