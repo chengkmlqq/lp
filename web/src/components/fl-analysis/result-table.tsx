@@ -88,15 +88,23 @@ export function ResultTable({
     }
 
     // ⚠️ 2026-09-30 成因分析并入防雷计算详情：读 result_json.cause_analysis
+    // 按内容换行/截断：限定列宽，多行 clamp（最多 3 行）超出省略，悬停 Tooltip 展示完整文本，
+    // 避免单列过长挤压其他列。
     resultColumns.push({
       title: t("原因分析"),
       key: "cause_analysis",
-      width: 260,
-      ellipsis: { showTitle: true },
+      width: 240,
       render: (_value, row) => {
         const cause = readObject(row.result_json).cause_analysis;
         if (typeof cause === "string" && cause.trim()) {
-          return <Typography.Text style={{ fontSize: 12 }}>{cause}</Typography.Text>;
+          return (
+            <Typography.Paragraph
+              ellipsis={{ rows: 3, tooltip: cause }}
+              style={{ fontSize: 12, marginBottom: 0 }}
+            >
+              {cause}
+            </Typography.Paragraph>
+          );
         }
         return <Typography.Text type="secondary">-</Typography.Text>;
       },
