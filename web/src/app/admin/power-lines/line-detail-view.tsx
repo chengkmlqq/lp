@@ -27,6 +27,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { translateAnalysisText, translateEnumValue } from "@/lib/analysis-text";
 import { AdminPageLoading } from "@/components/admin-page-loading";
 import { useAuth } from "@/components/auth-provider";
 import { useToastFeedback } from "@/hooks/use-toast-feedback";
@@ -53,7 +54,7 @@ type AdminPowerLinesDetailViewProps = {
 };
 
 export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLinesDetailViewProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
@@ -488,7 +489,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
 
   const exportMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers/export`);
+      const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers/export?lang=${lang}`);
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
@@ -1003,7 +1004,7 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                         <Descriptions.Item label={t("大号侧档距(m)")}>{tower.span_large_m ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("地面倾角1")}>{tower.slope_1 ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("地面倾角2")}>{tower.slope_2 ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label={t("直线/耐张")}>{tower.structure_kind ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label={t("直线/耐张")}>{translateEnumValue(tower.structure_kind, lang) || "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("绝缘子串长度(mm)")}>{tower.insulator_length_m ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("杆塔呼高(m)")}>{tower.call_height_m ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("避雷线高度(m)")}>{tower.shield_wire_height_m ?? "-"}</Descriptions.Item>
@@ -1060,12 +1061,12 @@ export function AdminPowerLinesDetailView({ lineId, canTowerRead }: AdminPowerLi
                     children: (
                       <Space direction="vertical" size={16} className="w-full">
                         <Descriptions bordered size="small" column={1}>
-                          <Descriptions.Item label={t("原因分析")}>{detail.analysis?.cause_analysis ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label={t("措施推荐")}>{detail.analysis?.mitigation_recommendation ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label={t("原因分析")}>{translateAnalysisText(detail.analysis?.cause_analysis, lang) || "-"}</Descriptions.Item>
+                          <Descriptions.Item label={t("措施推荐")}>{translateAnalysisText(detail.analysis?.mitigation_recommendation, lang) || "-"}</Descriptions.Item>
                         </Descriptions>
                         <Descriptions bordered size="small" column={3}>
-                          <Descriptions.Item label={t("直线/耐张")}>{tower.structure_kind ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label={t("绕击/反击模式")}>{tower.stroke_mode ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label={t("直线/耐张")}>{translateEnumValue(tower.structure_kind, lang) || "-"}</Descriptions.Item>
+                          <Descriptions.Item label={t("绕击/反击模式")}>{translateEnumValue(tower.stroke_mode, lang) || "-"}</Descriptions.Item>
                           <Descriptions.Item label={t("雷电流波形")}>{tower.current_type ?? "-"}</Descriptions.Item>
                           <Descriptions.Item label={t("雷电流幅值 a")}>{tower.current_a ?? "-"}</Descriptions.Item>
                           <Descriptions.Item label={t("雷电流幅值 b")}>{tower.current_b ?? "-"}</Descriptions.Item>

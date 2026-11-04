@@ -39,6 +39,7 @@ from ..schemas.line import (
     TowerLightningResultSummary,
     TowerProfileLightningCurrentSummary,
 )
+from .analysis_text_i18n import LINE_TOWER_CSV_HEADERS_EN, translate_analysis_text, translate_csv_cell
 from .line_preparation_service import summarize_line_preparation, summarize_line_preparations
 from .push_service import publish_topic
 
@@ -663,11 +664,16 @@ def import_line_towers_from_csv(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="导入文件没有数据行")
 
     # 台账导出文件常以 <TGanTa> 等占位行开头（其后才是真实表头），
-    # 向下扫描定位同时包含「序号」「塔号」的表头行，避免整表解析失败。
+    # 向下扫描定位同时包含「序号」「塔号」的表头行（兼容英文导出表头 Seq No./Tower No.），
+    # 避免整表解析失败。
     header_index = 0
+    is_english_header = False
     while header_index < len(rows):
         candidate = rows[header_index]
         if "序号" in candidate and "塔号" in candidate:
+            break
+        if "Seq No." in candidate and "Tower No." in candidate:
+            is_english_header = True
             break
         header_index += 1
     # 对齐 C# MyLoad_GanTas：整表找不到「序号/塔号」表头时，按固定列序（1-63 列）解析，所有行均视为数据行。
@@ -679,6 +685,9 @@ def import_line_towers_from_csv(
         raw_header = rows[header_index]
         if not raw_header:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV header is empty")
+        # 英文导出表头 → 按列位置规整为中文列名，保证后续按中文列名取值逻辑一致。
+        if is_english_header:
+            raw_header = _remap_english_csv_header(raw_header)
 
     max_row_len = max((len(row) for row in rows[header_index + 1 :]), default=len(raw_header))
     header = list(raw_header)
@@ -904,7 +913,24 @@ LINE_TOWER_CSV_HEADERS_63: tuple[str, ...] = (
 LINE_TOWER_CSV_HEADERS: tuple[str, ...] = (*LINE_TOWER_CSV_HEADERS_63, "原因分析", "措施推荐")
 
 
-def export_line_towers_to_csv(db: Session, *, line: Line) -> tuple[str, bytes]:
+def _remap_english_csv_header(raw_header: list[str]) -> list[str]:
+    """英文导出表头 → 中文列名（按列位置对齐）。
+
+    英文表头由 LINE_TOWER_CSV_HEADERS_EN 生成，与中文表头 LINE_TOWER_CSV_HEADERS
+    严格按位置对齐；仅当逐列与英文表头一致时才替换为中文列名，避免误伤用户自定义列。
+    """
+    en_headers = list(LINE_TOWER_CSV_HEADERS_EN)
+    cn_headers = list(LINE_TOWER_CSV_HEADERS)
+    remapped: list[str] = []
+    for idx, cell in enumerate(raw_header):
+        if idx < len(en_headers) and idx < len(cn_headers) and cell == en_headers[idx]:
+            remapped.append(cn_headers[idx])
+        else:
+            remapped.append(cell)
+    return remapped
+
+
+def export_line_towers_to_csv(db: Session, *, line: Line, lang: str = "zh") -> tuple[str, bytes]:
     towers = db.execute(
         select(LineTower)
         .where(LineTower.line_id == line.id)
@@ -920,7 +946,7 @@ def export_line_towers_to_csv(db: Session, *, line: Line) -> tuple[str, bytes]:
             else []
         )
     }
-    headers = list(LINE_TOWER_CSV_HEADERS)
+    headers = list(LINE_TOWER_CSV_HEADERS_EN) if lang == "en" else list(LINE_TOWER_CSV_HEADERS)
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -932,93 +958,99 @@ def export_line_towers_to_csv(db: Session, *, line: Line) -> tuple[str, bytes]:
         circuit_geometry = _build_circuit_geometry_from_children(tower.circuits)
         lightning_result = tower.lightning_result
         analysis = tower.analysis
-        writer.writerow(
-            [
-                line.code,
-                tower.seq_no,
-                line.name,
-                line.voltage_kv or "",
-                tower.tower_no,
-                tower.tower_model or "",
-                tower.tower_type or "",
-                _to_csv_number(tower.longitude),
-                _to_csv_number(tower.latitude),
-                _normalize_str(_pick_export_value(circuit_by_no.get(1).phase_sequence if circuit_by_no.get(1) else None, profile.phase_sequence_1 if profile else None, _safe_dict(line.phase_sequence_json).get("I"))) or "",
-                _normalize_str(_pick_export_value(circuit_by_no.get(2).phase_sequence if circuit_by_no.get(2) else None, profile.phase_sequence_2 if profile else None, _safe_dict(line.phase_sequence_json).get("II"))) or "",
-                _normalize_str(_pick_export_value(circuit_by_no.get(3).phase_sequence if circuit_by_no.get(3) else None, profile.phase_sequence_3 if profile else None, _safe_dict(line.phase_sequence_json).get("III"))) or "",
-                _normalize_str(_pick_export_value(circuit_by_no.get(4).phase_sequence if circuit_by_no.get(4) else None, profile.phase_sequence_4 if profile else None, _safe_dict(line.phase_sequence_json).get("IV"))) or "",
-                _normalize_str(_pick_export_value(profile.arrester_a if profile else None, _safe_dict(line.arrester_install_json).get("A"))) or "",
-                _normalize_str(_pick_export_value(profile.arrester_b if profile else None, _safe_dict(line.arrester_install_json).get("B"))) or "",
-                _normalize_str(_pick_export_value(profile.arrester_c if profile else None, _safe_dict(line.arrester_install_json).get("C"))) or "",
-                _to_csv_number(tower.ground_resistance_ohm),
-                _to_csv_number(_pick_export_float(profile.protection_angle_left_deg if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "left_mid_distance_m"))),
-                _to_csv_number(_pick_export_float(profile.protection_angle_right_deg if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "right_mid_distance_m"))),
-                _to_csv_number(_pick_export_float(profile.shield_wire_height_m if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "height_m"))),
-                _to_csv_number(_pick_export_float(profile.insulator_length_m if profile else None, _read_nested_value(circuit_geometry, "insulator_length_mm"))),
-                _to_csv_number(_pick_export_float(profile.call_height_m if profile else None, _read_nested_value(circuit_geometry, "tower_height_m"))),
-                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_spacing_m", "upper")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_spacing_m", "middle")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_spacing_m", "lower")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_height_m", "upper")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_height_m", "middle")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_height_m", "lower")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_spacing_m", "upper")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_spacing_m", "middle")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_spacing_m", "lower")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_height_m", "upper")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_height_m", "middle")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_height_m", "lower")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_spacing_m", "upper")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_spacing_m", "middle")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_spacing_m", "lower")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_height_m", "upper")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_height_m", "middle")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_height_m", "lower")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_spacing_m", "upper")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_spacing_m", "middle")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_spacing_m", "lower")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_height_m", "upper")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_height_m", "middle")),
-                _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_height_m", "lower")),
-                _to_csv_number(tower.span_small_m),
-                _to_csv_number(tower.span_large_m),
-                _to_csv_number(
-                    _pick_export_float(
-                        profile.angle_deg if profile else None,
-                        lightning_result.angle_deg if lightning_result else None,
-                        _safe_dict(line.lightning_param_json).get("电角度"),
-                    )
-                ),
-                _to_csv_number(
-                    _pick_export_float(
-                        profile.current_a if profile else None,
-                        lightning_result.current_a_ka if lightning_result else None,
-                        _safe_dict(line.lightning_param_json).get("雷电流幅值a"),
-                    )
-                ),
-                _to_csv_number(
-                    _pick_export_float(
-                        profile.current_b if profile else None,
-                        lightning_result.current_b_ka if lightning_result else None,
-                        _safe_dict(line.lightning_param_json).get("雷电流幅值b"),
-                    )
-                ),
-                _to_csv_number(tower.slope_1),
-                _to_csv_number(tower.slope_2),
-                _to_csv_number(tower.altitude_m),
-                tower.terrain or "",
-                _to_csv_number(tower.lightning_density),
-                _normalize_str(_pick_export_value(profile.structure_kind if profile else None, tower.tower_type)) or "",
-                _normalize_str(_pick_export_value(profile.stroke_mode if profile else None, str(lightning_result.counterstroke_indicator) if lightning_result and lightning_result.counterstroke_indicator is not None else None)) or "",
-                _to_csv_number(lightning_result.counterstroke_withstand_ka if lightning_result else None),
-                _to_csv_number(lightning_result.counterstroke_trip_rate if lightning_result else None),
-                _to_csv_number(lightning_result.shielding_withstand_ka if lightning_result else None),
-                _to_csv_number(lightning_result.shielding_trip_rate if lightning_result else None),
-                _normalize_str(_pick_export_value(tower.risk_level, lightning_result.risk_level if lightning_result else None)) or "",
-                _escape_multiline(_normalize_str(analysis.cause_analysis) or "") if analysis else "",
-                _escape_multiline(_normalize_str(analysis.mitigation_recommendation) or "") if analysis else "",
-            ]
-        )
+        row = [
+            line.code,
+            tower.seq_no,
+            line.name,
+            line.voltage_kv or "",
+            tower.tower_no,
+            tower.tower_model or "",
+            tower.tower_type or "",
+            _to_csv_number(tower.longitude),
+            _to_csv_number(tower.latitude),
+            _normalize_str(_pick_export_value(circuit_by_no.get(1).phase_sequence if circuit_by_no.get(1) else None, profile.phase_sequence_1 if profile else None, _safe_dict(line.phase_sequence_json).get("I"))) or "",
+            _normalize_str(_pick_export_value(circuit_by_no.get(2).phase_sequence if circuit_by_no.get(2) else None, profile.phase_sequence_2 if profile else None, _safe_dict(line.phase_sequence_json).get("II"))) or "",
+            _normalize_str(_pick_export_value(circuit_by_no.get(3).phase_sequence if circuit_by_no.get(3) else None, profile.phase_sequence_3 if profile else None, _safe_dict(line.phase_sequence_json).get("III"))) or "",
+            _normalize_str(_pick_export_value(circuit_by_no.get(4).phase_sequence if circuit_by_no.get(4) else None, profile.phase_sequence_4 if profile else None, _safe_dict(line.phase_sequence_json).get("IV"))) or "",
+            _normalize_str(_pick_export_value(profile.arrester_a if profile else None, _safe_dict(line.arrester_install_json).get("A"))) or "",
+            _normalize_str(_pick_export_value(profile.arrester_b if profile else None, _safe_dict(line.arrester_install_json).get("B"))) or "",
+            _normalize_str(_pick_export_value(profile.arrester_c if profile else None, _safe_dict(line.arrester_install_json).get("C"))) or "",
+            _to_csv_number(tower.ground_resistance_ohm),
+            _to_csv_number(_pick_export_float(profile.protection_angle_left_deg if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "left_mid_distance_m"))),
+            _to_csv_number(_pick_export_float(profile.protection_angle_right_deg if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "right_mid_distance_m"))),
+            _to_csv_number(_pick_export_float(profile.shield_wire_height_m if profile else None, _read_nested_value(circuit_geometry, "lightning_wire", "height_m"))),
+            _to_csv_number(_pick_export_float(profile.insulator_length_m if profile else None, _read_nested_value(circuit_geometry, "insulator_length_mm"))),
+            _to_csv_number(_pick_export_float(profile.call_height_m if profile else None, _read_nested_value(circuit_geometry, "tower_height_m"))),
+            _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_spacing_m", "upper")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_spacing_m", "middle")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_spacing_m", "lower")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_height_m", "upper")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_height_m", "middle")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "I", "phase_height_m", "lower")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_spacing_m", "upper")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_spacing_m", "middle")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_spacing_m", "lower")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_height_m", "upper")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_height_m", "middle")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "II", "phase_height_m", "lower")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_spacing_m", "upper")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_spacing_m", "middle")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_spacing_m", "lower")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_height_m", "upper")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_height_m", "middle")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "III", "phase_height_m", "lower")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_spacing_m", "upper")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_spacing_m", "middle")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_spacing_m", "lower")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_height_m", "upper")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_height_m", "middle")),
+            _to_csv_number(_read_nested_value(circuit_geometry, "IV", "phase_height_m", "lower")),
+            _to_csv_number(tower.span_small_m),
+            _to_csv_number(tower.span_large_m),
+            _to_csv_number(
+                _pick_export_float(
+                    profile.angle_deg if profile else None,
+                    lightning_result.angle_deg if lightning_result else None,
+                    _safe_dict(line.lightning_param_json).get("电角度"),
+                )
+            ),
+            _to_csv_number(
+                _pick_export_float(
+                    profile.current_a if profile else None,
+                    lightning_result.current_a_ka if lightning_result else None,
+                    _safe_dict(line.lightning_param_json).get("雷电流幅值a"),
+                )
+            ),
+            _to_csv_number(
+                _pick_export_float(
+                    profile.current_b if profile else None,
+                    lightning_result.current_b_ka if lightning_result else None,
+                    _safe_dict(line.lightning_param_json).get("雷电流幅值b"),
+                )
+            ),
+            _to_csv_number(tower.slope_1),
+            _to_csv_number(tower.slope_2),
+            _to_csv_number(tower.altitude_m),
+            tower.terrain or "",
+            _to_csv_number(tower.lightning_density),
+            _normalize_str(_pick_export_value(profile.structure_kind if profile else None, tower.tower_type)) or "",
+            _normalize_str(_pick_export_value(profile.stroke_mode if profile else None, str(lightning_result.counterstroke_indicator) if lightning_result and lightning_result.counterstroke_indicator is not None else None)) or "",
+            _to_csv_number(lightning_result.counterstroke_withstand_ka if lightning_result else None),
+            _to_csv_number(lightning_result.counterstroke_trip_rate if lightning_result else None),
+            _to_csv_number(lightning_result.shielding_withstand_ka if lightning_result else None),
+            _to_csv_number(lightning_result.shielding_trip_rate if lightning_result else None),
+            _normalize_str(_pick_export_value(tower.risk_level, lightning_result.risk_level if lightning_result else None)) or "",
+            _escape_multiline(_normalize_str(analysis.cause_analysis) or "") if analysis else "",
+            _escape_multiline(_normalize_str(analysis.mitigation_recommendation) or "") if analysis else "",
+        ]
+        if lang == "en":
+            # 枚举值列:避雷器(13-15)、地形(54)、直线/耐张(56)、绕击/反击(57)、风险等级(62)
+            for idx in (13, 14, 15, 54, 56, 57, 62):
+                row[idx] = translate_csv_cell(row[idx], "en")
+            # 分析文本列:原因分析(63)、措施推荐(64)
+            row[63] = translate_analysis_text(row[63], "en")
+            row[64] = translate_analysis_text(row[64], "en")
+        writer.writerow(row)
 
     filename = f"{line.code}_towers_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return filename, output.getvalue().encode("utf-8")

@@ -225,6 +225,7 @@ def import_line_tower_csv_endpoint(
 @router.get("/{line_id}/towers/export")
 def export_line_towers_endpoint(
     line_id: str,
+    lang: str = "zh",
     _: CurrentUser = Depends(require_any_permission("tower.export", "tower.manage", "line.export", "line.manage", "tower.read", "line.read")),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
@@ -232,7 +233,7 @@ def export_line_towers_endpoint(
     if not line:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Line not found")
 
-    filename, content = export_line_towers_to_csv(db, line=line)
+    filename, content = export_line_towers_to_csv(db, line=line, lang=lang if lang == "en" else "zh")
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(iter([content]), media_type="text/csv", headers=headers)
 

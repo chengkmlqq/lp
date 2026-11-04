@@ -33,6 +33,7 @@ import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 
 import { useI18n } from "@/lib/i18n";
+import { translateAnalysisText, translateEnumValue } from "@/lib/analysis-text";
 import { ModoPagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { AdminPageLoading } from "@/components/admin-page-loading";
@@ -66,7 +67,7 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 export default function AdminPowerLineTowersPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { lineId } = useParams<{ lineId: string }>();
   const { user, initializing, fetchWithAuth, hasPermission, getAccessToken } = useAuth();
   const queryClient = useQueryClient();
@@ -309,7 +310,7 @@ export default function AdminPowerLineTowersPage() {
 
   const exportMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers/export`);
+      const response = await fetchWithAuth(`/api/v1/lines/${lineId}/towers/export?lang=${lang}`);
       if (!response.ok) {
         throw new Error(await readApiError(response));
       }
@@ -625,14 +626,14 @@ export default function AdminPowerLineTowersPage() {
                         <Descriptions.Item label={t("经度")}>{tower.longitude != null ? tower.longitude : "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("纬度")}>{tower.latitude != null ? tower.latitude : "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("海拔(m)")}>{tower.altitude_m ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label={t("地形")}>{tower.terrain ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label={t("地形")}>{translateEnumValue(tower.terrain, lang) || "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("接地电阻(Ω)")}>{tower.ground_resistance_ohm ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("地闪密度")}>{tower.lightning_density ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("小号侧档距(m)")}>{tower.span_small_m ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("大号侧档距(m)")}>{tower.span_large_m ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("地面倾角1")}>{tower.slope_1 ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("地面倾角2")}>{tower.slope_2 ?? "-"}</Descriptions.Item>
-                        <Descriptions.Item label={t("直线/耐张")}>{tower.structure_kind ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label={t("直线/耐张")}>{translateEnumValue(tower.structure_kind, lang) || "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("绝缘子串长度(mm)")}>{tower.insulator_length_m ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("杆塔呼高(m)")}>{tower.call_height_m ?? "-"}</Descriptions.Item>
                         <Descriptions.Item label={t("避雷线高度(m)")}>{tower.shield_wire_height_m ?? "-"}</Descriptions.Item>
@@ -689,12 +690,12 @@ export default function AdminPowerLineTowersPage() {
                     children: (
                       <Space direction="vertical" size={16} className="w-full">
                         <Descriptions bordered size="small" column={1}>
-                          <Descriptions.Item label={t("原因分析")}>{detail.analysis?.cause_analysis ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label={t("措施推荐")}>{detail.analysis?.mitigation_recommendation ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label={t("原因分析")}>{translateAnalysisText(detail.analysis?.cause_analysis, lang) || "-"}</Descriptions.Item>
+                          <Descriptions.Item label={t("措施推荐")}>{translateAnalysisText(detail.analysis?.mitigation_recommendation, lang) || "-"}</Descriptions.Item>
                         </Descriptions>
                         <Descriptions bordered size="small" column={3}>
-                          <Descriptions.Item label={t("直线/耐张")}>{tower.structure_kind ?? "-"}</Descriptions.Item>
-                          <Descriptions.Item label={t("绕击/反击模式")}>{tower.stroke_mode ?? "-"}</Descriptions.Item>
+                          <Descriptions.Item label={t("直线/耐张")}>{translateEnumValue(tower.structure_kind, lang) || "-"}</Descriptions.Item>
+                          <Descriptions.Item label={t("绕击/反击模式")}>{translateEnumValue(tower.stroke_mode, lang) || "-"}</Descriptions.Item>
                           <Descriptions.Item label={t("雷电流波形")}>{tower.current_type ?? "-"}</Descriptions.Item>
                           <Descriptions.Item label={t("雷电流幅值 a")}>{tower.current_a ?? "-"}</Descriptions.Item>
                           <Descriptions.Item label={t("雷电流幅值 b")}>{tower.current_b ?? "-"}</Descriptions.Item>

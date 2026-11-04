@@ -69,30 +69,71 @@ class LineContractTest(unittest.TestCase):
     def test_line_tower_csv_export_header_keeps_line_tower_tower_type(self) -> None:
         """线路杆塔 CSV 导出表头保留「塔形」（映射 tower.tower_type，杆塔级合法字段）。
 
-        此前的断言（表头不得含「塔形」）源自早期线路级 tower_shape 残留的收口，
-        与当前「一线路多塔型」结构不符；「塔形」列实际导出 tower.tower_type，
-        属杆塔级合法字段，应保留。
+        表头现由常量 LINE_TOWER_CSV_HEADERS_63 / LINE_TOWER_CSV_HEADERS_EN 提供
+        （导出时按 lang 选择）；中文表头须含「塔形」，英文表头须含 "Tower type"，
+        且英文表头与中文表头列数一致（65 列），保证 lang=en 导出再导入对称。
         """
-        module = _load_module(SERVICE_FILE)
-        function = _function_node(module, "export_line_towers_to_csv")
-        header_values: list[str] | None = None
+        service_module = _load_module(SERVICE_FILE)
+        i18n_module = _load_module(ROOT / "app" / "services" / "analysis_text_i18n.py")
 
-        for node in function.body:
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "headers":
-                        if isinstance(node.value, ast.List):
-                            header_values = [
-                                item.value
-                                for item in node.value.elts
-                                if isinstance(item, ast.Constant) and isinstance(item.value, str)
-                            ]
+        zh_header = _tuple_constant_values(service_module, "LINE_TOWER_CSV_HEADERS")
+        self.assertIsNotNone(zh_header)
+        self.assertIn("塔形", zh_header)
+        self.assertIn("原因分析", zh_header)
+        self.assertIn("措施推荐", zh_header)
+
+        en_header = _tuple_constant_values(i18n_module, "LINE_TOWER_CSV_HEADERS_EN")
+        self.assertIsNotNone(en_header)
+        self.assertIn("Tower type", en_header)
+        self.assertIn("Cause analysis", en_header)
+        self.assertIn("Mitigation recommendation", en_header)
+        self.assertEqual(len(en_header), len(zh_header))
+
+
+def _tuple_constant_values(module: ast.Module, name: str) -> list[str] | None:
+    """取模块顶层 `NAME: tuple[str, ...] = (...)` 的字面量字符串列表（支持 `*OTHER` 展开）；找不到返回 None。"""
+    cache: dict[str, list[str] | None] = {}
+
+    def _extract(value: ast.AST, stack: frozenset[str]) -> list[str] | None:
+        if not isinstance(value, (ast.Tuple, ast.List)):
+            return None
+        out: list[str] | None = []
+        for elt in value.elts:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                out.append(elt.value)
+            elif isinstance(elt, ast.Starred) and isinstance(elt.value, ast.Name):
+                sub = _resolve(elt.value.id, stack)
+                if sub is None:
+                    return None
+                out.extend(sub)
+            else:
+                return None
+        return out
+
+    def _resolve(target_name: str, stack: frozenset[str]) -> list[str] | None:
+        if target_name in cache:
+            return cache[target_name]
+        if target_name in stack:
+            return None
+        for node in module.body:
+            target: ast.AST | None = None
+            value: ast.AST | None = None
+            if isinstance(node, ast.Assign) and node.value is not None:
+                target, value = None, node.value
+                for t in node.targets:
+                    if isinstance(t, ast.Name) and t.id == target_name:
+                        target = t
                         break
-            if header_values is not None:
-                break
+            elif isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.Name):
+                target, value = node.target, node.value
+            if target is not None and isinstance(target, ast.Name) and target.id == target_name and value is not None:
+                values = _extract(value, stack | {target_name})
+                cache[target_name] = values
+                return values
+        cache[target_name] = None
+        return None
 
-        self.assertIsNotNone(header_values)
-        self.assertIn("塔形", header_values)
+    return _resolve(name, frozenset())
 
 
 if __name__ == "__main__":
