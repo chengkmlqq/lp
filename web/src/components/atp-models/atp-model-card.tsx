@@ -1,16 +1,21 @@
 "use client";
 
-import { Button, Dropdown, Modal, Progress, Tooltip, Typography } from "antd";
+import { Button, Dropdown, Modal, Progress, Space, Tooltip, Typography } from "antd";
 import { Card } from "@/components/ui-antd";
 import {
+  ApartmentOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
   ExperimentOutlined,
   EyeOutlined,
   MoreOutlined,
+  SafetyOutlined,
   StopOutlined,
   SyncOutlined,
+  ThunderboltOutlined,
+  AppstoreOutlined,
+  BlockOutlined,
 } from "@ant-design/icons";
 import { useCallback } from "react";
 
@@ -105,15 +110,13 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
     });
   };
 
-  const dimensionText = [
-    formatDimension(asset.voltage_level, dimensionLabelMap?.voltage_level),
-    formatDimension(asset.tower_type, dimensionLabelMap?.tower_type),
-    formatDimension(asset.scene_type, dimensionLabelMap?.scene_type),
-    formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config),
-    asset.shield_wire === "without" ? t("无避雷线") : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const voltageText = formatDimension(asset.voltage_level, dimensionLabelMap?.voltage_level) || "-";
+  const towerText = formatDimension(asset.tower_type, dimensionLabelMap?.tower_type) || "-";
+  const sceneText = formatDimension(asset.scene_type, dimensionLabelMap?.scene_type) || "-";
+  const arresterText =
+    [formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config), asset.shield_wire === "without" ? t("无避雷线") : null]
+      .filter(Boolean)
+      .join(" · ") || "-";
 
   const abnormal = statusMeta(asset.status, t);
   const updateTime = formatDateShort(asset.update_date);
@@ -124,12 +127,13 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
       hoverable
       className="admin-atp-models-card"
       onClick={handleView}
-      styles={{ body: { padding: "12px 14px 10px", height: "100%" } }}
+      styles={{ body: { padding: 0 } }}
     >
-      <div className="flex h-full flex-col gap-2">
-        {/* 主行：名称 + 形态标记 + 菜单 */}
-        <div className="flex items-start gap-2">
-          <Typography.Text strong ellipsis className="admin-atp-models-card-name">
+      <div className="flex h-full flex-col">
+        {/* 标题栏：与线路管理页卡片同构（图标 + 名称 + 右侧标记/菜单 + 底部分隔线） */}
+        <div className="admin-atp-models-card-title flex items-center gap-2 border-b border-gray-200 px-4 py-3">
+          <BlockOutlined className="text-base text-gray-500" />
+          <Typography.Text strong ellipsis className="admin-atp-models-card-name min-w-0 flex-1">
             {asset.name || asset.code}
           </Typography.Text>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -229,61 +233,87 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
           </div>
         </div>
 
-        {/* 维度链：电压 · 塔型 · 场景 · 避雷器 · 避雷线（+ 版本） */}
-        <Typography.Text type="secondary" ellipsis className="text-xs leading-5">
-          {dimensionText || "-"}
-          {asset.version ? ` · ${asset.version}` : ""}
-        </Typography.Text>
-
-        {/* 元信息行：生效状态 + 异常状态 + 更新时间 */}
-        <div className="flex min-h-5 items-center gap-2 text-xs">
-          {asset.is_active ? (
-            <span className="admin-atp-models-state-chip is-active">
-              <span className="admin-atp-models-state-chip-dot" />
-              {t("生效中")}
-            </span>
-          ) : (
-            <span className="admin-atp-models-state-chip is-muted">{t("未生效")}</span>
-          )}
-          {abnormal ? <span className={abnormal.className}>{abnormal.text}</span> : null}
-          {updateTime ? (
-            <Typography.Text type="secondary" className="ml-auto text-xs">
-              {updateTime}
+        {/* 字段区：逐行「小图标 + 标签：值」，与线路管理页卡片一致 */}
+        <div className="flex flex-1 flex-col gap-2 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <ThunderboltOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
+              {t("电压等级")}：{voltageText}
             </Typography.Text>
-          ) : null}
+          </div>
+          <div className="flex items-center gap-2">
+            <ApartmentOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
+              {t("塔型")}：{towerText}
+            </Typography.Text>
+          </div>
+          <div className="flex items-center gap-2">
+            <AppstoreOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
+              {t("场景")}：{sceneText}
+            </Typography.Text>
+          </div>
+          <div className="flex items-center gap-2">
+            <SafetyOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
+              {t("避雷器")}：{arresterText}
+            </Typography.Text>
+          </div>
+
+          {/* 元信息行：生效状态 + 异常状态 + 更新时间 */}
+          <div className="mt-auto flex min-h-5 items-center gap-2 text-xs">
+            {asset.is_active ? (
+              <span className="admin-atp-models-state-chip is-active">
+                <span className="admin-atp-models-state-chip-dot" />
+                {t("生效中")}
+              </span>
+            ) : (
+              <span className="admin-atp-models-state-chip is-muted">{t("未生效")}</span>
+            )}
+            {abnormal ? <span className={abnormal.className}>{abnormal.text}</span> : null}
+            {asset.version ? (
+              <Typography.Text type="secondary" className="text-xs">
+                {asset.version}
+              </Typography.Text>
+            ) : null}
+            {updateTime ? (
+              <Typography.Text type="secondary" className="ml-auto text-xs">
+                {updateTime}
+              </Typography.Text>
+            ) : null}
+          </div>
+
+          {asset.status === "processing" ? <Progress percent={asset.progress ?? 0} size="small" /> : null}
         </div>
 
-        {asset.status === "processing" ? (
-          <Progress percent={asset.progress ?? 0} size="small" />
-        ) : null}
-
-        {/* 动作行 */}
-        <div className="mt-auto flex items-center justify-end gap-1 border-t pt-2" style={{ borderColor: "color-mix(in srgb, var(--fquiz-theme-primary) 14%, var(--ant-color-border-secondary))" }}>
-          <Tooltip title={canTest ? t("模型测试") : t("缺少测试权限（需要 atp.run / atp.manage）")}>
-            <Button
-              type="text"
-              size="small"
-              icon={<ExperimentOutlined />}
-              disabled={!canTest}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleTest();
-              }}
-            >
-              {t("测试")}
-            </Button>
-          </Tooltip>
-          <Button
-            type="text"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={(event) => {
-              event.stopPropagation();
-              handleView();
-            }}
-          >
-            {t("详情")}
-          </Button>
+        {/* 动作栏：右侧图标按钮，与线路管理页卡片一致 */}
+        <div className="admin-atp-models-card-actions flex items-center justify-between gap-2 border-t border-gray-200 px-4 py-2">
+          <div />
+          <Space size="small" className="shrink-0">
+            <Tooltip title={canTest ? t("模型测试") : t("缺少测试权限（需要 atp.run / atp.manage）")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<ExperimentOutlined />}
+                disabled={!canTest}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleTest();
+                }}
+              />
+            </Tooltip>
+            <Tooltip title={t("详情")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleView();
+                }}
+              />
+            </Tooltip>
+          </Space>
         </div>
       </div>
     </Card>

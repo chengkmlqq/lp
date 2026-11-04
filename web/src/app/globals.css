@@ -2708,6 +2708,8 @@ body {
 
 .admin-atp-models-card > .ant-card-body {
   padding: 0;
+  /* 卡片在网格中等高拉伸时，body 需撑满，动作栏才能贴底对齐 */
+  height: 100%;
 }
 
 .admin-atp-models-card-title {
