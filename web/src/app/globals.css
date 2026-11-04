@@ -510,6 +510,8 @@ body {
   line-height: 1.6;
   text-align: start;
   word-break: break-word;
+  /* 后端 detail 可能是多行文本（如预检报告），保留换行而不是挤成一行被截断 */
+  white-space: pre-wrap;
 }
 
 .ant-message .ant-message-notice-wrapper {

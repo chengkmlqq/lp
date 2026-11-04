@@ -230,6 +230,8 @@ export default function AtpModelsPage() {
   const tableScrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollY, setTableScrollY] = useState(ATP_TABLE_MIN_SCROLL_Y);
   const [error, setError] = useState<ApiError | null>(null);
+  // 预检报告类长错误（多行文本）不适合走右上角 toast 气泡——放弹窗内完整展示
+  const [modalError, setModalError] = useState<string | null>(null);
   const [success, setSuccess] = useState("");
 
   const canRead = hasPermission("atp.read") || hasPermission("atp.run") || hasPermission("atp.manage");
@@ -352,7 +354,13 @@ export default function AtpModelsPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : t("创建模型失败")));
+      const detail = candidate instanceof Error ? candidate.message : t("创建模型失败");
+      if (detail.includes("\n")) {
+        // 多行长文本（上传预检报告）：放弹窗内完整展示，不走 toast 气泡
+        setModalError(detail);
+      } else {
+        setError(new ApiError(detail));
+      }
     },
   });
 
@@ -479,7 +487,12 @@ export default function AtpModelsPage() {
     },
     onError: (candidate) => {
       setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : t("更新模型失败")));
+      const detail = candidate instanceof Error ? candidate.message : t("更新模型失败");
+      if (detail.includes("\n")) {
+        setModalError(detail);
+      } else {
+        setError(new ApiError(detail));
+      }
     },
   });
 
@@ -586,6 +599,7 @@ export default function AtpModelsPage() {
   const openCreateModal = useCallback(() => {
     setError(null);
     setSuccess("");
+    setModalError(null);
     setFileList([]);
     setTempFileId(null);
     setUploadProgress(0);
@@ -597,6 +611,7 @@ export default function AtpModelsPage() {
   const openEditModal = useCallback((asset: AtpAssetSummary) => {
     setError(null);
     setSuccess("");
+    setModalError(null);
     setEditingAsset(asset);
     editForm.setFieldsValue({
       name: asset.name ?? "",
@@ -616,6 +631,7 @@ export default function AtpModelsPage() {
   const closeEditModal = () => {
     if (updateAssetMutation.isPending) return;
     setEditModalOpen(false);
+    setModalError(null);
     setEditingAsset(null);
     editForm.resetFields();
   };
@@ -623,6 +639,7 @@ export default function AtpModelsPage() {
   const closeModal = () => {
     if (createAssetMutation.isPending) return;
     setModalOpen(false);
+    setModalError(null);
     setFileList([]);
     setFileListExpanded(false);
     setTempFileId(null);
@@ -1567,6 +1584,20 @@ export default function AtpModelsPage() {
         okButtonProps={{ disabled: !tempFileId }}
         width={760}
       >
+        {modalError && (
+          <Alert
+            type="error"
+            showIcon
+            closable
+            className="mb-4"
+            onClose={() => setModalError(null)}
+            message={
+              <div className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-relaxed">
+                {modalError}
+              </div>
+            }
+          />
+        )}
         <Form
           form={form}
           layout="vertical"
@@ -1735,6 +1766,20 @@ export default function AtpModelsPage() {
         cancelText={t("取消")}
         width={640}
       >
+        {modalError && (
+          <Alert
+            type="error"
+            showIcon
+            closable
+            className="mb-4"
+            onClose={() => setModalError(null)}
+            message={
+              <div className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-relaxed">
+                {modalError}
+              </div>
+            }
+          />
+        )}
         <Form
           form={editForm}
           layout="vertical"
