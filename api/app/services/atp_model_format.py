@@ -444,7 +444,6 @@ def inspect_package(
       E010 `$INSERT` 引用的 pch 不在包内
       E011 pch 是残包（无分支头脚卡）
       E012 混合形态（$INSERT + $INCLUDE .lib 同时存在）
-      E013 $PARAMETER 段有别名引用不到中间变量（TACS 必报找不到）
       E014 Enbed 形态（几何烧死，无法按塔重算）
       E002 legacy 形态缺标准 .dat
 
@@ -454,6 +453,7 @@ def inspect_package(
       W003 中间变量超过 List31 上限（LP 会内联）
       W010 包内带 .pch 但形态是 legacy（多余文件，仿真不使用）
       W011 work.atp 引用的 pch 路径目录与包内不一致（LP 按文件名物化）
+      W012 $PARAMETER 段有别名引用不到中间变量（原 E013；LP 渲染时按 C# 公式写值）
     """
     lower_map = _lower_index(members.keys())
     entry_key = lower_map.get(entry_name.lower())
@@ -569,14 +569,23 @@ def inspect_package(
                 entry_key,
             )
 
-    # ── E013 / W001 / W002 / W003 参数段 ──
+    # ── W012 / W001 / W002 / W003 参数段 ──
+    # 2026-11-04：原 E013（error）降级为 W012（warning）。
+    # `NAME=NAME_I` 且缺 `NAME_I=值` 不是模型残缺，而是 ATPDraw 7.x 导出的**常态**：
+    # 实测 C# 生产模型库 278/278 个老版 work.atp 都是这个形态，C# 跑得通是因为
+    # 它按特征表/公式把真实值直接覆写进 work.atp，从不解析 $PARAMETER 定义。
+    # LP 侧同样如此——检测到等号别名形态就走 render_csharp_equality_template，
+    # 按 C# 公式（RER001/RELENS/RELE01~12/REHG/REHC…）整行改写成带小数点的数值，
+    # 别名在引擎读到之前就已消失。故预检这一项不能作为拒收依据；
+    # 真正的兜底在运行前：atp_asset_test_service.stage_materialize 会在
+    # 渲染 + 槽位覆盖 + 规范化之后复查 unresolved，仍有残留才拦截并报具体参数名。
     if section.unresolved:
         preview = "；".join(f"{n} ← 缺 {r}" for n, r in section.unresolved[:6])
         result.add(
-            "E013", "error",
-            f"$PARAMETER 段有 {len(section.unresolved)} 个别名引用不到中间变量：{preview}",
-            "模板里只留下了 `NAME =NAME_I` 别名，没有对应的 `NAME_I =值` 定义行。"
-            "需要在 ATPDraw 里重新导出完整参数段，或手工补齐被引用的中间变量",
+            "W012", "warning",
+            f"$PARAMETER 段有 {len(section.unresolved)} 个参数是别名引用形态（缺中间变量定义）：{preview}",
+            "这是 ATPDraw 导出 ATP 的常见形态，C# 与 LP 都在运行前用公式把真实值写进参数段，"
+            "不影响计算；若某个别名既算不出值又被 TACS 引用，仿真前会报出具体参数名，无需在此人工修改",
             entry_key,
         )
     if section.dollar_lines:
