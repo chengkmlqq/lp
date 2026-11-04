@@ -52,6 +52,7 @@ test("getTaskDisplayName hides internal task paths behind chinese labels", () =>
   assert.equal(getTaskDisplayName("app.tasks.fl_analysis_tasks.execute_fl_analysis_job"), "防雷分析计算");
   assert.equal(getTaskDisplayName("app.tasks.scheduled_task_tasks.execute_scheduled_task_job"), "定时任务执行");
   assert.equal(getTaskDisplayName("app.tasks.atp_asset_tasks.process_release_archive_upload"), "ATP 版本归档处理");
+  assert.equal(getTaskDisplayName("app.tasks.atp_asset_tasks.analyze_atp_asset_job"), "ATP 模型形态识别");
   assert.equal(getTaskDisplayName("app.tasks.unknown_tasks.custom_job"), "未识别任务");
 });
 
