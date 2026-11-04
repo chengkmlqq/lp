@@ -1457,6 +1457,32 @@ def execute_external_waveform_tower_analysis(
             _angle_val - 330.0 if _angle_val is not None else -330.0,
         )
 
+    # dT 自适应（2026-11-04 35kV 实测教训）：短横臂（如 0.8m，行程 3.2ns）小于模板
+    # dT=5ns 时引擎 KILL=29 拒跑，C# 桌面版靠 NoRelease_work.txt 人工覆写且不校验产物。
+    # 此处扫描渲染后 work.atp 的 /BRANCH 分布参数支路，自动收窄 dT（只收窄不放宽；
+    # 病态短支路低于硬下限时直接报错，绝不让引擎静默拒跑后出假结果）。
+    from .atp_deltat_adapter import AtpDataError, adapt_deltat as _adapt_deltat
+
+    try:
+        _adapted = _adapt_deltat(rendered_text)
+    except AtpDataError as exc:
+        raise RuntimeError(f"{snapshot.tower_no} 步长自适应失败：{exc}") from exc
+    for _note in _adapted.notes:
+        logger.info("[ATP] dT 自适应（%s）：%s", snapshot.tower_no, _note)
+    if _adapted.changed:
+        rendered_text = _adapted.atp_text
+        logger.info(
+            "[ATP] dT 自适应生效（%s）：%.2g s → %.2g s（最短支路行程 %.2f ns）",
+            snapshot.tower_no, _adapted.original_dt, _adapted.new_dt,
+            (_adapted.t_min or 0.0) * 1e9,
+        )
+        execution_options["_dt_adaptation"] = {
+            "original_dt": _adapted.original_dt,
+            "new_dt": _adapted.new_dt,
+            "t_min": _adapted.t_min,
+            "branch_count": len(_adapted.lines),
+        }
+
     run_dir = _prepare_run_directory(
         job=job, snapshot=snapshot, resolved_job=resolved_job,
         subdir=str(execution_options.get("_run_subdir") or ""),
