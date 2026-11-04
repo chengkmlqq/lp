@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
+  App,
   Button,
-  Card,
   Collapse,
   Drawer,
   Empty,
@@ -18,8 +18,8 @@ import {
   Tag,
   Tooltip,
   Typography,
-  message,
 } from "antd";
+import { Card as ThemeCard } from "@/components/ui-antd";
 import {
   CopyOutlined,
   DownloadOutlined,
@@ -133,6 +133,8 @@ interface AtpModelTestDrawerProps {
 export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerProps) {
   const { t } = useI18n();
   const { user, fetchWithAuth, hasPermission } = useAuth();
+  // 走全局 AntApp 上下文，避免静态 message 游离于主题容器外（气泡样式缺失）。
+  const { message } = App.useApp();
   const canRun = hasPermission("atp.run") || hasPermission("atp.manage");
 
   const [currentKa, setCurrentKa] = useState<number>(31);
@@ -269,7 +271,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
       {asset && canRun ? (
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           {/* 公共参数工具栏 */}
-          <Card size="small">
+          <ThemeCard size="small">
             <Space direction="vertical" size={12} style={{ width: "100%" }}>
               <Space wrap size={16}>
                 <Space size={8}>
@@ -357,11 +359,11 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                 </Tooltip>
               </Space>
             </Space>
-          </Card>
+          </ThemeCard>
 
           {/* 当前运行概览 */}
           {activeRun ? (
-            <Card size="small">
+            <ThemeCard size="small">
               <Space size={8} wrap>
                 <Typography.Text strong>{t("当前测试")}</Typography.Text>
                 {statusTag(activeRun.status, t)}
@@ -431,7 +433,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                   </Button>
                 </Space>
               ) : null}
-            </Card>
+            </ThemeCard>
           ) : null}
 
           {/* 三类测试卡片 */}
@@ -452,7 +454,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
           </Space>
 
           {/* 历史记录 */}
-          <Card size="small" title={t("历史记录")}>
+          <ThemeCard size="small" title={t("历史记录")}>
             <Table<AtpAssetRunSummary>
               rowKey="id"
               size="small"
@@ -488,7 +490,7 @@ export function AtpModelTestDrawer({ asset, open, onClose }: AtpModelTestDrawerP
                 { title: t("操作人"), dataIndex: "create_user", width: 120, render: (value: string | null) => value || "-" },
               ]}
             />
-          </Card>
+          </ThemeCard>
         </Space>
       ) : asset ? (
         <Alert
@@ -529,7 +531,7 @@ function StageCard({
 }) {
   const { t } = useI18n();
   return (
-    <Card
+    <ThemeCard
       size="small"
       title={
         <Space size={8}>
@@ -580,7 +582,7 @@ function StageCard({
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("该段尚未运行，点击「测试该段」发起")} />
         ) : null}
       </Space>
-    </Card>
+    </ThemeCard>
   );
 }
 

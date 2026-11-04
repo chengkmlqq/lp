@@ -10,7 +10,6 @@ import {
   Alert,
   App,
   Button,
-  Card,
   DatePicker,
   Descriptions,
   Drawer,
@@ -24,6 +23,7 @@ import {
   Tag,
   Typography,
 } from "antd";
+import { Card as ThemeCard } from "@/components/ui-antd";
 import type { ColumnsType } from "antd/es/table";
 import type { Dayjs } from "dayjs";
 import {
@@ -447,7 +447,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
               const result = detailSummary.stages?.[stage];
               if (!result) return null;
               return (
-                <Card
+                <ThemeCard
                   key={stage}
                   size="small"
                   title={
@@ -464,7 +464,7 @@ export function AtpModelTestTab({ assetId }: AtpModelTestTabProps) {
                   }
                 >
                   <StageDetailBody result={result} runId={detail.id} />
-                </Card>
+                </ThemeCard>
               );
             })}
           </Space>

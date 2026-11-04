@@ -478,20 +478,30 @@ body {
   color: #3261ce !important;
 }
 
-.ant-message {
-  width: auto !important;
-  max-width: min(420px, calc(100vw - 32px));
-  inset-inline: auto 16px !important;
+/* ===== antd v6 message 右上角气泡适配 =====
+   v6 DOM 与 v5 完全不同：.ant-message(fixed, flex) > .ant-message-list >
+   .ant-message-list-content(relative) > .ant-message-notice(absolute, max-content)。
+   v5 时代的 .ant-message-notice-content / .ant-message-custom-content 类已不存在；
+   旧的 width:auto + inset-inline 覆盖会让收缩容器内的 absolute 气泡被
+   .ant-message-list 的 overflow:hidden 裁剪成"小方块"。改为给根容器固定
+   宽度并钉在右上角，气泡在容器内对齐右侧。 */
+.ant-message.ant-message-top {
+  width: min(460px, calc(100vw - 32px)) !important;
+  max-width: min(460px, calc(100vw - 32px));
+  left: auto !important;
+  right: 16px !important;
+  transform: none !important; /* 抵消 v6 top placement 的 translateX(-50%) */
+  margin-inline: 0 !important;
 }
 
-.ant-message .ant-message-notice-wrapper {
-  margin-bottom: 12px;
-  padding-inline: 0;
-  text-align: end;
+.ant-message .ant-message-list {
+  padding: 0;
 }
 
-.ant-message .ant-message-notice-content {
-  max-width: min(420px, calc(100vw - 32px));
+.ant-message .ant-message-notice {
+  left: auto !important;
+  right: 0 !important;
+  max-width: 100%;
   border: 1px solid color-mix(in srgb, var(--ant-color-border-secondary) 80%, transparent);
   border-radius: 14px;
   box-shadow: 0 18px 40px color-mix(in srgb, var(--gray-12) 22%, transparent);
@@ -499,15 +509,21 @@ body {
   font-weight: 600;
   line-height: 1.6;
   text-align: start;
+  word-break: break-word;
 }
 
-.ant-message .ant-message-custom-content {
+.ant-message .ant-message-notice-wrapper {
   align-items: flex-start;
   gap: 10px;
 }
 
-.ant-message .ant-message-custom-content > .anticon {
-  margin-top: 2px;
+.ant-message .ant-message-notice-title {
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.ant-message .ant-message-notice-icon {
+  margin-top: 3px;
   font-size: 18px;
 }
 

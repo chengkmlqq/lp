@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/rea
 import {
   Alert,
   Button,
-  Card,
   Empty,
   Form,
   Input,
@@ -19,7 +18,6 @@ import {
   Tooltip,
   Typography,
   Upload,
-  type CardProps,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -34,9 +32,10 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent, type RefAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { Card as ThemeCard } from "@/components/ui-antd";
 import { ModoTabs } from "@/components/biz/modo-tabs";
 import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
@@ -53,8 +52,6 @@ import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { ApiError, getApiBaseUrl, readApiError } from "@/lib/api";
 import type { AtpAssetListResponse, AtpAssetSummary, DimensionTypeTreeItem, TempUploadResponse } from "@/types/auth";
 import type { DimensionItemListResponse } from "@/types/dimension";
-
-const AntCard = Card as unknown as ComponentType<CardProps & RefAttributes<HTMLDivElement>>;
 
 type AssetFormValues = {
   voltage_level: string;
@@ -1267,13 +1264,13 @@ export default function AtpModelsPage() {
 
   if (!user || !canRead) {
     return (
-      <Card>
+      <ThemeCard>
         <Space direction="vertical" size={12}>
           <Typography.Text type="secondary">
             {!user ? t("请先登录后再查看 ATP 模型管理。") : t("当前账号无 ATP 模块权限（需要 atp.read/atp.run/atp.manage）。")}
           </Typography.Text>
         </Space>
-      </Card>
+      </ThemeCard>
     );
   }
 
@@ -1328,7 +1325,7 @@ export default function AtpModelsPage() {
                   {/* Left: 维度树（电压等级 → 塔型 → 雷击方式 → 避雷器组合） */}
                   {!isMobile ? (
                     <div style={{ width: leftPanelWidth, minWidth: 180, maxWidth: 600, flexShrink: 0, display: "flex" }}>
-                      <AntCard
+                      <ThemeCard
                         className="admin-atp-models-sider-card"
                         style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
                         styles={{ body: { flex: 1, padding: 0 } }}
@@ -1378,7 +1375,7 @@ export default function AtpModelsPage() {
                             />
                           )}
                         </div>
-                      </AntCard>
+                      </ThemeCard>
                     </div>
                   ) : null}
                   {!isMobile ? (

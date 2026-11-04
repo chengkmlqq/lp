@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Card, Descriptions, Empty, Space, Spin, Table, Tag, Typography, message } from "antd";
+import { Alert, App, Button, Descriptions, Empty, Space, Spin, Table, Tag, Typography } from "antd";
+import { Card as ThemeCard } from "@/components/ui-antd";
 import { ReloadOutlined, ScanOutlined } from "@ant-design/icons";
 import { useState } from "react";
 
@@ -66,7 +67,8 @@ export function AtpModelSlotsPanel({ assetId }: AtpModelSlotsPanelProps) {
   const { t } = useI18n();
   const { fetchWithAuth, hasPermission } = useAuth();
   const queryClient = useQueryClient();
-  const [messageApi, messageContextHolder] = message.useMessage();
+  // 走全局 AntApp 上下文，避免局部 useMessage 渲染到主题容器外（气泡样式缺失）。
+  const { message: messageApi } = App.useApp();
   const [scanning, setScanning] = useState(false);
 
   const canManage = hasPermission("atp.manage");
@@ -138,7 +140,7 @@ export function AtpModelSlotsPanel({ assetId }: AtpModelSlotsPanelProps) {
   ];
 
   return (
-    <Card
+    <ThemeCard
       className="admin-atp-models-slots-card"
       title={
         <Space>
@@ -173,7 +175,6 @@ export function AtpModelSlotsPanel({ assetId }: AtpModelSlotsPanelProps) {
       }
       styles={{ body: { paddingTop: 8 } }}
     >
-      {messageContextHolder}
       {slotsQuery.isLoading ? (
         <div style={{ textAlign: "center", padding: "24px 0" }}>
           <Spin />
@@ -213,7 +214,7 @@ export function AtpModelSlotsPanel({ assetId }: AtpModelSlotsPanelProps) {
               </Typography.Title>
               <Space size={12} wrap>
                 {Object.entries(slotsQuery.data?.geometry ?? {}).map(([name, geo]) => (
-                  <Card key={name} size="small" className="admin-atp-models-geo-card" styles={{ body: { padding: "8px 16px" } }}>
+                  <ThemeCard key={name} size="small" className="admin-atp-models-geo-card" styles={{ body: { padding: "8px 16px" } }}>
                     <Descriptions
                       size="small"
                       column={1}
@@ -225,7 +226,7 @@ export function AtpModelSlotsPanel({ assetId }: AtpModelSlotsPanelProps) {
                         { key: "span", label: t("档距行"), children: geo.span_rows.join(", ") || "-" },
                       ]}
                     />
-                  </Card>
+                  </ThemeCard>
                 ))}
               </Space>
             </>
@@ -266,6 +267,6 @@ export function AtpModelSlotsPanel({ assetId }: AtpModelSlotsPanelProps) {
           ) : null}
         </>
       )}
-    </Card>
+    </ThemeCard>
   );
 }

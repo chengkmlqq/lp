@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Card, Checkbox, Drawer, Form, Input, InputNumber, Progress, Select, Space, Spin, Statistic, Table, Tag, Typography, message } from "antd";
+import { Alert, App, Button, Checkbox, Drawer, Form, Input, InputNumber, Progress, Select, Space, Spin, Statistic, Table, Tag, Typography } from "antd";
+import { Card as ThemeCard } from "@/components/ui-antd";
 import { DownloadOutlined, ExperimentOutlined, RocketOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
@@ -36,6 +37,9 @@ interface AtpBatchTestDrawerProps {
 export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: AtpBatchTestDrawerProps) {
   const { t } = useI18n();
   const { user } = useAuth();
+  // 走全局 AntApp 上下文（与 useToastFeedback 一致），避免静态 message 游离于
+  // 主题容器外导致气泡样式/变量缺失（"小方块"问题的一部分）。
+  const { message } = App.useApp();
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [volFilter, setVolFilter] = useState<string>("");
   const [twFilter, setTwFilter] = useState<string>("");
@@ -271,7 +275,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
     >
       {!batch ? (
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
-          <Card size="small" title={t("① 选择模型")}>
+          <ThemeCard size="small" title={t("① 选择模型")}>
             <Space direction="vertical" size={8} style={{ width: "100%" }}>
               <Space wrap>
                 <Select
@@ -319,9 +323,9 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 ]}
               />
             </Space>
-          </Card>
+          </ThemeCard>
 
-          <Card size="small" title={t("② 测试参数(公共)")}>
+          <ThemeCard size="small" title={t("② 测试参数(公共)")}>
             <Space direction="vertical" size={8} style={{ width: "100%" }}>
               <Space wrap>
                 <Form.Item label={t("测试阶段")} style={{ marginBottom: 0 }}>
@@ -344,7 +348,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 {t("对拍口径")}:{t("雷电流幅值全部用同一值")};{t("依赖段(simulate→LCC→物化)自动补齐")};{t("判据看产物不看退出码")}。
               </Typography.Text>
             </Space>
-          </Card>
+          </ThemeCard>
 
           {submitError ? <Alert type="error" showIcon message={submitError} /> : null}
 
@@ -360,7 +364,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
         </Space>
       ) : (
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Card size="small" title={`${t("批量测试进度")} · ${batch.batch_id}`}>
+          <ThemeCard size="small" title={`${t("批量测试进度")} · ${batch.batch_id}`}>
             <Space direction="vertical" size={8} style={{ width: "100%" }}>
               <Progress percent={progress} status={finished ? "success" : "active"} />
               <Space size={24}>
@@ -380,11 +384,11 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                 />
               ) : null}
             </Space>
-          </Card>
+          </ThemeCard>
 
           {finished ? (
             <>
-              <Card size="small" title={t("总体测试报告")}>
+              <ThemeCard size="small" title={t("总体测试报告")}>
                 <Space direction="vertical" size={12} style={{ width: "100%" }}>
                   <Space size={24}>
                     <Statistic title={t("总模型数")} value={batch.total} />
@@ -410,9 +414,9 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                     </div>
                   ) : null}
                 </Space>
-              </Card>
+              </ThemeCard>
 
-              <Card size="small" title={t("分组成绩")}>
+              <ThemeCard size="small" title={t("分组成绩")}>
                 <Table
                   size="small"
                   rowKey="group"
@@ -420,9 +424,9 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                   dataSource={batch.report.groups ?? []}
                   columns={groupColumns}
                 />
-              </Card>
+              </ThemeCard>
 
-              <Card size="small" title={t("明细")}>
+              <ThemeCard size="small" title={t("明细")}>
                 <Table
                   size="small"
                   rowKey="run_id"
@@ -430,10 +434,10 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                   dataSource={batch.items}
                   columns={columns}
                 />
-              </Card>
+              </ThemeCard>
             </>
           ) : (
-            <Card size="small" title={t("运行明细(实时)")}>
+            <ThemeCard size="small" title={t("运行明细(实时)")}>
               {batch.items.length === 0 ? (
                 <EmptyState />
               ) : (
@@ -446,7 +450,7 @@ export function AtpBatchTestDrawer({ open, initialBatchId = null, onClose }: Atp
                   columns={columns}
                 />
               )}
-            </Card>
+            </ThemeCard>
           )}
         </Space>
       )}

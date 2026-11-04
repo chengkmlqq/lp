@@ -1,6 +1,7 @@
 "use client";
 
-import { Button, Card, Dropdown, Modal, Progress, Tooltip, Typography } from "antd";
+import { Button, Dropdown, Modal, Progress, Tooltip, Typography } from "antd";
+import { Card } from "@/components/ui-antd";
 import {
   CheckCircleOutlined,
   DeleteOutlined,

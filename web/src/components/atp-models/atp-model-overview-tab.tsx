@@ -1,6 +1,7 @@
 "use client";
 
-import { Alert, Card, Empty, Spin, Typography } from "antd";
+import { Alert, Empty, Spin, Typography } from "antd";
+import { Card as ThemeCard } from "@/components/ui-antd";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
 import { useQuery } from "@tanstack/react-query";
@@ -127,9 +128,9 @@ export function AtpModelOverviewTab() {
       ) : !overviewQuery.data ? (
         <Empty description={t("暂无模型数据")} image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : (
-        <Card size="small" className="flex-1">
+        <ThemeCard size="small" className="flex-1">
           <ReactECharts option={option} style={{ height: 560, width: "100%" }} notMerge={false} lazyUpdate />
-        </Card>
+        </ThemeCard>
       )}
     </div>
   );
