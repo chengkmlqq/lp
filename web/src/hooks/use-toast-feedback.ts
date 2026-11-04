@@ -39,7 +39,9 @@ export function useToastFeedback({
       return;
     }
     lastErrorRef.current = renderedError;
-    message.error(`${errorTitle}：${renderedError}`);
+    // 多行文本（上传预检报告等）读不完 3 秒：按长度延长停留时间，上限 9 秒
+    const duration = renderedError.length > 120 ? 9 : renderedError.length > 40 ? 5 : 3;
+    message.error(`${errorTitle}：${renderedError}`, duration);
     clearError?.();
   }, [clearError, errorMessage, errorTitle, message]);
 

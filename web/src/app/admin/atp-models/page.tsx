@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import {
   Alert,
+  App,
   Button,
   Empty,
   Form,
@@ -205,7 +206,8 @@ export default function AtpModelsPage() {
   const [fileListExpanded, setFileListExpanded] = useState(false);
   const [tempFileId, setTempFileId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadError, setUploadError] = useState("");
+  // 上传/预检失败的提示不再塞进表单或上传区域，统一走右上角消息气泡
+  const { message } = App.useApp();
 
   const isMobile = useMobileDetection();
   // 视图模式：默认卡片视图；用户手动切换后以手动选择为准（参考菜单管理页）
@@ -348,19 +350,15 @@ export default function AtpModelsPage() {
       setFileList([]);
       setTempFileId(null);
       setUploadProgress(0);
-      setUploadError("");
       setFileListExpanded(false);
       form.resetFields();
     },
     onError: (candidate) => {
       setSuccess("");
+      // 2026-11-04：新建失败（含上传预检多行报告）统一走右上角消息提示，
+      // 不再在表单顶部插 Alert —— 弹窗内布局保持稳定，报告换行由 message 样式承载。
       const detail = candidate instanceof Error ? candidate.message : t("创建模型失败");
-      if (detail.includes("\n")) {
-        // 多行长文本（上传预检报告）：放弹窗内完整展示，不走 toast 气泡
-        setModalError(detail);
-      } else {
-        setError(new ApiError(detail));
-      }
+      setError(new ApiError(detail));
     },
   });
 
@@ -496,17 +494,24 @@ export default function AtpModelsPage() {
     },
   });
 
+  // 上传阶段的失败提示（含多行预检报告）统一用消息气泡弹出，读不完时自动延长停留
+  const notifyUploadError = useCallback(
+    (detail: string) => {
+      const duration = detail.length > 120 ? 9 : detail.length > 40 ? 5 : 3;
+      message.error(detail, duration);
+    },
+    [message],
+  );
+
   const handleTempUpload = useCallback(
     async (files: File[]) => {
       if (files.length === 0) {
         setTempFileId(null);
         setUploadProgress(0);
-        setUploadError("");
         return;
       }
       setTempFileId(null);
       setUploadProgress(0);
-      setUploadError("");
 
       let zipBlob: Blob;
       try {
@@ -535,7 +540,7 @@ export default function AtpModelsPage() {
         }
         zipBlob = await zip.generateAsync({ type: "blob" });
       } catch {
-        setUploadError(t("模型文件打包失败，请重新选择文件夹"));
+        notifyUploadError(t("模型文件打包失败，请重新选择文件夹"));
         return;
       }
 
@@ -560,34 +565,33 @@ export default function AtpModelsPage() {
             const payload = JSON.parse(xhr.responseText) as TempUploadResponse;
             setTempFileId(payload.temp_file_id);
           } catch {
-            setUploadError(t("上传成功但响应解析失败，请重新选择文件夹"));
+            notifyUploadError(t("上传成功但响应解析失败，请重新选择文件夹"));
           }
           return;
         }
-        let message = `HTTP ${xhr.status}`;
+        let errorText = `HTTP ${xhr.status}`;
         try {
           const parsed = JSON.parse(xhr.responseText) as { detail?: string };
-          if (parsed?.detail?.trim()) message = parsed.detail;
+          if (parsed?.detail?.trim()) errorText = parsed.detail;
         } catch {
           // 忽略非 JSON 响应
         }
-        setUploadError(message);
+        notifyUploadError(errorText);
       };
-      xhr.onerror = () => setUploadError(t("网络异常，上传失败"));
-      xhr.onabort = () => setUploadError(t("上传已取消"));
+      xhr.onerror = () => notifyUploadError(t("网络异常，上传失败"));
+      xhr.onabort = () => notifyUploadError(t("上传已取消"));
 
       const formData = new FormData();
       formData.append("file", zipBlob, "model.zip");
       xhr.send(formData);
     },
-    [getAccessToken],
+    [getAccessToken, notifyUploadError],
   );
 
   useEffect(() => {
     if (fileList.length === 0) {
       setTempFileId(null);
       setUploadProgress(0);
-      setUploadError("");
       return;
     }
     const timer = window.setTimeout(() => {
@@ -603,7 +607,6 @@ export default function AtpModelsPage() {
     setFileList([]);
     setTempFileId(null);
     setUploadProgress(0);
-    setUploadError("");
     form.setFieldsValue(EMPTY_FORM);
     setModalOpen(true);
   }, [form]);
@@ -644,7 +647,6 @@ export default function AtpModelsPage() {
     setFileListExpanded(false);
     setTempFileId(null);
     setUploadProgress(0);
-    setUploadError("");
     form.resetFields();
   };
 
@@ -1584,20 +1586,6 @@ export default function AtpModelsPage() {
         okButtonProps={{ disabled: !tempFileId }}
         width={760}
       >
-        {modalError && (
-          <Alert
-            type="error"
-            showIcon
-            closable
-            className="mb-4"
-            onClose={() => setModalError(null)}
-            message={
-              <div className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-relaxed">
-                {modalError}
-              </div>
-            }
-          />
-        )}
         <Form
           form={form}
           layout="vertical"
@@ -1692,7 +1680,6 @@ export default function AtpModelsPage() {
                   setFileList([]);
                   setTempFileId(null);
                   setUploadProgress(0);
-                  setUploadError("");
                 }}
               >
                 {fileList.length === 0 ? (
@@ -1718,11 +1705,6 @@ export default function AtpModelsPage() {
                       <Typography.Text type="warning">{t("上传中…")}</Typography.Text>
                     )}
                   </>
-                )}
-                {uploadError && (
-                  <Typography.Text type="danger" style={{ display: "block", marginTop: 8 }}>
-                    {uploadError}
-                  </Typography.Text>
                 )}
               </Upload.Dragger>
               {fileList.length > 0 && (
