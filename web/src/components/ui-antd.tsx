@@ -290,7 +290,10 @@ export function Card({
   ...rest
 }: CardProps) {
   void variant;
-  const mappedSize = size === "2" ? "small" : "default";
+  // antd v6：Card 的 size 只有 small / medium（"default" 已废弃并持续告警）。
+  // 旧实现把除 "2" 以外全部映射成 "default"，导致各页面显式传的 size="small" 被
+  // 吞掉、卡片一律走中号内边距。这里改为显式透传，其余统一 medium（= 旧 default）。
+  const mappedSize: "small" | "medium" = size === "small" || size === "2" ? "small" : "medium";
 
   if (asChild && isValidElement(children)) {
     const child = Children.only(children) as ReactElement<{
