@@ -1,5 +1,6 @@
 "use client";
 import { useI18n } from "@/lib/i18n";
+import { translateAnalysisText } from "@/lib/analysis-text";
 import { modoTablePagination } from "@/components/biz/modo-pagination";
 
 import { Alert, Empty, Form, Input, Modal, Select, Space, Table, Tag, Typography } from "antd";
@@ -45,7 +46,7 @@ export function ScenarioModal({
   onSubmit,
   onCancel,
 }: ScenarioModalProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   return (
     <Modal
       title={selectedJob ? `${t("加装避雷器复算")} - ${selectedJob.job_name || selectedJob.line_name || selectedJob.line_code}` : t("加装避雷器复算")}
@@ -132,12 +133,12 @@ export function ScenarioModal({
                 {
                   title: t("高风险原因"),
                   key: "cause_analysis",
-                  render: (_value, row) => readString(readObject(row.result_json), "cause_analysis"),
+                  render: (_value, row) => translateAnalysisText(readString(readObject(row.result_json), "cause_analysis"), lang),
                 },
                 {
                   title: t("当前动作"),
                   key: "mitigation_recommendation",
-                  render: (_value, row) => readString(readObject(row.result_json), "mitigation_recommendation"),
+                  render: (_value, row) => translateAnalysisText(readString(readObject(row.result_json), "mitigation_recommendation"), lang),
                 },
               ]}
               dataSource={rows}

@@ -2,6 +2,7 @@
 
 import { Button, Collapse, Descriptions, Empty, Space, Table, Tag, Typography } from "antd";
 import { useI18n } from "@/lib/i18n";
+import { translateAnalysisText } from "@/lib/analysis-text";
 
 const ATP_TOWER_TEXT: Record<string, string> = {
   guxing: "鼓型", maotou: "猫头型", ganzi: "干字型", jiubei: "酒杯型",
@@ -72,16 +73,31 @@ import {
 } from "./types";
 
 const buildReasonDetailColumns = (t: (s: string) => string): ColumnsType<ReasonDetail> => [
-  { title: t("因子"), dataIndex: "label", width: 180 },
+  {
+    title: t("因子"),
+    dataIndex: "label",
+    width: 180,
+    render: (value: string) => t(value),
+  },
   {
     title: t("当前值"),
     key: "value",
-    render: (_value, row) => (row.value === undefined || row.value === null ? "-" : String(row.value)),
+    render: (_value, row) => {
+      if (row.value === undefined || row.value === null) {
+        return "-";
+      }
+      return typeof row.value === "string" ? t(row.value) : String(row.value);
+    },
   },
   {
     title: t("标准值"),
     key: "standard_value",
-    render: (_value, row) => (row.standard_value === undefined || row.standard_value === null ? "-" : String(row.standard_value)),
+    render: (_value, row) => {
+      if (row.standard_value === undefined || row.standard_value === null) {
+        return "-";
+      }
+      return typeof row.standard_value === "string" ? t(row.standard_value) : String(row.standard_value);
+    },
   },
   {
     title: t("档次"),
@@ -354,7 +370,7 @@ export function TowerDetailView({
   canReadLogs?: boolean;
   onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
 }): ReactNode {
-  const { t } = useI18n();
+const { t, lang } = useI18n();
   const detailResultObject = readObject(detailRow.result_json);
   const reasonDetails = readReasonDetails(detailRow);
   const mitigationActions = readMitigationActions(detailRow);
@@ -444,10 +460,10 @@ export function TowerDetailView({
           {readOptionalString(detailRow, "summary_text") ?? "-"}
         </Descriptions.Item>
         <Descriptions.Item label={t("原因分析")} span={2}>
-          {readString(detailResultObject, "cause_analysis")}
+          {translateAnalysisText(readString(detailResultObject, "cause_analysis"), lang)}
         </Descriptions.Item>
         <Descriptions.Item label={t("措施建议")} span={2}>
-          {readString(detailResultObject, "mitigation_recommendation")}
+          {translateAnalysisText(readString(detailResultObject, "mitigation_recommendation"), lang)}
         </Descriptions.Item>
         <Descriptions.Item label={t("当前得分")}>
           {selectedJob?.job_type === "mitigation"

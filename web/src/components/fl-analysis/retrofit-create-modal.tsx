@@ -21,6 +21,7 @@ import { Alert, Empty, Form, Input, Modal, Select, Space, Table, Tag, Typography
 import { useCallback, useEffect, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { translateAnalysisText } from "@/lib/analysis-text";
 import { modoTablePagination } from "@/components/biz/modo-pagination";
 import { useAuth } from "@/components/auth-provider";
 import { readApiError } from "@/lib/api";
@@ -70,7 +71,7 @@ type RetrofitFormValues = {
 };
 
 export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreateModalProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { user, fetchWithAuth } = useAuth();
   const [form] = Form.useForm<RetrofitFormValues>();
   const [baseJobs, setBaseJobs] = useState<FlAnalysisJobSummary[]>([]);
@@ -333,12 +334,12 @@ export function RetrofitCreateModal({ open, onClose, onCreated }: RetrofitCreate
                 {
                   title: t("高风险原因"),
                   key: "cause_analysis",
-                  render: (_value, row) => readString(readObject(row.result_json), "cause_analysis"),
+                  render: (_value, row) => translateAnalysisText(readString(readObject(row.result_json), "cause_analysis"), lang),
                 },
                 {
                   title: t("当前建议"),
                   key: "mitigation_recommendation",
-                  render: (_value, row) => readString(readObject(row.result_json), "mitigation_recommendation"),
+                  render: (_value, row) => translateAnalysisText(readString(readObject(row.result_json), "mitigation_recommendation"), lang),
                 },
               ]}
               dataSource={rows}
