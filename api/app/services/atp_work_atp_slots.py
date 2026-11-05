@@ -95,13 +95,13 @@ def _phase_x3_ha(
     C# 双回用 `m上相中距sh_m[0]` / `m上相高度sh_m[0]`，单回用 `m左相导线中距_m` /
     `m左相导线高度_m` —— 而 `m左相导线中距_m ≡ m上相中距`（win-csharp #0010 核实），
     所以两种情况**都取物理上相**。
-    ⚠️ 台账「上/中/下」三列承载的是 A/B/C 相值，物理上相 = 台账列[相序[0]]，
-    必须先按相序重排（否则 guxing(BCA) 会取错，实测 k0 0.169 vs C# 0.35）。
+    ⚠️ 2026-11-06 修复（220kV 承福甲线 252 塔 C#/Web 对拍）：**不再按相序重排**。
+    桌面版 AllCall_CS(101) → ShangZhongXia=true（Method.cs:127-136），
+    m上相中距sh_m[0] 收到的就是台账「上相中距」列（shCheckThreePhaseAndSetPhase
+    3532 起直读分支），物理上相 = geometry["upper"] 本身。
+    （此前按相序取列对齐的是 C# mode<100 的 A/B/C 相命名入口，对桌面 101 是错的。）
     """
-    from .atp_phase_sequence import permute_layer
-
-    seq = _normalize_sequence(phase_sequence)
-    layer = permute_layer(geometry, seq)
+    layer = geometry
     spacing = (layer or {}).get("phase_spacing_m") or {}
     height = (layer or {}).get("phase_height_m") or {}
     return _f(spacing.get("upper")), _f(height.get("upper"))

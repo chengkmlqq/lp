@@ -168,11 +168,20 @@ def build_dat_values(*, section: str, params: dict[str, str],
         raise RuntimeError("缺少避雷线左/右中距，无法改写 .dat 几何")
 
     # 杆塔回路几何（I/II/III/IV 回的上/中/下相中距与相高）——单回塔型与四回型都要用
-    # ⚠️ 2026-09-20 修复：先按「回路相序」把台账 A/B/C 三列重排为物理上/中/下
-    # （C# 权威 MyParamClass.cs:1595-1716；见 atp_phase_sequence 模块）。
-    from .atp_phase_sequence import permute_circuit_geometry
-
-    _cg = permute_circuit_geometry((base_tower or {}).get("circuit_geometry_json") or {}, profile)
+    # ⚠️ 2026-11-06 修复（220kV 承福甲线 252 塔 C#/Web 对拍）：**不再按相序置换**。
+    # C# 桌面版（台账普通计算）走 MyFunction.cs:2483 AllCall_CS(101, ...) →
+    # Method.cs:127 `if (_type > 100) mWith_ShangZhongXia = true` →
+    # MyParamClass.shCheckThreePhaseAndSetPhase 走 3532 起的「上/中/下直读」分支：
+    # 台账「上/中/下相中距(高度)」三列就是**物理位置**，按列名直配
+    # （"1回路A相中距m" 槽位收到的就是 CSV 的 I回上相中距，见 MyFunction.cs:2436
+    # guxing 参数拼接顺序 1ZJ_Shang,2ZJ_Shang,1ZJ_Zhong,... 与
+    # shSetDefault_GanTa_Param 注册序 14="1回路A相中距m" 一一对应）。
+    # 相序串只用于输出闪络相命名，不参与几何重排。
+    # 此前的 permute_circuit_geometry 对齐的是 C# mode<100 的 A/B/C 相命名入口
+    # （智洋对接等），对桌面 101 入口是错的：ACB/CBA/BAC 塔的中/下相几何互换，
+    # 反击耐雷系统性偏低 ~24%（0.77×）。d35shangzi 12 塔验证未暴露该 bug，
+    # 因其相序 CBA 且 A≡C（中距 7/7、高度 17/17），置换恰为恒等。
+    _cg = dict((base_tower or {}).get("circuit_geometry_json") or {})
 
     # 相中距：⚠️ 2026-09-20 修复（与 C# 对拍发现，见中转站消息 #0008）
     # C# 权威口径（ComputeLightningProtection.cs:3843-4483 的 MySetValue）：
