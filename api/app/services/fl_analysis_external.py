@@ -569,6 +569,42 @@ _NUMERIC_PARAM_LINE_RE = re.compile(
     r"^([A-Za-z][A-Za-z0-9_]*)\s*=\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*$"
 )
 
+# 渲染/覆写链路代码版本标记。写入结果 JSON 的 external_execution 里，
+# 用于判定「远端执行端跑的是哪一版代码」——ATP 由独立 wine worker 执行，
+# 只 git pull 不重启进程时新代码不会生效，而结果表面上完全正常（2026-11-05 踩过）。
+# 每次改动渲染/覆写逻辑时同步递增。
+ATP_RENDER_CODE_VERSION = "2026-11-05c-geom+k0+version-beacon"
+
+
+def _render_fingerprint(text: str) -> dict[str, Any]:
+    """渲染结果的指纹：参数区摘要 + 关键参数值，用于核对真正进了模型的参数。"""
+    import hashlib
+
+    in_blk = False
+    block_lines: list[str] = []
+    wanted = {
+        "RER001", "RELENS____", "REHG______", "REHC1_____", "REHC2_____",
+        "REHC3_____", "RELE01", "REIAMP____", "REIGAN____", "11K0", "K0",
+    }
+    picked: dict[str, str] = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.upper().startswith("$PARAMETER"):
+            in_blk = True
+            continue
+        if in_blk and stripped.upper().startswith("BLANK"):
+            break
+        if not in_blk:
+            continue
+        block_lines.append(stripped)
+        if "=" in stripped:
+            name, _, value = stripped.partition("=")
+            name = name.strip()
+            if name in wanted:
+                picked[name] = value.strip()
+    digest = hashlib.sha1("\n".join(block_lines).encode("utf-8", "replace")).hexdigest()[:16]
+    return {"param_block_sha1": digest, "params": picked}
+
 
 def _numeric_geometry_override_enabled() -> bool:
     """数值型模板是否连几何参数一起覆写（默认开启）。
@@ -1708,7 +1744,11 @@ def execute_external_waveform_tower_analysis(
             snapshot.tower_no,
             "; ".join(_num_override_notes[:6]),
         )
-    logger.info("[ATP] 模板渲染完成，输入文件大小=%d 字节", len(rendered_text))
+    logger.info(
+        "[ATP] 模板渲染完成，输入文件大小=%d 字节，代码版本=%s，几何覆写=%s，覆写项=%d",
+        len(rendered_text), ATP_RENDER_CODE_VERSION,
+        _numeric_geometry_override_enabled(), len(_num_override_notes),
+    )
 
     # ── 方案 A：任务级私有引擎目录（默认开）──
     # 支持并发：每个任务/快照的 .lib 物化+重生成到独立 D:\ATP\.runs\{job}\{snap}\...，
@@ -2075,6 +2115,15 @@ def execute_external_waveform_tower_analysis(
         engine_command=" ".join(command),
         working_dir=str(run_dir),
     )
+    # 渲染链路自证：把代码版本、几何覆写开关、渲染指纹、逐塔覆写记录写进结果。
+    # 远端 wine worker 若仍在跑旧进程，这里的版本号/指纹会暴露出来。
+    execution_info = dict(merged_result.get("external_execution") or {})
+    execution_info["render_code_version"] = ATP_RENDER_CODE_VERSION
+    execution_info["render_geometry_override"] = bool(_numeric_geometry_override_enabled())
+    execution_info["render_override_count"] = len(_num_override_notes)
+    execution_info["render_override_notes"] = _num_override_notes[:24]
+    execution_info["render_fingerprint"] = _render_fingerprint(rendered_text)
+    merged_result["external_execution"] = execution_info
     return ExternalTowerExecutionResult(
         result_json=merged_result,
         engine_command=" ".join(command),
