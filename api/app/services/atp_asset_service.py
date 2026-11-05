@@ -1452,7 +1452,7 @@ def unpublish_asset(db: Session, *, asset_id: str, actor_user_id: str | None = N
 
 
 def get_asset_overview_tree(db: Session) -> dict[str, Any]:
-    """总览思维导图：电压→塔型→场景→避雷器→避雷线→版本，叶子标注生效状态。
+    """总览思维导图：电压→塔型→场景→避雷器→避雷线→版本，叶子标注发布状态。
 
     一次查出全部资产（仅需要列），按维度逐层聚合，返回嵌套树结构。
     """
@@ -1464,7 +1464,7 @@ def get_asset_overview_tree(db: Session) -> dict[str, Any]:
             AtpAsset.arrester_config,
             AtpAsset.shield_wire,
             AtpAsset.version,
-            AtpAsset.is_active,
+            AtpAsset.is_published,
             AtpAsset.status,
             AtpAsset.name,
             AtpAsset.id,
@@ -1518,12 +1518,12 @@ def get_asset_overview_tree(db: Session) -> dict[str, Any]:
                                    "key": f"vl:{vol}|tw:{tw}|sc:{sc}|ar:{ar}|sw:{sw}",
                                    "value": len(sw_rows), "children": []}
                         for r in sorted(sw_rows, key=lambda x: x.version or ""):
-                            active = bool(r.is_active)
+                            published = bool(r.is_published)
                             sw_node["children"].append({
-                                "label": f"{r.version or 'v1'} ({'生效' if active else '未生效'})",
+                                "label": f"{r.version or 'v1'} ({'已发布' if published else '未发布'})",
                                 "key": r.id,
                                 "value": 1,
-                                "is_active": active,
+                                "is_published": published,
                                 "asset_id": r.id,
                                 "asset_name": r.name,
                                 "status": r.status,

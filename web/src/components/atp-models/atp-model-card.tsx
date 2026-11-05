@@ -4,7 +4,6 @@ import { Button, Dropdown, Modal, Progress, Space, Tooltip, Typography } from "a
 import { Card } from "@/components/ui-antd";
 import {
   ApartmentOutlined,
-  CheckCircleOutlined,
   DeleteOutlined,
   DisconnectOutlined,
   EditOutlined,
@@ -13,17 +12,22 @@ import {
   MoreOutlined,
   SafetyOutlined,
   SendOutlined,
-  StopOutlined,
   SyncOutlined,
   ThunderboltOutlined,
   AppstoreOutlined,
   BlockOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import { useCallback } from "react";
+import type { ReactNode } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import type { AtpAssetStatus, AtpAssetSummary } from "@/types/auth";
-import { AtpModelFormatTag } from "./atp-model-format-tag";
+import { checkWarningCount } from "@/lib/atp-model-format";
+import { resolveFormatMeta } from "./atp-model-format-tag";
+
+/** 右下角最多平铺几个操作按钮，其余收进「更多」 */
+const MAX_VISIBLE_ACTIONS = 2;
 
 interface AtpModelCardProps {
   asset: AtpAssetSummary;
@@ -34,14 +38,11 @@ interface AtpModelCardProps {
   onEdit: (asset: AtpAssetSummary) => void;
   onDelete: (id: string) => void;
   onTest: (asset: AtpAssetSummary) => void;
-  onActivate: (id: string) => void;
-  onDeactivate: (id: string) => void;
   onPublish: (id: string) => void;
   onUnpublish: (id: string) => void;
   /** 按存储里的真实 work.atp 重判形态（存量资产默认值不被当成结论） */
   onRecheckFormat: (id: string) => void;
   recheckBusy: boolean;
-  activeBusy: boolean;
   publishBusy: boolean;
   dimensionLabelMap?: {
     voltage_level?: Map<string, string>;
@@ -49,6 +50,16 @@ interface AtpModelCardProps {
     scene_type?: Map<string, string>;
     arrester_config?: Map<string, string>;
   };
+}
+
+interface CardAction {
+  key: string;
+  label: string;
+  icon: ReactNode;
+  tooltip: string;
+  disabled?: boolean;
+  danger?: boolean;
+  run: () => void;
 }
 
 function formatDimension(value: string | null, map: Map<string, string> | undefined): string | null {
@@ -81,14 +92,29 @@ function statusMeta(status: AtpAssetStatus, t: (s: string) => string): { text: s
 }
 
 /**
- * 模型卡片（2026-11-05 对齐线路管理页卡片重设计）：
- * 一行主信息（名称 + 形态标记），一行维度链，一行元信息（发布/生效/异常/时间），
- * 底部动作栏——操作按钮全部放右下角（测试/详情/发布|下线/更多），
- * 与线路管理页卡片同构：左侧留空（处理中时放进度条），右侧为按钮组。
+ * 模型卡片（2026-11-05 再调整）：
+ * - 发布状态移到右上角，「生效/失效」随发布上线而取消（发布即生效，下线即退出仿真定位）；
+ * - 形态（新版/老版/检测中…）不再用标签，改为卡片上的一枚水印式印章；
+ * - 右下角最多两个按钮（发布|下线 → 测试），其余收进「更多」。
  */
-export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onActivate, onDeactivate, onPublish, onUnpublish, onRecheckFormat, recheckBusy, activeBusy, publishBusy, dimensionLabelMap }: AtpModelCardProps) {
+export function AtpModelCard({
+  asset,
+  canManage,
+  canTest,
+  deleteLoading,
+  onView,
+  onEdit,
+  onDelete,
+  onTest,
+  onPublish,
+  onUnpublish,
+  onRecheckFormat,
+  recheckBusy,
+  publishBusy,
+  dimensionLabelMap,
+}: AtpModelCardProps) {
   const { t } = useI18n();
-  const rowBusy = deleteLoading || activeBusy || publishBusy;
+  const rowBusy = deleteLoading || publishBusy;
 
   const handleView = useCallback(() => {
     onView(asset);
@@ -127,6 +153,83 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
   const updateTime = formatDateShort(asset.update_date);
   const published = asset.is_published !== false;
 
+  // 形态印章：继承原形态 pill 的判定（检测中/检测失败/待检测/新版/老版…）
+  const formatMeta = resolveFormatMeta(asset);
+  const formatWarnCount = asset.analysis_status === "failed" ? 0 : checkWarningCount(asset.format_check);
+  const formatHint =
+    formatWarnCount > 0
+      ? `${formatMeta.hint}（${t("另有")} ${formatWarnCount} ${t("条预检提示，详情页可查看")}）`
+      : formatMeta.hint;
+
+  // 动作清单：顺序即优先级，前 MAX_VISIBLE_ACTIONS 个平铺在右下角，其余进「更多」。
+  // 「详情」点卡片本身即可进入，故排在两位常用操作之后。
+  const actions: CardAction[] = [];
+  if (canManage) {
+    if (published) {
+      actions.push({
+        key: "unpublish",
+        label: t("下线"),
+        icon: <DisconnectOutlined />,
+        tooltip: t("下线该版本（下线后不参与仿真定位）"),
+        disabled: rowBusy,
+        run: () => onUnpublish(asset.id),
+      });
+    } else {
+      actions.push({
+        key: "publish",
+        label: t("发布"),
+        icon: <SendOutlined />,
+        tooltip: t("发布该版本（发布后参与仿真定位）"),
+        disabled: rowBusy,
+        run: () => onPublish(asset.id),
+      });
+    }
+  }
+  actions.push({
+    key: "test",
+    label: t("测试"),
+    icon: <ExperimentOutlined />,
+    tooltip: canTest ? t("模型测试") : t("缺少测试权限（需要 atp.run / atp.manage）"),
+    disabled: !canTest,
+    run: handleTest,
+  });
+  actions.push({
+    key: "detail",
+    label: t("详情"),
+    icon: <EyeOutlined />,
+    tooltip: t("详情"),
+    run: handleView,
+  });
+  if (canManage) {
+    actions.push({
+      key: "edit",
+      label: t("编辑"),
+      icon: <EditOutlined />,
+      tooltip: t("编辑"),
+      run: handleEdit,
+    });
+    actions.push({
+      key: "recheck-format",
+      label: t("重新检测形态"),
+      icon: <SyncOutlined spin={recheckBusy} />,
+      tooltip: t("重新检测形态"),
+      disabled: recheckBusy,
+      run: () => onRecheckFormat(asset.id),
+    });
+    actions.push({
+      key: "delete",
+      label: t("删除"),
+      icon: <DeleteOutlined />,
+      tooltip: t("删除"),
+      danger: true,
+      disabled: rowBusy,
+      run: handleDelete,
+    });
+  }
+
+  const visibleActions = actions.slice(0, MAX_VISIBLE_ACTIONS);
+  const overflowActions = actions.slice(MAX_VISIBLE_ACTIONS);
+
   return (
     <Card
       size="small"
@@ -135,15 +238,40 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
       onClick={handleView}
       styles={{ body: { padding: 0 } }}
     >
-      <div className="flex h-full flex-col">
-        {/* 标题栏：与线路管理页卡片同构（图标 + 名称 + 右侧形态标记 + 底部分隔线） */}
+      <div className="relative flex h-full flex-col">
+        {/* 形态印章：水印式盖在卡片右侧（替代原右上角形态标签） */}
+        <Tooltip title={formatHint}>
+          <div
+            className="admin-atp-models-stamp"
+            data-tone={formatMeta.tone}
+            style={{ color: formatMeta.color }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <span className="admin-atp-models-stamp-text">{formatMeta.label}</span>
+            {formatWarnCount > 0 ? (
+              <span className="admin-atp-models-stamp-warn">
+                <WarningOutlined />
+                {formatWarnCount}
+              </span>
+            ) : null}
+          </div>
+        </Tooltip>
+
+        {/* 标题栏：图标 + 名称 + 右上角发布状态 */}
         <div className="admin-atp-models-card-title flex items-center gap-2 border-b border-gray-200 px-4 py-3">
           <BlockOutlined className="text-base text-gray-500" />
           <Typography.Text strong ellipsis className="admin-atp-models-card-name min-w-0 flex-1">
             {asset.name || asset.code}
           </Typography.Text>
           <div className="flex shrink-0 items-center gap-1.5">
-            <AtpModelFormatTag asset={asset} />
+            {published ? (
+              <span className="admin-atp-models-state-chip is-published">
+                <span className="admin-atp-models-state-chip-dot" />
+                {t("已发布")}
+              </span>
+            ) : (
+              <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
+            )}
           </div>
         </div>
 
@@ -174,22 +302,8 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
             </Typography.Text>
           </div>
 
-          {/* 元信息行：发布状态 + 生效状态 + 异常状态 + 版本 + 更新时间 */}
+          {/* 元信息行：异常状态 + 版本 + 更新时间（发布状态已在右上角） */}
           <div className="mt-auto flex min-h-5 items-center gap-2 text-xs">
-            {published ? (
-              <span className="admin-atp-models-state-chip is-published">
-                <span className="admin-atp-models-state-chip-dot" />
-                {t("已发布")}
-              </span>
-            ) : (
-              <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
-            )}
-            {asset.is_active ? (
-              <span className="admin-atp-models-state-chip is-active">
-                <span className="admin-atp-models-state-chip-dot" />
-                {t("生效中")}
-              </span>
-            ) : null}
             {abnormal ? <span className={abnormal.className}>{abnormal.text}</span> : null}
             {asset.version ? (
               <Typography.Text type="secondary" className="text-xs">
@@ -204,7 +318,7 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
           </div>
         </div>
 
-        {/* 动作栏：左侧处理进度（与线路管理页卡片一致），右侧操作按钮组（右下角） */}
+        {/* 动作栏：左侧处理进度（与线路管理页卡片一致），右侧最多两个按钮 + 更多 */}
         <div className="admin-atp-models-card-actions flex items-center justify-between gap-2 border-t border-gray-200 px-4 py-2">
           {asset.status === "processing" ? (
             <Progress percent={asset.progress ?? 0} size="small" className="max-w-40 flex-1" />
@@ -212,151 +326,52 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
             <div />
           )}
           <Space size="small" className="shrink-0">
-            <Tooltip title={canTest ? t("模型测试") : t("缺少测试权限（需要 atp.run / atp.manage）")}>
-              <Button
-                type="text"
-                size="small"
-                icon={<ExperimentOutlined />}
-                disabled={!canTest}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleTest();
-                }}
-              />
-            </Tooltip>
-            <Tooltip title={t("详情")}>
-              <Button
-                type="text"
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleView();
-                }}
-              />
-            </Tooltip>
-            {canManage ? (
-              published ? (
-                <Tooltip title={t("下线该版本（下线后不参与仿真定位）")}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<DisconnectOutlined />}
-                    disabled={rowBusy}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onUnpublish(asset.id);
-                    }}
-                  />
-                </Tooltip>
-              ) : (
-                <Tooltip title={t("发布该版本（发布后参与仿真定位）")}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<SendOutlined />}
-                    disabled={rowBusy}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onPublish(asset.id);
-                    }}
-                  />
-                </Tooltip>
-              )
-            ) : null}
-            <Dropdown
-              menu={{
-                items: [
-                  {
-                    key: "edit",
-                    label: (
-                      <span className="inline-flex items-center gap-1.5">
-                        <EditOutlined />
-                        {t("编辑")}
-                      </span>
-                    ),
-                    disabled: !canManage,
-                    onClick: (event) => {
-                      event.domEvent.stopPropagation();
-                      handleEdit();
-                    },
-                  },
-                  ...(canManage
-                    ? [
-                        asset.is_active
-                          ? {
-                              key: "deactivate",
-                              label: (
-                                <span className="inline-flex items-center gap-1.5">
-                                  <StopOutlined />
-                                  {t("取消生效")}
-                                </span>
-                              ),
-                              disabled: rowBusy,
-                              onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
-                                event.domEvent.stopPropagation();
-                                onDeactivate(asset.id);
-                              },
-                            }
-                          : {
-                              key: "activate",
-                              label: (
-                                <span className="inline-flex items-center gap-1.5">
-                                  <CheckCircleOutlined />
-                                  {t("设为生效")}
-                                </span>
-                              ),
-                              disabled: rowBusy,
-                              onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
-                                event.domEvent.stopPropagation();
-                                onActivate(asset.id);
-                              },
-                            },
-                        {
-                          key: "recheck-format",
-                          label: (
-                            <span className="inline-flex items-center gap-1.5">
-                              <SyncOutlined spin={recheckBusy} />
-                              {t("重新检测形态")}
-                            </span>
-                          ),
-                          disabled: recheckBusy,
-                          onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
-                            event.domEvent.stopPropagation();
-                            onRecheckFormat(asset.id);
-                          },
-                        },
-                        { type: "divider" as const },
-                        {
-                          key: "delete",
-                          label: (
-                            <span className="inline-flex items-center gap-1.5">
-                              <DeleteOutlined />
-                              {t("删除")}
-                            </span>
-                          ),
-                          danger: true,
-                          disabled: rowBusy,
-                          onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
-                            event.domEvent.stopPropagation();
-                            handleDelete();
-                          },
-                        },
-                      ]
-                    : []),
-                ],
-              }}
-              trigger={["click"]}
-            >
-              <Tooltip title={t("更多")}>
+            {visibleActions.map((action) => (
+              <Tooltip key={action.key} title={action.tooltip}>
                 <Button
                   type="text"
                   size="small"
-                  icon={<MoreOutlined />}
-                  onClick={(event) => event.stopPropagation()}
+                  danger={action.danger}
+                  icon={action.icon}
+                  disabled={action.disabled}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    action.run();
+                  }}
                 />
               </Tooltip>
-            </Dropdown>
+            ))}
+            {overflowActions.length > 0 ? (
+              <Dropdown
+                menu={{
+                  items: overflowActions.map((action) => ({
+                    key: action.key,
+                    danger: action.danger,
+                    disabled: action.disabled,
+                    label: (
+                      <span className="inline-flex items-center gap-1.5">
+                        {action.icon}
+                        {action.label}
+                      </span>
+                    ),
+                    onClick: (event: { domEvent: { stopPropagation: () => void } }) => {
+                      event.domEvent.stopPropagation();
+                      action.run();
+                    },
+                  })),
+                }}
+                trigger={["click"]}
+              >
+                <Tooltip title={t("更多")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MoreOutlined />}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </Tooltip>
+              </Dropdown>
+            ) : null}
           </Space>
         </div>
       </div>

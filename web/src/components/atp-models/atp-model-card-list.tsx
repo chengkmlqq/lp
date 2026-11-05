@@ -10,13 +10,10 @@ interface AtpModelCardListProps {
   onEdit: (asset: AtpAssetSummary) => void;
   onDelete: (id: string) => void;
   onTest: (asset: AtpAssetSummary) => void;
-  onActivate: (id: string) => void;
-  onDeactivate: (id: string) => void;
   onPublish: (id: string) => void;
   onUnpublish: (id: string) => void;
   onRecheckFormat: (id: string) => void;
   recheckBusy: boolean;
-  activeBusy: boolean;
   publishBusy: boolean;
   dimensionLabelMap?: {
     voltage_level?: Map<string, string>;
@@ -26,7 +23,7 @@ interface AtpModelCardListProps {
   };
 }
 
-export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onActivate, onDeactivate, onPublish, onUnpublish, onRecheckFormat, recheckBusy, activeBusy, publishBusy, dimensionLabelMap }: AtpModelCardListProps) {
+export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onPublish, onUnpublish, onRecheckFormat, recheckBusy, publishBusy, dimensionLabelMap }: AtpModelCardListProps) {
 
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -41,13 +38,10 @@ export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, on
           onEdit={onEdit}
           onDelete={onDelete}
           onTest={onTest}
-          onActivate={onActivate}
-          onDeactivate={onDeactivate}
           onPublish={onPublish}
           onUnpublish={onUnpublish}
           onRecheckFormat={onRecheckFormat}
           recheckBusy={recheckBusy}
-          activeBusy={activeBusy}
           publishBusy={publishBusy}
           dimensionLabelMap={dimensionLabelMap}
         />

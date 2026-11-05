@@ -16,7 +16,7 @@ interface OverviewTreeNode {
   label: string;
   key: string;
   value: number;
-  is_active?: boolean;
+  is_published?: boolean;
   asset_id?: string;
   asset_name?: string;
   status?: string;
@@ -25,19 +25,19 @@ interface OverviewTreeNode {
 
 // 每个维度层级的节点配色（voltage → tower → scene → arrester → shield_wire → version/leaf）
 const LEVEL_COLORS = ["#1677ff", "#52c41a", "#faad14", "#722ed1", "#13c2c2", "#eb2f96"];
-const ACTIVE_LEAF_COLOR = "#52c41a";
-const INACTIVE_LEAF_COLOR = "#bfbfbf";
+const PUBLISHED_LEAF_COLOR = "#52c41a";
+const UNPUBLISHED_LEAF_COLOR = "#bfbfbf";
 
 function toEChartsTree(node: OverviewTreeNode, depth: number): Record<string, unknown> {
   const isLeaf = !node.children || node.children.length === 0;
-  const itemStyle = node.is_active
-    ? { color: ACTIVE_LEAF_COLOR }
+  const itemStyle = node.is_published
+    ? { color: PUBLISHED_LEAF_COLOR }
     : { color: levelColor(depth) };
   return {
     name: node.label,
     value: node.value,
-    ...(isLeaf && node.is_active !== undefined
-      ? { itemStyle: { color: node.is_active ? ACTIVE_LEAF_COLOR : INACTIVE_LEAF_COLOR } }
+    ...(isLeaf && node.is_published !== undefined
+      ? { itemStyle: { color: node.is_published ? PUBLISHED_LEAF_COLOR : UNPUBLISHED_LEAF_COLOR } }
       : { itemStyle }),
     children: node.children?.map((child) => toEChartsTree(child, depth + 1)),
   };
@@ -76,7 +76,7 @@ export function AtpModelOverviewTab() {
         formatter: (params: unknown) => {
           const p = params as { name?: string; value?: unknown };
           const name = p?.name ?? "";
-          if (name.includes("生效") || name.includes("未生效")) {
+          if (name.includes("已发布") || name.includes("未发布")) {
             return name;
           }
           return `${name}（${p?.value ?? ""}）`;
@@ -117,7 +117,7 @@ export function AtpModelOverviewTab() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Typography.Text type="secondary" className="mb-3">
-        {t("按 电压等级 → 塔型 → 场景 → 避雷器组合 → 避雷线 → 版本 分层；绿色叶子为当前生效版本，灰色为未生效版本。")}
+        {t("按 电压等级 → 塔型 → 场景 → 避雷器组合 → 避雷线 → 版本 分层；绿色叶子为已发布版本，灰色为已下线版本。")}
       </Typography.Text>
       {overviewQuery.isLoading ? (
         <div className="flex items-center justify-center py-16">

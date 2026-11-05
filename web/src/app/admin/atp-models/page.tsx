@@ -380,46 +380,8 @@ export default function AtpModelsPage() {
     },
   });
 
-  // 设为生效 / 取消生效（多版本改造 P2：同维度组内至多一个生效，后端 activate 自动组内清零）
-  const activateMutation = useMutation({
-    mutationFn: async (assetId: string) => {
-      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/activate`, { method: "POST" });
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as AtpAssetSummary;
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
-      setSuccess(t("已设为生效"));
-      setError(null);
-    },
-    onError: (candidate) => {
-      setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : t("设为生效失败")));
-    },
-  });
-
-  const deactivateMutation = useMutation({
-    mutationFn: async (assetId: string) => {
-      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/deactivate`, { method: "POST" });
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as AtpAssetSummary;
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
-      setSuccess(t("已取消生效"));
-      setError(null);
-    },
-    onError: (candidate) => {
-      setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : t("取消生效失败")));
-    },
-  });
-
-  // 发布 / 下线版本（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用
+  // 发布 / 下线版本（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用。
+  // 「生效/失效」概念已随发布上线取消——发布即生效，下线即退出仿真定位。
   const publishMutation = useMutation({
     mutationFn: async (assetId: string) => {
       const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/publish`, { method: "POST" });
@@ -1193,13 +1155,13 @@ export default function AtpModelsPage() {
         width: 110,
         render: (_, item) => (
           <span className="inline-flex items-center gap-2">
-            {item.is_active ? (
-              <span className="admin-atp-models-state-chip is-active">
+            {item.is_published !== false ? (
+              <span className="admin-atp-models-state-chip is-published">
                 <span className="admin-atp-models-state-chip-dot" />
-                {t("生效中")}
+                {t("已发布")}
               </span>
             ) : (
-              <span className="admin-atp-models-state-chip is-muted">{t("未生效")}</span>
+              <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
             )}
             {item.status === "processing" ? <span className="admin-atp-models-state-chip is-processing">{t("处理中")}</span> : null}
             {item.status === "disabled" ? <span className="admin-atp-models-state-chip is-danger">{t("已停用")}</span> : null}
@@ -1544,13 +1506,10 @@ export default function AtpModelsPage() {
                                   onEdit={(asset) => openEditModal(asset)}
                                   onDelete={(id) => deleteMutation.mutate(id)}
                                   onTest={(asset) => openTestTab(asset)}
-                                  onActivate={(id) => activateMutation.mutate(id)}
-                                  onDeactivate={(id) => deactivateMutation.mutate(id)}
                                   onPublish={(id) => publishMutation.mutate(id)}
                                   onUnpublish={(id) => unpublishMutation.mutate(id)}
                                   onRecheckFormat={(id) => recheckFormatMutation.mutate(id)}
                                   recheckBusy={recheckFormatMutation.isPending}
-                                  activeBusy={activateMutation.isPending || deactivateMutation.isPending}
                                   publishBusy={publishMutation.isPending || unpublishMutation.isPending}
                                   dimensionLabelMap={dimensionLabelMap}
                                 />
@@ -1683,7 +1642,7 @@ export default function AtpModelsPage() {
             </Form.Item>
           </div>
           <Typography.Text type="secondary" className="mb-3 block text-xs">
-            {t("版本号按同维度组合自动递增（v1、v2…），创建后可在列表里切换生效版本。")}
+            {t("版本号按同维度组合自动递增（v1、v2…），创建后在卡片右上角发布或下线该版本。")}
           </Typography.Text>
 
           <Form.Item
