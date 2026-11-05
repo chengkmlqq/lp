@@ -256,7 +256,7 @@ DEFAULT_MENUS: list[dict[str, object]] = [
     },
     {
         "code": "admin.fl_analysis",
-        "name": "防雷分析",
+        "name": "防雷计算",
         "path": "/fl-analysis",
         "icon": "BarChartOutlined",
         "parent_code": None,
