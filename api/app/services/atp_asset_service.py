@@ -839,6 +839,9 @@ def serialize_asset(
         arrester_config_label=_resolve_label("arrester_combination", item.arrester_config),
         version=item.version or "v1",
         is_active=bool(item.is_active),
+        # 发布状态（2026-11-05）：存量行/旧列表 Row 可能没有该列 → 回落已发布（历史行为）
+        is_published=bool(_row_field(item, "is_published") if _row_field(item, "is_published") is not None else True),
+        published_date=_row_field(item, "published_date") or None,
         shield_wire=item.shield_wire or "with",
         test_line_id=item.test_line_id,
         # 形态标记（2026-11-02）：存量行没有该字段值时回落 legacy —— 改造前入口只放行
@@ -982,6 +985,9 @@ def list_assets(
         # 多版本 + 生效 + 避雷线（2026-10-30：serialize_asset 访问这三列，缺则 AttributeError）
         AtpAsset.version,
         AtpAsset.is_active,
+        # 2026-11-05：发布状态（serialize_asset 会读，漏列抛 KeyError，同上事故）
+        AtpAsset.is_published,
+        AtpAsset.published_date,
         AtpAsset.shield_wire,
         # 2026-11-01：serialize_asset 访问 test_line_id（测试线路），缺则 500：
         #   KeyError: 'test_line_id'（select 列白名单漏列 → Row.__getattr__ 抛 KeyError）
@@ -1320,6 +1326,10 @@ def create_asset(db: Session, payload: AtpAssetCreateRequest, *, actor_user_id: 
         arrester_config=_normalize_optional_str(payload.arrester_config),
         version=version,
         is_active=bool(payload.is_active),
+        # 版本发布（2026-11-05）：新建默认未发布（CreateRequest.is_published=False），
+        # 显式传 True 的入口（脚本导入等）同步记录发布时间。
+        is_published=bool(payload.is_published),
+        published_date=now if payload.is_published else None,
         shield_wire=shield_wire,
         test_line_id=_validate_test_line_ref(db, payload.test_line_id),
         storage_mount_code=storage_mount_code,
@@ -1396,6 +1406,48 @@ def deactivate_asset(db: Session, *, asset_id: str, actor_user_id: str | None = 
     db.commit()
     db.refresh(asset)
     _publish_change("asset.deactivated", {"action": "deactivated", "asset_id": asset.id})
+    return serialize_asset(asset, run_count=0, last_run_status=None, last_run_date=None, db=db)
+
+
+def publish_asset(db: Session, *, asset_id: str, actor_user_id: str | None = None) -> AtpAssetSummary:
+    """发布该版本（2026-11-05）：置 is_published=1 并记录发布时间。
+
+    发布后版本参与仿真定位（fl_analysis 资产 _query 只在已发布版本中选取）。
+    幂等：已发布的资产再次发布只刷新 published_date。
+    """
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    if asset.status == "archived":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已归档的模型不能发布，请先恢复")
+    asset.is_published = True
+    asset.published_date = utcnow()
+    if actor_user_id:
+        asset.update_user = actor_user_id
+    asset.update_date = utcnow()
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    _publish_change("asset.published", {"action": "published", "asset_id": asset.id})
+    return serialize_asset(asset, run_count=0, last_run_status=None, last_run_date=None, db=db)
+
+
+def unpublish_asset(db: Session, *, asset_id: str, actor_user_id: str | None = None) -> AtpAssetSummary:
+    """下线该版本（2026-11-05）：置 is_published=0，不再参与仿真定位。
+
+    不清除 is_active（生效标记保留，重新发布后立即恢复原生效语义）。
+    """
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    asset.is_published = False
+    if actor_user_id:
+        asset.update_user = actor_user_id
+    asset.update_date = utcnow()
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    _publish_change("asset.unpublished", {"action": "unpublished", "asset_id": asset.id})
     return serialize_asset(asset, run_count=0, last_run_status=None, last_run_date=None, db=db)
 
 

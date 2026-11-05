@@ -419,6 +419,45 @@ export default function AtpModelsPage() {
     },
   });
 
+  // 发布 / 下线版本（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用
+  const publishMutation = useMutation({
+    mutationFn: async (assetId: string) => {
+      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/publish`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as AtpAssetSummary;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
+      setSuccess(t("版本已发布"));
+      setError(null);
+    },
+    onError: (candidate) => {
+      setSuccess("");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("发布失败")));
+    },
+  });
+
+  const unpublishMutation = useMutation({
+    mutationFn: async (assetId: string) => {
+      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/unpublish`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      return (await response.json()) as AtpAssetSummary;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
+      setSuccess(t("版本已下线"));
+      setError(null);
+    },
+    onError: (candidate) => {
+      setSuccess("");
+      setError(new ApiError(candidate instanceof Error ? candidate.message : t("下线失败")));
+    },
+  });
+
   // 形态重新检测（2026-11-03）：存量资产的 model_format 是列默认值而非判定结果，
   // 上传口只在传文件时判定，故提供显式重判——按存储里的真实 work.atp 重新定形态。
   const recheckFormatMutation = useMutation({
@@ -1507,9 +1546,12 @@ export default function AtpModelsPage() {
                                   onTest={(asset) => openTestTab(asset)}
                                   onActivate={(id) => activateMutation.mutate(id)}
                                   onDeactivate={(id) => deactivateMutation.mutate(id)}
+                                  onPublish={(id) => publishMutation.mutate(id)}
+                                  onUnpublish={(id) => unpublishMutation.mutate(id)}
                                   onRecheckFormat={(id) => recheckFormatMutation.mutate(id)}
                                   recheckBusy={recheckFormatMutation.isPending}
                                   activeBusy={activateMutation.isPending || deactivateMutation.isPending}
+                                  publishBusy={publishMutation.isPending || unpublishMutation.isPending}
                                   dimensionLabelMap={dimensionLabelMap}
                                 />
                               </Spin>

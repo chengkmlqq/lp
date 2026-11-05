@@ -37,6 +37,9 @@ class AtpAssetSummary(BaseModel):
     arrester_config_label: str | None = None
     version: str = "v1"
     is_active: bool = False
+    # 版本发布状态（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用
+    is_published: bool = True
+    published_date: datetime | None = None
     shield_wire: str = "with"
     # 模型级绑定的测试线路（单塔基准）：非空时测试默认用它
     test_line_id: str | None = None
@@ -97,6 +100,8 @@ class AtpAssetCreateRequest(BaseModel):
     # 2026-11-03：版本号从新建表单移除，未传则服务端按同维度组合递增生成（v1/v2/...）
     version: str | None = Field(default=None, max_length=32)
     is_active: bool = False
+    # 新建默认未发布，需在模型管理页显式「发布」后才参与仿真定位
+    is_published: bool = False
     shield_wire: str = Field(default="with", max_length=16)
     test_line_id: str | None = Field(default=None, max_length=32)
     storage_mount_code: str | None = Field(default=None, max_length=64)

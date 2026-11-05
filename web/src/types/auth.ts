@@ -1208,6 +1208,9 @@ export type AtpAssetSummary = {
   arrester_config_label?: string | null;
   version: string;
   is_active: boolean;
+  /** 版本发布状态（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用 */
+  is_published?: boolean;
+  published_date?: string | null;
   shield_wire: string;
   /**
    * ATPDraw 产物形态（上传时按 work.atp 几何引用形态判定，2026-11-02）：

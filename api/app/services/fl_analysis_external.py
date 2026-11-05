@@ -1236,6 +1236,9 @@ def _auto_resolve_asset(
 
     def _query(tower_filter: str | None, arrester_filter: str | None) -> AtpAsset | None:
         stmt = select(AtpAsset).where(AtpAsset.status == "enabled")
+        # 版本发布管理（2026-11-05）：只在「已发布」版本中定位；
+        # 下线（is_published=0）的版本不参与仿真，但保留文件与运行记录。
+        stmt = stmt.where(AtpAsset.is_published.is_(True))
         if voltage_kv is not None:
             stmt = stmt.where(AtpAsset.voltage_level == str(voltage_kv))
         if tower_filter:
@@ -1255,7 +1258,7 @@ def _auto_resolve_asset(
         # 按 update_date 最新优先，避免 limit(1) 无排序任取造成行为抖动；并记警告方便排查。
         logger.warning(
             "ATP 资产组内无 is_active 生效版（voltage=%s tower=%s scene=%s arrester=%s shield_wire=%s），"
-            "回退取任一 enabled（最近更新优先）",
+            "回退取任一 enabled 且已发布版本（最近更新优先）",
             voltage_kv, tower_filter, scene, arrester_filter, shield_wire or "不限",
         )
         return db.execute(stmt.order_by(AtpAsset.update_date.desc()).limit(1)).scalar_one_or_none()
@@ -1270,7 +1273,7 @@ def _auto_resolve_asset(
         if asset is None:
             raise RuntimeError(
                 f"未找到匹配的 ATP 资产（电压={voltage_kv} 塔型={tower} 场景={scene} 避雷器={arrester}），"
-                f"请先在资产库导入对应塔型模板"
+                f"请先在资产库导入对应塔型模板并发布"
             )
     else:
         # 未指定塔型（仅创建期适配器校验等无塔型上下文场景）：按电压+场景任取一个可用资产。
@@ -1279,7 +1282,7 @@ def _auto_resolve_asset(
             asset = _query(None, None)
         if asset is None:
             raise RuntimeError(
-                f"未找到匹配的 ATP 资产（电压={voltage_kv} 场景={scene} 避雷器={arrester}），请先在资产库导入对应模板"
+                f"未找到匹配的 ATP 资产（电压={voltage_kv} 场景={scene} 避雷器={arrester}），请先在资产库导入对应模板并发布"
             )
     logger.info(
         "[ATP] 自动选资产：电压=%s 塔型=%s 场景=%s → asset=%s (%s)",

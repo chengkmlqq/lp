@@ -2815,6 +2815,13 @@ body {
   border: 1px solid #bae6fd;
 }
 
+/* 发布状态 chip（2026-11-05）：已发布 = 蓝色；未发布复用 is-muted 灰 */
+.admin-atp-models-state-chip.is-published {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
 /* 卡片主行模型名称：吃掉剩余宽度以便 ellipsis 生效 */
 .admin-atp-models-card-name {
   flex: 1 1 auto;

@@ -44,6 +44,12 @@ class AtpAsset(Base):
     # is_active: 当前是否生效（仿真用）。同维度组内**至多 1 条**为 True，
     # 唯一性由 activate/deactivate 事务保证（SELECT FOR UPDATE + 组内清零）。
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # ===== 版本发布管理（2026-11-05 新增）=====
+    # is_published: 该版本是否已发布。发布 = 版本对仿真可见（fl_analysis 资产定位
+    # 只在已发布版本中选取）；下线 = 暂停对外提供，不参与仿真定位但保留文件与记录。
+    # 存量行由迁移 035 回填为已发布（行为不变）；新建默认未发布，需显式发布。
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    published_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # shield_wire: 避雷线配置维度（with/without）。110kV 无避雷线变体（ganzino 等
     # 塔型后缀）归一后落此处，塔型维度回归纯净。
     shield_wire: Mapped[str] = mapped_column(String(16), default="with", nullable=False)

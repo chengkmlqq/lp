@@ -6,11 +6,13 @@ import {
   ApartmentOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
+  DisconnectOutlined,
   EditOutlined,
   ExperimentOutlined,
   EyeOutlined,
   MoreOutlined,
   SafetyOutlined,
+  SendOutlined,
   StopOutlined,
   SyncOutlined,
   ThunderboltOutlined,
@@ -34,10 +36,13 @@ interface AtpModelCardProps {
   onTest: (asset: AtpAssetSummary) => void;
   onActivate: (id: string) => void;
   onDeactivate: (id: string) => void;
+  onPublish: (id: string) => void;
+  onUnpublish: (id: string) => void;
   /** 按存储里的真实 work.atp 重判形态（存量资产默认值不被当成结论） */
   onRecheckFormat: (id: string) => void;
   recheckBusy: boolean;
   activeBusy: boolean;
+  publishBusy: boolean;
   dimensionLabelMap?: {
     voltage_level?: Map<string, string>;
     tower_type?: Map<string, string>;
@@ -76,14 +81,14 @@ function statusMeta(status: AtpAssetStatus, t: (s: string) => string): { text: s
 }
 
 /**
- * 模型卡片（2026-11-03 重设计）：
- * 一行主信息（名称 + 形态标记 + 菜单），一行维度链，一行元信息（生效/异常/时间），
- * 底部动作行。原先四个维度各占一行加图标 label，卡片高近 300px、一屏放不下几张，
- * 属于信息堆砌 —— 维度本来就有左侧树做导航，卡片里合并成一条链即可。
+ * 模型卡片（2026-11-05 对齐线路管理页卡片重设计）：
+ * 一行主信息（名称 + 形态标记），一行维度链，一行元信息（发布/生效/异常/时间），
+ * 底部动作栏——操作按钮全部放右下角（测试/详情/发布|下线/更多），
+ * 与线路管理页卡片同构：左侧留空（处理中时放进度条），右侧为按钮组。
  */
-export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onActivate, onDeactivate, onRecheckFormat, recheckBusy, activeBusy, dimensionLabelMap }: AtpModelCardProps) {
+export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onActivate, onDeactivate, onPublish, onUnpublish, onRecheckFormat, recheckBusy, activeBusy, publishBusy, dimensionLabelMap }: AtpModelCardProps) {
   const { t } = useI18n();
-  const rowBusy = deleteLoading || activeBusy;
+  const rowBusy = deleteLoading || activeBusy || publishBusy;
 
   const handleView = useCallback(() => {
     onView(asset);
@@ -120,6 +125,7 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
 
   const abnormal = statusMeta(asset.status, t);
   const updateTime = formatDateShort(asset.update_date);
+  const published = asset.is_published !== false;
 
   return (
     <Card
@@ -130,7 +136,7 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
       styles={{ body: { padding: 0 } }}
     >
       <div className="flex h-full flex-col">
-        {/* 标题栏：与线路管理页卡片同构（图标 + 名称 + 右侧标记/菜单 + 底部分隔线） */}
+        {/* 标题栏：与线路管理页卡片同构（图标 + 名称 + 右侧形态标记 + 底部分隔线） */}
         <div className="admin-atp-models-card-title flex items-center gap-2 border-b border-gray-200 px-4 py-3">
           <BlockOutlined className="text-base text-gray-500" />
           <Typography.Text strong ellipsis className="admin-atp-models-card-name min-w-0 flex-1">
@@ -138,6 +144,126 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
           </Typography.Text>
           <div className="flex shrink-0 items-center gap-1.5">
             <AtpModelFormatTag asset={asset} />
+          </div>
+        </div>
+
+        {/* 字段区：逐行「小图标 + 标签：值」，与线路管理页卡片一致 */}
+        <div className="flex flex-1 flex-col gap-2 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <ThunderboltOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
+              {t("电压等级")}：{voltageText}
+            </Typography.Text>
+          </div>
+          <div className="flex items-center gap-2">
+            <ApartmentOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
+              {t("塔型")}：{towerText}
+            </Typography.Text>
+          </div>
+          <div className="flex items-center gap-2">
+            <AppstoreOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
+              {t("场景")}：{sceneText}
+            </Typography.Text>
+          </div>
+          <div className="flex items-center gap-2">
+            <SafetyOutlined className="text-xs text-gray-500" />
+            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
+              {t("避雷器")}：{arresterText}
+            </Typography.Text>
+          </div>
+
+          {/* 元信息行：发布状态 + 生效状态 + 异常状态 + 版本 + 更新时间 */}
+          <div className="mt-auto flex min-h-5 items-center gap-2 text-xs">
+            {published ? (
+              <span className="admin-atp-models-state-chip is-published">
+                <span className="admin-atp-models-state-chip-dot" />
+                {t("已发布")}
+              </span>
+            ) : (
+              <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
+            )}
+            {asset.is_active ? (
+              <span className="admin-atp-models-state-chip is-active">
+                <span className="admin-atp-models-state-chip-dot" />
+                {t("生效中")}
+              </span>
+            ) : null}
+            {abnormal ? <span className={abnormal.className}>{abnormal.text}</span> : null}
+            {asset.version ? (
+              <Typography.Text type="secondary" className="text-xs">
+                {asset.version}
+              </Typography.Text>
+            ) : null}
+            {updateTime ? (
+              <Typography.Text type="secondary" className="ml-auto text-xs">
+                {updateTime}
+              </Typography.Text>
+            ) : null}
+          </div>
+        </div>
+
+        {/* 动作栏：左侧处理进度（与线路管理页卡片一致），右侧操作按钮组（右下角） */}
+        <div className="admin-atp-models-card-actions flex items-center justify-between gap-2 border-t border-gray-200 px-4 py-2">
+          {asset.status === "processing" ? (
+            <Progress percent={asset.progress ?? 0} size="small" className="max-w-40 flex-1" />
+          ) : (
+            <div />
+          )}
+          <Space size="small" className="shrink-0">
+            <Tooltip title={canTest ? t("模型测试") : t("缺少测试权限（需要 atp.run / atp.manage）")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<ExperimentOutlined />}
+                disabled={!canTest}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleTest();
+                }}
+              />
+            </Tooltip>
+            <Tooltip title={t("详情")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleView();
+                }}
+              />
+            </Tooltip>
+            {canManage ? (
+              published ? (
+                <Tooltip title={t("下线该版本（下线后不参与仿真定位）")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<DisconnectOutlined />}
+                    disabled={rowBusy}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onUnpublish(asset.id);
+                    }}
+                  />
+                </Tooltip>
+              ) : (
+                <Tooltip title={t("发布该版本（发布后参与仿真定位）")}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<SendOutlined />}
+                    disabled={rowBusy}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onPublish(asset.id);
+                    }}
+                  />
+                </Tooltip>
+              )
+            ) : null}
             <Dropdown
               menu={{
                 items: [
@@ -222,97 +348,15 @@ export function AtpModelCard({ asset, canManage, canTest, deleteLoading, onView,
               }}
               trigger={["click"]}
             >
-              <Button
-                type="text"
-                size="small"
-                icon={<MoreOutlined />}
-                className="-mr-2"
-                onClick={(event) => event.stopPropagation()}
-              />
+              <Tooltip title={t("更多")}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MoreOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </Tooltip>
             </Dropdown>
-          </div>
-        </div>
-
-        {/* 字段区：逐行「小图标 + 标签：值」，与线路管理页卡片一致 */}
-        <div className="flex flex-1 flex-col gap-2 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <ThunderboltOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
-              {t("电压等级")}：{voltageText}
-            </Typography.Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <ApartmentOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
-              {t("塔型")}：{towerText}
-            </Typography.Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <AppstoreOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
-              {t("场景")}：{sceneText}
-            </Typography.Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <SafetyOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
-              {t("避雷器")}：{arresterText}
-            </Typography.Text>
-          </div>
-
-          {/* 元信息行：生效状态 + 异常状态 + 更新时间 */}
-          <div className="mt-auto flex min-h-5 items-center gap-2 text-xs">
-            {asset.is_active ? (
-              <span className="admin-atp-models-state-chip is-active">
-                <span className="admin-atp-models-state-chip-dot" />
-                {t("生效中")}
-              </span>
-            ) : (
-              <span className="admin-atp-models-state-chip is-muted">{t("未生效")}</span>
-            )}
-            {abnormal ? <span className={abnormal.className}>{abnormal.text}</span> : null}
-            {asset.version ? (
-              <Typography.Text type="secondary" className="text-xs">
-                {asset.version}
-              </Typography.Text>
-            ) : null}
-            {updateTime ? (
-              <Typography.Text type="secondary" className="ml-auto text-xs">
-                {updateTime}
-              </Typography.Text>
-            ) : null}
-          </div>
-
-          {asset.status === "processing" ? <Progress percent={asset.progress ?? 0} size="small" /> : null}
-        </div>
-
-        {/* 动作栏：右侧图标按钮，与线路管理页卡片一致 */}
-        <div className="admin-atp-models-card-actions flex items-center justify-between gap-2 border-t border-gray-200 px-4 py-2">
-          <div />
-          <Space size="small" className="shrink-0">
-            <Tooltip title={canTest ? t("模型测试") : t("缺少测试权限（需要 atp.run / atp.manage）")}>
-              <Button
-                type="text"
-                size="small"
-                icon={<ExperimentOutlined />}
-                disabled={!canTest}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleTest();
-                }}
-              />
-            </Tooltip>
-            <Tooltip title={t("详情")}>
-              <Button
-                type="text"
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleView();
-                }}
-              />
-            </Tooltip>
           </Space>
         </div>
       </div>

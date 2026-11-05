@@ -43,7 +43,9 @@ from ...services.atp_asset_service import (
     list_assets,
     list_asset_tree_children,
     list_runs,
+    publish_asset,
     read_asset_file_content,
+    unpublish_asset,
     # 2026-11-03：形态识别与槽位扫描合并为异步分析任务，接口只做入队
     schedule_asset_analysis,
     serialize_asset,
@@ -328,6 +330,28 @@ def deactivate_atp_asset_endpoint(
 ) -> AtpAssetDetail:
     """取消该模型的生效状态。"""
     updated = deactivate_asset(db, asset_id=asset_id, actor_user_id=current_user.user.id)
+    return AtpAssetDetail(**updated.model_dump())
+
+
+@router.post("/assets/{asset_id}/publish", response_model=AtpAssetDetail)
+def publish_atp_asset_endpoint(
+    asset_id: str,
+    current_user: CurrentUser = Depends(require_permission("atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetDetail:
+    """发布该版本（2026-11-05）：发布后参与仿真定位。"""
+    updated = publish_asset(db, asset_id=asset_id, actor_user_id=current_user.user.id)
+    return AtpAssetDetail(**updated.model_dump())
+
+
+@router.post("/assets/{asset_id}/unpublish", response_model=AtpAssetDetail)
+def unpublish_atp_asset_endpoint(
+    asset_id: str,
+    current_user: CurrentUser = Depends(require_permission("atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetDetail:
+    """下线该版本（2026-11-05）：下线后不参与仿真定位，文件与运行记录保留。"""
+    updated = unpublish_asset(db, asset_id=asset_id, actor_user_id=current_user.user.id)
     return AtpAssetDetail(**updated.model_dump())
 
 
