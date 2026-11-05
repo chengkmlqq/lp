@@ -664,6 +664,68 @@ def override_numeric_current_params(
     return ("".join(lines), notes) if changed else (template, notes)
 
 
+def apply_coupling_k0_slot(
+    text: str,
+    *,
+    base_tower: dict[str, Any],
+    profile: dict[str, Any],
+    execution_options: dict[str, Any],
+) -> tuple[str, str | None]:
+    """把逐塔几何耦合系数 k0 写回 `11K0` 槽位（对齐 C# Update_work_atp1）。
+
+    C# `fetch_CouplingCoefficient()` 在调 tpbig 前按避雷线/相导线几何 + 镜像距离
+    算出 k0 并写入 work.atp 的 11K0 槽位。模板里的值（.25）只是上次运行残留，
+    k0 实际随塔型/电压在 0.1~0.4 间变化 —— 不覆写会让反击耐雷系统性偏移。
+
+    返回 (新文本, 说明或 None)。k0 算不出来（缺几何）时原样返回。
+    """
+    if os.environ.get("ATP_COUPLING_K0_OVERRIDE", "1").strip().lower() in ("0", "false", "off", "no"):
+        return text, None
+    try:
+        from .atp_work_atp_slots import coupling_k0, rewrite_coupling_k0
+
+        layer = (base_tower.get("circuit_geometry_json") or {}).get("I") \
+            or (profile.get("geometry_layers_json") or {}).get("I") or {}
+        lw = (base_tower.get("circuit_geometry_json") or {}).get("lightning_wire") \
+            or (profile.get("geometry_layers_json") or {}).get("lightning_wire") or {}
+        kind = str(
+            execution_options.get("tower_kind")
+            or profile.get("tower_kind")
+            or base_tower.get("tower_kind")
+            or base_tower.get("tower_type")
+            or ""
+        ).strip().lower()
+        for marker in ("guxingd", "guxing", "jiubei", "maotou", "ganzi", "shangzi",
+                       "sihuita", "zhiliu", "vzhiliu", "menxing"):
+            if marker in kind:
+                kind = marker
+                break
+        insul_raw = _as_float(profile.get("insulator_length_m"))
+        insul_m = (insul_raw / 1000.0) if insul_raw and insul_raw > 100 else insul_raw
+        k0 = coupling_k0(
+            tower_kind=kind,
+            voltage_kv=_as_float(base_tower.get("line_voltage_kv")) or 0.0,
+            shield_wire_height_m=_as_float(profile.get("shield_wire_height_m")),
+            left_mid_distance_m=_as_float(lw.get("left_mid_distance_m")),
+            right_mid_distance_m=_as_float(lw.get("right_mid_distance_m")),
+            insulator_length_m=insul_m,
+            phase_geometry=layer,
+            is_dc=kind in ("zhiliu", "vzhiliu"),
+            phase_sequence=[
+                str(profile.get(f"phase_sequence_{i}"))
+                for i in range(1, 5)
+                if profile.get(f"phase_sequence_{i}")
+            ] or None,
+        )
+        if k0 is None:
+            return text, None
+        new_text, ok = rewrite_coupling_k0(text, k0)
+        return new_text, (f"11K0={round(k0, 6)}（{'已写入' if ok else '未找到槽位'}）")
+    except Exception:  # noqa: BLE001 - k0 属于精度增强项，失败不应影响分析
+        logger.warning("[ATP] 耦合系数计算/写入失败，保留模板值", exc_info=True)
+        return text, None
+
+
 def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, Any],
                              execution_options: dict[str, Any]) -> dict[str, str]:
     """按 C# 桌面版公式计算 work.atp $PARAMETER 全部参数值。
@@ -1671,6 +1733,19 @@ def execute_external_waveform_tower_analysis(
     # angle_deg 缺失时照 C# 语义用 0.0（无条件改写；模板已是 −90/−210/−330 时值不变，幂等）。
     from .atp_work_atp_slots import rewrite_electric_angle as _rewrite_electric_angle
 
+    # ── 11K0 几何耦合系数槽位（对齐 C# Update_work_atp1 运行期写入）──
+    # C# 在调 tpbig 前用 fetch_CouplingCoefficient() 算出逐塔 k0 写回 work.atp；
+    # 主链路此前缺失此步 → 模型恒用模板残值（.25），而实际 k0 随塔型几何在
+    # 0.1~0.4 间变化，直接放大反击耐雷偏差。模型测试链路早已改写，此处补齐。
+    rendered_text, _k0_note = apply_coupling_k0_slot(
+        rendered_text,
+        base_tower=snapshot.base_tower_json or {},
+        profile=snapshot.profile_json or {},
+        execution_options=execution_options,
+    )
+    if _k0_note:
+        logger.info("[ATP] 耦合系数槽位（%s）：%s", snapshot.tower_no, _k0_note)
+
     _angle_raw = (snapshot.profile_json or {}).get("angle_deg")
     if _angle_raw is None:
         _angle_raw = (snapshot.base_tower_json or {}).get("angle_deg")
@@ -1719,6 +1794,18 @@ def execute_external_waveform_tower_analysis(
     input_path = run_dir / resolved_job.entry_file
     input_path.write_text(rendered_text, encoding="gbk", errors="replace")
     logger.info("[ATP] 输入文件已写入：%s", input_path)
+    # 诊断开关（默认关）：ATP_DEBUG_DUMP=1 时把渲染后的 work.atp 与覆写说明落到
+    # /tmp/atp-dbg/，用于排查「参数是否真的进了模型」。
+    if os.environ.get("ATP_DEBUG_DUMP", "").strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            dbg = Path("/tmp/atp-dbg")
+            dbg.mkdir(parents=True, exist_ok=True)
+            (dbg / f"{snapshot.tower_no}.atp").write_text(rendered_text, encoding="gbk", errors="replace")
+            (dbg / f"{snapshot.tower_no}.notes.txt").write_text(
+                "\n".join(_num_override_notes) or "(no overrides)", encoding="utf-8",
+            )
+        except Exception:  # noqa: BLE001 - 仅调试用途
+            logger.warning("[ATP] 调试 dump 失败", exc_info=True)
 
     # 物化资产 lib/dat 文件并改写 INCLUDE 路径（tpbig 依赖同目录 lib 文件）
     # ⚠️ 并行二分：物化与几何重生成写同一批引擎目录文件（.dat/.lib），
