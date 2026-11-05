@@ -159,12 +159,16 @@ export function AtpTestLineEditor({
   const [errorText, setErrorText] = useState<string | null>(null);
   const [blockers, setBlockers] = useState<{ field: string; reason: string }[]>([]);
 
-  const { optionMap } = useDimensionOptions({
-    voltage_level: "voltage_level",
-    tower_type: "tower_type",
-    scene_type: "scenario",
-    arrester_config: "arrester_combination",
-  });
+  // 维度选项按需加载：抽屉常驻挂载，仅 open 时才拉字典（页面加载不打字典接口）
+  const { optionMap } = useDimensionOptions(
+    {
+      voltage_level: "voltage_level",
+      tower_type: "tower_type",
+      scene_type: "scenario",
+      arrester_config: "arrester_combination",
+    },
+    { enabled: open },
+  );
 
   /** 编辑时来源标注来自 detail.derive_rules_json；新建时来自派生草稿 */
   const sources = useMemo<Record<string, string>>(() => {

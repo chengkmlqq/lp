@@ -25,9 +25,10 @@ export type FlDimensionOptionMap = Record<FlDimensionField, FlDimensionOption[]>
  * 从维度管理 API 拉取 FL分析相关枚举（job_type / current_waveform / flashover_method / altitude_correction）。
  * 返回每个字段的 optionMap（label/value，供下拉选）与 labelMap（code→name，供展示格式化）。
  * 维度管理不可用（查询失败 / 类型未 seed）时返回空集合，由调用方回退到静态硬编码选项。
+ * enabled 为 false 时不发起请求（用于常驻挂载的弹窗按 open 懒加载）。
  */
-export function useFlDimensionOptions() {
-  const result = useDimensionOptions(FL_DIMENSION_FIELD_TO_TYPE_CODE);
+export function useFlDimensionOptions(enabled?: boolean) {
+  const result = useDimensionOptions(FL_DIMENSION_FIELD_TO_TYPE_CODE, { enabled });
   return {
     ...result,
     optionMap: result.optionMap as FlDimensionOptionMap,

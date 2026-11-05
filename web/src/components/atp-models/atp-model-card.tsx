@@ -44,12 +44,6 @@ interface AtpModelCardProps {
   onRecheckFormat: (id: string) => void;
   recheckBusy: boolean;
   publishBusy: boolean;
-  dimensionLabelMap?: {
-    voltage_level?: Map<string, string>;
-    tower_type?: Map<string, string>;
-    scene_type?: Map<string, string>;
-    arrester_config?: Map<string, string>;
-  };
 }
 
 interface CardAction {
@@ -62,9 +56,14 @@ interface CardAction {
   run: () => void;
 }
 
-function formatDimension(value: string | null, map: Map<string, string> | undefined): string | null {
+/**
+ * 维度显示文本：优先用后台已转换好的中文 label（voltage_level_label 等），
+ * 无 label 时回落原始 code。后台在 serialize_asset 时一次性批量转换好随数据下发，
+ * 前端不需要再拉维度字典接口做转换。
+ */
+function formatDimension(value: string | null, label: string | null | undefined): string | null {
   if (!value) return null;
-  return map?.get(value) ?? value;
+  return label || value;
 }
 
 function formatDateShort(value: string | null | undefined): string {
@@ -111,7 +110,6 @@ export function AtpModelCard({
   onRecheckFormat,
   recheckBusy,
   publishBusy,
-  dimensionLabelMap,
 }: AtpModelCardProps) {
   const { t } = useI18n();
   const rowBusy = deleteLoading || publishBusy;
@@ -141,11 +139,11 @@ export function AtpModelCard({
     });
   };
 
-  const voltageText = formatDimension(asset.voltage_level, dimensionLabelMap?.voltage_level) || "-";
-  const towerText = formatDimension(asset.tower_type, dimensionLabelMap?.tower_type) || "-";
-  const sceneText = formatDimension(asset.scene_type, dimensionLabelMap?.scene_type) || "-";
+  const voltageText = formatDimension(asset.voltage_level, asset.voltage_level_label) || "-";
+  const towerText = formatDimension(asset.tower_type, asset.tower_type_label) || "-";
+  const sceneText = formatDimension(asset.scene_type, asset.scene_type_label) || "-";
   const arresterText =
-    [formatDimension(asset.arrester_config, dimensionLabelMap?.arrester_config), asset.shield_wire === "without" ? t("无避雷线") : null]
+    [formatDimension(asset.arrester_config, asset.arrester_config_label), asset.shield_wire === "without" ? t("无避雷线") : null]
       .filter(Boolean)
       .join(" · ") || "-";
 

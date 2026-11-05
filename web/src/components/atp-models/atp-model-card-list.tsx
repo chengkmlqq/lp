@@ -15,15 +15,9 @@ interface AtpModelCardListProps {
   onRecheckFormat: (id: string) => void;
   recheckBusy: boolean;
   publishBusy: boolean;
-  dimensionLabelMap?: {
-    voltage_level?: Map<string, string>;
-    tower_type?: Map<string, string>;
-    scene_type?: Map<string, string>;
-    arrester_config?: Map<string, string>;
-  };
 }
 
-export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onPublish, onUnpublish, onRecheckFormat, recheckBusy, publishBusy, dimensionLabelMap }: AtpModelCardListProps) {
+export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onPublish, onUnpublish, onRecheckFormat, recheckBusy, publishBusy }: AtpModelCardListProps) {
 
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -43,7 +37,6 @@ export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, on
           onRecheckFormat={onRecheckFormat}
           recheckBusy={recheckBusy}
           publishBusy={publishBusy}
-          dimensionLabelMap={dimensionLabelMap}
         />
       ))}
     </div>

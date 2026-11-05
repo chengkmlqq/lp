@@ -241,12 +241,16 @@ export function AtpTestLineDeriveModal({
   const [codeInput, setCodeInput] = useState("");
   const [nameInput, setNameInput] = useState("");
 
-  const { optionMap } = useDimensionOptions({
-    voltage_level: "voltage_level",
-    tower_type: "tower_type",
-    scene_type: "scenario",
-    arrester_config: "arrester_combination",
-  });
+  // 维度选项按需加载：弹窗常驻挂载，仅 open 时才拉字典（页面加载不打字典接口）
+  const { optionMap } = useDimensionOptions(
+    {
+      voltage_level: "voltage_level",
+      tower_type: "tower_type",
+      scene_type: "scenario",
+      arrester_config: "arrester_combination",
+    },
+    { enabled: open },
+  );
 
   // 打开时重置
   useEffect(() => {

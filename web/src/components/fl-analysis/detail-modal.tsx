@@ -42,7 +42,6 @@ import type {
 import {
   formatAltitudeCorrection,
   formatCurrentWaveform,
-  formatDimensionValue,
   formatExternalAdapter,
   formatFlashoverMethod,
   formatInducedVoltageFormula,
@@ -71,7 +70,6 @@ import {
   type ReasonDetail,
   type ScanPoint,
 } from "./types";
-import { useFlDimensionOptions } from "./use-fl-dimensions";
 
 const buildReasonDetailColumns = (t: (s: string) => string): ColumnsType<ReasonDetail> => [
   { title: t("因子"), dataIndex: "label", width: 180 },
@@ -357,7 +355,6 @@ export function TowerDetailView({
   onOpenLog?: (taskId: string | null | undefined, label: string, title: string) => void;
 }): ReactNode {
   const { t } = useI18n();
-  const { labelMap } = useFlDimensionOptions();
   const detailResultObject = readObject(detailRow.result_json);
   const reasonDetails = readReasonDetails(detailRow);
   const mitigationActions = readMitigationActions(detailRow);
@@ -419,9 +416,9 @@ export function TowerDetailView({
                 : "-"}
             </Descriptions.Item>
             <Descriptions.Item label={t("扫描点数")}>{String(detailWorkflow.scan_point_count ?? "-")}</Descriptions.Item>
-            <Descriptions.Item label={t("雷电流波形")}>{formatDimensionValue(detailWorkflow.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
-            <Descriptions.Item label={t("绝缘子闪络判据")}>{formatDimensionValue(detailWorkflow.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
-            <Descriptions.Item label={t("是否海拔修正")}>{formatDimensionValue(detailWorkflow.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
+            <Descriptions.Item label={t("雷电流波形")}>{formatCurrentWaveform(detailWorkflow.current_waveform, t)}</Descriptions.Item>
+            <Descriptions.Item label={t("绝缘子闪络判据")}>{formatFlashoverMethod(detailWorkflow.flashover_method, t)}</Descriptions.Item>
+            <Descriptions.Item label={t("是否海拔修正")}>{formatAltitudeCorrection(detailWorkflow.altitude_correction, t)}</Descriptions.Item>
             <Descriptions.Item label={t("感应电压公式")}>{formatInducedVoltageFormula(detailWorkflow.induced_voltage_formula, t)}</Descriptions.Item>
             <Descriptions.Item label={t("波头范围")}>{formatRangeSummary(detailWorkflow.head_time_range_us, t)}</Descriptions.Item>
             <Descriptions.Item label={t("波尾范围")}>{formatRangeSummary(detailWorkflow.tail_time_range_us, t)}</Descriptions.Item>

@@ -856,10 +856,15 @@ export default function AtpModelsPage() {
   const assetTotal = assetsQuery.data?.total ?? 0;
 
   // ===== 维度管理数据源（替代硬编码 DEFAULT_* 常量）=====
+  // 卡片/表格的维度中文名已由后台一次性转换好随资产数据下发（serialize_asset 的
+  // voltage_level_label 等字段），页面展示不再依赖这里的字典请求。
+  // 维度项查询只服务于「新建/编辑」弹窗的 Select 选项，弹窗打开时才发起，
+  // 避免页面加载就多打 1+4 次字典接口（types/tree + 每类型一次 dimensions）。
   // 1. 获取维度类型树（types/tree），解析出四个类型 id
+  const dimensionOptionsNeeded = Boolean(user && canRead && (modalOpen || editModalOpen));
   const dimensionTypesQuery = useQuery({
     queryKey: ["/api/v1/dimensions/types/tree"],
-    enabled: Boolean(user && canRead),
+    enabled: dimensionOptionsNeeded,
     queryFn: async () => {
       const response = await fetchWithAuth("/api/v1/dimensions/types/tree");
       if (!response.ok) {
@@ -886,7 +891,7 @@ export default function AtpModelsPage() {
       const typeId = dimensionTypeIds[field];
       return {
         queryKey: ["/api/v1/dimensions", { type_id: typeId, enabled: true }],
-        enabled: Boolean(user && canRead && typeId),
+        enabled: Boolean(dimensionOptionsNeeded && typeId),
         queryFn: async () => {
           const params = new URLSearchParams();
           params.set("type_id", typeId!);
@@ -902,7 +907,7 @@ export default function AtpModelsPage() {
     }),
   });
 
-  // 4. 维度项缓存：typeCode → (code → { label, value })，供 Select options 与 formatDimensionValue 使用
+  // 4. 维度项缓存：typeCode → (code → { label, value })，仅供 Select options 使用
   const dimensionOptionMap = useMemo(() => {
     const map: Record<AtpDimensionField, Array<{ label: string; value: string }>> = {
       voltage_level: [],
@@ -919,27 +924,6 @@ export default function AtpModelsPage() {
     });
     return map;
   }, [dimensionItemsQueries]);
-
-  const dimensionLabelMap = useMemo(() => {
-    const map: Record<AtpDimensionField, Map<string, string>> = {
-      voltage_level: new Map(),
-      tower_type: new Map(),
-      scene_type: new Map(),
-      arrester_config: new Map(),
-    };
-    dimensionItemsQueries.forEach((query, index) => {
-      const field = ATP_DIMENSION_FIELDS[index];
-      for (const item of query.data?.items ?? []) {
-        map[field].set(item.code, item.name);
-      }
-    });
-    return map;
-  }, [dimensionItemsQueries]);
-
-  const formatDimensionValue = useCallback((value: string | null, field: AtpDimensionField): string => {
-    if (!value) return "-";
-    return dimensionLabelMap[field].get(value) ?? value;
-  }, [dimensionLabelMap]);
 
   const voltageLevelOptions = dimensionOptionMap.voltage_level;
   const towerTypeOptions = dimensionOptionMap.tower_type;
@@ -1131,11 +1115,11 @@ export default function AtpModelsPage() {
         width: 300,
         render: (_, item) => {
           const parts = [
-            formatDimensionValue(item.voltage_level, "voltage_level"),
-            formatDimensionValue(item.tower_type, "tower_type"),
-            formatDimensionValue(item.scene_type, "scene_type"),
-            formatDimensionValue(item.arrester_config, "arrester_config"),
-          ].filter((part) => part !== "-");
+            item.voltage_level_label ?? item.voltage_level,
+            item.tower_type_label ?? item.tower_type,
+            item.scene_type_label ?? item.scene_type,
+            item.arrester_config_label ?? item.arrester_config,
+          ].filter((part): part is string => Boolean(part));
           return (
             <Typography.Text type="secondary" ellipsis className="block max-w-full">
               {parts.length > 0 ? parts.join(" · ") : "-"}
@@ -1227,7 +1211,7 @@ export default function AtpModelsPage() {
         },
       },
     ],
-    [canManage, canTest, deleteMutation, formatDimensionValue, openDetailById, openEditModal, openTestTab],
+    [canManage, canTest, deleteMutation, openDetailById, openEditModal, openTestTab],
   );
 
   const handleTabsEdit = useCallback((targetKey: ReactMouseEvent | ReactKeyboardEvent | string, action: "add" | "remove") => {
@@ -1511,7 +1495,6 @@ export default function AtpModelsPage() {
                                   onRecheckFormat={(id) => recheckFormatMutation.mutate(id)}
                                   recheckBusy={recheckFormatMutation.isPending}
                                   publishBusy={publishMutation.isPending || unpublishMutation.isPending}
-                                  dimensionLabelMap={dimensionLabelMap}
                                 />
                               </Spin>
                             </div>

@@ -189,23 +189,10 @@ export function formatAltitudeCorrection(value: string | null | undefined, t: (s
 }
 
 /**
- * 优先用维度管理 labelMap 显示 code → name，未命中时回退到静态格式化。
- * 维度数据加载失败 / 值未维护时返回原始 code（同现有 fallback 行为）。
+ * 工作流枚举字段（雷电流波形 / 闪络判据 / 海拔修正）的展示统一走静态 formatter：
+ * 后台已按稳定枚举值落库，静态映射即权威中文名，无需前端再拉维度字典转换
+ * （2026-11-06：移除维度字典转换，避免详情页每次打开多打一次字典接口）。
  */
-export function formatDimensionValue(
-  value: string | null | undefined,
-  labelMap: Map<string, string> | undefined,
-  fallback: (v: string | null | undefined) => string,
-): string {
-  if (!value) {
-    return "-";
-  }
-  const mapped = labelMap?.get(value);
-  if (mapped) {
-    return mapped;
-  }
-  return fallback(value);
-}
 
 export function formatInducedVoltageFormula(value: string | null | undefined, t: (s: string) => string = (s) => s): string {
   if (value === "formula1") return t("公式1");
