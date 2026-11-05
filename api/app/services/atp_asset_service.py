@@ -1519,11 +1519,20 @@ def upload_asset_archive(
             archive_content=archive_content,
         )
 
+        # 2026-11-05 修复：S3 存储上 list_dir 对"不存在的目录"不报错、返回空列表，
+        # 旧逻辑据此误判 backup_exists=True，随后 move 一个不存在的 source 直接抛
+        # Path not found，导致全新维度的首次上传必挂。备份的前提是目录下确有内容；
+        # VFS 上若存在空壳目录也顺手清掉，避免 staging move 时撞 "Path already exists"。
         try:
-            driver.list_dir(storage_root_path)
-            backup_exists = True
+            backup_exists = bool(driver.list_dir(storage_root_path))
         except StoragePathNotFoundError:
             backup_exists = False
+
+        if not backup_exists:
+            try:
+                driver.delete_path(storage_root_path, is_dir=True, recursive=True)
+            except StoragePathNotFoundError:
+                pass
 
         if backup_exists:
             driver.move_path(

@@ -1055,10 +1055,15 @@ def _auto_resolve_asset(
     config = dict(adapter_config_json or {})
     voltage_kv = line_voltage_kv
     if voltage_kv is None:
-        try:
-            voltage_kv = int(float(str(config.get("voltage_level") or 0)))
-        except (TypeError, ValueError):
-            voltage_kv = None
+        # 2026-11-05 修复：adapter_config 未传 voltage_level 时旧代码 `or 0` 兜底成 0，
+        # 随后按 voltage_level=="0" 过滤资产必然失配（创建期校验报"电压=0 找不到资产"）。
+        # 未知电压应保持 None（不过滤），而不是编造一个 0。
+        raw_voltage = config.get("voltage_level")
+        if raw_voltage not in (None, "", 0, "0"):
+            try:
+                voltage_kv = int(float(str(raw_voltage)))
+            except (TypeError, ValueError):
+                voltage_kv = None
     scene = str(scene_type or config.get("scene_type") or "").strip().lower()
     if not scene:
         # 缺省按反击 fanji（普通计算主场景）
