@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
@@ -2722,6 +2723,14 @@ def _infer_line_kind(base: Mapping[str, Any], profile: Mapping[str, Any]) -> str
 
 def _infer_voltage_kv(base: Mapping[str, Any], profile: Mapping[str, Any]) -> int:
     raw_extra = base.get("raw_extra_json") or {}
+    if isinstance(raw_extra, str):
+        try:
+            parsed_extra = json.loads(raw_extra)
+        except (ValueError, TypeError):
+            parsed_extra = {}
+        raw_extra = parsed_extra if isinstance(parsed_extra, Mapping) else {}
+    elif not isinstance(raw_extra, Mapping):
+        raw_extra = {}
     for candidate in (
         raw_extra.get("voltage_kv"),
         base.get("line_voltage_kv"),

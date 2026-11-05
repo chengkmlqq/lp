@@ -2776,11 +2776,26 @@ def _read_report_generated_at(job: FlAnalysisJob) -> datetime | None:
         return None
 
 
+def _ensure_json_object(value: Any) -> dict[str, Any]:
+    """归一化可能被误存为 JSON 字符串的 *_json 字段（历史脏数据兼容）。"""
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except (ValueError, TypeError):
+            return {}
+        return dict(parsed) if isinstance(parsed, Mapping) else {}
+    return {}
+
+
 def _build_base_tower_json(tower: LineTower, line: Line | None) -> dict[str, Any]:
     """真实线路杆塔 → base_tower。
 
     ⚠️ 装配逻辑已下沉到 ``atp_line_snapshot``（测试线路走同一出口，保证口径一致）；
     此函数保留为薄包装，避免改动既有调用点。
+    *_json 字段的 JSON 字符串脏数据归一化在 ``atp_line_snapshot._ensure_json_object``
+    中完成（fix: 兼容 *_json 字段被存为 JSON 字符串的历史脏数据）。
     """
     from .atp_line_snapshot import build_base_tower_from_line_tower
 

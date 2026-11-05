@@ -38,6 +38,26 @@ _CIRCUIT_KEYS = {1: "I", 2: "II", 3: "III", 4: "IV"}
 
 
 # --------------------------------------------------------------------------------------
+# 历史脏数据兼容：*_json 字段可能被误存为 JSON 字符串（如导入链路 json.dumps 落库），
+# 装配 base_tower 时统一归一化为 dict，避免下游 raw_extra.get() 抛
+# 'str' object has no attribute 'get'（对齐 fl_analysis_service._ensure_json_object，
+# 此处独立定义以避免循环导入）。
+# --------------------------------------------------------------------------------------
+
+
+def _ensure_json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except (ValueError, TypeError):
+            return {}
+        return dict(parsed) if isinstance(parsed, Mapping) else {}
+    return {}
+
+
+# --------------------------------------------------------------------------------------
 # 几何组装（真实杆塔的 TowerCircuit 与测试线路的 AtpTestLineCircuit 字段同构，共用）
 # --------------------------------------------------------------------------------------
 
@@ -219,9 +239,9 @@ def build_base_tower_from_line_tower(tower: Any, line: Any | None) -> dict[str, 
         "line_id": tower.line_id,
         "line_name": line.name if line else None,
         "line_voltage_kv": line.voltage_kv if line else None,
-        "line_phase_sequence_json": (line.phase_sequence_json or {}) if line else {},
-        "line_arrester_install_json": (line.arrester_install_json or {}) if line else {},
-        "line_lightning_param_json": (line.lightning_param_json or {}) if line else {},
+        "line_phase_sequence_json": _ensure_json_object(line.phase_sequence_json if line else None),
+        "line_arrester_install_json": _ensure_json_object(line.arrester_install_json if line else None),
+        "line_lightning_param_json": _ensure_json_object(line.lightning_param_json if line else None),
         "seq_no": tower.seq_no,
         "tower_no": tower.tower_no,
         "tower_model": tower.tower_model,
@@ -239,7 +259,7 @@ def build_base_tower_from_line_tower(tower: Any, line: Any | None) -> dict[str, 
         "risk_level": tower.risk_level,
         "circuit_geometry_json": build_geometry_layers(getattr(tower, "circuits", None)),
         "lightning_result_json": build_lightning_result_json(lightning_result),
-        "raw_extra_json": getattr(tower, "raw_extra_json", None) or {},
+        "raw_extra_json": _ensure_json_object(getattr(tower, "raw_extra_json", None)),
     }
 
 
