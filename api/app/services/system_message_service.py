@@ -83,9 +83,9 @@ def notify_task_done(
         try:
             import asyncio
             import uuid
-            from .push_service import publish_to_user
             from ..models.base import utcnow
             from ..schemas.ws import WsEventEnvelope, WsEventMeta
+            from .ws_manager import ws_connection_manager
 
             async def _run() -> None:
                 event = WsEventEnvelope(
@@ -96,7 +96,10 @@ def notify_task_done(
                     payload={"message_id": str(message.id), "message_type": message.message_type},
                     meta=WsEventMeta(dedupe_key=f"msg:{message.id}", requires_refetch=["/api/v1/system-messages/me"]),
                 )
-                await publish_to_user(user_id, event)
+                # ⚠️ 不能调 push_service.publish_to_user(user_id, event)——其签名是
+                # (user_id, *, topic, name, payload)，event 已在此处构造完毕；
+                # 直接调用连接管理器的 (user_id, event) 两参方法。
+                await ws_connection_manager.publish_to_user(user_id, event)
 
             asyncio.run(_run())
         except Exception:

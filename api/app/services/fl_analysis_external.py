@@ -456,6 +456,169 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
+def _resolve_head_tail_ms(
+    profile: dict[str, Any], execution_options: dict[str, Any]
+) -> tuple[float | None, float | None]:
+    """解析雷电流波头/波尾（毫秒语义，C# 数值直接用）。
+
+    ⚠️ C# 语义（LP_Task.txt 波头=2.6）：配置值直接当毫秒数值使用（REBB=-1E6/2.6、
+    REAA1=2.6E-6），不能除以 1000：否则 REBB 差 1000 倍、波形时间≈0 → 恒闪络。
+    """
+    f = _as_float
+
+    def _one(raw_ms_key: str, raw_us_key: str, option_key: str, default: float) -> float | None:
+        raw_ms = f(profile.get(raw_ms_key))
+        if raw_ms is not None:
+            return raw_ms
+        raw_us = f(profile.get(raw_us_key))
+        if raw_us is None:
+            raw_us = f(execution_options.get(option_key))
+        return raw_us if raw_us is not None else default
+
+    head_t_ms = _one("current_head_time_ms", "current_head_time_us", "head_time_min_us", 2.6)
+    tail_t_ms = _one("current_tail_time_ms", "current_tail_time_us", "tail_time_min_us", 50.0)
+    return head_t_ms, tail_t_ms
+
+
+def _csharp_current_waveform_params(
+    *,
+    profile: dict[str, Any],
+    execution_options: dict[str, Any],
+) -> dict[str, str]:
+    """按 C# 公式计算雷电流幅值/波形参数（与模板形态无关，两路渲染共用）。
+
+    - 电流（C# 2052-2056）：REIGAN=|I|(kA)、REIAMP=-|I|×1000(A)、HIAMP=-|I|×500(A)
+    - 波形（C# 2058-2065）：REAA/REBB 衰减率=-1E6/时间ms；REAA1/REBB1=时间ms×1E-6
+    - 波形种类（C# 2066-2087）：1 Heidler 2 双斜角 3 双指数
+    """
+    f = _as_float
+    fmt = _format_csharp_value
+
+    # 二分法迭代电流优先（kA）；profile.current_a 仅作初值
+    current_ka = (
+        f(execution_options.get("binary_search_current_ka"))
+        or f(profile.get("current_a"))
+        or 0.0
+    )
+    head_t_ms, tail_t_ms = _resolve_head_tail_ms(profile, execution_options)
+
+    p: dict[str, str] = {}
+    p["REIGAN____"] = fmt(abs(current_ka), 1)
+    p["REIAMP____"] = fmt(-abs(current_ka) * 1000.0, 1)
+    p["HIAMP_____"] = fmt(-abs(current_ka) * 1000.0 * 0.5, 1)
+
+    if head_t_ms is not None and head_t_ms > 0:
+        p["REBB______"] = fmt(-1.0E6 / head_t_ms, 1)
+        p["REAA1_____"] = fmt(head_t_ms * 1.0E-6, 7)
+    else:
+        p["REBB______"] = "1."
+        p["REAA1_____"] = "1."
+    if tail_t_ms is not None and tail_t_ms > 0:
+        p["REAA______"] = fmt(-1.0E6 / tail_t_ms, 1)
+        p["REBB1_____"] = fmt(tail_t_ms * 1.0E-6, 7)
+    else:
+        p["REAA______"] = "1."
+        p["REBB1_____"] = "1."
+
+    wf = int(f(profile.get("current_type")) or 1)
+    if wf == 2:
+        p["REHHEI____"] = "0."
+        p["REHSLO____"] = "1."
+        p["REHSUR____"] = "0."
+    elif wf == 3:
+        p["REHHEI____"] = "0."
+        p["REHSLO____"] = "0."
+        p["REHSUR____"] = "1."
+    else:
+        p["REHHEI____"] = "1."
+        p["REHSLO____"] = "0."
+        p["REHSUR____"] = "0."
+    return p
+
+
+def _format_csharp_value(v, digits: int = 2) -> str | None:
+    if v is None:
+        return None
+    from .atp_param_dsl import format_value as _fv
+
+    return _fv(v, digits)
+
+
+# 数值型 $PARAMETER 模板允许覆写的电流/波形参数（几何参数不在此列，
+# 几何覆写仍只走等号占位符形态的 C# 渲染路径）。
+_NUMERIC_CURRENT_PARAM_NAMES = (
+    "REIGAN____", "REIAMP____", "HIAMP_____",
+    "REAA______", "REBB______", "REAA1_____", "REBB1_____",
+    "REHSUR____", "REHSLO____", "REHHEI____",
+)
+_NUMERIC_PARAM_LINE_RE = re.compile(
+    r"^([A-Za-z][A-Za-z0-9_]*)\s*=\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*$"
+)
+
+
+def override_numeric_current_params(
+    template: str,
+    *,
+    base_tower: dict[str, Any],
+    profile: dict[str, Any],
+    execution_options: dict[str, Any],
+) -> tuple[str, list[str]]:
+    """数值型 $PARAMETER 模板（如 REIAMP____=10000.）的电流/波形参数覆写。
+
+    背景（2026-11-05 35kV shangzi 实测教训）：C# 桌面版对所有模板都用特征表
+    按行覆写（Update_work_atp3/FeatureSetOfATP），与模板是「等号占位符」还是
+    「数值」形态无关。LP 此前只支持等号占位符形态（render_csharp_equality_
+    template），数值形态模板的雷电流从未写入 → 二分每个探点都跑模板默认电流
+    （35kV shangzi 默认 10kA 恒三相闪络），flashover_count 恒定、二分退化到
+    下界 0.161kA，任务却照常 success。
+
+    本函数只覆写电流/波形参数（几何参数保持模板值），逐行匹配 $PARAMETER 区
+    `NAME=数值` 行，命中 _NUMERIC_CURRENT_PARAM_NAMES 即替换为 C# 公式值。
+    返回 (新模板, 覆写说明列表)。
+    """
+    computed = _csharp_current_waveform_params(
+        profile=profile, execution_options=execution_options,
+    )
+    wanted = {
+        name: computed[name]
+        for name in _NUMERIC_CURRENT_PARAM_NAMES
+        if computed.get(name)
+    }
+    if not wanted:
+        return template, []
+
+    lines = template.splitlines(keepends=True)
+    in_param_block = False
+    notes: list[str] = []
+    changed = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.upper().startswith("$PARAMETER"):
+            in_param_block = True
+            continue
+        if in_param_block and stripped.upper().startswith("BLANK"):
+            in_param_block = False
+            continue
+        if not in_param_block:
+            continue
+        match = _NUMERIC_PARAM_LINE_RE.match(line.rstrip("\r\n"))
+        if not match:
+            continue
+        name = match.group(1)
+        if name not in wanted:
+            continue
+        new_line = f"{name}={wanted[name]}"
+        if line.endswith("\r\n"):
+            new_line += "\r\n"
+        elif line.endswith("\n"):
+            new_line += "\n"
+        if new_line != line:
+            notes.append(f"{name}: {match.group(0).split('=', 1)[1].strip()} -> {wanted[name]}")
+            lines[i] = new_line
+            changed = True
+    return ("".join(lines), notes) if changed else (template, notes)
+
+
 def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, Any],
                              execution_options: dict[str, Any]) -> dict[str, str]:
     """按 C# 桌面版公式计算 work.atp $PARAMETER 全部参数值。
@@ -473,28 +636,7 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
     shield_h = f(profile.get("shield_wire_height_m"))
     # 二分法迭代电流优先（kA）；profile.current_a 仅作初值
     current_ka = f(execution_options.get("binary_search_current_ka")) or f(profile.get("current_a")) or 0.0
-    head_t_raw_ms = f(profile.get("current_head_time_ms"))
-    if head_t_raw_ms is None:
-        head_t_us = f(profile.get("current_head_time_us"))
-        # ⚠️ 2026-09-13 修复：profile 缺波头/波尾时回退任务级选项 head_time_min_us（页面「波头时间/μs」），
-        # 否则用户在任务里设 2/40 也无效、渲染恒为默认 2.6/50（与 C# work.atp 不一致）。
-        if head_t_us is None:
-            head_t_us = f(execution_options.get("head_time_min_us"))
-        # ⚠️ C# 语义（LP_Task.txt 波头=2.6）：m雷电流波头时间_ms 直接取配置值（毫秒语义，
-        # 实际是"数值直接用"——C# 残留 work.atp REBB=-1E6/2.6=-384615、REAA1=2.6E-6）。
-        # 不能除以 1000：否则 REBB=-1E6/0.0026 差 1000 倍、REAA1=2.6E-9 波形时间≈0 → 恒闪络。
-        head_t_ms = head_t_us if head_t_us is not None else 2.6
-    else:
-        head_t_ms = head_t_raw_ms
-    tail_t_raw_ms = f(profile.get("current_tail_time_ms"))
-    if tail_t_raw_ms is None:
-        tail_t_us = f(profile.get("current_tail_time_us"))
-        if tail_t_us is None:
-            tail_t_us = f(execution_options.get("tail_time_min_us"))
-        # C# 语义同上：波尾 50（毫秒语义数值直接用）→ REAA=-1E6/50=-20000、REBB1=50E-6
-        tail_t_ms = tail_t_us if tail_t_us is not None else 50.0
-    else:
-        tail_t_ms = tail_t_raw_ms
+    head_t_ms, tail_t_ms = _resolve_head_tail_ms(profile, execution_options)
     ground_r = f(base_tower.get("ground_resistance_ohm"))
 
     cg = base_tower.get("circuit_geometry_json") or {}
@@ -942,13 +1084,28 @@ _CSHARP_EQUALS_PARAM_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*)\s*=\s*([A-Za-z0-
 def _looks_like_csharp_equality_template(template: str) -> bool:
     """检测模板是否为 C# 等号占位符格式（$PARAMETER 区 NAME=NAMEI 行）。
 
-    特征：存在形如 `RER001=RER001I` / `REHG______=REHGI` 的等号行，
+    特征：$PARAMETER 区内存在形如 `RER001=RER001I` / `REHG______=REHGI` 的等号行，
     且等号右侧是字母数字下划线（占位符）而非数字。返回 True 时走 C# 渲染。
+
+    ⚠️ 2026-11-05 修复：只扫 $PARAMETER 区。此前全文扫描，会被 /TACS 区的
+    `98VGAN1 = VMGAN1 * FUN12`、`98XX0001 =FUN1` 之类行误判成等号模板
+    （RHS 恰好是纯标识符），导致数值型模板（35kV shangzi 等）走错分支、
+    电流参数从未写入 → 二分闪络判据失效（fc 恒定、耐雷收敛到下界 0.161kA）。
     """
     sample = 0
+    in_param_block = False
     for line in template.splitlines():
         line = line.strip()
-        if not line or "=" not in line:
+        if not line:
+            continue
+        upper = line.upper()
+        if upper.startswith("$PARAMETER"):
+            in_param_block = True
+            continue
+        if in_param_block and upper.startswith("BLANK"):
+            in_param_block = False
+            continue
+        if not in_param_block or "=" not in line:
             continue
         name, sep, value = line.partition("=")
         name = name.strip()
@@ -1421,6 +1578,24 @@ def execute_external_waveform_tower_analysis(
             base_tower=snapshot.base_tower_json or {},
             profile=snapshot.profile_json or {},
             execution_options=execution_options,
+        )
+    # 数值型电流/波形参数覆写（两种模板形态都要跑）：
+    # C# 桌面版对所有模板都用特征表按行覆写电流/波形参数（Update_work_atp3），
+    # 与模板形态无关。占位符行由 render_csharp_equality_template 处理；
+    # 数值行（如上传模板里烤死的 REIAMP____=-52580.，52.58kA 常量）由本函数处理。
+    # 缺此步时雷电流从未写入模型，二分每个探点跑同一电流 → flashover_count 恒定、
+    # 二分退化到下界（2026-11-05 35kV shangzi：12 塔 fc 恒=3、耐雷全=0.161kA）。
+    rendered_text, _num_override_notes = override_numeric_current_params(
+        rendered_text,
+        base_tower=snapshot.base_tower_json or {},
+        profile=snapshot.profile_json or {},
+        execution_options=execution_options,
+    )
+    if _num_override_notes:
+        logger.info(
+            "[ATP] 数值参数覆写（%s）：%s",
+            snapshot.tower_no,
+            "; ".join(_num_override_notes[:6]),
         )
     logger.info("[ATP] 模板渲染完成，输入文件大小=%d 字节", len(rendered_text))
 
