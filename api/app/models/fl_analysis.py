@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.database import Base
@@ -93,8 +94,11 @@ class FlAnalysisRun(Base):
     runner_kind: Mapped[str] = mapped_column(String(32), default="placeholder")
     engine_command: Mapped[str | None] = mapped_column(String(2048))
     working_dir: Mapped[str | None] = mapped_column(String(2048))
-    stdout_text: Mapped[str | None] = mapped_column(Text)
-    stderr_text: Mapped[str | None] = mapped_column(Text)
+    # ⚠️ MEDIUMTEXT（2026-11-05）：35kV 12 塔全量 ATP stdout 聚合超 TEXT 64KB 上限，
+    # 收尾回写撞 DataError 1406 把已成功的任务标成 failed。单塔截断上限是 200k，
+    # 12 塔聚合可达 2.4MB，TEXT 装不下。
+    stdout_text: Mapped[str | None] = mapped_column(Text().with_variant(MEDIUMTEXT, "mysql"))
+    stderr_text: Mapped[str | None] = mapped_column(Text().with_variant(MEDIUMTEXT, "mysql"))
     error_message: Mapped[str | None] = mapped_column(Text)
     snapshot_tower_count: Mapped[int] = mapped_column(Integer, default=0)
     result_tower_count: Mapped[int] = mapped_column(Integer, default=0)
