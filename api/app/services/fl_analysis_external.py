@@ -544,16 +544,40 @@ def _format_csharp_value(v, digits: int = 2) -> str | None:
     return _fv(v, digits)
 
 
-# 数值型 $PARAMETER 模板允许覆写的电流/波形参数（几何参数不在此列，
-# 几何覆写仍只走等号占位符形态的 C# 渲染路径）。
+# 数值型 $PARAMETER 模板允许覆写的电流/波形参数。
 _NUMERIC_CURRENT_PARAM_NAMES = (
     "REIGAN____", "REIAMP____", "HIAMP_____",
     "REAA______", "REBB______", "REAA1_____", "REBB1_____",
     "REHSUR____", "REHSLO____", "REHHEI____",
 )
+# 数值型模板允许覆写的几何参数名（逐塔数据决定，与 C# Update_work_atp3 一致）。
+# C# 对**所有**模板都按特征表（Setting/work_atp_model.txt）逐行覆写这些变量，
+# 与模板是等号占位符还是烤死数值无关。缺此步则模板默认值（RER001=1000.、
+# RELE01-11=500.、REHG/REHC=1.）直接进模型 → 反击耐雷与逐塔接地电阻/几何脱钩，
+# 表现为 web 侧耐雷水平恒定（2026-11-05 35kV shangzi：11 塔恒 41.36kA，
+# C# 逐塔 26.9~55.4kA）。
+_NUMERIC_GEOMETRY_PARAM_NAMES = (
+    "RER001", "RELENS____",
+    "RELE01", "RELE02", "RELE03", "RELE04", "RELE05", "RELE06",
+    "RELE07", "RELE08", "RELE09", "RELE10", "RELE11", "RELE12",
+    "RELE13", "RELE14", "RELE15", "RELE16", "RELE17", "RELE18",
+    "RELE19", "RELE20", "RELE21", "RELE22", "RELE23", "RELE24",
+    "RELE25", "RELE26",
+    "REHG______", "REHC1_____", "REHC2_____", "REHC3_____",
+)
 _NUMERIC_PARAM_LINE_RE = re.compile(
     r"^([A-Za-z][A-Za-z0-9_]*)\s*=\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*$"
 )
+
+
+def _numeric_geometry_override_enabled() -> bool:
+    """数值型模板是否连几何参数一起覆写（默认开启）。
+
+    ATP_NUMERIC_GEOM_OVERRIDE=0 可临时回退到「仅电流/波形」行为，
+    用于线上出现几何回归时快速止血（无需重新发版）。
+    """
+    raw = os.environ.get("ATP_NUMERIC_GEOM_OVERRIDE", "1").strip().lower()
+    return raw not in ("0", "false", "off", "no")
 
 
 def override_numeric_current_params(
@@ -562,8 +586,9 @@ def override_numeric_current_params(
     base_tower: dict[str, Any],
     profile: dict[str, Any],
     execution_options: dict[str, Any],
+    include_geometry: bool = True,
 ) -> tuple[str, list[str]]:
-    """数值型 $PARAMETER 模板（如 REIAMP____=10000.）的电流/波形参数覆写。
+    """数值型 $PARAMETER 模板（如 REIAMP____=10000.）的逐行参数覆写。
 
     背景（2026-11-05 35kV shangzi 实测教训）：C# 桌面版对所有模板都用特征表
     按行覆写（Update_work_atp3/FeatureSetOfATP），与模板是「等号占位符」还是
@@ -572,18 +597,38 @@ def override_numeric_current_params(
     （35kV shangzi 默认 10kA 恒三相闪络），flashover_count 恒定、二分退化到
     下界 0.161kA，任务却照常 success。
 
-    本函数只覆写电流/波形参数（几何参数保持模板值），逐行匹配 $PARAMETER 区
-    `NAME=数值` 行，命中 _NUMERIC_CURRENT_PARAM_NAMES 即替换为 C# 公式值。
+    ``include_geometry=True``（默认）：除电流/波形外，连同逐塔几何参数
+    （RER001 接地电阻、RELENS 绝缘子串长、RELE01-26、REHG、REHC1-3）一并覆写，
+    与 C# 特征表 Setting/work_atp_model.txt 的变量集对齐。这些参数在模板里
+    是烤死的默认值（RER001=1000.、RELE01-11=500.、REHG/REHC=1.），不覆写则
+    耐雷水平与逐塔接地电阻/几何完全脱钩（11 塔恒 41.36kA 的根因）。
+    ``include_geometry=False``：退回仅电流/波形覆写（环境变量
+    ATP_NUMERIC_GEOM_OVERRIDE=0 时使用，用于快速回退）。
+
+    逐行匹配 $PARAMETER 区 `NAME=数值` 行，命中允许集即替换为 C# 公式值。
     返回 (新模板, 覆写说明列表)。
     """
+    wanted: dict[str, str] = {}
+
+    if include_geometry:
+        try:
+            full = compute_csharp_atp_params(
+                base_tower=base_tower, profile=profile,
+                execution_options=execution_options,
+            )
+            allowed = set(_NUMERIC_GEOMETRY_PARAM_NAMES) | set(_NUMERIC_CURRENT_PARAM_NAMES)
+            wanted.update({k: v for k, v in (full or {}).items() if k in allowed and v})
+        except Exception:  # noqa: BLE001 - 兜底：几何计算失败仍保证电流写入
+            logger.warning("[ATP] 几何参数计算失败，回退为仅覆写电流/波形参数", exc_info=True)
+
     computed = _csharp_current_waveform_params(
         profile=profile, execution_options=execution_options,
     )
-    wanted = {
-        name: computed[name]
-        for name in _NUMERIC_CURRENT_PARAM_NAMES
-        if computed.get(name)
-    }
+    for name in _NUMERIC_CURRENT_PARAM_NAMES:
+        if computed.get(name):
+            # 几何路径已给出值时以几何路径为准（两者公式一致，仅作兜底）
+            wanted.setdefault(name, computed[name])
+
     if not wanted:
         return template, []
 
@@ -1593,6 +1638,7 @@ def execute_external_waveform_tower_analysis(
         base_tower=snapshot.base_tower_json or {},
         profile=snapshot.profile_json or {},
         execution_options=execution_options,
+        include_geometry=_numeric_geometry_override_enabled(),
     )
     if _num_override_notes:
         logger.info(

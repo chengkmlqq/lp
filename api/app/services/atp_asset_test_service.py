@@ -792,6 +792,7 @@ class _TestContext:
     def render(self) -> str:
         from .fl_analysis_external import (
             _looks_like_csharp_equality_template,
+            _numeric_geometry_override_enabled,
             override_numeric_current_params,
             render_atp_template,
             render_csharp_equality_template,
@@ -812,13 +813,15 @@ class _TestContext:
                 profile=dict(self.payload.profile or {}),
                 execution_options=self.execution_options,
             )
-        # 数值型电流/波形参数覆写（两种模板形态都跑，占位符行自动无效）：
-        # 与主链路 execute_external_waveform_tower_analysis 保持一致。
+        # 数值型参数覆写（两种模板形态都跑，占位符行自动无效）：
+        # 与主链路 execute_external_waveform_tower_analysis 保持一致
+        # （含逐塔几何参数 RER001/RELENS/RELE*/REHG/REHC*）。
         text, _notes = override_numeric_current_params(
             text,
             base_tower=dict(self.payload.base_tower or {}),
             profile=dict(self.payload.profile or {}),
             execution_options=self.execution_options,
+            include_geometry=_numeric_geometry_override_enabled(),
         )
         return text
 
