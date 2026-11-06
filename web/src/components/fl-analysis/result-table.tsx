@@ -1,5 +1,6 @@
 "use client";
 import { useI18n } from "@/lib/i18n";
+import { translateAnalysisText } from "@/lib/analysis-text";
 
 import { useMemo, type ReactNode } from "react";
 import { Alert, Button, Empty, Spin, Table, Tag, Typography } from "antd";
@@ -42,7 +43,7 @@ export function ResultTable({
   onOpenDetail,
   headerExtra,
 }: ResultTableProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const columns = useMemo<ColumnsType<FlAnalysisTowerResultSummary>>(() => {
     const resultColumns: ColumnsType<FlAnalysisTowerResultSummary> = [
       {
@@ -99,10 +100,10 @@ export function ResultTable({
         if (typeof cause === "string" && cause.trim()) {
           return (
             <Typography.Paragraph
-              ellipsis={{ rows: 3, tooltip: cause }}
+              ellipsis={{ rows: 3, tooltip: translateAnalysisText(cause, lang) }}
               style={{ fontSize: 12, marginBottom: 0 }}
             >
-              {cause}
+              {translateAnalysisText(cause, lang)}
             </Typography.Paragraph>
           );
         }
@@ -220,7 +221,7 @@ export function ResultTable({
     );
 
     return resultColumns;
-  }, [onOpenDetail, selectedJob?.job_type, selectedWaveformJobType]);
+  }, [onOpenDetail, selectedJob?.job_type, selectedWaveformJobType, t, lang]);
 
   if (loading) {
     return (

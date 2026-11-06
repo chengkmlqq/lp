@@ -1,5 +1,6 @@
 "use client";
 import { useI18n } from "@/lib/i18n";
+import { translateAnalysisText } from "@/lib/analysis-text";
 import { modoTablePagination } from "@/components/biz/modo-pagination";
 
 import { Alert, Checkbox, Empty, Form, Input, Modal, Space, Table, Tag, Typography } from "antd";
@@ -41,7 +42,7 @@ export function MitigationModal({
   onSubmit,
   onCancel,
 }: MitigationModalProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   return (
     <Modal
       title={selectedJob ? `${t("措施推荐")} - ${selectedJob.job_name || selectedJob.line_name || selectedJob.line_code}` : t("措施推荐")}
@@ -111,12 +112,12 @@ export function MitigationModal({
                 {
                   title: t("高风险原因"),
                   key: "cause_analysis",
-                  render: (_value, row) => readString(readObject(row.result_json), "cause_analysis"),
+                  render: (_value, row) => translateAnalysisText(readString(readObject(row.result_json), "cause_analysis"), lang),
                 },
                 {
                   title: t("当前建议"),
                   key: "mitigation_recommendation",
-                  render: (_value, row) => readString(readObject(row.result_json), "mitigation_recommendation"),
+                  render: (_value, row) => translateAnalysisText(readString(readObject(row.result_json), "mitigation_recommendation"), lang),
                 },
               ]}
               dataSource={rows}
