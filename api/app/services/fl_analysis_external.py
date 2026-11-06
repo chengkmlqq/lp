@@ -13,6 +13,15 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
+
+class _AtpSimulationHalt(RuntimeError):
+    """ATP 仿真未真正运行（lis 报 Halt / 模型残缺）——必须显式失败，不得当作"0 闪络"。
+
+    2026-11-06 115/230 INSERT 资产实测：$PARAMETER 段未规范化时引擎一启动就
+    `Halt in POCKET. JTOKEN overflows limit KONST = 120`，work.lis 无 Close switch
+    行 → 原实现判 0 闪络 → 二分法顶到 2000kA 上限且任务标记 success。
+    """
+
 # C# 桌面版倍率表（BeiShu.txt，2025-11-20 执行目录 SettingTxtFile/BeiShu.txt 实测）：
 # - 反击 fanji：除 35kV guxing/guxingd=0.7 外，全部 1.0（含 500kV guxing）
 # - 绕击 raoji：110/220/500kV 且塔型∈{menxing,ganzi,guxing,guxingd,maotou,jiubei} 取 1.1；
@@ -1825,6 +1834,32 @@ def execute_external_waveform_tower_analysis(
             "branch_count": len(_adapted.lines),
         }
 
+    # ── $PARAMETER 段规范化（2026-11-06 115/230 实测）──
+    # 与资产测试路径（atp_asset_test_service）同口径。LP 引擎是 2003-09-19 的 tpbig，
+    # 不认 ATPDraw 7.2+ 的三样写法：`$$` 行尾注释、整数写法、超过 List31 的中间变量引用。
+    # 不规范化时的实测表现（115/230 全部 INSERT 形态资产）：
+    #   `Halt in POCKET. JTOKEN overflows limit KONST = 120.`
+    #   → work.pl4 0 字节、work.lis 无 `Close switch` 行
+    #   → 闪络判据恒为 0 → 二分法一路顶到 2000kA 上限（0 闪络却判"耐雷水平 2000kA"）
+    # 老版模型（无中间变量）该函数原样返回，对既有链路零影响。
+    from .atp_model_format import normalize_parameter_section as _normalize_params
+
+    rendered_text, _param_diag = _normalize_params(rendered_text)
+    if _param_diag.get("unresolved"):
+        _preview = "；".join(
+            f"{item['name']} ← 缺 {item['ref']}" for item in _param_diag["unresolved"][:6]
+        )
+        raise RuntimeError(
+            f"{snapshot.tower_no} work.atp 的 $PARAMETER 段有 "
+            f"{len(_param_diag['unresolved'])} 个参数引用不到定义：{_preview}"
+        )
+    if _param_diag.get("rewritten"):
+        logger.info(
+            "[ATP] $PARAMETER 规范化（%s）：中间变量 %s → 别名 %s，重写 %s 行",
+            snapshot.tower_no, _param_diag.get("intermediates"),
+            _param_diag.get("aliases"), _param_diag.get("resolved"),
+        )
+
     run_dir = _prepare_run_directory(
         job=job, snapshot=snapshot, resolved_job=resolved_job,
         subdir=str(execution_options.get("_run_subdir") or ""),
@@ -2071,12 +2106,35 @@ def execute_external_waveform_tower_analysis(
         lis_detail = _read_lis_flashover_detail(run_dir)
         if lis_detail is not None:
             lis_flash, lis_phases = lis_detail
+            # ⚠️ 2026-11-06：lis 存在但仿真根本没跑完（Halt/error stop）时，
+            # "无 Close switch" ≠ "无闪络"。115/230 INSERT 资产实测：$PARAMETER 段
+            # 未规范化 → `Halt in POCKET. JTOKEN overflows limit KONST = 120`
+            # → 每个电流探点都判 0 闪络 → 二分法顶到 2000kA 上限还标记 success。
+            # 这种「无计算条件」必须显式失败，绝不让二分法拿假 0 收敛。
+            halt_marker = None
+            if lis_flash == 0:
+                try:
+                    _lis_path = run_dir / "work.lis"
+                    _lis_txt = _lis_path.read_bytes().decode("gbk", errors="replace") if _lis_path.is_file() else ""
+                except Exception:  # noqa: BLE001
+                    _lis_txt = ""
+                for _m in ("Halt in", "Temporary error stop", "Failure to connect disk file"):
+                    if _m in _lis_txt:
+                        halt_marker = _m
+                        break
+            if halt_marker:
+                raise _AtpSimulationHalt(
+                    f"{snapshot.tower_no} ATP 仿真未真正运行（work.lis 含 `{halt_marker}`），"
+                    "闪络判据不可用；请检查 $PARAMETER 段/模型完整性"
+                )
             parsed_payload["flashover_count"] = lis_flash
             if lis_phases:
                 # 闪络相名（按 .lis 闭合顺序，如 ["A1","C1","C2",...]）——对齐 C# strXiang
                 parsed_payload["flashover_phases"] = lis_phases
             logger.info("[ATP] lis 闪络检测（Close switch）：%s，闪络相数=%d，相=%s",
                         snapshot.tower_no, lis_flash, ",".join(lis_phases) or "-")
+    except _AtpSimulationHalt:
+        raise
     except Exception as exc:
         logger.warning("[ATP] lis 闪络检测失败（%s）：%s", snapshot.tower_no, exc)
     # 仅当 lis 判据不可用（work.lis 缺失/无 Close switch 信息）时，才回退到
