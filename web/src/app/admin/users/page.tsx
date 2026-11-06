@@ -1013,7 +1013,7 @@ export default function AdminUsersPage() {
                 disabled: rowBusy,
                 onClick: () => {
                   Modal.confirm({
-                    title: `确认删除用户 ${row.username}（${row.id}）？`,
+                    title: `${t("确认删除用户")} ${row.username}（${row.id}）${t("？")}`,
                     okText: t("删除"),
                     cancelText: t("取消"),
                     okButtonProps: { danger: true, loading: deleteLoading },
@@ -1069,7 +1069,7 @@ export default function AdminUsersPage() {
         onClick: (info) => {
           info.domEvent?.stopPropagation();
           Modal.confirm({
-            title: `确认删除用户 ${userItem.username}（${userItem.id}）？`,
+            title: `${t("确认删除用户")} ${userItem.username}（${userItem.id}）${t("？")}`,
             okText: t("删除"),
             cancelText: t("取消"),
             okButtonProps: { danger: true },
@@ -1200,7 +1200,7 @@ export default function AdminUsersPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -1214,7 +1214,7 @@ export default function AdminUsersPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -1394,7 +1394,7 @@ export default function AdminUsersPage() {
                       {allLoadedUsers.length >= (usersQuery.data?.total ?? 0) && allLoadedUsers.length > 0 && (
                         <div style={{ textAlign: "center", padding: "20px 0" }}>
                           <Typography.Text type="secondary">
-                            已加载全部 {allLoadedUsers.length} 条数据
+                            {t("已加载全部")} {allLoadedUsers.length} {t("条数据")}
                           </Typography.Text>
                         </div>
                       )}
@@ -1451,7 +1451,7 @@ export default function AdminUsersPage() {
             ) : null}
             {createAvatarUploadProgress >= 100 && createAvatarTempFileId && !createAvatarUploadError ? (
               <Typography.Text type="success" style={{ display: "block", marginTop: 8 }}>
-                <CheckCircleOutlined /> 上传完成，可以提交创建
+                <CheckCircleOutlined /> {t("上传完成，可以提交创建")}
               </Typography.Text>
             ) : null}
             {createAvatarUploadError ? (
@@ -1566,7 +1566,7 @@ export default function AdminUsersPage() {
               ) : null}
               {editAvatarUploadProgress >= 100 && editAvatarTempFileId && !editAvatarUploadError ? (
                 <Typography.Text type="success" style={{ display: "block", marginTop: 8 }}>
-                  <CheckCircleOutlined /> 上传完成，头像已更新
+                  <CheckCircleOutlined /> {t("上传完成，头像已更新")}
                 </Typography.Text>
               ) : null}
               {editAvatarUploadError ? (

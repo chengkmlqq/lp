@@ -697,7 +697,7 @@ export default function AdminDimensionsPage() {
                   onClick: () => {
                     Modal.confirm({
                       title: t("删除维度项"),
-                      content: `确认删除维度项 ${record.name}（${record.code}）吗？`,
+                      content: `${t("确认删除维度项")} ${record.name}（${record.code}）${t("吗？")}`,
                       okText: t("删除"),
                       cancelText: t("取消"),
                       okButtonProps: { danger: true, loading: deleteLoading },
@@ -742,7 +742,7 @@ export default function AdminDimensionsPage() {
           info.domEvent?.stopPropagation();
           Modal.confirm({
             title: t("删除维度项"),
-            content: `确认删除维度项 ${item.name}（${item.code}）吗？`,
+            content: `${t("确认删除维度项")} ${item.name}（${item.code}）${t("吗？")}`,
             okText: t("删除"),
             cancelText: t("取消"),
             okButtonProps: { danger: true },
@@ -861,7 +861,7 @@ export default function AdminDimensionsPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -875,7 +875,7 @@ export default function AdminDimensionsPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -894,7 +894,7 @@ export default function AdminDimensionsPage() {
           <Space>
             {canManage && (
               <Button type="primary" onClick={openDimensionCreate}>
-                <PlusOutlined /> 新建维度项
+                <PlusOutlined /> {t("新建维度项")}
               </Button>
             )}
             {canManage && selectedTypeId !== null ? (
@@ -908,7 +908,7 @@ export default function AdminDimensionsPage() {
                   onClick={() => {
                     Modal.confirm({
                       title: t("删除类型"),
-                      content: `确认删除类型 "${selectedType?.name}" 吗？该类型下不能有维度值。`,
+                      content: `${t("确认删除类型")} "${selectedType?.name}" ${t("吗？该类型下不能有维度值。")}`,
                       okText: t("删除"),
                       cancelText: t("取消"),
                       okButtonProps: { danger: true },
@@ -916,7 +916,7 @@ export default function AdminDimensionsPage() {
                     });
                   }}
                 >
-                  删除类型
+                  {t("删除类型")}
                 </Button>
               </Space>
             ) : null}
@@ -963,7 +963,7 @@ export default function AdminDimensionsPage() {
                   <>
                     {typeSearch && (
                       <div className="admin-system-params-search-results-count">
-                        {`找到 ${filteredTreeData.length} 个类型`}
+                        {`${t("找到")} ${filteredTreeData.length} ${t("个类型")}`}
                       </div>
                     )}
                     <div className="admin-system-params-sider-menu">

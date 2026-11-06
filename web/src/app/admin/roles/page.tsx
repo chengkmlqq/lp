@@ -574,7 +574,7 @@ export default function AdminRolesPage() {
           const menuLabels = value.map((menuId) => menuNameById.get(menuId) ?? String(menuId));
           const fullText = menuLabels.join("、");
           const compactText = menuLabels.length > 5
-            ? `${menuLabels.slice(0, 5).join("、")}等${menuLabels.length}个...`
+            ? `${menuLabels.slice(0, 5).join("、")}${t("等")}${menuLabels.length}${t("个")}...`
             : fullText;
           return (
             <Typography.Text
@@ -627,7 +627,7 @@ export default function AdminRolesPage() {
                   disabled: rowBusy,
                   onClick: () => {
                     Modal.confirm({
-                      title: `确认删除角色 ${role.code} 吗？`,
+                      title: `${t("确认删除角色")} ${role.code} ${t("吗？")}`,
                       content: t("删除后无法恢复，请谨慎操作。"),
                       okText: t("删除"),
                       cancelText: t("取消"),
@@ -662,7 +662,7 @@ export default function AdminRolesPage() {
         onClick: (info) => {
           info.domEvent?.stopPropagation();
           Modal.info({
-            title: `角色菜单：${role.name}（${role.code}）`,
+            title: `${t("角色菜单：")}${role.name}（${role.code}）`,
             content: (
               <Space direction="vertical" size={6} style={{ width: "100%" }}>
                 {menuLabels.length > 0 ? (
@@ -686,7 +686,7 @@ export default function AdminRolesPage() {
         onClick: (info) => {
           info.domEvent?.stopPropagation();
           Modal.confirm({
-            title: `确认删除角色 ${role.code} 吗？`,
+            title: `${t("确认删除角色")} ${role.code} ${t("吗？")}`,
             content: t("删除后无法恢复，请谨慎操作。"),
             okText: t("删除"),
             cancelText: t("取消"),
@@ -878,7 +878,7 @@ export default function AdminRolesPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -892,7 +892,7 @@ export default function AdminRolesPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -1098,7 +1098,7 @@ export default function AdminRolesPage() {
               {!editingRole && (
                 <Col xs={24}>
                   <Typography.Text type="secondary">
-                    新角色默认无任何权限，创建后请在「分配权限」中授予菜单与操作权限。
+                    {t("新角色默认无任何权限，创建后请在「分配权限」中授予菜单与操作权限。")}
                   </Typography.Text>
                 </Col>
               )}
@@ -1131,7 +1131,7 @@ export default function AdminRolesPage() {
               name="menu_ids"
               label={
                 <span>
-                  菜单与操作权限{" "}
+                  {t("菜单与操作权限")}{" "}
                   <Tooltip title={t("勾选菜单即授予页面查看权限；展开菜单可勾选查看/管理/运行等操作权限（按钮级）。")}>
                     <QuestionCircleOutlined style={{ color: "#999", fontSize: "12px" }} />
                   </Tooltip>

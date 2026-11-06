@@ -103,8 +103,8 @@ export function ElevationPreviewCesiumMap({
     if (!terrainError) {
       return "";
     }
-    return `地形瓦片加载失败：${terrainError}`;
-  }, [terrainError]);
+    return `${t("地形瓦片加载失败：")}${terrainError}`;
+  }, [terrainError, t]);
 
   const safePoints = useMemo(
     () =>
@@ -642,7 +642,7 @@ export function ElevationPreviewCesiumMap({
       {loading && (
         <div className="flex items-center gap-2 text-xs text-slate-500">
           <Spin size="small" />
-          预览数据加载中...
+          {t("预览数据加载中...")}
         </div>
       )}
     </div>

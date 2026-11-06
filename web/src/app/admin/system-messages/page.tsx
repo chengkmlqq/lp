@@ -586,7 +586,7 @@ export default function AdminSystemMessagesPage() {
                 info.domEvent?.stopPropagation();
                 Modal.confirm({
                   title: t("删除系统消息"),
-                  content: `确认删除系统消息「${item.title}」吗？`,
+                  content: `${t("确认删除系统消息")}「${item.title}」${t("吗？")}`,
                   okText: t("删除"),
                   cancelText: t("取消"),
                   okButtonProps: { danger: true },
@@ -743,7 +743,7 @@ export default function AdminSystemMessagesPage() {
                 onClick: () => {
                   Modal.confirm({
                     title: t("删除系统消息"),
-                    content: `确认删除系统消息「${item.title}」吗？`,
+                    content: `${t("确认删除系统消息")}「${item.title}」${t("吗？")}`,
                     okText: t("删除"),
                     cancelText: t("取消"),
                     okButtonProps: { danger: true, loading: isDeleting },
@@ -774,7 +774,7 @@ export default function AdminSystemMessagesPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );

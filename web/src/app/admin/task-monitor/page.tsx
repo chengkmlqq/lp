@@ -247,7 +247,7 @@ export default function AdminTaskMonitorPage() {
 
   const confirmDeleteTask = useCallback((taskId: string) => {
     Modal.confirm({
-      title: `确认删除任务 ${taskId}？`,
+      title: `${t("确认删除任务")} ${taskId}${t("？")}`,
       okText: t("删除"),
       cancelText: t("取消"),
       okButtonProps: { danger: true },
@@ -600,7 +600,7 @@ export default function AdminTaskMonitorPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -614,7 +614,7 @@ export default function AdminTaskMonitorPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );

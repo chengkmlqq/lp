@@ -594,7 +594,7 @@ export default function AdminDocumentsPage() {
                 disabled: rowBusy || !canManage,
                 onClick: () => {
                   Modal.confirm({
-                    title: `确认删除文档 ${record.title}？`,
+                    title: `${t("确认删除文档")} ${record.title}${t("？")}`,
                     okText: t("删除"),
                     cancelText: t("取消"),
                     okButtonProps: { danger: true, loading: deleteLoading },
@@ -673,7 +673,7 @@ export default function AdminDocumentsPage() {
                 onClick={(event) => {
                   event.stopPropagation();
                   Modal.confirm({
-                    title: `确认删除文档 ${doc.title}？`,
+                    title: `${t("确认删除文档")} ${doc.title}${t("？")}`,
                     okText: t("删除"),
                     cancelText: t("取消"),
                     okButtonProps: { danger: true, loading: deleteLoading },
@@ -718,7 +718,7 @@ export default function AdminDocumentsPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -732,7 +732,7 @@ export default function AdminDocumentsPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -753,14 +753,14 @@ export default function AdminDocumentsPage() {
                 icon={<FolderOutlined />}
                 onClick={handleCreateChapter}
               >
-                新建章节
+                {t("新建章节")}
               </Button>
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={handleCreateDocument}
               >
-                新建文档
+                {t("新建文档")}
               </Button>
             </Space>
           )
@@ -1088,7 +1088,7 @@ export default function AdminDocumentsPage() {
                 documentForm.resetFields();
               }}
             >
-              取消
+              {t("取消")}
             </Button>
             <Button
               type="primary"
@@ -1097,7 +1097,7 @@ export default function AdminDocumentsPage() {
                 createDocumentMutation.isPending || updateDocumentMutation.isPending
               }
             >
-              保存
+              {t("保存")}
             </Button>
           </Space>
         }

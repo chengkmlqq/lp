@@ -154,7 +154,7 @@ export default function AdminLightningRetrofitPage() {
       throw new Error(await readApiError(response));
     }
     await jobsQuery.refetch();
-    messageApi.success(`已删除防雷改造任务：${job.job_name || job.line_name || job.id}`);
+    messageApi.success(`${t("已删除防雷改造任务：")}${job.job_name || job.line_name || job.id}`);
   };
 
   // 查看详情 → 当前页动态追加详情 tab（严格参照线路管理 openDetail，不跳转页面）
@@ -168,7 +168,7 @@ export default function AdminLightningRetrofitPage() {
         ...previous,
         {
           key,
-          label: <>防雷改造详情 - {job.job_name || job.line_name || job.line_code || job.id}</>,
+          label: <>{t("防雷改造详情")} - {job.job_name || job.line_name || job.line_code || job.id}</>,
           closable: true,
           children: <RetrofitJobDetail jobId={job.id} />,
         },
@@ -555,7 +555,7 @@ export default function AdminLightningRetrofitPage() {
                           <div className="flex items-center gap-2">
                             <ApartmentOutlined className="text-xs text-gray-500" />
                             <Typography.Text type="secondary" className="text-xs truncate">
-                              线路：{job.line_name || job.line_code || "-"}
+                              {t("线路：")}{job.line_name || job.line_code || "-"}
                             </Typography.Text>
                           </div>
                           <div className="flex items-center gap-2">
@@ -568,7 +568,7 @@ export default function AdminLightningRetrofitPage() {
                           <div className="flex items-center gap-2">
                             <ClockCircleOutlined className="text-xs text-gray-500" />
                             <Typography.Text type="secondary" className="text-xs">
-                              创建：{formatDateTime(job.create_date)}
+                              {t("创建：")}{formatDateTime(job.create_date)}
                             </Typography.Text>
                           </div>
                           {job.status === "running" ? (
@@ -627,7 +627,7 @@ export default function AdminLightningRetrofitPage() {
                   setPagination({ current: page, pageSize });
                 }}
                 showSizeChanger
-                showTotal={(totalCount) => `共 ${totalCount} 条`}
+                showTotal={(totalCount) => `${t("共")} ${totalCount} ${t("条")}`}
               />
             </div>
           </div>
@@ -718,7 +718,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
   }, [loadResults]));
 
   const handleExport = () => {
-    const headers = "塔号,当前风险,预期风险,预期得分,措施建议,结论\n";
+    const headers = `${t("塔号")},${t("当前风险")},${t("预期风险")},${t("预期得分")},${t("措施建议")},${t("结论")}\n`;
     const lines = rows
       .map((row) => {
         const result = row.result_json ?? {};
@@ -734,7 +734,7 @@ function RetrofitJobDetail({ jobId }: { jobId: string }) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `防雷改造任务-${jobId.slice(0, 8)}.csv`;
+    link.download = `${t("防雷改造任务")}-${jobId.slice(0, 8)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -922,7 +922,7 @@ function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
             children: (
               <Space direction="vertical" size={4} style={{ width: "100%" }}>
                 <Space wrap>
-                  <Typography.Text strong>第 {String(step.step)} 轮</Typography.Text>
+                  <Typography.Text strong>{t("第")} {String(step.step)} {t("轮")}</Typography.Text>
                   <Tag color="blue">{String(step.state ?? "-")}</Tag>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {t("分级")}：{t("绝缘")}{String(grades.insulator ?? "-")} / {t("接地")}{String(grades.ground ?? "-")} / {t("保护角")}{String(grades.protection ?? "-")}
@@ -930,7 +930,7 @@ function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
                 </Space>
                 {changes.length > 0 ? (
                   <Typography.Text>
-                    改动：
+                    {t("改动：")}
                     {changes.map((c, i) => (
                       <Tag key={i} color="purple" style={{ marginLeft: 4 }}>
                         {String(c.label ?? "")} {String(c.old ?? "")} → {String(c.new ?? "")} {String(c.unit ?? "")}
@@ -942,7 +942,7 @@ function ProcessTimeline({ row }: { row: FlAnalysisTowerResultSummary }) {
                 )}
                 {recomputed ? (
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    ATP 重算：风险等级
+                    {t("ATP 重算：风险等级")}
                     {riskLevel ? (
                       <Tag color={colorForRisk(riskLevel)} style={{ marginLeft: 4 }}>{riskLevel}</Tag>
                     ) : (

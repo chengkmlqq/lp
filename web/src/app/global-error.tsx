@@ -65,7 +65,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
                 fontWeight: 600,
               }}
             >
-              重试
+              {t("重试")}
             </button>
             <button
               type="button"

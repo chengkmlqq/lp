@@ -552,7 +552,7 @@ export default function ElevationRecordsPage() {
       return { createdCount };
     },
     onSuccess: (data) => {
-      messageApi.success(`已创建 ${data.createdCount} 个回填任务`);
+      messageApi.success(`${t("已创建")} ${data.createdCount} ${t("个回填任务")}`);
       setApplyModalOpen(false);
       applyForm.resetFields();
       queryClient.invalidateQueries({ queryKey: ["elevation-records"] });
@@ -798,7 +798,7 @@ export default function ElevationRecordsPage() {
                 disabled: rowBusy,
                 onClick: () => {
                   Modal.confirm({
-                    title: `确认删除文件 "${row.file_name}"？`,
+                    title: `${t("确认删除文件")} "${row.file_name}"${t("？")}`,
                     okText: t("删除"),
                     cancelText: t("取消"),
                     okButtonProps: { danger: true, loading: deleting },
@@ -852,7 +852,7 @@ export default function ElevationRecordsPage() {
             </div>
             <div className="flex items-center gap-2">
               <DatabaseOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">大小：{formatFileSize(record.file_size)}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">{t("大小：")}{formatFileSize(record.file_size)}</Typography.Text>
             </div>
             <div className="flex items-center gap-2">
               <AppstoreOutlined className="text-xs text-gray-500" />
@@ -860,7 +860,7 @@ export default function ElevationRecordsPage() {
             </div>
             <div className="flex items-center gap-2">
               <NumberOutlined className="text-xs text-gray-500" />
-              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">样本数：{record.sample_count.toLocaleString()}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs min-w-0 truncate">{t("样本数：")}{record.sample_count.toLocaleString()}</Typography.Text>
             </div>
           </div>
 
@@ -917,7 +917,7 @@ export default function ElevationRecordsPage() {
                       onClick: (info) => {
                         info.domEvent?.stopPropagation();
                         Modal.confirm({
-                          title: `确认删除文件 "${record.file_name}"？`,
+                          title: `${t("确认删除文件")} "${record.file_name}"${t("？")}`,
                           okText: t("删除"),
                           cancelText: t("取消"),
                           okButtonProps: { danger: true, loading: deleting },
@@ -958,7 +958,7 @@ export default function ElevationRecordsPage() {
         tabBarExtraContent={
           canManage ? (
             <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
-              导入
+              {t("导入")}
             </Button>
           ) : null
         }
@@ -1075,7 +1075,7 @@ export default function ElevationRecordsPage() {
                             pageSize={pagination.pageSize}
                             total={Math.max(recordsData?.total ?? 0, 1)}
                             showSizeChanger
-                            showTotal={(total) => `共 ${total} 条`}
+                            showTotal={(total) => `${t("共")} ${total} ${t("条")}`}
                             onChange={(page, pageSize) => {
                               setPagination({ current: page, pageSize });
                             }}
@@ -1134,7 +1134,7 @@ export default function ElevationRecordsPage() {
                 const allowedExts = ["tif", "tiff", "zip"];
                 const ext = file.name.split(".").pop()?.toLowerCase() || "";
                 if (!allowedExts.includes(ext)) {
-                  messageApi.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                  messageApi.error(`${t("不支持的文件格式，仅支持")} .${allowedExts.join("/")}`);
                   return Upload.LIST_IGNORE;
                 }
                 handleTempUpload(file as File);
@@ -1149,7 +1149,7 @@ export default function ElevationRecordsPage() {
                     <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
                   ) : tempFileId ? (
                     <Typography.Text type="success">
-                      <CheckCircleOutlined /> 上传完成，可以确认提交
+                      <CheckCircleOutlined /> {t("上传完成，可以确认提交")}
                     </Typography.Text>
                   ) : (
                     <Typography.Text type="warning">{t("上传中…")}</Typography.Text>
@@ -1159,10 +1159,10 @@ export default function ElevationRecordsPage() {
                 <>
                   <InboxOutlined style={{ fontSize: 40, color: "#999" }} />
                   <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
-                    点击或拖拽文件到此区域上传
+                    {t("点击或拖拽文件到此区域上传")}
                   </p>
                   <Typography.Text type="secondary">
-                    支持 .tif/.tiff 和 .zip 格式（DEM 可达几十 MB），选择文件后立即上传到临时存储。
+                    {t("支持 .tif/.tiff 和 .zip 格式（DEM 可达几十 MB），选择文件后立即上传到临时存储。")}
                   </Typography.Text>
                 </>
               )}
@@ -1244,7 +1244,7 @@ export default function ElevationRecordsPage() {
                         <Tag color="warning" style={{ marginInlineEnd: 0 }}>{t("无可回填杆塔")}</Tag>
                       ) : (
                         <span style={{ color: "#8c8c8c", fontSize: 12, whiteSpace: "nowrap" }}>
-                          {matchable}/{cov.total_tower_count} 座可回填
+                          {matchable}/{cov.total_tower_count} {t("座可回填")}
                         </span>
                       )}
                     </Space>

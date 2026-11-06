@@ -298,7 +298,7 @@ export default function AdminFaultRecurrencePage() {
         <Card title={t("故障复现")} className="surface-card">
           <Space direction="vertical" size={16} className="w-full">
             <Typography.Paragraph type="secondary" className="!mb-0">
-              迁移自源端 `FuXian` 工具：上传基础数据文件后，按波形、类型和耐雷水平计算最可能的波头/波尾组合。
+              {t("迁移自源端 `FuXian` 工具：上传基础数据文件后，按波形、类型和耐雷水平计算最可能的波头/波尾组合。")}
             </Typography.Paragraph>
             <Alert
               type="info"
@@ -344,7 +344,7 @@ export default function AdminFaultRecurrencePage() {
                   <Typography.Text strong>{t("基础数据文件")}</Typography.Text>
                   <Space wrap>
                     <Button onClick={() => fileInputRef.current?.click()}>
-                      选择文件
+                      {t("选择文件")}
                     </Button>
                     <Typography.Text type={selectedFile ? undefined : "secondary"}>
                       {selectedFile?.name || t("未选择文件")}
@@ -360,7 +360,7 @@ export default function AdminFaultRecurrencePage() {
                   ) : null}
                   {selectedFile && uploadProgress >= 100 && tempFileId && !uploadError ? (
                     <Typography.Text type="success">
-                      <CheckCircleOutlined /> 上传完成，可以开始复现
+                      <CheckCircleOutlined /> {t("上传完成，可以开始复现")}
                     </Typography.Text>
                   ) : null}
                   {selectedFile && uploadProgress >= 100 && !tempFileId && uploadError ? (
@@ -558,7 +558,7 @@ function FaultRecurrenceResultView({
           key: "detail",
           label: t("详细数据"),
           children: (
-            <Card title={`${t("基础数据预览")} (${result.point_count} 条)`} className="surface-card">
+            <Card title={`${t("基础数据预览")} (${result.point_count} ${t("条")})`} className="surface-card">
               <Table<FaultRecurrenceDataPoint>
                 rowKey={(record, index) => `${record.head_time_us}-${record.tail_time_us}-${index ?? 0}`}
                 columns={columns}

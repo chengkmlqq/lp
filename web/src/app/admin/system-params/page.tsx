@@ -216,7 +216,7 @@ export default function AdminSystemParamsPage() {
           domEvent.stopPropagation();
           Modal.confirm({
             title: t("删除分类"),
-            content: `确认删除分类 "${cat.name}" 吗？该分类下不能有子分类和参数。`,
+            content: `${t("确认删除分类")} "${cat.name}" ${t("吗？该分类下不能有子分类和参数。")}`,
             okText: t("删除"),
             cancelText: t("取消"),
             okButtonProps: { danger: true },
@@ -727,7 +727,7 @@ export default function AdminSystemParamsPage() {
         onClick: (info) => {
           info.domEvent?.stopPropagation();
           void navigator.clipboard.writeText(param.param_key);
-          setSuccess(`已复制参数键: ${param.param_key}`);
+          setSuccess(`${t("已复制参数键")}: ${param.param_key}`);
         },
       },
       {
@@ -747,7 +747,7 @@ export default function AdminSystemParamsPage() {
         onClick: (info) => {
           info.domEvent?.stopPropagation();
           Modal.confirm({
-            title: `确认删除系统参数 ${param.param_key}？`,
+            title: `${t("确认删除系统参数")} ${param.param_key}${t("？")}`,
             okText: t("删除"),
             cancelText: t("取消"),
             okButtonProps: { danger: true },
@@ -914,7 +914,7 @@ export default function AdminSystemParamsPage() {
                   onClick: () => {
                     Modal.confirm({
                       title: t("删除系统参数"),
-                      content: `确认删除系统参数 ${record.param_key} 吗？`,
+                      content: `${t("确认删除系统参数")} ${record.param_key} ${t("吗？")}`,
                       okText: t("删除"),
                       cancelText: t("取消"),
                       okButtonProps: { danger: true, loading: deleteLoading },
@@ -1034,7 +1034,7 @@ export default function AdminSystemParamsPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -1048,7 +1048,7 @@ export default function AdminSystemParamsPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -1065,7 +1065,7 @@ export default function AdminSystemParamsPage() {
           <Space>
             {canManage && (
               <Button type="primary" onClick={startCreate}>
-                <PlusOutlined /> 新建参数
+                <PlusOutlined /> {t("新建参数")}
               </Button>
             )}
           </Space>
@@ -1110,7 +1110,7 @@ export default function AdminSystemParamsPage() {
                 <>
                   {categorySearch && (
                     <div className="admin-system-params-search-results-count">
-                      {`找到 ${filteredTreeData.length} 个分类`}
+                      {`${t("找到")} ${filteredTreeData.length} ${t("个分类")}`}
                     </div>
                   )}
                   <div className="admin-system-params-sider-menu">

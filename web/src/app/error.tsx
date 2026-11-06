@@ -61,7 +61,7 @@ export default function AppError({ error, reset }: AppErrorProps) {
               fontWeight: 600,
             }}
           >
-            重试
+            {t("重试")}
           </button>
           <button
             type="button"

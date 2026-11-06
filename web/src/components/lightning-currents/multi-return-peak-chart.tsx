@@ -49,7 +49,7 @@ export default function MultiReturnPeakChart({ peaks }: MultiReturnPeakChartProp
             if (name === "time_us") return [formatNumber(Number(value), 2), t("时间 (μs)")] as [ReactNode, string | number];
             return [value, name ?? ""] as [ReactNode, string | number];
           }}
-          labelFormatter={(label) => `回击 ${label}`}
+          labelFormatter={(label) => `${t("回击")} ${label}`}
         />
         <Legend />
         <Line type="monotone" dataKey="current_ka" stroke="#3261ce" name={t("峰值电流 (kA)")} strokeWidth={2} dot={{ r: 4 }} />

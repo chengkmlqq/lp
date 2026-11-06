@@ -603,7 +603,7 @@ export default function AdminTowerModelsPage() {
                   onClick: () => {
                     Modal.confirm({
                       title: t("删除杆塔模型"),
-                      content: `确认删除模型 ${row.code} 吗？`,
+                      content: `${t("确认删除模型")} ${row.code} ${t("吗？")}`,
                       okText: t("删除"),
                       cancelText: t("取消"),
                       okButtonProps: { danger: true },
@@ -654,7 +654,7 @@ export default function AdminTowerModelsPage() {
           info.domEvent?.stopPropagation();
           Modal.confirm({
             title: t("删除杆塔模型"),
-            content: `确认删除模型 ${row.code} 吗？`,
+            content: `${t("确认删除模型")} ${row.code} ${t("吗？")}`,
             okText: t("删除"),
             cancelText: t("取消"),
             okButtonProps: { danger: true },
@@ -829,7 +829,7 @@ export default function AdminTowerModelsPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -843,7 +843,7 @@ export default function AdminTowerModelsPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -1144,10 +1144,10 @@ export default function AdminTowerModelsPage() {
       >
         <Space direction="vertical" size={12} className="w-full">
           <Typography.Text type="secondary">
-            当前模型：{uploadModel?.code} / {uploadModel?.name}
+            {t("当前模型：")}{uploadModel?.code} / {uploadModel?.name}
           </Typography.Text>
           <Typography.Text type="secondary">
-            目标挂载：{(mounts[0] as FileStorageMount | undefined)?.code ?? "-"}（默认第一个可用挂载）
+            {t("目标挂载：")}{(mounts[0] as FileStorageMount | undefined)?.code ?? "-"}{t("（默认第一个可用挂载）")}
           </Typography.Text>
           <div>
             <div style={{ marginBottom: 8 }}>
@@ -1161,11 +1161,11 @@ export default function AdminTowerModelsPage() {
                 const allowedExts = ["jpg", "jpeg", "png", "webp", "gif", "bmp"];
                 const ext = file.name.split(".").pop()?.toLowerCase() || "";
                 if (file.size > maxMB * 1024 * 1024) {
-                  message.error(`文件大小超过 ${maxMB}MB 限制，请压缩后重新上传`);
+                  message.error(`${t("文件大小超过")} ${maxMB}MB ${t("限制，请压缩后重新上传")}`);
                   return Upload.LIST_IGNORE;
                 }
                 if (!allowedExts.includes(ext)) {
-                  message.error(`不支持的文件格式，仅支持 .${allowedExts.join("/")}`);
+                  message.error(`${t("不支持的文件格式，仅支持")} .${allowedExts.join("/")}`);
                   return Upload.LIST_IGNORE;
                 }
                 return true;
@@ -1185,7 +1185,7 @@ export default function AdminTowerModelsPage() {
                     <Progress percent={uploadProgress} size="small" style={{ marginTop: 8 }} />
                   ) : tempFileId ? (
                     <Typography.Text type="success">
-                      <CheckCircleOutlined /> 上传完成，可以确认上传
+                      <CheckCircleOutlined /> {t("上传完成，可以确认上传")}
                     </Typography.Text>
                   ) : (
                     <Typography.Text type="warning">{t("上传中…")}</Typography.Text>
@@ -1194,10 +1194,10 @@ export default function AdminTowerModelsPage() {
               ) : (
                 <>
                   <p className="ant-upload-hint" style={{ color: "#999", marginTop: 8 }}>
-                    点击或拖拽图片文件到此区域上传
+                    {t("点击或拖拽图片文件到此区域上传")}
                   </p>
                   <Typography.Text type="secondary">
-                    支持 jpg/jpeg/png/webp/gif/bmp 格式。选择文件后立即上传到临时存储。
+                    {t("支持 jpg/jpeg/png/webp/gif/bmp 格式。选择文件后立即上传到临时存储。")}
                   </Typography.Text>
                 </>
               )}

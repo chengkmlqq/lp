@@ -187,7 +187,7 @@ function IssueBlock({ issues, type }: { issues: AtpTestLineIssue[]; type: "error
         <ul style={{ margin: 0, paddingLeft: 18 }}>
           {issues.map((issue, index) => (
             <li key={`${issue.field}-${index}`}>
-              <Text strong>{labelOf(issue.field)}</Text>：{issue.reason}
+              <Text strong>{t(labelOf(issue.field))}</Text>：{issue.reason}
             </li>
           ))}
         </ul>
@@ -408,7 +408,7 @@ export function AtpTestLineDeriveModal({
   };
 
   const columns: ColumnsType<DraftRow> = [
-    { title: t("字段"), dataIndex: "label", width: 170, render: (value: string) => <Text strong>{value}</Text> },
+    { title: t("字段"), dataIndex: "label", width: 170, render: (value: string) => <Text strong>{t(value)}</Text> },
     { title: t("派生值"), dataIndex: "value", ellipsis: true },
     {
       title: t("来源"),

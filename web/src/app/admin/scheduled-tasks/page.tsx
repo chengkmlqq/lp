@@ -348,10 +348,10 @@ export default function AdminScheduledTasksPage() {
         render: (_, record) => (
           <Space direction="vertical" size={0}>
             <Typography.Text type="secondary">
-              最近成功：{formatDateTime(record.last_success_at)}
+              {t("最近成功：")}{formatDateTime(record.last_success_at)}
             </Typography.Text>
             <Typography.Text type={record.last_error_message ? "danger" : "secondary"}>
-              {record.last_error_message || `已累计执行 ${record.run_count} 次`}
+              {record.last_error_message || `${t("已累计执行")} ${record.run_count} ${t("次")}`}
             </Typography.Text>
           </Space>
         ),
@@ -462,7 +462,7 @@ export default function AdminScheduledTasksPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -476,7 +476,7 @@ export default function AdminScheduledTasksPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );

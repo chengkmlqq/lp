@@ -975,7 +975,7 @@ function ProcessView({ computationSteps, resultJson }: ProcessViewProps) {
               label: (
                 <div className="fa-detail-step-header">
                   <span className="fa-detail-step-index">{index + 1}</span>
-                  <span>{step.header.replace(/^步骤\d+：/, "")}</span>
+                  <span>{t(step.header.replace(/^步骤\d+：/, ""))}</span>
                 </div>
               ),
               children: (
@@ -1032,7 +1032,7 @@ function ProcessView({ computationSteps, resultJson }: ProcessViewProps) {
           label: (
             <div className="fa-detail-step-header">
               <span className="fa-detail-step-index">{index + 1}</span>
-              <span>{step.header.replace(/^步骤\d+：/, "")}</span>
+              <span>{t(step.header.replace(/^步骤\d+：/, ""))}</span>
             </div>
           ),
           children: (
