@@ -12,6 +12,7 @@ celery_app = Celery(
     backend=settings.resolved_celery_result_backend,
     include=[
         "app.tasks.atp_asset_tasks",
+        "app.tasks.debug_wine_dump",
         "app.tasks.elevation_tasks",
         "app.tasks.fl_analysis_tasks",
         "app.tasks.fault_diagnosis_tasks",
