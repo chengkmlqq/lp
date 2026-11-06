@@ -33,6 +33,7 @@ ComputeLightningProtection.cs:6128）。这些值**不是资产数据**，未跑
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Mapping
 
 RK = 0.0055
@@ -196,7 +197,17 @@ def rewrite_coupling_k0(text: str, k0: float | None) -> tuple[str, bool]:
 
 
 def rewrite_electric_angle(text: str, angle_deg: float | None) -> tuple[str, bool]:
-    """按 C# 规则写 `14XXSS` 三相电角度：A=angle−90、B=angle−210、C=angle−330。"""
+    """按 C# 规则写 `14XXSS` 三相电角度：A=angle−90、B=angle−210、C=angle−330。
+
+    兼容两种模板形态（2026-11-06 修复 115/230 全量 fmt 假失败的根因）：
+
+    - **老模板**（槽位是字面量角度，如 110/220/500）：直接覆写槽位
+      （偏移 32、宽 8、右对齐；对 C# 对拍已验证）。
+    - **ATPDraw 7.2+ 新模板**（槽位是 `PHAGA_____` 变量引用，真实角度在
+      `$PARAMETER` 的别名/中间变量里）：盲目覆写槽位会把变量名砸烂成
+      `50.PH     -90`，tpbig 直接 `fmt: read unexpected character` 退出码 3。
+      此时改为沿 `卡片变量 → 别名行 → (中间变量行)` 链改写数值。
+    """
     if angle_deg is None:
         return text, False
     base = float(angle_deg) - 90.0
@@ -207,10 +218,73 @@ def rewrite_electric_angle(text: str, angle_deg: float | None) -> tuple[str, boo
     }
     lines = text.split("\n")
     changed = False
+    var_targets: dict[str, float] = {}   # 卡片引用的变量名 -> 期望值
     for i, line in enumerate(lines):
         for slot, value in values.items():
             if line.startswith(slot):
-                lines[i] = _write_slot(line, _ANGLE_OFFSET, _ANGLE_WIDTH, 1, value)
+                # 变量引用检测：卡名之后区域内出现 `NAME___` 形态（下划线填充别名）
+                m = _ANGLE_VAR_RE.search(line[8:])
+                if m:
+                    var_targets[m.group(0)] = value
+                else:
+                    lines[i] = _write_slot(line, _ANGLE_OFFSET, _ANGLE_WIDTH, 1, value)
                 changed = True
                 break
+    if var_targets:
+        lines = _rewrite_angle_param_values(lines, var_targets)
     return ("\n".join(lines), True) if changed else (text, False)
+
+
+# 卡片相角槽位上的变量引用：`PHAGA_____`（≥3 个下划线结尾的别名形态）
+_ANGLE_VAR_RE = re.compile(r"\b([A-Z][A-Z0-9]{1,8}_{3,})")
+_ANGLE_PARAM_VALUE_RE = re.compile(r"^([A-Z][A-Z0-9_]*\s*=)([^=\n]*)$")
+
+
+def _rewrite_angle_param_values(lines: list[str], targets: dict[str, float]) -> list[str]:
+    """把 $PARAMETER 里 `卡片变量` 的数值改成目标值（兼容 别名→中间变量 链）。"""
+    pending = dict(targets)
+    resolved: dict[str, str] = {}      # 中间变量名 -> 已写入的文本值
+    for _pass in range(3):             # 别名链最多两层：PHAGA_=PHAGAI, PHAGAI=0
+        for name, value in list(pending.items()):
+            # 必须带小数点：裸整数（如 `-330`）会让 ATP 的 JTOKEN 参数解析
+            # 溢出（Halt in POCKET. JTOKEN overflows limit KONST）
+            val_text = f"{value:g}"
+            if "." not in val_text and "e" not in val_text.lower():
+                val_text += "."
+            for i, ln in enumerate(lines):
+                m = _ANGLE_PARAM_VALUE_RE.match(ln)
+                if not m or m.group(1).split("=")[0].strip() != name:
+                    continue
+                rhs = m.group(2).split("$$")[0].strip()
+                try:
+                    float(rhs)
+                    lines[i] = f"{name}={val_text}" + (" $$" if "$$" in ln else "")
+                except ValueError:
+                    # RHS 是中间变量（如 PHAGAI）：改写中间变量行
+                    resolved.setdefault(rhs, val_text)
+                    if resolved[rhs] != val_text:
+                        raise RuntimeError(
+                            f"电角度改写冲突：变量 {rhs} 同时被要求为 "
+                            f"{resolved[rhs]} 与 {val_text}"
+                        )
+                    done = False
+                    for j, ln2 in enumerate(lines):
+                        m2 = _ANGLE_PARAM_VALUE_RE.match(ln2)
+                        if m2 and m2.group(1).split("=")[0].strip() == rhs:
+                            lines[j] = f"{rhs}={val_text}" + (" $$" if "$$" in ln2 else "")
+                            done = True
+                            break
+                    if not done:
+                        raise RuntimeError(
+                            f"电角度改写失败：{name} 引用的中间变量 {rhs} 无赋值行"
+                        )
+                pending.pop(name)
+                break
+        if not pending:
+            break
+    if pending:
+        raise RuntimeError(
+            f"电角度改写失败：$PARAMETER 中找不到 {sorted(pending)} 的赋值行"
+            "（14XXSS 相角为变量引用的新模板必须能解析参数链）"
+        )
+    return lines
