@@ -574,15 +574,52 @@ _NUMERIC_GEOMETRY_PARAM_NAMES = (
     "RELE25", "RELE26",
     "REHG______", "REHC1_____", "REHC2_____", "REHC3_____",
 )
+# 参数行形态：`名字 = 数值 [$$注释]`。
+# ATPDraw 7.2+ 生成的模板（115/230kV 新模型）在 $PARAMETER 区写作
+#   `RER001I =1000 $$`（名字后一个空格、值后缀 `$$` 说明），
+# 而老模板（≤110kV）是 `RER001=1000.`。两种形态都要能吃下，
+# 且改写时**只替换数值**，保留原有空白与尾部注释（改动整行会破坏模板注释对齐，
+# 也会丢掉 $$ 里的单位说明）。
 _NUMERIC_PARAM_LINE_RE = re.compile(
-    r"^([A-Za-z][A-Za-z0-9_]*)\s*=\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*$"
+    r"^([A-Za-z][A-Za-z0-9_]*)(\s*=\s*)"
+    r"([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)"
+    r"(\s*(?:\$\$.*)?)$"
 )
+
+
+def _numeric_param_key(name: str) -> str:
+    """参数名归一：去尾部下划线填充、转大写。
+
+    老模板 `RER001` / `RELENS____`，新模板 `RER001I` / `RELENSI`。
+    """
+    return str(name or "").strip().upper().rstrip("_")
+
+
+def _numeric_param_name_map(wanted: dict[str, str]) -> dict[str, str]:
+    """把 C# 老参数名映射到模板里可能出现的写法 → {模板名键: 老名}。
+
+    新模板（ATPDraw 7.2+）在 $PARAMETER 真值行给变量加 `I` 后缀，
+    由别名行 `RER001=RER001I` 供卡片引用。只按老名精确匹配会 0 命中
+    （115kV ganzi 实测 92 个参数一个都没覆盖，落回模板烤死的 RER001=1000Ω）。
+    """
+    exact: dict[str, str] = {}
+    suffixed: dict[str, str] = {}
+    for name in wanted:
+        key = _numeric_param_key(name)
+        if not key:
+            continue
+        exact.setdefault(key, name)
+        suffixed.setdefault(key + "I", name)
+    # 精确名优先：真实存在同名参数时不被 `xxI` 形态抢占
+    for key, name in suffixed.items():
+        exact.setdefault(key, name)
+    return exact
 
 # 渲染/覆写链路代码版本标记。写入结果 JSON 的 external_execution 里，
 # 用于判定「远端执行端跑的是哪一版代码」——ATP 由独立 wine worker 执行，
 # 只 git pull 不重启进程时新代码不会生效，而结果表面上完全正常（2026-11-05 踩过）。
 # 每次改动渲染/覆写逻辑时同步递增。
-ATP_RENDER_CODE_VERSION = "2026-11-05c-geom+k0+version-beacon"
+ATP_RENDER_CODE_VERSION = "2026-11-06a-param-alias-I"
 
 
 def _render_fingerprint(text: str) -> dict[str, Any]:
@@ -596,6 +633,9 @@ def _render_fingerprint(text: str) -> dict[str, Any]:
         "REHC3_____", "RELE01", "REIAMP____", "REIGAN____", "11K0", "K0",
     }
     picked: dict[str, str] = {}
+    # 新模板 $PARAMETER 里参数名带 I 后缀（RER001I =1000 $$），
+    # 指纹按 C# 老名归一，否则 115/230 模板取不到任何关键值、无法核对。
+    alias_map = _numeric_param_name_map({n: n for n in wanted})
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.upper().startswith("$PARAMETER"):
@@ -609,8 +649,19 @@ def _render_fingerprint(text: str) -> dict[str, Any]:
         if "=" in stripped:
             name, _, value = stripped.partition("=")
             name = name.strip()
-            if name in wanted:
-                picked[name] = value.strip()
+            # 去掉 `$$` 尾部注释，只留数值
+            clean = value.split("$$", 1)[0].strip()
+            target = name if name in wanted else alias_map.get(_numeric_param_key(name))
+            if target:
+                # 参数区块尾有别名行（`RER001=RER001I`），值是变量名不是数值；
+                # 只让数值形态覆盖，避免指纹里关键参数被别名行顶掉。
+                try:
+                    float(clean)
+                    is_num = True
+                except (TypeError, ValueError):
+                    is_num = False
+                if is_num or target not in picked:
+                    picked[target] = clean
     digest = hashlib.sha1("\n".join(block_lines).encode("utf-8", "replace")).hexdigest()[:16]
     return {"param_block_sha1": digest, "params": picked}
 
@@ -678,6 +729,7 @@ def override_numeric_current_params(
         return template, []
 
     lines = template.splitlines(keepends=True)
+    name_map = _numeric_param_name_map(wanted)
     in_param_block = False
     notes: list[str] = []
     changed = False
@@ -695,15 +747,19 @@ def override_numeric_current_params(
         if not match:
             continue
         name = match.group(1)
-        if name not in wanted:
+        # 模板名 → C# 老参数名（新模板带 I 后缀，见 _numeric_param_name_map）
+        target = name_map.get(_numeric_param_key(name))
+        if target is None:
             continue
-        new_line = f"{name}={wanted[name]}"
+        new_value = wanted[target]
+        # 只替换数值，保留 `=` 两侧空白与 `$$` 尾部注释与原行格式
+        new_line = f"{name}{match.group(2)}{new_value}{match.group(4)}"
         if line.endswith("\r\n"):
             new_line += "\r\n"
         elif line.endswith("\n"):
             new_line += "\n"
         if new_line != line:
-            notes.append(f"{name}: {match.group(0).split('=', 1)[1].strip()} -> {wanted[name]}")
+            notes.append(f"{name}: {match.group(3)} -> {new_value}")
             lines[i] = new_line
             changed = True
     return ("".join(lines), notes) if changed else (template, notes)
@@ -824,16 +880,22 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
     left_spacing = f(spacing.get("upper"))
     right_spacing = f(spacing.get("lower"))
     voltage = f(base_tower.get("line_voltage_kv")) or 500.0
+    # 115/230 是 110/220 系统的设备额定电压，必须先归并到 C# 档位，
+    # 否则 115 会落进 220 档、230 落进 330 档（修正量全错）。
+    from .atp_geometry_pipeline import voltage_grade_kv as _vg
+
+    voltage_grade = _vg(voltage)
 
     # 电压分级 → C# switch(mDYDJ) 修正量（ganzi 段 2005-2048）
     def vadj(series):
-        if voltage <= 35: return series[0]
-        if voltage <= 66: return series[1]
-        if voltage <= 110: return series[2]
-        if voltage <= 220: return series[3]
-        if voltage <= 330: return series[4]
-        if voltage <= 500: return series[5]
-        if voltage <= 750: return series[6]
+        g = voltage_grade
+        if g <= 35: return series[0]
+        if g <= 66: return series[1]
+        if g <= 110: return series[2]
+        if g <= 220: return series[3]
+        if g <= 330: return series[4]
+        if g <= 500: return series[5]
+        if g <= 750: return series[6]
         return series[7]
 
     rehg_adj = vadj([2.0, 1.2, 2.0, 10.0 / 3.0, 10.0 / 3.0, 8.0, 10.0 / 3.0, 0.0])   # REHG 避雷线平均高度修正
@@ -957,9 +1019,7 @@ def compute_csharp_atp_params(*, base_tower: dict[str, Any], profile: dict[str, 
             p[name] = fmt(abs(h - insul_m - vadj([1.0, 10.0 / 3.0, 10.0 / 3.0, 14.0 / 3.0, 14.0 / 3.0, 8.0, 14.0 / 3.0, 0.0])) if (h is not None and insul_m is not None) else None, 2)
     elif tower_kind in ("maotou", "maotouno"):
         # === maotou 猫头型塔（C# 2392-2544）——与 jiubei 公式完全不同 ===
-        vv = (35 if voltage <= 35 else 66 if voltage <= 66 else 110 if voltage <= 110
-              else 220 if voltage <= 220 else 330 if voltage <= 330 else 500 if voltage <= 500
-              else 750 if voltage <= 750 else 1000)
+        vv = int(voltage_grade)
         # 电压分级系数：(RELE01乘数k1, RELE03除数k2, RELE05修正, REHG修正, REHC1/3修正, REHC2分子修正)
         if vv == 750:
             # C# 750 无定义 → 不做任何调整

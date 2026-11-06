@@ -30,6 +30,31 @@ from app.services.atp_dat_writer import (
 
 logger = logging.getLogger(__name__)
 
+# C# `switch(mDYDJ)` 的电压等级档位（ComputeLightningProtection.cs）。
+VOLTAGE_GRADES = (35.0, 66.0, 110.0, 220.0, 330.0, 500.0, 750.0, 1000.0)
+
+
+def voltage_grade_kv(voltage_kv: Any) -> float:
+    """把线路标称/设备电压归并到 C# 的电压等级档位。
+
+    115kV / 230kV 是 110kV / 220kV 系统的设备额定电压（不是独立档位）。
+    C# switch 只有 35/66/110/220/330/500/750/1000，直接按「上界」比较会把
+    115 判成 220 档、230 判成 330 档，呼高/相高/避雷线高修正量差 1~3 倍
+    （115 实测 REHG 修正 2.0 → 10/3、RELE01 8.6 → 8.5 走错分支）。
+    这里按「就近下档 + 8% 上浮容差」归并：115→110、230→220，其余不变。
+    """
+    try:
+        v = float(voltage_kv or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if v <= 0:
+        return 0.0
+    for grade in VOLTAGE_GRADES:
+        if v <= grade * 1.08:
+            return grade
+    return VOLTAGE_GRADES[-1]
+
+
 _DAT_NAMES = ("long", "short", "dahao", "xiaohao")
 # LCC 运行必需的引擎文件（缺任一 ATP 会停在交互提示、产不出 .pch）
 _ENGINE_FILES = ("startup", "graphics", "graphics.aux", "graphics.std", "listsize.big", "listsize.dat")
@@ -91,10 +116,7 @@ def _num(params: dict[str, str], name: str) -> float | None:
 
 def _voltage_offset(voltage_kv) -> float:
     """C# 平均高度扣减量 K（:1855-1872 / :2016-2048）。"""
-    try:
-        v = int(voltage_kv or 0)
-    except (TypeError, ValueError):
-        return 0.0
+    v = int(voltage_grade_kv(voltage_kv))
     return {35: 10.0 / 3.0, 66: 1.5, 110: 10.0 / 3.0, 220: 14.0 / 3.0,
             330: 14.0 / 3.0, 500: 8.0, 750: 14.0 / 3.0, 1000: 0.0}.get(v, 0.0)
 
