@@ -12,7 +12,6 @@ import {
   MoreOutlined,
   SafetyOutlined,
   SendOutlined,
-  SyncOutlined,
   ThunderboltOutlined,
   AppstoreOutlined,
   BlockOutlined,
@@ -40,9 +39,6 @@ interface AtpModelCardProps {
   onTest: (asset: AtpAssetSummary) => void;
   onPublish: (id: string) => void;
   onUnpublish: (id: string) => void;
-  /** 按存储里的真实 work.atp 重判形态（存量资产默认值不被当成结论） */
-  onRecheckFormat: (id: string) => void;
-  recheckBusy: boolean;
   publishBusy: boolean;
 }
 
@@ -66,14 +62,6 @@ function formatDimension(value: string | null, label: string | null | undefined)
   return label || value;
 }
 
-function formatDateShort(value: string | null | undefined): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 /** 资产运行状态的展示文案与色调（enabled 正常态不显示，避免每张卡片都挂着「正常」） */
 function statusMeta(status: AtpAssetStatus, t: (s: string) => string): { text: string; className: string } | null {
   switch (status) {
@@ -91,9 +79,11 @@ function statusMeta(status: AtpAssetStatus, t: (s: string) => string): { text: s
 }
 
 /**
- * 模型卡片（2026-11-05 再调整）：
+ * 模型卡片（2026-11-05 再调整，2026-11-06 WS-9 微调）：
  * - 发布状态移到右上角，「生效/失效」随发布上线而取消（发布即生效，下线即退出仿真定位）；
- * - 形态（新版/老版/检测中…）不再用标签，改为卡片上的一枚水印式印章；
+ * - 形态（新版/老版/检测中…）改为卡片右侧的一枚水印式印章；新版/旧版收敛为
+ *   垂直居中的单字章（新/旧），悬停仍可看完整形态说明与预检警告数；
+ * - 卡片底部不再展示版本号与更新时间；
  * - 右下角最多两个按钮（发布|下线 → 测试），其余收进「更多」。
  */
 export function AtpModelCard({
@@ -107,8 +97,6 @@ export function AtpModelCard({
   onTest,
   onPublish,
   onUnpublish,
-  onRecheckFormat,
-  recheckBusy,
   publishBusy,
 }: AtpModelCardProps) {
   const { t } = useI18n();
@@ -148,16 +136,17 @@ export function AtpModelCard({
       .join(" · ") || "-";
 
   const abnormal = statusMeta(asset.status, t);
-  const updateTime = formatDateShort(asset.update_date);
   const published = asset.is_published !== false;
 
   // 形态印章：继承原形态 pill 的判定（检测中/检测失败/待检测/新版/老版…）
+  // WS-9：新版/旧版收敛为右侧垂直居中的单字章（新/旧），其余形态态仍显示完整标签。
   const formatMeta = resolveFormatMeta(asset);
   const formatWarnCount = asset.analysis_status === "failed" ? 0 : checkWarningCount(asset.format_check);
   const formatHint =
     formatWarnCount > 0
       ? `${formatMeta.hint}（${t("另有")} ${formatWarnCount} ${t("条预检提示，详情页可查看")}）`
       : formatMeta.hint;
+  const stampChar = formatMeta.tone === "insert" ? "新" : formatMeta.tone === "legacy" ? "旧" : null;
 
   // 动作清单：顺序即优先级，前 MAX_VISIBLE_ACTIONS 个平铺在右下角，其余进「更多」。
   // 「详情」点卡片本身即可进入，故排在两位常用操作之后。
@@ -207,14 +196,6 @@ export function AtpModelCard({
       run: handleEdit,
     });
     actions.push({
-      key: "recheck-format",
-      label: t("重新检测形态"),
-      icon: <SyncOutlined spin={recheckBusy} />,
-      tooltip: t("重新检测形态"),
-      disabled: recheckBusy,
-      run: () => onRecheckFormat(asset.id),
-    });
-    actions.push({
       key: "delete",
       label: t("删除"),
       icon: <DeleteOutlined />,
@@ -236,17 +217,17 @@ export function AtpModelCard({
       onClick={handleView}
       styles={{ body: { padding: 0 } }}
     >
-      <div className="relative flex h-full flex-col">
-        {/* 形态印章：水印式盖在卡片右侧（替代原右上角形态标签） */}
+      <div className={`relative flex h-full flex-col${stampChar ? " admin-atp-models-card-has-stamp" : ""}`}>
+        {/* 形态印章：水印式盖在卡片右侧；新版/旧版为垂直居中单字章（新/旧） */}
         <Tooltip title={formatHint}>
           <div
-            className="admin-atp-models-stamp"
+            className={`admin-atp-models-stamp${stampChar ? " admin-atp-models-stamp-single" : ""}`}
             data-tone={formatMeta.tone}
             style={{ color: formatMeta.color }}
             onClick={(event) => event.stopPropagation()}
           >
-            <span className="admin-atp-models-stamp-text">{formatMeta.label}</span>
-            {formatWarnCount > 0 ? (
+            <span className="admin-atp-models-stamp-text">{stampChar ? t(stampChar) : formatMeta.label}</span>
+            {!stampChar && formatWarnCount > 0 ? (
               <span className="admin-atp-models-stamp-warn">
                 <WarningOutlined />
                 {formatWarnCount}
@@ -300,19 +281,9 @@ export function AtpModelCard({
             </Typography.Text>
           </div>
 
-          {/* 元信息行：异常状态 + 版本 + 更新时间（发布状态已在右上角） */}
+          {/* 元信息行：异常状态（发布状态已在右上角，版本号与更新时间不再展示） */}
           <div className="mt-auto flex min-h-5 items-center gap-2 text-xs">
             {abnormal ? <span className={abnormal.className}>{abnormal.text}</span> : null}
-            {asset.version ? (
-              <Typography.Text type="secondary" className="text-xs">
-                {asset.version}
-              </Typography.Text>
-            ) : null}
-            {updateTime ? (
-              <Typography.Text type="secondary" className="ml-auto text-xs">
-                {updateTime}
-              </Typography.Text>
-            ) : null}
           </div>
         </div>
 

@@ -12,13 +12,10 @@ interface AtpModelCardListProps {
   onTest: (asset: AtpAssetSummary) => void;
   onPublish: (id: string) => void;
   onUnpublish: (id: string) => void;
-  onRecheckFormat: (id: string) => void;
-  recheckBusy: boolean;
   publishBusy: boolean;
 }
 
-export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onPublish, onUnpublish, onRecheckFormat, recheckBusy, publishBusy }: AtpModelCardListProps) {
-
+export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, onView, onEdit, onDelete, onTest, onPublish, onUnpublish, publishBusy }: AtpModelCardListProps) {
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
       {assets.map((item) => (
@@ -34,8 +31,6 @@ export function AtpModelCardList({ assets, canManage, canTest, deleteLoading, on
           onTest={onTest}
           onPublish={onPublish}
           onUnpublish={onUnpublish}
-          onRecheckFormat={onRecheckFormat}
-          recheckBusy={recheckBusy}
           publishBusy={publishBusy}
         />
       ))}

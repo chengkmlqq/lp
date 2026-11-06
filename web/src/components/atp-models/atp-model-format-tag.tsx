@@ -19,7 +19,7 @@ const MODEL_ANALYSIS_FAILED_META: ModelFormatMeta = {
   color: "#b91c1c",
   background: "#fef2f2",
   tone: "other",
-  hint: "后台分析失败。悬停可看原因，或点「更多 → 重新检测形态」重试。",
+  hint: "后台分析失败。悬停可看原因。重新上传模型文件可再次触发检测。",
 };
 
 /**
@@ -43,6 +43,17 @@ export function resolveFormatMeta(asset: AtpAssetSummary): ModelFormatMeta {
   return describeModelFormat(asset.model_format, formatChecked);
 }
 
+/**
+ * 形态标记悬停提示：形态说明 + 预检 warning 数（卡片单字章与 pill 共用）。
+ */
+export function formatTagHint(asset: AtpAssetSummary, t: (s: string) => string): string {
+  const meta = resolveFormatMeta(asset);
+  const warnCount = asset.analysis_status === "failed" ? 0 : checkWarningCount(asset.format_check);
+  return warnCount > 0
+    ? `${t(meta.hint)}（${t("另有")} ${warnCount} ${t("条预检提示，详情页可查看")}）`
+    : t(meta.hint);
+}
+
 interface AtpModelFormatTagProps {
   asset: AtpAssetSummary;
   /** true = 极短标签（表格列），false = 完整标签（卡片） */
@@ -51,17 +62,14 @@ interface AtpModelFormatTagProps {
 
 /**
  * 形态标记 + 检测状态 + 预检警告数的统一 pill：
- * - 检测中 / 检测失败 / 待检测 / 新版 / 老版 / 内嵌 / 无线路 一个位置说完；
+ * - 检测中 / 检测失败 / 待检测 / 内嵌 / 无线路 一个位置说完；
  * - 预检有 warning 时在 tag 内追加黄色计数，悬停可看形态说明。
  */
 export function AtpModelFormatTag({ asset, compact = false }: AtpModelFormatTagProps) {
   const { t } = useI18n();
   const meta = resolveFormatMeta(asset);
   const warnCount = asset.analysis_status === "failed" ? 0 : checkWarningCount(asset.format_check);
-
-  const hint = warnCount > 0
-    ? `${t(meta.hint)}（${t("另有")} ${warnCount} ${t("条预检提示，详情页可查看")}）`
-    : t(meta.hint);
+  const hint = formatTagHint(asset, t);
 
   return (
     <Tooltip title={hint}>

@@ -137,7 +137,7 @@ export function AtpModelDetailTab({ assetId }: AtpModelDetailTabProps) {
               showIcon
               style={{ marginBottom: 12 }}
               message={t("后台检测失败（形态识别 / 槽位扫描）")}
-              description={asset.analysis_error || t("可点模型菜单里的「重新检测形态」重试；若提示目录为空，请先上传模型文件。")}
+              description={asset.analysis_error || t("重新上传模型文件可再次触发检测；若提示目录为空，请先上传模型文件。")}
             />
           ) : null}
           <Descriptions

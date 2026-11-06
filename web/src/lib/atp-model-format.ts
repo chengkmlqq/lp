@@ -68,7 +68,7 @@ const META: Record<AtpAssetModelFormat | "unknown", ModelFormatMeta> = {
     tone: "other",
     hint:
       "这条资产还没有形态预检报告：可能是刚创建还没上传模型文件，或存量数据在形态列上线前入库。" +
-      "上传模型文件会自动判定；已有文件的话点「重新检测形态」按存储里的 work.atp 重新判定。",
+      "上传模型文件会自动判定；已有文件的话重新上传可再次触发检测。",
   },
 };
 
