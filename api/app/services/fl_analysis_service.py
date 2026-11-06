@@ -15,7 +15,8 @@ from datetime import datetime
 from typing import Any, Mapping
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.orm import Session, noload, selectinload
 
 logger = logging.getLogger(__name__)
@@ -1305,6 +1306,21 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                     graded = baseline_result
             else:
                 graded = grade_snapshot_payload(payload)
+            # 长计算（ATP 多场景二分 + EGM，单塔可达数分钟）期间会话连接会长时间空闲，
+            # 公网 RDS / 出口 NAT 可能已把这条 TCP 会话丢弃：2026-11-06 实测 115 单塔
+            # 580s（EGM 阶段静默 ~85s）后，写库第一句必抛 2006 "server has gone away"，
+            # 单塔异常被"单塔失败独立"机制吞掉 → 任务仍 success 但 result_tower_count=0。
+            # 写库前先探活：失效连接会由 SQLAlchemy 标记 invalidated，rollback 归还后
+            # 下一次取连由 pool_pre_ping 换新，后续写库走健康连接。
+            try:
+                db.execute(text("SELECT 1"))
+            except (OperationalError, InterfaceError):
+                logger.warning(
+                    "[ATP] 杆塔 %s 写库前数据库连接已失效，重建连接后继续", snapshot.tower_no
+                )
+                db.rollback()
+                db.execute(text("SELECT 1"))
+
             # ⚠️ 结果写入幂等（2026-09-18 修复）：同一 run 的同一塔（snapshot）结果只写一次，
             # 避免 execute_job 被 Redis 重投双执行时同塔结果翻倍。
             existing_result = db.execute(
