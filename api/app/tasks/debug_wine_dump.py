@@ -85,6 +85,39 @@ def _run_variant(tag: str, work_atp: str, workdir: Path) -> dict:
 
 @celery_app.task(name="app.tasks.debug_wine_dump.debug_wine_probe")
 def debug_wine_probe() -> dict:
+    result: dict = {}
+
+    # 0. 抓取失败任务遗留的引擎目录 work.atp（P0L3 的 0bad04ff 等）
+    try:
+        from app.core.database import SessionLocal
+        from app.services.atp_asset_service import _resolve_mount, _build_driver_or_400
+
+        db = SessionLocal()
+        driver = _build_driver_or_400(_resolve_mount(db, "main"))
+        engine_dirs = sorted((_ATP_ROOT / ".runs").glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
+        result["engine_dirs"] = [p.name for p in engine_dirs[:6]]
+        uploaded = []
+        for ed in engine_dirs[:3]:
+            wa = ed / "work.atp"
+            if wa.is_file():
+                driver.write_file(f"/debug-dumps/engines/{ed.name}/work.atp", content=wa.read_bytes())
+                uploaded.append(f"{ed.name}/work.atp")
+            libs = [p for p in ed.glob("*.lib")]
+            for p in libs[:4]:
+                driver.write_file(f"/debug-dumps/engines/{ed.name}/{p.name}", content=p.read_bytes())
+                uploaded.append(f"{ed.name}/{p.name}")
+            # pch 行尾抽样
+            pchs = sorted(ed.glob("*.pch"))[:12]
+            for p in pchs:
+                b = p.read_bytes()
+                uploaded.append(f"{ed.name}/{p.name} CR={b.count(b'LF'+b'') }".replace('LFLF','')) if False else None
+            result.setdefault("pch_crlf", {})[ed.name] = {
+                p.name: b"\r\n" in p.read_bytes() for p in pchs
+            }
+        result["uploaded_engines"] = uploaded
+    except Exception as exc:  # noqa: BLE001
+        result["engine_dump_error"] = repr(exc)
+
     # 1. 找最近一次任务的 workdir（含 work.atp）
     candidates = sorted(
         _WORKDIR_ROOT.glob("*/*/work.atp"), key=lambda p: p.stat().st_mtime, reverse=True
@@ -122,6 +155,48 @@ def debug_wine_probe() -> dict:
     result["v_asis"] = _run_variant("asis", raw, workdir)
     result["v_no_eq"] = _run_variant("noeq", _param_lines_without_eq(raw), workdir)
     result["v_no_cr"] = _run_variant("nocr", raw.replace("\r", ""), workdir)
+
+    # 4b. 脏工作目录实验：先跑一遍留残留，再跑第二遍（模拟二分 run2 的现场）
+    try:
+        d2 = Path("/tmp/dbg_dirty")
+        shutil.rmtree(d2, ignore_errors=True)
+        d2.mkdir(parents=True)
+        (d2 / "work.atp").write_bytes(raw.encode("utf-8", errors="surrogateescape"))
+        p1 = subprocess.run(
+            ["wine", str(_ATP_ROOT / "mytpbig.exe"), "both", "work.atp", "s", "-r"],
+            cwd=d2, capture_output=True, text=True, timeout=600,
+        )
+        p2 = subprocess.run(
+            ["wine", str(_ATP_ROOT / "mytpbig.exe"), "both", "work.atp", "s", "-r"],
+            cwd=d2, capture_output=True, text=True, timeout=600,
+        )
+        result["v_dirty"] = {
+            "first_rc": p1.returncode, "first_err": (p1.stderr or "")[-300:],
+            "second_rc": p2.returncode, "second_err": (p2.stderr or "")[-300:],
+        }
+        shutil.rmtree(d2, ignore_errors=True)
+    except Exception as exc:  # noqa: BLE001
+        result["v_dirty"] = {"error": repr(exc)}
+
+    # 4c. 引擎目录 pch 换成 CRLF 再跑（若引擎 pch 当前是 LF）
+    try:
+        if engine_dir and engine_dir.exists():
+            pchs = list(engine_dir.glob("*.pch"))
+            lf_pchs = [p for p in pchs if b"\r\n" not in p.read_bytes()]
+            result["lf_pch_count"] = len(lf_pchs)
+            if lf_pchs:
+                backup = Path("/tmp/dbg_pch_bak")
+                shutil.rmtree(backup, ignore_errors=True)
+                backup.mkdir(parents=True)
+                for p in lf_pchs:
+                    shutil.copy2(p, backup / p.name)
+                    p.write_bytes(p.read_bytes().replace(b"\n", b"\r\n"))
+                result["v_crlf_pch"] = _run_variant("crpch", raw, workdir)
+                for p in lf_pchs:
+                    shutil.copy2(backup / p.name, p)
+                shutil.rmtree(backup, ignore_errors=True)
+    except Exception as exc:  # noqa: BLE001
+        result["v_crlf_pch"] = {"error": repr(exc)}
 
     # 5. 关键文件上传存储（本地复现用）
     try:
