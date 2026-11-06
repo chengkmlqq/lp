@@ -13,7 +13,6 @@ import {
   formatAltitudeCorrection,
   formatCurrentWaveform,
   formatDateTime,
-  formatDimensionValue,
   formatFlashoverMethod,
   formatInducedVoltageFormula,
   formatJobType,
@@ -26,7 +25,6 @@ import {
   statusColor,
   type WorkflowSummary,
 } from "./types";
-import { useFlDimensionOptions } from "./use-fl-dimensions";
 
 type JobDetailPanelProps = {
   selectedJob: FlAnalysisJobSummary | null;
@@ -89,7 +87,6 @@ export function JobDetailPanel({
   onDownloadReport,
 }: JobDetailPanelProps) {
   const { t } = useI18n();
-  const { labelMap } = useFlDimensionOptions();
 
   if (loading) {
     return (
@@ -246,9 +243,9 @@ export function JobDetailPanel({
         <section className="fl-create-form-block">
           <div className="fl-create-form-block-title">{t("高级参数")}</div>
           <Descriptions bordered size="small" column={2}>
-            <Descriptions.Item label={t("雷电流波形")}>{formatDimensionValue(selectedJobWorkflow?.current_waveform, labelMap.current_waveform, formatCurrentWaveform)}</Descriptions.Item>
-            <Descriptions.Item label={t("绝缘子闪络判据")}>{formatDimensionValue(selectedJobWorkflow?.flashover_method, labelMap.flashover_method, formatFlashoverMethod)}</Descriptions.Item>
-            <Descriptions.Item label={t("是否海拔修正")}>{formatDimensionValue(selectedJobWorkflow?.altitude_correction, labelMap.altitude_correction, formatAltitudeCorrection)}</Descriptions.Item>
+            <Descriptions.Item label={t("雷电流波形")}>{formatCurrentWaveform(selectedJobWorkflow?.current_waveform, t)}</Descriptions.Item>
+            <Descriptions.Item label={t("绝缘子闪络判据")}>{formatFlashoverMethod(selectedJobWorkflow?.flashover_method, t)}</Descriptions.Item>
+            <Descriptions.Item label={t("是否海拔修正")}>{formatAltitudeCorrection(selectedJobWorkflow?.altitude_correction, t)}</Descriptions.Item>
             <Descriptions.Item label={t("感应电压公式")}>{formatInducedVoltageFormula(selectedJobWorkflow?.induced_voltage_formula, t)}</Descriptions.Item>
             <Descriptions.Item label={t("波头范围")}>{formatRangeSummary(selectedJobWorkflow?.head_time_range_us, t)}</Descriptions.Item>
             <Descriptions.Item label={t("波尾范围")}>{formatRangeSummary(selectedJobWorkflow?.tail_time_range_us, t)}</Descriptions.Item>

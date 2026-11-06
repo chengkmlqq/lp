@@ -103,7 +103,9 @@ export function CreateJobForm({
   const [prevJobType, setPrevJobType] = useState(selectedJobType);
   const selectedLineId = Form.useWatch("line_id", form) ?? "";
   const selectedTowerIds = Form.useWatch("selected_tower_ids", form) ?? [];
-  const { optionMap, isLoading: dimensionsLoading } = useFlDimensionOptions();
+  // 维度选项按需加载：弹窗常驻挂载（destroyOnHidden={false}），只有 open 时才拉字典，
+  // 避免页面一加载就为 8 个枚举字段各发一次维度接口（同 atp-models 懒加载口径）。
+  const { optionMap, isLoading: dimensionsLoading } = useFlDimensionOptions(open);
 
   const jobTypeOptions = useSelectOptions(optionMap.job_type, JOB_TYPE_FALLBACK_OPTIONS).filter(
     (option) => !HIDDEN_JOB_TYPES.has(option.value),

@@ -23,12 +23,14 @@ export type DimensionOption = { label: string; value: string };
  * 从维度管理 API 拉取指定维度类型的选项。
  * `fields` 为「本地字段名 → 维度类型 code」映射，例如
  * `{ job_type: "fl_analysis_job_type", current_waveform: "current_waveform" }`。
+ * `enabled` 为 false 时不发起任何请求（常驻挂载但默认关闭的弹窗/抽屉传 open，
+ * 避免页面一加载就打一遍字典接口）。
  * 返回每个字段的 optionMap（label/value，供下拉选）与 labelMap（code→name，供展示格式化）。
  * 维度管理不可用（查询失败 / 类型未 seed）时返回空集合，由调用方回退到静态硬编码选项。
  */
-export function useDimensionOptions(fields: Record<string, string>) {
+export function useDimensionOptions(fields: Record<string, string>, options?: { enabled?: boolean }) {
   const { user, fetchWithAuth } = useAuth();
-  const ready = Boolean(user);
+  const ready = Boolean(user) && (options?.enabled ?? true);
   const fieldsKey = JSON.stringify(fields);
   const fieldNames = useMemo(() => Object.keys(fields), [fieldsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
