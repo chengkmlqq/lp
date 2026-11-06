@@ -55,10 +55,10 @@ def _default_threads() -> int:
 #   另有 u_type（0=交流）、u_jixing（0）、u_voltage（交流分支不使用）
 # ---------------------------------------------------------------------------
 def _p(n_circle: int, If: float, verified: bool, source: str,
-       wire_formula: str = "ieee") -> dict:
+       wire_formula: str = "ieee", dynamic_if: bool = False) -> dict:
     return {"n_circle": n_circle, "If": If, "Im": 350.0, "Ratiof": 0.167,
             "Ratior": 1.0, "u_type": 0.0, "u_jixing": 0.0, "u_voltage": 0.0,
-            "wire_formula": wire_formula,
+            "wire_formula": wire_formula, "dynamic_if": dynamic_if,
             "verified": verified, "source": source}
 
 
@@ -94,6 +94,27 @@ EGM_PARAMS: dict[tuple[int, int], dict] = {
     #   3) 800/750 只有 egm4/egm5/egmDC（特型塔/直流），未移植。
     #   4) 330 的遗留黄金样本与部署 exe 不符（实测 exe 重跑 ≠ 遗留 result），
     #      其 If 用「exe 重跑」重新标定。
+    # ---- 非标电压（Web 扩展，2026-11-06）：115/230kV ----
+    # C# tzl_model 没有 115/230 的 EGM 行（厂商从未出过该电压的 rjtzl_egm*.exe），
+    # 但 EGM 核心数学（segments_for_I / egm_double_x）与电压无关，逐电压写死的只有：
+    #   If —— 仅用于清零避雷线圆分量 y[0:2]，而跳闸率取的是导线圆分量（_INDEX_TURN* 下标全 >=2），
+    #        **If 不影响最终绕击跳闸率**（此处存邻档典型值兜底，运行时可用本塔 ATP 反击耐雷覆盖）；
+    #   建弧率 e —— 由 atp_egm_trip_rate.build_ic 按电压给（115/230 用 110/220 锚点线性内插），
+    #        e 直接乘在结果上，是真正随电压变化的物理量。
+    # 数学核心与已对拍验证的 110/220 是同一份代码路径 → verified=True；
+    # dynamic_if=True 标记该组合的 If 应优先取本塔 ATP 反击二分结果。
+    (115, 1): _p(5, 40.0, True, "Web 扩展：无厂商 exe；核心数学=已验证 110egm1，If 兜底取 110 档（dynamic_if）",
+                 dynamic_if=True),
+    (230, 1): _p(5, 139.0, True, "Web 扩展：无厂商 exe；核心数学=已验证 220egm1，If 兜底取 220 档（dynamic_if）",
+                 dynamic_if=True),
+    (115, 2): _p(8, 51.0, True, "Web 扩展：无厂商 exe；核心数学=已验证 110egm2，If 兜底取 110 档（dynamic_if）",
+                 dynamic_if=True),
+    (230, 2): _p(8, 123.0, True, "Web 扩展：无厂商 exe；核心数学=已验证 220egm2，If 兜底取 220 档（dynamic_if）",
+                 dynamic_if=True),
+    (115, 3): _p(14, 200.0, True, "Web 扩展：无厂商 exe；核心数学=已验证 110egm3，If 兜底取 110 档（dynamic_if）",
+                 dynamic_if=True),
+    (230, 3): _p(14, 200.0, True, "Web 扩展：无厂商 exe；核心数学=已验证 220egm3，If 兜底取 220 档（dynamic_if）",
+                 dynamic_if=True),
 }
 
 
@@ -349,11 +370,15 @@ def egm_double_x(*, cic: np.ndarray, n_circle: int, Im: float, If: float,
 
 
 def run_egm(cic_vals, ic_vals, *, voltage: int, egm_type: int,
+            if_ka: float | None = None,
             p_chunk: int = 8, threads: int | None = None) -> list[float]:
     """按 exe 的文件契约跑一次 EGM，返回 y[n_circle]（= result_main.txt 的一行值）。
 
     cic_vals：cic 文件里的数值（前 2*n_circle 个有效）
     ic_vals ：Ic 文件里的 7 个数值：Ng, 地面倾角, 电流幅值a, 电流幅值b, Ic_left, Ic_right, 建弧率e
+    if_ka   ：本塔 ATP 反击耐雷水平（kA）。dynamic_if 组合（115/230 扩展档）优先用它当 If，
+              缺省/非法时回落到表内兜底值。If 只影响避雷线圆分量（不进最终跳闸率），
+              传与不传不改变导线圆结果 —— 仅为语义完整。
     """
     key = (int(voltage), int(egm_type))
     item = EGM_PARAMS.get(key)
@@ -373,7 +398,8 @@ def run_egm(cic_vals, ic_vals, *, voltage: int, egm_type: int,
     if len(ic_vals) < 7:
         raise ValueError(f"Ic 参数不足：需要 7 个值（Ng/倾角/a/b/Ic左/Ic右/建弧率），只有 {len(ic_vals)} 个")
     Ng, thetaslop, I_a, I_b, Ic_l, Ic_r, e = [float(v) for v in ic_vals[:7]]
-    y = egm_double_x(cic=cic, n_circle=n_circle, Im=item["Im"], If=item["If"],
+    if_ka_val = float(if_ka) if if_ka is not None and float(if_ka) > 0 else float(item["If"])
+    y = egm_double_x(cic=cic, n_circle=n_circle, Im=item["Im"], If=if_ka_val,
                      Ratiof=item["Ratiof"], Ratior=item["Ratior"], e=e, Ng=Ng,
                      thetaslop=thetaslop, I_a=I_a, I_b=I_b, Ic_left=Ic_l,
                      Ic_right=Ic_r, u_type=item["u_type"], u_voltage=item["u_voltage"],

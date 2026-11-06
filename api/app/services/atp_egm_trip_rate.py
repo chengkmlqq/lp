@@ -244,9 +244,13 @@ def build_ic(
     b = _num(profile.get("current_b")) or _num(params.get("雷电流幅值b"))
     if not a or not b:
         raise ValueError("缺少雷电流幅值 a/b，无法计算绕击跳闸率")
-    # 建弧率 e：110→0.85，220→0.918，≥500→1（对齐 C#）
+    # 建弧率 e：110→0.85，220→0.918，≥500→1（对齐 C#）；
+    # 115/230（Web 扩展档）：在 110/220 锚点间按电压线性内插
+    #   e(115) = 0.85 + 5/110·0.068  ≈ 0.853
+    #   e(230) = 0.85 + 120/110·0.068 ≈ 0.924
+    # e 直接乘在 EGM 结果上，是 115/230 与 110/220 之间真正的物理差异项。
     v = voltage_kv or 500
-    e = 0.85 if v == 110 else (0.918 if v == 220 else 1)
+    e = 0.85 if v == 110 else (0.918 if v == 220 else (0.853 if v == 115 else (0.924 if v == 230 else 1)))
     ic = int(raoji_withstand_ka)  # C#: (int)mRaojiCurrent
     rows = [density, slope_deg, a, b, ic, ic, e]
     return "\n".join(_fmt(x) for x in rows) + "\n"
@@ -283,6 +287,11 @@ def _parse_tower_name_loose(tower_type: str) -> str | None:
     return best
 
 
+# 非标电压 → tzl_model 闸门用邻档（C# 无 115/230 行；塔型→EGM 程序映射与电压无关，
+# 115/230 与 110/220 同属一个绝缘配合档）。真参数见 egm_native.EGM_PARAMS 的 115/230 条目。
+_EGM_GATE_VOLTAGE: dict[int, int] = {115: 110, 230: 220}
+
+
 def egm_type_for_tower(tower_type: str, circuit_count: int, voltage_kv: float | None = None) -> int:
     """完全对齐 C#：按塔型选 EGM 程序（rjEGM_Type）+ 一致性校验，不符即抛错。
 
@@ -309,7 +318,10 @@ def egm_type_for_tower(tower_type: str, circuit_count: int, voltage_kv: float | 
         )
     if voltage_kv:
         v = int(voltage_kv)
-        if v not in _TOWER_EGM_VOLTAGES[name]:
+        # 115/230 走 tzl_model 邻档闸门（C# 无该电压行，但塔型→EGM 程序映射与电压无关；
+        # 真参数走 egm_native.EGM_PARAMS 的 115/230 扩展条目，建弧率按 115/230 内插）
+        gate_v = _EGM_GATE_VOLTAGE.get(v, v)
+        if gate_v not in _TOWER_EGM_VOLTAGES[name]:
             raise ValueError(
                 f"C# tzl_model 未配置 {v}kV × 塔型 {name} 的 EGM 程序"
                 f"（该塔型仅支持 {sorted(_TOWER_EGM_VOLTAGES[name])}kV），拒绝计算"
@@ -394,6 +406,7 @@ def compute_shielding_trip_rate(
     profile: dict[str, Any],
     tower_type: str,
     raoji_withstand_ka: float,
+    counterstrike_withstand_ka: float | None = None,
     env: dict[str, str],
     timeout: int = 600,
     engine: str | None = None,
@@ -403,6 +416,9 @@ def compute_shielding_trip_rate(
     engine：native（默认，原生 numpy 直译）/ wine（跑 rjtzl_egm*.exe）。
     默认取配置 `LP_EGM_ENGINE_MODE`（默认 native）。native 未覆盖的组合会明确抛
     egm_native.EgmNotImplemented（不会静默降级到别的引擎）。
+    counterstrike_withstand_ka：本塔 ATP 反击耐雷水平（kA）。115/230 扩展档的 dynamic_if
+    条目优先用它当 If（If 只影响被丢弃的避雷线圆分量，不影响最终跳闸率，仅为语义完整）。
+    115/230 无厂商 exe：wine 引擎下明确拒绝（native 支持），不静默代跑邻档 exe。
     """
     circuits = _circuit_geometry(base_tower)
     if not circuits:
@@ -413,6 +429,11 @@ def compute_shielding_trip_rate(
     mode = (engine or getattr(get_settings(), "egm_engine_mode", "native") or "native").strip().lower()
     if mode not in {"native", "wine"}:
         raise ValueError(f"未知的 EGM 引擎：{mode}（应为 native / wine）")
+    if mode == "wine" and voltage in _EGM_GATE_VOLTAGE:
+        raise NotImplementedError(
+            f"{voltage}kV 无厂商 rjtzl_egm*.exe（C# 从未支持该电压），"
+            "请改用 native 引擎（LP_EGM_ENGINE_MODE=native，默认）计算"
+        )
 
     cic_text = build_cic(base_tower=base_tower, profile=profile, egm_type=egm_type)
     density = _num(base_tower.get("lightning_density"))
@@ -438,7 +459,8 @@ def compute_shielding_trip_rate(
             )
             # 直接用页面/快照装配好的 cic/Ic 数值调用原生引擎（与 exe 的文件契约一致）
             values = egm_native.run_egm(
-                cic_vals, _parse_numbers(ic_text), voltage=voltage, egm_type=egm_type
+                cic_vals, _parse_numbers(ic_text), voltage=voltage, egm_type=egm_type,
+                if_ka=counterstrike_withstand_ka,
             )
             _run_cache[_key] = values
             total += _extract(egm_type, values, turn=turn)

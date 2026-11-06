@@ -1025,6 +1025,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                             profile=snapshot.profile_json or {},
                             tower_type=snapshot.tower_type or "",
                             raoji_withstand_ka=float(_egm_ic),
+                            counterstrike_withstand_ka=_raoji_merged.get("counterstrike_withstand_ka"),
                             env=_egm_env,
                         )
                     except (ValueError, NotImplementedError) as exc:
@@ -1245,6 +1246,7 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                             profile=snapshot.profile_json or {},
                             tower_type=snapshot.tower_type or "",
                             raoji_withstand_ka=float(_egm_ic),
+                            counterstrike_withstand_ka=_raoji_merged.get("counterstrike_withstand_ka"),
                             env=_egm_env,
                         )
                         _raoji_merged["shielding_trip_rate"] = _egm_rate
