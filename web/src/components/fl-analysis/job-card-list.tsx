@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button, Dropdown, Empty, Progress, Space, Spin, Tooltip, Typography } from "antd";
+import { Badge, Button, Dropdown, Empty, Progress, Space, Spin, Tag, Tooltip, Typography } from "antd";
 import {
   ApartmentOutlined,
   BarChartOutlined,
@@ -19,11 +19,13 @@ import type { FlAnalysisJobSummary } from "@/types/auth";
 
 import {
   formatDateTime,
+  formatJobStatus,
   formatJobType,
   isJobCancellable,
   isJobDetailLocked,
   mitigationMode,
   runningProgressPercent,
+  statusColor,
 } from "./types";
 
 const { Text } = Typography;
@@ -220,27 +222,27 @@ export function JobCardList({ jobs, loading, onDeleteJob, onCancelJob, canReadLo
               {/* 操作区：默认展示 2 个直接按钮，多了才收进 ⋯ 三点下拉 */}
               <div className="admin-fl-analysis-job-card-actions flex items-center justify-between px-4 py-2 border-t border-gray-200">
                 <div className="min-w-0 flex items-center gap-2">
+                  {/* 进度展示与列表视图统一：运行中展示进度条 + 百分比文字
+                      （Progress 自带百分比文本 showInfo 默认开），非运行态兜底展示
+                      状态标签（颜色阈值 statusColor / 文案 formatJobStatus 与列表一致）。
+                      进度取值共用 types.runningProgressPercent：已完成塔数 + 当前塔
+                      内部比例 fractional，上限 99，避免 22+0.95 进位成「23/23」。 */}
                   {job.status === "running" ? (
-                    <>
-                      {/* 实时进度条：整体进度（已完成塔数 + 当前塔内部比例 fractional）。
-                          参考故障分析卡片：Progress 自带百分比文本（showInfo 默认开），
-                          max-w-40 限宽防止挤压右侧操作按钮；悬浮展示当前步骤
-                          （如「杆塔 75 计算完成」）。进行中塔的 fractional 只参与
-                          百分比，避免 22+0.95 进位成「23/23」。 */}
-                      <Tooltip
-                        title={job.current_step_text || t("正在计算")}
-                        placement="top"
-                      >
-                        <Progress
-                          percent={runningProgressPercent(job)}
-                          size="small"
-                          className="flex-1 max-w-40"
-                          strokeColor="var(--accent-9)"
-                          trailColor="var(--ant-color-border-secondary)"
-                        />
-                      </Tooltip>
-                    </>
-                  ) : null}
+                    <Tooltip
+                      title={job.current_step_text || t("正在计算")}
+                      placement="top"
+                    >
+                      <Progress
+                        percent={runningProgressPercent(job)}
+                        size="small"
+                        className="flex-1 max-w-40"
+                      />
+                    </Tooltip>
+                  ) : (
+                    <Tag color={statusColor(job.status)} className="m-0">
+                      {formatJobStatus(job.status, t)}
+                    </Tag>
+                  )}
                 </div>
                 <Space size="small" className="shrink-0">
                   {visibleActions.map((action) => (
