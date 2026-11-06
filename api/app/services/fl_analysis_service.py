@@ -994,20 +994,29 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
 
                     _egm_env = os.environ.copy()
                     _egm_env.setdefault("XDG_RUNTIME_DIR", "/tmp/.xdg")
-                    _egm_rate, _egm_alpha = compute_shielding_trip_rate(
-                        atp_root=Path("/app/data/wine/ATP"),
-                        voltage_kv=job.line.voltage_kv if job.line else None,
-                        base_tower=snapshot.base_tower_json or {},
-                        profile=snapshot.profile_json or {},
-                        tower_type=snapshot.tower_type or "",
-                        raoji_withstand_ka=float(_egm_ic),
-                        env=_egm_env,
-                    )
-                    _raoji_merged["shielding_trip_rate"] = _egm_rate
-                    _raoji_merged["shielding_trip_rate_method"] = "egm"
-                    # 普通计算：顶层绕击耐雷 = 三相最小值（C# 7891-7912）
-                    if _egm_ic is not None:
-                        _raoji_merged["shielding_withstand_ka"] = _egm_ic
+                    try:
+                        _egm_rate, _egm_alpha = compute_shielding_trip_rate(
+                            atp_root=Path("/app/data/wine/ATP"),
+                            voltage_kv=job.line.voltage_kv if job.line else None,
+                            base_tower=snapshot.base_tower_json or {},
+                            profile=snapshot.profile_json or {},
+                            tower_type=snapshot.tower_type or "",
+                            raoji_withstand_ka=float(_egm_ic),
+                            env=_egm_env,
+                        )
+                    except (ValueError, NotImplementedError) as exc:
+                        # 该电压×塔型在 tzl_model 无 EGM 行（如 230kV）或几何缺失 →
+                        # 与 C# 行为一致（该电压下不跑 EGM、无绕击跳闸率），跳过而非
+                        # 让整塔失败：反击二分结果已算出，应保留。
+                        logger.warning(
+                            "[ATP] 绕击 EGM 跳过（塔 %s）：%s", snapshot.tower_no, exc
+                        )
+                    else:
+                        _raoji_merged["shielding_trip_rate"] = _egm_rate
+                        _raoji_merged["shielding_trip_rate_method"] = "egm"
+                        # 普通计算：顶层绕击耐雷 = 三相最小值（C# 7891-7912）
+                        if _egm_ic is not None:
+                            _raoji_merged["shielding_withstand_ka"] = _egm_ic
                     graded = _raoji_merged
                     # 普通计算：顶层耐雷/跳闸率保留实际值（C# 口径），但风险等级要用
                     # EGM 之后的绕击跳闸率重算。
