@@ -2536,6 +2536,20 @@ def _rewrite_includes(
     return "".join(out_lines)
 
 
+def _normalize_atp_text_bytes(content: bytes) -> bytes:
+    """把 ATP 文本文件（.atp/.dat/.pch/.lib 等）的行尾归一为 LF。
+
+    wine 下 gfortran 顺序读吃到行尾 \\r 会报 `fmt: read unexpected character`
+    （Windows 原生 runtime 会自动剥 \\r，所以本地复现不了）。资产/模板里 CRLF、
+    LF 混杂，落盘到 wine 引擎目录前统一归一。含 NUL 的按二进制处理不动。
+    """
+    if b"\x00" in content:
+        return content
+    if b"\r" not in content:
+        return content
+    return content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def _prepare_run_directory(
     *,
     job: FlAnalysisJob,
@@ -2602,7 +2616,7 @@ def _materialize_asset_files(
         try:
             read_result = driver.read_file(item.path)
             content = read_result.content if hasattr(read_result, "content") else read_result
-            target.write_bytes(content)
+            target.write_bytes(_normalize_atp_text_bytes(content))
         except Exception as exc:
             logger.warning("[ATP] 物化文件失败 %s：%s", rel_path, exc)
 
@@ -2610,7 +2624,7 @@ def _materialize_asset_files(
     entry_target = engine_dir / resolved_job.entry_file
     rendered_atp = run_dir / resolved_job.entry_file
     if rendered_atp.is_file():
-        entry_target.write_bytes(rendered_atp.read_bytes())
+        entry_target.write_bytes(_normalize_atp_text_bytes(rendered_atp.read_bytes()))
         logger.info("[ATP] 资产文件已物化到引擎目录 %s，work.atp 渲染版已覆盖", engine_dir)
 
     # startup 是 tpbig 运行必需（缺少时报 "Attempt to connect disk file startup has failed"）
