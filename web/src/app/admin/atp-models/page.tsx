@@ -420,35 +420,6 @@ export default function AtpModelsPage() {
     },
   });
 
-  // 形态重新检测（2026-11-03）：存量资产的 model_format 是列默认值而非判定结果，
-  // 上传口只在传文件时判定，故提供显式重判——按存储里的真实 work.atp 重新定形态。
-  const recheckFormatMutation = useMutation({
-    mutationFn: async (assetId: string) => {
-      const response = await fetchWithAuth(`/api/v1/atp/assets/${assetId}/format-check`, { method: "POST" });
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      return (await response.json()) as AtpAssetSummary;
-    },
-    onSuccess: (updated) => {
-      void queryClient.invalidateQueries({ queryKey: ["atp-assets"] });
-      void queryClient.invalidateQueries({ queryKey: ["/api/v1/atp/assets", updated.id] });
-      // 2026-11-03：检测改成后台任务，请求返回的是 pending；这里只提示「已提交」，
-      // 列表在有 pending/running 时每 2 秒自刷，出结果后自动更新形态标记。
-      if (updated.analysis_status === "failed") {
-        setSuccess("");
-        setError(new ApiError(updated.analysis_error || t("检测任务入队失败，请稍后重试")));
-        return;
-      }
-      setSuccess(t("已提交后台检测，完成后列表会自动刷新"));
-      setError(null);
-    },
-    onError: (candidate) => {
-      setSuccess("");
-      setError(new ApiError(candidate instanceof Error ? candidate.message : t("重新检测失败")));
-    },
-  });
-
   const updateAssetMutation = useMutation({
     mutationFn: async (values: AssetEditFormValues) => {
       if (!editingAsset) {
@@ -1492,8 +1463,6 @@ export default function AtpModelsPage() {
                                   onTest={(asset) => openTestTab(asset)}
                                   onPublish={(id) => publishMutation.mutate(id)}
                                   onUnpublish={(id) => unpublishMutation.mutate(id)}
-                                  onRecheckFormat={(id) => recheckFormatMutation.mutate(id)}
-                                  recheckBusy={recheckFormatMutation.isPending}
                                   publishBusy={publishMutation.isPending || unpublishMutation.isPending}
                                 />
                               </Spin>

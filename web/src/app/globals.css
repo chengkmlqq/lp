@@ -2766,6 +2766,21 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 新版/旧版单字章（WS-9）：在统一水印印章的基础上收敛为单字「新」/「旧」，
+   字号加大、垂直居中盖在卡片右侧，悬停仍可看完整形态说明。 */
+.admin-atp-models-stamp-single {
+  top: 50%;
+  transform: translateY(-50%) rotate(-14deg);
+  font-size: 22px;
+  letter-spacing: 0;
+  padding: 2px 8px;
+}
+
+/* 卡上带章时右侧留出章位，字段行不压到章下（英文 New/Old 更宽，按其留白） */
+.admin-atp-models-card-has-stamp {
+  padding-right: 32px;
+}
+
 /* 生效/异常状态小 chip：实心圆点 + 文案，代替整行 Badge + 文字 */
 .admin-atp-models-state-chip {
   display: inline-flex;
