@@ -4,6 +4,7 @@ import React from "react";
 import { Modal, Space } from "antd";
 import type { ModalProps } from "antd";
 import styles from "./modo-modal.module.css";
+import { useI18n } from "@/lib/i18n";
 import ModoButton from "@/components/biz/modo-button";
 
 export interface ModoModalProps extends Omit<ModalProps, "footer"> {
@@ -20,8 +21,8 @@ export interface ModoModalProps extends Omit<ModalProps, "footer"> {
 export const ModoModal: React.FC<ModoModalProps> = ({
   onCancel,
   onOk,
-  cancelText = "取消",
-  okText = "确定",
+  cancelText,
+  okText,
   confirmLoading,
   showFooter = true,
   footer,
@@ -29,6 +30,9 @@ export const ModoModal: React.FC<ModoModalProps> = ({
   className,
   ...props
 }) => {
+  const { t } = useI18n();
+  const resolvedCancelText = cancelText ?? t("取消");
+  const resolvedOkText = okText ?? t("确定");
   const renderFooter = () => {
     if (footer === null) return null;
     if (footer !== undefined) return footer;
@@ -36,9 +40,9 @@ export const ModoModal: React.FC<ModoModalProps> = ({
     return (
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Space size={12}>
-          <ModoButton onClick={onCancel}>{cancelText}</ModoButton>
+          <ModoButton onClick={onCancel}>{resolvedCancelText}</ModoButton>
           <ModoButton type="primary" loading={confirmLoading} onClick={onOk}>
-            {okText}
+            {resolvedOkText}
           </ModoButton>
         </Space>
       </div>

@@ -1,3 +1,5 @@
+import { translatePlainText } from "@/lib/i18n";
+
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function trimTrailingSlash(value: string): string {
@@ -182,7 +184,7 @@ export async function readApiError(response: Response): Promise<string> {
     // detail 可能是 string / 对象 / 数组（如 FastAPI 422 校验错误为数组、嵌套 detail）——
     // 直接 return 传给 `new Error(detail)` 会对对象隐式转成 "[object Object]"，故需序列化。
     if (detail == null) return `HTTP ${response.status}`;
-    if (typeof detail === "string") return detail;
+    if (typeof detail === "string") return translatePlainText(detail);
     try {
       return JSON.stringify(detail);
     } catch {

@@ -5,6 +5,7 @@ import { Drawer, Space } from "antd";
 import type { DrawerProps } from "antd";
 import { CloseOutlined } from "@ant-design/icons";
 import styles from "./modo-drawer.module.css";
+import { useI18n } from "@/lib/i18n";
 import ModoButton from "@/components/biz/modo-button";
 
 export interface ModoDrawerProps extends Omit<DrawerProps, "extra" | "footer" | "closable"> {
@@ -22,8 +23,8 @@ export const ModoDrawer: React.FC<ModoDrawerProps> = ({
   onCancel,
   onOk,
   onClose,
-  cancelText = "取消",
-  okText = "确定",
+  cancelText,
+  okText,
   confirmLoading,
   showFooter = true,
   footer,
@@ -32,6 +33,9 @@ export const ModoDrawer: React.FC<ModoDrawerProps> = ({
   styles: drawerStyles,
   ...props
 }) => {
+  const { t } = useI18n();
+  const resolvedCancelText = cancelText ?? t("取消");
+  const resolvedOkText = okText ?? t("确定");
   const handleClose: DrawerProps["onClose"] = (e) => {
     onCancel?.();
     onClose?.(e);
@@ -48,9 +52,9 @@ export const ModoDrawer: React.FC<ModoDrawerProps> = ({
     return (
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Space>
-          <ModoButton onClick={handleCancelClick}>{cancelText}</ModoButton>
+          <ModoButton onClick={handleCancelClick}>{resolvedCancelText}</ModoButton>
           <ModoButton type="primary" loading={confirmLoading} onClick={onOk}>
-            {okText}
+            {resolvedOkText}
           </ModoButton>
         </Space>
       </div>

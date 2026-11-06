@@ -33,7 +33,7 @@ import {
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type RefAttributes } from "react";
 
-import { useI18n } from "@/lib/i18n";
+import { useI18n, translatePlainText } from "@/lib/i18n";
 import { useAuth } from "@/components/auth-provider";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { modoTablePagination } from "@/components/biz/modo-pagination";
@@ -84,7 +84,7 @@ function readXhrError(xhr: XMLHttpRequest): string {
   }
   try {
     const parsed = JSON.parse(raw) as { detail?: string };
-    return parsed.detail?.trim() ? parsed.detail : fallback;
+    return parsed.detail?.trim() ? translatePlainText(parsed.detail) : fallback;
   } catch {
     return raw.length > 200 ? fallback : raw;
   }
@@ -177,7 +177,7 @@ export default function AdminFilesPage() {
 
   const applyMutationSuccess = useCallback(
     async (payload: FileOperationResponse, fallbackMessage: string) => {
-      const nextMessage = payload.action ? `操作成功：${payload.action}` : fallbackMessage;
+      const nextMessage = payload.action ? `${t("操作成功：")}${payload.action}` : fallbackMessage;
       setErrorMessage("");
       messageApi.success(nextMessage);
       resetActionPanels();
@@ -356,7 +356,7 @@ export default function AdminFilesPage() {
               }
               return;
             }
-            reject(new Error(readXhrError(xhr)));
+            reject(Object.assign(new Error(readXhrError(xhr)), { status: xhr.status }));
           };
 
           xhr.onerror = () => reject(new Error(t("网络异常，上传失败")));
@@ -372,7 +372,11 @@ export default function AdminFilesPage() {
         payload = await uploadWithXhr(getAccessToken());
       } catch (error) {
         const message = error instanceof Error ? error.message : t("上传失败");
-        const isUnauthorized = message.includes("401") || message.includes("未授权");
+        const isUnauthorized =
+          (error as { status?: number } | null)?.status === 401 ||
+          message.includes("401") ||
+          message.includes("未授权") ||
+          message.includes("Unauthorized");
         if (!isUnauthorized) {
           throw error;
         }
@@ -409,8 +413,8 @@ export default function AdminFilesPage() {
   const handleDelete = useCallback(
     (item: FileEntryItem) => {
       const content = item.is_dir
-        ? `确认删除目录 ${item.name} 吗？将递归删除目录内全部内容。`
-        : `确认删除文件 ${item.name} 吗？`;
+        ? `${t("确认删除目录")} ${item.name} ${t("吗？将递归删除目录内全部内容。")}`
+        : `${t("确认删除文件")} ${item.name} ${t("吗？")}`;
 
       modal.confirm({
         title: t("删除确认"),
@@ -501,7 +505,7 @@ export default function AdminFilesPage() {
       anchor.remove();
       URL.revokeObjectURL(objectUrl);
       setErrorMessage("");
-      messageApi.success(`下载已开始：${item.name}`);
+      messageApi.success(`${t("下载已开始：")}${item.name}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : t("下载失败");
       setErrorMessage(message);
@@ -535,7 +539,7 @@ export default function AdminFilesPage() {
       anchor.remove();
       URL.revokeObjectURL(objectUrl);
       setErrorMessage("");
-      messageApi.success(`目录下载已开始：${item.name}`);
+      messageApi.success(`${t("目录下载已开始：")}${item.name}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : t("目录下载失败");
       setErrorMessage(message);
@@ -753,7 +757,7 @@ export default function AdminFilesPage() {
   if (!user) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col justify-center gap-4 px-6 py-20">
-        <p className="text-sm text-[var(--gray-11)]">请先登录后再访问{pageDisplayName}页面。</p>
+        <p className="text-sm text-[var(--gray-11)]">{t("请先登录后再访问")}{pageDisplayName}{t("页面。")}</p>
         <Link href="/" className="inline-flex items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)] disabled:cursor-not-allowed disabled:opacity-60 w-fit">{t("返回首页")}</Link>
       </main>
     );

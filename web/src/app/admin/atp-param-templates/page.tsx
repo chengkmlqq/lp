@@ -1105,7 +1105,7 @@ export default function AtpParamTemplatesPage() {
               placeholder={t("杆塔类型")}
               allowClear
               value={previewCtx.tower_type}
-              options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
+              options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: t(item.label) }))}
               onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, tower_type: value }))}
             />
             <Select
@@ -1129,7 +1129,7 @@ export default function AtpParamTemplatesPage() {
               placeholder={t("场景")}
               allowClear
               value={previewCtx.scene_type}
-              options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
+              options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: t(item.label) }))}
               onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, scene_type: value }))}
             />
             <Select
@@ -1137,7 +1137,7 @@ export default function AtpParamTemplatesPage() {
               placeholder={t("避雷器组合")}
               allowClear
               value={previewCtx.arrester_config}
-              options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: item.label }))}
+              options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: t(item.label) }))}
               onChange={(value) => setPreviewCtx((ctx) => ({ ...ctx, arrester_config: value }))}
             />
           </Space>
@@ -1181,7 +1181,7 @@ export default function AtpParamTemplatesPage() {
                 <Select
                   allowClear
                   placeholder={t("选择杆塔类型")}
-                  options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))}
+                  options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: t(item.label) }))}
                   onChange={() => void refreshSlotOptions()}
                 />
               </Form.Item>
@@ -1198,12 +1198,12 @@ export default function AtpParamTemplatesPage() {
             </Col>
             <Col span={12}>
               <Form.Item name="scene_type" label={t("场景")} tooltip={t("匹配条件；留空 = 通配")}>
-                <Select allowClear placeholder={t("选择场景")} options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: item.label }))} onChange={() => void refreshSlotOptions()} />
+                <Select allowClear placeholder={t("选择场景")} options={(meta?.scene_types ?? []).map((item) => ({ value: item.value, label: t(item.label) }))} onChange={() => void refreshSlotOptions()} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="arrester_config" label={t("避雷器组合")} tooltip={t("匹配条件；留空 = 通配")}>
-                <Select allowClear placeholder={t("选择避雷器组合")} options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: item.label }))} onChange={() => void refreshSlotOptions()} />
+                <Select allowClear placeholder={t("选择避雷器组合")} options={(meta?.arrester_configs ?? []).map((item) => ({ value: item.value, label: t(item.label) }))} onChange={() => void refreshSlotOptions()} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -1223,7 +1223,7 @@ export default function AtpParamTemplatesPage() {
             </Col>
             <Col span={12}>
               <Form.Item name="fallback_to" label={t("wine 回退到")} tooltip={t("槽位公式算不出来时回退到哪个塔型的模板继续算；留空 = 不回退")}>
-                <Select allowClear placeholder={t("选择回退塔型")} options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: item.label }))} />
+                <Select allowClear placeholder={t("选择回退塔型")} options={(meta?.tower_types ?? []).map((item) => ({ value: item.value, label: t(item.label) }))} />
               </Form.Item>
             </Col>
             <Col span={12}>

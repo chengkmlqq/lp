@@ -245,7 +245,7 @@ export function PageFilter<TFormValues extends object = object, TSearchParams ex
                 </Tooltip>
               )}
               <ModoButton type="primary" htmlType="submit" style={{ minWidth: 72, height: 28 }}>
-                查询
+                {t("查询")}
               </ModoButton>
             </div>
           </div>
@@ -254,13 +254,13 @@ export function PageFilter<TFormValues extends object = object, TSearchParams ex
         <div style={{ display: "flex", fontSize: 12, width: "100%", alignItems: "flex-start", minHeight: 20, lineHeight: "20px", marginTop: 6 }}>
           <div style={{ display: "flex", alignItems: "flex-start", flex: 1 }}>
             <span style={{ flexShrink: 0, color: "#79879C", whiteSpace: "pre-wrap", display: "flex", alignItems: "center", minHeight: 20 }}>
-              已筛选条件：
+              {t("已筛选条件：")}
             </span>
             <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", gap: 4, minHeight: 20 }}>
               {Object.keys(searchParams).length > 0 ? (
                 <>{renderFilterTags()}</>
               ) : (
-                <span style={{ color: "#242E43", display: "flex", alignItems: "center", minHeight: 20 }}>全部</span>
+                <span style={{ color: "#242E43", display: "flex", alignItems: "center", minHeight: 20 }}>{t("全部")}</span>
               )}
             </div>
           </div>

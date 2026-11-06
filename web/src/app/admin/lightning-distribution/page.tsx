@@ -1989,7 +1989,7 @@ function TowerNgDrawer({
 
   return (
     <Drawer
-      title={`${t("回填杆塔")} Ng 值 - ${line?.line_name ?? ""}`}
+      title={`${t("回填杆塔")} Ng ${t("值")} - ${line?.line_name ?? ""}`}
       open={!!line}
       onClose={onClose}
       width={720}

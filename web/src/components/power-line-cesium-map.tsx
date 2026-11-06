@@ -583,16 +583,16 @@ export function PowerLineCesiumMap({
 <div className={fillHeight ? "flex h-full min-h-0 flex-col gap-3" : "space-y-3"}>
       {terrainDataset ? (
         <Typography.Text type="secondary">
-          地形底图：{terrainDataset.name}，状态 {terrainDataset.terrain_status}
+          {t("地形底图：")}{terrainDataset.name}，{t("状态")} {terrainDataset.terrain_status}
           {terrainDataset.terrain_status === "ready" ? `，${t("夸张")} ${exaggeration.toFixed(1)}x` : t("，未启用真实地形")}
-          {towersOutsideTerrainBounds > 0 ? `，超出范围杆塔 ${towersOutsideTerrainBounds} 个` : ""}
+          {towersOutsideTerrainBounds > 0 ? `，${t("超出范围杆塔")} ${towersOutsideTerrainBounds} ${t("个")}` : ""}
         </Typography.Text>
       ) : null}
       {terrainDataset && towersOutsideTerrainBounds > 0 ? (
         <Alert
           type="warning"
           showIcon
-          message={`有 ${towersOutsideTerrainBounds} ${t("个杆塔超出所选 DEM 覆盖范围")}`}
+          message={`${t("有")} ${towersOutsideTerrainBounds} ${t("个杆塔超出所选 DEM 覆盖范围")}`}
         />
       ) : null}
       {terrainError ? (
@@ -644,7 +644,7 @@ export function PowerLineCesiumMap({
           />
         </div>
         <div className="pointer-events-none absolute left-3 top-3 rounded bg-slate-950/75 px-2 py-1 text-xs text-slate-200">
-          线路走向专题视图
+          {t("线路走向专题视图")}
         </div>
         {/* 显示控制（按风险着色 / 显示塔号 / 矢量·影像·地形）——靠右侧 */}
         <div className="absolute right-3 top-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-700/80 bg-slate-950/70 px-2.5 py-1.5 shadow-lg backdrop-blur-sm">
@@ -671,7 +671,7 @@ export function PowerLineCesiumMap({
         {towerGeoPoints.length === 0 && !(loading || !ready) ? (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6 text-center">
             <div className="rounded-md bg-slate-950/80 px-4 py-3 text-sm text-slate-200">
-              当前筛选条件下没有可用经纬度数据，无法绘制线路走向。
+              {t("当前筛选条件下没有可用经纬度数据，无法绘制线路走向。")}
             </div>
           </div>
         ) : null}

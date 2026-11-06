@@ -324,7 +324,7 @@ export function AtpTestLineEditor({
       title: t("回路"),
       dataIndex: "circuit_no",
       width: 64,
-      render: (value: number) => <Text strong>{value} 回</Text>,
+      render: (value: number) => <Text strong>{value} {t("回")}</Text>,
     },
     ...(
       [
@@ -405,7 +405,7 @@ export function AtpTestLineEditor({
 
       <Form form={form} layout="vertical" disabled={!canManage} initialValues={DEFAULT_VALUES}>
         {/* ── 1. 维度信息 ── */}
-        <Divider titlePlacement="left" style={{ marginTop: 0 }}>
+        <Divider orientation="start" style={{ marginTop: 0 }}>
           {t("维度信息")}
         </Divider>
         <Row gutter={12}>
@@ -499,7 +499,7 @@ export function AtpTestLineEditor({
         </Form.Item>
 
         {/* ── 2. 杆塔几何 ── */}
-        <Divider titlePlacement="left">{t("杆塔几何")}</Divider>
+        <Divider orientation="start">{t("杆塔几何")}</Divider>
         <Row gutter={12}>
           <Col span={6}>
             <Form.Item name="tower_no" label={labelWithSource("tower_no", "杆塔号")}>
@@ -599,7 +599,7 @@ export function AtpTestLineEditor({
         </Row>
 
         {/* ── 3. 线路环境 ── */}
-        <Divider titlePlacement="left">{t("线路环境")}</Divider>
+        <Divider orientation="start">{t("线路环境")}</Divider>
         <Row gutter={12}>
           <Col span={6}>
             <Form.Item
@@ -686,7 +686,7 @@ export function AtpTestLineEditor({
         </Row>
 
         {/* ── 4. 测试参数 ── */}
-        <Divider titlePlacement="left">{t("测试参数")}</Divider>
+        <Divider orientation="start">{t("测试参数")}</Divider>
         <Row gutter={12}>
           <Col span={6}>
             <Form.Item

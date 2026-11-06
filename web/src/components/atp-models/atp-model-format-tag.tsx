@@ -60,8 +60,8 @@ export function AtpModelFormatTag({ asset, compact = false }: AtpModelFormatTagP
   const warnCount = asset.analysis_status === "failed" ? 0 : checkWarningCount(asset.format_check);
 
   const hint = warnCount > 0
-    ? `${meta.hint}（${t("另有")} ${warnCount} ${t("条预检提示，详情页可查看")}）`
-    : meta.hint;
+    ? `${t(meta.hint)}（${t("另有")} ${warnCount} ${t("条预检提示，详情页可查看")}）`
+    : t(meta.hint);
 
   return (
     <Tooltip title={hint}>
@@ -72,7 +72,7 @@ export function AtpModelFormatTag({ asset, compact = false }: AtpModelFormatTagP
         {asset.analysis_status === "pending" || asset.analysis_status === "running" ? (
           <LoadingOutlined spin className="admin-atp-models-format-tag-icon" />
         ) : null}
-        {compact ? meta.short : meta.label}
+        {compact ? t(meta.short) : t(meta.label)}
         {warnCount > 0 ? (
           <span className="admin-atp-models-format-tag-warn">
             <WarningOutlined />

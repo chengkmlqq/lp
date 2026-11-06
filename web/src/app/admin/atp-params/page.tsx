@@ -251,7 +251,7 @@ function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: Definit
         </div>
         {item.description ? (
           <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis={{ tooltip: item.description }}>
-            参数说明：{item.description}
+            {t("参数说明：")}{item.description}
           </Typography.Text>
         ) : null}
       </div>
@@ -300,7 +300,7 @@ function DefinitionCard({ item, canManage, onEdit, onDetail, onDelete }: Definit
           </Space>
         ) : (
           <Button size="small" type="text" icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); onDetail(item); }}>
-            查看
+            {t("查看")}
           </Button>
         )}
       </div>
@@ -608,7 +608,7 @@ export default function AtpParamsPage() {
 
   const removeDefinition = (item: DefinitionItem) => {
     modal.confirm({
-      title: `删除参数 ${item.code}？`,
+      title: `${t("删除参数")} ${item.code}${t("？")}`,
       content: t("删除后参数模板若有引用将无法解析（保存时已拦截被引用的删除）。"),
       okText: t("删除"),
       okButtonProps: { danger: true },
@@ -718,11 +718,11 @@ export default function AtpParamsPage() {
         tabBarExtraContent={
           <Space size={8}>
             <Button icon={<ExperimentOutlined />} onClick={() => void openTrial()}>
-              试算
+              {t("试算")}
             </Button>
             {canManage ? (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => openEdit(null)}>
-                新建参数
+                {t("新建参数")}
               </Button>
             ) : null}
           </Space>
@@ -731,7 +731,7 @@ export default function AtpParamsPage() {
           {
             key: "list",
             label: (
-              <>ATP 计算参数管理</>
+              <>{t("ATP 计算参数管理")}</>
             ),
             closable: false,
             children: (
@@ -893,7 +893,7 @@ export default function AtpParamsPage() {
                 { key: "unit", label: t("单位"), value: detail.unit ?? "-" },
                 { key: "data_type", label: t("数据类型"), value: t(DATA_TYPE_LABEL[detail.data_type]) ?? detail.data_type },
                 { key: "deps", label: t("依赖参数"), value: detail.deps_json.length ? detail.deps_json.join(", ") : "-" },
-                { key: "enabled", label: t("启用"), value: detail.enabled ? "是" : "否" },
+                { key: "enabled", label: t("启用"), value: detail.enabled ? t("是") : t("否") },
                 { key: "desc", label: t("说明"), value: detail.description ?? "-" },
               ]}
               columns={[
@@ -1058,10 +1058,10 @@ export default function AtpParamsPage() {
 
           <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
             <Button disabled={saving} onClick={() => setEditOpen(false)}>
-              取消
+              {t("取消")}
             </Button>
             <Button type="primary" loading={saving} onClick={() => void saveDefinition()}>
-              保存
+              {t("保存")}
             </Button>
           </Space>
         </Form>
@@ -1076,7 +1076,7 @@ export default function AtpParamsPage() {
         footer={
           <Space style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
             <Button disabled={trialRunning} onClick={() => setTrialOpen(false)}>
-              取消
+              {t("取消")}
             </Button>
             <Button
               type="primary"

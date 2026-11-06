@@ -143,7 +143,7 @@ export function PowerLineMapPanel({ lineId, accessToken }: PowerLineMapPanelProp
             <Button onClick={resetFilters}>{t("重置")}</Button>
           </Form.Item>
           <Typography.Text type="secondary" className="text-xs">
-            当前加载 {towers.length} 基（上限 {TOWER_MAP_QUERY_LIMIT}）
+            {t("当前加载")} {towers.length} {t("基（上限")} {TOWER_MAP_QUERY_LIMIT}）
           </Typography.Text>
         </Form>
       </div>

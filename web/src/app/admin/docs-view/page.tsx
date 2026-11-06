@@ -254,7 +254,7 @@ export default function DocsViewPage() {
         {!siderCollapsed && (
           <>
             <Title level={4} style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>
-              操作文档
+              {t("操作文档")}
             </Title>
             {!treeLoading && treeData && treeData.length > 0 && (
               <div className="admin-docs-view-search-wrapper">
@@ -278,7 +278,7 @@ export default function DocsViewPage() {
         <>
           {searchQuery && (
             <div className="admin-docs-view-search-results-count">
-              {`找到 ${documentIndex.filter((d) => d.title.toLowerCase().includes(searchQuery.toLowerCase())).length} 个结果`}
+              {`${t("找到")} ${documentIndex.filter((d) => d.title.toLowerCase().includes(searchQuery.toLowerCase())).length} ${t("个结果")}`}
             </div>
           )}
           <div className="admin-docs-view-sider-menu">
@@ -334,7 +334,7 @@ export default function DocsViewPage() {
         extra={
           isMobile ? (
             <Button icon={<MenuOutlined />} onClick={() => setMobileMenuOpen(true)}>
-              目录
+              {t("目录")}
             </Button>
           ) : null
         }

@@ -27,7 +27,7 @@ export default function AdminLightningCurrentsBackfillHistoryPage() {
       <Card>
         <Space direction="vertical" size={12}>
           <Typography.Text type="secondary">
-            请先登录后再访问回填记录页面。
+            {t("请先登录后再访问回填记录页面。")}
           </Typography.Text>
           <Button>
             <Link href="/">{t("返回首页")}</Link>

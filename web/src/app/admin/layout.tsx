@@ -585,7 +585,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                               size="small"
                               onClick={() => markAsRead([item.id])}
                             >
-                              标记已读
+                              {t("标记已读")}
                             </Button>,
                           ]}
                           onClick={() => {

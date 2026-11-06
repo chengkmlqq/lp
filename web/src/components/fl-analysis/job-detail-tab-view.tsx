@@ -154,7 +154,7 @@ export function JobDetailTabView({
       const blob = await response.blob();
       const filename = readDownloadFilename(
         response.headers.get("content-disposition"),
-        `防雷分析-${jobType}-结果.csv`,
+        `${t("防雷分析")}-${jobType}-${t("结果")}.csv`,
       );
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -182,7 +182,7 @@ export function JobDetailTabView({
       const blob = await response.blob();
       const filename = readDownloadFilename(
         response.headers.get("content-disposition"),
-        "防雷报告.doc",
+        `${t("防雷报告")}.doc`,
       );
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");

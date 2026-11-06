@@ -311,7 +311,7 @@ export default function AtpTestLinesPage() {
           <Tag color={row.shield_wire === "with" ? "cyan" : "default"}>
             {row.shield_wire === "with" ? t("双避雷线") : t("单避雷线")}
           </Tag>
-          {row.circuit_count > 1 ? <Tag>{row.circuit_count} 回</Tag> : null}
+          {row.circuit_count > 1 ? <Tag>{row.circuit_count} {t("回")}</Tag> : null}
         </Space>
       ),
     },

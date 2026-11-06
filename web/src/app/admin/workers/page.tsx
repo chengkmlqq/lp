@@ -376,7 +376,7 @@ export default function AdminWorkersPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -390,7 +390,7 @@ export default function AdminWorkersPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -536,7 +536,7 @@ export default function AdminWorkersPage() {
                 </div>
                 <div className="admin-workers-card-summary flex items-center justify-between">
                   <Text type="secondary">
-                    共 {allFilteredWorkers.length} 个 Worker（筛选后）· {overview?.summary.total ?? 0} 总 · {overview?.summary.online ?? 0} 在线
+                    {t("共")} {allFilteredWorkers.length} {t("个 Worker（筛选后）")}· {overview?.summary.total ?? 0} {t("总")}· {overview?.summary.online ?? 0} {t("在线")}
                   </Text>
                   {allFilteredWorkers.length > WORKERS_CARD_LIMIT ? (
                     <ModoPagination

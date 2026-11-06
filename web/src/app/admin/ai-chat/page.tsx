@@ -116,7 +116,7 @@ export default function AiChatPage() {
       setSuccess(t("创建对话成功"));
     },
     onError: (err: Error) => {
-      setError(`创建对话失败: ${err.message}`);
+      setError(`${t("创建对话失败")}: ${err.message}`);
     },
   });
 
@@ -139,7 +139,7 @@ export default function AiChatPage() {
       setSuccess(t("删除对话成功"));
     },
     onError: (err: Error) => {
-      setError(`删除对话失败: ${err.message}`);
+      setError(`${t("删除对话失败")}: ${err.message}`);
     },
   });
 
@@ -276,7 +276,7 @@ export default function AiChatPage() {
       queryClient.invalidateQueries({
         queryKey: ["ai-chat-conversation", variables.convId],
       });
-      setError(`发送消息失败: ${err.message}`);
+      setError(`${t("发送消息失败")}: ${err.message}`);
     },
   });
 
@@ -380,7 +380,7 @@ export default function AiChatPage() {
           }}
         >
           <Text strong style={{ fontSize: 16 }}>
-            AI 问答助手
+            {t("AI 问答助手")}
           </Text>
           <Button
             type="text"
@@ -400,7 +400,7 @@ export default function AiChatPage() {
           ) : conversations?.items.length === 0 ? (
             <div style={{ padding: "60px 20px", textAlign: "center" }}>
               <Text style={{ color: "var(--ant-color-text-secondary)", fontSize: 14 }}>
-                暂无对话
+                {t("暂无对话")}
               </Text>
             </div>
           ) : (
@@ -449,7 +449,7 @@ export default function AiChatPage() {
                       {conv.title}
                     </div>
                     <div style={{ fontSize: 12, color: "var(--ant-color-text-secondary)" }}>
-                      {conv.message_count || 0} 条消息
+                      {conv.message_count || 0} {t("条消息")}
                     </div>
                   </div>
                   <Tooltip title={t("删除对话")}>
@@ -505,10 +505,10 @@ export default function AiChatPage() {
               <div style={{ width: "min(720px, 100%)" }}>
                 <div style={{ marginBottom: 24 }}>
                   <Text style={{ display: "block", fontSize: 14, color: "var(--ant-color-text-secondary)", marginBottom: 8 }}>
-                    AI 问答助手
+                    {t("AI 问答助手")}
                   </Text>
                   <Text strong style={{ display: "block", fontSize: 28, lineHeight: 1.2, marginBottom: 12 }}>
-                    欢迎开始提问
+                    {t("欢迎开始提问")}
                   </Text>
                   <Text style={{ display: "block", fontSize: 14, color: "var(--ant-color-text-secondary)", lineHeight: 1.8 }}>
                     {hasConversations
@@ -559,11 +559,11 @@ export default function AiChatPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <BulbOutlined />
                     <Text strong style={{ fontSize: 14 }}>
-                      你可以这样开始
+                      {t("你可以这样开始")}
                     </Text>
                   </div>
                   <Text style={{ color: "var(--ant-color-text-secondary)", lineHeight: 1.8 }}>
-                    输入问题后直接发送，系统会在首次问答时创建会话并保留上下文。
+                    {t("输入问题后直接发送，系统会在首次问答时创建会话并保留上下文。")}
                   </Text>
                 </div>
               </div>
@@ -613,7 +613,7 @@ export default function AiChatPage() {
                     paddingRight: 20,
                   }}
                 >
-                  发送
+                  {t("发送")}
                 </Button>
               </div>
             </div>
@@ -741,7 +741,7 @@ export default function AiChatPage() {
                     paddingRight: 20,
                   }}
                 >
-                  发送
+                  {t("发送")}
                 </Button>
               </div>
             </div>

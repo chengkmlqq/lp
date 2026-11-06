@@ -616,7 +616,7 @@ export default function AdminMenusPage() {
                 disabled: menuBusy,
                 onClick: () => {
                   Modal.confirm({
-                    title: `确认删除菜单 ${record.name}（${record.code}）？`,
+                    title: `${t("确认删除菜单")} ${record.name}（${record.code}）${t("？")}`,
                     okText: t("删除"),
                     cancelText: t("取消"),
                     okButtonProps: { danger: true, loading: deleteLoading },
@@ -645,7 +645,7 @@ export default function AdminMenusPage() {
               onClick: (info) => {
                 info.domEvent?.stopPropagation();
                 Modal.confirm({
-                  title: `确认删除菜单 ${menuItem.name}（${menuItem.code}）？`,
+                  title: `${t("确认删除菜单")} ${menuItem.name}（${menuItem.code}）${t("？")}`,
                   okText: t("删除"),
                   cancelText: t("取消"),
                   okButtonProps: { danger: true },
@@ -824,7 +824,7 @@ export default function AdminMenusPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );
@@ -838,7 +838,7 @@ export default function AdminMenusPage() {
           href="/"
           className="inline-flex w-fit items-center justify-center rounded-md border border-[var(--gray-6)] bg-[var(--gray-a2)] px-4 py-2 text-sm font-medium text-[var(--gray-12)] transition hover:bg-[var(--gray-a3)]"
         >
-          返回首页
+          {t("返回首页")}
         </Link>
       </main>
     );

@@ -560,7 +560,7 @@ export function ElevationBackfillHistoryTable({
 
             <div>
               <Typography.Title level={5} style={{ marginTop: 0 }}>
-                杆塔回填数据明细
+                {t("杆塔回填数据明细")}
               </Typography.Title>
               <Table<ElevationApplyJobTowerDetail>
                 rowKey="id"
