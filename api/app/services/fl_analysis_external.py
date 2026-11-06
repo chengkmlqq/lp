@@ -1560,6 +1560,13 @@ def _resolve_asset_worktree(
         atp_text = _raw.decode("utf-8")
     except UnicodeDecodeError:
         atp_text = _raw.decode("gbk", errors="replace")
+    # ⚠️ 2026-11-06 修复（115kV 主任务 fmt: read unexpected character 复盘）：
+    # ATPDraw 产出的模板是 CRLF，二进制读+decode 后 \r 原样保留，主链路
+    # write_text（Linux 无换行转换）把 CRLF 原样落盘 → wine 下 gfortran
+    # 顺序读的 E10.0 字段吃到行尾 \r → "fmt: read unexpected character" 退出码 3。
+    # Windows 原生 runtime 自动剥 \r 所以本地复现不了；230 成功案例恰是 LF 资产。
+    # 统一在模板读入处归一为 LF（normalize/渲染/写出全链路随之干净）。
+    atp_text = atp_text.replace("\r\n", "\n").replace("\r", "\n")
     if not atp_text.strip():
         raise RuntimeError(f"ATP 资产缺少可执行模板: {asset.code}（{entry_file}）")
 
