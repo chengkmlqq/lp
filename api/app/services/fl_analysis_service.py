@@ -928,37 +928,60 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                         # 表层症状被误报成"缺少 ATP 绕击资产"。改为每线程独立 session；
                         # 并行时不再细分二分步进度（on_step 会并发写 run/job 进度行，
                         # 同样是共享 session 竞态），阶段完成进度由 mark_phase_done 汇总。
-                        with closing(SessionLocal()) as raoji_db:
-                            try:
-                                _raoji_job = resolve_external_waveform_job(
-                                    raoji_db,
-                                    external_adapter=job.external_adapter
-                                    if job.external_adapter in {"atp", "wine"} else "atp",
-                                    adapter_config_json=dict(job.adapter_config_json or {}),
-                                    tower_type=snapshot.tower_type or "",
-                                    line_voltage_kv=job.line.voltage_kv if job.line else None,
-                                    scene_type=f"raoji{_idx}",
+                        # 2026-11-06 补充：即使线程私有 session，RDS/网络链路仍会在
+                        # 结果流传输中途掐断连接（实测 TB 帧在 pymysql protocol.read，
+                        # InterfaceError(0,'')），与 062a989 收尾写库重试同类问题 ——
+                        # 换新会话整体重跑，最多 3 次。
+                        from sqlalchemy.exc import InterfaceError as _SqIF, OperationalError as _SqOE
+
+                        def _attempt():
+                            with closing(SessionLocal()) as raoji_db:
+                                try:
+                                    _raoji_job = resolve_external_waveform_job(
+                                        raoji_db,
+                                        external_adapter=job.external_adapter
+                                        if job.external_adapter in {"atp", "wine"} else "atp",
+                                        adapter_config_json=dict(job.adapter_config_json or {}),
+                                        tower_type=snapshot.tower_type or "",
+                                        line_voltage_kv=_raoji_voltage_kv,
+                                        scene_type=f"raoji{_idx}",
+                                    )
+                                except Exception as _exc:
+                                    # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
+                                    raise RuntimeError(
+                                        f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
+                                        f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
+                                        f"{_raoji_voltage_kv if _raoji_voltage_kv is not None else '?'}kV)：{_exc}"
+                                    ) from _exc
+                                _opts = dict(execution_options)
+                                if _use_raoji_par:
+                                    _opts["_run_subdir"] = f"raoji{_idx}"
+                                return execute_shielding_binary_search_external(
+                                    _raoji_job,
+                                    db=raoji_db,
+                                    job=job,
+                                    snapshot=snapshot,
+                                    execution_options=_opts,
+                                    baseline_result=baseline_result,
+                                    payload=payload,
+                                    on_step=None if _use_raoji_par else _tower_on_step,
                                 )
-                            except Exception as _exc:
-                                # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
-                                raise RuntimeError(
-                                    f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
-                                    f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
-                                    f"{job.line.voltage_kv if job.line else '?'}kV)：{_exc}"
-                                ) from _exc
-                            _opts = dict(execution_options)
-                            if _use_raoji_par:
-                                _opts["_run_subdir"] = f"raoji{_idx}"
-                            return execute_shielding_binary_search_external(
-                                _raoji_job,
-                                db=raoji_db,
-                                job=job,
-                                snapshot=snapshot,
-                                execution_options=_opts,
-                                baseline_result=baseline_result,
-                                payload=payload,
-                                on_step=None if _use_raoji_par else _tower_on_step,
-                            )
+
+                        _last_exc: Exception | None = None
+                        for _attempt_no in (1, 2, 3):
+                            try:
+                                return _attempt()
+                            except (_SqIF, _SqOE) as _exc:
+                                _msg = str(_exc)
+                                if "(0, '')" not in _msg and "2006" not in _msg and "2013" not in _msg:
+                                    raise
+                                _last_exc = _exc
+                                logger.warning(
+                                    "[ATP] 绕击%d相 DB 链路瞬断（第%d/3 次），换新会话重试：%s",
+                                    _idx, _attempt_no, _msg[:160],
+                                )
+                                time.sleep(2.0)
+                        raise _last_exc
 
                     if _use_raoji_par:
                         with _cf.ThreadPoolExecutor(max_workers=min(_raoji_workers, 3)) as _pool:
@@ -1124,37 +1147,59 @@ def _execute_single_tower(db: Session, snapshot_id: str, idx, total, *, spawn) -
                             # 2026-11-05 修复：与 normal 路径同因 —— 并行线程共用塔级
                             # session 会撞 pymysql 连接竞态（InterfaceError/PyMemoryView），
                             # 改为每线程独立 session；并行时不细分二分步进度。
-                            with closing(SessionLocal()) as raoji_db:
-                                try:
-                                    _raoji_job = resolve_external_waveform_job(
-                                        raoji_db,
-                                        external_adapter=job.external_adapter
-                                        if job.external_adapter in {"atp", "wine"} else "atp",
-                                        adapter_config_json=dict(job.adapter_config_json or {}),
-                                        tower_type=snapshot.tower_type or "",
-                                        line_voltage_kv=_raoji_voltage_kv,
-                                        scene_type=f"raoji{_idx}",
+                            # 2026-11-06 补充：RDS/网络会在结果流传输中途掐断连接
+                            # （InterfaceError(0,'')，TB 帧在 pymysql protocol.read），
+                            # 与 062a989 同类问题 —— 换新会话整体重跑，最多 3 次。
+                            from sqlalchemy.exc import InterfaceError as _SqIF, OperationalError as _SqOE
+
+                            def _attempt():
+                                with closing(SessionLocal()) as raoji_db:
+                                    try:
+                                        _raoji_job = resolve_external_waveform_job(
+                                            raoji_db,
+                                            external_adapter=job.external_adapter
+                                            if job.external_adapter in {"atp", "wine"} else "atp",
+                                            adapter_config_json=dict(job.adapter_config_json or {}),
+                                            tower_type=snapshot.tower_type or "",
+                                            line_voltage_kv=_raoji_voltage_kv,
+                                            scene_type=f"raoji{_idx}",
+                                        )
+                                    except Exception as _exc:
+                                        # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
+                                        raise RuntimeError(
+                                            f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
+                                            f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
+                                            f"{_raoji_voltage_kv if _raoji_voltage_kv is not None else '?'}kV)：{_exc}"
+                                        ) from _exc
+                                    _opts = dict(execution_options)
+                                    if _use_raoji_par:
+                                        _opts["_run_subdir"] = f"raoji{_idx}"
+                                    return execute_shielding_binary_search_external(
+                                        _raoji_job,
+                                        db=raoji_db,
+                                        job=job,
+                                        snapshot=snapshot,
+                                        execution_options=_opts,
+                                        baseline_result=baseline_result,
+                                        payload=payload,
+                                        on_step=None if _use_raoji_par else _tower_on_step,
                                     )
-                                except Exception as _exc:
-                                    # ⚠️ 对齐 C#：raoji 资产解不出必须报错（禁静默兜底）
-                                    raise RuntimeError(
-                                        f"绕击{['A', 'B', 'C'][_idx - 1]}相: 缺少 ATP 绕击资产 "
-                                        f"(场景=raoji{_idx}, tower={snapshot.tower_type}, "
-                                        f"{_raoji_voltage_kv if _raoji_voltage_kv is not None else '?'}kV)：{_exc}"
-                                    ) from _exc
-                                _opts = dict(execution_options)
-                                if _use_raoji_par:
-                                    _opts["_run_subdir"] = f"raoji{_idx}"
-                                return execute_shielding_binary_search_external(
-                                    _raoji_job,
-                                    db=raoji_db,
-                                    job=job,
-                                    snapshot=snapshot,
-                                    execution_options=_opts,
-                                    baseline_result=baseline_result,
-                                    payload=payload,
-                                    on_step=None if _use_raoji_par else _tower_on_step,
-                                )
+
+                            _last_exc: Exception | None = None
+                            for _attempt_no in (1, 2, 3):
+                                try:
+                                    return _attempt()
+                                except (_SqIF, _SqOE) as _exc:
+                                    _msg = str(_exc)
+                                    if "(0, '')" not in _msg and "2006" not in _msg and "2013" not in _msg:
+                                        raise
+                                    _last_exc = _exc
+                                    logger.warning(
+                                        "[ATP] 绕击%d相 DB 链路瞬断（第%d/3 次），换新会话重试：%s",
+                                        _idx, _attempt_no, _msg[:160],
+                                    )
+                                    time.sleep(2.0)
+                            raise _last_exc
 
                         if _use_raoji_par:
                             with _cf.ThreadPoolExecutor(max_workers=min(_raoji_workers, 3)) as _pool:
