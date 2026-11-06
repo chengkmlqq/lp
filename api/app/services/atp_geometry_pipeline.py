@@ -277,6 +277,33 @@ def span_km_for(name: str, base_tower: dict[str, Any]) -> float | None:
 GEOMETRY_LOCK = threading.Lock()
 
 
+def has_phase_geometry(profile: dict[str, Any], base_tower: dict[str, Any] | None) -> bool:
+    """快照是否带真实相导线几何（上/中/下相中距 + 相高）。
+
+    缺这两组数据时 build_dat_values 只能靠 RELE 槽位兜底、相高按均分缺省，
+    会把模型自带的三相同高/水平排列改写成"三层垂直排列 + 等间距"——
+    几何整体错位，反击耐雷水平可以差一个量级（2026-11-06 115kV ganzi：
+    模型自带相高 27.3m / 间距 6.8m，被改写成 18.7/14.7/10.7m / 8m，
+    二分收敛到 1039.9kA，而 110kV 同塔型老模型是 125.8kA）。
+    缺几何时宁可不改写、保留 ATPDraw 模型自带几何。
+    """
+    for src in (
+        (base_tower or {}).get("circuit_geometry_json"),
+        (profile or {}).get("geometry_layers_json"),
+    ):
+        if not isinstance(src, dict):
+            continue
+        for key in ("I", "II", "III", "IV"):
+            layer = src.get(key)
+            if not isinstance(layer, dict):
+                continue
+            spacing = layer.get("phase_spacing_m") or layer.get("spacing")
+            height = layer.get("phase_height_m") or layer.get("height")
+            if isinstance(spacing, dict) and spacing and isinstance(height, dict) and height:
+                return True
+    return False
+
+
 def regenerate_line_models(*args: object, **kwargs: object):
     """带全局线程锁的几何重生成（并行二分时多线程会同时改写同一批 .dat/.lib，必须串行化）。"""
     with GEOMETRY_LOCK:
@@ -302,6 +329,16 @@ def _regenerate_line_models_unlocked(
     rewrite_dat_text 优先用缓存行号（不再现场推导）；缺失时现场推导兜底。
     """
     section = resolve_section(tower_kind, voltage_kv)
+    # ⚠️ 缺相几何时**不改写 .dat**：build_dat_values 只能用 RELE 槽位兜底 +
+    # 相高均分缺省，把模型自带几何（三相同高/水平排列）改成三层垂直排列，
+    # 塔身支路长度与绝缘子受力全变，耐雷水平失真一个量级且不报错。
+    if not has_phase_geometry(profile, base_tower):
+        print(
+            "[ATP] 快照缺相导线几何（phase_spacing_m/phase_height_m 均为空），"
+            "跳过 .dat 改写与 LCC 重生成，保留 ATPDraw 模型自带几何",
+            file=sys.stdout, flush=True,
+        )
+        return []
     values = build_dat_values(section=section, params=params, profile=profile,
                               base_tower=base_tower, voltage_kv=voltage_kv)
     _ensure_engine_files(engine_dir)
