@@ -111,9 +111,16 @@ def _install_pymysql_utc_decoder() -> None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed
 
+    # ⚠️ PyMySQL 2.x 的 Connection(conv=None) 默认从 converters.conversions（encoder+decoder
+    # 合并大表）按 int key 拷贝出连接级 decoders；converters.decoders 在 2.x 不被默认链路使用。
+    # 两张表都 patch，兼容 1.x（连接直接引用 decoders）与 2.x。
+    for decoder_table in (
+        pymysql.converters.conversions,
+        pymysql.converters.decoders,
+    ):
+        decoder_table[FIELD_TYPE.DATETIME] = convert_datetime_utc
+        decoder_table[FIELD_TYPE.TIMESTAMP] = convert_datetime_utc
     pymysql.converters.convert_datetime = convert_datetime_utc
-    pymysql.converters.decoders[FIELD_TYPE.DATETIME] = convert_datetime_utc
-    pymysql.converters.decoders[FIELD_TYPE.TIMESTAMP] = convert_datetime_utc
 
 
 _install_pymysql_utc_decoder()
