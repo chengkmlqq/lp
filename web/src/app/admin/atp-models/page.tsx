@@ -25,7 +25,6 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
-  ExperimentOutlined,
   FolderFilled,
   InboxOutlined,
   PlusOutlined,
@@ -42,7 +41,6 @@ import { ModoTabs } from "@/components/biz/modo-tabs";
 import { ModoPagination, modoTablePagination } from "@/components/biz/modo-pagination";
 import { ModoActionGroup } from "@/components/biz/modo-action-group";
 import { AdminPageLoading } from "@/components/admin-page-loading";
-import { AtpBatchHistoryTab } from "@/components/atp-models/atp-batch-history-tab";
 import { AtpModelCardList } from "@/components/atp-models/atp-model-card-list";
 import { AtpModelDetailTab } from "@/components/atp-models/atp-model-detail-tab";
 import { AtpModelFormatTag } from "@/components/atp-models/atp-model-format-tag";
@@ -225,8 +223,6 @@ export default function AtpModelsPage() {
   // 模型测试页内 Tab：从操作列打开，以当前模型为上下文（参照详情 Tab）
   const [testTabs, setTestTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
   const [detailTabs, setDetailTabs] = useState<{ key: string; label: React.ReactNode; assetId: string }[]>([]);
-  // 批量测试历史记录 Tab(页内动态选项卡,2026-09-29 改造)
-  const [batchTabs, setBatchTabs] = useState<{ key: string; label: React.ReactNode }[]>([]);
   const [activeTabKey, setActiveTabKey] = useState<string>("list");
   // 模型总览：不在初始 Tab 中出现，点按钮才打开（同详情/测试 Tab 的动态选项卡）
   const [overviewTabs, setOverviewTabs] = useState<{ key: string; label: React.ReactNode }[]>([]);
@@ -808,7 +804,7 @@ export default function AtpModelsPage() {
     },
   });
 
-  // 全库资产总数：树「全部」节点计数 + 「批量测试」按钮可用性（一次轻量请求只取 total）
+  // 全库资产总数：树「全部」节点计数（一次轻量请求只取 total）
   const totalQuery = useQuery({
     queryKey: ["atp-assets", "total"],
     enabled: Boolean(user && canRead),
@@ -1047,24 +1043,6 @@ export default function AtpModelsPage() {
     setActiveTabKey(key);
   }, [t]);
 
-  /** 打开「批量测试记录」历史 Tab(同一 Tab 已开则直接切过去)。 */
-  const openBatchTab = useCallback(() => {
-    const key = "batch-history";
-    setBatchTabs((previous) => {
-      if (previous.some((tab) => tab.key === key)) {
-        return previous;
-      }
-      return [
-        ...previous,
-        {
-          key,
-          label: <>{t("批量测试记录")}</>,
-        },
-      ];
-    });
-    setActiveTabKey(key);
-  }, []);
-
   const columns = useMemo<ColumnsType<AtpAssetSummary>>(
     () => [
       {
@@ -1235,17 +1213,6 @@ export default function AtpModelsPage() {
       });
       return next;
     });
-    setBatchTabs((previous) => {
-      const removedIndex = previous.findIndex((tab) => tab.key === key);
-      const next = previous.filter((tab) => tab.key !== key);
-      setActiveTabKey((current) => {
-        if (current !== key) {
-          return current;
-        }
-        return next[Math.max(0, removedIndex - 1)]?.key ?? next[0]?.key ?? "list";
-      });
-      return next;
-    });
     setOverviewTabs((previous) => {
       const next = previous.filter((tab) => tab.key !== key);
       if (next.length === previous.length) {
@@ -1299,15 +1266,6 @@ export default function AtpModelsPage() {
                 onClick={openOverviewTab}
               >
                 {t("模型总览")}
-              </Button>
-            ) : null}
-            {canTest ? (
-              <Button
-                icon={<ExperimentOutlined />}
-                onClick={openBatchTab}
-                disabled={(totalQuery.data ?? 0) === 0}
-              >
-                {t("批量测试")}
               </Button>
             ) : null}
           </Space>
@@ -1536,14 +1494,6 @@ export default function AtpModelsPage() {
               <AtpModelTestTab
                 assetId={tab.assetId}
               />
-            ),
-          })),
-          ...batchTabs.map((tab) => ({
-            key: tab.key,
-            label: tab.label,
-            closable: true,
-            children: (
-              <AtpBatchHistoryTab />
             ),
           })),
         ]}
