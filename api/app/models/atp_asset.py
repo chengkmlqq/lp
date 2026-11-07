@@ -95,6 +95,16 @@ class AtpAsset(Base):
     analysis_token: Mapped[str | None] = mapped_column(String(32))
     analysis_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     analysis_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # ===== 测试结论标记（2026-11-07 新增）=====
+    # 与 analysis_status 区分：analysis_status 是上传期「能不能解析」，
+    # test_status 是实跑仿真后的「算得对不对」：
+    #   passed  = 跑通且数值合理（有结果塔、耐雷水平非 0 且未触上界）
+    #   failed  = 跑不起来（KILL=12 断链 / 缺变量 / 无结果）
+    #   suspect = 能算但数值异常（跳闸率越界被钳制、耐雷水平触顶、几何失真）
+    #   None    = 从未测过（存量行保持空，不臆造结论）
+    test_status: Mapped[str | None] = mapped_column(String(16), index=True)
+    test_message: Mapped[str | None] = mapped_column(String(512))
+    test_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     create_user: Mapped[str | None] = mapped_column(String(64), index=True)
     update_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

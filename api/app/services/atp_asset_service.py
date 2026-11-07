@@ -72,6 +72,8 @@ from .storage_driver import (
 settings = get_settings()
 ATP_ASSET_TOPIC = "admin.atp-assets"
 VALID_ASSET_STATUS = {"draft", "enabled", "disabled", "archived"}
+# 测试结论三档（2026-11-07）：passed 通过 / failed 未通过 / suspect 可疑
+VALID_TEST_STATUS = {"passed", "failed", "suspect"}
 VALID_RUNNER_KIND = {"atp", "egm", "hybrid"}
 VALID_RUN_STATUS = {"pending", "running", "success", "failed"}
 LOG_MAX_CHARS = 200_000
@@ -856,6 +858,10 @@ def serialize_asset(
         analysis_error=_analysis_error,
         analysis_started_at=_row_field(item, "analysis_started_at") or None,
         analysis_finished_at=_row_field(item, "analysis_finished_at") or None,
+        # 测试结论（2026-11-07）：实跑仿真后的三档标记；未测试保持 None
+        test_status=_row_field(item, "test_status") or None,
+        test_message=_row_field(item, "test_message") or None,
+        test_date=_row_field(item, "test_date") or None,
         storage_mount_code=item.storage_mount_code or "main",
         storage_root_path=item.storage_root_path,
         run_count=run_count,
@@ -968,6 +974,7 @@ def list_assets(
     tower_type: str | None,
     scene_type: str | None,
     arrester_config: str | None = None,
+    test_status: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> AtpAssetListResponse:
@@ -1002,6 +1009,10 @@ def list_assets(
         AtpAsset.analysis_error,
         AtpAsset.analysis_started_at,
         AtpAsset.analysis_finished_at,
+        # 2026-11-07：测试结论三档标记，serialize_asset 会读，漏列同样 KeyError
+        AtpAsset.test_status,
+        AtpAsset.test_message,
+        AtpAsset.test_date,
         AtpAsset.storage_mount_code,
         AtpAsset.storage_root_path,
         AtpAsset.create_date,
@@ -1038,6 +1049,18 @@ def list_assets(
     if arrester_config and arrester_config.strip():
         stmt = stmt.where(AtpAsset.arrester_config == arrester_config.strip())
         total_stmt = total_stmt.where(AtpAsset.arrester_config == arrester_config.strip())
+    # 测试结论筛选（2026-11-07）：untested 是伪值，表示"从未测过"（列为 NULL）
+    normalized_test = (test_status or "").strip().lower()
+    if normalized_test:
+        if normalized_test == "untested":
+            stmt = stmt.where(AtpAsset.test_status.is_(None))
+            total_stmt = total_stmt.where(AtpAsset.test_status.is_(None))
+        elif normalized_test in VALID_TEST_STATUS:
+            stmt = stmt.where(AtpAsset.test_status == normalized_test)
+            total_stmt = total_stmt.where(AtpAsset.test_status == normalized_test)
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Invalid test_status filter: {test_status}")
 
     items = db.execute(
         stmt.order_by(AtpAsset.update_date.desc(), AtpAsset.code.asc())
@@ -1448,6 +1471,41 @@ def unpublish_asset(db: Session, *, asset_id: str, actor_user_id: str | None = N
     db.commit()
     db.refresh(asset)
     _publish_change("asset.unpublished", {"action": "unpublished", "asset_id": asset.id})
+    return serialize_asset(asset, run_count=0, last_run_status=None, last_run_date=None, db=db)
+
+
+def mark_asset_test_status(
+    db: Session,
+    *,
+    asset_id: str,
+    test_status: str | None,
+    message: str | None = None,
+    actor_user_id: str | None = None,
+) -> AtpAssetSummary:
+    """写入「测试通过与否」标记（2026-11-07）。
+
+    test_status: "passed" 通过 / "failed" 未通过 / "suspect" 可疑；
+                 None = 清除标记，回到「未测试」。
+    message    : 结论说明（失败原因、可疑点），超长截断 512 字。
+    """
+    asset = get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    normalized = (test_status or "").strip().lower() or None
+    if normalized is not None and normalized not in VALID_TEST_STATUS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Invalid test_status: {test_status}")
+    asset.test_status = normalized
+    asset.test_message = (message or "").strip()[:512] or None if normalized else None
+    asset.test_date = utcnow() if normalized else None
+    if actor_user_id:
+        asset.update_user = actor_user_id
+    asset.update_date = utcnow()
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    _publish_change("asset.test_status", {"action": "test_status", "asset_id": asset.id,
+                                          "test_status": normalized})
     return serialize_asset(asset, run_count=0, last_run_status=None, last_run_date=None, db=db)
 
 

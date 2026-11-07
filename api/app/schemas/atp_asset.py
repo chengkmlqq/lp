@@ -19,6 +19,9 @@ AtpAssetModelFormat = Literal["legacy", "insert", "embed", "plain"]
 #   pending: 已入队待执行；running: 执行中；success/failed: 终态
 #   None: 从未分析过（改造前入库、或新建未传文件）
 AtpAssetAnalysisStatus = Literal["pending", "running", "success", "failed"]
+# 测试结论（2026-11-07）：实跑仿真后的判定，与 analysis_status（解析期）无关
+#   passed 通过 / failed 未通过 / suspect 可疑；None = 未测试
+AtpAssetTestStatus = Literal["passed", "failed", "suspect"]
 
 
 class AtpAssetSummary(BaseModel):
@@ -53,6 +56,10 @@ class AtpAssetSummary(BaseModel):
     analysis_error: str | None = None
     analysis_started_at: datetime | None = None
     analysis_finished_at: datetime | None = None
+    # 测试结论（2026-11-07）：实跑仿真后的三档判定；None = 从未测过
+    test_status: AtpAssetTestStatus | None = None
+    test_message: str | None = None
+    test_date: datetime | None = None
     storage_mount_code: str | None = None
     storage_root_path: str | None = None
     run_count: int = 0
@@ -106,6 +113,13 @@ class AtpAssetCreateRequest(BaseModel):
     test_line_id: str | None = Field(default=None, max_length=32)
     storage_mount_code: str | None = Field(default=None, max_length=64)
     storage_root_path: str | None = Field(default=None, max_length=2048)
+
+
+class AtpAssetTestStatusRequest(BaseModel):
+    """测试结论写入（2026-11-07）：三档标记，None 表示清除标记回到未测试。"""
+
+    test_status: AtpAssetTestStatus | None = None
+    message: str | None = Field(default=None, max_length=512)
 
 
 class AtpAssetUpdateRequest(BaseModel):

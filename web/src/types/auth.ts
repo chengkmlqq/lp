@@ -1165,6 +1165,9 @@ export type AtpAssetRunStatus = "pending" | "running" | "success" | "failed";
 /** ATPDraw 产物形态，决定仿真走 lib 还是 pch 链路（见后端 atp_model_format.py） */
 export type AtpAssetModelFormat = "legacy" | "insert" | "embed" | "plain";
 
+/** 测试结论三档（2026-11-07）：passed 通过 / failed 未通过 / suspect 可疑 */
+export type AtpAssetTestStatus = "passed" | "failed" | "suspect";
+
 /** 异步分析（形态识别 + 槽位扫描）状态：上传后自动触发，前端据此轮询 */
 export type AtpAssetAnalysisStatus = "pending" | "running" | "success" | "failed";
 
@@ -1211,6 +1214,16 @@ export type AtpAssetSummary = {
   /** 版本发布状态（2026-11-05）：发布后参与仿真定位；下线保留数据但不可被仿真选用 */
   is_published?: boolean;
   published_date?: string | null;
+  /**
+   * 测试结论（2026-11-07）：实跑仿真后的三档判定，与 analysis_status（解析期）无关。
+   * - `passed` 通过：跑通且数值合理
+   * - `failed` 未通过：跑不起来（断链/缺变量/无结果）
+   * - `suspect` 可疑：能算但数值异常（触顶、越界、几何失真）
+   * - `null` 未测试
+   */
+  test_status?: AtpAssetTestStatus | null;
+  test_message?: string | null;
+  test_date?: string | null;
   shield_wire: string;
   /**
    * ATPDraw 产物形态（上传时按 work.atp 几何引用形态判定，2026-11-02）：

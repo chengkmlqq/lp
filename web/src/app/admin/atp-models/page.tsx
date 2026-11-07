@@ -1107,6 +1107,27 @@ export default function AtpModelsPage() {
         render: (_, item) => <AtpModelFormatTag asset={item} compact />,
       },
       {
+        // 测试结论（2026-11-07）：通过/未通过/可疑/未测试，悬停看说明
+        title: t("测试结论"),
+        key: "test_status",
+        width: 100,
+        render: (_, item) => {
+          const meta =
+            item.test_status === "passed"
+              ? { text: t("通过"), className: "is-active" }
+              : item.test_status === "failed"
+                ? { text: t("未通过"), className: "is-danger" }
+                : item.test_status === "suspect"
+                  ? { text: t("可疑"), className: "is-warning" }
+                  : { text: t("未测试"), className: "is-muted" };
+          return (
+            <Tooltip title={item.test_message || undefined}>
+              <span className={`admin-atp-models-state-chip ${meta.className}`}>{meta.text}</span>
+            </Tooltip>
+          );
+        },
+      },
+      {
         title: t("状态"),
         key: "state",
         width: 110,

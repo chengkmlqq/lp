@@ -35,6 +35,11 @@ const LANG_STORAGE_KEY = "lp.lang";
 export const EN_DICT: Record<string, string> = {
   "${tower.elevationPrepared ? \"已回填\" : \"未回填\"}": "${tower.elevationPrepared ? \\\"Filled\\\" : \\\"Not filled\\\"}",
   "(空脚本)": "(Empty script)",
+  // ATP 模型测试结论三档（2026-11-07）：通过/未通过 已有词条，此处只补新增文案
+  "可疑": "Suspicious",
+  "未测试": "Untested",
+  "测试结论": "Test result",
+  "尚未对该模型做过仿真测试": "This model has not been tested yet",
   ")} / 保护角{String(grades.protection ??": ")} / Protection angle{String(grades.protection ??",
   ")} / 接地{String(grades.ground ??": ")} / Grounding{String(grades.ground ??",
   ", 权限码 value=perm:": ", permission code value=perm:",

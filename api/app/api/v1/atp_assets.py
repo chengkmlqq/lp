@@ -18,6 +18,7 @@ from ...schemas.atp_asset import (
     AtpAssetRunListResponse,
     AtpAssetRunRequest,
     AtpAssetTestRunRequest,
+    AtpAssetTestStatusRequest,
     AtpAssetTreeChild,
     AtpAssetTreeChildrenResponse,
     AtpAssetUpdateRequest,
@@ -43,6 +44,7 @@ from ...services.atp_asset_service import (
     list_assets,
     list_asset_tree_children,
     list_runs,
+    mark_asset_test_status,
     publish_asset,
     read_asset_file_content,
     unpublish_asset,
@@ -82,6 +84,7 @@ def get_atp_asset_list(
     tower_type: str | None = Query(default=None),
     scene_type: str | None = Query(default=None),
     arrester_config: str | None = Query(default=None),
+    test_status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _: CurrentUser = Depends(require_any_permission("atp.read", "atp.run", "atp.manage")),
@@ -95,6 +98,7 @@ def get_atp_asset_list(
         tower_type=tower_type,
         scene_type=scene_type,
         arrester_config=arrester_config,
+        test_status=test_status,
         limit=limit,
         offset=offset,
     )
@@ -352,6 +356,24 @@ def unpublish_atp_asset_endpoint(
 ) -> AtpAssetDetail:
     """下线该版本（2026-11-05）：下线后不参与仿真定位，文件与运行记录保留。"""
     updated = unpublish_asset(db, asset_id=asset_id, actor_user_id=current_user.user.id)
+    return AtpAssetDetail(**updated.model_dump())
+
+
+@router.post("/assets/{asset_id}/test-status", response_model=AtpAssetDetail)
+def mark_atp_asset_test_status_endpoint(
+    asset_id: str,
+    payload: AtpAssetTestStatusRequest,
+    current_user: CurrentUser = Depends(require_permission("atp.manage")),
+    db: Session = Depends(get_db),
+) -> AtpAssetDetail:
+    """写入测试结论（2026-11-07）：passed 通过 / failed 未通过 / suspect 可疑 / null 清除。"""
+    updated = mark_asset_test_status(
+        db,
+        asset_id=asset_id,
+        test_status=payload.test_status,
+        message=payload.message,
+        actor_user_id=current_user.user.id,
+    )
     return AtpAssetDetail(**updated.model_dump())
 
 

@@ -146,6 +146,20 @@ export function AtpModelCard({
   const abnormal = statusMeta(asset.status, t);
   const published = asset.is_published !== false;
 
+  // 测试结论 chip（2026-11-07）：三档 + 未测试。复用 state-chip 的四套配色，
+  // 通过=绿、未通过=红、可疑=琥珀、未测试=灰，扫一眼就能分辨模型可信度。
+  const testChip =
+    asset.test_status === "passed"
+      ? { text: t("通过"), className: "is-active" }
+      : asset.test_status === "failed"
+        ? { text: t("未通过"), className: "is-danger" }
+        : asset.test_status === "suspect"
+          ? { text: t("可疑"), className: "is-warning" }
+          : { text: t("未测试"), className: "is-muted" };
+  const testChipTitle = asset.test_message
+    ? `${t("测试结论")}：${testChip.text}\n${asset.test_message}`
+    : t("尚未对该模型做过仿真测试");
+
   // 形态说明：页脚那行灰字要给完整解释（决定仿真链路），预检 warning 数一并带出
   const formatMeta = resolveFormatMeta(asset);
   const formatWarnCount = asset.analysis_status === "failed" ? 0 : checkWarningCount(asset.format_check);
@@ -264,11 +278,18 @@ export function AtpModelCard({
               </div>
             ) : null}
           </div>
-          {published ? (
-            <span className="admin-atp-models-state-chip is-published">{t("已发布")}</span>
-          ) : (
-            <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
-          )}
+          <div className="flex shrink-0 items-center gap-1">
+            <Tooltip title={testChipTitle}>
+              <span className={`admin-atp-models-state-chip ${testChip.className}`}>
+                {testChip.text}
+              </span>
+            </Tooltip>
+            {published ? (
+              <span className="admin-atp-models-state-chip is-published">{t("已发布")}</span>
+            ) : (
+              <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
+            )}
+          </div>
         </div>
 
         {/* 属性网格：两列「标签灰 / 值深」，字段不带图标，靠对齐形成扫读节奏 */}
