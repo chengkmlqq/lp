@@ -1,10 +1,25 @@
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
+import time
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Iterator
+from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 
 from .config import get_settings
+
+# 两段式上传的临时区（本机磁盘）。
+# 2026-11-07：原实现把临时文件放对象存储（OSS），但线上 OSS 账号 line-protection
+# 返回 UserDisable（PutObject/DeleteObject 全被拒），所有 upload-temp 上传必然失败；
+# 且原来用 file.file.read() 整份进内存，1GB 级 DEM 会直接打爆容器。现在改为
+# 落本机盘 + 流式拷贝：内存占用与文件大小无关，也不再依赖对象存储。
+LOCAL_TEMP_PREFIX = "local:"
+TEMP_TTL_SECONDS = 48 * 3600
 
 
 def _file_size_bytes(file: UploadFile) -> int:
@@ -23,65 +38,315 @@ def _file_size_bytes(file: UploadFile) -> int:
     return size
 
 
+def _temp_root() -> Path:
+    """临时区根目录：优先配置项，其次 VFS 数据盘同级目录，最后系统临时目录。"""
+    settings = get_settings()
+    configured = (settings.upload_temp_dir or "").strip()
+    if configured:
+        root = Path(configured)
+    else:
+        vfs_root = (settings.file_vfs_root or "").strip()
+        base = Path(vfs_root).resolve().parent if vfs_root else Path(tempfile.gettempdir())
+        root = base / "tmp" / "uploads"
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+    except OSError:
+        fallback = Path(tempfile.gettempdir()) / "lp_uploads"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def _safe_filename(name: str | None) -> str:
+    """只保留文件名本身，去掉目录与首尾点，避免路径穿越。"""
+    raw = (name or "").strip() or "upload"
+    cleaned = Path(raw.replace("\\", "/")).name.strip().strip(".")
+    return cleaned or "upload"
+
+
+def _safe_user_segment(user_id: str) -> str:
+    segment = "".join(ch for ch in str(user_id or "") if ch.isalnum() or ch in {"-", "_"})
+    if not segment:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="用户标识非法，无法使用临时上传区",
+        )
+    return segment
+
+
+def _user_temp_dir(user_id: str) -> Path:
+    directory = _temp_root() / _safe_user_segment(user_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _cleanup_stale(directory: Path) -> None:
+    """顺手清理超过保留期的临时文件（TTL 兜底，避免长期堆积占盘）。"""
+    cutoff = time.time() - TEMP_TTL_SECONDS
+    try:
+        entries = list(directory.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            if entry.is_file() and entry.stat().st_mtime < cutoff:
+                entry.unlink()
+        except OSError:
+            continue
+
+
+def _temp_path_from_id(temp_file_id: str, user_id: str) -> Path:
+    """把 temp_file_id 还原为本地路径，并校验归属当前用户。"""
+    raw = (temp_file_id or "").strip()
+    if not raw.startswith(LOCAL_TEMP_PREFIX):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="temp_file_id 无效或已过期，请重新上传",
+        )
+    token = raw[len(LOCAL_TEMP_PREFIX):]
+    expected = f"{_safe_user_segment(user_id)}/"
+    if not token.startswith(expected):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="temp_file_id 无效或不属于当前用户",
+        )
+    name = token[len(expected):]
+    if not name or "/" in name or "\\" in name or ".." in name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="temp_file_id 无效",
+        )
+    return _user_temp_dir(user_id) / name
+
+
+def _original_name(stored_name: str) -> str:
+    """临时文件名形如 ``{uuid}_{原始文件名}``，还原原始文件名。"""
+    return stored_name.split("_", 1)[1] if "_" in stored_name else stored_name
+
+
+def save_temp_upload(file: UploadFile, user_id: str) -> tuple[str, str]:
+    """两段式上传的第一步：把上传文件流式落到本机临时区。
+
+    返回 ``(temp_file_id, file_name)``。写入时先落 ``.part`` 再原子替换，
+    避免半截文件被提交端点消费；超过 48h 的旧文件在下次上传时顺手清理。
+    """
+    size_bytes = _file_size_bytes(file)
+    if size_bytes <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="上传文件为空",
+        )
+
+    file_name = _safe_filename(file.filename)
+    directory = _user_temp_dir(user_id)
+    _cleanup_stale(directory)
+
+    token = f"{uuid4().hex}_{file_name}"
+    final_path = directory / token
+    part_path = directory / f"{token}.part"
+
+    try:
+        try:
+            file.file.seek(0)
+        except (OSError, ValueError):
+            pass
+        with part_path.open("wb") as output:
+            shutil.copyfileobj(file.file, output, 1024 * 1024)
+        if part_path.stat().st_size <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="上传文件为空",
+            )
+        os.replace(part_path, final_path)
+    except HTTPException:
+        try:
+            part_path.unlink()
+        except OSError:
+            pass
+        raise
+    except OSError as exc:
+        try:
+            part_path.unlink()
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"文件暂存失败：{exc}",
+        ) from exc
+
+    return f"{LOCAL_TEMP_PREFIX}{_safe_user_segment(user_id)}/{token}", file_name
+
+
 def save_temp_file(
     file: UploadFile,
     user_id: str,
     *,
     allowed_exts: set[str] | None = None,
 ) -> tuple[str, str]:
-    """校验并保存上传文件到 MinIO 临时目录，返回 ``(temp_file_id, file_name)``。
-
-    供通用 upload-temp 端点 / 业务模块两段式上传复用：
-    选择文件后先落地临时目录（按 user_id 隔离），确认导入时再通过
-    ``resolve_temp_file`` 读取并删除，兜底由 24h 清理任务处理。
-    """
-    from ..services.minio_storage import build_temp_key, put_object
-
+    """兼容旧调用：带扩展名校验的临时文件保存。"""
     validate_upload(file, allowed_exts=allowed_exts)
-    content = file.file.read()
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
-
-    file_name = (file.filename or "upload").strip() or "upload"
-    temp_file_id = build_temp_key(file_name, user_id)
-    put_object(temp_file_id, content, content_type="text/plain")
-    return temp_file_id, file_name
+    return save_temp_upload(file, user_id)
 
 
-def resolve_temp_file(temp_file_id: str, user_id: str) -> tuple[bytes, str]:
-    """从 MinIO 临时目录读取并删除临时文件，返回 ``(content, source_file_name)``。
+def read_temp_upload(temp_file_id: str, user_id: str) -> bytes:
+    """读取临时文件内容并删除（消费即删）。
 
-    - 校验 ``temp_file_id`` 归属当前用户（key 前缀 ``TEMP_PREFIX/{user_id}/``）
-    - 读取后立即删除，避免定时清理任务在处理完成前误删
-    - ``temp_file_id`` 格式非法 / 不属于当前用户时返回 400
+    小文件场景（CSV/图片等）可直接用；GB 级文件请用 ``open_temp_upload_stream``
+    或 ``copy_temp_upload_to_driver``，避免整份进内存。
     """
-    from ..services import minio_storage as _ms
-
-    temp_key = temp_file_id.strip()
-    expected_prefix = f"{_ms.TEMP_PREFIX}{user_id}/"
-    if not temp_key.startswith(expected_prefix):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="temp_file_id 无效或不属于当前用户",
-        )
+    path = _temp_path_from_id(temp_file_id, user_id)
     try:
-        content = _ms.get_object(temp_key)
-    except _ms.MinioObjectNotFoundError:
+        content = path.read_bytes()
+    except FileNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="临时文件不存在或已过期，请重新上传",
-        )
+        ) from None
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"读取临时文件失败：{exc}",
+        ) from exc
+    finally:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
-    # 从 key 中提取原始文件名：TEMP_PREFIX/{user_id}/{uuid}_{file_name}
-    last_segment = temp_key.rsplit("/", 1)[-1]
-    source_file_name = last_segment.split("_", 1)[1] if "_" in last_segment else last_segment
-    # 读取后删除临时对象（避免定时清理任务在处理完成前误删的风险）
+    return content
+
+
+def resolve_temp_upload(temp_file_id: str, user_id: str) -> tuple[bytes, str]:
+    """读取临时文件并返回 ``(content, 原始文件名)``，读取后即删除。"""
+    path = _temp_path_from_id(temp_file_id, user_id)
+    file_name = _original_name(path.name)
+    return read_temp_upload(temp_file_id, user_id), file_name
+
+
+def resolve_temp_file(temp_file_id: str, user_id: str) -> tuple[bytes, str]:
+    """``resolve_temp_upload`` 的旧名（保持向后兼容）。"""
+    return resolve_temp_upload(temp_file_id, user_id)
+
+
+def describe_temp_upload(temp_file_id: str, user_id: str) -> tuple[str, int]:
+    """返回临时文件的 ``(原始文件名, 字节数)``，不读取内容。"""
+    path = _temp_path_from_id(temp_file_id, user_id)
     try:
-        _ms.delete_object(temp_key)
-    except Exception:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="临时文件不存在或已过期，请重新上传",
+        ) from None
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"读取临时文件失败：{exc}",
+        ) from exc
+    return _original_name(path.name), int(size)
+
+
+@contextmanager
+def open_temp_upload_stream(temp_file_id: str, user_id: str) -> Iterator[tuple[Any, str, int]]:
+    """以流的方式打开临时文件，产出 ``(stream, 原始文件名, 字节数)``。
+
+    使用后关闭句柄并删除临时文件（消费即删）。
+    """
+    path = _temp_path_from_id(temp_file_id, user_id)
+    try:
+        stream = path.open("rb")
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="临时文件不存在或已过期，请重新上传",
+        ) from None
+    try:
+        yield stream, _original_name(path.name), int(path.stat().st_size)
+    finally:
+        try:
+            stream.close()
+        except Exception:
+            pass
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def copy_temp_upload_to_driver(
+    temp_file_id: str,
+    user_id: str,
+    driver: Any,
+    dest_path: str,
+    *,
+    content_type: str | None = None,
+) -> int:
+    """把临时文件落地到目标存储，返回字节数。
+
+    目标与临时区在同一块磁盘（本地 VFS）时直接 ``os.replace``——毫秒级，零拷贝；
+    否则以流的方式写入（``driver.write_stream``），内存占用恒定。
+    """
+    path = _temp_path_from_id(temp_file_id, user_id)
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="临时文件不存在或已过期，请重新上传",
+        ) from None
+
+    local_target: str | None = None
+    resolver = getattr(driver, "local_path_for", None)
+    if callable(resolver):
+        try:
+            local_target = resolver(dest_path)
+        except Exception:
+            local_target = None
+
+    if local_target:
+        try:
+            target = Path(local_target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(path, target)
+            return int(target.stat().st_size)
+        except OSError:
+            # 跨设备或权限问题，退回流式拷贝
+            pass
+
+    with path.open("rb") as stream:
+        driver.write_stream(dest_path, stream, content_type=content_type, size=size)
+
+    try:
+        path.unlink()
+    except OSError:
         pass
-    return content, source_file_name
+    return size
+
+
+def cleanup_expired_temp_uploads(ttl_hours: float = TEMP_TTL_SECONDS / 3600) -> int:
+    """清理超过保留期的本地临时上传文件，返回删除数量（供定时任务调用）。"""
+    root = _temp_root()
+    cutoff = time.time() - max(ttl_hours, 1) * 3600
+    deleted = 0
+    try:
+        user_dirs = [entry for entry in root.iterdir() if entry.is_dir()]
+    except OSError:
+        return 0
+    for directory in user_dirs:
+        try:
+            entries = list(directory.iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.is_file() and entry.stat().st_mtime < cutoff:
+                    entry.unlink()
+                    deleted += 1
+            except OSError:
+                continue
+    return deleted
 
 
 def _check_upload(
@@ -179,77 +444,3 @@ def validate_upload_bytes(
         allowed_exts=allowed_exts,
         allowed_exts_label=allowed_exts_label,
     )
-
-
-def save_temp_upload(file: UploadFile, user_id: str) -> tuple[str, str]:
-    """通用两段式上传的第一步：把上传文件保存到临时目录。
-
-    返回 ``(temp_file_id, file_name)``，供业务端点在确认提交时引用。
-    临时文件由消费方在读取后删除，或由定时清理任务兜底清理（见
-    ``minio_storage.cleanup_expired_temp_files``）。
-    """
-    from ..services.minio_storage import build_temp_key, put_object
-
-    content = file.file.read()
-    if not content:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="上传文件为空",
-        )
-
-    file_name = (file.filename or "upload").strip() or "upload"
-    temp_file_id = build_temp_key(file_name, user_id)
-    put_object(temp_file_id, content, content_type="text/plain")
-    return temp_file_id, file_name
-
-
-def read_temp_upload(temp_file_id: str, user_id: str) -> bytes:
-    """通用两段式上传的第二步：按 temp_file_id 读取临时文件内容并消费删除。
-
-    临时 Key 中嵌入了 user_id，读取前校验所有权，防止跨用户引用。
-    读取成功后即删除临时对象（消费即删，清理任务兜底孤儿文件）。
-    """
-    from ..services.minio_storage import (
-        TEMP_PREFIX,
-        MinioObjectNotFoundError,
-        delete_object,
-        get_object,
-    )
-
-    temp_key = (temp_file_id or "").strip()
-    expected_prefix = f"{TEMP_PREFIX}{user_id}/"
-    if not temp_key.startswith(expected_prefix):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="temp_file_id 无效或不属于当前用户",
-        )
-
-    try:
-        content = get_object(temp_key)
-    except MinioObjectNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="临时文件不存在或已过期，请重新上传",
-        ) from None
-
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
-
-    try:
-        delete_object(temp_key)
-    except Exception:
-        pass
-
-    return content
-
-
-def resolve_temp_upload(temp_file_id: str, user_id: str) -> tuple[bytes, str]:
-    """从临时目录读取并消费临时文件，返回 (content, source_file_name)。
-
-    基于 ``read_temp_upload`` 追加原始文件名解析：临时 Key 形如
-    ``lightning/tmp/{user_id}/{uuid}_{file_name}``，从最后一段还原原始文件名。
-    """
-    content = read_temp_upload(temp_file_id, user_id)
-    last_segment = (temp_file_id or "").strip().rsplit("/", 1)[-1]
-    source_file_name = last_segment.split("_", 1)[1] if "_" in last_segment else last_segment
-    return content, source_file_name

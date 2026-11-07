@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     raster_cache_enabled: bool = True
     # 文件上传大小上限（MB），供统一上传校验 validate_upload 使用（模块级可覆盖）
     upload_max_file_size_mb: int = 50
+    # 两段式上传的临时区目录（本机磁盘）。留空则用 <file_vfs_root 同级>/tmp/uploads。
+    # 2026-11-07：从对象存储临时区改到本地盘——OSS 账号 line-protection 报 UserDisable
+    # （PutObject/DeleteObject 全被拒），导致所有 upload-temp 上传必然失败；
+    # 落本地盘还能让 GB 级 DEM 边收边写，不占内存。
+    upload_temp_dir: str = ""
     minio_enabled: bool = True
     minio_endpoint: str = "http://minio:9000"
     minio_access_key: str = "minioadmin"

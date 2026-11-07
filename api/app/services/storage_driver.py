@@ -66,6 +66,20 @@ class StorageDriver(Protocol):
     def write_file(self, path: str, *, content: bytes, content_type: str | None = None) -> StorageObject:
         ...
 
+    def write_stream(
+        self,
+        path: str,
+        stream: Any,
+        *,
+        content_type: str | None = None,
+        size: int | None = None,
+    ) -> StorageObject:
+        """把文件流分块写入存储，返回对象信息。
+
+        GB 级文件（DEM）必须用本函数，不要用 ``write_file``——那需要整份 bytes。
+        """
+        ...
+
     def read_file(self, path: str) -> StorageReadResult:
         ...
 
@@ -308,6 +322,46 @@ class VfsStorageDriver:
             storage_key=normalized.lstrip("/"),
         )
 
+    def write_stream(
+        self,
+        path: str,
+        stream: Any,
+        *,
+        content_type: str | None = None,
+        size: int | None = None,
+    ) -> StorageObject:
+        normalized = normalize_virtual_path(path)
+        if normalized == "/":
+            raise StorageInvalidPathError("Cannot write content to root path")
+
+        parent_path = _parent_virtual_path(normalized)
+        parent_target = self._resolve_target(parent_path)
+        if not parent_target.exists() or not parent_target.is_dir():
+            raise StoragePathNotFoundError(f"Path not found: {parent_path}")
+
+        target = self._resolve_target(normalized)
+        if target.exists() and target.is_dir():
+            raise StorageInvalidPathError(f"Path is a directory: {normalized}")
+
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("wb") as output:
+                shutil.copyfileobj(stream, output, 1024 * 1024)
+            stat_info = target.stat()
+        except OSError as exc:
+            raise StorageDriverError(f"VFS stream write failed for {normalized}: {exc}") from exc
+
+        return StorageObject(
+            path=normalized,
+            parent_path=parent_path,
+            name=target.name,
+            is_dir=False,
+            size=int(stat_info.st_size),
+            modified_at=datetime.fromtimestamp(stat_info.st_mtime, tz=timezone.utc),
+            mime_type=content_type or mimetypes.guess_type(target.name)[0],
+            storage_key=normalized.lstrip("/"),
+        )
+
     def read_file(self, path: str) -> StorageReadResult:
         normalized = normalize_virtual_path(path)
         target = self._resolve_target(normalized)
@@ -341,6 +395,10 @@ class VfsStorageDriver:
             return int(target.stat().st_size)
         except OSError as exc:
             raise StorageDriverError(f"VFS download failed for {normalized}: {exc}") from exc
+
+    def local_path_for(self, path: str) -> str | None:
+        """本地驱动返回目标绝对路径，供上传临时文件直接 rename（零拷贝）。"""
+        return str(self._resolve_target(normalize_virtual_path(path)))
 
     def _resolve_target(self, normalized_path: str) -> Path:
         candidate = (self._root / normalized_path.lstrip("/")).resolve()
@@ -564,6 +622,102 @@ class S3StorageDriver:
             name=_basename_virtual_path(normalized),
             is_dir=False,
             size=len(content),
+            mime_type=content_type or mimetypes.guess_type(normalized)[0],
+            storage_key=key,
+        )
+
+    def write_stream(
+        self,
+        path: str,
+        stream: Any,
+        *,
+        content_type: str | None = None,
+        size: int | None = None,
+    ) -> StorageObject:
+        normalized = normalize_virtual_path(path)
+        if normalized == "/":
+            raise StorageInvalidPathError("Cannot write content to root path")
+
+        key = self._key_for_path(normalized)
+        if not key:
+            raise StorageInvalidPathError("Cannot write content to root path")
+        if key.endswith("/"):
+            raise StorageInvalidPathError(f"Path is a directory: {normalized}")
+
+        from .minio_storage import upload_stream
+
+        try:
+            written = upload_stream(
+                self._client,
+                self._bucket,
+                key,
+                stream,
+                content_type=content_type,
+                size=size,
+            )
+        except Exception as exc:  # pragma: no cover - provider specific errors
+            detail = self._describe_s3_write_failure(exc)
+            raise StorageDriverError(f"S3 stream upload failed: {detail}") from exc
+
+        return StorageObject(
+            path=normalized,
+            parent_path=_parent_virtual_path(normalized),
+            name=_basename_virtual_path(normalized),
+            is_dir=False,
+            size=written if written else int(size or 0),
+            mime_type=content_type or mimetypes.guess_type(normalized)[0],
+            storage_key=key,
+        )
+
+    @property
+    def s3_identity(self) -> tuple[str, str]:
+        """(归一化 endpoint, bucket)，与 ``minio_storage.storage_identity()`` 可比。"""
+        from .minio_storage import normalize_endpoint
+
+        return normalize_endpoint(self._endpoint_url), self._bucket
+
+    def copy_from_key(
+        self,
+        src_key: str,
+        dest_path: str,
+        *,
+        source_bucket: str | None = None,
+        content_type: str | None = None,
+    ) -> StorageObject:
+        """同源桶内的服务端拷贝：数据不经应用进程，适合把临时区文件转正式区。"""
+        normalized = normalize_virtual_path(dest_path)
+        key = self._key_for_path(normalized)
+        if not key:
+            raise StorageInvalidPathError("Cannot write content to root path")
+
+        copy_kwargs: dict[str, Any] = {
+            "Bucket": self._bucket,
+            "Key": key,
+            "CopySource": {"Bucket": source_bucket or self._bucket, "Key": src_key},
+            "MetadataDirective": "REPLACE" if content_type else "COPY",
+        }
+        if content_type:
+            copy_kwargs["ContentType"] = content_type
+
+        try:
+            self._client.copy_object(**copy_kwargs)
+        except Exception as exc:  # pragma: no cover - provider specific errors
+            detail = self._describe_s3_write_failure(exc)
+            raise StorageDriverError(f"S3 server-side copy failed: {detail}") from exc
+
+        size = 0
+        try:
+            head = self._client.head_object(Bucket=self._bucket, Key=key)
+            size = int(head.get("ContentLength") or 0)
+        except Exception:
+            pass
+
+        return StorageObject(
+            path=normalized,
+            parent_path=_parent_virtual_path(normalized),
+            name=_basename_virtual_path(normalized),
+            is_dir=False,
+            size=size,
             mime_type=content_type or mimetypes.guess_type(normalized)[0],
             storage_key=key,
         )

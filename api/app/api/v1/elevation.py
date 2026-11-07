@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
 from ...core.file_upload import (
-    resolve_temp_upload,
     save_temp_upload,
     validate_upload,
 )
@@ -122,14 +121,12 @@ def create_elevation_file_record(
         notes=notes,
     )
     if temp_file_id:
-        content, filename = resolve_temp_upload(temp_file_id, current_user.user.id)
         return create_file_record_from_upload(
             db,
             None,
             payload,
             actor=current_user.user,
-            content=content,
-            filename=filename,
+            temp_file_id=temp_file_id,
         )
     if file is None:
         raise HTTPException(

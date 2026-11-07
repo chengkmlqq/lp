@@ -364,15 +364,29 @@ def import_lightning_distribution_job(
     track_started=False,
 )
 def cleanup_lightning_temp_files() -> dict[str, int]:
-    """清理超过保留时长的 lightning/tmp/ 前缀临时文件，返回被删数量。"""
+    """清理超过保留时长的导入临时文件，返回被删数量。
+
+    临时区自 2026-11-07 起落在本机磁盘（对象存储账号报 UserDisable），
+    所以这里两处都清：本地临时上传目录 + 历史遗留的 lightning/tmp/ 对象。
+    """
     settings = get_settings()
+    from ..core.file_upload import cleanup_expired_temp_uploads
     from ..services import minio_storage
 
-    deleted_count = minio_storage.cleanup_expired_temp_files(
-        ttl_hours=settings.lightning_temp_file_ttl_hours,
-    )
+    local_deleted = cleanup_expired_temp_uploads(settings.lightning_temp_file_ttl_hours)
+
+    object_deleted = 0
+    try:
+        object_deleted = minio_storage.cleanup_expired_temp_files(
+            ttl_hours=settings.lightning_temp_file_ttl_hours,
+        )
+    except Exception:
+        # 对象存储不可用不影响本地临时区清理
+        object_deleted = 0
+
     return {
-        "deleted_count": int(deleted_count),
+        "deleted_count": int(local_deleted),
+        "deleted_objects": int(object_deleted),
     }
 
 

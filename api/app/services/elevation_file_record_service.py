@@ -1,16 +1,21 @@
 from __future__ import annotations
 
-import io
 import mimetypes
 import zipfile
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..core.database import SessionLocal
+from ..core.file_upload import (
+    copy_temp_upload_to_driver,
+    describe_temp_upload,
+    open_temp_upload_stream,
+)
 from ..models.base import utcnow
 from ..models.elevation import ElevationApplyJob, ElevationFileRecord
 from ..models.line import Line
@@ -214,109 +219,35 @@ def get_file_record_by_id(db: Session, record_id: str) -> ElevationFileRecord | 
     ).scalar_one_or_none()
 
 
-def create_file_record_from_upload(
-    db: Session,
-    file: UploadFile | None,
-    payload: ElevationFileRecordCreateRequest,
-    *,
-    actor: User,
-    content: bytes | None = None,
-    filename: str | None = None,
-) -> ElevationFileRecordUploadResponse:
-    """Create a file record and upload the file in one operation. Supports ZIP files with automatic extraction.
-
-    两段式上传兼容：可直接传 ``file``（单段式 multipart），也可传 ``content`` +
-    ``filename``（先经 upload-temp 上传到临时区，再在确认提交时引用）。两种方式
-    走同一条校验与入库链路。
-    """
-    if content is None:
-        if file is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少文件，请提供 file 或 temp_file_id")
-        if not file.filename:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件名不能为空")
-
-        filename = file.filename.strip()
-
-        # Read file content
-        try:
-            content = file.file.read()
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"读取上传文件失败：{exc}"
-            ) from exc
-        finally:
-            try:
-                file.file.close()
-            except Exception:
-                pass
-
-    if not filename or not filename.strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件名不能为空")
-    filename = filename.strip()
-    file_ext = Path(filename).suffix.lower()
-
-    if file_ext not in IMPORTABLE_ELEVATION_EXTENSIONS and file_ext not in IMPORTABLE_ARCHIVE_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的文件格式: {file_ext}，仅支持 .tif/.zip"
-        )
-
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
-
-    # Determine mount and storage
-    mount_code = _resolve_dataset_mount_code(db, requested_mount_code=payload.mount_code)
-    mount = _require_mount(db, mount_code)
-    driver = _build_driver_or_400(mount)
-
-    # Handle ZIP file extraction
-    if file_ext in IMPORTABLE_ARCHIVE_EXTENSIONS:
-        return _create_file_records_from_zip(
-            db=db,
-            zip_content=content,
-            zip_filename=filename,
-            payload=payload,
-            mount_code=mount_code,
-            driver=driver,
-            actor=actor,
-        )
-
-    # Handle single file upload
-    file_format = ELEVATION_FILE_EXT_FORMAT_MAP.get(file_ext)
-    if file_format is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的文件格式: {file_ext}"
-        )
-
-    _require_rasterio_available()
-
-    file_size = len(content)
-
-    # Generate unique storage path
-    from uuid import uuid4
-    record_id = uuid4().hex
-    storage_dir = f"/elevation/records/{record_id[:2]}/{record_id[2:4]}"
-    storage_path = join_virtual_path(storage_dir, filename)
-
-    # Ensure directory exists and write file
+def _upload_size(file: UploadFile) -> int:
+    """取上传文件大小，不读内容。"""
+    size_hint = getattr(file, "size", None)
+    if isinstance(size_hint, int) and size_hint >= 0:
+        return size_hint
     try:
-        driver.ensure_directory(storage_dir)
-        driver.write_file(
-            storage_path,
-            content=content,
-            content_type=mimetypes.guess_type(filename)[0],
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"文件存储失败: {exc}"
-        ) from exc
+        current = file.file.tell()
+        file.file.seek(0, 2)
+        size = file.file.tell()
+        file.file.seek(current)
+        return int(size)
+    except (OSError, ValueError):
+        return 0
 
-    # Create database record
+
+def _build_file_record(
+    *,
+    record_id: str,
+    filename: str,
+    file_format: str,
+    file_size: int,
+    storage_path: str,
+    mount_code: str,
+    payload: ElevationFileRecordCreateRequest,
+    actor: User,
+) -> ElevationFileRecord:
+    """构造高程文件记录（单文件与 ZIP 内成员共用同一套字段口径）。"""
     now = utcnow()
-    record = ElevationFileRecord(
+    return ElevationFileRecord(
         id=record_id,
         file_name=filename,
         file_path=storage_path,
@@ -333,6 +264,151 @@ def create_file_record_from_upload(
         update_date=now,
         update_user=actor.id,
     )
+
+
+def create_file_record_from_upload(
+    db: Session,
+    file: UploadFile | None,
+    payload: ElevationFileRecordCreateRequest,
+    *,
+    actor: User,
+    filename: str | None = None,
+    temp_file_id: str | None = None,
+) -> ElevationFileRecordUploadResponse:
+    """创建高程文件记录并把文件写入存储。
+
+    两条路径都不把整份文件读进内存（2026-11-07 流式改造）：
+    - ``temp_file_id``：两段式上传的第二步，临时区 → 正式存储走服务端拷贝或流式搬运；
+    - ``file``：单段式 multipart，直接把 ``file.file`` 分块写入存储。
+
+    GB 级 DEM 走原实现（``file.file.read()`` + ``get_object``）会把 1GB 读进
+    内存两次，并发时被 OOM kill，表现为「上传到 99% 后失败」。
+    """
+    if temp_file_id:
+        resolved_name, resolved_size = describe_temp_upload(temp_file_id, actor.id)
+        filename = resolved_name
+        file_size = resolved_size
+    else:
+        if file is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="缺少文件，请提供 file 或 temp_file_id",
+            )
+        if not file.filename:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="文件名不能为空",
+            )
+        filename = file.filename.strip()
+        file_size = _upload_size(file)
+
+    if not filename or not filename.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="文件名不能为空",
+        )
+    filename = filename.strip()
+    file_ext = Path(filename).suffix.lower()
+
+    if file_ext not in IMPORTABLE_ELEVATION_EXTENSIONS and file_ext not in IMPORTABLE_ARCHIVE_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的文件格式: {file_ext}，仅支持 .tif/.zip",
+        )
+
+    if file_size <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="上传文件为空",
+        )
+
+    mount_code = _resolve_dataset_mount_code(db, requested_mount_code=payload.mount_code)
+    mount = _require_mount(db, mount_code)
+    driver = _build_driver_or_400(mount)
+
+    if file_ext in IMPORTABLE_ARCHIVE_EXTENSIONS:
+        # zipfile 需要可 seek 的源：临时区是本机文件，直接给句柄，不用再落一份副本
+        if temp_file_id:
+            with open_temp_upload_stream(temp_file_id, actor.id) as (stream, zip_name, _zip_size):
+                return _create_file_records_from_zip(
+                    db,
+                    source=stream,
+                    zip_filename=zip_name,
+                    payload=payload,
+                    mount_code=mount_code,
+                    driver=driver,
+                    actor=actor,
+                )
+        return _create_file_records_from_zip(
+            db,
+            source=file.file,
+            zip_filename=filename,
+            payload=payload,
+            mount_code=mount_code,
+            driver=driver,
+            actor=actor,
+        )
+
+    file_format = ELEVATION_FILE_EXT_FORMAT_MAP.get(file_ext)
+    if file_format is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的文件格式: {file_ext}",
+        )
+
+    _require_rasterio_available()
+
+    record_id = uuid4().hex
+    storage_dir = f"/elevation/records/{record_id[:2]}/{record_id[2:4]}"
+    storage_path = join_virtual_path(storage_dir, filename)
+    content_type = mimetypes.guess_type(filename)[0]
+
+    try:
+        driver.ensure_directory(storage_dir)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"文件存储失败: {exc}",
+        ) from exc
+
+    try:
+        if temp_file_id:
+            file_size = copy_temp_upload_to_driver(
+                temp_file_id,
+                actor.id,
+                driver,
+                storage_path,
+                content_type=content_type,
+            )
+        else:
+            driver.write_stream(
+                storage_path,
+                file.file,
+                content_type=content_type,
+                size=file_size,
+            )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"文件存储失败: {exc}",
+        ) from exc
+    finally:
+        if file is not None:
+            try:
+                file.file.close()
+            except Exception:
+                pass
+
+    record = _build_file_record(
+        record_id=record_id,
+        filename=filename,
+        file_format=file_format,
+        file_size=file_size,
+        storage_path=storage_path,
+        mount_code=mount_code,
+        payload=payload,
+        actor=actor,
+    )
     db.add(record)
     db.commit()
 
@@ -340,7 +416,7 @@ def create_file_record_from_upload(
     if not saved:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="文件记录创建失败"
+            detail="文件记录创建失败",
         )
 
     _publish_elevation_change(
@@ -350,9 +426,9 @@ def create_file_record_from_upload(
 
     warnings: list[str] = []
 
-    # Trigger analysis
     try:
         from ..tasks.elevation_tasks import analyze_elevation_file_record_job
+
         task = analyze_elevation_file_record_job.delay(saved.id, actor.id)
         saved.analysis_task_id = str(task.id)
         saved.analysis_status = "queued"
@@ -370,20 +446,26 @@ def create_file_record_from_upload(
 
 def _create_file_records_from_zip(
     db: Session,
-    zip_content: bytes,
+    *,
+    source: Any,
     zip_filename: str,
     payload: ElevationFileRecordCreateRequest,
     mount_code: str,
     driver: Any,
     actor: User,
 ) -> ElevationFileRecordUploadResponse:
-    """Extract ZIP file and create file records for each contained elevation data file."""
+    """解压 ZIP 并为其中每个高程数据文件建记录。
+
+    ``source`` 可以是本地路径或可 seek 的文件对象。成员内容按块流式写入存储
+    （``archive.open(member)`` → ``driver.write_stream``），不再 ``archive.read()``
+    整份进内存——1GB 压缩包展开可能是数 GB，原实现必然 OOM。
+    """
     warnings: list[str] = []
     created_records: list[ElevationFileRecord] = []
     storage_failures: list[str] = []
 
     try:
-        with zipfile.ZipFile(io.BytesIO(zip_content)) as archive:
+        with zipfile.ZipFile(source) as archive:
             for member in archive.infolist():
                 if member.is_dir():
                     continue
@@ -403,57 +485,38 @@ def _create_file_records_from_zip(
                     warnings.append(f"压缩包条目 {member_name} 类型不支持，已跳过")
                     continue
 
-                try:
-                    data = archive.read(member)
-                except Exception as exc:
-                    warnings.append(f"压缩包条目 {member_name} 读取失败：{exc}")
-                    continue
-
-                if not data:
+                if member.file_size <= 0:
                     warnings.append(f"压缩包条目 {member_name} 内容为空，已跳过")
                     continue
 
-                # Determine file format
                 file_format = ELEVATION_FILE_EXT_FORMAT_MAP[suffix]
 
-                file_size = len(data)
-
-                # Generate unique storage path for each file
-                from uuid import uuid4
                 record_id = uuid4().hex
                 storage_dir = f"/elevation/records/{record_id[:2]}/{record_id[2:4]}"
                 storage_path = join_virtual_path(storage_dir, member_name)
 
-                # Ensure directory exists and write file
                 try:
                     driver.ensure_directory(storage_dir)
-                    driver.write_file(
-                        storage_path,
-                        content=data,
-                        content_type=mimetypes.guess_type(member_name)[0],
-                    )
+                    with archive.open(member) as member_stream:
+                        driver.write_stream(
+                            storage_path,
+                            member_stream,
+                            content_type=mimetypes.guess_type(member_name)[0],
+                            size=int(member.file_size),
+                        )
                 except Exception as exc:
                     storage_failures.append(f"压缩包条目 {member_name} 存储失败: {exc}")
                     continue
 
-                # Create database record
-                now = utcnow()
-                record = ElevationFileRecord(
-                    id=record_id,
-                    file_name=member_name,
-                    file_path=storage_path,
+                record = _build_file_record(
+                    record_id=record_id,
+                    filename=member_name,
                     file_format=file_format,
-                    file_size=file_size,
-                    source=_normalize_str(payload.source),
+                    file_size=int(member.file_size),
+                    storage_path=storage_path,
                     mount_code=mount_code,
-                    resolution_m=payload.resolution_m,
-                    status="active",
-                    terrain_status=_default_terrain_status_for_format(file_format),
-                    notes=_normalize_str(payload.notes),
-                    create_date=now,
-                    create_user=actor.id,
-                    update_date=now,
-                    update_user=actor.id,
+                    payload=payload,
+                    actor=actor,
                 )
                 db.add(record)
                 created_records.append(record)
@@ -526,7 +589,6 @@ def _create_file_records_from_zip(
         detail=detail,
         warnings=warnings,
     )
-
 
 def update_file_record(
     db: Session,

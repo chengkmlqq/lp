@@ -100,6 +100,152 @@ def put_object(key: str, data: bytes, content_type: str | None = None) -> str:
         raise MinioStorageError(f"Failed to upload object {key}: {exc}") from exc
 
 
+# 单次 PUT 的流式上限：OSS 单对象 PUT 最大 5GB，够 GB 级 DEM 用。
+# 注意：该账号的 CreateMultipartUpload 被拒（UserDisable），所以不能依赖分片上传，
+# 统一走带 ContentLength 的单次 PUT——botocore 会边读边发，不会把内容整份读进内存。
+SINGLE_PUT_MAX_BYTES = 5 * 1024 * 1024 * 1024
+
+
+def normalize_endpoint(endpoint: str | None) -> str:
+    """归一化 endpoint 便于比较（去掉尾部斜杠、统一小写）。"""
+    return (endpoint or "").strip().rstrip("/").lower()
+
+
+def storage_identity() -> tuple[str, str]:
+    """临时对象所在的 (endpoint, bucket)，用于判断能否服务端拷贝。"""
+    settings = get_settings()
+    return normalize_endpoint(settings.minio_endpoint), settings.minio_bucket
+
+
+def _resolve_stream_size(stream: Any, size: int | None) -> tuple[Any, int]:
+    """确定流的长度；不可 seek 且未给 size 时才退化为读入内存。"""
+    if isinstance(size, int) and size >= 0:
+        return stream, size
+    try:
+        position = stream.tell()
+        stream.seek(0, 2)
+        measured = stream.tell()
+        stream.seek(position)
+        return stream, int(measured)
+    except Exception:
+        pass
+    import io as _io
+
+    data = stream.read()
+    return _io.BytesIO(data), len(data)
+
+
+def upload_stream(
+    client: Any,
+    bucket: str,
+    key: str,
+    stream: Any,
+    content_type: str | None = None,
+    size: int | None = None,
+) -> int:
+    """把可读流写入对象存储，返回写入字节数。
+
+    使用带 ``ContentLength`` 的单次 PUT：botocore 边读边发，内存占用与文件大小无关；
+    分片上传（CreateMultipartUpload）在该 OSS 账号上被禁用，故不采用。
+    """
+    resolved_type = content_type or "application/octet-stream"
+    stream, resolved_size = _resolve_stream_size(stream, size)
+    if resolved_size > SINGLE_PUT_MAX_BYTES:
+        raise MinioStorageError(
+            f"对象 {key} 超过单次 PUT 上限 {SINGLE_PUT_MAX_BYTES // (1024 ** 3)}GB，"
+            "当前存储账号不支持分片上传，请压缩或拆分后上传"
+        )
+    client.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=stream,
+        ContentLength=resolved_size,
+        ContentType=resolved_type,
+    )
+    return resolved_size
+
+
+def put_fileobj(
+    key: str,
+    stream: Any,
+    content_type: str | None = None,
+    size: int | None = None,
+) -> int:
+    """把文件流上传到 MinIO/OSS，返回字节数（不把整份内容读进内存）。"""
+    try:
+        client = _build_client()
+        return upload_stream(
+            client,
+            get_settings().minio_bucket,
+            key,
+            stream,
+            content_type=content_type,
+            size=size,
+        )
+    except MinioStorageError:
+        raise
+    except Exception as exc:
+        raise MinioStorageError(f"Failed to upload stream {key}: {exc}") from exc
+
+
+def _is_not_found_error(exc: Exception) -> bool:
+    error_code = getattr(getattr(exc, "response", None), "get", lambda *a: {})("Error", {}).get("Code", "")
+    return error_code in {"404", "NoSuchKey", "NotFound"}
+
+
+def head_object_size(key: str) -> int:
+    """读取对象大小（只发 HEAD 请求），对象不存在抛 ``MinioObjectNotFoundError``。"""
+    try:
+        client = _build_client()
+        response = client.head_object(Bucket=get_settings().minio_bucket, Key=key)
+        return int(response.get("ContentLength") or 0)
+    except MinioStorageError:
+        raise
+    except Exception as exc:
+        if _is_not_found_error(exc):
+            raise MinioObjectNotFoundError(f"Object not found: {key}") from exc
+        raise MinioStorageError(f"Failed to head object {key}: {exc}") from exc
+
+
+def open_object_stream(key: str) -> tuple[Any, int]:
+    """以流的方式打开对象，返回 ``(body, size)``；调用方负责 close。
+
+    大文件（GB 级 DEM）必须用本函数，不要用 ``get_object`` 全量读入内存。
+    """
+    try:
+        client = _build_client()
+        response = client.get_object(Bucket=get_settings().minio_bucket, Key=key)
+    except MinioStorageError:
+        raise
+    except Exception as exc:
+        if _is_not_found_error(exc):
+            raise MinioObjectNotFoundError(f"Object not found: {key}") from exc
+        raise MinioStorageError(f"Failed to open object {key}: {exc}") from exc
+
+    body = response.get("Body")
+    if body is None:
+        raise MinioStorageError(f"Object body is empty: {key}")
+    return body, int(response.get("ContentLength") or 0)
+
+
+def copy_object(src_key: str, dst_key: str, *, source_bucket: str | None = None) -> None:
+    """服务端拷贝对象（数据不经应用进程），用于临时区转正式区。"""
+    try:
+        client = _build_client()
+        bucket = get_settings().minio_bucket
+        client.copy_object(
+            Bucket=bucket,
+            Key=dst_key,
+            CopySource={"Bucket": source_bucket or bucket, "Key": src_key},
+            MetadataDirective="COPY",
+        )
+    except MinioStorageError:
+        raise
+    except Exception as exc:
+        raise MinioStorageError(f"Failed to copy object {src_key} -> {dst_key}: {exc}") from exc
+
+
+
 def list_objects(prefix: str) -> list[str]:
     """按前缀分页列举 MinIO 对象 Key，返回所有匹配对象 Key 列表（无分页上限）。
 
