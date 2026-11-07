@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
+from ...core.file_upload import validate_upload
 from ...services.fault_matlab_engine_service import (
     MatlabEngineError,
     create_module,
@@ -149,6 +150,7 @@ def upload_module_release(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """上传即发布：上传 ZIP 时直接填写版本号与变更日志，创建已发布版本（无草稿）。"""
+    validate_upload(file, purpose="release", allowed_exts={"zip"})
     content = file.file.read()
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")

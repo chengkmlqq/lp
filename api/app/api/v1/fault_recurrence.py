@@ -28,6 +28,7 @@ def upload_fault_recurrence_temp_file(
 
     临时文件将在分析消费后自动删除，或由定时清理任务清理超过 24h 的孤儿文件。
     """
+    validate_upload(file, purpose="text", allowed_exts={"csv", "txt"})
     temp_file_id, file_name = save_temp_upload(file, current_user.user.id)
     return FaultRecurrenceTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
 
@@ -44,7 +45,7 @@ def analyze_fault_recurrence(
     if temp_file_id:
         file_bytes, source_file_name = resolve_temp_upload(temp_file_id, current_user.user.id)
     elif file is not None:
-        validate_upload(file, allowed_exts={"csv", "txt"})
+        validate_upload(file, purpose="text", allowed_exts={"csv", "txt"})
         file_bytes = file.file.read()
         source_file_name = (file.filename or "fault-recurrence.txt").strip() or "fault-recurrence.txt"
     else:

@@ -366,26 +366,45 @@ def upload_file_to_path(
     except StorageInvalidPathError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    # 流式写入：UploadFile 底层是已 spool 到磁盘的临时文件，直接把句柄交给
+    # driver.write_stream 边读边写，内存占用与文件大小无关（GB 级也安全）。
     try:
-        content = file.file.read()
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Read upload failed: {exc}") from exc
-    finally:
+        file.file.seek(0)
+    except (OSError, ValueError):
+        pass
+
+    def _measure_size() -> int | None:
         try:
-            file.file.close()
-        except Exception:
-            pass
+            current = file.file.tell()
+            file.file.seek(0, 2)
+            measured = file.file.tell()
+            file.file.seek(current)
+            return int(measured)
+        except (OSError, ValueError):
+            return None
 
     content_type = file.content_type or mimetypes.guess_type(filename)[0]
 
     try:
-        driver.write_file(target_path, content=content, content_type=content_type)
+        written = driver.write_stream(
+            target_path,
+            file.file,
+            content_type=content_type,
+            size=_measure_size(),
+        )
     except StoragePathNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except StorageInvalidPathError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except StorageDriverError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    finally:
+        try:
+            file.file.close()
+        except Exception:
+            pass
+
+    uploaded_size = int(getattr(written, "size", 0) or 0)
 
     try:
         parent_entries = driver.list_dir(normalized_parent)
@@ -407,9 +426,9 @@ def upload_file_to_path(
             f"mount_code={mount.code}",
             f"path={target_path}",
             f"content_type={content_type or 'application/octet-stream'}",
-            f"size={len(content)}",
+            f"size={uploaded_size}",
         ),
-        output=json.dumps({"mount_code": mount.code, "path": target_path, "content_type": content_type or "application/octet-stream", "size": len(content)}),
+        output=json.dumps({"mount_code": mount.code, "path": target_path, "content_type": content_type or "application/octet-stream", "size": uploaded_size}),
     )
     db.commit()
 

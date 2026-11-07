@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, UploadFile
 
 from ...core.dependencies import CurrentUser, get_current_user, require_enabled_menu_route
-from ...core.file_upload import save_temp_file
+from ...core.file_upload import save_temp_file, validate_upload
 from ...schemas.uploads import TempUploadResponse
 
 router = APIRouter(
@@ -22,5 +22,6 @@ def upload_temp_file(
 
     临时文件在导入消费后自动删除，或由 24h 定时清理任务兜底。
     """
+    validate_upload(file, purpose="file")
     temp_file_id, file_name = save_temp_file(file, current_user.user.id)
     return TempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)

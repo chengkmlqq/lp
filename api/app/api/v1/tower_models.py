@@ -6,7 +6,14 @@ from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
-from ...core.file_upload import resolve_temp_upload, save_temp_upload
+from ...core.file_upload import (
+    _check_upload,
+    describe_temp_upload,
+    get_upload_limit_mb,
+    resolve_temp_upload,
+    save_temp_upload,
+    validate_upload,
+)
 from ...schemas.tower_model import (
     TowerModelCreateRequest,
     TowerModelImageUploadResponse,
@@ -105,6 +112,7 @@ def upload_tower_model_temp_file(
 
     临时文件将在确认上传消费后自动删除，或由定时清理任务清理超过 24h 的孤儿文件。
     """
+    validate_upload(file, purpose="model")
     temp_file_id, file_name = save_temp_upload(file, current_user.user.id)
     return TowerModelTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
 
@@ -119,6 +127,14 @@ def upload_tower_model_image_endpoint(
     db: Session = Depends(get_db),
 ) -> TowerModelImageUploadResponse:
     if temp_file_id:
+        source_name_hint, size_bytes = describe_temp_upload(temp_file_id, current_user.user.id)
+        _check_upload(
+            size_bytes=size_bytes,
+            filename=source_name_hint,
+            max_mb=get_upload_limit_mb("image"),
+            allowed_exts={"jpg", "jpeg", "png", "webp", "gif", "bmp"},
+            allowed_exts_label="jpg/jpeg/png/webp/gif/bmp",
+        )
         content, source_file_name = resolve_temp_upload(temp_file_id, current_user.user.id)
         return upload_tower_model_image(
             db,
@@ -130,6 +146,7 @@ def upload_tower_model_image_endpoint(
         )
     if file is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少文件，请提供 file 或 temp_file_id")
+    validate_upload(file, purpose="image", allowed_exts={"jpg", "jpeg", "png", "webp", "gif", "bmp"})
     try:
         content = file.file.read()
     finally:
@@ -191,6 +208,10 @@ def seed_uploaded_tower_models_endpoint(
     current_user: CurrentUser = Depends(require_permission("tower_model.manage")),
     db: Session = Depends(get_db),
 ) -> TowerModelSeedResponse:
+    validate_upload(setting_file, purpose="spreadsheet", allowed_exts={"csv", "xlsx"}, allowed_exts_label="csv/xlsx")
+    validate_upload(ganta_file, purpose="spreadsheet", allowed_exts={"csv", "xlsx"}, allowed_exts_label="csv/xlsx")
+    if images_zip is not None:
+        validate_upload(images_zip, purpose="model", allowed_exts={"zip"})
     return seed_tower_models_from_upload(
         db,
         actor=current_user.user,

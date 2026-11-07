@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
+from ...core.file_upload import validate_upload
 from ...schemas.atp_asset import (
     AtpAssetCreateRequest,
     AtpAssetDetail,
@@ -164,6 +165,19 @@ def upload_atp_asset_files_endpoint(
     2. 两段式：先调用通用 upload-temp 端点获取 temp_file_id，再提交 temp_file_id
     临时文件在消费后自动删除，或由 24h 定时清理任务兜底。
     """
+    if temp_file_id:
+        from ...core.file_upload import _check_upload, describe_temp_upload, get_upload_limit_mb
+
+        name_hint, size_bytes = describe_temp_upload(temp_file_id, current_user.user.id)
+        _check_upload(
+            size_bytes=size_bytes,
+            filename=name_hint,
+            max_mb=get_upload_limit_mb("model"),
+            allowed_exts=None,
+            allowed_exts_label="",
+        )
+    for upload in files or []:
+        validate_upload(upload, purpose="model")
     updated = upload_asset_files(
         db,
         asset_id=asset_id,

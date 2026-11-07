@@ -200,7 +200,7 @@ def import_line_tower_csv_endpoint(
     current_user: CurrentUser = Depends(require_any_permission("tower.import", "tower.manage", "line.import", "line.manage")),
     db: Session = Depends(get_db),
 ) -> LineTowerImportResponse:
-    validate_upload(file, allowed_exts={"csv", "xlsx"}, allowed_exts_label="csv/xlsx")
+    validate_upload(file, purpose="spreadsheet", allowed_exts={"csv", "xlsx"}, allowed_exts_label="csv/xlsx")
     # 两段式上传路径（temp_file_id）在前端已按 accept 过滤，这里兜底校验扩展名，
     # 防止绕过前端直接构造请求导入其他格式。
     if temp_file_id:

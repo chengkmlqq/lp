@@ -135,15 +135,6 @@ class CommandStep:
     cwd: Path
 
 
-class _ResolvedTempUpload:
-    """将两段式上传解析出的 (content, file_name) 包装成上传文件兼容对象。"""
-
-    def __init__(self, *, filename: str, content: bytes) -> None:
-        self.filename = filename
-        self.content_type = mimetypes.guess_type(filename)[0]
-        self.file = io.BytesIO(content)
-
-
 def _fire_and_forget(coro: Any) -> None:
     try:
         loop = asyncio.get_running_loop()
@@ -1973,77 +1964,126 @@ def upload_asset_files(
     driver = _build_driver_or_400(mount)
     driver.ensure_directory(storage_root_path)
 
-    def _collect_upload_file(upload: Any) -> list[tuple[str, bytes, str | None]]:
-        """把单个上传（zip 或散文件）展开为 (相对路径, 内容, content_type) 列表，暂不写存储。
+    # 2026-11-07 全面上传体检：旧实现把整份 zip 读进内存（BytesIO）且所有成员
+    # archive.read() 全量驻留在 pending 列表里，几百 MB 模型包内存峰值翻倍。
+    # 改为流式：zip 直接在（Starlette 已 spool 到磁盘的）上传流上打开，
+    # 成员逐个 archive.open → driver.write_stream；只有参与预检的小文本
+    # （.atp/.dat/.pch，合计几十 KB）才读进内存。校验仍在写盘前完成
+    # （失败时零写入），语义与旧实现一致。
+    staged_paths: list[Path] = []
+    opened_streams: list[Any] = []
+    archives: list[zipfile.ZipFile] = []
+    # (相对路径, reader, 字节数, content_type)；reader=("zip", ZipFile, ZipInfo) 或 ("stream", fileobj, None)
+    entries: list[tuple[str, tuple[str, Any, Any], int | None, str | None]] = []
 
-        收集完成后由 _validate_atp_model_members 统一校验（失败时零写入）。
-        """
-        raw_name = (getattr(upload, "filename", "") or "").strip()
-        if not raw_name:
-            return []
-        collected: list[tuple[str, bytes, str | None]] = []
-        try:
-            content = upload.file.read()
-        finally:
+    try:
+        if temp_file_id:
+            from ..core.file_upload import discard_temp_upload, stage_temp_upload
+
+            temp_path, source_file_name, temp_size = stage_temp_upload(temp_file_id, actor_user_id)
+            staged_paths.append(temp_path)
+            temp_stream = temp_path.open("rb")
+            opened_streams.append(temp_stream)
+            default_name = source_file_name or "model.zip"
+            entries.append(
+                (
+                    _normalize_archive_member_path(default_name) or default_name,
+                    ("stream", temp_stream, None),
+                    temp_size,
+                    mimetypes.guess_type(default_name)[0],
+                )
+            )
+        for upload in files or []:
+            raw_name = (getattr(upload, "filename", "") or "").strip()
+            if not raw_name:
+                continue
+            content_type = getattr(upload, "content_type", None) or mimetypes.guess_type(raw_name)[0]
+            stream = upload.file
             try:
-                upload.file.close()
+                stream.seek(0)
+                stream.seek(0, 2)
+                upload_size: int | None = int(stream.tell())
+                stream.seek(0)
+            except (OSError, ValueError):
+                upload_size = None
+            if upload_size == 0:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"上传文件为空：{raw_name}")
+            opened_streams.append(stream)
+            if raw_name.lower().endswith(".zip"):
+                try:
+                    archive = zipfile.ZipFile(stream)
+                except zipfile.BadZipFile as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST, detail=f"ZIP 文件损坏: {exc}"
+                    ) from exc
+                archives.append(archive)
+                for member in archive.infolist():
+                    if member.is_dir():
+                        continue
+                    relative_path = _normalize_archive_member_path(member.filename)
+                    if relative_path is None:
+                        continue
+                    entries.append(
+                        (
+                            relative_path,
+                            ("zip", archive, member),
+                            int(member.file_size),
+                            mimetypes.guess_type(relative_path)[0],
+                        )
+                    )
+            else:
+                entries.append(
+                    (
+                        _normalize_archive_member_path(raw_name) or raw_name,
+                        ("stream", stream, None),
+                        upload_size,
+                        content_type,
+                    )
+                )
+
+        if not entries:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="缺少文件，请提供 files 或 temp_file_id",
+            )
+
+        # 统一校验：白名单扩展名 + .atp 入口（失败时零写入）
+        _validate_atp_model_members([relative_path for relative_path, _, _, _ in entries])
+        # 内容级预检（形态判定/pch 闭合/参数段）只读小文本成员，避免整包进内存
+        checked: dict[str, bytes] = {}
+        for relative_path, (kind, source, member), _size, _content_type in entries:
+            if not relative_path.lower().endswith(_CHECKED_SUFFIXES):
+                continue
+            if kind == "zip":
+                checked[relative_path] = source.read(member)
+            else:
+                checked[relative_path] = source.read()
+                source.seek(0)
+        format_report = _inspect_atp_package_or_400(checked)
+
+        for relative_path, (kind, source, member), member_size, content_type in entries:
+            target_path = normalize_virtual_path(f"{storage_root_path.rstrip('/')}/{relative_path}")
+            parent_path = _parent_virtual_path(target_path)
+            driver.ensure_directory(parent_path)
+            if kind == "zip":
+                with source.open(member) as member_stream:
+                    driver.write_stream(target_path, member_stream, content_type=content_type, size=member_size)
+            else:
+                source.seek(0)
+                driver.write_stream(target_path, source, content_type=content_type, size=member_size)
+    finally:
+        for archive in archives:
+            try:
+                archive.close()
             except Exception:
                 pass
-        content_type = getattr(upload, "content_type", None) or mimetypes.guess_type(raw_name)[0]
-        if raw_name.lower().endswith(".zip"):
+        for stream_handle in opened_streams:
             try:
-                with zipfile.ZipFile(io.BytesIO(content)) as archive:
-                    for member in archive.infolist():
-                        if member.is_dir():
-                            continue
-                        relative_path = _normalize_archive_member_path(member.filename)
-                        if relative_path is None:
-                            continue
-                        collected.append(
-                            (relative_path, archive.read(member), mimetypes.guess_type(relative_path)[0])
-                        )
-            except zipfile.BadZipFile as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST, detail=f"ZIP 文件损坏: {exc}"
-                ) from exc
-            return collected
-        relative_path = _normalize_archive_member_path(raw_name) or raw_name
-        collected.append((relative_path, content, content_type))
-        return collected
-
-    resolved_files = list(files or [])
-    if temp_file_id:
-        from ..core.file_upload import resolve_temp_upload
-
-        content, source_file_name = resolve_temp_upload(temp_file_id, actor_user_id)
-        if not content:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="临时文件为空，请重新上传")
-        resolved_files.append(
-            _ResolvedTempUpload(
-                filename=source_file_name or "model.zip",
-                content=content,
-            )
-        )
-
-    if not resolved_files:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="缺少文件，请提供 files 或 temp_file_id",
-        )
-
-    pending: list[tuple[str, bytes, str | None]] = []
-    for file in resolved_files:
-        pending.extend(_collect_upload_file(file))
-    # 统一校验：白名单扩展名 + .atp 入口 + 形态判定/pch 闭合/参数段（失败时零写入）
-    _validate_atp_model_members([path for path, _, _ in pending])
-    format_report = _inspect_atp_package_or_400(
-        {path: content for path, content, _ in pending if path.lower().endswith(_CHECKED_SUFFIXES)}
-    )
-    for relative_path, content, content_type in pending:
-        target_path = normalize_virtual_path(f"{storage_root_path.rstrip('/')}/{relative_path}")
-        parent_path = _parent_virtual_path(target_path)
-        driver.ensure_directory(parent_path)
-        driver.write_file(target_path, content=content, content_type=content_type)
+                stream_handle.close()
+            except Exception:
+                pass
+        for temp_path in staged_paths:
+            discard_temp_upload(temp_path)
 
     asset.storage_mount_code = mount.code
     asset.storage_root_path = storage_root_path

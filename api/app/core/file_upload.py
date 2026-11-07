@@ -21,6 +21,27 @@ from .config import get_settings
 LOCAL_TEMP_PREFIX = "local:"
 TEMP_TTL_SECONDS = 48 * 3600
 
+# 各类上传的大小上限（MB）。2026-11-07 全面上传体检时统一制定：
+# 线上 1GB DEM 暴露出「有的端点无上限、有的端点错用全局 50MB」两个极端，
+# 改为按业务用途给显式限额，新增上传端点时从这里取值，不要再拍脑袋。
+UPLOAD_LIMITS_MB: dict[str, int] = {
+    "default": 50,      # 兜底（validate_upload 不传 purpose/max_mb 时）
+    "text": 64,         # CSV/TXT 台账、波形、地闪、故障复现曲线
+    "spreadsheet": 128, # xlsx/csv 线路台账
+    "image": 10,        # 头像、杆塔图片
+    "model": 512,       # ATP 模型包 / 杆塔模型包（zip 或散文件）
+    "release": 512,     # MATLAB 引擎发布包
+    "file": 2048,       # 文件管理器任意文件 / 通用临时上传
+    "raster": 4096,     # DEM 栅格（tif/zip，线上最大 1.27GB）
+}
+
+
+def get_upload_limit_mb(purpose: str | None = None) -> int:
+    """取某类上传的大小上限（MB）；未知用途回落到 default。"""
+    if not purpose:
+        return UPLOAD_LIMITS_MB["default"]
+    return UPLOAD_LIMITS_MB.get(purpose, UPLOAD_LIMITS_MB["default"])
+
 
 def _file_size_bytes(file: UploadFile) -> int:
     """获取上传文件大小（字节），不将整份内容读入内存。
@@ -248,6 +269,39 @@ def describe_temp_upload(temp_file_id: str, user_id: str) -> tuple[str, int]:
     return _original_name(path.name), int(size)
 
 
+def stage_temp_upload(temp_file_id: str, user_id: str) -> tuple[Path, str, int]:
+    """把临时上传定位为本地文件，返回 ``(路径, 原始文件名, 字节数)``,不删除、不读取。
+
+    大文件（ATP 模型包、DEM 等）不要用 ``resolve_temp_upload`` 整份读进内存，
+    用本函数拿到路径后直接 ``open``/``zipfile.ZipFile`` 按流处理；
+    处理完由调用方负责 ``path.unlink()``（或改用 ``discard_temp_upload``）。
+    """
+    path = _temp_path_from_id(temp_file_id, user_id)
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="临时文件不存在或已过期，请重新上传",
+        ) from None
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"读取临时文件失败：{exc}",
+        ) from exc
+    if size <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件为空")
+    return path, _original_name(path.name), int(size)
+
+
+def discard_temp_upload(path: Path) -> None:
+    """删除 ``stage_temp_upload`` 返回的临时文件（尽力而为，不抛错）。"""
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 @contextmanager
 def open_temp_upload_stream(temp_file_id: str, user_id: str) -> Iterator[tuple[Any, str, int]]:
     """以流的方式打开临时文件，产出 ``(stream, 原始文件名, 字节数)``。
@@ -392,6 +446,7 @@ def validate_upload(
     allowed_exts: set[str] | None = None,
     *,
     allowed_exts_label: str = "",
+    purpose: str | None = None,
 ) -> UploadFile | None:
     """统一的上传文件校验依赖：大小上限（413）+ 扩展名白名单（400）。
 
@@ -404,15 +459,21 @@ def validate_upload(
         上传文件对象。为 None 时直接放行返回 None（兼容 temp_file_id 路径：
         文件已上传到临时区，导入端点仅传临时文件 ID 不带 file）。
     max_mb:
-        文件大小上限（MB）。为 None 时取全局配置 ``UPLOAD_MAX_FILE_SIZE_MB``（默认 50）。
+        文件大小上限（MB）。为 None 且未给 purpose 时取全局配置
+        ``UPLOAD_MAX_FILE_SIZE_MB``；给了 purpose 则取 ``UPLOAD_LIMITS_MB[purpose]``
+        （见模块顶部预设表），max_mb 显式传值时优先于 purpose。
     allowed_exts:
         允许的扩展名集合（不含点，如 ``{"csv", "xlsx"}``），匹配前归一化为小写。
         为 None 时不做扩展名校验。
     allowed_exts_label:
         错误提示里的扩展名展示文案（如 "csv/xlsx"）。为空则自动从 allowed_exts 生成。
+    purpose:
+        上传用途（``UPLOAD_LIMITS_MB`` 的键），用于确定大小上限。
     """
     if file is None:
         return None
+    if max_mb is None and purpose:
+        max_mb = get_upload_limit_mb(purpose)
     _check_upload(
         size_bytes=_file_size_bytes(file),
         filename=file.filename or "",

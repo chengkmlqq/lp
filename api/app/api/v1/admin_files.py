@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.dependencies import CurrentUser, require_any_permission, require_enabled_menu_route, require_permission
+from ...core.file_upload import validate_upload
 from ...schemas.file_storage import (
     FileCreateDirectoryRequest,
     FileDeleteRequest,
@@ -85,6 +86,7 @@ def upload_file_endpoint(
     current_user: CurrentUser = Depends(require_permission("file.manage")),
     db: Session = Depends(get_db),
 ) -> FileOperationResponse:
+    validate_upload(file, purpose="file")
     return upload_file_to_path(
         db,
         mount_code=mount_code,

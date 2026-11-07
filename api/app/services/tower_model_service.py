@@ -659,10 +659,15 @@ def _load_image_bytes_from_zip(images_zip: UploadFile | None) -> dict[str, tuple
     if filename and not filename.endswith(".zip"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="图片包必须是 zip 格式")
 
-    content = _read_upload_bytes(images_zip, label="图片压缩包")
+    # 2026-11-07 全面上传体检：不再把整份压缩包读进内存（BytesIO），
+    # 直接在（Starlette 已 spool 到磁盘的）上传流上打开 zip，逐成员解出图片。
     mapping: dict[str, tuple[str, bytes, str]] = {}
     try:
-        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+        try:
+            images_zip.file.seek(0)
+        except (OSError, ValueError):
+            pass
+        with zipfile.ZipFile(images_zip.file) as zf:
             for info in zf.infolist():
                 if info.is_dir():
                     continue

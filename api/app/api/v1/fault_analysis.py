@@ -135,6 +135,7 @@ def upload_fault_analysis_temp_file(
     确认提交时携带 temp_file_id 列表，由 create-fault-analysis-with-files 消费。
     临时文件在消费后自动删除，或由定时清理任务兜底清除（24h）。
     """
+    validate_upload(file, purpose="text")
     temp_file_id, file_name = save_temp_upload(file, current_user.user.id)
     return FaultAnalysisTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
 
@@ -147,6 +148,7 @@ async def extract_wave(
     """从录波数据文件（pdf/txt/csv/json/xlsx）中提取 13 个故障字段，供前端自动回填，不回写数据库（LP-421）。"""
     validate_upload(
         file,
+        purpose="text",
         allowed_exts={"pdf", "txt", "csv", "json", "xlsx"},
         allowed_exts_label="pdf/txt/csv/json/xlsx",
     )

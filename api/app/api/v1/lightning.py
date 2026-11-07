@@ -102,6 +102,7 @@ def upload_lightning_temp_file(
 
     临时文件将在导入消费后自动删除，或由定时清理任务清理超过 24h 的孤儿文件。
     """
+    validate_upload(file, purpose="text", allowed_exts={"csv", "txt"})
     temp_file_id, file_name = save_temp_upload(file, current_user.user.id)
     return LightningTempUploadResponse(temp_file_id=temp_file_id, file_name=file_name)
 
@@ -262,7 +263,7 @@ def import_lightning_amplitude_file_async(
     1. 传统方式：直接上传文件（file 字段）
     2. 两段式：先调用 upload-temp 获取 temp_file_id，再提交 temp_file_id + 表单字段
     """
-    validate_upload(file, allowed_exts={"csv", "txt"})
+    validate_upload(file, purpose="text", allowed_exts={"csv", "txt"})
     return import_lightning_amplitude_from_file(
         db,
         file=file,
@@ -338,7 +339,7 @@ def import_lightning_distribution_file(
     current_user: CurrentUser = Depends(require_permission("lightning.manage")),
     db: Session = Depends(get_db),
 ) -> LightningDistributionImportResponse:
-    validate_upload(file, allowed_exts={"csv", "txt"})
+    validate_upload(file, purpose="text", allowed_exts={"csv", "txt"})
     return import_lightning_distribution_from_file(
         db,
         file=file,
