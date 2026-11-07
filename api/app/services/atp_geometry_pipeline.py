@@ -277,6 +277,23 @@ def span_km_for(name: str, base_tower: dict[str, Any]) -> float | None:
 GEOMETRY_LOCK = threading.Lock()
 
 
+def _has_positive_values(group: Any) -> bool:
+    """分组里的上/中/下三相，至少有一个是正数（None/0/空串都算缺失）。"""
+    if isinstance(group, dict):
+        values = group.values()
+    elif isinstance(group, (list, tuple)):
+        values = group
+    else:
+        return False
+    for v in values:
+        try:
+            if v is not None and float(v) > 0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
 def has_phase_geometry(profile: dict[str, Any], base_tower: dict[str, Any] | None) -> bool:
     """快照是否带真实相导线几何（上/中/下相中距 + 相高）。
 
@@ -286,6 +303,14 @@ def has_phase_geometry(profile: dict[str, Any], base_tower: dict[str, Any] | Non
     模型自带相高 27.3m / 间距 6.8m，被改写成 18.7/14.7/10.7m / 8m，
     二分收敛到 1039.9kA，而 110kV 同塔型老模型是 125.8kA）。
     缺几何时宁可不改写、保留 ATPDraw 模型自带几何。
+
+    ⚠️ 2026-11-06 修复：`_build_circuit_geometry_from_row()` 是**固定键**输出，
+    即使台账上回路几何全为空，也会产出 `{"upper": None, "middle": None, ...}`。
+    旧实现只判 `dict` 非空 → 全 None 也被当成"有几何"，随后 build_dat_values
+    把 RELE 中距写成 0、相高按均分兜底，LCC 直接不产出 pch：
+        35kV shangzi 实测 `RELE09: 2.7 -> 0.` / `RELE10: 1.8 -> 0.`
+        → `long.dat 的 LCC 运行未产出 .pch`，任务整体失败。
+    现改为**必须存在正数**才算有几何，与"缺几何就不改写"的原意一致。
     """
     for src in (
         (base_tower or {}).get("circuit_geometry_json"),
@@ -299,7 +324,7 @@ def has_phase_geometry(profile: dict[str, Any], base_tower: dict[str, Any] | Non
                 continue
             spacing = layer.get("phase_spacing_m") or layer.get("spacing")
             height = layer.get("phase_height_m") or layer.get("height")
-            if isinstance(spacing, dict) and spacing and isinstance(height, dict) and height:
+            if _has_positive_values(spacing) and _has_positive_values(height):
                 return True
     return False
 

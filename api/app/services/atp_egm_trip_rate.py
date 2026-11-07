@@ -497,6 +497,20 @@ def compute_shielding_trip_rate(
 
     divisor = _tower_divisor(tower_type)
     trip_rate = total / divisor if divisor else total
+    # ⚠️ 2026-11-06：跳闸率是概率量，必须落在 [0, 1]。
+    # 实测 220kV maotou（资产 long.dat 导体：中相 (0, 29.3)，避雷线 (±5.6, 30.3)，
+    # 中相只低于避雷线 1.0m → 保护角 ≈80°）算出 6.804 → 显示 680%。
+    # 这种输入下暴露弧已超出 EGM 的几何假设，算术结果没有物理意义。
+    # 这里钳到 1.0 并**显式告警**（不静默），提示去核对塔型几何/避雷线高度。
+    if trip_rate > 1.0:
+        logger.warning(
+            "[EGM] 绕击跳闸率超出物理上限 %.6f > 1.0，已钳制为 1.0：egm%d 电压=%s 回路数=%d "
+            "Ic=%.3fkA 合计=%.6f÷%.0f —— 请核对塔型几何（相导线是否落在避雷线保护范围内）",
+            trip_rate, egm_type, voltage, circuit_count, raoji_withstand_ka, total, divisor,
+        )
+        trip_rate = 1.0
+    elif trip_rate < 0.0:
+        trip_rate = 0.0
     logger.info(
         "[EGM] 绕击跳闸率（%s 引擎）：egm%d 电压=%s 回路数=%d Ng=%s Ic=%s 合计=%.6f ÷%.0f = %.6f",
         mode, egm_type, voltage, circuit_count, density, raoji_withstand_ka, total, divisor, trip_rate,

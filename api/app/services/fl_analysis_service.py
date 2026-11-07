@@ -1928,8 +1928,23 @@ def _finish_rule_based_run(
     duration_ms = int((time.perf_counter() - started_perf) * 1000)
     now = utcnow()
 
-    run.status = "success"
-    run.error_message = None
+    # ⚠️ 2026-11-06：全部塔都算失败（快照数>0 但结果数=0）时绝不能标 success。
+    # 实测 115/230 的 INSERT 资产 pch 断链（`-1IN___AOUT__A` 占位节点、$INSERT 无节点列表）
+    # → ATP 读源卡即 `KILL = 12`（bus name unrecognizable）→ 每塔抛异常走
+    # 「单塔独立，任务继续」分支 → 旧逻辑收尾仍写 success + 0 条塔结果，
+    # 前端只看到「成功但没有数据」，模型故障被彻底掩盖（此前表现为耐雷水平恒 2000kA）。
+    _total_towers = int(job.total_tower_count or 0)
+    _result_towers = int(job.result_tower_count or 0)
+    _all_towers_failed = _total_towers > 0 and _result_towers == 0
+    _fail_message = (
+        f"全部 {_total_towers} 基杆塔计算失败，未产生任何结果。"
+        "常见原因：ATP 模型不可运行（pch 未带真实节点名导致 KILL=12、$PARAMETER 段未规范化、"
+        "$INCLUDE/$INSERT 目标文件缺失）。请查看任务日志中各塔的具体报错。"
+    ) if _all_towers_failed else None
+    final_status = "failed" if _all_towers_failed else "success"
+
+    run.status = final_status
+    run.error_message = _fail_message
     run.duration_ms = max(duration_ms, 0)
     run.finished_at = now
     run.update_date = now
@@ -1937,10 +1952,13 @@ def _finish_rule_based_run(
     # ⚠️ 取消是终态：用户已取消时不再把状态翻回 success（结果/日志仍保留供追溯）。
     cancelled = job.status == "cancelled"
     if cancelled:
-        logger.info("任务已被取消，跳过 success 状态写回：job=%s", job.id)
+        logger.info("任务已被取消，跳过 %s 状态写回：job=%s", final_status, job.id)
     else:
-        job.status = "success"
-        job.error_message = None
+        job.status = final_status
+        job.error_message = _fail_message
+        if _all_towers_failed:
+            logger.error("[fl-analysis] 任务 %s 全部塔计算失败，标记 failed：结果数=0/%d",
+                         job.id, _total_towers)
     job.result_summary_json = {
         **summary,
         "adapter_status": adapter_status,
@@ -1948,9 +1966,9 @@ def _finish_rule_based_run(
     }
 
     # 2026-09-30：任务完成通知（单独事务+WS推送，失败不影响任务本身）。
-    # 取消的任务不发成功通知。
+    # 取消的任务不发通知。
     if not cancelled:
-        _notify_job_done(job, status="success")
+        _notify_job_done(job, status=final_status, detail=_fail_message)
     job.finished_at = now
     job.update_date = now
 
@@ -1962,16 +1980,16 @@ def _finish_rule_based_run(
         if _job is None or _run is None:
             return
         _perf = time.perf_counter() - started_perf
-        _run.status = "success"
-        _run.error_message = None
+        _run.status = final_status
+        _run.error_message = _fail_message
         _run.duration_ms = max(int(_perf * 1000), 0)
         _run.finished_at = utcnow()
         _run.update_date = utcnow()
         if _job.status == "cancelled":
-            logger.info("任务已被取消，跳过 success 状态写回：job=%s", _job.id)
+            logger.info("任务已被取消，跳过 %s 状态写回：job=%s", final_status, _job.id)
         else:
-            _job.status = "success"
-            _job.error_message = None
+            _job.status = final_status
+            _job.error_message = _fail_message
         _job.result_summary_json = {
             **summary,
             "adapter_status": adapter_status,
@@ -1980,9 +1998,22 @@ def _finish_rule_based_run(
         _job.finished_at = utcnow()
         _job.update_date = utcnow()
 
-    _commit_with_retry(db, label="finish_rule_based_run 成功收尾", reapply=_reapply_success)
+    _commit_with_retry(db, label=f"finish_rule_based_run {final_status} 收尾", reapply=_reapply_success)
 
     if cancelled:
+        return
+
+    if _all_towers_failed:
+        _publish_change(
+            "fl_analysis.job.failed",
+            {
+                "action": "job_failed",
+                "job_id": job.id,
+                "line_id": job.line_id,
+                "run_id": run.id,
+                "error_message": _fail_message,
+            },
+        )
         return
 
     _publish_change(

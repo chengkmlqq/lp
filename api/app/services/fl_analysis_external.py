@@ -275,7 +275,18 @@ def execute_multi_phase_binary_search_external(
             "flashover_phase": str(slot.get("phases") or ""),
             "search_history": list(search.get("search_history") or []),
             "source_level": slot.get("level"),
+            # 2026-11-06：槽位没填 ≠ 耐雷水平为 0。
+            # 同跳按"≥N 相闪络"逐档搜索，某档可能被**跳档**（如 220kV guxing 实测：
+            # 99.14kA 是 2 相、下一个落点 218.11kA 直接 4 相，3 相档无落点）。
+            # C# 语义是"未填槽导出 0"，为保持对拍一致**不改数值**，但补明确标注，
+            # 避免前端/报表把 0 读成"零电流即可闪络"。
+            "unfilled": value is None,
         }
+        if value is None:
+            entry["note"] = (
+                f"搜索跳档：未出现恰好{entry['label']}闪络的落点，按 C# 槽位语义导出 0"
+                "（该档耐雷水平应参照相邻档位理解）"
+            )
         if value:
             # fjtzlDanXiang 同源公式（对齐 C# mArray_TZL[i] = fjtzlDanXiang((int)current)）
             entry["trip_rate"] = None
@@ -327,6 +338,9 @@ def execute_multi_phase_binary_search_external(
             "flashover_phase": item.get("flashover_phase") or "",
             "counterstrike_withstand_ka": item.get("counterstrike_withstand_ka"),
             "trip_rate": item.get("trip_rate"),
+            # 未填槽（搜索跳档）时显式标注，避免 0 被读成"零电流闪络"
+            "unfilled": item.get("unfilled", False),
+            **({"note": item["note"]} if item.get("note") else {}),
         }
         for item in phase_entries
     ]
@@ -574,6 +588,16 @@ _NUMERIC_GEOMETRY_PARAM_NAMES = (
     "RELE25", "RELE26",
     "REHG______", "REHC1_____", "REHC2_____", "REHC3_____",
 )
+# 上面这组里"长度/高度类"的参数：它们只能是正数，写成 0 会让 ATP 直接崩。
+# 典型现场：快照没有回路几何（台账未填/非标准塔型），兜底公式算出 0.，
+#   `RELE09: 2.7 -> 0.` → 分布参数线长度 0 →
+#   `KILL = 78. A non-positive length of 0.00000000E+00 has just been read ...`
+#   → 整基塔算不出结果（2026-11-06 35kV shangzi 实测）。
+# 处理口径与 `has_phase_geometry()` 一致：**宁可保留模型自带数值，也不写 0**。
+# RER001（接地电阻）不在其中——0Ω 有物理意义且不参与长度字段。
+_POSITIVE_ONLY_PARAM_NAMES = tuple(
+    n for n in _NUMERIC_GEOMETRY_PARAM_NAMES if n != "RER001"
+)
 # 参数行形态：`名字 = 数值 [$$注释]`。
 # ATPDraw 7.2+ 生成的模板（115/230kV 新模型）在 $PARAMETER 区写作
 #   `RER001I =1000 $$`（名字后一个空格、值后缀 `$$` 说明），
@@ -714,6 +738,22 @@ def override_numeric_current_params(
             )
             allowed = set(_NUMERIC_GEOMETRY_PARAM_NAMES) | set(_NUMERIC_CURRENT_PARAM_NAMES)
             wanted.update({k: v for k, v in (full or {}).items() if k in allowed and v})
+            # 长度/高度类参数写 0 会让 ATP 报 KILL=78 直接崩（常见于快照缺相几何、
+            # 兜底公式算出 0.）。这类值丢弃，保留模板自带数值。
+            dropped: list[tuple[str, str]] = []
+            for name in list(wanted):
+                if name not in _POSITIVE_ONLY_PARAM_NAMES:
+                    continue
+                try:
+                    if float(str(wanted[name]).strip()) <= 0:
+                        dropped.append((name, wanted.pop(name)))
+                except (TypeError, ValueError):
+                    continue
+            if dropped:
+                logger.info(
+                    "[ATP] 丢弃非正的几何参数（保留模型自带值，避免 KILL=78）：%s",
+                    ", ".join(f"{n}={v}" for n, v in dropped),
+                )
         except Exception:  # noqa: BLE001 - 兜底：几何计算失败仍保证电流写入
             logger.warning("[ATP] 几何参数计算失败，回退为仅覆写电流/波形参数", exc_info=True)
 
@@ -2185,14 +2225,34 @@ def execute_external_waveform_tower_analysis(
                     _lis_txt = _lis_path.read_bytes().decode("gbk", errors="replace") if _lis_path.is_file() else ""
                 except Exception:  # noqa: BLE001
                     _lis_txt = ""
-                for _m in ("Halt in", "Temporary error stop", "Failure to connect disk file"):
+                for _m in (
+                    "You lose, fella",          # ATP 致命错误总标志（KILL 系列）
+                    "KILL = ",                  # 数据卡级致命错误（KILL=12 未定义节点等）
+                    "Temporary error stop",
+                    "Halt in",
+                    "Failure to connect disk file",
+                    "cannot be opened",         # $INSERT/$INCLUDE 目标文件缺失
+                ):
                     if _m in _lis_txt:
                         halt_marker = _m
                         break
             if halt_marker:
+                # 把 KILL 码与出事卡片名带进报错——2026-11-06 实测：115/230 的
+                # guxing/jiubei/maotou/shangzi/sihuita 资产 pch 是「占位节点」版本
+                # （`-1IN___AOUT__A`），$INSERT 无节点列表 → 线路模型节点不存在 →
+                # ATP 读源卡即 `KILL = 12`（bus name unrecognizable）退出。
+                # 此时 work.lis 已生成、退出码仍为 0，旧逻辑只看 "Halt in" 漏判，
+                # 于是每个探点都判 0 闪络、二分顶到 2000kA 上界还标 success。
+                _detail = ""
+                _km = re.search(r"KILL\s*=\s*(\d+)", _lis_txt)
+                if _km:
+                    _detail = f"，KILL={_km.group(1)}"
+                _nm = re.search(r"The name read from the data card is\s+\"?([A-Za-z0-9_]+)\"?", _lis_txt)
+                if _nm:
+                    _detail += f"，未定义节点/卡片={_nm.group(1)}"
                 raise _AtpSimulationHalt(
-                    f"{snapshot.tower_no} ATP 仿真未真正运行（work.lis 含 `{halt_marker}`），"
-                    "闪络判据不可用；请检查 $PARAMETER 段/模型完整性"
+                    f"{snapshot.tower_no} ATP 仿真未真正运行（work.lis 含 `{halt_marker}`{_detail}），"
+                    "闪络判据不可用；请检查模型完整性（pch 是否带真实节点名、$PARAMETER 段是否规范化）"
                 )
             parsed_payload["flashover_count"] = lis_flash
             if lis_phases:
