@@ -3699,6 +3699,204 @@ body {
 
 .admin-atp-models-file-none {
   color: var(--fquiz-theme-border);
+}
+
+/* ── 2026-11-07 总览页重做：读数带 + 电压×塔型覆盖矩阵 + 可筛清单 ──
+   概览带直接复用详情页的 detail-hero / detail-stats 一套视觉，不再重复定义。 */
+.admin-atp-models-overview {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 矩阵与清单区块：白底细边框，和卡片/详情页保持同一套容器语言 */
+.admin-atp-models-overview-block {
+  padding: 14px 16px 16px;
+  border: 1px solid var(--fquiz-theme-border);
+  border-radius: 8px;
+}
+
+.admin-atp-models-overview-block-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.admin-atp-models-overview-block-title {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--fquiz-theme-text-primary);
+}
+
+.admin-atp-models-overview-block-note {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--fquiz-theme-text-muted);
+}
+
+/* 覆盖矩阵：行=电压等级，列=塔型；格子深浅只表示数量多少 */
+.admin-atp-models-overview-matrix {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-atp-models-overview-matrix-corner,
+.admin-atp-models-overview-matrix-colhead,
+.admin-atp-models-overview-matrix-rowhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--fquiz-theme-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.admin-atp-models-overview-matrix-corner {
+  font-size: 11px;
+}
+
+.admin-atp-models-overview-matrix-colhead {
+  justify-content: center;
+  font-weight: 500;
+  color: var(--fquiz-theme-text-primary);
+}
+
+.admin-atp-models-overview-matrix-total {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fquiz-theme-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-atp-models-overview-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 38px;
+  padding: 2px 4px;
+  border: 1px solid var(--fquiz-theme-border);
+  border-radius: 6px;
+  background: var(--fquiz-theme-bg-container);
+  color: var(--fquiz-theme-text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-atp-models-overview-cell:hover {
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 40%, var(--fquiz-theme-border));
+}
+
+.admin-atp-models-overview-cell.is-level-0 {
+  border-style: dashed;
+  color: var(--fquiz-theme-text-muted);
+  cursor: default;
+  background: transparent;
+}
+
+.admin-atp-models-overview-cell.is-level-0:hover {
+  border-color: var(--fquiz-theme-border);
+}
+
+.admin-atp-models-overview-cell.is-level-1 {
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 6%, var(--fquiz-theme-bg-container));
+}
+
+.admin-atp-models-overview-cell.is-level-2 {
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 12%, var(--fquiz-theme-bg-container));
+}
+
+.admin-atp-models-overview-cell.is-level-3 {
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 19%, var(--fquiz-theme-bg-container));
+}
+
+.admin-atp-models-overview-cell.is-selected {
+  border-color: var(--ant-color-primary);
+  box-shadow: inset 0 0 0 1px var(--ant-color-primary);
+}
+
+.admin-atp-models-overview-cell-count {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-atp-models-overview-cell-badge {
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  color: #b45309;
+  white-space: nowrap;
+}
+
+/* 清单工具条：左筛选右计数 */
+.admin-atp-models-overview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 12px;
+}
+
+/* 模型列：名称 + 编号两行 */
+.admin-atp-models-overview-model {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.admin-atp-models-overview-model-name {
+  font-size: 13px;
+  line-height: 19px;
+  font-weight: 500;
+  color: var(--fquiz-theme-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-atp-models-overview-model-code {
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--fquiz-theme-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 维度组合列：一行灰字，比拆成 5 列更省宽度 */
+.admin-atp-models-overview-dims {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--fquiz-theme-text-secondary);
+}
+
+/* 形态小标签：与详情页/卡片的形态 chip 同一套受控色 */
+.admin-atp-models-overview-format {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
 }/* LP-246: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 *//* LP-246: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
    仅作用于外层主列表 Tabs（editable-card），避免误伤详情 Tab 内的 recharts/Descriptions；
    选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 *//* LP-311: 默认选项卡标题样式：粗体 16px 标题色，与线路管理页保持一致 */

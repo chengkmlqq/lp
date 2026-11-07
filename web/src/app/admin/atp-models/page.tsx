@@ -1473,7 +1473,7 @@ export default function AtpModelsPage() {
             label: tab.label,
             closable: true,
             children: (
-              <AtpModelOverviewTab />
+              <AtpModelOverviewTab onOpenDetail={openDetail} />
             ),
           })),
           ...detailTabs.map((tab) => ({
