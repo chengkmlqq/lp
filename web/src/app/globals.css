@@ -2692,16 +2692,200 @@ body {
   font-weight: 600;
   font-size: 16px;
   color: var(--ant-color-text);
-}/* LP-248: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底） */.admin-atp-models-card {
+}/* LP-248: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底） *//* 2026-11-07 版式重做：卡片改纯白底 + 细边框，靠留白与对齐撑精致度，
+   不再用「蓝渐变底 + 蓝边框 + 彩色水印章」那套装饰性做法。 */
+.admin-atp-models-card {
   height: 100%;
-  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 26%, var(--ant-color-border-secondary));
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--fquiz-theme-bg-container) 96%, var(--fquiz-theme-primary) 4%) 0%,
-      var(--fquiz-theme-bg-container) 100%
-    );
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--fquiz-theme-text-primary) 8%, transparent);
+  background: var(--fquiz-theme-bg-container);
+  border: 1px solid var(--fquiz-theme-border);
+  box-shadow: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-atp-models-card:hover {
+  border-color: color-mix(in srgb, var(--fquiz-theme-primary) 34%, var(--fquiz-theme-border));
+  box-shadow: var(--fquiz-theme-shadow-card);
+}
+
+.admin-atp-models-card-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* 标题区：模型名 + 编号（左，可省略），发布状态 chip（右） */
+.admin-atp-models-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px 10px;
+}
+
+/* 电压分档色块：整张卡唯一的彩色锚点，颜色由电压等级决定（见 voltageTier） */
+.admin-atp-models-card-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  margin-top: 1px;
+  border-radius: 9px;
+  font-size: 15px;
+}
+
+.admin-atp-models-card-headline {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* 属性网格：两列「标签灰 / 值深」，无图标，靠对齐形成扫读节奏 */
+.admin-atp-models-card-specs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  margin: 0;
+  padding: 0 14px 12px;
+  border-bottom: 1px solid var(--fquiz-theme-border);
+}
+
+.admin-atp-models-card-spec {
+  min-width: 0;
+}
+
+.admin-atp-models-card-spec dt {
+  margin: 0 0 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--fquiz-theme-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-atp-models-card-spec dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--fquiz-theme-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-atp-models-card-progress {
+  padding: 0 14px;
+  margin: 8px 0 0;
+}
+
+/* 数据条：三格浅色小块（测试次数 / 最近结果 / 版本），数字是视觉重点 */
+.admin-atp-models-card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 14px 12px;
+}
+
+.admin-atp-models-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fquiz-theme-primary) 5%, transparent);
+}
+
+.admin-atp-models-stat-label {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--fquiz-theme-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-atp-models-stat-value {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--fquiz-theme-text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-atp-models-stat-value.is-success {
+  color: #15803d;
+}
+
+.admin-atp-models-stat-value.is-danger {
+  color: #b91c1c;
+}
+
+.admin-atp-models-stat-value.is-running {
+  color: #0369a1;
+}
+
+.admin-atp-models-stat-value.is-muted {
+  color: var(--fquiz-theme-text-muted);
+  font-weight: 400;
+}
+
+/* 页脚：形态说明与异常状态在左（安静灰字），操作按钮在右 */
+.admin-atp-models-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding: 6px 8px 6px 14px;
+}
+
+.admin-atp-models-card-foot-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 形态说明：原来的水印斜章收成一行灰字，悬停看完整链路说明与预检提示数 */
+.admin-atp-models-format-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--fquiz-theme-text-muted);
+  white-space: nowrap;
+  cursor: help;
+  user-select: none;
+}
+
+.admin-atp-models-format-note::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.admin-atp-models-format-note[data-tone="legacy"],
+.admin-atp-models-format-note[data-tone="insert"] {
+  color: var(--fquiz-theme-text-secondary);
+}
+
+.admin-atp-models-format-note-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 2px;
+  color: #b45309;
+  font-variant-numeric: tabular-nums;
 }
 
 .admin-atp-models-card > .ant-card-head {
@@ -2830,22 +3014,37 @@ body {
   border: 1px solid #bae6fd;
 }
 
-/* 发布状态 chip（2026-11-05）：已发布 = 蓝色；未发布复用 is-muted 灰 */
+/* 发布状态 chip（2026-11-07）：已发布 = 绿（成功语义），未发布复用 is-muted 灰。
+   去掉原来的圆点与蓝色调——徽章本身已经表达状态，再叠红点/蓝底就是重复强调。 */
 .admin-atp-models-state-chip.is-published {
-  color: #1d4ed8;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  color: #15803d;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
 }
 
-/* 卡片主行模型名称：吃掉剩余宽度以便 ellipsis 生效 */
+/* 卡片标题：模型名是唯一锚点，编号退成小一号灰字做身份区分 */
 .admin-atp-models-card-name {
-  flex: 1 1 auto;
-  min-width: 0;
   font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--fquiz-theme-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* 形态印章（2026-11-05）：形态不再用右上角标签，改成水印式「盖章」盖在卡片右侧。
-   color 由形态元数据决定（新版/老版/检测中…），半透明、不拦截点击。 */
+.admin-atp-models-card-code {
+  margin-top: 1px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--fquiz-theme-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 形态水印斜章（2026-11-05 引入，2026-11-07 从卡片上撤下，改成页脚一行灰字
+   .admin-atp-models-format-note。这里保留 class 定义仅供潜在回退参考，卡片已不再渲染。） */
 .admin-atp-models-stamp {
   position: absolute;
   top: 44px;

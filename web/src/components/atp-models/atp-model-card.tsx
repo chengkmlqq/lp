@@ -1,20 +1,15 @@
 "use client";
 
-import { Button, Dropdown, Modal, Progress, Space, Tooltip, Typography } from "antd";
+import { Button, Dropdown, Modal, Progress, Space, Tooltip } from "antd";
 import { Card } from "@/components/ui-antd";
 import {
-  ApartmentOutlined,
   DeleteOutlined,
   DisconnectOutlined,
   EditOutlined,
   ExperimentOutlined,
   EyeOutlined,
   MoreOutlined,
-  SafetyOutlined,
   SendOutlined,
-  ThunderboltOutlined,
-  AppstoreOutlined,
-  BlockOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
 import { useCallback } from "react";
@@ -24,6 +19,7 @@ import { useI18n } from "@/lib/i18n";
 import type { AtpAssetStatus, AtpAssetSummary } from "@/types/auth";
 import { checkWarningCount } from "@/lib/atp-model-format";
 import { resolveFormatMeta } from "./atp-model-format-tag";
+import { AtpTowerIcon } from "./atp-tower-icon";
 
 /** 右下角最多平铺几个操作按钮，其余收进「更多」 */
 const MAX_VISIBLE_ACTIONS = 2;
@@ -79,12 +75,36 @@ function statusMeta(status: AtpAssetStatus, t: (s: string) => string): { text: s
 }
 
 /**
- * 模型卡片（2026-11-05 再调整，2026-11-06 WS-9 微调）：
- * - 发布状态移到右上角，「生效/失效」随发布上线而取消（发布即生效，下线即退出仿真定位）；
- * - 形态（新版/老版/检测中…）改为卡片右侧的一枚水印式印章；新版/旧版收敛为
- *   垂直居中的单字章（新/旧），悬停仍可看完整形态说明与预检警告数；
- * - 卡片底部不再展示版本号与更新时间；
- * - 右下角最多两个按钮（发布|下线 → 测试），其余收进「更多」。
+ * 电压等级分档配色：一个彩色标识块，让不同电压等级的卡片在网格里能一眼分组。
+ * 颜色只承载「档位」这一个意思（高压紫 / 中压蓝 / 低压青），不做纯装饰。
+ */
+function voltageTier(voltage: string | null): { background: string; color: string } {
+  const value = Number(String(voltage ?? "").replace(/[^0-9.]/g, ""));
+  if (!Number.isFinite(value) || value <= 0) return { background: "#f3f4f6", color: "#6b7280" };
+  if (value >= 500) return { background: "#f5f3ff", color: "#7c3aed" };
+  if (value >= 220) return { background: "#eff6ff", color: "#1d4ed8" };
+  return { background: "#ecfdf5", color: "#0f766e" };
+}
+
+/**
+ * 模型卡片（2026-11-07 版式重做）：
+ *
+ * 旧版卡片的问题是把所有信息都摆成同等权重——每个字段前面挂一个图标、右上角水印式
+ * 「新/旧」斜章、左下蓝色圆点徽章、卡片底色还带一层蓝渐变，元素互相抢视线，
+ * 30 张卡排在一起时整页都是噪点，扫读无从下手。
+ *
+ * 新版按「一个锚点 + 安静的信息层」重排：
+ * - 标题区只留模型名 + 编号，编号用小一号灰字，去掉装饰图标；发布状态收敛为一枚
+ *   语义 chip（已发布=绿、未发布=灰），不再用红点；
+ * - 四个维度改成两列「标签灰 / 值深」的属性网格，字段不再带图标，靠对齐形成节奏；
+ * - 形态（新版/旧版/检测中…）从水印斜章收成页脚一行灰字，悬停看完整链路说明与
+ *   预检提示数——信息不丢，噪音去掉；
+ * - 卡片改纯白底 + 细边框，靠留白与对齐撑精致度，不靠装饰。
+ *
+ * 2026-11-07 二次调整（页面反馈「有点素」）：在不回到「什么都强调」的前提下补两处结构色——
+ * ① 标题左侧一枚按电压等级分档的色块（高/中/低压三色，全卡唯一彩色锚点）；
+ * ② 属性下方一条三格数据条（测试次数 / 最近结果 / 版本），浅底小块把使用情况压成可扫读的读数，
+ *    最近结果用成功绿、失败红，其余保持灰。
  */
 export function AtpModelCard({
   asset,
@@ -138,15 +158,39 @@ export function AtpModelCard({
   const abnormal = statusMeta(asset.status, t);
   const published = asset.is_published !== false;
 
-  // 形态印章：继承原形态 pill 的判定（检测中/检测失败/待检测/新版/老版…）
-  // WS-9：新版/旧版收敛为右侧垂直居中的单字章（新/旧），其余形态态仍显示完整标签。
+  // 形态说明：页脚那行灰字要给完整解释（决定仿真链路），预检 warning 数一并带出
   const formatMeta = resolveFormatMeta(asset);
   const formatWarnCount = asset.analysis_status === "failed" ? 0 : checkWarningCount(asset.format_check);
   const formatHint =
     formatWarnCount > 0
-      ? `${formatMeta.hint}（${t("另有")} ${formatWarnCount} ${t("条预检提示，详情页可查看")}）`
-      : formatMeta.hint;
-  const stampChar = formatMeta.tone === "insert" ? "新" : formatMeta.tone === "legacy" ? "旧" : null;
+      ? `${t(formatMeta.hint)}（${t("另有")} ${formatWarnCount} ${t("条预检提示，详情页可查看")}）`
+      : t(formatMeta.hint);
+
+  const specs = [
+    { key: "voltage", label: t("电压等级"), value: voltageText },
+    { key: "tower", label: t("塔型"), value: towerText },
+    { key: "scene", label: t("场景"), value: sceneText },
+    { key: "arrester", label: t("避雷器"), value: arresterText },
+  ];
+
+  const tier = voltageTier(asset.voltage_level);
+  const runStatus =
+    asset.last_run_status === "success"
+      ? { text: t("成功"), className: "is-success" }
+      : asset.last_run_status === "failed"
+        ? { text: t("失败"), className: "is-danger" }
+        : asset.last_run_status === "running"
+          ? { text: t("运行中"), className: "is-running" }
+          : asset.last_run_status === "pending"
+            ? { text: t("排队中"), className: "is-running" }
+            : { text: t("未运行"), className: "is-muted" };
+
+  // 数据条：把「用得多不多、最近跑得怎么样」这类三秒钟就能读完的信息压成三格
+  const stats = [
+    { key: "runs", label: t("测试次数"), value: String(asset.run_count ?? 0), className: "" },
+    { key: "last", label: t("最近结果"), value: runStatus.text, className: runStatus.className },
+    { key: "version", label: t("版本"), value: asset.version || "-", className: "" },
+  ];
 
   // 动作清单：顺序即优先级，前 MAX_VISIBLE_ACTIONS 个平铺在右下角，其余进「更多」。
   // 「详情」点卡片本身即可进入，故排在两位常用操作之后。
@@ -217,84 +261,81 @@ export function AtpModelCard({
       onClick={handleView}
       styles={{ body: { padding: 0 } }}
     >
-      <div className={`relative flex h-full flex-col${stampChar ? " admin-atp-models-card-has-stamp" : ""}`}>
-        {/* 形态印章：水印式盖在卡片右侧；新版/旧版为垂直居中单字章（新/旧） */}
-        <Tooltip title={formatHint}>
-          <div
-            className={`admin-atp-models-stamp${stampChar ? " admin-atp-models-stamp-single" : ""}`}
-            data-tone={formatMeta.tone}
-            style={{ color: formatMeta.color }}
-            onClick={(event) => event.stopPropagation()}
+      <div className="admin-atp-models-card-inner">
+        {/* 标题区：电压分档色块（锚点）+ 模型名 + 编号，右侧只放一枚发布状态 chip */}
+        <div className="admin-atp-models-card-head">
+          <span
+            className="admin-atp-models-card-tile"
+            style={{ background: tier.background, color: tier.color }}
+            aria-hidden
           >
-            <span className="admin-atp-models-stamp-text">{stampChar ? t(stampChar) : formatMeta.label}</span>
-            {!stampChar && formatWarnCount > 0 ? (
-              <span className="admin-atp-models-stamp-warn">
-                <WarningOutlined />
-                {formatWarnCount}
-              </span>
+            <AtpTowerIcon />
+          </span>
+          <div className="admin-atp-models-card-headline">
+            <div className="admin-atp-models-card-name" title={asset.name || asset.code}>
+              {asset.name || asset.code}
+            </div>
+            {asset.name && asset.code ? (
+              <div className="admin-atp-models-card-code" title={asset.code}>
+                {asset.code}
+              </div>
             ) : null}
           </div>
-        </Tooltip>
-
-        {/* 标题栏：图标 + 名称 + 右上角发布状态 */}
-        <div className="admin-atp-models-card-title flex items-center gap-2 border-b border-gray-200 px-4 py-3">
-          <BlockOutlined className="text-base text-gray-500" />
-          <Typography.Text strong ellipsis className="admin-atp-models-card-name min-w-0 flex-1">
-            {asset.name || asset.code}
-          </Typography.Text>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {published ? (
-              <span className="admin-atp-models-state-chip is-published">
-                <span className="admin-atp-models-state-chip-dot" />
-                {t("已发布")}
-              </span>
-            ) : (
-              <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
-            )}
-          </div>
+          {published ? (
+            <span className="admin-atp-models-state-chip is-published">{t("已发布")}</span>
+          ) : (
+            <span className="admin-atp-models-state-chip is-muted">{t("未发布")}</span>
+          )}
         </div>
 
-        {/* 字段区：逐行「小图标 + 标签：值」，与线路管理页卡片一致 */}
-        <div className="flex flex-1 flex-col gap-2 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <ThunderboltOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
-              {t("电压等级")}：{voltageText}
-            </Typography.Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <ApartmentOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
-              {t("塔型")}：{towerText}
-            </Typography.Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <AppstoreOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
-              {t("场景")}：{sceneText}
-            </Typography.Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <SafetyOutlined className="text-xs text-gray-500" />
-            <Typography.Text type="secondary" ellipsis className="min-w-0 text-xs">
-              {t("避雷器")}：{arresterText}
-            </Typography.Text>
-          </div>
+        {/* 属性网格：两列「标签灰 / 值深」，字段不带图标，靠对齐形成扫读节奏 */}
+        <dl className="admin-atp-models-card-specs">
+          {specs.map((spec) => (
+            <div key={spec.key} className="admin-atp-models-card-spec">
+              <dt>{spec.label}</dt>
+              <dd title={spec.value}>{spec.value}</dd>
+            </div>
+          ))}
+        </dl>
 
-          {/* 元信息行：异常状态（发布状态已在右上角，版本号与更新时间不再展示） */}
-          <div className="mt-auto flex min-h-5 items-center gap-2 text-xs">
+        {/* 数据条：三格浅色小块，扫读节奏与首页统计卡一致 */}
+        <div className="admin-atp-models-card-stats">
+          {stats.map((stat) => (
+            <div key={stat.key} className="admin-atp-models-stat">
+              <span className="admin-atp-models-stat-label">{stat.label}</span>
+              <span className={`admin-atp-models-stat-value${stat.className ? ` ${stat.className}` : ""}`} title={stat.value}>
+                {stat.value}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* 处理进度：只在运行中任务上出现，其余时候不占位置 */}
+        {asset.status === "processing" ? (
+          <Progress percent={asset.progress ?? 0} size="small" className="admin-atp-models-card-progress" />
+        ) : null}
+
+        {/* 页脚：左侧形态说明与异常状态（安静灰字），右侧操作 */}
+        <div className="admin-atp-models-card-foot">
+          <div className="admin-atp-models-card-foot-meta">
+            <Tooltip title={formatHint}>
+              <span
+                className="admin-atp-models-format-note"
+                data-tone={formatMeta.tone}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {t(formatMeta.short)}
+                {formatWarnCount > 0 ? (
+                  <span className="admin-atp-models-format-note-warn">
+                    <WarningOutlined />
+                    {formatWarnCount}
+                  </span>
+                ) : null}
+              </span>
+            </Tooltip>
             {abnormal ? <span className={abnormal.className}>{abnormal.text}</span> : null}
           </div>
-        </div>
-
-        {/* 动作栏：左侧处理进度（与线路管理页卡片一致），右侧最多两个按钮 + 更多 */}
-        <div className="admin-atp-models-card-actions flex items-center justify-between gap-2 border-t border-gray-200 px-4 py-2">
-          {asset.status === "processing" ? (
-            <Progress percent={asset.progress ?? 0} size="small" className="max-w-40 flex-1" />
-          ) : (
-            <div />
-          )}
-          <Space size="small" className="shrink-0">
+          <Space size={2} className="shrink-0">
             {visibleActions.map((action) => (
               <Tooltip key={action.key} title={action.tooltip}>
                 <Button
