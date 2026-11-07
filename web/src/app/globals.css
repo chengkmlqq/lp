@@ -3486,6 +3486,219 @@ body {
 .admin-atp-models-detail-pane .admin-atp-models-files-table .ant-table-body {
   overflow-y: visible !important;
   max-height: none !important;
+}
+
+/* ── 2026-11-07 详情页重排：概览带 + 大数字统计行 + 分区 Tabs（参考 DataAtlas 详情页） ── */
+
+/* 概览带：白底细边框，标题区 + 统计行 */
+.admin-atp-models-detail-hero {
+  flex: 0 0 auto;
+  padding: 16px 20px 14px;
+  border: 1px solid var(--fquiz-theme-border);
+  border-radius: 8px;
+}
+
+.admin-atp-models-detail-hero-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* 图标锚点：与模型卡片同款 tile，详情页放大一档 */
+.admin-atp-models-detail-tile {
+  width: 40px;
+  height: 40px;
+  margin-top: 0;
+  border-radius: 10px;
+  font-size: 19px;
+}
+
+.admin-atp-models-detail-headline {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 标题行：模型名 + 发布状态 chip */
+.admin-atp-models-detail-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-atp-models-detail-name-text {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--fquiz-theme-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 副标题行：编码 / 版本 / 创建时间 + 形态与状态 chips */
+.admin-atp-models-detail-subline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--fquiz-theme-text-muted);
+}
+
+.admin-atp-models-detail-subline-dot {
+  color: var(--fquiz-theme-border);
+}
+
+.admin-atp-models-detail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* 统计行：大数字 + 小灰标签，与标题区用虚线分隔 */
+.admin-atp-models-detail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 48px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--fquiz-theme-border);
+}
+
+.admin-atp-models-detail-stat {
+  min-width: 0;
+}
+
+.admin-atp-models-detail-stat-value {
+  display: block;
+  font-size: 22px;
+  line-height: 26px;
+  font-weight: 600;
+  color: var(--fquiz-theme-text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-atp-models-detail-stat-value.is-success {
+  color: #15803d;
+}
+
+.admin-atp-models-detail-stat-value.is-danger {
+  color: #b91c1c;
+}
+
+.admin-atp-models-detail-stat-value.is-running {
+  color: #0369a1;
+}
+
+.admin-atp-models-detail-stat-value.is-muted {
+  color: var(--fquiz-theme-text-muted);
+  font-weight: 400;
+}
+
+.admin-atp-models-detail-stat-label {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--fquiz-theme-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 分区 Tabs：间距交给 detail-pane 的 gap，nav 自带 margin 归零 */
+.admin-atp-models-detail-tabs > .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+.admin-atp-models-detail-tabs .ant-tabs-tab {
+  padding-top: 4px;
+  padding-bottom: 10px;
+}
+
+/* 基本信息属性网格：四列「标签灰 / 值深」，对齐卡片 specs 视觉 */
+.admin-atp-models-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px 24px;
+  margin: 0;
+  padding: 16px 0 4px;
+}
+
+.admin-atp-models-detail-meta dt {
+  margin: 0 0 3px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--fquiz-theme-text-muted);
+  white-space: nowrap;
+}
+
+.admin-atp-models-detail-meta dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--fquiz-theme-text-primary);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1200px) {
+  .admin-atp-models-detail-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 槽位面板与属性网格之间用一条细线分区 */
+.admin-atp-models-detail-slots {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--fquiz-theme-border);
+}
+
+/* 文件列表工具栏：左筛选右计数 */
+.admin-atp-models-detail-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.admin-atp-models-detail-search {
+  width: 260px;
+}
+
+.admin-atp-models-detail-toolbar-note {
+  font-size: 12px;
+  color: var(--fquiz-theme-text-muted);
+  white-space: nowrap;
+}
+
+/* 目录行：antd 原生 FolderOutlined，弱化为半透明主色 */
+.admin-atp-models-file-dir {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fquiz-theme-text-primary);
+}
+
+.admin-atp-models-file-dir .anticon {
+  color: var(--ant-color-primary);
+  opacity: 0.65;
+}
+
+.admin-atp-models-file-none {
+  color: var(--fquiz-theme-border);
 }/* LP-246: 仅对激活 pane 撑满，非激活 pane 保留 antd 默认 display:none 隐藏 *//* LP-246: 主列表 Tab 栏底色统一为与用户管理页标题栏一致（colorBgContainer 白底），
    仅作用于外层主列表 Tabs（editable-card），避免误伤详情 Tab 内的 recharts/Descriptions；
    选中/未选中 Tab 均去掉 antd 默认 colorFillAlter 浅灰底，与标题栏连成一条白带 *//* LP-311: 默认选项卡标题样式：粗体 16px 标题色，与线路管理页保持一致 */
