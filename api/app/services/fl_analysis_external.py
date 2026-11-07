@@ -2573,9 +2573,9 @@ def _build_template_context(
     }
 
 
-# 匹配 $INCLUDE/$INSERT 卡里的绝对路径 D:\ATP\<scene相对段>\<file>.lib / .pch，捕获文件名。
-# ⚠️ ⚠️ 2026-09-29 修复：原正则只捕获 .lib，$INSERT 引用的 .pch（无避雷线变体）不匹配
-# → 路径保持 C# 本地 → ATP 打不开 → simulate time-step=0。改为 (?:lib|pch)。
+# ⚠️ 2026-11-08：_INCLUDE_PATH_RE 已废弃不再使用——它硬要求 `D:\ATP\` 前缀，
+# 对 115/230 升压模型的原始 C# 路径（C:\ATP60work\batch\...）不匹配，导致
+# INCLUDE 改写失效（详见 _rewrite_includes 内注释）。$INCLUDE 现按文件名重构。
 _INCLUDE_PATH_RE = re.compile(r"D:\\ATP\\[^,]+?\\?([A-Za-z0-9_]+\.(?:lib|pch))")
 
 
@@ -2680,10 +2680,27 @@ def _rewrite_includes(
             else:
                 out_lines.append(line + ending)
         elif line.strip().upper().startswith("$INCLUDE") and ".lib" in line:
-            new_line = _INCLUDE_PATH_RE.sub(
-                lambda m: priv_win + m.group(1), line
-            )
-            out_lines.append(new_line + ending)
+            # ⚠️ 2026-11-08 修复（115/230 升压模型 24 任务全失败根因）：原
+            # _INCLUDE_PATH_RE 硬要求 `D:\ATP\` 前缀，而 115/230 资产的 INCLUDE
+            # 仍是原始 C# 机器路径 `C:\ATP60work\batch\110_ganzi_fanji\short.lib`
+            # （升压自 110/220 工程、从未归一）→ 不匹配 → INCLUDE 保持 C: 路径
+            # → Wine 下打不开 lib → ATP 读 ~359 卡后空转退出（rc=0）且无
+            # work.lis/work.pl4。与上方 $INSERT 同口径：按「最后一个 \ 之后的
+            # 文件名」重构路径指向私有目录，节点名等参数原样保留；对
+            # D:\ATP\、C:\ATP60work\、C:\ATP\ 等任意盘符前缀幂等。
+            head, sep, rest = line.partition(",")
+            if sep:
+                first, sep2, tail = rest.partition(",")
+                name = first.strip().replace("/", "\\").rsplit("\\", 1)[-1].strip()
+                if name.lower().endswith(".lib"):
+                    new_line = f"{head},{priv_win}{name}"
+                    if sep2:
+                        new_line += f",{tail}"
+                    out_lines.append(new_line + ending)
+                else:
+                    out_lines.append(line + ending)
+            else:
+                out_lines.append(line + ending)
         else:
             out_lines.append(raw_line)
     return "".join(out_lines)
